@@ -1,26 +1,39 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'
 import { VantioInterceptor, type TelemetryPayload } from '@vantio/agent-sdk'
+import { db } from '@/lib/db'
 
-// Instantiate the Tier-01 Interceptor at the Edge
+const agentId = process.env.VANTIO_AGENT_ID || 'oracle-edge-node-01'
+
 const interceptor = new VantioInterceptor({
-  agentId: process.env.VANTIO_AGENT_ID || 'oracle-edge-node-01',
+  agentId,
   environment: process.env.NODE_ENV === 'production' ? 'production' : 'development',
-});
+})
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as TelemetryPayload & Record<string, unknown>;
+    const body = await request.json() as TelemetryPayload & Record<string, unknown>
 
     // Enforce the physical quarantine matrix
-    const receipt = interceptor.recordExecution(body);
+    const receipt = interceptor.recordExecution(body)
 
-    return NextResponse.json({ success: true, receipt }, { status: 200 });
+    // Write valid telemetry to the deterministic substrate
+    await db.telemetryLog.create({
+      data: {
+        agentId,
+        executionTimeMs: body.executionTimeMs,
+        tokensConsumed: body.tokensConsumed,
+        modelIdentifier: body.modelIdentifier,
+        systemAction: body.systemAction,
+        deterministicStatus: body.deterministicStatus,
+      },
+    })
+
+    return NextResponse.json({ success: true, receipt }, { status: 200 })
   } catch (error: unknown) {
-    // Deterministic failure if Payload Quarantine is breached
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const details = error instanceof Error ? error.message : 'Unknown fatal error'
     return NextResponse.json(
-      { error: 'VANTIO_FATAL', details: message },
+      { error: 'VANTIO_FATAL', details },
       { status: 403 }
-    );
+    )
   }
 }

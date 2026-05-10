@@ -7,6 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model TelemetryLog {
+  id                  String   @id @default(cuid())
+  agentId             String
+  executionTimeMs     Int
+  tokensConsumed      Int
+  modelIdentifier     String
+  systemAction        String
+  deterministicStatus String
+  createdAt           DateTime @default(now())
+}
+
 model EnterpriseUser {
   id            String   @id @default(cuid())
   email         String   @unique
