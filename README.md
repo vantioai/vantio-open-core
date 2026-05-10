@@ -21,7 +21,7 @@ This repository demonstrates the strict isolation between application state and 
 2. Ignite the local PostgreSQL substrate:
    `docker compose up -d`
 3. Push the database schema:
-   `pnpm dlx prisma db push`
+   `cd apps/oracle && node_modules/.bin/prisma db push`
 4. Inject your cryptographic Tier-03 keys into `apps/oracle/.env.local`:
    - `OPENAI_API_KEY=sk-...`
    - `AUTH_SECRET=...`
