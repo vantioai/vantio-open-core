@@ -10,6 +10,7 @@ export function TelemetryDispatcher() {
     setStatus("TRANSMITTING VALID PAYLOAD...")
     const res = await fetch('/api/telemetry', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         executionTimeMs: 142,
         tokensConsumed: 850,
@@ -26,6 +27,7 @@ export function TelemetryDispatcher() {
     setStatus("TRANSMITTING QUARANTINED PAYLOAD...")
     const res = await fetch('/api/telemetry', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         executionTimeMs: 88,
         tokensConsumed: 120,

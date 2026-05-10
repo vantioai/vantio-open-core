@@ -3,9 +3,13 @@ packages:
   - 'packages/*'
 
 allowBuilds:
+  '@prisma/engines': set this to true or false
+  prisma: set this to true or false
   sharp: set this to true or false
   unrs-resolver: set this to true or false
 
 onlyBuiltDependencies:
   - sharp
   - unrs-resolver
+  - prisma
+  - "@prisma/engines"

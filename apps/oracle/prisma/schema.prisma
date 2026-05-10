@@ -1,0 +1,19 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model EnterpriseUser {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  domain        String
+  role          String   @default("operator")
+  samlId        String?  @unique
+  quarantineLog String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
