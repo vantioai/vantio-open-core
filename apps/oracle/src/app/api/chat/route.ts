@@ -1,5 +1,6 @@
-import { streamText } from 'ai'
+import { streamText, tool } from 'ai'
 import { openai } from '@ai-sdk/openai'
+import { z } from 'zod'
 import { VantioInterceptor, type TelemetryPayload } from '@vantio/agent-sdk'
 import { db } from '@/lib/db'
 import { auth } from '@/auth'
@@ -24,7 +25,6 @@ export async function POST(req: Request) {
 
   const latestMessage = messages[messages.length - 1]
 
-  // Deterministically anchor the thread
   let activeThreadId = threadId
   if (!activeThreadId) {
     const thread = await db.chatThread.create({
@@ -33,7 +33,6 @@ export async function POST(req: Request) {
     activeThreadId = thread.id
   }
 
-  // Persist the user's incoming payload
   await db.chatMessage.create({
     data: {
       threadId: activeThreadId,
@@ -47,17 +46,33 @@ export async function POST(req: Request) {
   const result = await streamText({
     model: openai('gpt-4o'),
     messages,
-    async onFinish({ usage, text }) {
-      // Persist the AI's response
-      await db.chatMessage.create({
-        data: {
-          threadId: activeThreadId as string,
-          role: 'assistant',
-          content: text,
+    tools: {
+      getExecutionLedgerStatus: tool({
+        description:
+          'Retrieve the latest telemetry execution logs and token usage from the deterministic SQLite substrate. Use this when the user asks about system status, token usage, or recent telemetry.',
+        parameters: z.object({
+          limit: z.number().min(1).max(10).describe('Number of logs to retrieve'),
+        }),
+        execute: async ({ limit }) => {
+          const logs = await db.telemetryLog.findMany({
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+          })
+          return { status: 'success', data: logs }
         },
-      })
+      }),
+    },
+    async onFinish({ usage, text }) {
+      if (text) {
+        await db.chatMessage.create({
+          data: {
+            threadId: activeThreadId as string,
+            role: 'assistant',
+            content: text,
+          },
+        })
+      }
 
-      // Transmit metadata through the Telemetry Quarantine
       const payload: TelemetryPayload & Record<string, unknown> = {
         executionTimeMs: 0,
         tokensConsumed: usage.totalTokens,
