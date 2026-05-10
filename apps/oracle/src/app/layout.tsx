@@ -19,18 +19,24 @@ export const metadata: Metadata = {
 
 const orgSchema = {
   "@context": "https://schema.org",
-  "@type": "Organization",
+  "@type": "Corporation",
   name: "Vantio AI, Inc.",
-  url: "https://vantio.ai",
   legalName: "Vantio AI, Inc.",
+  url: "https://vantio.ai/trust",
   foundingLocation: {
     "@type": "Place",
+    name: "Delaware, USA",
     address: {
       "@type": "PostalAddress",
       addressRegion: "DE",
       addressCountry: "US",
     },
   },
+  knowsAbout: [
+    "Enterprise eBPF Telemetry",
+    "AI Security",
+    "Cryptographic Attestation",
+  ],
 };
 
 export default function RootLayout({
