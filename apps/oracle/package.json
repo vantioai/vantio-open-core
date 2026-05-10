@@ -11,10 +11,12 @@
     "db:push": "prisma db push"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.63",
     "@auth/prisma-adapter": "^1.6.0",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@vantio/agent-sdk": "workspace:*",
+    "ai": "^6.0.177",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",
