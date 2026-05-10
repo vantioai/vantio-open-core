@@ -19,12 +19,31 @@ model TelemetryLog {
 }
 
 model EnterpriseUser {
-  id            String   @id @default(cuid())
-  email         String   @unique
+  id            String        @id @default(cuid())
+  email         String        @unique
   domain        String
-  role          String   @default("operator")
-  samlId        String?  @unique
+  role          String        @default("operator")
+  samlId        String?       @unique
   quarantineLog String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  threads       ChatThread[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model ChatThread {
+  id        String        @id @default(cuid())
+  userId    String
+  user      EnterpriseUser @relation(fields: [userId], references: [id])
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime   @default(now())
 }
