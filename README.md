@@ -13,13 +13,12 @@ This repository represents Tier 01 of the Vantio architecture: the Developer ope
 - **Persistence:** Local PostgreSQL substrate (Note: Production enterprise ledgers are natively mapped to WORM-compliant Google Cloud Spanner instances).
 - **Dependency Governance:** Standard npm or yarn commands are banned to prevent phantom dependency vulnerabilities. Toolchains strictly enforce pnpm workspaces via `.npmrc`.
 
-## Initialization Protocol
+## Initialization Protocol (60-Second TTV)
 
-1. Ensure Docker Desktop is active.
-2. Ignite the local state database (PostgreSQL shim):
-   `docker compose up -d`
-3. Push the local schema:
-   `cd apps/oracle && node_modules/.bin/prisma db push`
-4. Configure local environment variables in `apps/oracle/.env.local` (Local LLM API keys only—proprietary Tier-03 architecture is completely decoupled from this workspace).
-5. Compile and execute:
+The Tier-01 Control Plane requires zero infrastructure. It runs entirely in user-space with an ephemeral local datastore.
+
+1. Configure local environment variables in `apps/oracle/.env.local` (Requires `OPENAI_API_KEY` and `AUTH_SECRET`).
+2. Install dependencies:
+   `pnpm install`
+3. Ignite the frictionless wedge (This automatically provisions the ephemeral SQLite shim):
    `pnpm dev`
