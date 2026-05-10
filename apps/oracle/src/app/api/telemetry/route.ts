@@ -17,9 +17,11 @@ export async function POST(request: Request) {
     const receipt = interceptor.recordExecution(body)
 
     // Write valid telemetry to the deterministic substrate
+    const traceId = process.env.VANTIO_TRACE_ID ?? body.traceId ?? receipt.traceId
     await db.telemetryLog.create({
       data: {
         agentId,
+        traceId: typeof traceId === 'string' ? traceId : null,
         executionTimeMs: body.executionTimeMs,
         tokensConsumed: body.tokensConsumed,
         modelIdentifier: body.modelIdentifier,

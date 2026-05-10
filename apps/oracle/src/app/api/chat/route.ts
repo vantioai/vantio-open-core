@@ -81,11 +81,13 @@ export async function POST(req: Request) {
         deterministicStatus: 'success',
       }
 
-      interceptor.recordExecution(payload)
+      const receipt = interceptor.recordExecution(payload)
+      const traceId = process.env.VANTIO_TRACE_ID ?? receipt.traceId ?? undefined
 
       await db.telemetryLog.create({
         data: {
           agentId: AGENT_ID,
+          traceId: traceId ?? null,
           executionTimeMs: 0,
           tokensConsumed: usage.totalTokens,
           modelIdentifier: 'gpt-4o',

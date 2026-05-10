@@ -14,4 +14,5 @@ export interface TelemetryPayload {
   // The Payload Quarantine: 'prompt' and 'response' strings are explicitly banned from this interface.
   systemAction: string;
   deterministicStatus: 'success' | 'quarantined' | 'failed';
+  traceId?: string;
 }

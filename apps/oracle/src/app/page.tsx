@@ -68,13 +68,14 @@ export default async function Home() {
                   <th className="px-4 py-2">Action</th>
                   <th className="px-4 py-2">Model</th>
                   <th className="px-4 py-2">Tokens</th>
-                  <th className="px-4 py-2 rounded-tr-md">Status</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2 rounded-tr-md">Trace ID</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {logs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-4 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-4 text-center text-slate-500">
                       No telemetry recorded.
                     </td>
                   </tr>
@@ -93,6 +94,9 @@ export default async function Home() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
                           {log.deterministicStatus}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-400 truncate max-w-[160px]">
+                        {log.traceId ?? <span className="italic">unlinked</span>}
                       </td>
                     </tr>
                   ))
