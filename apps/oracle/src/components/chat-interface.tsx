@@ -1,10 +1,18 @@
 "use client"
 
-import { useChat } from '@ai-sdk/react'
+import { useChat, type Message } from '@ai-sdk/react'
 import { Button } from "@/components/ui/button"
 
-export function ChatInterface() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat()
+interface ChatInterfaceProps {
+  initialMessages: Message[]
+  threadId?: string
+}
+
+export function ChatInterface({ initialMessages, threadId }: ChatInterfaceProps) {
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    initialMessages,
+    body: { threadId },
+  })
 
   return (
     <div className="flex flex-col h-[500px] w-full rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">

@@ -10,7 +10,7 @@ import { ChatInterface } from "@/components/chat-interface"
 export default async function Home() {
   const session = await auth()
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     redirect("/auth/enterprise")
   }
 
@@ -18,6 +18,18 @@ export default async function Home() {
     orderBy: { createdAt: "desc" },
     take: 5,
   })
+
+  const activeThread = await db.chatThread.findFirst({
+    where: { userId: session.user.id },
+    include: { messages: { orderBy: { createdAt: "asc" } } },
+    orderBy: { updatedAt: "desc" },
+  })
+
+  const initialMessages = activeThread?.messages.map(m => ({
+    id: m.id,
+    role: m.role as "user" | "assistant" | "system" | "data",
+    content: m.content,
+  })) ?? []
 
   return (
     <main className="flex min-h-screen flex-col items-center p-12 bg-slate-50">
@@ -43,7 +55,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <ChatInterface />
+        <ChatInterface initialMessages={initialMessages} threadId={activeThread?.id} />
         <TelemetryDispatcher />
 
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-4">
