@@ -1,0 +1,9 @@
+[package]
+name = "vantio-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Vantio AI Tier-01 user-space execution wrapper"
+
+[[bin]]
+name = "vantio"
+path = "src/main.rs"
