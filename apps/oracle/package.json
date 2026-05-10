@@ -7,11 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.2",
-    "@prisma/client": "^7.8.0",
+    "@auth/prisma-adapter": "^1.6.0",
+    "@prisma/client": "^5.22.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@vantio/agent-sdk": "workspace:*",
     "class-variance-authority": "^0.7.1",
@@ -23,21 +24,14 @@
     "react-dom": "19",
     "tailwind-merge": "^3.5.0"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "sharp",
-      "unrs-resolver"
-    ]
-  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "prisma": "^7.8.0",
+    "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

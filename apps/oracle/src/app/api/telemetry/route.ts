@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { VantioInterceptor, type TelemetryPayload } from '@vantio/agent-sdk';
+import { VantioInterceptor, type TelemetryPayload } from '@vantio/agent-sdk'
 
 // Instantiate the Tier-01 Interceptor at the Edge
 const interceptor = new VantioInterceptor({
