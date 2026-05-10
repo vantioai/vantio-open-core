@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.63",
+    "@ai-sdk/react": "^3.0.179",
     "@auth/prisma-adapter": "^1.6.0",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-slot": "^1.2.4",

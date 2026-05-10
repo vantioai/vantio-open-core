@@ -5,6 +5,7 @@ import { auth, signOut } from "@/auth"
 import { db } from "@/lib/db"
 import { Button } from "@/components/ui/button"
 import { TelemetryDispatcher } from "@/components/telemetry-dispatcher"
+import { ChatInterface } from "@/components/chat-interface"
 
 export default async function Home() {
   const session = await auth()
@@ -21,7 +22,6 @@ export default async function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center p-12 bg-slate-50">
       <div className="w-full max-w-4xl space-y-8">
-        {/* Header Block */}
         <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">The Omniscient Oracle</h1>
@@ -43,10 +43,9 @@ export default async function Home() {
           </div>
         </div>
 
-        {/* Action Matrix */}
+        <ChatInterface />
         <TelemetryDispatcher />
 
-        {/* Telemetry Ledger View */}
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm space-y-4">
           <h3 className="text-lg font-semibold tracking-tight text-slate-900">Live Execution Ledger</h3>
           <div className="overflow-x-auto">
