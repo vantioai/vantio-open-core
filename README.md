@@ -1,29 +1,25 @@
-# Vantio AI Open-Core
+# Vantio AI: Open-Core SDK & CLI (Tier 01)
 
-The deterministic Open-Core repository for the Vantio AI Tier-01 Control Plane.
-
-## Architectural Matrix
-
-Vantio Open-Core is engineered on a strict, mathematically sound technology stack:
-- **Framework:** Next.js 15 (App Router) + React 19
-- **Identity Gateway:** Auth.js v5 (NextAuth) mapped to custom enterprise schemas
-- **Persistence:** Prisma ORM connected to PostgreSQL
-- **Cognitive Engine:** Vercel AI SDK streaming `gpt-4o` with deterministic tool execution
-- **Telemetry Quarantine:** Custom `@vantio/agent-sdk` enforcing edge-level data sanitization
+The deterministic, open-source developer wedge for Vantio AI.
 
 ## The Open-Core Schism
 
-This repository demonstrates the strict isolation between application state and execution telemetry. Raw linguistic payloads are physically quarantined at the Next.js API boundary. The LLM retains persistent conversational memory, while the telemetry ledger strictly records metadata (token consumption, execution latency, model identity).
+This repository represents Tier 01 of the Vantio architecture: the Developer open-core SDK and CLI. By design, this repository demonstrates total physical isolation of our public user-space SDKs from our proprietary Ring-0 IP (The Phantom Engine). Raw linguistic payloads are physically quarantined at the Next.js API boundary, securing systems without reading proprietary prompts.
+
+## Architectural Matrix
+
+- **Framework:** Next.js 15 App Router (React 19 Compiler).
+- **Identity Gateway:** Isolated local authentication shim via Auth.js (Note: Enterprise deployments utilize our `/auth/enterprise` SAML gateway to completely sever developer environments from institutional workspaces).
+- **Persistence:** Local PostgreSQL substrate (Note: Production enterprise ledgers are natively mapped to WORM-compliant Google Cloud Spanner instances).
+- **Dependency Governance:** Standard npm or yarn commands are banned to prevent phantom dependency vulnerabilities. Toolchains strictly enforce pnpm workspaces via `.npmrc`.
 
 ## Initialization Protocol
 
-1. Ensure Docker Desktop is installed and running.
-2. Ignite the local PostgreSQL substrate:
+1. Ensure Docker Desktop is active.
+2. Ignite the local state database (PostgreSQL shim):
    `docker compose up -d`
-3. Push the database schema:
+3. Push the local schema:
    `cd apps/oracle && node_modules/.bin/prisma db push`
-4. Inject your cryptographic Tier-03 keys into `apps/oracle/.env.local`:
-   - `OPENAI_API_KEY=sk-...`
-   - `AUTH_SECRET=...`
-5. Compile and run the Omniscient Oracle:
+4. Configure local environment variables in `apps/oracle/.env.local` (Local LLM API keys only—proprietary Tier-03 architecture is completely decoupled from this workspace).
+5. Compile and execute:
    `pnpm dev`
