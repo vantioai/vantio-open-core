@@ -16,19 +16,20 @@ export async function POST(request: Request) {
     // Enforce the physical quarantine matrix
     const receipt = interceptor.recordExecution(body)
 
-    // Write valid telemetry to the deterministic substrate
-    const traceId = process.env.VANTIO_TRACE_ID ?? body.traceId ?? receipt.traceId
-    await db.telemetryLog.create({
-      data: {
-        agentId,
-        traceId: typeof traceId === 'string' ? traceId : null,
-        executionTimeMs: body.executionTimeMs,
-        tokensConsumed: body.tokensConsumed,
-        modelIdentifier: body.modelIdentifier,
-        systemAction: body.systemAction,
-        deterministicStatus: body.deterministicStatus,
-      },
-    })
+    // Only write locally when the SDK is routing to the ephemeral substrate
+    if (receipt.status === 'acknowledged') {
+      await db.telemetryLog.create({
+        data: {
+          agentId,
+          traceId: receipt.traceId ?? null,
+          executionTimeMs: body.executionTimeMs,
+          tokensConsumed: body.tokensConsumed,
+          modelIdentifier: body.modelIdentifier,
+          systemAction: body.systemAction,
+          deterministicStatus: body.deterministicStatus,
+        },
+      })
+    }
 
     return NextResponse.json({ success: true, receipt }, { status: 200 })
   } catch (error: unknown) {

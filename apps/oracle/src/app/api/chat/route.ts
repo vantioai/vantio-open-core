@@ -82,19 +82,21 @@ export async function POST(req: Request) {
       }
 
       const receipt = interceptor.recordExecution(payload)
-      const traceId = process.env.VANTIO_TRACE_ID ?? receipt.traceId ?? undefined
 
-      await db.telemetryLog.create({
-        data: {
-          agentId: AGENT_ID,
-          traceId: traceId ?? null,
-          executionTimeMs: 0,
-          tokensConsumed: usage.totalTokens,
-          modelIdentifier: 'gpt-4o',
-          systemAction: 'llm_stream_completion',
-          deterministicStatus: 'success',
-        },
-      })
+      // Only write locally when the SDK is routing to the ephemeral substrate
+      if (receipt.status === 'acknowledged') {
+        await db.telemetryLog.create({
+          data: {
+            agentId: AGENT_ID,
+            traceId: receipt.traceId ?? null,
+            executionTimeMs: 0,
+            tokensConsumed: usage.totalTokens,
+            modelIdentifier: 'gpt-4o',
+            systemAction: 'llm_stream_completion',
+            deterministicStatus: 'success',
+          },
+        })
+      }
     },
   })
 
