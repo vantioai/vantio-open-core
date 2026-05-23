@@ -2,8 +2,12 @@
 
 import { useState } from "react";
 
+// Calendly URL configured via NEXT_PUBLIC_CALENDLY_URL env var.
+// If not set, the "Schedule a Call" tab is hidden and the form is shown by default.
+const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "";
+
 export default function EnterpriseAuthPage() {
-  const [tab, setTab]         = useState<"call" | "form">("call");
+  const [tab, setTab] = useState<"call" | "form">(CALENDLY_URL ? "call" : "form");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -48,28 +52,30 @@ export default function EnterpriseAuthPage() {
           </p>
         </div>
 
-        {/* Tab switcher */}
-        <div className="mb-6 flex rounded-lg border border-gray-200 bg-white p-1">
-          {(["call", "form"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                tab === t
-                  ? "bg-gray-900 text-white"
-                  : "text-gray-500 hover:text-gray-900"
-              }`}
-            >
-              {t === "call" ? "Schedule a Call" : "Send a Message"}
-            </button>
-          ))}
-        </div>
+        {/* Tab switcher — only show if Calendly is configured */}
+        {CALENDLY_URL && (
+          <div className="mb-6 flex rounded-lg border border-gray-200 bg-white p-1">
+            {(["call", "form"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                  tab === t
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-500 hover:text-gray-900"
+                }`}
+              >
+                {t === "call" ? "Schedule a Call" : "Send a Message"}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Calendly embed */}
-        {tab === "call" && (
+        {tab === "call" && CALENDLY_URL && (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
             <iframe
-              src="https://calendly.com/vantio-ai/enterprise?hide_gdpr_banner=1&background_color=ffffff&text_color=111827&primary_color=111827"
+              src={`${CALENDLY_URL}?hide_gdpr_banner=1&background_color=ffffff&text_color=111827&primary_color=111827`}
               width="100%"
               height="580"
               frameBorder="0"

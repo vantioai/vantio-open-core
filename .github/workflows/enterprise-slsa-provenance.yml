@@ -44,22 +44,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── 4. Build all workspace packages ──────────────────────────────────────
-      # --if-present skips packages that declare no build script (e.g. vantio-cli
-      # ships pre-authored JS with no compilation step).
-      # --recursive fans out across the full pnpm workspace graph in dependency
-      # order, so SDK and edge-proxy are compiled before apps/web consumes them.
-      - name: Build workspaces
-        run: pnpm --recursive run build --if-present
+      # ── 4. Build SDK packages only ───────────────────────────────────────────
+      # We build only the packages that are shipped to customers and included
+      # in the SLSA tarball. apps/web is excluded because Next.js build requires
+      # Stripe/Supabase runtime env vars that are not present in CI — Vercel
+      # handles the web app build and deployment separately.
+      - name: Build @vantio/agent-sdk
+        run: pnpm --filter @vantio/agent-sdk run build
+
+      - name: Build @vantio/edge-proxy
+        run: pnpm --filter @vantio/edge-proxy run build
 
       # ── 5. Bundle artifacts ───────────────────────────────────────────────────
       # Collect every compiled output into a single deterministic tarball.
       # The tarball is the subject of the Sigstore attestation; its SHA-256
       # digest is what gets written to the transparency log.
+      # apps/web/.next is excluded — Vercel produces that artifact separately.
       - name: Bundle artifacts
         run: |
           tar -czf vantio-artifacts.tar.gz \
-            apps/web/.next \
             packages/vantio-agent-sdk/dist \
             packages/edge-proxy/dist \
             packages/vantio-cli/bin
