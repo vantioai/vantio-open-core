@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 interface IngestPayload {
   traceId: string;
@@ -28,6 +30,20 @@ function getSupabaseAdmin() {
   });
 }
 
+// Edge-compatible rate limiter — 100 writes per minute per API key.
+// Checked BEFORE any Supabase query so a flood never touches the DB pool.
+function getRatelimiter() {
+  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  return new Ratelimit({
+    redis:     new Redis({ url, token }),
+    limiter:   Ratelimit.slidingWindow(100, "1 m"),
+    analytics: false,
+    prefix:    "vantio:ingest",
+  });
+}
+
 export const runtime = "edge";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -39,7 +55,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Validate the API key against the tenants table before accepting any data.
+  // ── Rate limit (edge, before DB) ─────────────────────────────────────────
+  const limiter = getRatelimiter();
+  if (limiter) {
+    const { success, limit, remaining, reset } = await limiter.limit(identity);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Max 100 requests per minute per API key." },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit":     String(limit),
+            "X-RateLimit-Remaining": String(remaining),
+            "X-RateLimit-Reset":     String(reset),
+            "Retry-After":           "60",
+          },
+        }
+      );
+    }
+  }
+
+  // ── Validate API key against tenants table ────────────────────────────────
   let tenantEmail: string;
   try {
     const supabase = getSupabaseAdmin();
@@ -61,12 +97,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Use the tenant's canonical email as identity so dashboard queries match.
     tenantEmail = tenant.email;
   } catch {
     return NextResponse.json({ error: "Failed to validate identity." }, { status: 500 });
   }
 
+  // ── Parse and validate body ───────────────────────────────────────────────
   let rawBody: unknown;
   try {
     rawBody = await request.json();
@@ -82,30 +118,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       {
         error: "Malformed payload.",
-        message: "Required: traceId (non-empty string), auditMode (boolean). Optional: eventPayload (any JSON value).",
+        message: "Required: traceId (non-empty string), auditMode (boolean).",
       },
       { status: 422 }
     );
   }
 
-  // Payload Quarantine — absolute enforcement.
-  // anomaly_metadata is strictly deterministic execution context only:
-  // bytes_severed, pid, timestamp_ns, target_host, action_taken.
-  // Linguistic content (prompts, responses, PII) is NEVER written here.
-  // The ssl_write uprobe severs the buffer at Ring-0; the Layer-7 ledger
-  // must reflect that severance by containing zero linguistic data.
+  // ── Payload Quarantine ────────────────────────────────────────────────────
   const buildAnomalyMetadata = (p: IngestPayload): Record<string, unknown> => {
     const raw =
       typeof p.eventPayload === "object" && p.eventPayload !== null
         ? (p.eventPayload as Record<string, unknown>)
         : {};
     return {
-      bytes_severed:  typeof raw["bytes_severed"]  === "number" ? raw["bytes_severed"]  : null,
-      pid:            typeof raw["pid"]             === "number" ? raw["pid"]             : null,
-      timestamp_ns:   typeof raw["timestamp_ns"]   === "number" ? raw["timestamp_ns"]   : null,
-      target_host:    typeof raw["target_host"]    === "string" ? raw["target_host"]    : null,
-      action_taken:   typeof raw["action_taken"]   === "string" ? raw["action_taken"]   : null,
-      // Explicitly omit any key that could carry linguistic content.
+      bytes_severed: typeof raw["bytes_severed"] === "number" ? raw["bytes_severed"] : null,
+      pid:           typeof raw["pid"]           === "number" ? raw["pid"]           : null,
+      timestamp_ns:  typeof raw["timestamp_ns"]  === "number" ? raw["timestamp_ns"]  : null,
+      target_host:   typeof raw["target_host"]   === "string" ? raw["target_host"]   : null,
+      action_taken:  typeof raw["action_taken"]  === "string" ? raw["action_taken"]  : null,
     };
   };
 
@@ -114,25 +144,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const supabase = getSupabaseAdmin();
       await supabase.from("anomaly_events").insert({
         tenant_identity: tenantEmail,
-        trace_id: payload.traceId,
+        trace_id:        payload.traceId,
         anomaly_metadata: buildAnomalyMetadata(payload),
-        audit_mode: payload.auditMode,
-        created_at: new Date().toISOString(),
+        audit_mode:      payload.auditMode,
+        created_at:      new Date().toISOString(),
       });
     } catch (err) {
       console.error("[vantio:ingest] Supabase write failed:", err);
     }
   };
 
-  // Non-blocking: use waitUntil if available (Vercel Edge), otherwise fire-and-forget.
-  if (typeof (request as NextRequest & { waitUntil?: (p: Promise<unknown>) => void }).waitUntil === "function") {
-    (request as NextRequest & { waitUntil: (p: Promise<unknown>) => void }).waitUntil(writeToSupabase());
-  } else {
-    void writeToSupabase();
-  }
+  void writeToSupabase();
 
-  return NextResponse.json(
-    { status: 0, traceId: payload.traceId },
-    { status: 200 }
-  );
+  return NextResponse.json({ status: 0, traceId: payload.traceId }, { status: 200 });
 }

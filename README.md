@@ -1,92 +1,110 @@
 # Vantio AI: Open-Core SDK & CLI
 
-> Kernel-enforced AI governance. Zero-line terminal visibility into your autonomous agents in under 60 seconds.
+> Zero-line agent governance. Automatic LLM observability in under 60 seconds — no code changes required.
 
 ## The Open-Core Schism
 
-This repository is **Tier 01** of the Vantio architecture — the public developer wedge. It contains the open-source `@vantio/agent-sdk`, the `vantio` process supervisor CLI, and the Next.js control plane.
+This repository is **Tier 01/02** of the Vantio architecture. It contains the open-source `@vantio/agent-sdk`, the `vantio` process supervisor CLI, and the Next.js control plane.
 
-The proprietary **Phantom Engine** (Ring-0 eBPF enforcement, `uprobe` TLS interception, `sched_process_fork` context propagation) lives in a physically separate, private repository and never touches this codebase. This is a hard architectural guarantee, not a convention.
+The proprietary **Phantom Engine** (Ring-0 eBPF enforcement, `ssl_write` uprobe, `sched_process_fork` PID inheritance) lives in a physically separate, private repository and never touches this codebase.
 
 ```
-vantio-open-core  (this repo)     vantio-phantom-engine  (private)
-─────────────────────────────     ──────────────────────────────────
-Ring-3 user-space only            Ring-0 kernel boundary
-@vantio/agent-sdk (MIT)           eBPF uprobe: SSL_write
-vantio CLI process supervisor     BTF tracepoint: sched_process_fork
-Next.js control plane             Pinned map: /sys/fs/bpf/vantio_trace_map
-Supabase tenant ledger            GCP Spanner TrueTime WORM ledger
+vantio-open-core  (this repo)          vantio-phantom-engine  (private)
+─────────────────────────────────      ──────────────────────────────────────
+Tier 1: vantio CLI + agent-sdk         Tier 3: eBPF uprobe on SSL_write
+Tier 2: Managed Edge Proxy + dashboard         BTF tracepoint: sched_process_fork
+User-space only, works everywhere              Pinned map: /sys/fs/bpf/vantio_trace_map
+                                               Linux kernel only, requires root
 ```
 
-## 60-Second Time-To-Value (TTV)
+## 60-Second Time-To-Value
 
 ### 1. Install
 
 ```bash
-pnpm install
+npm install -g @vantio/cli
 ```
 
-### 2. Start the local control plane
+### 2. Set your API key (Tier 2 — from app.vantio.ai/success)
 
 ```bash
-pnpm --filter web dev
+export VANTIO_API_KEY=vantio_xxxxxxxxxxxx
+export VANTIO_INGEST_URL=https://app.vantio.ai
 ```
 
-### 3. Wrap your agent
-
-```ts
-import { withVantio } from "@vantio/agent-sdk";
-
-const result = await withVantio(async () => {
-  return await runMyLLMAgent();
-});
-```
-
-### 4. Supervise a process
+### 3. Run your agent — zero code changes
 
 ```bash
 vantio run node agent.js
-vantio run --audit python agent.py   # VANTIO_AUDIT_MODE=1
+vantio run --audit tsx agent.ts
 ```
 
-The `--audit` flag injects `VANTIO_AUDIT_MODE=1` into the child process. When the Phantom Engine is active, audit mode severs the payload at the kernel boundary and spoofs an HTTP 200 back to the agent — zero application crashes, zero prompt leakage.
+The CLI auto-injects the `global.fetch` interceptor into the Node.js runtime via `--require`. Every outbound call to a known LLM API (`api.openai.com`, `api.anthropic.com`, etc.) is automatically captured and routed to your dashboard. **Your application code changes nothing.**
 
-## Upgrade to Tier 2 (SMB / PRO)
+For Python, Ruby, or other runtimes, `vantio run` spawns the process normally — no errors, no panics. Auto-interception is Node.js only at this stage.
 
-Set `VANTIO_CLOUD_INGEST=true` to halt local writes and route telemetry to the Vantio Managed Edge Proxy (GCP Spanner):
+## Upgrade to the SDK (optional)
 
-```bash
-VANTIO_CLOUD_INGEST=true vantio run node agent.js
+For teams that want explicit trace correlation across async hops:
+
+```ts
+import { withVantio, reportAnomaly } from "@vantio/agent-sdk";
+
+await withVantio(async () => {
+  await runMyLLMAgent();
+  // Manual reporting for non-HTTP anomalies:
+  await reportAnomaly({ target_host: "api.openai.com", action_taken: "POLICY_VIOLATION" });
+});
 ```
 
-The `/api/v1/ingest` edge route authenticates via `x-vantio-identity`, validates the payload, and persists anomaly events to Supabase — visible instantly in your `/dashboard`.
+Set `VANTIO_CLOUD_INGEST=true` alongside `VANTIO_API_KEY` to enable cloud routing.
 
 ## Monorepo Structure
 
 ```
 apps/
   web/                  Next.js 15 control plane (App Router)
-    api/v1/ingest/      Edge route — telemetry ingestion to Supabase
+    api/v1/ingest/      Edge route — telemetry ingestion (rate limited: 100/min/key)
+    api/v1/export/      CSV export of anomaly ledger
     api/webhooks/stripe/ Stripe checkout.session.completed → tenant PRO
-    dashboard/          SMB live anomaly event dashboard
+    api/stripe/         Checkout session creation
+    dashboard/          SMB live anomaly event dashboard (auth-gated)
+    login/              Supabase magic link auth
     pricing/            Three-tier pricing page
-    trust/              Compliance & governance (SOC 2, SLSA L3)
+    success/            Post-payment onboarding
+    trust/              Compliance & governance
     auth/enterprise/    Enterprise SAML/SSO gateway UI
-  cli/                  TypeScript CLI (WSL interop bridge)
 
 packages/
-  vantio-agent-sdk/     withVantio() — AsyncLocalStorage trace context
-  vantio-cli/           vantio run — process supervisor (Node.js, MIT)
+  vantio-agent-sdk/     withVantio() + reportAnomaly() — AsyncLocalStorage SDK
+  vantio-cli/           vantio run — process supervisor + auto-interceptor
   edge-proxy/           Spanner TrueTime Ledger mutation helper
 ```
 
+## Slack Alerting (Tier 2 — Zero Code)
+
+Wire Supabase → n8n → Slack using a Database Webhook (no code required):
+
+1. Supabase Dashboard → Database → Webhooks → Create
+2. Table: `anomaly_events`, Event: `INSERT`
+3. URL: your n8n webhook endpoint
+4. n8n workflow: parse JSON body → Slack message to `#devops-alerts`
+
+## Roadmap (Post-Launch / Enterprise GA)
+
+- Remote config endpoint for zero-touch tier upgrades
+- Policy rules engine (dashboard-driven, no code push)
+- RBAC for team access
+- Python / Ruby interceptor support
+- GCP Spanner TrueTime Ledger (Tier 3 GA)
+
 ## Supply Chain
 
-Every push to `main` triggers the SLSA Level 3 Sigstore provenance workflow. A cryptographically signed attestation is written to Rekor's tamper-evident transparency log, binding the GitHub OIDC runner identity to the artifact digest.
+Every push to `main` triggers SLSA Level 3 Sigstore provenance attestation.
 
 [![SLSA L3 Provenance](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 
 ## License
 
-`@vantio/agent-sdk` and `@vantio/cli` are MIT licensed.  
-The Next.js control plane (`apps/web`) is proprietary — © 2026 Vantio AI, Inc.
+`@vantio/agent-sdk` and `@vantio/cli` — MIT  
+`apps/web` (control plane) — Proprietary © 2026 Vantio AI, Inc.

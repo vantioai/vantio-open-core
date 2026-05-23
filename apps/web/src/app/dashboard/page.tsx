@@ -170,7 +170,13 @@ export default async function DashboardPage() {
             <div className="rounded-xl border border-gray-200 bg-white">
               <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
                 <h2 className="text-sm font-semibold text-gray-900">Anomaly Events</h2>
-                <span className="text-xs text-gray-400">Live from Supabase ledger</span>
+                <a
+                  href="/api/v1/export"
+                  download
+                  className="rounded-md border border-gray-200 px-3 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700"
+                >
+                  Export CSV
+                </a>
               </div>
               {events.length === 0 ? (
                 <div className="px-6 py-12 text-center text-sm text-gray-400">

@@ -100,11 +100,10 @@ export default async function SuccessPage({
             <li className="flex gap-3">
               <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">02</span>
               <div>
-                <p className="font-medium text-gray-900">Add env vars to your project</p>
+                <p className="font-medium text-gray-900">Set your API key — one env var, that&apos;s it</p>
                 <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
-                  <code>{`VANTIO_CLOUD_INGEST=true
-VANTIO_INGEST_URL=https://app.vantio.ai
-VANTIO_IDENTITY=${apiKey ?? "your-api-key-above"}`}</code>
+                  <code>{`VANTIO_API_KEY=${apiKey ?? "your-api-key-above"}
+VANTIO_INGEST_URL=https://app.vantio.ai`}</code>
                 </pre>
               </div>
             </li>
@@ -112,21 +111,13 @@ VANTIO_IDENTITY=${apiKey ?? "your-api-key-above"}`}</code>
             <li className="flex gap-3">
               <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">03</span>
               <div>
-                <p className="font-medium text-gray-900">Wrap your agent and report anomalies</p>
+                <p className="font-medium text-gray-900">Run your agent — zero code changes</p>
                 <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
-                  <code>{`import { withVantio, reportAnomaly } from "@vantio/agent-sdk";
+                  <code>{`# The CLI auto-intercepts all outbound LLM calls
+vantio run node agent.js
+vantio run --audit tsx agent.ts
 
-await withVantio(async () => {
-  // run your LLM agent here
-  await runMyAgent();
-
-  // report any detected anomaly:
-  await reportAnomaly({
-    bytes_severed: 14382,
-    target_host: "api.openai.com",
-    action_taken: "POLICY_VIOLATION",
-  });
-});`}</code>
+# Anomalies appear on your dashboard automatically`}</code>
                 </pre>
               </div>
             </li>
