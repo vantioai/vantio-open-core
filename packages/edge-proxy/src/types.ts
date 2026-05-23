@@ -17,9 +17,14 @@ export type CommitTimestampValue = Date | typeof COMMIT_TIMESTAMP_SENTINEL;
  *
  * Column mapping:
  *   TraceId         → STRING(36)   NOT NULL
- *   EventPayload    → STRING(MAX)            (nullable)
+ *   AnomalyMetadata → JSON                   (nullable — execution context only)
  *   AuditMode       → BOOL         NOT NULL
  *   CommitTimestamp → TIMESTAMP    NOT NULL  OPTIONS (allow_commit_timestamp=true)
+ *
+ * Payload Quarantine: AnomalyMetadata must never contain raw linguistic
+ * content (prompts, model responses, PII). Only deterministic execution
+ * context fields are permitted: bytes_severed, pid, target_host,
+ * action_taken, timestamp_ns.
  */
 export interface CryptographicAnomalyRecord {
   /**
@@ -29,10 +34,13 @@ export interface CryptographicAnomalyRecord {
   readonly TraceId: string;
 
   /**
-   * JSON-serialised event payload. NULL is permitted when the anomaly event
-   * carries no structured body (e.g. a pure signal with no data context).
+   * JSON-serialised execution context metadata. NULL when no structured
+   * context is available.
+   *
+   * Permitted fields only: bytes_severed, pid, target_host, action_taken,
+   * timestamp_ns. Linguistic content is structurally forbidden.
    */
-  readonly EventPayload: string | null;
+  readonly AnomalyMetadata: string | null;
 
   /**
    * Whether the originating execution context had VANTIO_AUDIT_MODE=1 set
