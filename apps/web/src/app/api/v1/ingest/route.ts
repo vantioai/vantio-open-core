@@ -1,13 +1,5 @@
-import { after } from "next/server";
-import {
-  generateSpannerInsertMutation,
-  COMMIT_TIMESTAMP_SENTINEL,
-  type CryptographicAnomalyRecord,
-} from "@vantio/edge-proxy";
-
-export const runtime = "edge";
-
-// ── Payload schema ────────────────────────────────────────────────────────────
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 interface IngestPayload {
   traceId: string;
@@ -15,20 +7,11 @@ interface IngestPayload {
   auditMode: boolean;
 }
 
-/**
- * Structural validation of the incoming JSON body.
- * Returns null on any schema violation so the caller can issue a 422.
- */
 function parsePayload(raw: unknown): IngestPayload | null {
   if (typeof raw !== "object" || raw === null) return null;
-
   const body = raw as Record<string, unknown>;
-
-  if (typeof body["traceId"] !== "string" || body["traceId"].length === 0) {
-    return null;
-  }
+  if (typeof body["traceId"] !== "string" || body["traceId"].length === 0) return null;
   if (typeof body["auditMode"] !== "boolean") return null;
-
   return {
     traceId: body["traceId"],
     eventPayload: body["eventPayload"] ?? null,
@@ -36,70 +19,75 @@ function parsePayload(raw: unknown): IngestPayload | null {
   };
 }
 
-// ── Route handler ─────────────────────────────────────────────────────────────
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase env vars");
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
-export async function POST(request: Request): Promise<Response> {
-  // Identity gate — all authenticated identities accepted unconditionally.
-  if (!request.headers.get("x-vantio-identity")?.trim()) {
-    return Response.json(
-      {
-        error: "Unauthenticated.",
-        message: "x-vantio-identity header is required.",
-      },
-      { status: 401 },
+export const runtime = "edge";
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const identity = request.headers.get("x-vantio-identity")?.trim();
+  if (!identity) {
+    return NextResponse.json(
+      { error: "Unauthenticated.", message: "x-vantio-identity header is required." },
+      { status: 401 }
     );
   }
 
-  // Parse and validate body.
   let rawBody: unknown;
   try {
     rawBody = await request.json();
   } catch {
-    return Response.json(
+    return NextResponse.json(
       { error: "Invalid request body. Expected a JSON object." },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
   const payload = parsePayload(rawBody);
-  if (payload === null) {
-    return Response.json(
+  if (!payload) {
+    return NextResponse.json(
       {
         error: "Malformed payload.",
-        message:
-          "Required: traceId (non-empty string), auditMode (boolean). " +
-          "Optional: eventPayload (any JSON value).",
+        message: "Required: traceId (non-empty string), auditMode (boolean). Optional: eventPayload (any JSON value).",
       },
-      { status: 422 },
+      { status: 422 }
     );
   }
 
-  // Construct the record synchronously — TraceId is needed in the response
-  // before the TrueTime Ledger write is dispatched.
-  const record: CryptographicAnomalyRecord = {
-    TraceId: payload.traceId,
-    EventPayload:
-      payload.eventPayload != null
-        ? JSON.stringify(payload.eventPayload)
-        : null,
-    AuditMode: payload.auditMode,
-    CommitTimestamp: COMMIT_TIMESTAMP_SENTINEL,
+  // Persist to Supabase anomaly_events for SMB dashboard visibility.
+  // Fire-and-forget: we return 200 immediately and write async.
+  const writeToSupabase = async () => {
+    try {
+      const supabase = getSupabaseAdmin();
+      await supabase.from("anomaly_events").insert({
+        tenant_identity: identity,
+        trace_id: payload.traceId,
+        event_payload: payload.eventPayload
+          ? JSON.stringify(payload.eventPayload)
+          : null,
+        audit_mode: payload.auditMode,
+        created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[vantio:ingest] Supabase write failed:", err);
+    }
   };
 
-  // Defer Spanner mutation generation and mock execution off the critical path.
-  // `after()` guarantees this callback runs strictly after the HTTP response
-  // has been flushed to the client, keeping ledger writes asynchronous.
-  after(() => {
-    const mutation = generateSpannerInsertMutation(record);
-    console.log(
-      "[vantio:ingest] Spanner mutation (mock):",
-      JSON.stringify(mutation, null, 2),
-    );
-  });
+  // Non-blocking: use waitUntil if available (Vercel Edge), otherwise fire-and-forget.
+  if (typeof (request as NextRequest & { waitUntil?: (p: Promise<unknown>) => void }).waitUntil === "function") {
+    (request as NextRequest & { waitUntil: (p: Promise<unknown>) => void }).waitUntil(writeToSupabase());
+  } else {
+    void writeToSupabase();
+  }
 
-  // Return immediately — Tier 01 SDK is unblocked before the ledger write runs.
-  return Response.json(
-    { status: 0, traceId: record.TraceId },
-    { status: 200 },
+  return NextResponse.json(
+    { status: 0, traceId: payload.traceId },
+    { status: 200 }
   );
 }
