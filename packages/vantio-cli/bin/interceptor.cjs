@@ -9,6 +9,17 @@
 // We target Node >=18.3.0 so the module path is required.
 const { randomUUID } = require("node:crypto");
 
+// Only emit ANSI escape codes when stderr is an interactive terminal.
+// Suppresses raw escape sequences in CI, Docker logs, and log aggregators.
+const USE_COLOR = process.stderr.isTTY === true;
+const c = {
+  reset:  USE_COLOR ? "\x1b[0m"  : "",
+  dim:    USE_COLOR ? "\x1b[2m"  : "",
+  bold:   USE_COLOR ? "\x1b[1m"  : "",
+  yellow: USE_COLOR ? "\x1b[33m" : "",
+  cyan:   USE_COLOR ? "\x1b[36m" : "",
+};
+
 const INGEST_URL  = process.env.VANTIO_INGEST_URL;
 const API_KEY     = process.env.VANTIO_API_KEY;
 const AUDIT_MODE  = process.env.VANTIO_AUDIT_MODE === "1";
@@ -65,12 +76,12 @@ globalThis.fetch = async function vantioFetch(input, init) {
         process.stderr.write(
           [
             "",
-            `\x1b[2m[ ∅ VANTIO ]\x1b[0m \x1b[33mOutbound LLM call intercepted\x1b[0m`,
-            `  host:    \x1b[36m${hostname}\x1b[0m`,
+            `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.yellow}Outbound LLM call intercepted${c.reset}`,
+            `  host:    ${c.cyan}${hostname}${c.reset}`,
             `  pid:     ${process.pid}`,
             `  bytes:   ${bytesSevered != null ? bytesSevered.toLocaleString() : "unknown"}`,
             `  time:    ${ts}`,
-            `  \x1b[2m→ Set VANTIO_API_KEY to route events to your dashboard.\x1b[0m`,
+            `  ${c.dim}→ Set VANTIO_API_KEY to route events to your dashboard.${c.reset}`,
             "",
           ].join("\n")
         );
@@ -119,14 +130,14 @@ process.on("exit", () => {
   process.stderr.write(
     [
       "",
-      `\x1b[2m[ ∅ VANTIO ]\x1b[0m \x1b[1mRun Summary\x1b[0m`,
-      `  LLM calls:    \x1b[33m${_calls.length}\x1b[0m`,
-      `  Hosts:        \x1b[36m${hosts.join(", ")}\x1b[0m`,
+      `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.bold}Run Summary${c.reset}`,
+      `  LLM calls:    ${c.yellow}${_calls.length}${c.reset}`,
+      `  Hosts:        ${c.cyan}${hosts.join(", ")}${c.reset}`,
       `  Total bytes:  ${totalBytes > 0 ? totalBytes.toLocaleString() : "unknown"}`,
       `  Duration:     ${durationS}s`,
       FREE_MODE
-        ? `  \x1b[2m→ Upgrade at app.vantio.ai to persist events to your dashboard.\x1b[0m`
-        : `  \x1b[2m→ Events routed to your Vantio dashboard.\x1b[0m`,
+        ? `  ${c.dim}→ Upgrade at app.vantio.ai to persist events to your dashboard.${c.reset}`
+        : `  ${c.dim}→ Events routed to your Vantio dashboard.${c.reset}`,
       "",
     ].join("\n")
   );

@@ -6,117 +6,57 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-04-30.basil",
 });
 
-// Supabase admin client bypasses RLS using the service role key.
 function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url        = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
-    );
-  }
-
-  return createClient(url, serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
+  if (!url || !serviceKey) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  return createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-// Next.js 15 App Router requires the raw body as a Buffer for Stripe
-// signature verification — the default JSON body parser must not run first.
+/** Resolve the customer email from a Stripe customer ID. */
+async function resolveCustomerEmail(customerId: string | Stripe.Customer | Stripe.DeletedCustomer): Promise<string | null> {
+  const id = typeof customerId === "string" ? customerId : customerId.id;
+  const customer = await stripe.customers.retrieve(id);
+  if (customer.deleted) return null;
+  return (customer as Stripe.Customer).email ?? null;
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("[stripe-webhook] STRIPE_WEBHOOK_SECRET is not set");
-    return NextResponse.json(
-      { error: "Webhook secret not configured" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
   }
 
   const signature = req.headers.get("stripe-signature");
   if (!signature) {
-    return NextResponse.json(
-      { error: "Missing stripe-signature header" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 });
   }
 
   let event: Stripe.Event;
-
   try {
     const rawBody = await req.arrayBuffer();
-    event = stripe.webhooks.constructEvent(
-      Buffer.from(rawBody),
-      signature,
-      webhookSecret
-    );
+    event = stripe.webhooks.constructEvent(Buffer.from(rawBody), signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[stripe-webhook] Signature verification failed: ${message}`);
-    return NextResponse.json(
-      { error: `Webhook signature verification failed: ${message}` },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: `Signature verification failed: ${message}` }, { status: 400 });
   }
 
-  // ── checkout.session.completed — provision tenant ────────────────────────
-  if (event.type === "customer.subscription.deleted") {
-    const sub   = event.data.object as Stripe.Subscription;
-    const email = typeof sub.customer === "string"
-      ? (await (async () => {
-          const c = await stripe.customers.retrieve(sub.customer as string);
-          return "deleted" in c ? null : c.email;
-        })())
-      : null;
+  const supabase = getSupabaseAdmin();
 
-    if (email) {
-      const supabase = getSupabaseAdmin();
-      await supabase
-        .from("tenants")
-        .update({ tier: "FREE", stripe_subscription_id: null, updated_at: new Date().toISOString() })
-        .eq("email", email);
-      console.log(`[stripe-webhook] Subscription cancelled — downgraded to FREE: ${email}`);
+  // ── checkout.session.completed — provision tenant ──────────────────────────
+  if (event.type === "checkout.session.completed") {
+    const session       = event.data.object as Stripe.Checkout.Session;
+    const customerEmail = session.customer_details?.email ?? session.customer_email;
+    const subscriptionId =
+      typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription?.id ?? null;
+
+    if (!customerEmail) {
+      console.error("[stripe-webhook] No customer email in session", session.id);
+      return NextResponse.json({ error: "No customer email" }, { status: 400 });
     }
-    return NextResponse.json({ received: true }, { status: 200 });
-  }
 
-  if (event.type !== "checkout.session.completed") {
-    return NextResponse.json({ received: true }, { status: 200 });
-  }
-
-  const session = event.data.object as Stripe.Checkout.Session;
-
-  const customerEmail = session.customer_details?.email ?? session.customer_email;
-  const subscriptionId =
-    typeof session.subscription === "string"
-      ? session.subscription
-      : session.subscription?.id ?? null;
-
-  if (!customerEmail) {
-    console.error("[stripe-webhook] No customer email found in session", session.id);
-    return NextResponse.json(
-      { error: "No customer email in session" },
-      { status: 400 }
-    );
-  }
-
-  if (!subscriptionId) {
-    console.error("[stripe-webhook] No subscription_id found in session", session.id);
-    return NextResponse.json(
-      { error: "No subscription_id in session" },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const supabase = getSupabaseAdmin();
-
-    // Check if tenant already has an API key so we never regenerate it
-    // on re-subscribe (which would break existing integrations).
     const { data: existing } = await supabase
       .from("tenants")
       .select("api_key")
@@ -127,36 +67,63 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       (existing as { api_key?: string } | null)?.api_key ??
       `vantio_${Buffer.from(crypto.randomUUID().replace(/-/g, ""), "hex").toString("base64url")}`;
 
-    const { error } = await supabase
-      .from("tenants")
-      .upsert(
-        {
-          email: customerEmail,
-          tier: "PRO",
-          stripe_subscription_id: subscriptionId,
-          stripe_checkout_session_id: session.id,
-          api_key: apiKey,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "email", ignoreDuplicates: false }
-      );
-
-    if (error) {
-      console.error("[stripe-webhook] Supabase upsert failed:", error.message);
-      return NextResponse.json(
-        { error: "Database update failed" },
-        { status: 500 }
-      );
-    }
-
-    console.log(
-      `[stripe-webhook] Tenant upgraded to PRO: ${customerEmail} (sub: ${subscriptionId})`
+    await supabase.from("tenants").upsert(
+      {
+        email:                       customerEmail,
+        tier:                        "PRO",
+        stripe_subscription_id:      subscriptionId,
+        stripe_checkout_session_id:  session.id,
+        api_key:                     apiKey,
+        updated_at:                  new Date().toISOString(),
+      },
+      { onConflict: "email", ignoreDuplicates: false }
     );
 
-    return NextResponse.json({ received: true }, { status: 200 });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[stripe-webhook] Unexpected error: ${message}`);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.log(`[stripe-webhook] Tenant provisioned (PRO): ${customerEmail}`);
+    return NextResponse.json({ received: true });
   }
+
+  // ── customer.subscription.updated — handle status changes ──────────────────
+  // Covers: trial_will_end → active, active → past_due, past_due → unpaid, etc.
+  if (event.type === "customer.subscription.updated") {
+    const sub    = event.data.object as Stripe.Subscription;
+    const status = sub.status;
+
+    if (status === "active" || status === "trialing") {
+      // Subscription is healthy — ensure tier is PRO.
+      const email = await resolveCustomerEmail(sub.customer);
+      if (email) {
+        await supabase.from("tenants")
+          .update({ tier: "PRO", updated_at: new Date().toISOString() })
+          .eq("email", email);
+      }
+    } else if (status === "past_due" || status === "unpaid" || status === "paused") {
+      // Payment failed or subscription paused — downgrade access.
+      const email = await resolveCustomerEmail(sub.customer);
+      if (email) {
+        await supabase.from("tenants")
+          .update({ tier: "FREE", updated_at: new Date().toISOString() })
+          .eq("email", email);
+        console.log(`[stripe-webhook] Subscription ${status} — downgraded: ${email}`);
+      }
+    }
+
+    return NextResponse.json({ received: true });
+  }
+
+  // ── customer.subscription.deleted — cancellation ───────────────────────────
+  if (event.type === "customer.subscription.deleted") {
+    const sub   = event.data.object as Stripe.Subscription;
+    const email = await resolveCustomerEmail(sub.customer);
+    if (email) {
+      await supabase.from("tenants")
+        .update({ tier: "FREE", stripe_subscription_id: null, updated_at: new Date().toISOString() })
+        .eq("email", email);
+      console.log(`[stripe-webhook] Subscription cancelled — downgraded to FREE: ${email}`);
+    }
+    return NextResponse.json({ received: true });
+  }
+
+  // All other events — acknowledge without action.
+  return NextResponse.json({ received: true });
 }
