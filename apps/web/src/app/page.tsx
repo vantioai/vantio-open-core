@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Vantio AI — Deterministic AI Governance",
   description:
-    "Kernel-enforced eBPF containment for autonomous LLM agents. Intercept, sever, and audit outbound payloads at Ring-0 — before encryption, before transmission.",
+    "Cloud-managed telemetry governance for autonomous LLM agents. Route anomaly events to a tamper-evident ledger — no infrastructure required.",
 };
 
 export default function HomePage() {
@@ -14,7 +14,7 @@ export default function HomePage() {
       <section className="mx-auto max-w-4xl px-6 pb-20 pt-24 text-center">
         <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          Open-Core · Ring-0 Enforced
+          Open-Core · Cloud-Managed
         </p>
         <h1 className="mt-4 text-5xl font-bold tracking-tight text-gray-900 sm:text-6xl">
           Your AI agents run.<br />
@@ -137,7 +137,7 @@ export default function HomePage() {
       <section className="border-t border-gray-100 bg-gray-900 px-6 py-16 text-center text-white">
         <h2 className="text-3xl font-bold">Ready to enforce your boundary?</h2>
         <p className="mx-auto mt-3 max-w-xl text-gray-400">
-          $499/month. 10 seats. Full Phantom Engine. Cancel anytime.
+          $499/month. 10 seats. Managed Edge Proxy. Cancel anytime.
         </p>
         <Link
           href="/pricing"

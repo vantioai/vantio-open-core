@@ -240,27 +240,27 @@ export default function PricingPage() {
               {
                 step: "01",
                 title: "Stripe Checkout",
-                body: "Click "Start Free Trial." Stripe Checkout collects payment and fires a checkout.session.completed webhook.",
+                body: "Click \"Start Free Trial.\" Stripe Checkout collects payment and fires a checkout.session.completed webhook.",
               },
               {
                 step: "02",
-                title: "Tenant Provisioned (Supabase)",
-                body: "The webhook handler upserts your account in the tenants table — tier set to PRO, stripe_subscription_id stored.",
+                title: "Tenant Provisioned",
+                body: "The webhook upserts your account in the tenants table — tier set to PRO, API key generated and stored.",
               },
               {
                 step: "03",
-                title: "Install the Phantom Engine (WSL)",
-                body: "sudo ./vantio-loader starts the eBPF programs, pins the trace map at /sys/fs/bpf/vantio_trace_map, and begins enforcing.",
+                title: "Configure your agent",
+                body: "Set VANTIO_CLOUD_INGEST=true and VANTIO_IDENTITY=<your-api-key> in your environment. No infrastructure required.",
               },
               {
                 step: "04",
-                title: "Wrap Your Agent",
-                body: "Add withVantio() from @vantio/agent-sdk around your LLM agent call. The VANTIO_TRACE_ID flows from Ring-3 to Ring-0 automatically.",
+                title: "Wrap your agent",
+                body: "Add withVantio() from @vantio/agent-sdk around your LLM agent call. Call reportAnomaly() to route metadata to your dashboard.",
               },
               {
                 step: "05",
-                title: "Anomalies Surface in Your Dashboard",
-                body: "Every intercepted SSL_write attempt is recorded to the TrueTime Ledger and visible in your SMB dashboard — no Kubernetes required.",
+                title: "Anomalies surface in your Dashboard",
+                body: "Every reported anomaly is written to your Supabase ledger and visible in real time at /dashboard. 90-day retention included.",
               },
             ].map(({ step, title, body }) => (
               <li key={step} className="flex gap-5">

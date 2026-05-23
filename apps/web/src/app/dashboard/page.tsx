@@ -25,6 +25,7 @@ interface Tenant {
   email: string;
   tier: string;
   stripe_subscription_id: string | null;
+  api_key: string | null;
   seats_used: number | null;
   seats_total: number | null;
   created_at: string;
@@ -74,7 +75,7 @@ export default async function DashboardPage() {
   // Scope all queries to the authenticated user's email.
   const { data: tenantData } = await supabase
     .from("tenants")
-    .select("email, tier, stripe_subscription_id, seats_used, seats_total, created_at")
+    .select("email, tier, stripe_subscription_id, api_key, seats_used, seats_total, created_at")
     .eq("email", user.email)
     .single();
 
@@ -101,7 +102,7 @@ export default async function DashboardPage() {
   const stats = [
     { label: "Events Today", value: events.length.toLocaleString(), delta: "last 20 shown" },
     { label: "Payloads Severed", value: severedCount.toLocaleString(), delta: `${events.length ? Math.round((severedCount / events.length) * 100) : 0}% of total` },
-    { label: "Bytes Blocked", value: totalBytes > 0 ? `${(totalBytes / 1024).toFixed(1)} KB` : "—", delta: "Ring-0 boundary" },
+              { label: "Bytes Blocked", value: totalBytes > 0 ? `${(totalBytes / 1024).toFixed(1)} KB` : "—", delta: "blocked at proxy" },
     { label: "Active Traces", value: new Set(events.map((e) => e.trace_id)).size.toLocaleString(), delta: "unique trace IDs" },
   ];
 
@@ -143,7 +144,7 @@ export default async function DashboardPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">SMB Control Plane</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Real-time Ring-0 enforcement telemetry.{" "}
+            Real-time Managed Edge Proxy telemetry.{" "}
             {tenant.stripe_subscription_id && (
               <code className="rounded bg-gray-100 px-1 py-0.5 text-xs text-gray-600">
                 {tenant.stripe_subscription_id}
@@ -221,6 +222,21 @@ export default async function DashboardPage() {
               </div>
               <p className="mt-3 text-xs text-gray-400">{seatsTotal - seatsUsed} seats remaining</p>
             </div>
+
+            {/* API Key */}
+            {tenant.api_key && (
+              <div className="rounded-xl border border-gray-200 bg-white p-5">
+                <h3 className="mb-3 text-sm font-semibold text-gray-900">API Key</h3>
+                <code className="block break-all rounded-lg bg-gray-950 p-2.5 text-xs text-green-400">
+                  {tenant.api_key.slice(0, 16)}•••••••••••••••••
+                </code>
+                <p className="mt-2 text-xs text-gray-400">
+                  Use as{" "}
+                  <code className="rounded bg-gray-100 px-1">VANTIO_IDENTITY</code>{" "}
+                  in your agent environment.
+                </p>
+              </div>
+            )}
 
             {/* Managed Edge Proxy status */}
             <div className="rounded-xl border border-gray-200 bg-white p-5">
