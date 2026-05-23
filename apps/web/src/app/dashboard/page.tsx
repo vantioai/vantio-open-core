@@ -31,7 +31,13 @@ interface AnomalyEvent {
   id: string;
   tenant_identity: string;
   trace_id: string;
-  event_payload: string | null;
+  anomaly_metadata: {
+    bytes_severed?: number | null;
+    pid?: number | null;
+    timestamp_ns?: number | null;
+    target_host?: string | null;
+    action_taken?: string | null;
+  } | null;
   audit_mode: boolean;
   created_at: string;
 }
@@ -67,7 +73,7 @@ export default async function DashboardPage() {
   const { data: eventsData } = tenant
     ? await supabase
         .from("anomaly_events")
-        .select("id, tenant_identity, trace_id, event_payload, audit_mode, created_at")
+        .select("id, tenant_identity, trace_id, anomaly_metadata, audit_mode, created_at")
         .eq("tenant_identity", tenant.email)
         .order("created_at", { ascending: false })
         .limit(20)
@@ -77,12 +83,8 @@ export default async function DashboardPage() {
 
   const severedCount = events.filter((e) => e.audit_mode).length;
   const totalBytes = events.reduce((acc, e) => {
-    try {
-      const p = e.event_payload ? JSON.parse(e.event_payload) : null;
-      return acc + (typeof p?.bytes === "number" ? p.bytes : 0);
-    } catch {
-      return acc;
-    }
+    const b = e.anomaly_metadata?.bytes_severed;
+    return acc + (typeof b === "number" ? b : 0);
   }, 0);
 
   const stats = [
@@ -170,7 +172,10 @@ export default async function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-mono text-xs text-gray-500">{evt.trace_id}</p>
                         <p className="mt-0.5 text-xs text-gray-400">
-                          {evt.tenant_identity} · {new Date(evt.created_at).toLocaleTimeString()}
+                          {evt.anomaly_metadata?.pid && <>PID {evt.anomaly_metadata.pid} · </>}
+                          {evt.anomaly_metadata?.bytes_severed != null && <>{evt.anomaly_metadata.bytes_severed.toLocaleString()} bytes · </>}
+                          {evt.anomaly_metadata?.target_host && <>{evt.anomaly_metadata.target_host} · </>}
+                          {new Date(evt.created_at).toLocaleTimeString()}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">

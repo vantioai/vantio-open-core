@@ -60,17 +60,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Persist to Supabase anomaly_events for SMB dashboard visibility.
-  // Fire-and-forget: we return 200 immediately and write async.
+  // Payload Quarantine — absolute enforcement.
+  // anomaly_metadata is strictly deterministic execution context only:
+  // bytes_severed, pid, timestamp_ns, target_host, action_taken.
+  // Linguistic content (prompts, responses, PII) is NEVER written here.
+  // The ssl_write uprobe severs the buffer at Ring-0; the Layer-7 ledger
+  // must reflect that severance by containing zero linguistic data.
+  const buildAnomalyMetadata = (p: IngestPayload): Record<string, unknown> => {
+    const raw =
+      typeof p.eventPayload === "object" && p.eventPayload !== null
+        ? (p.eventPayload as Record<string, unknown>)
+        : {};
+    return {
+      bytes_severed:  typeof raw["bytes_severed"]  === "number" ? raw["bytes_severed"]  : null,
+      pid:            typeof raw["pid"]             === "number" ? raw["pid"]             : null,
+      timestamp_ns:   typeof raw["timestamp_ns"]   === "number" ? raw["timestamp_ns"]   : null,
+      target_host:    typeof raw["target_host"]    === "string" ? raw["target_host"]    : null,
+      action_taken:   typeof raw["action_taken"]   === "string" ? raw["action_taken"]   : null,
+      // Explicitly omit any key that could carry linguistic content.
+    };
+  };
+
   const writeToSupabase = async () => {
     try {
       const supabase = getSupabaseAdmin();
       await supabase.from("anomaly_events").insert({
         tenant_identity: identity,
         trace_id: payload.traceId,
-        event_payload: payload.eventPayload
-          ? JSON.stringify(payload.eventPayload)
-          : null,
+        anomaly_metadata: buildAnomalyMetadata(payload),
         audit_mode: payload.auditMode,
         created_at: new Date().toISOString(),
       });
