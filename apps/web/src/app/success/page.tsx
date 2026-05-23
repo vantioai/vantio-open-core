@@ -43,14 +43,14 @@ export default async function SuccessPage({
             <span className="text-2xl">✓</span>
           </div>
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Payment confirmed
+            14-day trial started
           </p>
           <h1 className="mt-2 text-3xl font-bold text-gray-900">
             Your Managed Edge Proxy is live.
           </h1>
           <p className="mt-3 text-sm text-gray-500">
-            Your tenant has been provisioned. Route your SDK telemetry to your
-            new dashboard in under 2 minutes.
+            Your trial is active — no charge for 14 days. Your tenant has been
+            provisioned and your API key is ready.
           </p>
         </div>
 
