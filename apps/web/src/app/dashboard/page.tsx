@@ -54,7 +54,7 @@ function StatusBadge({ auditMode }: { auditMode: boolean }) {
       }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${auditMode ? "bg-red-500" : "bg-green-500"}`} />
-      {auditMode ? "SEVERED" : "PASSED"}
+      {auditMode ? "BLOCKED" : "PASSED"}
     </span>
   );
 }
@@ -101,8 +101,8 @@ export default async function DashboardPage() {
 
   const stats = [
     { label: "Events Today", value: events.length.toLocaleString(), delta: "last 20 shown" },
-    { label: "Payloads Severed", value: severedCount.toLocaleString(), delta: `${events.length ? Math.round((severedCount / events.length) * 100) : 0}% of total` },
-              { label: "Bytes Blocked", value: totalBytes > 0 ? `${(totalBytes / 1024).toFixed(1)} KB` : "—", delta: "blocked at proxy" },
+    { label: "Payloads Blocked", value: severedCount.toLocaleString(), delta: `${events.length ? Math.round((severedCount / events.length) * 100) : 0}% of total` },
+    { label: "Bytes Blocked", value: totalBytes > 0 ? `${(totalBytes / 1024).toFixed(1)} KB` : "—", delta: "blocked at proxy" },
     { label: "Active Traces", value: new Set(events.map((e) => e.trace_id)).size.toLocaleString(), delta: "unique trace IDs" },
   ];
 

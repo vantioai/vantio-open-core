@@ -40,6 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Validate the API key against the tenants table before accepting any data.
+  let tenantEmail: string;
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
@@ -49,10 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .single();
 
     if (error || !data) {
-      return NextResponse.json(
-        { error: "Invalid API key." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid API key." }, { status: 401 });
     }
 
     const tenant = data as { email: string; tier: string };
@@ -62,11 +60,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 403 }
       );
     }
+
+    // Use the tenant's canonical email as identity so dashboard queries match.
+    tenantEmail = tenant.email;
   } catch {
-    return NextResponse.json(
-      { error: "Failed to validate identity." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to validate identity." }, { status: 500 });
   }
 
   let rawBody: unknown;
@@ -115,7 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       const supabase = getSupabaseAdmin();
       await supabase.from("anomaly_events").insert({
-        tenant_identity: identity,
+        tenant_identity: tenantEmail,
         trace_id: payload.traceId,
         anomaly_metadata: buildAnomalyMetadata(payload),
         audit_mode: payload.auditMode,
