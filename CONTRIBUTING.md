@@ -27,7 +27,7 @@ No raw user prompts, LLM responses, or PII may be passed to the `@vantio/agent-s
 All PRs must pass the GitHub Actions CI pipeline (`pnpm build`) with zero Next.js compilation errors or warnings. Merges to `main` trigger the SLSA L3 Sigstore provenance attestation — your artifact must be reproducibly buildable.
 
 **Supabase Schema Changes**  
-Any migration that alters the `tenants` or `anomaly_events` tables must be reviewed by a maintainer. Changes to column types or primary keys are breaking changes and require a major version bump in the affected package.
+Any migration that alters the `tenants`, `anomaly_events`, or `enterprise_leads` tables must be reviewed by a maintainer. Changes to column types or primary keys are breaking changes and require a major version bump in the affected package.
 
 ## What belongs here
 

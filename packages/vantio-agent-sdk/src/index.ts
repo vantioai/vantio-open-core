@@ -100,8 +100,10 @@ export async function reportAnomaly(
 
   if (!ingestUrl) return; // local-only mode — no cloud ingest configured
 
+  // VANTIO_API_KEY is the canonical env var; VANTIO_IDENTITY kept for back-compat.
   const identity =
     opts.identity ??
+    process.env["VANTIO_API_KEY"] ??
     process.env["VANTIO_IDENTITY"] ??
     "unknown";
 
