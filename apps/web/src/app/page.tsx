@@ -64,7 +64,7 @@ export default function HomePage() {
                 step: "02",
                 title: "Report anomalies",
                 body: "Call reportAnomaly() with execution metadata — bytes, target host, PID. Zero linguistic content ever leaves your process. The payload is severed before this call.",
-                code: `await reportAnomaly({\n  bytes_severed: 14382,\n  target_host:\n    "api.openai.com",\n  action_taken: "SEVERED",\n});`,
+                code: `await reportAnomaly({\n  bytes_severed: 14382,\n  target_host:\n    "api.openai.com",\n  action_taken: "POLICY_VIOLATION",\n});`,
               },
               {
                 step: "03",

@@ -124,7 +124,7 @@ await withVantio(async () => {
   await reportAnomaly({
     bytes_severed: 14382,
     target_host: "api.openai.com",
-    action_taken: "SEVERED",
+    action_taken: "POLICY_VIOLATION",
   });
 });`}</code>
                 </pre>

@@ -95,8 +95,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const supabase = getSupabaseAdmin();
 
-    // Generate a unique API key for this tenant.
-    const apiKey = `vantio_${Buffer.from(crypto.randomUUID().replace(/-/g, ""), "hex").toString("base64url")}`;
+    // Check if tenant already has an API key so we never regenerate it
+    // on re-subscribe (which would break existing integrations).
+    const { data: existing } = await supabase
+      .from("tenants")
+      .select("api_key")
+      .eq("email", customerEmail)
+      .single();
+
+    const apiKey =
+      (existing as { api_key?: string } | null)?.api_key ??
+      `vantio_${Buffer.from(crypto.randomUUID().replace(/-/g, ""), "hex").toString("base64url")}`;
 
     const { error } = await supabase
       .from("tenants")
@@ -109,10 +118,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           api_key: apiKey,
           updated_at: new Date().toISOString(),
         },
-        {
-          onConflict: "email",
-          ignoreDuplicates: false,
-        }
+        { onConflict: "email", ignoreDuplicates: false }
       );
 
     if (error) {

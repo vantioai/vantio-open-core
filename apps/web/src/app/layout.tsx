@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Vantio AI — Deterministic AI Governance",
   description:
-    "Kernel-enforced eBPF containment for LLM agents. From open-source SDK to Fortune 500 deployment.",
+    "Cloud-managed anomaly telemetry for autonomous LLM agents. From open-source SDK to Fortune 500 kernel enforcement.",
 };
 
 export default function RootLayout({

@@ -1,10 +1,5 @@
 "use client";
-import type { Metadata } from "next";
 import Link from "next/link";
-import { useState } from "react";
-
-// Metadata must be in a separate server component when using "use client".
-// Moved to layout or a wrapper — keeping title here for reference only.
 
 async function redirectToCheckout() {
   const res = await fetch("/api/stripe/create-checkout-session", {
@@ -233,7 +228,7 @@ export default function PricingPage() {
             SMB Onboarding Flow
           </h2>
           <h3 className="mb-8 text-2xl font-bold text-gray-900">
-            From checkout to kernel enforcement in under 5 minutes.
+            From checkout to dashboard telemetry in under 2 minutes.
           </h3>
           <ol className="space-y-6">
             {[

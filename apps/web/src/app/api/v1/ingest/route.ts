@@ -39,6 +39,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Validate the API key against the tenants table before accepting any data.
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("tenants")
+      .select("email, tier")
+      .eq("api_key", identity)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json(
+        { error: "Invalid API key." },
+        { status: 401 }
+      );
+    }
+
+    const tenant = data as { email: string; tier: string };
+    if (tenant.tier !== "PRO" && tenant.tier !== "ENTERPRISE") {
+      return NextResponse.json(
+        { error: "Ingest requires an active PRO or Enterprise subscription." },
+        { status: 403 }
+      );
+    }
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to validate identity." },
+      { status: 500 }
+    );
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await request.json();
