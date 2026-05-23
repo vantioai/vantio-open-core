@@ -222,15 +222,15 @@ export default async function DashboardPage() {
               <p className="mt-3 text-xs text-gray-400">{seatsTotal - seatsUsed} seats remaining</p>
             </div>
 
-            {/* Phantom Engine status */}
+            {/* Managed Edge Proxy status */}
             <div className="rounded-xl border border-gray-200 bg-white p-5">
-              <h3 className="mb-4 text-sm font-semibold text-gray-900">Phantom Engine</h3>
+              <h3 className="mb-4 text-sm font-semibold text-gray-900">Managed Edge Proxy</h3>
               <ul className="space-y-2.5">
                 {[
-                  { label: "vantio-loader", status: "Running" },
-                  { label: "vantio_trace_map", status: "Pinned" },
-                  { label: "sched_process_fork", status: "Attached" },
-                  { label: "ssl_write uprobe", status: "Attached" },
+                  { label: "Cloud Ingest", status: "Active" },
+                  { label: "Anomaly Ledger", status: "Writing" },
+                  { label: "RLS Policies", status: "Enforced" },
+                  { label: "90-day Retention", status: "Active" },
                 ].map((item) => (
                   <li key={item.label} className="flex items-center justify-between text-xs">
                     <span className="font-mono text-gray-600">{item.label}</span>
@@ -241,6 +241,12 @@ export default async function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <p className="text-xs text-gray-400">
+                  Ring-0 enforcement on{" "}
+                  <a href="/auth/enterprise" className="underline hover:text-gray-600">Enterprise</a>.
+                </p>
+              </div>
             </div>
 
             {/* Quick install */}

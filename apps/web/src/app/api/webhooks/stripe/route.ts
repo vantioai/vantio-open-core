@@ -95,6 +95,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const supabase = getSupabaseAdmin();
 
+    // Generate a unique API key for this tenant.
+    const apiKey = `vantio_${Buffer.from(crypto.randomUUID().replace(/-/g, ""), "hex").toString("base64url")}`;
+
     const { error } = await supabase
       .from("tenants")
       .upsert(
@@ -102,10 +105,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           email: customerEmail,
           tier: "PRO",
           stripe_subscription_id: subscriptionId,
+          stripe_checkout_session_id: session.id,
+          api_key: apiKey,
           updated_at: new Date().toISOString(),
         },
         {
           onConflict: "email",
+          ignoreDuplicates: false,
         }
       );
 

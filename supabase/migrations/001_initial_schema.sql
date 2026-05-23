@@ -6,14 +6,16 @@
 -- Tier 2: SMB tenant registry.
 -- Populated by the Stripe checkout.session.completed webhook.
 create table if not exists tenants (
-  id                      uuid        primary key default gen_random_uuid(),
-  email                   text        not null unique,
-  tier                    text        not null default 'FREE',  -- 'FREE' | 'PRO' | 'ENTERPRISE'
-  stripe_subscription_id  text,
-  seats_used              integer     not null default 1,
-  seats_total             integer     not null default 10,
-  created_at              timestamptz not null default now(),
-  updated_at              timestamptz not null default now()
+  id                           uuid        primary key default gen_random_uuid(),
+  email                        text        not null unique,
+  tier                         text        not null default 'FREE',  -- 'FREE' | 'PRO' | 'ENTERPRISE'
+  stripe_subscription_id       text,
+  stripe_checkout_session_id   text,
+  api_key                      text unique,
+  seats_used                   integer     not null default 1,
+  seats_total                  integer     not null default 10,
+  created_at                   timestamptz not null default now(),
+  updated_at                   timestamptz not null default now()
 );
 
 -- Tier 2: Anomaly event ledger.

@@ -1,55 +1,142 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 
 export const metadata: Metadata = {
   title: "Welcome to Vantio AI PRO",
 };
 
-export default function SuccessPage() {
+export const dynamic = "force-dynamic";
+
+async function getApiKey(sessionId: string | null): Promise<string | null> {
+  if (!sessionId) return null;
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data } = await supabase
+      .from("tenants")
+      .select("api_key")
+      .eq("stripe_checkout_session_id", sessionId)
+      .single();
+    return (data as { api_key?: string } | null)?.api_key ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export default async function SuccessPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session_id?: string }>;
+}) {
+  const { session_id } = await searchParams;
+  const apiKey = await getApiKey(session_id ?? null);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6">
-      <div className="w-full max-w-md text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
-          <span className="text-3xl">✓</span>
-        </div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-          Payment confirmed
-        </p>
-        <h1 className="mt-3 text-3xl font-bold text-gray-900">
-          You&apos;re in the Phantom Engine.
-        </h1>
-        <p className="mt-4 text-sm text-gray-500">
-          Your account has been upgraded to PRO. Your tenant record is now
-          live in the Supabase ledger. Install the Phantom Engine to begin
-          kernel-level enforcement.
-        </p>
-
-        <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-5 text-left">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Next: Install the Phantom Engine
+      <div className="w-full max-w-lg">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-green-50">
+            <span className="text-2xl">✓</span>
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+            Payment confirmed
           </p>
-          <pre className="overflow-x-auto text-xs text-gray-700">
-            <code>{`# In WSL (requires root)
-git clone git@github.com:vantioai/vantio-phantom-engine.git
-cd vantio-phantom-engine
+          <h1 className="mt-2 text-3xl font-bold text-gray-900">
+            Your Managed Edge Proxy is live.
+          </h1>
+          <p className="mt-3 text-sm text-gray-500">
+            Your tenant has been provisioned. Route your SDK telemetry to your
+            new dashboard in under 2 minutes.
+          </p>
+        </div>
 
-# Build eBPF kernel crate
-unset CARGO_TARGET_DIR
-cargo build -p vantio-phantom-engine \\
-  --target bpfel-unknown-none \\
-  -Z build-std=core --release
+        {/* API Key */}
+        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-400">
+            Your API Key
+          </p>
+          {apiKey ? (
+            <>
+              <code className="block break-all rounded-lg bg-gray-900 p-3 text-sm text-green-400">
+                {apiKey}
+              </code>
+              <p className="mt-2 text-xs text-gray-400">
+                Store this securely. It cannot be shown again — regenerate from
+                your dashboard if lost.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500">
+              Your API key will appear here shortly, or find it in your{" "}
+              <Link href="/dashboard" className="underline">
+                dashboard
+              </Link>
+              .
+            </p>
+          )}
+        </div>
 
-# Build and run the loader
-cargo build -p vantio-loader --release
-sudo VANTIO_TRACE_ID=0x$(openssl rand -hex 8) \\
-  ./target/release/vantio-loader`}</code>
-          </pre>
+        {/* Setup guide */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
+            Managed Edge Proxy Setup (2 min)
+          </p>
+
+          <ol className="space-y-5 text-sm">
+            <li className="flex gap-3">
+              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">01</span>
+              <div>
+                <p className="font-medium text-gray-900">Install the SDK</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+                  <code>npm install @vantio/agent-sdk</code>
+                </pre>
+              </div>
+            </li>
+
+            <li className="flex gap-3">
+              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">02</span>
+              <div>
+                <p className="font-medium text-gray-900">Add env vars to your project</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+                  <code>{`VANTIO_CLOUD_INGEST=true
+VANTIO_INGEST_URL=https://app.vantio.ai
+VANTIO_IDENTITY=${apiKey ?? "your-api-key-above"}`}</code>
+                </pre>
+              </div>
+            </li>
+
+            <li className="flex gap-3">
+              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">03</span>
+              <div>
+                <p className="font-medium text-gray-900">Wrap your agent and report anomalies</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+                  <code>{`import { withVantio, reportAnomaly } from "@vantio/agent-sdk";
+
+await withVantio(async () => {
+  // run your LLM agent here
+  await runMyAgent();
+
+  // report any detected anomaly:
+  await reportAnomaly({
+    bytes_severed: 14382,
+    target_host: "api.openai.com",
+    action_taken: "SEVERED",
+  });
+});`}</code>
+                </pre>
+              </div>
+            </li>
+          </ol>
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
             href="/dashboard"
-            className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
+            className="rounded-lg bg-gray-900 px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-gray-700"
           >
             Open Dashboard →
           </Link>
@@ -57,9 +144,9 @@ sudo VANTIO_TRACE_ID=0x$(openssl rand -hex 8) \\
             href="https://github.com/vantioai/vantio-open-core"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg border border-gray-300 px-6 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-6 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
           >
-            SDK Docs
+            SDK Reference
           </a>
         </div>
       </div>
