@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export const metadata: Metadata = {
   title: "Dashboard — Vantio AI SMB",
@@ -56,25 +59,33 @@ function StatusBadge({ auditMode }: { auditMode: boolean }) {
 }
 
 export default async function DashboardPage() {
+  // ── Auth gate ────────────────────────────────────────────────────────────
+  const cookieStore = await cookies();
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+  const { data: { user } } = await authClient.auth.getUser();
+  if (!user?.email) redirect("/login");
+
   const supabase = getSupabaseAdmin();
 
-  // Fetch the first PRO tenant for demo — in production this is gated by auth session.
+  // Scope all queries to the authenticated user's email.
   const { data: tenantData } = await supabase
     .from("tenants")
     .select("email, tier, stripe_subscription_id, seats_used, seats_total, created_at")
-    .eq("tier", "PRO")
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .eq("email", user.email)
     .single();
 
   const tenant = tenantData as Tenant | null;
 
-  // Fetch the 20 most recent anomaly events for this tenant.
+  // Fetch the 20 most recent anomaly events for the authenticated user.
   const { data: eventsData } = tenant
     ? await supabase
         .from("anomaly_events")
         .select("id, tenant_identity, trace_id, anomaly_metadata, audit_mode, created_at")
-        .eq("tenant_identity", tenant.email)
+        .eq("tenant_identity", user.email)
         .order("created_at", { ascending: false })
         .limit(20)
     : { data: [] };

@@ -1,11 +1,24 @@
+"use client";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { useState } from "react";
 
-export const metadata: Metadata = {
-  title: "Pricing — Vantio AI",
-  description:
-    "Simple, transparent pricing for teams that need deterministic AI governance.",
-};
+// Metadata must be in a separate server component when using "use client".
+// Moved to layout or a wrapper — keeping title here for reference only.
+
+async function redirectToCheckout() {
+  const res = await fetch("/api/stripe/create-checkout-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const data = await res.json() as { url?: string; error?: string };
+  if (data.url) {
+    window.location.href = data.url;
+  } else {
+    alert(data.error ?? "Failed to start checkout.");
+  }
+}
 
 const tiers = [
   {
@@ -35,12 +48,12 @@ const tiers = [
   {
     name: "SMB",
     badge: "PRO",
-    price: "$299",
+    price: "$499",
     period: "per month",
     description:
       "For small and mid-size businesses deploying LLM agents in production. Full kernel-level enforcement.",
     cta: "Start Free Trial",
-    ctaHref: "#checkout",
+    ctaHref: "/api/stripe/create-checkout-session",
     ctaVariant: "primary" as const,
     highlighted: true,
     features: [
@@ -159,18 +172,25 @@ export default function PricingPage() {
               </div>
 
               {/* CTA */}
-              <Link
-                href={tier.ctaHref}
-                className={`mb-8 inline-flex w-full items-center justify-center rounded-lg px-5 py-3 text-sm font-semibold transition-colors ${
-                  tier.ctaVariant === "primary"
-                    ? "bg-white text-gray-900 hover:bg-gray-100"
-                    : tier.highlighted
+              {tier.ctaVariant === "primary" ? (
+                <button
+                  onClick={redirectToCheckout}
+                  className="mb-8 inline-flex w-full items-center justify-center rounded-lg bg-white px-5 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-100"
+                >
+                  {tier.cta}
+                </button>
+              ) : (
+                <Link
+                  href={tier.ctaHref}
+                  className={`mb-8 inline-flex w-full items-center justify-center rounded-lg px-5 py-3 text-sm font-semibold transition-colors ${
+                    tier.highlighted
                       ? "border border-white/30 text-white hover:bg-white/10"
                       : "border border-gray-300 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {tier.cta}
-              </Link>
+                  }`}
+                >
+                  {tier.cta}
+                </Link>
+              )}
 
               {/* Features */}
               <ul className="flex-1 space-y-3">

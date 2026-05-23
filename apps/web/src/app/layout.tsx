@@ -59,6 +59,12 @@ export default function RootLayout({
               Enterprise
             </a>
             <a
+              href="/login"
+              className="text-gray-500 hover:text-gray-900"
+            >
+              Sign In
+            </a>
+            <a
               href="/dashboard"
               className="rounded-lg bg-gray-900 px-4 py-1.5 text-white transition-colors hover:bg-gray-700"
             >
