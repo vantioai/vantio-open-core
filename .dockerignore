@@ -1,9 +1,0 @@
-.git
-node_modules
-apps/oracle/node_modules
-apps/oracle/.next
-packages/vantio-agent-sdk/node_modules
-packages/vantio-agent-sdk/dist
-*.db
-*.db-journal
-.env*

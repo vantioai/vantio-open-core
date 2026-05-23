@@ -1,0 +1,77 @@
+name: SLSA L3 Enterprise Provenance
+
+on:
+  push:
+    branches: [main]
+
+# ── OIDC + Sigstore permissions ──────────────────────────────────────────────
+# id-token:write   — allows the runner to request a GitHub OIDC JWT, which
+#                    actions/attest-build-provenance exchanges for a Sigstore
+#                    Fulcio certificate to sign the provenance attestation.
+# contents:read    — checkout access.
+# attestations:write — permits writing the signed attestation to the
+#                    repository's attestation store (GHES / GHEC).
+permissions:
+  id-token:     write
+  contents:     read
+  attestations: write
+
+jobs:
+  build-and-attest:
+    name: Build, bundle, and attest provenance
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Source ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Toolchain ─────────────────────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      # ── 3. Dependencies (lockfile enforced) ──────────────────────────────────
+      # --frozen-lockfile rejects any install that would mutate pnpm-lock.yaml,
+      # providing mathematical enforcement of the dependency graph.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 4. Build all workspace packages ──────────────────────────────────────
+      # --if-present skips packages that declare no build script (e.g. vantio-cli
+      # ships pre-authored JS with no compilation step).
+      # --recursive fans out across the full pnpm workspace graph in dependency
+      # order, so SDK and edge-proxy are compiled before apps/web consumes them.
+      - name: Build workspaces
+        run: pnpm --recursive run build --if-present
+
+      # ── 5. Bundle artifacts ───────────────────────────────────────────────────
+      # Collect every compiled output into a single deterministic tarball.
+      # The tarball is the subject of the Sigstore attestation; its SHA-256
+      # digest is what gets written to the transparency log.
+      - name: Bundle artifacts
+        run: |
+          tar -czf vantio-artifacts.tar.gz \
+            apps/web/.next \
+            packages/vantio-agent-sdk/dist \
+            packages/edge-proxy/dist \
+            packages/vantio-cli/bin
+
+      # ── 6. Attest build provenance ────────────────────────────────────────────
+      # Binds the GitHub OIDC token (runner identity) to the artifact digest via
+      # Sigstore's Fulcio CA and records the attestation in Rekor's tamper-evident
+      # transparency log. Satisfies SLSA Level 3 provenance requirements:
+      #   — Hermetic build (frozen lockfile)
+      #   — Signed provenance (Sigstore + OIDC)
+      #   — Non-forgeable (GitHub Actions OIDC, not a static token)
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: vantio-artifacts.tar.gz

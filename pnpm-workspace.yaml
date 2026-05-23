@@ -1,18 +1,8 @@
 packages:
   - 'apps/*'
-  - 'packages/*'
-
+  - 'packages/vantio-agent-sdk'
+  - 'packages/vantio-cli'
+  - 'packages/edge-proxy'
 allowBuilds:
-  '@prisma/client': set this to true or false
-  '@prisma/engines': set this to true or false
-  better-sqlite3: set this to true or false
-  prisma: set this to true or false
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
-
-onlyBuiltDependencies:
-  - sharp
-  - unrs-resolver
-  - prisma
-  - "@prisma/client"
-  - "@prisma/engines"
+  sharp: true
+  unrs-resolver: true

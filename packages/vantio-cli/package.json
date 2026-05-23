@@ -1,0 +1,18 @@
+{
+  "name": "@vantio/cli",
+  "version": "0.1.0",
+  "description": "Vantio AI — process supervisor CLI for instrumented agent execution.",
+  "license": "MIT",
+  "author": "Vantio AI, Inc.",
+  "type": "module",
+  "bin": {
+    "vantio": "bin/vantio.js"
+  },
+  "files": ["bin"],
+  "scripts": {
+    "lint": "node --check bin/vantio.js"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  }
+}
