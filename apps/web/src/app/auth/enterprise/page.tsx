@@ -1,110 +1,175 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Slot } from "@radix-ui/react-slot";
-import { cn } from "@/lib/utils";
-
-function PerimeterButton({
-  asChild,
-  className,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "button";
-  return (
-    <Comp
-      className={cn(
-        "inline-flex items-center justify-center rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-900 disabled:pointer-events-none disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+import { useState } from "react";
 
 export default function EnterpriseAuthPage() {
+  const [tab, setTab]         = useState<"call" | "form">("call");
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  const [form, setForm] = useState({
+    name: "", email: "", company: "", size: "", message: "",
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/contact", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Submission failed.");
+      setSubmitted(true);
+    } catch {
+      setError("Something went wrong. Email us directly at security@vantio.ai.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-8">
-      <div className="w-full max-w-md space-y-6 rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 py-16">
+      <div className="w-full max-w-lg">
         {/* Header */}
-        <div className="space-y-1 text-center">
+        <div className="mb-8 text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Vantio AI — Enterprise Perimeter
+            Vantio AI — Enterprise
           </p>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            SAML / SSO Gateway
+          <h1 className="mt-2 text-3xl font-bold text-gray-900">
+            Let&apos;s talk about Ring-0 enforcement.
           </h1>
-          <p className="text-sm text-gray-500">
-            Cryptographically isolated single sign-on for verified institutional
-            identities.
+          <p className="mt-3 text-sm text-gray-500">
+            Tier 3 includes the Phantom Engine, dedicated GCP Spanner, SAML/SSO,
+            and a custom SLA. Pricing starts at $50,000 ARR.
           </p>
         </div>
 
-        {/* IdP selector */}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <PerimeterButton className="w-full justify-between">
-              <span>Select Identity Provider</span>
-              <span aria-hidden>▾</span>
-            </PerimeterButton>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              className="z-50 min-w-[16rem] overflow-hidden rounded-md border border-gray-200 bg-white p-1 shadow-md"
-              sideOffset={4}
+        {/* Tab switcher */}
+        <div className="mb-6 flex rounded-lg border border-gray-200 bg-white p-1">
+          {(["call", "form"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                tab === t
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-500 hover:text-gray-900"
+              }`}
             >
-              {["Okta", "Azure AD", "Google Workspace", "PingFederate"].map(
-                (idp) => (
-                  <DropdownMenu.Item
-                    key={idp}
-                    className="cursor-pointer select-none rounded px-3 py-2 text-sm text-gray-700 outline-none hover:bg-gray-100 focus:bg-gray-100"
-                  >
-                    {idp}
-                  </DropdownMenu.Item>
-                ),
-              )}
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+              {t === "call" ? "Schedule a Call" : "Send a Message"}
+            </button>
+          ))}
+        </div>
 
-        {/* Primary CTA */}
-        <Dialog.Root>
-          <Dialog.Trigger asChild>
-            <PerimeterButton className="w-full">
-              Authenticate via SAML
-            </PerimeterButton>
-          </Dialog.Trigger>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-gray-200 bg-white p-6 shadow-xl focus:outline-none">
-              <Dialog.Title className="text-base font-semibold text-gray-900">
-                SAML Handshake Initiated
-              </Dialog.Title>
-              <Dialog.Description className="mt-2 text-sm text-gray-500">
-                Redirecting to your Identity Provider for assertion. This
-                gateway enforces AES-256 transport encryption and validates
-                signed SAML assertions before granting access.
-              </Dialog.Description>
-              <div className="mt-4 flex justify-end">
-                <Dialog.Close asChild>
-                  <PerimeterButton>Dismiss</PerimeterButton>
-                </Dialog.Close>
+        {/* Calendly embed */}
+        {tab === "call" && (
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <iframe
+              src="https://calendly.com/vantio-ai/enterprise?hide_gdpr_banner=1&background_color=ffffff&text_color=111827&primary_color=111827"
+              width="100%"
+              height="580"
+              frameBorder="0"
+              title="Schedule Enterprise Call"
+            />
+          </div>
+        )}
+
+        {/* Contact form */}
+        {tab === "form" && (
+          <div className="rounded-xl border border-gray-200 bg-white p-8">
+            {submitted ? (
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
+                  <span className="text-xl">✓</span>
+                </div>
+                <h3 className="font-semibold text-gray-900">Message received.</h3>
+                <p className="mt-2 text-sm text-gray-500">
+                  We&apos;ll respond within one business day at the email you provided.
+                </p>
               </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-700">Name *</label>
+                    <input
+                      required
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="Jane Smith"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-700">Work Email *</label>
+                    <input
+                      required
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      placeholder="jane@company.com"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-700">Company *</label>
+                    <input
+                      required
+                      value={form.company}
+                      onChange={(e) => setForm({ ...form, company: e.target.value })}
+                      placeholder="Acme Corp"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-700">Team Size</label>
+                    <select
+                      value={form.size}
+                      onChange={(e) => setForm({ ...form, size: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                    >
+                      <option value="">Select...</option>
+                      <option value="1-50">1–50</option>
+                      <option value="51-500">51–500</option>
+                      <option value="501-5000">501–5,000</option>
+                      <option value="5000+">5,000+</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">Message</label>
+                  <textarea
+                    value={form.message}
+                    onChange={(e) => setForm({ ...form, message: e.target.value })}
+                    placeholder="Tell us about your deployment environment and compliance requirements."
+                    rows={4}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                  />
+                </div>
+                {error && <p className="text-xs text-red-600">{error}</p>}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-lg bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
+                >
+                  {submitting ? "Sending…" : "Send Message"}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
 
-        <p className="text-center text-xs text-gray-400">
-          Access restricted to credentialed enterprise accounts.
-          <br />
-          Contact{" "}
-          <a
-            href="mailto:security@vantio.ai"
-            className="underline underline-offset-2 hover:text-gray-600"
-          >
+        <p className="mt-6 text-center text-xs text-gray-400">
+          Or email us directly at{" "}
+          <a href="mailto:security@vantio.ai" className="underline hover:text-gray-600">
             security@vantio.ai
-          </a>{" "}
-          for provisioning.
+          </a>
         </p>
       </div>
     </main>

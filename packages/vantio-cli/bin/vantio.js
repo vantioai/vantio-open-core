@@ -1,34 +1,31 @@
 #!/usr/bin/env node
-import { spawn }                 from "node:child_process";
-import { parseArgs }             from "node:util";
-import { fileURLToPath }         from "node:url";
-import { dirname, join }         from "node:path";
+import { spawn }         from "node:child_process";
+import { parseArgs }     from "node:util";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 const USAGE = `\
 Vantio AI — process supervisor
 
 Usage:
-  vantio run [--audit] <program> [...args]
+  vantio run [flags] <program> [...args]
 
 Commands:
   run    Spawn <program> under the Vantio execution context.
 
 Flags:
-  --audit, -a   Enable audit mode. Injects VANTIO_AUDIT_MODE=1 into the
-                child process environment.
+  --audit,   -a   Enable audit mode (VANTIO_AUDIT_MODE=1).
+  --summary, -s   Print a run summary on exit.
 
-Auto-interception:
-  When VANTIO_API_KEY and VANTIO_INGEST_URL are set in your environment,
-  vantio run automatically patches globalThis.fetch inside any Node.js
-  process to capture outbound LLM API calls — zero code changes required.
-
-  Supported: node, npx, tsx, ts-node
-  Other runtimes (python, ruby, etc.) are spawned normally without injection.
+Auto-interception (Node.js only):
+  Set VANTIO_API_KEY + VANTIO_INGEST_URL to enable cloud routing.
+  Without a key, intercepted calls are printed to stderr (free tier).
+  Python, Ruby, and other runtimes are spawned normally.
 
 Examples:
   vantio run node agent.js
-  vantio run --audit node agent.js --model gpt-4o
-  vantio run tsx agent.ts
+  vantio run --audit node agent.js
+  vantio run --summary tsx agent.ts
 `;
 
 // ── argument intake ──────────────────────────────────────────────────────────
@@ -45,19 +42,20 @@ if (command !== "run") {
   process.exit(1);
 }
 
-// ── parse flags + positionals after 'run' ────────────────────────────────────
+// ── parse flags + positionals ────────────────────────────────────────────────
 
 const { values, positionals } = parseArgs({
   args: rest,
   options: {
-    audit: { type: "boolean", short: "a", default: false },
+    audit:   { type: "boolean", short: "a", default: false },
+    summary: { type: "boolean", short: "s", default: false },
   },
   allowPositionals: true,
 });
 
 if (positionals.length === 0) {
   process.stderr.write(
-    "vantio run: no program specified\n\nUsage: vantio run [--audit] <program> [...args]\n",
+    "vantio run: no program specified\n\nUsage: vantio run [--audit] [--summary] <program> [...args]\n",
   );
   process.exit(1);
 }
@@ -66,9 +64,7 @@ if (positionals.length === 0) {
 
 const [program, ...programArgs] = positionals;
 
-// ── Node.js runtime detection for zero-line auto-interception ────────────────
-// We inject the interceptor ONLY when the spawned process is a Node.js
-// runtime. Python, Ruby, etc. are spawned normally — no panics, no errors.
+// ── Node.js runtime detection ────────────────────────────────────────────────
 
 const NODE_RUNTIMES = new Set(["node", "node.exe", "npx", "npx.cmd", "tsx", "ts-node"]);
 
@@ -79,13 +75,7 @@ function isNodeRuntime(prog) {
 
 let finalArgs = programArgs;
 
-if (
-  isNodeRuntime(program) &&
-  process.env.VANTIO_API_KEY &&
-  process.env.VANTIO_INGEST_URL
-) {
-  // Inject the CJS interceptor via --require before the user's script.
-  // --require works with CommonJS modules in all Node.js 18+ environments.
+if (isNodeRuntime(program)) {
   const interceptorPath = join(
     dirname(fileURLToPath(import.meta.url)),
     "interceptor.cjs",
@@ -95,11 +85,10 @@ if (
 
 // ── build child environment ───────────────────────────────────────────────────
 
-const childEnv = Object.assign(
-  Object.create(null),
-  process.env,
-  values.audit ? { VANTIO_AUDIT_MODE: "1" } : {},
-);
+const childEnv = Object.assign(Object.create(null), process.env, {
+  ...(values.audit   ? { VANTIO_AUDIT_MODE: "1" } : {}),
+  ...(values.summary ? { VANTIO_SUMMARY:    "1" } : {}),
+});
 
 // ── spawn ─────────────────────────────────────────────────────────────────────
 
@@ -114,9 +103,6 @@ child.on("error", (err) => {
   process.exit(1);
 });
 
-// Propagate the child's exit code or termination signal to the parent so that
-// upstream process managers (systemd, Docker, CI runners) observe the correct
-// status without any wrapping ambiguity.
 child.on("exit", (code, signal) => {
   if (signal !== null) {
     process.kill(process.pid, signal);
