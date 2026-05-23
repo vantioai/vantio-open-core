@@ -5,6 +5,10 @@
 
 "use strict";
 
+// Use require() for crypto — globalThis.crypto is only available in Node 19+.
+// We target Node >=18.3.0 so the module path is required.
+const { randomUUID } = require("node:crypto");
+
 const INGEST_URL  = process.env.VANTIO_INGEST_URL;
 const API_KEY     = process.env.VANTIO_API_KEY;
 const AUDIT_MODE  = process.env.VANTIO_AUDIT_MODE === "1";
@@ -79,7 +83,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
             "x-vantio-identity": API_KEY,
           },
           body: JSON.stringify({
-            traceId:      crypto.randomUUID(),
+            traceId:      randomUUID(),
             auditMode:    AUDIT_MODE,
             eventPayload: {
               target_host:   hostname,

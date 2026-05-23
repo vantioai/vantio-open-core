@@ -35,11 +35,23 @@ create index if not exists anomaly_events_tenant_created
 create index if not exists anomaly_events_trace_id
   on anomaly_events (trace_id);
 
--- RLS: enable on both tables.
+-- Tier 3: Enterprise sales leads from /auth/enterprise contact form.
+create table if not exists enterprise_leads (
+  id         uuid        primary key default gen_random_uuid(),
+  name       text        not null,
+  email      text        not null,
+  company    text        not null,
+  team_size  text,
+  message    text,
+  created_at timestamptz not null default now()
+);
+
+-- RLS: enable on all tables.
 -- The service role key (used by Next.js server components) bypasses RLS.
 -- Authenticated users should only see their own rows.
-alter table tenants       enable row level security;
-alter table anomaly_events enable row level security;
+alter table tenants          enable row level security;
+alter table anomaly_events   enable row level security;
+alter table enterprise_leads enable row level security;
 
 -- Tenants: a user can only read their own row.
 create policy "tenant_self_read" on tenants
@@ -48,3 +60,6 @@ create policy "tenant_self_read" on tenants
 -- Anomaly events: a user can only read rows matching their email.
 create policy "anomaly_events_self_read" on anomaly_events
   for select using (auth.jwt() ->> 'email' = tenant_identity);
+
+-- Enterprise leads: internal only — no direct user access.
+-- Reads go through the service role key (server-side) only.

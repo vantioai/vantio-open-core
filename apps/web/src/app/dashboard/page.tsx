@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { BillingPortalButton } from "./billing-portal-button";
 
 export const metadata: Metadata = {
   title: "Dashboard — Vantio AI SMB",
@@ -133,9 +134,7 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-500">
             <span>{tenant.email}</span>
-            <Link href="/pricing" className="font-medium text-gray-700 hover:text-gray-900">
-              Manage Plan
-            </Link>
+            <BillingPortalButton />
           </div>
         </div>
       </header>

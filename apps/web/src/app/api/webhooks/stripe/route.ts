@@ -63,7 +63,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Strictly handle checkout.session.completed only.
+  // ── checkout.session.completed — provision tenant ────────────────────────
+  if (event.type === "customer.subscription.deleted") {
+    const sub   = event.data.object as Stripe.Subscription;
+    const email = typeof sub.customer === "string"
+      ? (await (async () => {
+          const c = await stripe.customers.retrieve(sub.customer as string);
+          return "deleted" in c ? null : c.email;
+        })())
+      : null;
+
+    if (email) {
+      const supabase = getSupabaseAdmin();
+      await supabase
+        .from("tenants")
+        .update({ tier: "FREE", stripe_subscription_id: null, updated_at: new Date().toISOString() })
+        .eq("email", email);
+      console.log(`[stripe-webhook] Subscription cancelled — downgraded to FREE: ${email}`);
+    }
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
   if (event.type !== "checkout.session.completed") {
     return NextResponse.json({ received: true }, { status: 200 });
   }
