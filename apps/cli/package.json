@@ -1,8 +1,10 @@
 {
-  "name": "@vantio/cli",
+  "name": "@vantio/win-bridge",
   "version": "0.1.0",
+  "description": "Vantio AI — Windows-side WSL interop bridge for Tier 3 trace ID injection.",
+  "private": true,
   "bin": {
-    "vantio": "./dist/index.js"
+    "vantio-bridge": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,5 +16,8 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

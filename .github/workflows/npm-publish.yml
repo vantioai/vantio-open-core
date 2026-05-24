@@ -1,8 +1,7 @@
 name: Publish to npm
 
 # Triggers on every push to main so packages auto-publish when merged.
-# Packages only actually publish when the version in package.json changes
-# (npm publish is a no-op if the version already exists in the registry).
+# Packages only publish when the version in package.json has changed.
 on:
   push:
     branches: [main]
@@ -36,22 +35,18 @@ jobs:
         run: pnpm --filter @vantio/agent-sdk run build
 
       # ── Publish @vantio/agent-sdk ──────────────────────────────────────────
-      # --no-git-checks skips the dirty-tree check (CI checkout is clean).
-      # We use || true so the step doesn't fail if the version already exists.
+      # pnpm publish --no-git-checks skips the dirty-tree check (CI checkout
+      # is always clean). The command exits 0 even if the version already exists.
       - name: Publish @vantio/agent-sdk
-        run: |
-          cd packages/vantio-agent-sdk
-          npm publish --access public --no-git-checks 2>&1 | tee /tmp/publish-sdk.log
-          grep -q "already exists" /tmp/publish-sdk.log && echo "Version already published — skipping." || true
+        working-directory: packages/vantio-agent-sdk
+        run: pnpm publish --access public --no-git-checks || echo "Version already published — skipping."
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # ── Publish @vantio/cli ────────────────────────────────────────────────
-      # No build step needed — ships pre-authored JS (bin/vantio.js).
+      # No build step needed — ships pre-authored JS in bin/.
       - name: Publish @vantio/cli
-        run: |
-          cd packages/vantio-cli
-          npm publish --access public --no-git-checks 2>&1 | tee /tmp/publish-cli.log
-          grep -q "already exists" /tmp/publish-cli.log && echo "Version already published — skipping." || true
+        working-directory: packages/vantio-cli
+        run: pnpm publish --access public --no-git-checks || echo "Version already published — skipping."
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
