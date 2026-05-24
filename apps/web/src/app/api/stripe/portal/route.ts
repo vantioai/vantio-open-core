@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe                        from "stripe";
-import { createClient }              from "@supabase/supabase-js";
-import { createServerClient }        from "@supabase/ssr";
-import { cookies }                   from "next/headers";
+import Stripe from "stripe";
+import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-04-22.dahlia",
-});
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2026-04-22.dahlia",
+  });
+}
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // Auth gate — portal is only for authenticated users.
   const cookieStore = await cookies();
   const authClient  = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,7 +22,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthenticated." }, { status: 401 });
   }
 
-  // Look up the Stripe customer ID via the tenant's subscription.
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -38,9 +38,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "No active subscription found." }, { status: 404 });
   }
 
-  // Retrieve the customer ID from the subscription.
-  const subscription  = await stripe.subscriptions.retrieve(subscriptionId);
-  const customerId    = typeof subscription.customer === "string"
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const customerId   = typeof subscription.customer === "string"
     ? subscription.customer
     : subscription.customer.id;
 

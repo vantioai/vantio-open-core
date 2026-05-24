@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-04-22.dahlia",
-});
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: "2026-04-22.dahlia",
+  });
+}
 
 function getSupabaseAdmin() {
   const url        = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,6 +42,7 @@ async function resolveCustomerEmail(customerId: string | Stripe.Customer | Strip
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const stripe = getStripe();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
