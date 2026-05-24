@@ -21,6 +21,14 @@ function parsePayload(raw: unknown): IngestPayload | null {
   };
 }
 
+/** HMAC-SHA256 of traceId keyed by the tenant's API key — forms the cryptographic receipt. */
+async function computeHmac(apiKey: string, traceId: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(apiKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig  = await crypto.subtle.sign("HMAC", key, enc.encode(traceId));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -156,5 +164,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   void writeToSupabase();
 
-  return NextResponse.json({ status: 0, traceId: payload.traceId }, { status: 200 });
+  // HMAC signature over the response so callers can verify the receipt.
+  const hmacSig = await computeHmac(identity, payload.traceId);
+
+  return NextResponse.json(
+    { status: 0, traceId: payload.traceId },
+    { status: 200, headers: { "x-vantio-signature": hmacSig } }
+  );
 }

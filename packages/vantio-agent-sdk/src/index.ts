@@ -34,6 +34,8 @@ const _storage = new AsyncLocalStorage<VantioContext>();
  * Wraps an async agent callback in a Vantio execution context.
  * Generates (or accepts) a VANTIO_TRACE_ID and propagates it through
  * the full async call-tree via AsyncLocalStorage.
+ *
+ * shield() is the canonical alias — use either name.
  */
 export async function withVantio<T>(
   callback: () => Promise<T>,
@@ -48,6 +50,9 @@ export async function withVantio<T>(
  * Returns the VANTIO_TRACE_ID for the current async execution context,
  * or undefined when called outside a withVantio frame.
  */
+/** Canonical alias for withVantio — use whichever you prefer. */
+export const shield = withVantio;
+
 export function getCurrentTraceId(): string | undefined {
   return _storage.getStore()?.traceId;
 }

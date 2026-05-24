@@ -1,284 +1,111 @@
 "use client";
-import Link from "next/link";
+import { useState } from "react";
 
-async function redirectToCheckout() {
+async function startTrial() {
   const res = await fetch("/api/stripe/create-checkout-session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
   });
-  const data = await res.json() as { url?: string; error?: string };
-  if (data.url) {
-    window.location.href = data.url;
-  } else {
-    alert(data.error ?? "Failed to start checkout.");
-  }
+  const { url, error } = await res.json() as { url?: string; error?: string };
+  if (url) window.location.href = url;
+  else alert(error ?? "Failed to start checkout.");
 }
 
-const tiers = [
+const TIERS = [
   {
-    name: "Open-Core",
-    badge: "FREE",
-    price: "$0",
-    period: "forever",
-    description:
-      "For individual developers and open-source projects. Full SDK access, no credit card required.",
-    cta: "Get the SDK",
-    ctaHref: "https://github.com/vantioai/vantio-open-core",
-    ctaVariant: "secondary" as const,
-    highlighted: false,
+    label: "TIER 03", name: "Enterprise",
+    price: "Custom", period: "ARR from $50k",
+    desc: "Ring-0 eBPF Physical Containment. Sovereign VPC deployment. Kubernetes DaemonSet — no WSL, no proxies.",
+    color: "text-red-400", border: "border-red-400/30", bg: "bg-red-400/5",
+    cta: "Request Access", href: "/enterprise", variant: "outline" as const,
     features: [
-      "@vantio/agent-sdk (MIT license)",
-      "withVantio() async context tracing",
-      "VANTIO_TRACE_ID propagation",
-      "Console-level anomaly output",
-      "Community support",
-    ],
-    limitations: [
-      "No TrueTime Ledger retention",
-      "No Audit Mode (VANTIO_AUDIT_MODE)",
-      "No team dashboard",
+      "Ring-0 eBPF Physical Containment",
+      "RISC Zero zkVM mathematical proofs",
+      "Sub-millisecond Wave Function Collapse",
+      "SAML 2.0 / Okta federation",
+      "7-year WORM retention",
+      "Dedicated support + onboarding",
     ],
   },
   {
-    name: "SMB",
-    badge: "PRO",
-    price: "$499",
-    period: "per month",
-    description:
-      "For small and mid-size businesses deploying LLM agents in production. Cloud-managed telemetry with zero infrastructure.",
-    cta: "Start Free Trial",
-    ctaHref: "/api/stripe/create-checkout-session",
-    ctaVariant: "primary" as const,
-    highlighted: true,
+    label: "TIER 02", name: "PRO / SMB", badge: "Most Popular",
+    price: "$499", period: "/month",
+    desc: "5–25ms transparent routing latency. Stripe self-serve payments. 30-day Spanner WORM log retention.",
+    color: "text-blue-400", border: "border-blue-400/40", bg: "bg-blue-400/5",
+    cta: "Start 14-Day Trial", href: "#", variant: "primary" as const,
     features: [
-      "Everything in Open-Core",
-      "Managed Edge Proxy (no infrastructure required)",
-      "VANTIO_CLOUD_INGEST routing to your dashboard",
-      "Anomaly ledger — 90-day retention",
-      "Supabase-backed tenant dashboard",
-      "API key provisioned on checkout",
-      "Stripe self-serve billing",
-      "Email support (< 24h SLA)",
-      "Up to 10 seats",
-    ],
-    limitations: [
-      "No Phantom Engine (Ring-0 eBPF)",
-      "No dedicated Spanner instance",
+      "Transparent HTTPS interception",
+      "5–25ms transparent routing latency",
+      "30-day Spanner WORM log retention",
+      "Multi-provider transparent routing",
+      "Stripe self-serve payments",
+      "Email support — 24hr SLA",
     ],
   },
   {
-    name: "Enterprise",
-    badge: "CUSTOM",
-    price: "Custom",
-    period: "annual contract",
-    description:
-      "For Fortune 500 and regulated institutions. Phantom Engine deploys as a bare-metal Linux daemon or Kubernetes DaemonSet — no WSL, no proxies.",
-    cta: "Contact Sales",
-    ctaHref: "/auth/enterprise",
-    ctaVariant: "secondary" as const,
-    highlighted: false,
+    label: "TIER 01", name: "Developer",
+    price: "$0", period: "/month",
+    desc: "Open-Core SDK. Frictionless npm install · pip install. 10,000 events/mo free.",
+    color: "text-[--accent]", border: "border-[--accent]/30", bg: "bg-[--accent]/5",
+    cta: "Start Free", href: "/developers", variant: "outline" as const,
     features: [
-      "Everything in SMB",
-      "Phantom Engine — Ring-0 eBPF enforcement",
-      "SSL_write uprobe (payload severance at kernel boundary)",
-      "sched_process_fork PID inheritance",
-      "SAML / SSO (Okta, Azure AD, Google Workspace)",
-      "Dedicated GCP Spanner instance",
-      "TrueTime Ledger — unlimited WORM retention",
-      "SOC 2 Type II report access",
-      "ISO 27001 / NIST CSF compliance mapping",
-      "SLSA Level 3 supply-chain attestation",
-      "Dedicated Slack channel + CSM",
-      "Unlimited seats",
-      "Custom SLA (99.99% uptime)",
+      "Node.js / TypeScript & Python SDK",
+      "Frictionless npm install · pip install",
+      "10,000 events / mo free",
+      "Community SLA",
+      "Open-source SDK on GitHub",
+      "HMAC-signed telemetry",
     ],
-    limitations: [],
   },
 ];
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen bg-white">
-      {/* Header */}
-      <section className="mx-auto max-w-5xl px-6 pb-12 pt-20 text-center">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
-          Vantio AI — Pricing
-        </p>
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-          Deterministic AI Governance,
-          <br />
-          <span className="text-gray-500">at every scale.</span>
-        </h1>
-        <p className="mx-auto mt-5 max-w-2xl text-base text-gray-500">
-          From an open-source SDK for developers to a kernel-enforced eBPF
-          containment layer for Fortune 500 institutions. One architecture,
-          three deployment tiers.
-        </p>
-      </section>
+    <main className="mx-auto max-w-6xl px-6 py-24">
+      <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Pricing</p>
+      <h1 className="mb-4 text-center text-4xl font-bold">Choose Your Containment Protocol</h1>
+      <p className="mb-20 text-center text-[--muted]">Start free. Scale to sovereign.</p>
 
-      {/* Tier cards */}
-      <section className="mx-auto max-w-6xl px-6 pb-24">
-        <div className="grid gap-8 lg:grid-cols-3">
-          {tiers.map((tier) => (
-            <div
-              key={tier.name}
-              className={`relative flex flex-col rounded-2xl border p-8 ${
-                tier.highlighted
-                  ? "border-gray-900 bg-gray-900 text-white shadow-2xl"
-                  : "border-gray-200 bg-white text-gray-900"
-              }`}
-            >
-              {tier.highlighted && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                  <span className="rounded-full bg-white px-4 py-1 text-xs font-bold uppercase tracking-widest text-gray-900 shadow">
-                    Most Popular
-                  </span>
-                </div>
-              )}
-
-              {/* Tier header */}
-              <div className="mb-6">
-                <div className="mb-2 flex items-center gap-2">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-bold uppercase tracking-widest ${
-                      tier.highlighted
-                        ? "bg-white/15 text-white"
-                        : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {tier.badge}
-                  </span>
-                  <span
-                    className={`text-sm font-semibold ${tier.highlighted ? "text-gray-300" : "text-gray-400"}`}
-                  >
-                    {tier.name}
-                  </span>
-                </div>
-                <div className="flex items-end gap-1">
-                  <span className="text-4xl font-bold">{tier.price}</span>
-                  {tier.price !== "Custom" && (
-                    <span
-                      className={`mb-1 text-sm ${tier.highlighted ? "text-gray-400" : "text-gray-400"}`}
-                    >
-                      / {tier.period}
-                    </span>
-                  )}
-                </div>
-                <p
-                  className={`mt-3 text-sm leading-relaxed ${tier.highlighted ? "text-gray-300" : "text-gray-500"}`}
-                >
-                  {tier.description}
-                </p>
-              </div>
-
-              {/* CTA */}
-              {tier.ctaVariant === "primary" ? (
-                <button
-                  onClick={redirectToCheckout}
-                  className="mb-8 inline-flex w-full items-center justify-center rounded-lg bg-white px-5 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-100"
-                >
-                  {tier.cta}
-                </button>
-              ) : (
-                <Link
-                  href={tier.ctaHref}
-                  className={`mb-8 inline-flex w-full items-center justify-center rounded-lg px-5 py-3 text-sm font-semibold transition-colors ${
-                    tier.highlighted
-                      ? "border border-white/30 text-white hover:bg-white/10"
-                      : "border border-gray-300 text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {tier.cta}
-                </Link>
-              )}
-
-              {/* Features */}
-              <ul className="flex-1 space-y-3">
-                {tier.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm">
-                    <span
-                      className={`mt-0.5 flex-shrink-0 ${tier.highlighted ? "text-green-400" : "text-green-600"}`}
-                    >
-                      ✓
-                    </span>
-                    <span
-                      className={tier.highlighted ? "text-gray-200" : "text-gray-600"}
-                    >
-                      {f}
-                    </span>
-                  </li>
-                ))}
-                {tier.limitations.map((l) => (
-                  <li key={l} className="flex items-start gap-2 text-sm">
-                    <span className="mt-0.5 flex-shrink-0 text-gray-400">✗</span>
-                    <span className="text-gray-400">{l}</span>
-                  </li>
-                ))}
-              </ul>
+      <div className="grid gap-6 md:grid-cols-3">
+        {TIERS.map((t) => (
+          <div key={t.name} className={`relative flex flex-col rounded-xl border ${t.border} ${t.bg} p-8`}>
+            {t.badge && (
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-400 px-3 py-0.5 text-xs font-bold text-black">
+                {t.badge}
+              </span>
+            )}
+            <p className={`mb-1 font-mono text-xs ${t.color}`}>{t.label}</p>
+            <h2 className={`mb-1 text-2xl font-bold ${t.color}`}>{t.name}</h2>
+            <p className="mb-4 text-xs text-[--muted]">{t.desc}</p>
+            <div className="mb-6 flex items-end gap-1">
+              <span className="text-4xl font-bold">{t.price}</span>
+              <span className="mb-1 text-xs text-[--muted]">{t.period}</span>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* SMB flow callout */}
-      <section className="border-t border-gray-100 bg-gray-50 px-6 py-16">
-        <div className="mx-auto max-w-3xl">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-400">
-            SMB Onboarding Flow
-          </h2>
-          <h3 className="mb-8 text-2xl font-bold text-gray-900">
-            From checkout to dashboard telemetry in under 2 minutes.
-          </h3>
-          <ol className="space-y-6">
-            {[
-              {
-                step: "01",
-                title: "Stripe Checkout",
-                body: "Click \"Start Free Trial.\" Stripe Checkout collects payment and fires a checkout.session.completed webhook.",
-              },
-              {
-                step: "02",
-                title: "Tenant Provisioned",
-                body: "The webhook upserts your account in the tenants table — tier set to PRO, API key generated and stored.",
-              },
-              {
-                step: "03",
-                title: "Configure your agent",
-                body: "Set VANTIO_CLOUD_INGEST=true and VANTIO_IDENTITY=<your-api-key> in your environment. No infrastructure required.",
-              },
-              {
-                step: "04",
-                title: "Wrap your agent",
-                body: "Add withVantio() from @vantio/agent-sdk around your LLM agent call. Call reportAnomaly() to route metadata to your dashboard.",
-              },
-              {
-                step: "05",
-                title: "Anomalies surface in your Dashboard",
-                body: "Every reported anomaly is written to your Supabase ledger and visible in real time at /dashboard. 90-day retention included.",
-              },
-            ].map(({ step, title, body }) => (
-              <li key={step} className="flex gap-5">
-                <span className="mt-0.5 flex-shrink-0 font-mono text-xs font-bold text-gray-300">
-                  {step}
-                </span>
-                <div>
-                  <p className="font-semibold text-gray-900">{title}</p>
-                  <p className="mt-1 text-sm text-gray-500">{body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-10">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
-            >
-              Preview SMB Dashboard →
-            </Link>
+            {t.variant === "primary" ? (
+              <button onClick={startTrial}
+                className="mb-8 block w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300">
+                {t.cta}
+              </button>
+            ) : (
+              <a href={t.href}
+                className={`mb-8 block w-full rounded-md border ${t.border} py-3 text-center text-sm font-semibold ${t.color} transition-colors hover:bg-white/5`}>
+                {t.cta}
+              </a>
+            )}
+            <ul className="flex-1 space-y-3">
+              {t.features.map((f) => (
+                <li key={f} className={`flex items-start gap-2 text-xs text-[--muted]`}>
+                  <span className={t.color}>→</span> {f}
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
-      </section>
+        ))}
+      </div>
+
+      <p className="mt-12 text-center text-sm text-[--muted]">
+        Start with the Developer SDK — zero risk, no credit card. Upgrade to Managed Proxy when you need active
+        blocking. Contact Enterprise Sales for sovereign deployment.
+      </p>
     </main>
   );
 }
