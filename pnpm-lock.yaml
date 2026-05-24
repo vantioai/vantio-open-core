@@ -44,9 +44,6 @@ importers:
       '@upstash/redis':
         specifier: ^1.38.0
         version: 1.38.0
-      '@vantio/edge-proxy':
-        specifier: workspace:*
-        version: link:../../packages/edge-proxy
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
