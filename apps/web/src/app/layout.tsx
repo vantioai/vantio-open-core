@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -31,9 +32,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <nav className="fixed top-0 z-50 w-full border-b border-[--border] bg-[--background]/90 backdrop-blur-md">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            <a href="/" className="flex items-center gap-2 font-bold tracking-tight text-[--foreground]">
+            <Link href="/" className="flex items-center gap-2 font-bold tracking-tight text-[--foreground]">
               <span className="text-[--accent]">[ ∅ ]</span> VANTIO
-            </a>
+            </Link>
             <div className="hidden items-center gap-6 text-sm md:flex">
               {[
                 { href: "/architecture", label: "Architecture" },

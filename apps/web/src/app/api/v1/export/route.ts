@@ -68,7 +68,7 @@ function toCSV(rows: AnomalyRow[]): string {
   return lines.join("\r\n");
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse> {
+export async function GET(_req: NextRequest): Promise<NextResponse> {
   // ── Auth gate ─────────────────────────────────────────────────────────────
   const cookieStore = await cookies();
   const authClient  = createServerClient(

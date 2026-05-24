@@ -107,7 +107,7 @@ export default function ResearchPage() {
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Research</p>
       <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
       <p className="mb-20 max-w-2xl text-[--muted]">
-        Seven research tracks documenting Vantio's technical architecture across the AI governance market — from enterprise kernel containment for F500 CISOs to developer-grade observability for open-source contributors.
+        Seven research tracks documenting Vantio&apos;s technical architecture across the AI governance market — from enterprise kernel containment for F500 CISOs to developer-grade observability for open-source contributors.
       </p>
 
       <div className="space-y-8">

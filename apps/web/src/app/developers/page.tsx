@@ -133,7 +133,7 @@ export default function DevelopersPage() {
         <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[--accent]">Zero-Line Integration</div>
         <h2 className="mb-2 text-xl font-bold">vantio run — Any Process, Any Stack</h2>
         <p className="mb-6 text-sm text-[--muted]">
-          No code changes at all. The CLI injects the interceptor at runtime via Node's <code className="text-[--accent]">--require</code> flag,
+          No code changes at all. The CLI injects the interceptor at runtime via Node&apos;s <code className="text-[--accent]">--require</code> flag,
           patching <code className="text-[--accent]">globalThis.fetch</code> before your agent starts.
           Python, Ruby, and other runtimes are spawned normally without injection.
         </p>
