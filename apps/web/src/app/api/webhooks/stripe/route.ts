@@ -36,7 +36,7 @@ async function markEventProcessed(supabase: ReturnType<typeof getSupabaseAdmin>,
 
 async function resolveCustomerEmail(customerId: string | Stripe.Customer | Stripe.DeletedCustomer): Promise<string | null> {
   const id       = typeof customerId === "string" ? customerId : customerId.id;
-  const customer = await stripe.customers.retrieve(id);
+  const customer = await getStripe().customers.retrieve(id);
   if (customer.deleted) return null;
   return (customer as Stripe.Customer).email ?? null;
 }
