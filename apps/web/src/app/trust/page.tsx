@@ -2,53 +2,71 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Trust & Compliance — Vantio AI",
-  description:
-    "Corporate governance, entity structure, and compliance infrastructure for enterprise procurement.",
+  description: "How Vantio protects your data, meets compliance requirements, and proves it.",
 };
 
 export default function TrustPage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <header className="mb-10 space-y-2 border-b border-gray-200 pb-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-          Vantio AI, Inc. — Compliance Ledger
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-          Trust &amp; Compliance
-        </h1>
-      </header>
+    <main className="mx-auto max-w-3xl px-6 py-24">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Trust Center</p>
+      <h1 className="mb-4 text-4xl font-bold">We take your trust seriously.</h1>
+      <p className="mb-16 text-[--muted]">
+        Vantio is built for regulated industries. Here&apos;s exactly how we protect your data
+        and meet the compliance requirements your team cares about.
+      </p>
 
-      <section className="space-y-6 text-gray-700">
-        <h2 className="text-xl font-semibold text-gray-900">
-          Corporate Governance &amp; Entity Structure
-        </h2>
-        <p className="leading-relaxed">
-          Vantio AI, Inc. operates as a registered Delaware C-Corporation,
-          explicitly structured to meet the rigid procurement, vendor risk
-          management (VRM), and liability frameworks of Fortune 500
-          institutions. Our legal architecture is mapped directly to our
-          deterministic security infrastructure. Utilizing an SLSA Level 3
-          compliant CI/CD supply chain and a pure-Rust eBPF enforcement layer
-          deployable as a bare-metal Linux daemon or Kubernetes DaemonSet, our
-          corporate governance ensures absolute structural stability for
-          multi-year enterprise infrastructure deployments, satisfying the
-          stringent due diligence requirements of Tier-1 capital allocators and
-          global enterprise compliance officers.
-        </p>
-      </section>
+      {/* Key assurances */}
+      <div className="mb-16 grid gap-5 sm:grid-cols-2">
+        {[
+          { icon: "🚫", title: "We never read your prompts", body: "Vantio works at the OS and network layer. We record that an AI call was made — not what was in it. Your sensitive data stays yours." },
+          { icon: "🔒", title: "Your data never leaves your VPC (Enterprise)", body: "Enterprise deployments run entirely inside your own Kubernetes cluster. Anomaly records are stored in your own Spanner instance." },
+          { icon: "📋", title: "Tamper-proof audit records", body: "Every Vantio decision is signed and stored in an append-only ledger. Records cannot be modified or deleted — even by Vantio." },
+          { icon: "🔑", title: "Minimal data collection", body: "We collect what happened (which endpoint, how many bytes, the outcome) — never the content of AI inputs or outputs." },
+        ].map(({ icon, title, body }) => (
+          <div key={title} className="rounded-xl border border-[--border] bg-[--surface] p-5">
+            <div className="mb-3 text-2xl">{icon}</div>
+            <h3 className="mb-1 font-semibold">{title}</h3>
+            <p className="text-sm text-[--muted]">{body}</p>
+          </div>
+        ))}
+      </div>
 
-      <section className="mt-12 space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-6 text-sm text-gray-600">
-        <h3 className="font-semibold text-gray-800">Key Compliance Signals</h3>
-        <ul className="list-inside list-disc space-y-2">
-          <li>Delaware C-Corporation — SEC &amp; EDGAR-addressable entity</li>
-          <li>SLSA Level 3 CI/CD supply-chain attestation</li>
-          <li>Pure-Rust eBPF containment layer</li>
-          <li>SOC 2 Type II audit-ready architecture</li>
-          <li>
-            Fortune 500 VRM framework alignment (ISO 27001 / NIST CSF mapping)
-          </li>
-        </ul>
-      </section>
+      {/* Compliance */}
+      <h2 className="mb-4 text-xl font-bold">Compliance signals</h2>
+      <p className="mb-6 text-sm text-[--muted]">
+        Vantio AI, Inc. is a registered Delaware C-Corporation structured to meet the procurement and vendor risk
+        requirements of Fortune 500 institutions.
+      </p>
+      <div className="mb-16 grid gap-3 sm:grid-cols-2">
+        {[
+          ["SOC 2 Type II", "Audit-ready architecture"],
+          ["SLSA Level 3", "Verified supply chain — every release signed"],
+          ["ISO 27001 / NIST CSF", "Framework alignment"],
+          ["SEC Cybersecurity", "Disclosure rule compliance"],
+          ["MiFID II", "TrueTime timestamps for financial audit trails"],
+          ["HIPAA", "No PHI stored; infrastructure-layer enforcement"],
+          ["GDPR Article 30", "Records of processing activities by design"],
+          ["Delaware C-Corp", "SEC & EDGAR-addressable legal entity"],
+        ].map(([standard, desc]) => (
+          <div key={standard} className="flex items-start gap-3 rounded-lg border border-[--border] bg-[--surface] px-4 py-3">
+            <span className="mt-0.5 text-[--accent]">✓</span>
+            <div>
+              <p className="text-sm font-semibold">{standard}</p>
+              <p className="text-xs text-[--muted]">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Contact */}
+      <div className="rounded-xl border border-[--border] bg-[--surface] p-6 text-center">
+        <h3 className="mb-2 font-semibold">Security questions?</h3>
+        <p className="mb-4 text-sm text-[--muted]">Contact our security team directly.</p>
+        <a href="mailto:security@vantio.ai"
+          className="text-sm font-medium text-[--accent] underline underline-offset-4 hover:text-[--accent-dim]">
+          security@vantio.ai
+        </a>
+      </div>
     </main>
   );
 }

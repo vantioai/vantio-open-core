@@ -1,63 +1,54 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Vantio AI — Absolute Kernel-Level AI Containment",
+  title: "Vantio AI — Know What Your AI Agents Are Doing",
   description:
-    "Physics over linguistics. Every AI agent action intercepted and evaluated at the kernel boundary before it can affect your systems.",
+    "AI agents make decisions and take actions you can't see. Vantio watches every move, stops unauthorized behavior instantly, and creates a tamper-proof record you can hand to an auditor.",
 };
 
-const STATS = [
-  { value: "< 1ms", label: "Wave Function Collapse" },
-  { value: "Ring-0", label: "eBPF Enforcement Boundary" },
-  { value: "Groth16", label: "zk-SNARK Anomaly Records" },
-  { value: "SLSA L3", label: "Verified Supply Chain" },
+const PROBLEMS = [
+  { icon: "📤", title: "Data leaving without permission", body: "Your AI agent calls an API, processes a document, then makes an outbound request. Did sensitive data just leave your network? Without Vantio, you have no way to know." },
+  { icon: "📋", title: "No audit trail for compliance", body: "Your compliance team asks: \"What did your AI agents do last quarter?\" Without a governance layer, the honest answer is \"we're not sure.\" That's not an answer regulators accept." },
+  { icon: "🔓", title: "Agents acting outside their scope", body: "AI agents can spawn subprocesses, open files, make network calls. Any of these could happen outside the boundaries you intended — and you'd only find out after the damage was done." },
 ];
 
-const COMPONENTS = [
-  {
-    num: "01", accent: "text-[--accent]",
-    title: "Phantom Engine",
-    sub: "Ring-0 eBPF Hypervisor",
-    body: "Pure Rust eBPF compiled to bpfel-unknown-none and loaded via Aya. Every agent syscall — execve, openat, connect — intercepted at the kernel boundary before it can affect your filesystem, network, or external state.",
-  },
-  {
-    num: "02", accent: "text-blue-400",
-    title: "Oracle zkVM",
-    sub: "Policy Evaluation Engine",
-    body: "Your governance policy compiled to a RISC Zero zkVM guest program. Synchronous Wave Function Collapse — deterministic policy evaluation completing with microsecond-scale blocking and a cryptographic proof of compliance.",
-  },
-  {
-    num: "03", accent: "text-red-400",
-    title: "Anomaly Record",
-    sub: "Cryptographic Compliance Ledger",
-    body: "A cryptographically sealed, append-only compliance receipt. Groth16 zk-SNARK proof committed to a TrueTime-stamped Spanner ledger or a sovereign local substrate. Immutable by design — zero trust assumptions.",
-  },
+const HOW = [
+  { step: "01", title: "See everything", body: "Vantio watches every action your AI agents take — network calls, file access, subprocess spawning — and logs them to a tamper-proof ledger in real time." },
+  { step: "02", title: "Stop what shouldn't happen", body: "Set the boundaries. When an agent tries to cross them, Vantio blocks the action instantly — before a single byte of unauthorized data leaves your environment." },
+  { step: "03", title: "Prove it to anyone", body: "Every decision Vantio makes comes with a cryptographic record. Hand it to an auditor, a regulator, or your board. It's independently verifiable — no one has to take your word for it." },
+];
+
+const WHY = [
+  { title: "We never read your prompts", body: "Vantio works at the operating system level, not the application layer. We see that a request was made — not what was in it. Your sensitive AI inputs stay yours." },
+  { title: "Zero code changes required", body: "Run vantio run node agent.js instead of node agent.js. That's the entire integration. Your codebase doesn't change." },
+  { title: "Invisible to your agents", body: "Vantio adds under 1 millisecond of overhead. Your agents run at full speed. The governance layer is invisible until something needs to be stopped." },
+  { title: "Works with every AI framework", body: "LangChain, AutoGen, CrewAI, OpenAI, Anthropic, Bedrock. If your agent makes network calls, Vantio can watch it." },
 ];
 
 const TIERS = [
   {
-    label: "TIER 01", name: "Developer SDK",
-    tagline: "Two lines. Any stack.", price: "$0", period: "Free forever",
+    label: "FREE", name: "Developer",
+    headline: "Start seeing what your agents are doing.",
+    price: "$0", period: "forever",
     color: "text-[--accent]", border: "border-[--accent]/30", bg: "bg-[--accent]/5",
-    cta: "Start Free", href: "/developers",
-    features: ["10,000 events / month", "Node.js + Python SDK", "HMAC-signed telemetry",
-      "Oracle UI dashboard", "shield() interceptor", "Community SLA"],
+    cta: "Get Started Free", href: "/developers",
+    points: ["10,000 agent events/month", "Real-time activity dashboard", "Node.js and Python", "No credit card required"],
   },
   {
-    label: "TIER 02", name: "PRO / SMB", badge: "Most Popular",
-    tagline: "Managed proxy. Zero infrastructure.", price: "$499", period: "/month",
+    label: "PRO", name: "SMB", badge: "Most Popular",
+    headline: "Block unauthorized behavior automatically.",
+    price: "$499", period: "/month",
     color: "text-blue-400", border: "border-blue-400/40", bg: "bg-blue-400/5",
-    cta: "Start 14-Day Trial", href: "/pricing",
-    features: ["Transparent HTTPS interception", "5–25ms policy enforcement",
-      "30-day Spanner WORM log", "Multi-provider routing", "Stripe self-serve", "24hr email SLA"],
+    cta: "Start 14-Day Free Trial", href: "/pricing", primary: true,
+    points: ["Active blocking — not just logging", "30-day tamper-proof compliance log", "Slack alerts on violations", "No servers to manage"],
   },
   {
-    label: "TIER 03", name: "Enterprise",
-    tagline: "Sovereign VPC. CISO-grade control.", price: "Custom", period: "ARR from $50k",
+    label: "ENTERPRISE", name: "Enterprise",
+    headline: "OS-level enforcement. Your agents literally cannot exfiltrate data.",
+    price: "Custom", period: "from $50k/yr",
     color: "text-red-400", border: "border-red-400/30", bg: "bg-red-400/5",
-    cta: "Contact Enterprise Sales", href: "/enterprise",
-    features: ["Ring-0 eBPF Physical Containment", "Helm / DaemonSet deploy",
-      "7-year WORM retention", "SAML 2.0 / Okta", "Dual-auth kill-switches", "Dedicated SLA"],
+    cta: "Talk to Sales", href: "/enterprise",
+    points: ["Kernel-level enforcement (nothing bypasses it)", "Deploys in your own Kubernetes cluster", "7-year tamper-proof audit records", "SOC 2, MiFID II, HIPAA ready"],
   },
 ];
 
@@ -65,127 +56,140 @@ export default function HomePage() {
   return (
     <main>
       {/* Hero */}
-      <section className="relative mx-auto max-w-5xl px-6 pb-24 pt-32 text-center">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[--border] bg-[--surface] px-4 py-1.5 text-xs text-[--muted]">
+      <section className="mx-auto max-w-4xl px-6 pb-20 pt-28 text-center">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[--border] bg-[--surface] px-4 py-1.5 text-xs text-[--muted]">
           <span className="h-1.5 w-1.5 rounded-full bg-[--accent]" />
-          SLSA Level 3 Supply Chain · RISC Zero zk-SNARKs · WORM Compliance Ledger
+          Used by teams deploying AI in regulated industries
         </div>
-        <h1 className="mt-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl lg:text-7xl">
-          Absolute Kernel-Level<br />
-          <span className="text-[--accent]">AI Containment.</span>
+        <h1 className="mt-4 text-5xl font-bold leading-[1.1] tracking-tight sm:text-6xl">
+          Know what your AI agents<br />
+          <span className="text-[--accent]">are actually doing.</span>
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-[--muted]">
-          Physics over linguistics. Every competing AI safety system reads your model's text
-          output and calls it a guardrail. Vantio enforces governance at the infrastructure
-          layer — before any agent action can affect your systems — and produces a
-          cryptographic proof you can hand to a regulator.
+        <p className="mx-auto mt-6 max-w-2xl text-xl text-[--muted]">
+          AI agents make decisions and take actions you can&apos;t see. Vantio watches every move,
+          stops unauthorized behavior instantly, and creates a tamper-proof record you can hand
+          to an auditor.
         </p>
         <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <a href="/developers"
-            className="rounded-md bg-[--accent] px-8 py-3 text-sm font-semibold text-black transition-colors hover:bg-[--accent-dim]">
-            Start Free — npm install
+            className="rounded-md bg-[--accent] px-8 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-[--accent-dim]">
+            Start Free — No Credit Card
           </a>
-          <a href="/architecture"
-            className="rounded-md border border-[--border] px-8 py-3 text-sm font-medium text-[--muted] transition-colors hover:border-[--foreground] hover:text-[--foreground]">
-            Enterprise Deployment →
+          <a href="/pricing"
+            className="rounded-md border border-[--border] px-8 py-3.5 text-sm font-medium text-[--muted] transition-colors hover:border-[--foreground] hover:text-[--foreground]">
+            See Pricing →
           </a>
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="border-y border-[--border] bg-[--surface]">
-        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-px bg-[--border] md:grid-cols-4">
-          {STATS.map(({ value, label }) => (
-            <div key={label} className="bg-[--surface] px-8 py-8 text-center">
-              <p className="text-2xl font-bold">{value}</p>
-              <p className="mt-1 text-xs text-[--muted]">{label}</p>
-            </div>
-          ))}
+      {/* Problem */}
+      <section className="border-t border-[--border] bg-[--surface] px-6 py-20">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">The Problem</h2>
+          <p className="mb-12 text-center text-2xl font-bold">
+            AI agents are powerful. They&apos;re also unsupervised.
+          </p>
+          <div className="grid gap-6 md:grid-cols-3">
+            {PROBLEMS.map(({ icon, title, body }) => (
+              <div key={title} className="rounded-xl border border-[--border] bg-[--background] p-6">
+                <div className="mb-4 text-3xl">{icon}</div>
+                <h3 className="mb-2 font-semibold">{title}</h3>
+                <p className="text-sm text-[--muted]">{body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Sovereign Protocol */}
-      <section className="mx-auto max-w-5xl px-6 py-24">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">The Sovereign Protocol</p>
-        <h2 className="mb-4 text-3xl font-bold">Three components. One atomic operation. Zero trust required.</h2>
-        <p className="mb-16 max-w-2xl text-[--muted]">
-          The enforcement boundary of the Vantio stack, operating at the deepest layer of your infrastructure.
-          Every AI agent action is intercepted and evaluated before it can affect your systems.
-        </p>
-        <div className="grid gap-6 md:grid-cols-3">
-          {COMPONENTS.map(({ num, accent, title, sub, body }) => (
-            <div key={num} className="rounded-xl border border-[--border] bg-[--surface] p-6">
-              <div className={`mb-4 font-mono text-xs ${accent}`}>{num}</div>
-              <h3 className="mb-1 font-semibold">{title}</h3>
-              <p className={`mb-3 text-xs font-medium ${accent}`}>{sub}</p>
+      {/* How it works */}
+      <section className="mx-auto max-w-5xl px-6 py-20">
+        <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">How It Works</h2>
+        <p className="mb-14 text-center text-2xl font-bold">Three things. In that order.</p>
+        <div className="grid gap-8 md:grid-cols-3">
+          {HOW.map(({ step, title, body }) => (
+            <div key={step} className="relative">
+              <div className="mb-4 font-mono text-4xl font-bold text-[--accent]/30">{step}</div>
+              <h3 className="mb-2 text-lg font-bold">{title}</h3>
               <p className="text-sm text-[--muted]">{body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Tier cards */}
-      <section className="border-t border-[--border] bg-[--surface] px-6 py-24">
-        <div className="mx-auto max-w-6xl">
-          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Choose Your Containment Protocol</p>
-          <h2 className="mb-16 text-center text-3xl font-bold">Start free. Scale to sovereign.</h2>
-          <div className="grid gap-6 md:grid-cols-3">
-            {TIERS.map((t) => (
-              <div key={t.name} className={`relative flex flex-col rounded-xl border ${t.border} ${t.bg} p-7`}>
-                {t.badge && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-400 px-3 py-0.5 text-xs font-bold text-black">
-                    {t.badge}
-                  </span>
-                )}
-                <p className={`mb-1 font-mono text-xs ${t.color}`}>{t.label}</p>
-                <h3 className="mb-1 text-lg font-bold">{t.name}</h3>
-                <p className="mb-4 text-xs text-[--muted]">{t.tagline}</p>
-                <div className="mb-6 flex items-end gap-1">
-                  <span className="text-3xl font-bold">{t.price}</span>
-                  <span className="mb-0.5 text-xs text-[--muted]">{t.period}</span>
+      {/* Why different */}
+      <section className="border-t border-[--border] bg-[--surface] px-6 py-20">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Why Vantio</h2>
+          <p className="mb-12 text-center text-2xl font-bold">Built for teams that can&apos;t afford to guess.</p>
+          <div className="grid gap-6 md:grid-cols-2">
+            {WHY.map(({ title, body }) => (
+              <div key={title} className="flex gap-4 rounded-xl border border-[--border] bg-[--background] p-6">
+                <span className="mt-0.5 shrink-0 text-[--accent]">✓</span>
+                <div>
+                  <h3 className="mb-1 font-semibold">{title}</h3>
+                  <p className="text-sm text-[--muted]">{body}</p>
                 </div>
-                <ul className="mb-8 flex-1 space-y-2">
-                  {t.features.map((f) => (
-                    <li key={f} className={`flex items-start gap-2 text-xs text-[--muted]`}>
-                      <span className={t.color}>→</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <a href={t.href}
-                  className={`block rounded-md border ${t.border} px-4 py-2.5 text-center text-sm font-semibold ${t.color} hover:bg-white/5 transition-colors`}>
-                  {t.cta}
-                </a>
               </div>
             ))}
           </div>
-          <p className="mt-10 text-center text-xs text-[--muted]">
-            Start with the Developer SDK — zero risk, no credit card. Upgrade to Managed Proxy when you need active
-            blocking. Contact Enterprise Sales for sovereign deployment.
-          </p>
         </div>
       </section>
 
-      {/* CTA strip */}
-      <section className="border-t border-[--border] px-6 py-16 text-center">
-        <h2 className="text-2xl font-bold">Ready to enforce your boundary?</h2>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-[--muted]">
-          Start with the free Developer SDK. 10,000 events/month included. Upgrade when you
-          need active blocking or sovereign deployment.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <a href="/developers"
-            className="rounded-md bg-[--accent] px-6 py-2.5 text-sm font-semibold text-black hover:bg-[--accent-dim]">
-            Explore Developer Tier — Free
-          </a>
-          <a href="/pricing"
-            className="rounded-md border border-blue-400/40 px-6 py-2.5 text-sm font-medium text-blue-400 hover:bg-blue-400/5">
-            Explore PRO / SMB Tier — $499/mo
-          </a>
-          <a href="/enterprise"
-            className="rounded-md border border-red-400/30 px-6 py-2.5 text-sm font-medium text-red-400 hover:bg-red-400/5">
-            Contact Enterprise Sales
-          </a>
+      {/* Tiers */}
+      <section className="mx-auto max-w-6xl px-6 py-20">
+        <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Pricing</h2>
+        <p className="mb-14 text-center text-2xl font-bold">Start free. Upgrade when you&apos;re ready.</p>
+        <div className="grid gap-6 md:grid-cols-3">
+          {TIERS.map((t) => (
+            <div key={t.name} className={`relative flex flex-col rounded-xl border ${t.border} ${t.bg} p-8`}>
+              {t.badge && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-400 px-3 py-0.5 text-xs font-bold text-black">
+                  {t.badge}
+                </span>
+              )}
+              <span className={`mb-2 text-xs font-semibold uppercase tracking-widest ${t.color}`}>{t.label}</span>
+              <h3 className="mb-1 text-xl font-bold">{t.name}</h3>
+              <p className="mb-4 text-sm text-[--muted]">{t.headline}</p>
+              <div className="mb-6 flex items-end gap-1">
+                <span className="text-3xl font-bold">{t.price}</span>
+                <span className="mb-0.5 text-xs text-[--muted]">{t.period}</span>
+              </div>
+              <ul className="mb-8 flex-1 space-y-2">
+                {t.points.map((p) => (
+                  <li key={p} className="flex items-start gap-2 text-sm text-[--muted]">
+                    <span className={`shrink-0 ${t.color}`}>→</span> {p}
+                  </li>
+                ))}
+              </ul>
+              {t.primary ? (
+                <a href={t.href}
+                  className="block rounded-md bg-blue-400 py-3 text-center text-sm font-semibold text-black transition-colors hover:bg-blue-300">
+                  {t.cta}
+                </a>
+              ) : (
+                <a href={t.href}
+                  className={`block rounded-md border ${t.border} py-3 text-center text-sm font-semibold ${t.color} transition-colors hover:bg-white/5`}>
+                  {t.cta}
+                </a>
+              )}
+            </div>
+          ))}
         </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="border-t border-[--border] bg-[--surface] px-6 py-16 text-center">
+        <h2 className="text-2xl font-bold">Your AI agents are running right now.</h2>
+        <p className="mx-auto mt-3 max-w-lg text-[--muted]">
+          Do you know what they&apos;re doing? Start watching in under 60 seconds — for free.
+        </p>
+        <a href="/developers"
+          className="mt-8 inline-block rounded-md bg-[--accent] px-8 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-[--accent-dim]">
+          Get Started Free →
+        </a>
+        <p className="mt-4 text-xs text-[--muted]">
+          No credit card. No infrastructure changes. Works with any AI framework.
+        </p>
       </section>
     </main>
   );

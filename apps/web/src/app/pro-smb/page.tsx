@@ -1,53 +1,56 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "PRO / SMB — Vantio AI Managed Edge Proxy",
-  description: "Managed proxy. Zero infrastructure required. Active AI governance without touching your kernel.",
+  title: "PRO / SMB — Vantio AI",
+  description: "Active AI governance for growing teams. Block unauthorized agent behavior automatically — no servers, no code changes, no ops burden.",
 };
 
 export default function ProSmbPage() {
   return (
     <main>
-      <section className="mx-auto max-w-5xl px-6 pb-16 pt-24">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-blue-400">Tier 02 — PRO / SMB</p>
-        <h1 className="mb-4 text-4xl font-bold">
-          Managed proxy.<br />
-          <span className="text-blue-400">Zero infrastructure required.</span>
+      <section className="mx-auto max-w-4xl px-6 pb-16 pt-24 text-center">
+        <span className="mb-4 inline-block rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-blue-400">
+          PRO / SMB — $499/month
+        </span>
+        <h1 className="mb-4 text-4xl font-bold sm:text-5xl">
+          Stop unauthorized AI behavior<br />
+          <span className="text-blue-400">automatically.</span>
         </h1>
-        <p className="mb-10 max-w-2xl text-lg text-[--muted]">
-          The Vantio Managed Edge Proxy governs your AI API traffic at the network layer.
-          No Kubernetes. No code changes. Update one environment variable and every AI call
-          passes through real-time policy enforcement.
+        <p className="mx-auto mb-10 max-w-2xl text-lg text-[--muted]">
+          When your AI agent tries to do something it shouldn&apos;t — contact an unauthorized
+          server, access sensitive data, make unexpected API calls — Vantio blocks it instantly
+          and tells your team. No servers to manage. No code to change.
         </p>
-        <div className="flex flex-wrap gap-3">
-          <a href="/pricing" className="rounded-md bg-blue-400 px-6 py-3 text-sm font-semibold text-black hover:bg-blue-300">
-            Start 14-Day Trial — $499/mo
+        <div className="flex flex-wrap justify-center gap-3">
+          <a href="/pricing"
+            className="rounded-md bg-blue-400 px-6 py-3 text-sm font-semibold text-black hover:bg-blue-300">
+            Start 14-Day Free Trial
           </a>
-          <a href="/dashboard" className="rounded-md border border-blue-400/30 px-6 py-3 text-sm font-medium text-blue-400 hover:bg-blue-400/5">
-            View Live Dashboard
+          <a href="/dashboard"
+            className="rounded-md border border-blue-400/30 px-6 py-3 text-sm font-medium text-blue-400 hover:bg-blue-400/5">
+            View Demo Dashboard
           </a>
         </div>
       </section>
 
-      {/* Features */}
+      {/* What you actually get */}
       <section className="border-t border-[--border] bg-[--surface] px-6 py-20">
         <div className="mx-auto max-w-5xl">
-          <h2 className="mb-12 text-2xl font-bold">What you get</h2>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">What You Get</h2>
+          <p className="mb-12 text-center text-2xl font-bold">Everything you need. Nothing you don&apos;t.</p>
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { title: "Transparent HTTPS Interception", body: "Every AI API call routed through the proxy before reaching OpenAI, Anthropic, Cohere, Google Vertex, or AWS Bedrock. Zero changes to your agent code." },
-              { title: "5–25ms Routing Latency", body: "Deployed on Vercel's global edge network. The latency addition is negligible for production workloads — far less expensive than post-incident compliance review." },
-              { title: "30-day Spanner WORM Log", body: "Every request and governance decision stored in an append-only, cryptographically sealed compliance log. TrueTime timestamps for globally consistent audit trails." },
-              { title: "HMAC-Signed Events", body: "Every anomaly record is HMAC-SHA256 signed with your API key. Independently verifiable by any third party without trusting the ledger." },
-              { title: "Multi-Provider Routing", body: "Governance endpoints for OpenAI, Anthropic, AWS Bedrock, Google Vertex, and Cohere. One configuration — all providers covered." },
-              { title: "Stripe Self-Serve Billing", body: "Subscribe, upgrade, and cancel in the Oracle UI without contacting sales. 14-day free trial. Metered pricing beyond included limits." },
-              { title: "Rate Limiting at Edge", body: "100 requests/minute per API key enforced at Vercel Edge via Upstash Redis — before any database query. Infinite-loop agents cannot exhaust your budget." },
-              { title: "Slack Alerting", body: "Supabase Database Webhook fires a Slack Block Kit alert on every policy violation — tenant, target host, bytes blocked, trace ID, and a direct link to your dashboard." },
-              { title: "Email Support — 24hr SLA", body: "Direct access to the Vantio engineering team. Escalation path to Enterprise for teams that need kernel-level enforcement." },
-            ].map(({ title, body }) => (
+              { icon: "🚫", title: "Automatic blocking", body: "Non-compliant AI calls are stopped before they reach the model. You define the rules — Vantio enforces them." },
+              { icon: "📊", title: "Live dashboard", body: "See every AI agent action in real time. Filter by agent, by date, by outcome. Export to CSV for compliance review." },
+              { icon: "🔔", title: "Instant Slack alerts", body: "The moment an AI agent does something it shouldn't, your team gets a Slack message with the full context." },
+              { icon: "📝", title: "30-day compliance log", body: "Every AI decision stored in a tamper-proof log for 30 days. Ready for audits, incident reviews, or just peace of mind." },
+              { icon: "🔑", title: "API key in 60 seconds", body: "Pay, get your API key, set two environment variables. You're done. No infrastructure, no Kubernetes, no ops team." },
+              { icon: "💳", title: "Cancel any time", body: "14-day free trial, then $499/month. Cancel from your dashboard. No sales calls, no lock-in contracts." },
+            ].map(({ icon, title, body }) => (
               <div key={title} className="rounded-xl border border-[--border] bg-[--background] p-5">
-                <h3 className="mb-2 text-sm font-semibold text-blue-400">→ {title}</h3>
-                <p className="text-xs text-[--muted]">{body}</p>
+                <div className="mb-3 text-2xl">{icon}</div>
+                <h3 className="mb-1 font-semibold">{title}</h3>
+                <p className="text-sm text-[--muted]">{body}</p>
               </div>
             ))}
           </div>
@@ -55,31 +58,29 @@ export default function ProSmbPage() {
       </section>
 
       {/* Setup */}
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <h2 className="mb-3 text-2xl font-bold">Up in 60 seconds</h2>
-        <p className="mb-10 text-[--muted]">From checkout to dashboard telemetry in under 2 minutes.</p>
-        <ol className="space-y-6">
+      <section className="mx-auto max-w-4xl px-6 py-20">
+        <h2 className="mb-2 text-2xl font-bold">Running in under 60 seconds.</h2>
+        <p className="mb-10 text-[--muted]">Seriously. Here&apos;s the entire integration.</p>
+        <div className="space-y-6">
           {[
-            { n: "01", title: "Start your 14-day trial", body: "Click Start Trial. Stripe Checkout collects your card — no charge for 14 days. Your tenant is provisioned and your API key is generated." },
-            { n: "02", title: "Set two env vars", body: "VANTIO_API_KEY=<your key>  VANTIO_INGEST_URL=https://vantio.ai\nThat's it. No infrastructure changes. No Kubernetes. No kernel modules." },
-            { n: "03", title: "Run your agent — zero code changes", body: "vantio run node agent.js   or   vantio run python agent.py\nThe CLI auto-intercepts all LLM API calls and routes anomalies to your dashboard." },
-            { n: "04", title: "Anomalies surface in real time", body: "Every blocked or flagged call appears on your /dashboard within 50ms. Export CSV for compliance review. Slack alerts for immediate ops awareness." },
+            { n: "1", title: "Start your trial", body: "Click the button, enter your card. No charge for 14 days. Your account and API key are created instantly." },
+            { n: "2", title: "Set two environment variables", body: "VANTIO_API_KEY=your-key-here\nVANTIO_INGEST_URL=https://vantio.ai\n\nThat's the entire configuration." },
+            { n: "3", title: "Run your agent through Vantio", body: "vantio run node agent.js\n\nOr: vantio run python agent.py\n\nYour code doesn't change. The CLI handles everything." },
+            { n: "4", title: "Watch the dashboard", body: "Open /dashboard. Every AI call your agent makes shows up in real time — what it called, when, and whether it was allowed." },
           ].map(({ n, title, body }) => (
-            <li key={n} className="flex gap-6">
-              <span className="mt-1 shrink-0 font-mono text-xs font-bold text-blue-400">{n}</span>
+            <div key={n} className="flex gap-6 rounded-xl border border-[--border] bg-[--surface] p-6">
+              <span className="mt-0.5 shrink-0 text-2xl font-bold text-blue-400">{n}</span>
               <div>
                 <p className="font-semibold">{title}</p>
                 <p className="mt-1 whitespace-pre-line text-sm text-[--muted]">{body}</p>
               </div>
-            </li>
+            </div>
           ))}
-        </ol>
-        <div className="mt-12 rounded-lg border border-blue-400/20 bg-blue-400/5 p-5 text-xs text-[--muted]">
-          <strong className="text-[--foreground]">Layer 7 boundary note:</strong>{" "}
-          The PRO / SMB tier operates at the application layer (Ring-3). It intercepts network calls and emits governance telemetry —
-          it does not enforce at the kernel level. For bare-metal kernel enforcement, see the{" "}
-          <a href="/enterprise" className="text-red-400 underline">Enterprise tier</a>.
         </div>
+        <p className="mt-10 text-sm text-[--muted]">
+          Need kernel-level enforcement instead of proxy-layer blocking?{" "}
+          <a href="/enterprise" className="text-red-400 underline">See Enterprise →</a>
+        </p>
       </section>
     </main>
   );

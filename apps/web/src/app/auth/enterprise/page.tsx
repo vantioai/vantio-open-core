@@ -2,19 +2,12 @@
 
 import { useState } from "react";
 
-// Calendly URL configured via NEXT_PUBLIC_CALENDLY_URL env var.
-// If not set, the "Schedule a Call" tab is hidden and the form is shown by default.
-const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "";
-
 export default function EnterpriseAuthPage() {
-  const [tab, setTab] = useState<"call" | "form">(CALENDLY_URL ? "call" : "form");
+  const [tab, setTab] = useState<"call" | "form">("form");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
-
-  const [form, setForm] = useState({
-    name: "", email: "", company: "", size: "", message: "",
-  });
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", email: "", company: "", size: "", message: "" });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,162 +15,129 @@ export default function EnterpriseAuthPage() {
     setError(null);
     try {
       const res = await fetch("/api/contact", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(form),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error("Submission failed.");
+      if (!res.ok) throw new Error();
       setSubmitted(true);
     } catch {
-      setError("Something went wrong. Email us directly at security@vantio.ai.");
+      setError("Something went wrong. Email us at security@vantio.ai.");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6 py-16">
-      <div className="w-full max-w-lg">
-        {/* Header */}
-        <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Vantio AI — Enterprise
-          </p>
-          <h1 className="mt-2 text-3xl font-bold text-gray-900">
-            Let&apos;s talk about Ring-0 enforcement.
+    <main className="mx-auto max-w-5xl px-6 py-24">
+      <div className="grid gap-16 md:grid-cols-2">
+        {/* Left: value prop */}
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-red-400">Enterprise — Tier 03</p>
+          <h1 className="mb-4 text-4xl font-bold">
+            Your AI agents<br />
+            <span className="text-red-400">can&apos;t send a byte without permission.</span>
           </h1>
-          <p className="mt-3 text-sm text-gray-500">
-            Tier 3 includes the Phantom Engine deployed as a bare-metal Linux
-            daemon or Kubernetes DaemonSet, dedicated GCP Spanner, SAML/SSO,
-            and a custom SLA. Pricing starts at $50,000 ARR.
+          <p className="mb-8 text-[--muted]">
+            Enterprise deploys Vantio&apos;s enforcement layer inside your own Kubernetes cluster.
+            It operates at the operating system level — below your applications, below your network.
+            Agents that try to exfiltrate data fail silently before the packet leaves your machine.
+          </p>
+          <div className="space-y-4">
+            {[
+              { icon: "🏢", title: "Stays inside your VPC", body: "Nothing leaves your infrastructure. Your anomaly records are stored in your own database." },
+              { icon: "⚡", title: "Under 1 millisecond enforcement", body: "Blocking happens at the kernel level. Your agents run at full speed until they cross a boundary." },
+              { icon: "📜", title: "7-year audit records", body: "Tamper-proof, immutable records ready for SEC, FINRA, HIPAA, or any other regulator." },
+              { icon: "🔐", title: "SAML / Okta federation", body: "Your existing identity provider. No separate login system to manage." },
+            ].map(({ icon, title, body }) => (
+              <div key={title} className="flex gap-3">
+                <span className="mt-0.5 text-xl">{icon}</span>
+                <div>
+                  <p className="font-semibold">{title}</p>
+                  <p className="text-sm text-[--muted]">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-8 text-sm text-[--muted]">
+            Pricing starts at $50,000/year. Every Enterprise deployment begins with a
+            technical architecture review — no obligation.
           </p>
         </div>
 
-        {/* Tab switcher — only show if Calendly is configured */}
-        {CALENDLY_URL && (
-          <div className="mb-6 flex rounded-lg border border-gray-200 bg-white p-1">
-            {(["call", "form"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                  tab === t
-                    ? "bg-gray-900 text-white"
-                    : "text-gray-500 hover:text-gray-900"
-                }`}
-              >
-                {t === "call" ? "Schedule a Call" : "Send a Message"}
+        {/* Right: contact form */}
+        <div className="rounded-xl border border-[--border] bg-[--surface] p-8">
+          <div className="mb-6 flex rounded-lg border border-[--border] bg-[--background] p-1">
+            {(["form", "call"] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${tab === t ? "bg-[--surface] text-[--foreground]" : "text-[--muted] hover:text-[--foreground]"}`}>
+                {t === "form" ? "Send a Message" : "Schedule a Call"}
               </button>
             ))}
           </div>
-        )}
 
-        {/* Calendly embed */}
-        {tab === "call" && CALENDLY_URL && (
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          {tab === "call" ? (
             <iframe
-              src={`${CALENDLY_URL}?hide_gdpr_banner=1&background_color=ffffff&text_color=111827&primary_color=111827`}
-              width="100%"
-              height="580"
-              frameBorder="0"
-              title="Schedule Enterprise Call"
+              src={`${process.env.NEXT_PUBLIC_CALENDLY_URL ?? "https://calendly.com/vantio-ai/enterprise"}?hide_gdpr_banner=1&background_color=0d0d14&text_color=f0f0f5&primary_color=00ff88`}
+              width="100%" height="520" frameBorder="0" title="Schedule Enterprise Call"
+              className="rounded-lg"
             />
-          </div>
-        )}
-
-        {/* Contact form */}
-        {tab === "form" && (
-          <div className="rounded-xl border border-gray-200 bg-white p-8">
-            {submitted ? (
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
-                  <span className="text-xl">✓</span>
-                </div>
-                <h3 className="font-semibold text-gray-900">Message received.</h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  We&apos;ll respond within one business day at the email you provided.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-700">Name *</label>
-                    <input
-                      required
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="Jane Smith"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-700">Work Email *</label>
-                    <input
-                      required
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => setForm({ ...form, email: e.target.value })}
-                      placeholder="jane@company.com"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-700">Company *</label>
-                    <input
-                      required
-                      value={form.company}
-                      onChange={(e) => setForm({ ...form, company: e.target.value })}
-                      placeholder="Acme Corp"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-700">Team Size</label>
-                    <select
-                      value={form.size}
-                      onChange={(e) => setForm({ ...form, size: e.target.value })}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
-                    >
-                      <option value="">Select...</option>
-                      <option value="1-50">1–50</option>
-                      <option value="51-500">51–500</option>
-                      <option value="501-5000">501–5,000</option>
-                      <option value="5000+">5,000+</option>
-                    </select>
-                  </div>
+          ) : submitted ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-4 text-4xl">✓</div>
+              <h3 className="font-semibold">Message received.</h3>
+              <p className="mt-2 text-sm text-[--muted]">We&apos;ll reply within one business day.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <h2 className="mb-4 font-semibold">Talk to our team</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-[--muted]">Name *</label>
+                  <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="Jane Smith"
+                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">Message</label>
-                  <textarea
-                    value={form.message}
-                    onChange={(e) => setForm({ ...form, message: e.target.value })}
-                    placeholder="Tell us about your deployment environment and compliance requirements."
-                    rows={4}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
-                  />
+                  <label className="mb-1 block text-xs text-[--muted]">Work Email *</label>
+                  <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="jane@company.com"
+                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
                 </div>
-                {error && <p className="text-xs text-red-600">{error}</p>}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full rounded-lg bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
-                >
-                  {submitting ? "Sending…" : "Send Message"}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-[--muted]">Company *</label>
+                  <input required value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })}
+                    placeholder="Acme Corp"
+                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[--muted]">Team Size</label>
+                  <select value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })}
+                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]">
+                    <option value="">Select...</option>
+                    {["1–50", "51–500", "501–5,000", "5,000+"].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[--muted]">What are you trying to solve?</label>
+                <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
+                  placeholder="Tell us about your AI deployment and what you need to control."
+                  rows={4}
+                  className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button type="submit" disabled={submitting}
+                className="w-full rounded-lg bg-red-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-red-300 disabled:opacity-50">
+                {submitting ? "Sending…" : "Send Message"}
+              </button>
+            </form>
+          )}
 
-        <p className="mt-6 text-center text-xs text-gray-400">
-          Or email us directly at{" "}
-          <a href="mailto:security@vantio.ai" className="underline hover:text-gray-600">
-            security@vantio.ai
-          </a>
-        </p>
+          <p className="mt-4 text-center text-xs text-[--muted]">
+            Or email us: <a href="mailto:security@vantio.ai" className="text-[--accent] underline">security@vantio.ai</a>
+          </p>
+        </div>
       </div>
     </main>
   );
