@@ -24,7 +24,7 @@ const tiers = [
     description:
       "For individual developers and open-source projects. Full SDK access, no credit card required.",
     cta: "Get the SDK",
-    ctaHref: "https://github.com",
+    ctaHref: "https://github.com/vantioai/vantio-open-core",
     ctaVariant: "secondary" as const,
     highlighted: false,
     features: [
