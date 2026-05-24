@@ -9,13 +9,31 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 function getSupabaseAdmin() {
   const url        = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) throw new Error("Missing Supabase env vars");
   return createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-/** Resolve the customer email from a Stripe customer ID. */
+/**
+ * Idempotency guard — returns true if this Stripe event ID was already processed.
+ * Stripe guarantees at-least-once delivery; without this check a retried webhook
+ * could double-provision a tenant or incorrectly re-downgrade an active account.
+ */
+async function markEventProcessed(supabase: ReturnType<typeof getSupabaseAdmin>, eventId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("stripe_processed_events")
+    .insert({ event_id: eventId, processed_at: new Date().toISOString() });
+
+  // Unique constraint violation (code 23505) means already processed — skip.
+  if (error) {
+    if (error.code === "23505") return true;
+    // Any other error: log but continue (better to double-process than to drop).
+    console.warn("[stripe-webhook] idempotency check failed:", error.message);
+  }
+  return false;
+}
+
 async function resolveCustomerEmail(customerId: string | Stripe.Customer | Stripe.DeletedCustomer): Promise<string | null> {
-  const id = typeof customerId === "string" ? customerId : customerId.id;
+  const id       = typeof customerId === "string" ? customerId : customerId.id;
   const customer = await stripe.customers.retrieve(id);
   if (customer.deleted) return null;
   return (customer as Stripe.Customer).email ?? null;
@@ -43,7 +61,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const supabase = getSupabaseAdmin();
 
-  // ── checkout.session.completed — provision tenant ──────────────────────────
+  // ── Idempotency check ─────────────────────────────────────────────────────
+  const alreadyProcessed = await markEventProcessed(supabase, event.id);
+  if (alreadyProcessed) {
+    return NextResponse.json({ received: true, skipped: "duplicate" });
+  }
+
+  // ── checkout.session.completed ────────────────────────────────────────────
   if (event.type === "checkout.session.completed") {
     const session       = event.data.object as Stripe.Checkout.Session;
     const customerEmail = session.customer_details?.email ?? session.customer_email;
@@ -53,7 +77,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         : session.subscription?.id ?? null;
 
     if (!customerEmail) {
-      console.error("[stripe-webhook] No customer email in session", session.id);
       return NextResponse.json({ error: "No customer email" }, { status: 400 });
     }
 
@@ -69,12 +92,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     await supabase.from("tenants").upsert(
       {
-        email:                       customerEmail,
-        tier:                        "PRO",
-        stripe_subscription_id:      subscriptionId,
-        stripe_checkout_session_id:  session.id,
-        api_key:                     apiKey,
-        updated_at:                  new Date().toISOString(),
+        email:                      customerEmail,
+        tier:                       "PRO",
+        stripe_subscription_id:     subscriptionId,
+        stripe_checkout_session_id: session.id,
+        api_key:                    apiKey,
+        updated_at:                 new Date().toISOString(),
       },
       { onConflict: "email", ignoreDuplicates: false }
     );
@@ -83,35 +106,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ received: true });
   }
 
-  // ── customer.subscription.updated — handle status changes ──────────────────
-  // Covers: trial_will_end → active, active → past_due, past_due → unpaid, etc.
+  // ── customer.subscription.updated ─────────────────────────────────────────
   if (event.type === "customer.subscription.updated") {
     const sub    = event.data.object as Stripe.Subscription;
     const status = sub.status;
+    const email  = await resolveCustomerEmail(sub.customer);
 
-    if (status === "active" || status === "trialing") {
-      // Subscription is healthy — ensure tier is PRO.
-      const email = await resolveCustomerEmail(sub.customer);
-      if (email) {
+    if (email) {
+      if (status === "active" || status === "trialing") {
         await supabase.from("tenants")
           .update({ tier: "PRO", updated_at: new Date().toISOString() })
           .eq("email", email);
-      }
-    } else if (status === "past_due" || status === "unpaid" || status === "paused") {
-      // Payment failed or subscription paused — downgrade access.
-      const email = await resolveCustomerEmail(sub.customer);
-      if (email) {
+      } else if (status === "past_due" || status === "unpaid" || status === "paused") {
         await supabase.from("tenants")
           .update({ tier: "FREE", updated_at: new Date().toISOString() })
           .eq("email", email);
-        console.log(`[stripe-webhook] Subscription ${status} — downgraded: ${email}`);
+        console.log(`[stripe-webhook] ${status} — downgraded: ${email}`);
       }
     }
 
     return NextResponse.json({ received: true });
   }
 
-  // ── customer.subscription.deleted — cancellation ───────────────────────────
+  // ── customer.subscription.deleted ─────────────────────────────────────────
   if (event.type === "customer.subscription.deleted") {
     const sub   = event.data.object as Stripe.Subscription;
     const email = await resolveCustomerEmail(sub.customer);
@@ -119,11 +136,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       await supabase.from("tenants")
         .update({ tier: "FREE", stripe_subscription_id: null, updated_at: new Date().toISOString() })
         .eq("email", email);
-      console.log(`[stripe-webhook] Subscription cancelled — downgraded to FREE: ${email}`);
+      console.log(`[stripe-webhook] Cancelled — downgraded to FREE: ${email}`);
     }
     return NextResponse.json({ received: true });
   }
 
-  // All other events — acknowledge without action.
   return NextResponse.json({ received: true });
 }

@@ -35,6 +35,17 @@ create index if not exists anomaly_events_tenant_created
 create index if not exists anomaly_events_trace_id
   on anomaly_events (trace_id);
 
+-- Stripe webhook idempotency log.
+-- Prevents at-least-once Stripe delivery from double-processing events.
+-- The unique constraint on event_id is the deduplication mechanism.
+create table if not exists stripe_processed_events (
+  event_id     text        primary key,
+  processed_at timestamptz not null default now()
+);
+
+-- TTL: purge events older than 30 days to keep the table small.
+-- Run periodically: DELETE FROM stripe_processed_events WHERE processed_at < now() - interval '30 days';
+
 -- Tier 3: Enterprise sales leads from /auth/enterprise contact form.
 create table if not exists enterprise_leads (
   id         uuid        primary key default gen_random_uuid(),

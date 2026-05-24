@@ -28,7 +28,8 @@ export default function TrustPage() {
           management (VRM), and liability frameworks of Fortune 500
           institutions. Our legal architecture is mapped directly to our
           deterministic security infrastructure. Utilizing an SLSA Level 3
-          compliant CI/CD supply chain and pure-Rust eBPF containment, our
+          compliant CI/CD supply chain and a pure-Rust eBPF enforcement layer
+          deployable as a bare-metal Linux daemon or Kubernetes DaemonSet, our
           corporate governance ensures absolute structural stability for
           multi-year enterprise infrastructure deployments, satisfying the
           stringent due diligence requirements of Tier-1 capital allocators and

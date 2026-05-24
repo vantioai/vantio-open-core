@@ -47,7 +47,8 @@ export default function EnterpriseAuthPage() {
             Let&apos;s talk about Ring-0 enforcement.
           </h1>
           <p className="mt-3 text-sm text-gray-500">
-            Tier 3 includes the Phantom Engine, dedicated GCP Spanner, SAML/SSO,
+            Tier 3 includes the Phantom Engine deployed as a bare-metal Linux
+            daemon or Kubernetes DaemonSet, dedicated GCP Spanner, SAML/SSO,
             and a custom SLA. Pricing starts at $50,000 ARR.
           </p>
         </div>

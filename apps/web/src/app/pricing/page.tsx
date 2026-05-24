@@ -73,7 +73,7 @@ const tiers = [
     price: "Custom",
     period: "annual contract",
     description:
-      "For Fortune 500 and regulated institutions requiring kernel-level enforcement and dedicated infrastructure.",
+      "For Fortune 500 and regulated institutions. Phantom Engine deploys as a bare-metal Linux daemon or Kubernetes DaemonSet — no WSL, no proxies.",
     cta: "Contact Sales",
     ctaHref: "/auth/enterprise",
     ctaVariant: "secondary" as const,
