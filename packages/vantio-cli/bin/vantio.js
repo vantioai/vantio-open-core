@@ -43,17 +43,24 @@ if (command !== "run") {
 }
 
 // ── parse flags + positionals ────────────────────────────────────────────────
+// Split at the first non-flag argument (the program name) so that flags
+// intended for the child process (e.g. node -e, python -c) are never
+// consumed by vantio's own argument parser.
 
-const { values, positionals } = parseArgs({
-  args: rest,
+const splitAt = rest.findIndex((a) => !a.startsWith("-"));
+const ourArgs  = splitAt === -1 ? rest : rest.slice(0, splitAt);
+const progArgs = splitAt === -1 ? []   : rest.slice(splitAt);
+
+const { values } = parseArgs({
+  args: ourArgs,
   options: {
     audit:   { type: "boolean", short: "a", default: false },
     summary: { type: "boolean", short: "s", default: false },
   },
-  allowPositionals: true,
+  allowPositionals: false,
 });
 
-if (positionals.length === 0) {
+if (progArgs.length === 0) {
   process.stderr.write(
     "vantio run: no program specified\n\nUsage: vantio run [--audit] [--summary] <program> [...args]\n",
   );
@@ -62,7 +69,7 @@ if (positionals.length === 0) {
 
 // ── resolve program and args ─────────────────────────────────────────────────
 
-const [program, ...programArgs] = positionals;
+const [program, ...programArgs] = progArgs;
 
 // ── Node.js runtime detection ────────────────────────────────────────────────
 

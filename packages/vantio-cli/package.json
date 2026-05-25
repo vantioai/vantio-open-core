@@ -1,6 +1,6 @@
 {
   "name": "@vantio/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Run any AI agent with full observability. Zero code changes.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
