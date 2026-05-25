@@ -1,14 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050508;
-  --foreground: #f0f0f5;
-  --surface:    #0d0d14;
-  --border:     #1c1c2e;
-  --muted:      #4a4a6a;
-  --accent:     #00ff88;
-  --accent-dim: #00cc6a;
-  --red:        #ff3b3b;
+  --background:  #030305;
+  --surface:     #0a0a12;
+  --surface-2:   #0f0f1a;
+  --border:      #1e1e2e;
+  --border-2:    #2a2a3e;
+  --muted:       #6b6b8a;
+  --foreground:  #e8e8f0;
+  --accent:      #00e87a;
+  --accent-dim:  #00c466;
+  --accent-glow: rgba(0, 232, 122, 0.15);
+  --blue:        #3b82f6;
+  --blue-glow:   rgba(59, 130, 246, 0.15);
+  --red:         #ef4444;
+  --red-glow:    rgba(239, 68, 68, 0.12);
 }
 
 @theme inline {
@@ -18,23 +24,72 @@
   --font-mono: var(--font-geist-mono);
 }
 
-* {
-  border-color: var(--border);
-}
+* { border-color: var(--border); }
+
+html { scroll-behavior: smooth; }
 
 body {
   background: var(--background);
-  color:      var(--foreground);
+  color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-::selection {
-  background: var(--accent);
-  color: #000;
-}
+::selection { background: var(--accent); color: #000; }
 
-/* Scrollbar */
 ::-webkit-scrollbar        { width: 4px; }
 ::-webkit-scrollbar-track  { background: var(--background); }
-::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb  { background: var(--border-2); border-radius: 4px; }
+
+/* Glow utility classes */
+.glow-green { box-shadow: 0 0 40px var(--accent-glow), 0 0 80px rgba(0, 232, 122, 0.06); }
+.glow-blue  { box-shadow: 0 0 40px var(--blue-glow), 0 0 80px rgba(59, 130, 246, 0.06); }
+.glow-red   { box-shadow: 0 0 40px var(--red-glow); }
+
+/* Radial hero glow */
+.hero-glow {
+  background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0, 232, 122, 0.08) 0%, transparent 70%);
+}
+
+/* Grid dot pattern */
+.dot-grid {
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Gradient borders */
+.border-gradient-green {
+  position: relative;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box,
+              linear-gradient(135deg, rgba(0,232,122,0.4), transparent 60%) border-box;
+  border: 1px solid transparent;
+}
+
+.border-gradient-blue {
+  position: relative;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box,
+              linear-gradient(135deg, rgba(59,130,246,0.4), transparent 60%) border-box;
+  border: 1px solid transparent;
+}
+
+.border-gradient-red {
+  position: relative;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box,
+              linear-gradient(135deg, rgba(239,68,68,0.3), transparent 60%) border-box;
+  border: 1px solid transparent;
+}
+
+/* Shine animation on cards */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Fade up animation */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-up { animation: fadeUp 0.6s ease forwards; }
