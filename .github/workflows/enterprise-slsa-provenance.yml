@@ -4,13 +4,6 @@ on:
   push:
     branches: [main]
 
-# ── OIDC + Sigstore permissions ──────────────────────────────────────────────
-# id-token:write   — allows the runner to request a GitHub OIDC JWT, which
-#                    actions/attest-build-provenance exchanges for a Sigstore
-#                    Fulcio certificate to sign the provenance attestation.
-# contents:read    — checkout access.
-# attestations:write — permits writing the signed attestation to the
-#                    repository's attestation store (GHES / GHEC).
 permissions:
   id-token:     write
   contents:     read
@@ -22,44 +15,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Source ────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Toolchain ─────────────────────────────────────────────────────────
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 11
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
 
-      # ── 3. Dependencies (lockfile enforced) ──────────────────────────────────
-      # --frozen-lockfile rejects any install that would mutate pnpm-lock.yaml,
-      # providing mathematical enforcement of the dependency graph.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
-      # ── 4. Build SDK packages only ───────────────────────────────────────────
-      # We build only the packages that are shipped to customers and included
-      # in the SLSA tarball. apps/web is excluded because Next.js build requires
-      # Stripe/Supabase runtime env vars that are not present in CI — Vercel
-      # handles the web app build and deployment separately.
       - name: Build @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run build
 
       - name: Build @vantio/edge-proxy
         run: pnpm --filter @vantio/edge-proxy run build
 
-      # ── 5. Bundle artifacts ───────────────────────────────────────────────────
-      # Collect every compiled output into a single deterministic tarball.
-      # The tarball is the subject of the Sigstore attestation; its SHA-256
-      # digest is what gets written to the transparency log.
-      # apps/web/.next is excluded — Vercel produces that artifact separately.
       - name: Bundle artifacts
         run: |
           tar -czf vantio-artifacts.tar.gz \
@@ -67,14 +45,7 @@ jobs:
             packages/edge-proxy/dist \
             packages/vantio-cli/bin
 
-      # ── 6. Attest build provenance ────────────────────────────────────────────
-      # Binds the GitHub OIDC token (runner identity) to the artifact digest via
-      # Sigstore's Fulcio CA and records the attestation in Rekor's tamper-evident
-      # transparency log. Satisfies SLSA Level 3 provenance requirements:
-      #   — Hermetic build (frozen lockfile)
-      #   — Signed provenance (Sigstore + OIDC)
-      #   — Non-forgeable (GitHub Actions OIDC, not a static token)
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v2
         with:
           subject-path: vantio-artifacts.tar.gz

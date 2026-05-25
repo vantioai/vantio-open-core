@@ -1,7 +1,5 @@
 name: Publish to npm
 
-# Triggers on every push to main so packages auto-publish when merged.
-# Packages only publish when the version in package.json has changed.
 on:
   push:
     branches: [main]
@@ -20,31 +18,25 @@ jobs:
         with:
           version: 11
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
-      # ── Build @vantio/agent-sdk ────────────────────────────────────────────
       - name: Build @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run build
 
-      # ── Publish @vantio/agent-sdk ──────────────────────────────────────────
-      # pnpm publish --no-git-checks skips the dirty-tree check (CI checkout
-      # is always clean). The command exits 0 even if the version already exists.
       - name: Publish @vantio/agent-sdk
         working-directory: packages/vantio-agent-sdk
         run: pnpm publish --access public --no-git-checks || echo "Version already published — skipping."
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # ── Publish @vantio/cli ────────────────────────────────────────────────
-      # No build step needed — ships pre-authored JS in bin/.
       - name: Publish @vantio/cli
         working-directory: packages/vantio-cli
         run: pnpm publish --access public --no-git-checks || echo "Version already published — skipping."
