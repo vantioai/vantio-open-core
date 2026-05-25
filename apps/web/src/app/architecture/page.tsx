@@ -61,7 +61,12 @@ const STACK = [
 export default function ArchitecturePage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Architecture</p>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1 text-xs font-semibold text-[--accent]">Tier 01</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1 text-xs font-semibold text-blue-400">Tier 02</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1 text-xs font-semibold text-red-400">Tier 03</span>
+      </div>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Architecture</p>
       <h1 className="mb-4 text-4xl font-bold">The Architecture of Absolute Containment.</h1>
       <p className="mb-20 max-w-2xl text-lg text-[--muted]">
         Three components. One atomic operation. Zero trust required at any layer.

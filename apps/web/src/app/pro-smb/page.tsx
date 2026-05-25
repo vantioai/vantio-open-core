@@ -9,8 +9,8 @@ export default function ProSmbPage() {
   return (
     <main>
       <section className="mx-auto max-w-4xl px-6 pb-16 pt-24 text-center">
-        <span className="mb-4 inline-block rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-blue-400">
-          PRO / SMB — $499/month
+        <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-4 py-1.5 text-xs font-semibold text-blue-400">
+          Tier 02 — PRO / SMB · $499/month
         </span>
         <h1 className="mb-4 text-4xl font-bold sm:text-5xl">
           Stop unauthorized AI behavior<br />

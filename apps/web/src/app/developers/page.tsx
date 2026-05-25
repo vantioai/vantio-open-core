@@ -67,7 +67,9 @@ const FRAMEWORKS = [
 export default function DevelopersPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Tier 01 — Developers · Open-Core · Free</p>
+      <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-4 py-1.5 text-xs font-semibold text-[--accent]">
+        Tier 01 — Developer · Open-Core · Free
+      </span>
       <h1 className="mb-4 text-4xl font-bold">
         Ship AI Governance in<br />
         <span className="text-[--accent]">Two Lines of Code.</span>

@@ -8,6 +8,11 @@ export const metadata: Metadata = {
 export default function TrustPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-24">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1 text-xs font-semibold text-[--accent]">Tier 01</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1 text-xs font-semibold text-blue-400">Tier 02</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1 text-xs font-semibold text-red-400">Tier 03</span>
+      </div>
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Trust Center</p>
       <h1 className="mb-4 text-4xl font-bold">We take your trust seriously.</h1>
       <p className="mb-16 text-[--muted]">

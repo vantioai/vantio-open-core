@@ -105,9 +105,25 @@ export default function ResearchPage() {
     <main className="mx-auto max-w-4xl px-6 py-24">
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Research</p>
       <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
-      <p className="mb-20 max-w-2xl text-[--muted]">
+      <p className="mb-8 max-w-2xl text-[--muted]">
         Seven research tracks documenting Vantio&apos;s technical architecture across the AI governance market — from enterprise kernel containment for F500 CISOs to developer-grade observability for open-source contributors.
       </p>
+
+      {/* Tier legend */}
+      <div className="mb-14 flex flex-wrap gap-3">
+        <span className="inline-flex items-center gap-2 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1.5 text-xs font-semibold text-[--accent]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[--accent]" />
+          Tier 01 — Developer
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1.5 text-xs font-semibold text-blue-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+          Tier 02 — PRO / SMB
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+          Tier 03 — Enterprise
+        </span>
+      </div>
 
       <div className="space-y-8">
         {DOSSIERS.map(({ id, tier, title, sub, body }) => {
