@@ -1,163 +1,84 @@
-# Vantio AI: Open-Core SDK & CLI
+# @vantio/agent-sdk
 
-> Zero-line AI agent governance. Automatic LLM observability in 60 seconds — no code changes required.
-
-## The Open-Core Schism
-
-This repository is **Tier 01 and Tier 02** of the Vantio architecture. It contains the open-source `@vantio/agent-sdk`, the `vantio` process supervisor CLI, and the Next.js control plane.
-
-The proprietary **Phantom Engine** (Ring-0 eBPF enforcement, `ssl_write` uprobe, `sched_process_fork` PID inheritance) lives in a physically separate, private repository and never touches this codebase.
-
-```
-vantio-open-core  (this repo)          vantio-phantom-engine  (private)
-─────────────────────────────────      ──────────────────────────────────────
-Tier 01: vantio CLI + agent-sdk        Tier 03: eBPF uprobe on SSL_write
-Tier 02: Managed Edge Proxy            BTF tracepoint: sched_process_fork
-         + dashboard + Supabase        Pinned map: /sys/fs/bpf/vantio_trace_map
-User-space only, works everywhere      Linux kernel only, requires root
-```
-
-## 60-Second Time-To-Value
-
-### 1. Install the CLI
+> See what your AI agents are doing. Two lines of code. Free.
 
 ```bash
-npm install -g @vantio/cli       # Node.js agents
-pip install vantio-agent-sdk     # Python agents
+npm install @vantio/agent-sdk   # Node.js
+pip install vantio-agent-sdk    # Python
 ```
 
-### 2. Set your API key (Tier 02 — from vantio.ai/success)
+---
 
-```bash
-export VANTIO_API_KEY=vantio_xxxxxxxxxxxx
-export VANTIO_INGEST_URL=https://vantio.ai
-export VANTIO_CLOUD_INGEST=true
-```
+## The idea
 
-### 3. Run your agent — zero code changes
+AI agents make outbound calls you can't see. Vantio wraps your agent, intercepts every network call to a known LLM provider, and streams the metadata to a dashboard — without ever reading your prompts.
 
-```bash
-vantio run node agent.js          # auto-intercepts all outbound LLM calls
-vantio run python agent.py        # Python agents
-vantio run --audit tsx agent.ts   # VANTIO_AUDIT_MODE=1
-vantio run --summary node agent.js  # prints run summary on exit
-```
+---
 
-The CLI auto-injects the `global.fetch` interceptor via Node.js `--require`. Every outbound call to a known LLM API is automatically captured. **Your application code doesn't change.**
-
-## SDK Integration (optional — for explicit trace correlation)
-
-### Node.js / TypeScript
+## Node.js
 
 ```ts
-import { shield, reportAnomaly } from "@vantio/agent-sdk";
+import { shield } from "@vantio/agent-sdk";
 
-// shield() is the canonical API — withVantio() is an alias
 await shield(async () => {
   await runMyLLMAgent();
-
-  await reportAnomaly({
-    target_host:   "api.openai.com",
-    action_taken:  "POLICY_VIOLATION",
-    bytes_severed: 14382,
-  });
 });
 ```
 
-### Python
+That's the integration. `shield()` propagates a trace ID through every async hop in your agent's call tree.
+
+---
+
+## Python
 
 ```python
-from vantio import shield, report_anomaly
+from vantio import shield
 
 @shield
 async def run_agent():
-    result = await call_openai(prompt)
-    return result
+    await call_openai(prompt)
+```
 
-# Or as a context manager:
-async with shield() as trace:
+Or as a context manager:
+
+```python
+async with shield():
     await run_agent()
-    await report_anomaly(
-        target_host="api.openai.com",
-        action_taken="POLICY_VIOLATION",
-    )
 ```
 
-## Monorepo Structure
+---
 
-```
-apps/
-  web/                    Next.js 15 control plane (App Router)
-    /                     Marketing homepage
-    /pricing              Three-tier pricing page (Stripe checkout)
-    /developers           SDK docs — Node.js + Python
-    /architecture         Technical architecture deep dive
-    /research             7 Engineering Dossiers (Tier 01/02/03)
-    /enterprise           Enterprise landing page
-    /pro-smb              PRO/SMB landing page
-    /trust                Trust & compliance
-    /login                Supabase magic link auth
-    /dashboard            SMB live anomaly event dashboard (auth-gated)
-    /success              Post-payment onboarding + API key
-    /privacy              Privacy policy
-    /terms                Terms of service
-    api/v1/ingest/        Edge route — telemetry ingestion (100 req/min/key)
-    api/v1/export/        CSV export of anomaly ledger
-    api/stripe/           Checkout session + Customer Portal
-    api/webhooks/stripe/  Stripe lifecycle: provision, downgrade, cancel
-    api/webhooks/supabase/ Supabase INSERT → Slack Block Kit alert
-    api/contact/          Enterprise lead capture → Supabase + Slack
+## CLI — zero code changes
 
-  cli/                    TypeScript CLI (Windows WSL interop bridge)
-
-packages/
-  vantio-agent-sdk/       shield() + withVantio() + reportAnomaly() — Node.js SDK
-  vantio-agent-sdk-py/    @shield + report_anomaly() — Python SDK (PyPI)
-  vantio-cli/             vantio run — process supervisor + auto-interceptor
-  edge-proxy/             Spanner TrueTime Ledger mutation helper
+```bash
+npx vantio run node agent.js
+npx vantio run python agent.py
+npx vantio run --summary node agent.js   # print call summary on exit
 ```
 
-## Slack Alerting (Tier 02 — built-in)
+The CLI patches `globalThis.fetch` at runtime via `--require`. Your code doesn't change.
 
-Vantio ships a direct Slack integration via Supabase Database Webhooks:
+---
 
-1. Create a Slack app → Incoming Webhooks → copy URL
-2. Add `SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...` to Vercel
-3. Supabase → Database → Webhooks → Create → table: `anomaly_events`, event: `INSERT`, URL: `https://vantio.ai/api/webhooks/supabase/anomaly`, header: `Authorization: Bearer <SUPABASE_WEBHOOK_SECRET>`
+## What gets captured
 
-Every anomaly fires a rich Slack Block Kit message — tenant, target host, bytes blocked, trace ID, and a link to the dashboard.
+- Which LLM endpoint was called
+- Bytes in the response
+- The process ID
+- A trace ID that links calls across your agent's full execution
 
-## Environment Variables
+**What never gets captured:** prompts, completions, or any content from your requests.
 
-See `.env.example` for the full list. Required for production:
+---
 
-```
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-STRIPE_SECRET_KEY
-STRIPE_WEBHOOK_SECRET
-STRIPE_SMB_PRICE_ID
-UPSTASH_REDIS_REST_URL
-UPSTASH_REDIS_REST_TOKEN
-NEXT_PUBLIC_APP_URL
-```
+## Dashboard
 
-## Supply Chain
+[vantio.ai/dashboard](https://vantio.ai/dashboard) — free tier includes 10,000 events/month.
 
-Every push to `main` triggers SLSA Level 3 Sigstore provenance attestation and automatic npm publish of `@vantio/agent-sdk` and `@vantio/cli`.
+For active blocking, compliance logs, and Slack alerts, see [vantio.ai/pricing](https://vantio.ai/pricing).
 
-[![SLSA L3 Provenance](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
-
-## Post-Launch Roadmap
-
-- Remote config endpoint for zero-touch tier upgrades
-- Policy rules engine (dashboard-driven, no code push)
-- RBAC for team access (10-seat dashboard)
-- Ruby / Go interceptor support
-- GCP Spanner live write from Tier 02 Managed Edge Proxy
+---
 
 ## License
 
-`@vantio/agent-sdk`, `@vantio/agent-sdk-py`, and `@vantio/cli` — **MIT**
-`apps/web` (control plane) — Proprietary © 2026 Vantio AI, Inc.
+MIT — [vantio.ai](https://vantio.ai)
