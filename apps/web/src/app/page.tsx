@@ -129,12 +129,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-5xl">
           <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">How It Works</p>
           <h2 className="mb-16 text-center text-3xl font-bold">Three things. In that order.</h2>
-          <div className="grid gap-8 md:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-3">
             {HOW.map(({ n, title, body }) => (
-              <div key={n} className="relative">
-                <div className="mb-5 font-mono text-5xl font-black leading-none text-[--border-2]">{n}</div>
-                <div className="mb-3 h-px w-8 bg-[--accent]" />
-                <h3 className="mb-2 text-lg font-bold">{title}</h3>
+              <div key={n} className="rounded-2xl border border-[--border] bg-[--surface-2] p-7 transition-all hover:border-[--border-2]">
+                <div className="mb-4 font-mono text-4xl font-black leading-none text-[--border-2]">{n}</div>
+                <div className="mb-4 h-0.5 w-8 rounded-full bg-[--accent]" />
+                <h3 className="mb-2 font-semibold">{title}</h3>
                 <p className="text-sm leading-relaxed text-[--muted]">{body}</p>
               </div>
             ))}
