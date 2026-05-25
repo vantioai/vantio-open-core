@@ -1,0 +1,90 @@
+# @vantio/cli
+
+> Run any AI agent with full observability. Zero code changes.
+
+```bash
+npm install -g @vantio/cli
+```
+
+---
+
+## Usage
+
+```bash
+vantio run node agent.js
+vantio run python agent.py
+vantio run tsx agent.ts
+```
+
+Wrap any process with `vantio run`. The CLI automatically intercepts every outbound call to a known LLM API — OpenAI, Anthropic, Gemini, Cohere, Mistral, and more — and streams the metadata to your dashboard.
+
+Your code doesn't change. Your agent runs normally.
+
+---
+
+## Flags
+
+```bash
+vantio run --audit node agent.js     # flag events as VANTIO_AUDIT_MODE=1
+vantio run --summary node agent.js   # print a run summary on exit
+```
+
+**`--audit`** — marks all events from this run as audit mode. Useful when running agents in observation-only mode before enforcing policies.
+
+**`--summary`** — prints a summary when the process exits:
+
+```
+[ ∅ VANTIO ] Run Summary
+  LLM calls:    7
+  Hosts:        api.openai.com, api.anthropic.com
+  Total bytes:  94,201
+  Duration:     12.4s
+```
+
+In free mode (no API key), intercepted calls print to the terminal in real time.
+
+---
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `VANTIO_API_KEY` | Your API key from [vantio.ai/success](https://vantio.ai/success) |
+| `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
+| `VANTIO_CLOUD_INGEST` | Set to `true` to route events to your dashboard |
+
+---
+
+## Supported runtimes
+
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`).
+
+Python, Ruby, and other runtimes are spawned normally without interception — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) for those.
+
+---
+
+## Supported LLM providers
+
+`api.openai.com` · `api.anthropic.com` · `generativelanguage.googleapis.com` · `api.cohere.ai` · `api.mistral.ai` · `api.groq.com` · `api.together.xyz` · `api.perplexity.ai` · `inference.ai.azure.com`
+
+---
+
+## SDK
+
+For explicit trace correlation across async hops, use the SDK alongside the CLI:
+
+```bash
+npm install @vantio/agent-sdk
+```
+
+```ts
+import { shield, reportAnomaly } from "@vantio/agent-sdk";
+
+await shield(async () => {
+  await runMyAgent();
+});
+```
+
+---
+
+[vantio.ai](https://vantio.ai) · [Docs](https://vantio.ai/developers) · [Pricing](https://vantio.ai/pricing) · MIT License

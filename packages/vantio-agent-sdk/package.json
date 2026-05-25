@@ -1,10 +1,17 @@
 {
   "name": "@vantio/agent-sdk",
-  "version": "0.1.0",
-  "description": "Vantio AI — core execution wrapper for agent tracing and async context propagation.",
+  "version": "0.1.1",
+  "description": "See what your AI agents are doing. Two lines of code.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
-  "keywords": ["vantio", "agent", "sdk", "tracing", "async-context"],
+  "homepage": "https://vantio.ai/developers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vantioai/vantio-open-core.git",
+    "directory": "packages/vantio-agent-sdk"
+  },
+  "bugs": { "url": "https://github.com/vantioai/vantio-open-core/issues" },
+  "keywords": ["vantio", "ai", "agent", "sdk", "observability", "governance", "tracing", "langchain", "openai"],
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",

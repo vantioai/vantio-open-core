@@ -1,9 +1,17 @@
 {
   "name": "@vantio/cli",
-  "version": "0.1.0",
-  "description": "Vantio AI — process supervisor CLI for instrumented agent execution.",
+  "version": "0.1.1",
+  "description": "Run any AI agent with full observability. Zero code changes.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
+  "homepage": "https://vantio.ai/developers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vantioai/vantio-open-core.git",
+    "directory": "packages/vantio-cli"
+  },
+  "bugs": { "url": "https://github.com/vantioai/vantio-open-core/issues" },
+  "keywords": ["vantio", "ai", "agent", "cli", "observability", "governance", "openai", "anthropic"],
   "type": "module",
   "bin": {
     "vantio": "bin/vantio.js"
