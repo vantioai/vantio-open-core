@@ -27,17 +27,40 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Configure npm auth
+        run: echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> ~/.npmrc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Build @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run build
 
       - name: Publish @vantio/agent-sdk
         working-directory: packages/vantio-agent-sdk
-        run: pnpm publish --access public --no-git-checks || echo "Version already published — skipping."
+        run: |
+          set -o pipefail
+          if ! pnpm publish --access public --no-git-checks 2>&1 | tee /tmp/publish-agent-sdk.log; then
+            if grep -qE "cannot publish over|already exists|E409|403.*publish" /tmp/publish-agent-sdk.log; then
+              echo "Version already published — skipping @vantio/agent-sdk."
+            else
+              cat /tmp/publish-agent-sdk.log
+              exit 1
+            fi
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @vantio/cli
         working-directory: packages/vantio-cli
-        run: pnpm publish --access public --no-git-checks || echo "Version already published — skipping."
+        run: |
+          set -o pipefail
+          if ! pnpm publish --access public --no-git-checks 2>&1 | tee /tmp/publish-cli.log; then
+            if grep -qE "cannot publish over|already exists|E409|403.*publish" /tmp/publish-cli.log; then
+              echo "Version already published — skipping @vantio/cli."
+            else
+              cat /tmp/publish-cli.log
+              exit 1
+            fi
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
