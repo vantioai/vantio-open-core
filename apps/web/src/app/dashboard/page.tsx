@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { BillingPortalButton } from "./billing-portal-button";
+import { PhantomEngineStatus } from "./phantom-engine-status";
 
 export const metadata: Metadata = {
   title: "Dashboard — Vantio AI SMB",
@@ -240,6 +241,14 @@ export default async function DashboardPage() {
                   <code className="rounded bg-gray-100 px-1">VANTIO_IDENTITY</code>{" "}
                   in your agent environment.
                 </p>
+              </div>
+            )}
+
+            {/* Phantom Engine status — shown for Enterprise tenants */}
+            {tenant.tier === "ENTERPRISE" && (
+              <div className="rounded-xl border border-red-200 bg-red-50/30 p-5">
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">Phantom Engine</h3>
+                <PhantomEngineStatus tenantEmail={tenant.email} />
               </div>
             )}
 
