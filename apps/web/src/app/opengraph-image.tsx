@@ -35,12 +35,32 @@ export default function OpengraphImage() {
               height: 64,
               borderRadius: 16,
               backgroundColor: "rgba(0,232,122,0.12)",
-              color: "#00e87a",
-              fontSize: 40,
-              fontWeight: 900,
             }}
           >
-            ∅
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                width: 40,
+                height: 40,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div style={{ width: 28, height: 28, borderRadius: 9999, border: "5px solid #00e87a" }} />
+              <div
+                style={{
+                  position: "absolute",
+                  left: 2,
+                  top: 17,
+                  width: 36,
+                  height: 5,
+                  borderRadius: 9999,
+                  backgroundColor: "#00e87a",
+                  transform: "rotate(-45deg)",
+                }}
+              />
+            </div>
           </div>
           <div
             style={{

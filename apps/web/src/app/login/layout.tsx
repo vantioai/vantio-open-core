@@ -9,6 +9,10 @@ export const metadata: Metadata = buildMetadata({
   noindex: true,
 });
 
+// The login page builds its Supabase client at render time from runtime env
+// vars, so it must render dynamically rather than be prerendered at build.
+export const dynamic = "force-dynamic";
+
 export default function LoginLayout({ children }: { children: ReactNode }) {
   return children;
 }
