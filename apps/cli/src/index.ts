@@ -51,8 +51,13 @@ program
     console.log(`[Vantio] Spawning WSL command: ${commandArgs.join(' ')}`);
     console.log(`[Vantio] Note: To strictly enforce the boundary, the WSL process must seed the map using this Trace ID.`);
 
-    child.on('close', (code) => {
-      process.exit(code ?? 0);
+    child.on('exit', (code, signal) => {
+      if (signal !== null) {
+        // Re-raise the signal so the parent shell sees a signal termination.
+        process.kill(process.pid, signal);
+        return;
+      }
+      process.exit(code ?? 1);
     });
   });
 

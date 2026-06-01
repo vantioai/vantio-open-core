@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
 
-export const metadata: Metadata = {
-  title: "Research — Vantio AI Engineering Dossiers",
+export const metadata: Metadata = buildMetadata({
+  title: "Research — Engineering Dossiers",
   description: "Engineering dossiers documenting Vantio's technical architecture across the AI governance market.",
-};
+  path: "/research",
+});
 
 const TIER_STYLE: Record<string, { badge: string; border: string; bg: string; label: string }> = {
   "03": { badge: "text-red-400",   border: "border-red-400/20",  bg: "bg-red-400/5",   label: "Tier 03 — Enterprise" },
-  "02": { badge: "text-blue-400",  border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — PRO / SMB" },
+  "02": { badge: "text-blue-400",  border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — Pro" },
   "01": { badge: "text-[--accent]",border: "border-[--accent]/20",bg: "bg-[--accent]/5",label: "Tier 01 — Developer" },
 };
 
@@ -42,9 +45,9 @@ The result is an audit trail where every agent action has exactly one committed 
     id: "03", tier: "03",
     title: "The Cryptographic Anomaly Record",
     sub: "The Vantio Anomaly Record schema — a cryptographic receipt committed to a TrueTime-stamped Spanner ledger — and its direct mapping to GDPR Article 30, SOC 2 CC7.2, and SEC Cybersecurity Disclosure rules.",
-    body: `The Anomaly Record is the foundational artifact of the Vantio compliance system. It is a structured record containing: a VANTIO_TRACE_ID (UUID v4), execution metadata (PID, bytes_severed, target_host, action_taken), an HMAC-SHA256 signature of the payload, and a TrueTime commit timestamp from GCP Spanner.
+    body: `The Anomaly Record is the foundational artifact of the Vantio compliance system. It is a structured record containing: a VANTIO_TRACE_ID (UUID v4), execution metadata (PID, bytes_severed, target_host, action_taken), an HMAC-SHA256 receipt over the event's trace ID, and a TrueTime commit timestamp from GCP Spanner.
 
-The HMAC signature is computed using the tenant's API key as the signing secret. This means every event in the ledger is independently verifiable: a regulator or auditor can recompute the HMAC from the published key and confirm the event was not tampered with after ingestion.
+The HMAC receipt is computed using the tenant's API key as the signing secret and returned in the x-vantio-signature header. This means every event is independently verifiable: a holder of the tenant key can recompute the HMAC and confirm the receipt was issued for that exact trace ID.
 
 The payload quarantine is enforced at two layers: structurally (the ingest route whitelists only specific metadata fields — prompts and completions are architecturally excluded) and contractually (the Supabase service role key used for writes has no read access on the raw input columns).
 
@@ -103,6 +106,7 @@ The edge proxy is deployed on Vercel's global edge network. The p99 routing late
 export default function ResearchPage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Research", path: "/research" }])} />
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Research</p>
       <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
       <p className="mb-8 max-w-2xl text-[--muted]">
@@ -117,7 +121,7 @@ export default function ResearchPage() {
         </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1.5 text-xs font-semibold text-blue-400">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-          Tier 02 — PRO / SMB
+          Tier 02 — Pro
         </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-400">
           <span className="h-1.5 w-1.5 rounded-full bg-red-400" />

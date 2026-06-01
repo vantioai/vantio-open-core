@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import { buildMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Welcome to Vantio AI PRO",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Welcome to Pro",
+  description: "Your Vantio AI Pro trial is active. Set up your Managed Edge Proxy in two minutes.",
+  path: "/success",
+  noindex: true,
+});
 
 export const dynamic = "force-dynamic";
 
@@ -36,43 +40,43 @@ export default async function SuccessPage({
   const apiKey = await getApiKey(session_id ?? null);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6">
+    <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-lg">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-green-50">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[--accent]/10 text-[--accent] shadow-[0_0_30px_rgba(0,232,122,0.2)]">
             <span className="text-2xl">✓</span>
           </div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[--muted]">
             14-day trial started
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-gray-900">
+          <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
             Your Managed Edge Proxy is live.
           </h1>
-          <p className="mt-3 text-sm text-gray-500">
+          <p className="mt-3 text-sm text-[--muted]">
             Your trial is active — no charge for 14 days. Your tenant has been
             provisioned and your API key is ready.
           </p>
         </div>
 
         {/* API Key */}
-        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-400">
+        <div className="mb-6 rounded-2xl border border-[--border] bg-[--surface] p-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[--muted]">
             Your API Key
           </p>
           {apiKey ? (
             <>
-              <code className="block break-all rounded-lg bg-gray-900 p-3 text-sm text-green-400">
+              <code className="block break-all rounded-lg bg-black/40 p-3 text-sm text-[--accent]">
                 {apiKey}
               </code>
-              <p className="mt-2 text-xs text-gray-400">
+              <p className="mt-2 text-xs text-[--muted]">
                 Store this securely. It cannot be shown again — regenerate from
                 your dashboard if lost.
               </p>
             </>
           ) : (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-[--muted]">
               Your API key will appear here shortly, or find it in your{" "}
-              <Link href="/dashboard" className="underline">
+              <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
                 dashboard
               </Link>
               .
@@ -81,38 +85,38 @@ export default async function SuccessPage({
         </div>
 
         {/* Setup guide */}
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
+        <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">
             Managed Edge Proxy Setup (2 min)
           </p>
 
           <ol className="space-y-5 text-sm">
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">01</span>
-              <div>
-                <p className="font-medium text-gray-900">Install the SDK</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">01</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-[--foreground]">Install the SDK</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
                   <code>npm install @vantio/agent-sdk</code>
                 </pre>
               </div>
             </li>
 
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">02</span>
-              <div>
-                <p className="font-medium text-gray-900">Set your API key — one env var, that&apos;s it</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">02</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-[--foreground]">Set your API key — one env var, that&apos;s it</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
                   <code>{`VANTIO_API_KEY=${apiKey ?? "your-api-key-above"}
-VANTIO_INGEST_URL=https://app.vantio.ai`}</code>
+VANTIO_INGEST_URL=https://vantio.ai`}</code>
                 </pre>
               </div>
             </li>
 
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">03</span>
-              <div>
-                <p className="font-medium text-gray-900">Run your agent — zero code changes</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">03</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-[--foreground]">Run your agent — zero code changes</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
                   <code>{`# The CLI auto-intercepts all outbound LLM calls
 vantio run node agent.js
 vantio run --audit tsx agent.ts
@@ -127,7 +131,7 @@ vantio run --audit tsx agent.ts
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
             href="/dashboard"
-            className="rounded-lg bg-gray-900 px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-gray-700"
+            className="rounded-xl bg-[--accent] px-6 py-3 text-center text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
           >
             Open Dashboard →
           </Link>
@@ -135,7 +139,7 @@ vantio run --audit tsx agent.ts
             href="https://github.com/vantioai/vantio-open-core"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg border border-gray-300 px-6 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            className="rounded-xl border border-[--border-2] bg-[--surface] px-6 py-3 text-center text-sm font-semibold text-[--muted] transition-all hover:border-[--border] hover:text-[--foreground]"
           >
             SDK Reference
           </a>

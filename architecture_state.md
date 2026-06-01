@@ -645,3 +645,37 @@ vantio-artifacts.tar.gz
 | Non-forgeable identity | GitHub Actions OIDC (ephemeral, not a static secret) |
 | Transparency log | Rekor append-only ledger records attestation |
 | Build platform integrity | GitHub-hosted `ubuntu-latest` runner, not self-hosted |
+
+---
+
+## Phase IX Execution Log — Security & Reliability Audit (May 29, 2026)
+
+Full review of the open-core surface (web API routes, SDKs, CLI, CI). Fixes applied in source:
+
+### `apps/web` (Tier 02 control plane)
+
+| Route | Issue | Fix |
+|---|---|---|
+| `api/v1/ingest` | `void writeToSupabase()` is fire-and-forget on Edge runtime — the write is killed when the response flushes, so every event was dropped | `await Promise.all([computeHmac(...), writeToSupabase()])` |
+| `api/webhooks/supabase/anomaly` | Auth bypassed entirely when `SUPABASE_WEBHOOK_SECRET` was unset | Fail closed — `503` when the secret is missing |
+| `api/webhooks/stripe` | Handlers made unguarded Stripe/Supabase calls (unhandled 500s → Stripe retries); event was marked processed **before** the handler ran, so a transient failure permanently lost provisioning with no retry | Each handler wrapped in try/catch; on failure the idempotency marker is rolled back (`unmarkEvent`) and `500` is returned so Stripe retries |
+| `api/stripe/portal` | `subscriptions.retrieve` / `billingPortal.sessions.create` could throw (deleted sub/customer) → raw 500 | Wrapped; returns a clean `502` |
+| `api/v1/export` | CSV `escape()` missed bare `\r`; 10k-row cap was silent | Quote on `\r`; `X-Vantio-Truncated` / `X-Vantio-Row-Count` headers |
+| `api/contact` | Email accepted any string containing `@` | Proper regex validation |
+
+### SDKs + CLI
+
+| Package | Issue | Fix |
+|---|---|---|
+| `vantio-agent-sdk` (TS) | `reportAnomaly` no-opped when `ingestUrl` was passed explicitly but `VANTIO_CLOUD_INGEST` was unset; HTTP error responses were swallowed; no request timeout; misplaced JSDoc | Explicit `ingestUrl` bypasses the env gate; logs non-OK responses; `AbortSignal.timeout(5000)`; JSDoc moved to `getCurrentTraceId` |
+| `vantio-agent-sdk-py` | `asyncio.get_event_loop()` deprecated; `urlopen` could hang an executor thread; misleading HMAC comment | `get_running_loop()`; `urlopen(..., timeout=5)`; corrected comment |
+| `vantio-cli` | Interceptor minted a fresh `randomUUID()` per event, ignoring the seeded `VANTIO_TRACE_ID`; fire-and-forget POST had no timeout | Use `VANTIO_TRACE_ID` when present; `AbortSignal.timeout(5000)` |
+| `apps/cli` (win-bridge) | `close` + `code ?? 0` masked signal/non-zero exits | `exit` event, re-raises signals, `code ?? 1` |
+
+### CI
+
+| File | Issue | Fix |
+|---|---|---|
+| `enterprise-slsa-provenance.yml` | Installed with `--no-frozen-lockfile`, breaking the hermetic-build property the SLSA L3 attestation asserts | `--frozen-lockfile` (matches the documented Phase VIII intent) |
+
+- Status: ✅ complete — all fixes applied in source

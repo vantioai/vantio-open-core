@@ -128,7 +128,10 @@ async def report_anomaly(
         },
     }).encode("utf-8")
 
-    # HMAC-SHA256 of the trace ID keyed by the API key — matches the server-side receipt.
+    # HMAC-SHA256 of the trace ID keyed by the API key.
+    # Sent as x-vantio-hmac for optional future server-side validation.
+    # Note: the server currently returns its own HMAC over the response in
+    # x-vantio-signature; this outbound header is not validated server-side today.
     sig = hmac.new(key.encode(), trace_id.encode(), hashlib.sha256).hexdigest()
 
     try:
@@ -142,7 +145,11 @@ async def report_anomaly(
             },
             method="POST",
         )
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, urllib.request.urlopen, req)
+        loop = asyncio.get_running_loop()
+        # Bound the blocking urlopen — without a timeout a stalled ingest endpoint
+        # would hang the executor thread (and this coroutine) indefinitely.
+        await loop.run_in_executor(
+            None, functools.partial(urllib.request.urlopen, req, timeout=5)
+        )
     except Exception:
         pass  # Non-fatal — telemetry failures must never crash the agent.

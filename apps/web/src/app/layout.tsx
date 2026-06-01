@@ -1,15 +1,66 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
+import { SITE, organizationJsonLd, softwareApplicationJsonLd } from "@/lib/seo";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Vantio AI — Know What Your AI Agents Are Doing",
-  description:
-    "AI agents make decisions and take actions you can't see. Vantio watches every move, stops unauthorized behavior instantly, and creates a tamper-proof record you can hand to an auditor.",
+  metadataBase: new URL(SITE.url),
+  title: {
+    default: SITE.defaultTitle,
+    template: "%s — Vantio AI",
+  },
+  description: SITE.defaultDescription,
+  applicationName: SITE.name,
+  authors: [{ name: "Vantio AI, Inc.", url: SITE.url }],
+  creator: "Vantio AI, Inc.",
+  publisher: "Vantio AI, Inc.",
+  category: "technology",
+  keywords: [
+    "AI governance",
+    "AI agent security",
+    "AI agent monitoring",
+    "AI compliance",
+    "agent observability",
+    "LLM security",
+    "AI audit trail",
+    "data exfiltration prevention",
+    "AI agent guardrails",
+  ],
+  alternates: { canonical: "/" },
+  formatDetection: { email: false, address: false, telephone: false },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  openGraph: {
+    type: "website",
+    siteName: SITE.name,
+    locale: SITE.locale,
+    url: SITE.url,
+    title: SITE.defaultTitle,
+    description: SITE.defaultDescription,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE.defaultTitle,
+    description: SITE.defaultDescription,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#030305",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -17,13 +68,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <head>
         <script type="application/ld+json" dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Corporation",
-            "name": "Vantio AI, Inc.",
-            "foundingLocation": "Delaware",
-            "url": "https://vantio.ai",
-          }),
+          __html: JSON.stringify(organizationJsonLd()),
+        }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{
+          __html: JSON.stringify(softwareApplicationJsonLd()),
         }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -41,7 +89,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   ["/architecture", "Architecture"],
                   ["/pricing",      "Pricing"],
                   ["/enterprise",   "Enterprise"],
-                  ["/pro-smb",      "PRO / SMB"],
+                  ["/pro",          "Pro"],
                   ["/developers",   "Developers"],
                   ["/research",     "Research"],
                 ].map(([href, label]) => (

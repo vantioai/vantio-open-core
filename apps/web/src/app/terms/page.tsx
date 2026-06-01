@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Terms of Service — Vantio AI" };
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
+export const metadata: Metadata = buildMetadata({
+  title: "Terms of Service",
+  description: "The terms governing your use of Vantio AI's products and services.",
+  path: "/terms",
+});
 export default function TermsPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Terms of Service", path: "/terms" }])} />
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Legal</p>
       <h1 className="mb-2 text-3xl font-bold">Terms of Service</h1>
       <p className="mb-12 text-xs text-[--muted]">Effective date: May 1, 2026 · Vantio AI, Inc. (Delaware C-Corporation)</p>

@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Privacy Policy — Vantio AI" };
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
+export const metadata: Metadata = buildMetadata({
+  title: "Privacy Policy",
+  description: "How Vantio AI collects, uses, and protects your data.",
+  path: "/privacy",
+});
 export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Privacy Policy", path: "/privacy" }])} />
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Legal</p>
       <h1 className="mb-2 text-3xl font-bold">Privacy Policy</h1>
       <p className="mb-12 text-xs text-[--muted]">Effective date: May 1, 2026 · Vantio AI, Inc. (Delaware C-Corporation)</p>

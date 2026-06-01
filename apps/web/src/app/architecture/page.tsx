@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
 
-export const metadata: Metadata = {
-  title: "Architecture — Vantio AI",
+export const metadata: Metadata = buildMetadata({
+  title: "Architecture",
   description: "Three components. One atomic operation. Zero trust required at any layer.",
-};
+  path: "/architecture",
+});
 
 const LAYERS = [
   {
@@ -11,11 +14,12 @@ const LAYERS = [
     label: "Phantom Engine",
     color: "text-[--accent]", border: "border-[--accent]/30", bg: "bg-[--accent]/5",
     headline: "eBPF Physical Containment",
-    body: "Pure Rust eBPF program compiled to bpfel-unknown-none and loaded into the Linux kernel via Aya. Every agent syscall is intercepted at LSM hook boundaries before it can affect the host filesystem, network, or external state. Three program types run simultaneously:",
+    body: "Pure Rust eBPF programs compiled to bpfel-unknown-none and loaded into the Linux kernel via Aya. Agent activity is intercepted at kernel hook boundaries — tracepoints, uprobes, and a TC egress classifier — before it can affect the host filesystem, network, or external state. The programs run simultaneously:",
     points: [
       { code: "sched_process_fork", desc: "BTF tracepoint — inherits trace_id from parent to all child PIDs. LLM agents that spawn bash, curl, or python subprocesses are covered without re-seeding." },
-      { code: "ssl_write uprobe",   desc: "Attaches to SSL_write in libssl.so.3. Intercepts the egress memory buffer before encryption — before transmission. Records PID, trace_id, bytes, and target host." },
-      { code: "tc_enforce",         desc: "TC egress classifier on the network interface. For traced PIDs, drops packets to non-allowlisted destinations (TC_ACT_SHOT). RFC-1918 ranges matched via bitmask — full CIDR coverage." },
+      { code: "ssl_write uprobe",   desc: "Attaches to SSL_write in libssl.so.3 and gnutls_record_send in libgnutls.so.30. Intercepts the egress buffer before encryption — full TLS coverage across OpenSSL and GnuTLS (the default curl backend on Ubuntu). Records PID, trace_id, bytes, and target host." },
+      { code: "execve / openat",    desc: "Syscall tracepoints (sys_enter_execve, sys_enter_openat) attribute every subprocess spawn and file open to a trace_id. Each event carries a type discriminant so it is never confused with a TLS record on the shared ring buffer." },
+      { code: "tc_enforce",         desc: "TC egress classifier on the network interface. Drops packets to non-allowlisted destinations (TC_ACT_SHOT) across both IPv4 and IPv6 — RFC-1918 plus IPv6 ULA/link-local matched via bitmask, so resolving an AAAA record cannot bypass enforcement." },
     ],
     deploy: "Kubernetes DaemonSet (one pod per node). Requires CAP_BPF, CAP_NET_ADMIN, CAP_SYS_ADMIN and host PID/network namespaces. Compatible with EKS, GKE, AKS on kernel ≥ 5.8.",
   },
@@ -41,7 +45,7 @@ const LAYERS = [
     points: [
       { code: "SOVEREIGN_MODE=cloud",    desc: "GCP Spanner TrueTime WORM ledger (allow_commit_timestamp=true). Globally consistent timestamps. The Edge Proxy service account holds strictly append-only INSERT privileges." },
       { code: "SOVEREIGN_MODE=local",    desc: "NDJSON file output (--output-file). Compatible with the gcloud spanner import format for air-gapped environments. Immutable on local disk before upload." },
-      { code: "x-vantio-signature",      desc: "HMAC-SHA256 of every ingest payload, signed with the tenant's API key. Events are cryptographically receipted and verifiable without trusting the ledger." },
+      { code: "x-vantio-signature",      desc: "HMAC-SHA256 receipt over the event trace ID, keyed by the tenant's API key and returned on every ingest. Events are cryptographically receipted and verifiable without trusting the ledger." },
     ],
     deploy: "schema/spanner_ledger.ddl defines the TrueTimeLedger table. The Edge Proxy service account requires only INSERT privileges — no SELECT, UPDATE, or DELETE.",
   },
@@ -61,6 +65,7 @@ const STACK = [
 export default function ArchitecturePage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Architecture", path: "/architecture" }])} />
       <div className="mb-4 flex flex-wrap gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1 text-xs font-semibold text-[--accent]">Tier 01</span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1 text-xs font-semibold text-blue-400">Tier 02</span>

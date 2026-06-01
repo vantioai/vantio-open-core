@@ -46,13 +46,13 @@ export async function withVantio<T>(
   return _storage.run(ctx, callback);
 }
 
+/** Canonical alias for withVantio — use whichever you prefer. */
+export const shield = withVantio;
+
 /**
  * Returns the VANTIO_TRACE_ID for the current async execution context,
  * or undefined when called outside a withVantio frame.
  */
-/** Canonical alias for withVantio — use whichever you prefer. */
-export const shield = withVantio;
-
 export function getCurrentTraceId(): string | undefined {
   return _storage.getStore()?.traceId;
 }
@@ -112,14 +112,19 @@ export async function reportAnomaly(
     process.env["VANTIO_IDENTITY"] ??
     "unknown";
 
+  // Bypass the env gate when the caller explicitly supplied an ingestUrl —
+  // the explicit opt-in is sufficient. Only fall back to the env gate when
+  // ingestUrl comes from the environment (Tier 1 local mode guard).
+  const callerSuppliedUrl = !!opts.ingestUrl;
   const cloudIngest =
+    callerSuppliedUrl ||
     process.env["VANTIO_CLOUD_INGEST"] === "true" ||
     process.env["VANTIO_CLOUD_INGEST"] === "1";
 
   if (!cloudIngest) return; // Tier 1 local mode — cloud ingest not activated
 
   try {
-    await fetch(`${ingestUrl}/api/v1/ingest`, {
+    const res = await fetch(`${ingestUrl}/api/v1/ingest`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -130,7 +135,13 @@ export async function reportAnomaly(
         auditMode: opts.auditMode ?? false,
         eventPayload: event,
       }),
+      // Bound the request so a stalled ingest endpoint never hangs the agent.
+      signal: AbortSignal.timeout(5000),
     });
+    if (!res.ok) {
+      // Non-fatal but visible — silent 4xx/5xx made debugging impossible.
+      console.warn(`[vantio] ingest request returned HTTP ${res.status} (non-fatal)`);
+    }
   } catch (err) {
     // Non-fatal — never crash the agent over telemetry failures.
     console.warn("[vantio] ingest request failed (non-fatal):", err);

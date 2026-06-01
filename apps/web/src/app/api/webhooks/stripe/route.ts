@@ -34,6 +34,22 @@ async function markEventProcessed(supabase: ReturnType<typeof getSupabaseAdmin>,
   return false;
 }
 
+/**
+ * Rollback the idempotency marker so Stripe's retry can reprocess the event.
+ * Called when a handler fails AFTER the event was pre-marked as processed —
+ * without this, the pre-mark would suppress every retry and the work (e.g.
+ * provisioning a paid tenant) would be lost permanently.
+ */
+async function unmarkEvent(supabase: ReturnType<typeof getSupabaseAdmin>, eventId: string): Promise<void> {
+  const { error } = await supabase
+    .from("stripe_processed_events")
+    .delete()
+    .eq("event_id", eventId);
+  if (error) {
+    console.error("[stripe-webhook] failed to roll back idempotency marker:", error.message);
+  }
+}
+
 async function resolveCustomerEmail(customerId: string | Stripe.Customer | Stripe.DeletedCustomer): Promise<string | null> {
   const id       = typeof customerId === "string" ? customerId : customerId.id;
   const customer = await getStripe().customers.retrieve(id);
@@ -72,74 +88,93 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // ── checkout.session.completed ────────────────────────────────────────────
   if (event.type === "checkout.session.completed") {
-    const session       = event.data.object as Stripe.Checkout.Session;
-    const customerEmail = session.customer_details?.email ?? session.customer_email;
-    const subscriptionId =
-      typeof session.subscription === "string"
-        ? session.subscription
-        : session.subscription?.id ?? null;
+    try {
+      const session       = event.data.object as Stripe.Checkout.Session;
+      const customerEmail = session.customer_details?.email ?? session.customer_email;
+      const subscriptionId =
+        typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription?.id ?? null;
 
-    if (!customerEmail) {
-      return NextResponse.json({ error: "No customer email" }, { status: 400 });
+      if (!customerEmail) {
+        return NextResponse.json({ error: "No customer email" }, { status: 400 });
+      }
+
+      const { data: existing } = await supabase
+        .from("tenants")
+        .select("api_key")
+        .eq("email", customerEmail)
+        .single();
+
+      const apiKey =
+        (existing as { api_key?: string } | null)?.api_key ??
+        `vantio_${Buffer.from(crypto.randomUUID().replace(/-/g, ""), "hex").toString("base64url")}`;
+
+      await supabase.from("tenants").upsert(
+        {
+          email:                      customerEmail,
+          tier:                       "PRO",
+          stripe_subscription_id:     subscriptionId,
+          stripe_checkout_session_id: session.id,
+          api_key:                    apiKey,
+          updated_at:                 new Date().toISOString(),
+        },
+        { onConflict: "email", ignoreDuplicates: false }
+      );
+
+      console.log(`[stripe-webhook] Tenant provisioned (PRO): ${customerEmail}`);
+    } catch (err) {
+      console.error("[stripe-webhook] checkout.session.completed handler failed:", err);
+      // Roll back the idempotency marker and signal failure so Stripe retries —
+      // provisioning a paid tenant must not be silently dropped on a transient error.
+      await unmarkEvent(supabase, event.id);
+      return NextResponse.json({ error: "Processing failed; will retry." }, { status: 500 });
     }
-
-    const { data: existing } = await supabase
-      .from("tenants")
-      .select("api_key")
-      .eq("email", customerEmail)
-      .single();
-
-    const apiKey =
-      (existing as { api_key?: string } | null)?.api_key ??
-      `vantio_${Buffer.from(crypto.randomUUID().replace(/-/g, ""), "hex").toString("base64url")}`;
-
-    await supabase.from("tenants").upsert(
-      {
-        email:                      customerEmail,
-        tier:                       "PRO",
-        stripe_subscription_id:     subscriptionId,
-        stripe_checkout_session_id: session.id,
-        api_key:                    apiKey,
-        updated_at:                 new Date().toISOString(),
-      },
-      { onConflict: "email", ignoreDuplicates: false }
-    );
-
-    console.log(`[stripe-webhook] Tenant provisioned (PRO): ${customerEmail}`);
     return NextResponse.json({ received: true });
   }
 
   // ── customer.subscription.updated ─────────────────────────────────────────
   if (event.type === "customer.subscription.updated") {
-    const sub    = event.data.object as Stripe.Subscription;
-    const status = sub.status;
-    const email  = await resolveCustomerEmail(sub.customer);
+    try {
+      const sub    = event.data.object as Stripe.Subscription;
+      const status = sub.status;
+      const email  = await resolveCustomerEmail(sub.customer);
 
-    if (email) {
-      if (status === "active" || status === "trialing") {
-        await supabase.from("tenants")
-          .update({ tier: "PRO", updated_at: new Date().toISOString() })
-          .eq("email", email);
-      } else if (status === "past_due" || status === "unpaid" || status === "paused") {
-        await supabase.from("tenants")
-          .update({ tier: "FREE", updated_at: new Date().toISOString() })
-          .eq("email", email);
-        console.log(`[stripe-webhook] ${status} — downgraded: ${email}`);
+      if (email) {
+        if (status === "active" || status === "trialing") {
+          await supabase.from("tenants")
+            .update({ tier: "PRO", updated_at: new Date().toISOString() })
+            .eq("email", email);
+        } else if (status === "past_due" || status === "unpaid" || status === "paused") {
+          await supabase.from("tenants")
+            .update({ tier: "FREE", updated_at: new Date().toISOString() })
+            .eq("email", email);
+          console.log(`[stripe-webhook] ${status} — downgraded: ${email}`);
+        }
       }
+    } catch (err) {
+      console.error("[stripe-webhook] customer.subscription.updated handler failed:", err);
+      await unmarkEvent(supabase, event.id);
+      return NextResponse.json({ error: "Processing failed; will retry." }, { status: 500 });
     }
-
     return NextResponse.json({ received: true });
   }
 
   // ── customer.subscription.deleted ─────────────────────────────────────────
   if (event.type === "customer.subscription.deleted") {
-    const sub   = event.data.object as Stripe.Subscription;
-    const email = await resolveCustomerEmail(sub.customer);
-    if (email) {
-      await supabase.from("tenants")
-        .update({ tier: "FREE", stripe_subscription_id: null, updated_at: new Date().toISOString() })
-        .eq("email", email);
-      console.log(`[stripe-webhook] Cancelled — downgraded to FREE: ${email}`);
+    try {
+      const sub   = event.data.object as Stripe.Subscription;
+      const email = await resolveCustomerEmail(sub.customer);
+      if (email) {
+        await supabase.from("tenants")
+          .update({ tier: "FREE", stripe_subscription_id: null, updated_at: new Date().toISOString() })
+          .eq("email", email);
+        console.log(`[stripe-webhook] Cancelled — downgraded to FREE: ${email}`);
+      }
+    } catch (err) {
+      console.error("[stripe-webhook] customer.subscription.deleted handler failed:", err);
+      await unmarkEvent(supabase, event.id);
+      return NextResponse.json({ error: "Processing failed; will retry." }, { status: 500 });
     }
     return NextResponse.json({ received: true });
   }

@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
 
-export const metadata: Metadata = {
-  title: "Trust & Compliance — Vantio AI",
+export const metadata: Metadata = buildMetadata({
+  title: "Trust & Compliance",
   description: "How Vantio protects your data, meets compliance requirements, and proves it.",
-};
+  path: "/trust",
+});
 
 export default function TrustPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Trust & Compliance", path: "/trust" }])} />
       <div className="mb-4 flex flex-wrap gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1 text-xs font-semibold text-[--accent]">Tier 01</span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1 text-xs font-semibold text-blue-400">Tier 02</span>
@@ -23,10 +27,10 @@ export default function TrustPage() {
       {/* Key assurances */}
       <div className="mb-16 grid gap-5 sm:grid-cols-2">
         {[
-          { icon: "🚫", title: "We never read your prompts", body: "Vantio works at the OS and network layer. We record that an AI call was made — not what was in it. Your sensitive data stays yours." },
-          { icon: "🔒", title: "Your data never leaves your VPC (Enterprise)", body: "Enterprise deployments run entirely inside your own Kubernetes cluster. Anomaly records are stored in your own Spanner instance." },
-          { icon: "📋", title: "Tamper-proof audit records", body: "Every Vantio decision is signed and stored in an append-only ledger. Records cannot be modified or deleted — even by Vantio." },
-          { icon: "🔑", title: "Minimal data collection", body: "We collect what happened (which endpoint, how many bytes, the outcome) — never the content of AI inputs or outputs." },
+          { icon: "🚫", title: "We never read your prompts", body: "Vantio never sees the content of your AI conversations. We record that something happened — not what was said. Your sensitive data stays yours." },
+          { icon: "🔒", title: "Your data never leaves your cloud (Enterprise)", body: "Enterprise runs entirely inside your own cloud, and your records stay in your own database — never ours." },
+          { icon: "📋", title: "Tamper-proof audit records", body: "Every Vantio decision is sealed into a history that can't be edited or deleted — not even by us. It's there when an auditor asks." },
+          { icon: "🔑", title: "We collect as little as possible", body: "We record what happened — which action, how much data, the outcome — never the actual content of your AI's inputs or outputs." },
         ].map(({ icon, title, body }) => (
           <div key={title} className="rounded-xl border border-[--border] bg-[--surface] p-5">
             <div className="mb-3 text-2xl">{icon}</div>

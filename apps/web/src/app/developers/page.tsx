@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
 
-export const metadata: Metadata = {
-  title: "Developers — Vantio AI",
-  description: "Ship AI governance in two lines of code. Node.js and Python SDK.",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Developers",
+  description: "Ship AI governance in two lines of code. Node.js and Python SDK with zero refactoring.",
+  path: "/developers",
+});
 
 const NODE_SHIELD = `import { shield, getCurrentTraceId } from "@vantio/agent-sdk";
 
@@ -67,6 +70,7 @@ const FRAMEWORKS = [
 export default function DevelopersPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Developers", path: "/developers" }])} />
       <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-4 py-1.5 text-xs font-semibold text-[--accent]">
         Tier 01 — Developer · Open-Core · Free
       </span>
@@ -181,7 +185,7 @@ export default function DevelopersPage() {
         For Ring-0 kernel enforcement, see the{" "}
         <a href="/enterprise" className="text-red-400 underline">Enterprise tier</a>.
         For managed proxy-layer blocking, see the{" "}
-        <a href="/pro-smb" className="text-blue-400 underline">PRO / SMB tier</a>.
+        <a href="/pro" className="text-blue-400 underline">Pro tier</a>.
       </div>
     </main>
   );

@@ -162,10 +162,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   };
 
-  void writeToSupabase();
-
-  // HMAC signature over the response so callers can verify the receipt.
-  const hmacSig = await computeHmac(identity, payload.traceId);
+  // Run the Supabase write and HMAC computation concurrently.
+  // Both must complete before we return — in Edge runtime a fire-and-forget
+  // void promise is killed the moment the response is dispatched.
+  const [hmacSig] = await Promise.all([
+    computeHmac(identity, payload.traceId),
+    writeToSupabase(),
+  ]);
 
   return NextResponse.json(
     { status: 0, traceId: payload.traceId },

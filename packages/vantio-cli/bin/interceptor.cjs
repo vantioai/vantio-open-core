@@ -94,7 +94,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
             "x-vantio-identity": API_KEY,
           },
           body: JSON.stringify({
-            traceId:      randomUUID(),
+            traceId:      process.env.VANTIO_TRACE_ID ?? randomUUID(),
             auditMode:    AUDIT_MODE,
             eventPayload: {
               target_host:   hostname,
@@ -104,6 +104,8 @@ globalThis.fetch = async function vantioFetch(input, init) {
               action_taken:  "POLICY_VIOLATION",
             },
           }),
+          // Bound the fire-and-forget POST so stalled sockets cannot accumulate.
+          signal: AbortSignal.timeout(5000),
         }).catch(() => {});
       }
     }

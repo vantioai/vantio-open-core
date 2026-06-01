@@ -41,7 +41,7 @@ function toCSV(rows: AnomalyRow[]): string {
   const escape = (v: unknown): string => {
     if (v == null) return "";
     const s = String(v);
-    return s.includes(",") || s.includes('"') || s.includes("\n")
+    return s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")
       ? `"${s.replace(/"/g, '""')}"`
       : s;
   };
@@ -84,25 +84,31 @@ export async function GET(): Promise<NextResponse> {
 
   // ── Fetch all events for this tenant ──────────────────────────────────────
   const supabase = getSupabaseAdmin();
+  const EXPORT_LIMIT = 10_000;
+
   const { data, error } = await supabase
     .from("anomaly_events")
     .select("id, trace_id, anomaly_metadata, audit_mode, created_at")
     .eq("tenant_identity", user.email)
     .order("created_at", { ascending: false })
-    .limit(10000);
+    .limit(EXPORT_LIMIT);
 
   if (error) {
     return NextResponse.json({ error: "Failed to fetch events." }, { status: 500 });
   }
 
-  const csv      = toCSV((data ?? []) as AnomalyRow[]);
+  const rows     = (data ?? []) as AnomalyRow[];
+  const csv      = toCSV(rows);
   const filename = `vantio-anomaly-events-${new Date().toISOString().slice(0, 10)}.csv`;
+  const truncated = rows.length === EXPORT_LIMIT;
 
   return new NextResponse(csv, {
     status:  200,
     headers: {
       "Content-Type":        "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      "X-Vantio-Row-Count":  String(rows.length),
+      ...(truncated ? { "X-Vantio-Truncated": "true" } : {}),
     },
   });
 }

@@ -1,25 +1,29 @@
 import type { Metadata } from "next";
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
 
-export const metadata: Metadata = {
-  title: "PRO / SMB — Vantio AI",
-  description: "Active AI governance for growing teams. Block unauthorized agent behavior automatically — no servers, no code changes, no ops burden.",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Pro",
+  description: "Put your AI agents in production with confidence. Vantio Pro automatically stops risky actions, alerts your team, and keeps an audit-ready record — live in minutes, no ops team needed.",
+  path: "/pro",
+});
 
-export default function ProSmbPage() {
+export default function ProPage() {
   return (
     <main>
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Pro", path: "/pro" }])} />
       <section className="mx-auto max-w-4xl px-6 pb-16 pt-24 text-center">
         <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-4 py-1.5 text-xs font-semibold text-blue-400">
-          Tier 02 — PRO / SMB · $499/month
+          Tier 02 — Pro · $499/month
         </span>
         <h1 className="mb-4 text-4xl font-bold sm:text-5xl">
-          Stop unauthorized AI behavior<br />
-          <span className="text-blue-400">automatically.</span>
+          Let your agents run free.<br />
+          <span className="text-blue-400">You stay in control.</span>
         </h1>
         <p className="mx-auto mb-10 max-w-2xl text-lg text-[--muted]">
-          When your AI agent tries to do something it shouldn&apos;t — contact an unauthorized
-          server, access sensitive data, make unexpected API calls — Vantio blocks it instantly
-          and tells your team. No servers to manage. No code to change.
+          The moment an agent tries to do something it shouldn&apos;t — touch sensitive data,
+          call the wrong tool, or rack up a surprise bill — Vantio steps in, stops it, and
+          tells your team. No servers to manage. No code to change.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <a href="/pricing"
@@ -40,11 +44,11 @@ export default function ProSmbPage() {
           <p className="mb-12 text-center text-2xl font-bold">Everything you need. Nothing you don&apos;t.</p>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { icon: "🚫", title: "Automatic blocking", body: "Non-compliant AI calls are stopped before they reach the model. You define the rules — Vantio enforces them." },
+              { icon: "🚫", title: "Automatic blocking", body: "Risky actions get stopped before they happen. You set the rules in plain language — Vantio enforces them automatically, 24/7." },
               { icon: "📊", title: "Live dashboard", body: "See every AI agent action in real time. Filter by agent, by date, by outcome. Export to CSV for compliance review." },
               { icon: "🔔", title: "Instant Slack alerts", body: "The moment an AI agent does something it shouldn't, your team gets a Slack message with the full context." },
               { icon: "📝", title: "30-day compliance log", body: "Every AI decision stored in a tamper-proof log for 30 days. Ready for audits, incident reviews, or just peace of mind." },
-              { icon: "🔑", title: "API key in 60 seconds", body: "Pay, get your API key, set two environment variables. You're done. No infrastructure, no Kubernetes, no ops team." },
+              { icon: "🔑", title: "Live in minutes", body: "Sign up, drop in your key, and you're protected. No infrastructure to set up, no ops team, nothing to maintain." },
               { icon: "💳", title: "Cancel any time", body: "14-day free trial, then $499/month. Cancel from your dashboard. No sales calls, no lock-in contracts." },
             ].map(({ icon, title, body }) => (
               <div key={title} className="rounded-xl border border-[--border] bg-[--background] p-5">
@@ -78,7 +82,7 @@ export default function ProSmbPage() {
           ))}
         </div>
         <p className="mt-10 text-sm text-[--muted]">
-          Need kernel-level enforcement instead of proxy-layer blocking?{" "}
+          Need the strongest possible protection for regulated workloads?{" "}
           <a href="/enterprise" className="text-red-400 underline">See Enterprise →</a>
         </p>
       </section>

@@ -1,28 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { buildMetadata, faqJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
+import { HOME_FAQ } from "@/lib/faq";
 
-export const metadata: Metadata = {
-  title: "Vantio AI — Know What Your AI Agents Are Doing",
-  description: "AI agents make decisions and take actions you can't see. Vantio watches every move, stops unauthorized behavior instantly, and creates a tamper-proof record you can hand to an auditor.",
-};
+export const metadata: Metadata = buildMetadata({ path: "/" });
 
 const PROBLEMS = [
-  { icon: "📤", title: "Data leaving without permission", body: "Your AI agent calls an API, processes a document, makes an outbound request. Did sensitive data leave your network? Without Vantio, you have no way to know." },
-  { icon: "📋", title: "No audit trail for compliance", body: "Your compliance team asks what your AI agents did last quarter. Without a governance layer, the honest answer is you're not sure. That's not an answer regulators accept." },
-  { icon: "🔓", title: "Agents acting outside their scope", body: "AI agents can spawn subprocesses, open files, make network calls — outside the boundaries you intended. You'd only find out after the damage was done." },
+  { icon: "🚀", title: "Stuck in pilot mode", body: "Your AI agents work great in testing — but putting them in front of real customers and real data feels too risky to ship. So they sit in pilot purgatory instead of driving revenue." },
+  { icon: "⚖️", title: "Compliance keeps saying no", body: "Your legal and risk teams can't sign off on software they can't see or control. Without proof of what your AI did, every launch turns into a months-long debate." },
+  { icon: "💸", title: "One mistake gets expensive", body: "An agent shares data it shouldn't, calls the wrong tool, or runs up a huge bill — and you find out after the damage is done. Cleanup always costs more than prevention." },
 ];
 
 const HOW = [
-  { n: "01", title: "See everything", body: "Vantio watches every action your AI agents take — network calls, file access, subprocess spawning — and logs them to a tamper-proof ledger in real time." },
-  { n: "02", title: "Stop what shouldn't happen", body: "Set the boundaries. When an agent tries to cross them, Vantio blocks the action instantly — before a single byte of unauthorized data leaves your environment." },
-  { n: "03", title: "Prove it to anyone", body: "Every decision Vantio makes comes with a cryptographic record. Hand it to an auditor, a regulator, or your board. It's independently verifiable." },
+  { n: "01", title: "Set your rules", body: "Tell Vantio what your agents are allowed to do — which tools they can use, which data they can touch, how much they can spend. Simple settings, no code." },
+  { n: "02", title: "Vantio enforces them", body: "If an agent tries to step outside the lines, Vantio stops it in real time — before anything bad happens — and sends your team an instant heads-up." },
+  { n: "03", title: "Prove it to anyone", body: "Every action is saved to a clean, tamper-proof history you can hand to your boss, an auditor, or a regulator the moment they ask." },
 ];
 
 const WHY = [
-  { title: "We never read your prompts", body: "Vantio works at the OS level, not the application layer. We see that a request was made — not what was in it. Your sensitive AI inputs stay yours." },
-  { title: "Zero code changes required", body: "Run vantio run node agent.js instead of node agent.js. That's the entire integration. Your codebase doesn't change." },
-  { title: "Invisible to your agents", body: "Under 1ms of overhead. Your agents run at full speed. The governance layer is invisible until something needs to be stopped." },
-  { title: "Works with every AI framework", body: "LangChain, AutoGen, CrewAI, OpenAI, Anthropic, Bedrock, Vertex. If your agent makes network calls, Vantio can watch it." },
+  { title: "Ship faster, not slower", body: "Stop debating whether agents are safe to launch. Vantio gives you the guardrails to put them in production with confidence — this week, not next quarter." },
+  { title: "Your secrets stay secret", body: "Vantio never reads your prompts or your AI's answers. It sees what happened, not what was said — so your data and your IP stay completely yours." },
+  { title: "Nothing to rebuild", body: "No code changes, no new infrastructure, no team to hire. Most customers are live in under an hour, and it works with the tools you already use." },
+  { title: "Your agents never slow down", body: "Vantio runs quietly in the background with effectively zero lag. Your agents move at full speed — you just get a safety net underneath them." },
 ];
 
 const TIERS = [
@@ -30,17 +30,17 @@ const TIERS = [
     price: "$0", period: "forever",
     color: "text-[--accent]", border: "border-[--accent]/20", bg: "bg-[--accent]/5", glow: "hover:shadow-[0_0_30px_rgba(0,232,122,0.1)]",
     cta: "Get Started Free", href: "/developers",
-    points: ["10,000 agent events/month","Real-time dashboard","Node.js and Python","No credit card required"] },
-  { label: "PRO", name: "SMB", headline: "Block unauthorized behavior automatically.", badge: "Most Popular",
+    points: ["See every action your agents take","Live dashboard, updated in real time","Works with Node.js & Python","Free forever — no card required"] },
+  { label: "PRO", name: "Pro", headline: "Block risky actions automatically.", badge: "Most Popular",
     price: "$499", period: "/month",
     color: "text-blue-400", border: "border-blue-400/30", bg: "bg-blue-400/5", glow: "hover:shadow-[0_0_30px_rgba(59,130,246,0.12)]",
     cta: "Start 14-Day Free Trial", href: "/pricing", primary: true,
-    points: ["Active blocking — not just logging","30-day tamper-proof compliance log","Slack alerts on violations","No servers to manage"] },
-  { label: "ENTERPRISE", name: "Enterprise", headline: "OS-level enforcement. Nothing bypasses it.",
+    points: ["Stops bad actions in real time","Tamper-proof compliance history","Instant Slack alerts","Live in minutes — no ops team"] },
+  { label: "ENTERPRISE", name: "Enterprise", headline: "Total control. Nothing gets past it.",
     price: "Custom", period: "from $50k/yr",
     color: "text-red-400", border: "border-red-400/20", bg: "bg-red-400/5", glow: "hover:shadow-[0_0_30px_rgba(239,68,68,0.08)]",
     cta: "Talk to Sales", href: "/enterprise",
-    points: ["Kernel-level enforcement","Your own Kubernetes cluster","7-year tamper-proof records","SOC 2, MiFID II, HIPAA"] },
+    points: ["Maximum-strength enforcement","Runs inside your own cloud","7-year audit records","Built for SOC 2, HIPAA & MiFID II"] },
 ];
 
 export default function HomePage() {
@@ -58,16 +58,16 @@ export default function HomePage() {
           </div>
 
           <h1 className="mt-4 text-5xl font-bold leading-[1.08] tracking-tight sm:text-6xl lg:text-7xl">
-            Know what your AI agents<br />
+            Go fully autonomous.<br />
             <span className="bg-gradient-to-r from-[--accent] via-emerald-300 to-[--accent] bg-clip-text text-transparent">
-              are actually doing.
+              Stay fully compliant.
             </span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-[--muted]">
-            AI agents make decisions and take actions you can&apos;t see. Vantio watches every
-            move, stops unauthorized behavior instantly, and creates a tamper-proof record
-            you can hand to an auditor.
+            Vantio is the governance layer for autonomous AI agents — secure every agent,
+            prove compliance to regulators, and accelerate deployment without slowing your
+            team down.
           </p>
 
           <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
@@ -94,7 +94,8 @@ export default function HomePage() {
               <p className="text-[--muted]">$ <span className="text-[--accent]">vantio run</span> node agent.js</p>
               <p className="mt-2 text-[--muted]"><span className="text-[--accent]">[ ∅ VANTIO ]</span> Phantom Engine active</p>
               <p className="text-[--muted]">  trace map  : /sys/fs/bpf/vantio_trace_map</p>
-              <p className="text-[--muted]">  ssl probe  : SSL_write uprobe <span className="text-green-400">attached</span></p>
+              <p className="text-[--muted]">  tls probe  : SSL_write + gnutls_record_send <span className="text-green-400">attached</span></p>
+              <p className="text-[--muted]">  tc enforce : eth0 · IPv4 + IPv6</p>
               <p className="mt-2 text-[--muted]"><span className="text-yellow-400">⚠</span>  Outbound call intercepted</p>
               <p className="text-[--muted]">  host: <span className="text-blue-400">api.openai.com</span>  bytes: 14,382  action: <span className="text-red-400">BLOCKED</span></p>
             </div>
@@ -107,7 +108,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-5xl">
           <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">The Problem</p>
           <h2 className="mb-14 text-center text-3xl font-bold">
-            AI agents are powerful.<br />They&apos;re also unsupervised.
+            AI agents can do amazing things.<br />Until one does the wrong thing.
           </h2>
           <div className="grid gap-5 md:grid-cols-3">
             {PROBLEMS.map(({ icon, title, body }) => (
@@ -128,7 +129,7 @@ export default function HomePage() {
       <section className="px-6 py-24">
         <div className="mx-auto max-w-5xl">
           <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">How It Works</p>
-          <h2 className="mb-16 text-center text-3xl font-bold">Three things. In that order.</h2>
+          <h2 className="mb-16 text-center text-3xl font-bold">Simple to set up. Safe by default.</h2>
           <div className="grid gap-6 md:grid-cols-3">
             {HOW.map(({ n, title, body }) => (
               <div key={n} className="rounded-2xl border border-[--border] bg-[--surface-2] p-7 transition-all hover:border-[--border-2]">
@@ -147,7 +148,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-5xl">
           <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Why Vantio</p>
           <h2 className="mb-14 text-center text-3xl font-bold">
-            Built for teams that can&apos;t afford to guess.
+            Less risk. Less busywork. More autonomy.
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
             {WHY.map(({ title, body }) => (
@@ -211,13 +212,34 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── FAQ ───────────────────────────────────────────────────────────────── */}
+      <section className="px-6 py-24">
+        <JsonLd data={faqJsonLd(HOME_FAQ)} />
+        <div className="mx-auto max-w-3xl">
+          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">FAQ</p>
+          <h2 className="mb-12 text-center text-3xl font-bold">Questions, answered.</h2>
+          <div className="space-y-4">
+            {HOME_FAQ.map(({ question, answer }) => (
+              <details key={question}
+                className="group rounded-2xl border border-[--border] bg-[--surface-2] p-6 transition-all hover:border-[--border-2]">
+                <summary className="flex cursor-pointer list-none items-center justify-between text-base font-semibold text-[--foreground] [&::-webkit-details-marker]:hidden">
+                  {question}
+                  <span className="ml-4 shrink-0 text-xl text-[--muted] transition-transform group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-4 text-sm leading-relaxed text-[--muted]">{answer}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Final CTA ─────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden border-t border-[--border] bg-[--surface] px-6 py-20 text-center">
         <div className="pointer-events-none absolute left-1/2 top-1/2 h-64 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[--accent]/8 blur-3xl" />
         <div className="relative">
           <h2 className="text-3xl font-bold">Your AI agents are running right now.</h2>
           <p className="mx-auto mt-3 max-w-md text-[--muted]">
-            Do you know what they&apos;re doing? Start watching in under 60 seconds — for free.
+            Give them guardrails they can&apos;t cross and ship with confidence — set up in minutes, free to start.
           </p>
           <Link href="/developers"
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[--accent] px-8 py-3.5 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]">
