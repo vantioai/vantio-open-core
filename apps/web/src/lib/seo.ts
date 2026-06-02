@@ -111,7 +111,7 @@ export function softwareApplicationJsonLd() {
         name: "Pro",
         price: "499",
         priceCurrency: "USD",
-        description: "Active blocking, Slack alerts, and a 30-day tamper-proof compliance log.",
+        description: "SDK-side PII redaction, spend caps, host/policy blocking, and a tamper-proof audit trail.",
       },
       {
         "@type": "Offer",

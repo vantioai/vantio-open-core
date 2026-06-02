@@ -17,9 +17,20 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, TypeVar
 
+from ._telemetry import send_run_telemetry_once
+
 T = TypeVar("T")
 
 _trace_id_var: ContextVar[Optional[str]] = ContextVar("vantio_trace_id", default=None)
+
+
+def _sdk_version() -> Optional[str]:
+    """Best-effort SDK version for anonymous telemetry. Never raises."""
+    try:
+        from vantio import __version__  # lazy import — avoids an import cycle
+        return __version__
+    except Exception:
+        return None
 
 
 @dataclass
@@ -36,6 +47,8 @@ class _ShieldContextManager:
 
     async def __aenter__(self) -> VantioContext:
         self._token = _trace_id_var.set(self._trace_id)
+        # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
+        send_run_telemetry_once(_sdk_version())
         return VantioContext(trace_id=self._trace_id)
 
     async def __aexit__(self, *_: Any) -> None:
@@ -68,6 +81,8 @@ def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         tid = trace_id or str(uuid.uuid4())
         token = _trace_id_var.set(tid)
+        # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
+        send_run_telemetry_once(_sdk_version())
         try:
             return await fn(*args, **kwargs)
         finally:

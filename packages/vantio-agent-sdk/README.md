@@ -64,6 +64,38 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 
 ---
 
+## Policy & redaction (Tier 2)
+
+Tier 2 enforcement runs **locally** in the SDK/CLI — Vantio is not a network proxy. The SDK ships two building blocks so you can enforce a cloud-managed policy yourself.
+
+### `fetchPolicy(apiKey, opts?)` — load the cloud-managed policy
+
+```ts
+import { fetchPolicy, type VantioPolicy } from "@vantio/agent-sdk";
+
+const policy: VantioPolicy = await fetchPolicy(process.env.VANTIO_API_KEY!);
+// { enforce, redact_pii, pii_types, allowed_hosts,
+//   blocked_hosts, max_request_bytes, spend_cap_usd }
+```
+
+GETs `/api/v1/config` with the `x-vantio-identity` header. **Fails open:** on any error — network failure, non-2xx, malformed body, or timeout — it returns a permissive copy of `DEFAULT_POLICY` so an unreachable control plane can never block your agent. Options: `ingestUrl`, `timeoutMs` (default 5000), `signal`.
+
+### `redactPII(text, piiTypes?)` — strip PII locally
+
+```ts
+import { redactPII } from "@vantio/agent-sdk";
+
+const { text, redactions } = redactPII("ssn 123-45-6789, mail a@b.com");
+// text       → "ssn [VANTIO_REDACTED:SSN], mail [VANTIO_REDACTED:EMAIL]"
+// redactions → ["ssn", "email"]
+```
+
+A pure, side-effect-free function — **nothing ever leaves your process.** Supports `ssn`, `email`, `credit_card`, and `phone` (defaults to all four), using the same patterns and `[VANTIO_REDACTED:LABEL]` tokens as the CLI interceptor.
+
+The `VantioActionTaken` union (`"OBSERVED" | "ALLOWED" | "REDACTED" | "BLOCKED_HOST" | "BLOCKED_SIZE" | "BLOCKED_SPEND"`) is also exported for typing your own enforcement reporting.
+
+---
+
 ### `getCurrentTraceId()` — read the active trace ID
 
 ```ts

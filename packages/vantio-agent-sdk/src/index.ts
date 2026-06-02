@@ -25,8 +25,57 @@ export interface VantioEventPayload {
   pid?: number;
   timestamp_ns?: number;
   target_host?: string;
-  action_taken?: string;
+  action_taken?: VantioActionTaken;
 }
+
+/**
+ * The action Vantio took for a single intercepted outbound LLM call.
+ * Mirrors the `action_taken` field in the /api/v1/ingest contract and the
+ * enforcement engine in the CLI interceptor.
+ */
+export type VantioActionTaken =
+  | "OBSERVED"
+  | "ALLOWED"
+  | "REDACTED"
+  | "BLOCKED_HOST"
+  | "BLOCKED_SIZE"
+  | "BLOCKED_SPEND";
+
+/**
+ * Cloud-managed policy returned by GET /api/v1/config (Tier 2).
+ * Enforcement runs locally in the SDK/CLI — this is the policy that drives it.
+ */
+export interface VantioPolicy {
+  /** Master switch — when false, calls are observed but never blocked/redacted. */
+  enforce: boolean;
+  /** When true, request bodies are scanned and matching PII is redacted. */
+  redact_pii: boolean;
+  /** Which PII categories to redact (e.g. "ssn", "email", "credit_card", "phone"). */
+  pii_types: string[];
+  /** Allow-list of LLM hostnames; empty means all known LLM hosts are allowed. */
+  allowed_hosts: string[];
+  /** Deny-list of LLM hostnames; always blocked when enforce is true. */
+  blocked_hosts: string[];
+  /** Hard cap on outbound request size in bytes; 0 means no limit. */
+  max_request_bytes: number;
+  /** Soft USD spend cap for the run; 0 means no cap. */
+  spend_cap_usd: number;
+}
+
+/**
+ * Permissive, fail-open default policy. Used until a cloud policy loads and
+ * returned by fetchPolicy() on any error so an unreachable control plane can
+ * never block the agent.
+ */
+export const DEFAULT_POLICY: VantioPolicy = {
+  enforce: false,
+  redact_pii: false,
+  pii_types: ["ssn", "email", "credit_card", "phone"],
+  allowed_hosts: [],
+  blocked_hosts: [],
+  max_request_bytes: 0,
+  spend_cap_usd: 0,
+};
 
 const _storage = new AsyncLocalStorage<VantioContext>();
 
@@ -146,5 +195,109 @@ export async function reportAnomaly(
     // Non-fatal — never crash the agent over telemetry failures.
     console.warn("[vantio] ingest request failed (non-fatal):", err);
   }
+}
+
+export interface FetchPolicyOptions {
+  /** Base URL of the Vantio control plane. Defaults to VANTIO_INGEST_URL or https://vantio.ai. */
+  ingestUrl?: string;
+  /** Abort the request early. Overrides timeoutMs when provided. */
+  signal?: AbortSignal;
+  /** Request timeout in milliseconds (default 5000). */
+  timeoutMs?: number;
+}
+
+/**
+ * Fetches the cloud-managed policy from GET /api/v1/config (Tier 2).
+ *
+ * Fails open: on any error — network failure, non-2xx status, malformed body,
+ * or timeout — a permissive copy of DEFAULT_POLICY is returned so an
+ * unreachable control plane can never block the agent. The returned object is
+ * always a fresh copy and safe to mutate.
+ *
+ * @example
+ * ```ts
+ * const policy = await fetchPolicy(process.env.VANTIO_API_KEY!);
+ * if (policy.enforce && policy.redact_pii) {
+ *   const { text } = redactPII(requestBody, policy.pii_types);
+ * }
+ * ```
+ */
+export async function fetchPolicy(
+  apiKey: string,
+  opts: FetchPolicyOptions = {},
+): Promise<VantioPolicy> {
+  const ingestUrl =
+    opts.ingestUrl ?? process.env["VANTIO_INGEST_URL"] ?? "https://vantio.ai";
+
+  try {
+    const res = await fetch(`${ingestUrl}/api/v1/config`, {
+      method: "GET",
+      headers: { "x-vantio-identity": apiKey },
+      signal: opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? 5000),
+    });
+    if (!res.ok) return { ...DEFAULT_POLICY };
+    const data: unknown = await res.json();
+    if (
+      data &&
+      typeof data === "object" &&
+      "policy" in data &&
+      (data as { policy?: unknown }).policy &&
+      typeof (data as { policy: unknown }).policy === "object"
+    ) {
+      return { ...DEFAULT_POLICY, ...(data as { policy: Partial<VantioPolicy> }).policy };
+    }
+    return { ...DEFAULT_POLICY };
+  } catch {
+    // Fail open — never block the agent because our control plane is unreachable.
+    return { ...DEFAULT_POLICY };
+  }
+}
+
+/** PII detection patterns — kept identical to the CLI interceptor. */
+const PII_PATTERNS: Record<string, { re: RegExp; label: string }> = {
+  ssn:         { re: /\b\d{3}-\d{2}-\d{4}\b/g,                                label: "SSN" },
+  email:       { re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,   label: "EMAIL" },
+  credit_card: { re: /\b(?:\d[ -]?){13,16}\b/g,                              label: "CC" },
+  phone:       { re: /\b\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,             label: "PHONE" },
+};
+
+export interface RedactionResult {
+  /** The input text with every matched PII span replaced by a label token. */
+  text: string;
+  /** The PII categories that were matched, one entry per redacted span. */
+  redactions: string[];
+}
+
+/**
+ * Pure, side-effect-free PII redactor. Replaces matches with
+ * `[VANTIO_REDACTED:LABEL]` using the same patterns and labels as the CLI
+ * interceptor (ssn → SSN, email → EMAIL, credit_card → CC, phone → PHONE).
+ *
+ * This runs entirely locally — no content ever leaves the process — and is the
+ * building block for SDK-side Tier 2 enforcement.
+ *
+ * @example
+ * ```ts
+ * const { text, redactions } = redactPII("ssn 123-45-6789");
+ * // text       → "ssn [VANTIO_REDACTED:SSN]"
+ * // redactions → ["ssn"]
+ * ```
+ */
+export function redactPII(
+  text: string,
+  piiTypes: string[] = ["ssn", "email", "credit_card", "phone"],
+): RedactionResult {
+  if (typeof text !== "string") return { text, redactions: [] };
+  let out = text;
+  const redactions: string[] = [];
+  for (const type of piiTypes) {
+    const p = PII_PATTERNS[type];
+    if (!p) continue;
+    out = out.replace(p.re, () => {
+      redactions.push(type);
+      return `[VANTIO_REDACTED:${p.label}]`;
+    });
+  }
+  return { text: out, redactions };
 }
 

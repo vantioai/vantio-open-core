@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vantio-agent-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "[ ∅ VANTIO ] Python agent SDK — zero-line AI governance telemetry"
 readme = "README.md"
 license = { text = "MIT" }

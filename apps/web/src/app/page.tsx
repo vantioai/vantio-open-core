@@ -14,13 +14,13 @@ const PROBLEMS = [
 
 const HOW = [
   { n: "01", title: "Set your rules", body: "Tell Vantio what your agents are allowed to do — which tools they can use, which data they can touch, how much they can spend. Simple settings, no code." },
-  { n: "02", title: "Vantio enforces them", body: "If an agent tries to step outside the lines, Vantio stops it in real time — before anything bad happens — and sends your team an instant heads-up." },
+  { n: "02", title: "Your agents enforce them", body: "Vantio syncs your rules to the SDK running alongside your agent. If it tries to step outside the lines, the SDK redacts or blocks it locally — before any data leaves — and your team gets an instant heads-up." },
   { n: "03", title: "Prove it to anyone", body: "Every action is saved to a clean, tamper-proof history you can hand to your boss, an auditor, or a regulator the moment they ask." },
 ];
 
 const WHY = [
   { title: "Ship faster, not slower", body: "Stop debating whether agents are safe to launch. Vantio gives you the guardrails to put them in production with confidence — this week, not next quarter." },
-  { title: "Your secrets stay secret", body: "Vantio never reads your prompts or your AI's answers. It sees what happened, not what was said — so your data and your IP stay completely yours." },
+  { title: "Your secrets stay secret", body: "Vantio never reads your prompts or your AI's answers. It sees what happened, not what was said. Anonymous, opt-out usage stats help us improve the product — never your content." },
   { title: "Nothing to rebuild", body: "No code changes, no new infrastructure, no team to hire. Most customers are live in under an hour, and it works with the tools you already use." },
   { title: "Your agents never slow down", body: "Vantio runs quietly in the background with effectively zero lag. Your agents move at full speed — you just get a safety net underneath them." },
 ];
@@ -31,11 +31,11 @@ const TIERS = [
     color: "text-[--accent]", border: "border-[--accent]/20", bg: "bg-[--accent]/5", glow: "hover:shadow-[0_0_30px_rgba(0,232,122,0.1)]",
     cta: "Get Started Free", href: "/developers",
     points: ["See every action your agents take","Live dashboard, updated in real time","Works with Node.js & Python","Free forever — no card required"] },
-  { label: "PRO", name: "Pro", headline: "Block risky actions automatically.", badge: "Most Popular",
+  { label: "PRO", name: "Pro", headline: "Enforce policy right inside your agents.", badge: "Most Popular",
     price: "$499", period: "/month",
     color: "text-blue-400", border: "border-blue-400/30", bg: "bg-blue-400/5", glow: "hover:shadow-[0_0_30px_rgba(59,130,246,0.12)]",
     cta: "Start 14-Day Free Trial", href: "/pricing", primary: true,
-    points: ["Stops bad actions in real time","Tamper-proof compliance history","Instant Slack alerts","Live in minutes — no ops team"] },
+    points: ["Redact PII before it ever leaves your app","Spend caps & host allow/block rules","Tamper-proof audit trail of every action","Anonymized benchmarks vs. peers"] },
   { label: "ENTERPRISE", name: "Enterprise", headline: "Total control. Nothing gets past it.",
     price: "Custom", period: "from $50k/yr",
     color: "text-red-400", border: "border-red-400/20", bg: "bg-red-400/5", glow: "hover:shadow-[0_0_30px_rgba(239,68,68,0.08)]",
@@ -92,12 +92,12 @@ export default function HomePage() {
             </div>
             <div className="p-4 text-left font-mono text-xs leading-relaxed">
               <p className="text-[--muted]">$ <span className="text-[--accent]">vantio run</span> node agent.js</p>
-              <p className="mt-2 text-[--muted]"><span className="text-[--accent]">[ ∅ VANTIO ]</span> Phantom Engine active</p>
-              <p className="text-[--muted]">  trace map  : /sys/fs/bpf/vantio_trace_map</p>
-              <p className="text-[--muted]">  tls probe  : SSL_write + gnutls_record_send <span className="text-green-400">attached</span></p>
-              <p className="text-[--muted]">  tc enforce : eth0 · IPv4 + IPv6</p>
-              <p className="mt-2 text-[--muted]"><span className="text-yellow-400">⚠</span>  Outbound call intercepted</p>
-              <p className="text-[--muted]">  host: <span className="text-blue-400">api.openai.com</span>  bytes: 14,382  action: <span className="text-red-400">BLOCKED</span></p>
+              <p className="mt-2 text-[--muted]"><span className="text-[--accent]">[ ∅ VANTIO ]</span> Policy synced · enforce mode</p>
+              <p className="text-[--muted]">  redact pii : email, credit_card <span className="text-green-400">on</span></p>
+              <p className="text-[--muted]">  spend cap  : $50.00 / run</p>
+              <p className="text-[--muted]">  allow host : <span className="text-blue-400">api.openai.com</span> <span className="text-green-400">allowed</span></p>
+              <p className="mt-2 text-[--muted]"><span className="text-yellow-400">⚠</span>  Request to scraper.unknown.tld</p>
+              <p className="text-[--muted]">  not on allow-list  action: <span className="text-red-400">BLOCKED_HOST</span></p>
             </div>
           </div>
         </div>

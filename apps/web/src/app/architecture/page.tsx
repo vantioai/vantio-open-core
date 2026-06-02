@@ -27,14 +27,14 @@ const LAYERS = [
     tier: "RING-3",
     label: "Oracle zkVM",
     color: "text-blue-400", border: "border-blue-400/30", bg: "bg-blue-400/5",
-    headline: "Managed Edge Proxy",
-    body: "For Tier 02 deployments without kernel access, the Oracle Proxy provides transparent HTTPS interception at the network layer. Update one environment variable — every AI API call passes through real-time policy enforcement:",
+    headline: "SDK-Side Policy Enforcement",
+    body: "For Tier 02 deployments without kernel access, Vantio enforces policy inside the customer's own SDK/CLI — not as a network proxy. The cloud stores a policy you control and receives metadata-only telemetry; prompt and completion content never reach Vantio. Set one environment variable and the SDK redacts PII, caps spend, and blocks off-policy hosts locally before any request leaves your environment:",
     points: [
-      { code: "VANTIO_CLOUD_INGEST=true", desc: "Routes all outbound LLM calls through the Managed Edge Proxy without code changes. Non-compliant calls blocked before they reach the model." },
-      { code: "vantio_trace_map",         desc: "Pinned BPF map at /sys/fs/bpf/vantio_trace_map. The cross-OS bridge between Windows NT user-space (CLI) and the Linux Ring-0 kernel boundary." },
+      { code: "VANTIO_CLOUD_INGEST=true", desc: "The SDK pulls your cloud-managed policy from /api/v1/config and enforces it in-process. Outbound LLM calls go directly to the provider — never routed through Vantio." },
+      { code: "redact_pii / blocked_hosts", desc: "Policy-driven redaction and host blocking run client-side. Off-policy requests are stopped locally and logged as BLOCKED_HOST — metadata only, no content." },
       { code: "Rate limiting",            desc: "100 requests/minute per API key enforced at Vercel Edge via Upstash Redis — before any Supabase query. Protects infrastructure budget during load spikes." },
     ],
-    deploy: "No infrastructure required for Tier 02. Set VANTIO_API_KEY and VANTIO_INGEST_URL — the CLI auto-intercepts Node.js processes via --require injection.",
+    deploy: "No infrastructure required for Tier 02. Set VANTIO_API_KEY and VANTIO_INGEST_URL — the CLI instruments Node.js processes in-process via --require injection (not a proxy).",
   },
   {
     tier: "LEDGER",
@@ -43,11 +43,11 @@ const LAYERS = [
     headline: "Cryptographic Compliance Ledger",
     body: "Every enforcement decision produces a TlsSeveranceEvent — a structured, HMAC-signed record committed to the compliance ledger. Two substrate modes:",
     points: [
-      { code: "SOVEREIGN_MODE=cloud",    desc: "GCP Spanner TrueTime WORM ledger (allow_commit_timestamp=true). Globally consistent timestamps. The Edge Proxy service account holds strictly append-only INSERT privileges." },
+      { code: "SOVEREIGN_MODE=cloud",    desc: "GCP Spanner TrueTime WORM ledger (allow_commit_timestamp=true). Globally consistent timestamps. The ingest service account holds strictly append-only INSERT privileges." },
       { code: "SOVEREIGN_MODE=local",    desc: "NDJSON file output (--output-file). Compatible with the gcloud spanner import format for air-gapped environments. Immutable on local disk before upload." },
       { code: "x-vantio-signature",      desc: "HMAC-SHA256 receipt over the event trace ID, keyed by the tenant's API key and returned on every ingest. Events are cryptographically receipted and verifiable without trusting the ledger." },
     ],
-    deploy: "schema/spanner_ledger.ddl defines the TrueTimeLedger table. The Edge Proxy service account requires only INSERT privileges — no SELECT, UPDATE, or DELETE.",
+    deploy: "schema/spanner_ledger.ddl defines the TrueTimeLedger table. The ingest service account requires only INSERT privileges — no SELECT, UPDATE, or DELETE.",
   },
 ];
 
@@ -57,7 +57,7 @@ const STACK = [
   ["Kernel min", "Linux 5.8+", "Ring buffer + BTF support"],
   ["User-space", "Tokio async", "Non-blocking ring drain"],
   ["Ledger", "GCP Spanner", "TrueTime WORM + SOVEREIGN_MODE"],
-  ["Proxy runtime", "Next.js 15 Edge", "Vercel global edge network"],
+  ["API runtime", "Next.js 15 Edge", "Vercel global edge network"],
   ["Auth", "Supabase magic link", "Zero-password, session-scoped"],
   ["Supply chain", "SLSA Level 3", "Sigstore + Rekor attestation"],
 ];

@@ -92,14 +92,14 @@ For enterprise deployments where even pip install is restricted, the SDK can be 
   {
     id: "07", tier: "02",
     title: "Application-Layer Governance: Enforcing Multi-Provider Policy",
-    sub: "Tier 02 Managed Edge Proxy providing transparent HTTPS interception and multi-provider AI governance. Update one environment variable — gain 30-day WORM logs and active policy enforcement.",
-    body: `The Tier 02 Managed Edge Proxy solves a specific deployment constraint: teams that need active AI governance but cannot or will not modify their infrastructure to install a kernel-level enforcement agent.
+    sub: "Tier 02 SDK-side policy enforcement across multiple AI providers. The SDK pulls a cloud-managed policy and redacts PII, caps spend, and blocks off-policy hosts locally — Vantio stores the policy and a metadata-only audit trail, never your prompts or completions.",
+    body: `The Tier 02 model solves a specific deployment constraint: teams that need active AI governance but cannot — or will not — install a kernel-level enforcement agent. Enforcement runs inside the customer's own SDK/CLI. Vantio is not a network proxy and never sits in the request path.
 
-The proxy operates at Layer 7. When VANTIO_CLOUD_INGEST=true is set, the SDK's global.fetch patch routes all outbound AI API calls through the Vantio Edge Proxy before they reach OpenAI, Anthropic, Google Vertex, AWS Bedrock, or Cohere. The routing is transparent to the calling code — the same API responses are returned, with the same format and latency characteristics.
+When VANTIO_CLOUD_INGEST=true is set, the SDK fetches a cloud-managed policy from /api/v1/config and enforces it in-process: it redacts the configured PII categories from outbound requests, blocks calls to hosts outside the allow-list, and stops spend once a per-run cap is reached. Outbound AI API calls go directly to OpenAI, Anthropic, Google Vertex, AWS Bedrock, or Cohere — they are never routed through Vantio, so no prompt or completion content ever reaches our servers.
 
-Non-compliant calls — calls that match a configured policy violation pattern — are blocked before they reach the model, and a signed rejection receipt is committed to the 30-day WORM log.
+Each decision — OBSERVED, ALLOWED, REDACTED, BLOCKED_HOST, BLOCKED_SIZE, or BLOCKED_SPEND — emits a metadata-only event to the audit trail, sealed with an HMAC-SHA256 receipt. The payload quarantine guarantees only structural metadata (target host, byte counts, action, PID) is ever stored.
 
-The edge proxy is deployed on Vercel's global edge network. The p99 routing latency addition is 5–25ms depending on geographic proximity. For teams running AI agents in production, this is well within acceptable bounds and dramatically less expensive than the alternative: hiring a compliance team to manually audit LLM usage logs after the fact.`,
+Because enforcement is local, there is no added network hop and no man-in-the-middle. Policy changes made in the dashboard propagate to the SDK on its next config pull, and the agent's request path is unchanged.`,
   },
 ];
 

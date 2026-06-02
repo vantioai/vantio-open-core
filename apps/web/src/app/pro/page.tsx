@@ -21,9 +21,10 @@ export default function ProPage() {
           <span className="text-blue-400">You stay in control.</span>
         </h1>
         <p className="mx-auto mb-10 max-w-2xl text-lg text-[--muted]">
-          The moment an agent tries to do something it shouldn&apos;t — touch sensitive data,
-          call the wrong tool, or rack up a surprise bill — Vantio steps in, stops it, and
-          tells your team. No servers to manage. No code to change.
+          Vantio Pro syncs a policy you control down to the SDK running with your agent. It
+          redacts PII, blocks off-policy hosts, and caps spend right where your agent runs —
+          before anything leaves your environment. No proxy, no servers to manage, no code to
+          change.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <a href="/pricing"
@@ -41,15 +42,15 @@ export default function ProPage() {
       <section className="border-t border-[--border] bg-[--surface] px-6 py-20">
         <div className="mx-auto max-w-5xl">
           <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">What You Get</h2>
-          <p className="mb-12 text-center text-2xl font-bold">Everything you need. Nothing you don&apos;t.</p>
+          <p className="mb-12 text-center text-2xl font-bold">Four pillars of SDK-side enforcement.</p>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { icon: "🚫", title: "Automatic blocking", body: "Risky actions get stopped before they happen. You set the rules in plain language — Vantio enforces them automatically, 24/7." },
-              { icon: "📊", title: "Live dashboard", body: "See every AI agent action in real time. Filter by agent, by date, by outcome. Export to CSV for compliance review." },
-              { icon: "🔔", title: "Instant Slack alerts", body: "The moment an AI agent does something it shouldn't, your team gets a Slack message with the full context." },
-              { icon: "📝", title: "30-day compliance log", body: "Every AI decision stored in a tamper-proof log for 30 days. Ready for audits, incident reviews, or just peace of mind." },
-              { icon: "🔑", title: "Live in minutes", body: "Sign up, drop in your key, and you're protected. No infrastructure to set up, no ops team, nothing to maintain." },
-              { icon: "💳", title: "Cancel any time", body: "14-day free trial, then $499/month. Cancel from your dashboard. No sales calls, no lock-in contracts." },
+              { icon: "🛡️", title: "PII redaction", body: "Emails, SSNs, credit cards and more are stripped from requests by the SDK before they ever leave your environment. Vantio never sees the original content." },
+              { icon: "💰", title: "Spend caps", body: "Set a dollar ceiling per run. As an agent approaches the cap, the SDK stops the spend locally — no runaway loops, no surprise bills." },
+              { icon: "🚫", title: "Host & policy blocking", body: "Allow only the hosts you trust and block the rest. Off-policy calls are stopped client-side and logged as BLOCKED_HOST." },
+              { icon: "📝", title: "Full audit trail", body: "Every decision — observed, allowed, redacted, or blocked — is sealed into a tamper-proof, metadata-only ledger. Export to CSV anytime." },
+              { icon: "🎛️", title: "Policy editor", body: "Toggle enforcement, choose PII types, edit host rules and limits from your dashboard. Changes sync to your SDK on its next config pull." },
+              { icon: "📊", title: "Peer benchmarks", body: "Compare your call volume and block rate against anonymized industry peers. No tenant is ever identifiable." },
             ].map(({ icon, title, body }) => (
               <div key={title} className="rounded-xl border border-[--border] bg-[--background] p-5">
                 <div className="mb-3 text-2xl">{icon}</div>
@@ -81,7 +82,13 @@ export default function ProPage() {
             </div>
           ))}
         </div>
-        <p className="mt-10 text-sm text-[--muted]">
+        <p className="mt-10 rounded-xl border border-[--border] bg-[--surface] p-4 text-sm text-[--muted]">
+          <span className="font-semibold text-[--foreground]">Metadata only.</span> Vantio records
+          that an action happened — never the content of your prompts or completions. Enforcement
+          and redaction run in your SDK; the cloud just stores your policy and the audit trail.
+          Anonymous, opt-out usage telemetry helps us improve the product — never your data.
+        </p>
+        <p className="mt-6 text-sm text-[--muted]">
           Need the strongest possible protection for regulated workloads?{" "}
           <a href="/enterprise" className="text-red-400 underline">See Enterprise →</a>
         </p>

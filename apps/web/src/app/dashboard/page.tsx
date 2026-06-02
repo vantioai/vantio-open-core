@@ -7,6 +7,7 @@ import { createServerClient } from "@supabase/ssr";
 import { BillingPortalButton } from "./billing-portal-button";
 import { PhantomEngineStatus } from "./phantom-engine-status";
 import { buildMetadata } from "@/lib/seo";
+import { computeBenchmarks } from "@/lib/benchmarks";
 
 export const metadata: Metadata = buildMetadata({
   title: "Dashboard",
@@ -155,6 +156,13 @@ export default async function DashboardPage() {
   const seatsUsed = tenant.seats_used ?? 1;
   const seatsTotal = tenant.seats_total ?? 10;
 
+  // Anonymized cross-tenant benchmarks (same computation as GET /api/v1/benchmarks).
+  // Rendered server-side so the tenant's API key is never shipped to the browser.
+  const benchmarks = await computeBenchmarks(supabase, user.email);
+  const pct = (v: number | null) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
+  const num = (v: number | null) => (v == null ? "—" : v.toLocaleString());
+  const hasPeerData = benchmarks.peer_p50_calls_7d != null;
+
   return (
     <main className="min-h-screen">
       {/* Top bar */}
@@ -169,6 +177,12 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-4 text-sm text-[--muted]">
             <span className="hidden sm:inline">{tenant.email}</span>
+            <Link
+              href="/dashboard/policy"
+              className="rounded-lg border border-[--border-2] bg-[--surface-2] px-4 py-1.5 text-xs font-semibold text-[--foreground] transition-all hover:border-[--accent]/40 hover:text-[--accent]"
+            >
+              Policy
+            </Link>
             <BillingPortalButton />
           </div>
         </div>
@@ -178,7 +192,7 @@ export default async function DashboardPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[--foreground]">Pro Control Plane</h1>
           <p className="mt-1 text-sm text-[--muted]">
-            Real-time Managed Edge Proxy telemetry.{" "}
+            Real-time SDK enforcement telemetry.{" "}
             {tenant.stripe_subscription_id && (
               <code className="rounded bg-[--surface-2] px-1.5 py-0.5 text-xs text-[--muted]">
                 {tenant.stripe_subscription_id}
@@ -286,12 +300,50 @@ export default async function DashboardPage() {
               </div>
             )}
 
-            {/* Managed Edge Proxy status */}
+            {/* Benchmarks — anonymized peer comparison */}
             <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-              <h3 className="mb-4 text-sm font-semibold text-[--foreground]">Managed Edge Proxy</h3>
+              <h3 className="text-sm font-semibold text-[--foreground]">Benchmarks</h3>
+              <p className="mb-4 mt-0.5 text-xs text-[--muted]">Anonymized peers · last 7 days</p>
               <ul className="space-y-2.5">
                 {[
-                  { label: "Cloud Ingest", status: "Active" },
+                  { label: "Your calls", value: num(benchmarks.your_calls_7d) },
+                  { label: "Peer median", value: num(benchmarks.peer_p50_calls_7d) },
+                  { label: "Peer p90", value: num(benchmarks.peer_p90_calls_7d) },
+                  { label: "Your block rate", value: pct(benchmarks.your_block_rate) },
+                  { label: "Peer block rate", value: pct(benchmarks.peer_block_rate) },
+                ].map((item) => (
+                  <li key={item.label} className="flex items-center justify-between text-xs">
+                    <span className="text-[--muted]">{item.label}</span>
+                    <span className="font-mono font-medium text-[--foreground]">{item.value}</span>
+                  </li>
+                ))}
+              </ul>
+              {benchmarks.top_hosts.length > 0 && (
+                <div className="mt-4 border-t border-[--border] pt-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-widest text-[--muted]">Top hosts</p>
+                  <ul className="space-y-1.5">
+                    {benchmarks.top_hosts.map((h) => (
+                      <li key={h.host} className="flex items-center justify-between text-xs">
+                        <span className="truncate font-mono text-[--foreground]/80">{h.host}</span>
+                        <span className="ml-2 shrink-0 text-[--muted]">{(h.share * 100).toFixed(0)}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!hasPeerData && (
+                <p className="mt-4 border-t border-[--border] pt-3 text-xs text-[--muted]">
+                  Peer percentiles appear once enough tenants are active. Your own usage is shown above.
+                </p>
+              )}
+            </div>
+
+            {/* SDK enforcement status */}
+            <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
+              <h3 className="mb-4 text-sm font-semibold text-[--foreground]">SDK Enforcement</h3>
+              <ul className="space-y-2.5">
+                {[
+                  { label: "Policy Sync", status: "Active" },
                   { label: "Anomaly Ledger", status: "Writing" },
                   { label: "RLS Policies", status: "Enforced" },
                   { label: "90-day Retention", status: "Active" },

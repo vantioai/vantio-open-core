@@ -108,7 +108,7 @@ export default function DevelopersPage() {
           <pre className="mb-6 overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
             <code>{NODE_SHIELD}</code>
           </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">reportAnomaly() — cloud routing</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">reportAnomaly() — metadata telemetry</p>
           <pre className="overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
             <code>{NODE_REPORT}</code>
           </pre>
@@ -127,7 +127,7 @@ export default function DevelopersPage() {
           <pre className="mb-6 overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
             <code>{PY_SHIELD}</code>
           </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">report_anomaly() — cloud routing</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">report_anomaly() — metadata telemetry</p>
           <pre className="overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
             <code>{PY_REPORT}</code>
           </pre>
@@ -184,7 +184,7 @@ export default function DevelopersPage() {
         It intercepts application-layer function calls and emits telemetry — it does not enforce at the kernel level.
         For Ring-0 kernel enforcement, see the{" "}
         <a href="/enterprise" className="text-red-400 underline">Enterprise tier</a>.
-        For managed proxy-layer blocking, see the{" "}
+        For managed SDK-side enforcement — PII redaction, spend caps, and host blocking driven by a cloud policy — see the{" "}
         <a href="/pro" className="text-blue-400 underline">Pro tier</a>.
       </div>
     </main>

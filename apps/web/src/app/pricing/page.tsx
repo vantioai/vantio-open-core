@@ -34,12 +34,12 @@ const TIERS = [
     color: "text-blue-400", border: "border-blue-400/40", bg: "bg-blue-400/5",
     cta: "Start 14-Day Free Trial", href: "#",
     features: [
-      { text: "Block unauthorized AI calls automatically — no code changes", strong: true },
-      { text: "Real-time dashboard of every agent action" },
-      { text: "Slack alerts the moment something is blocked" },
-      { text: "30-day tamper-proof compliance log" },
-      { text: "Works with any AI framework or provider" },
-      { text: "Email support — 24-hour response" },
+      { text: "Automatic PII redaction before data leaves your app", strong: true },
+      { text: "Spend caps & host allow/block policy enforcement" },
+      { text: "Full tamper-proof audit trail of every action" },
+      { text: "Anonymized benchmarks vs. industry peers" },
+      { text: "Works with any AI framework — Node.js & Python" },
+      { text: "Slack alerts + 24-hour email support" },
     ],
   },
   {
@@ -65,7 +65,7 @@ export default function PricingPage() {
       <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Pricing</p>
       <h1 className="mb-3 text-center text-4xl font-bold">Simple, honest pricing.</h1>
       <p className="mb-16 text-center text-[--muted]">
-        Start free. No credit card. Upgrade when you need active blocking or enterprise controls.
+        Start free. No credit card. Upgrade when you need active enforcement or enterprise controls.
       </p>
 
       <div className="grid gap-6 md:grid-cols-3">

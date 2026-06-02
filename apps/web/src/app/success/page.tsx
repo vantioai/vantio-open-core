@@ -5,7 +5,7 @@ import { buildMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = buildMetadata({
   title: "Welcome to Pro",
-  description: "Your Vantio AI Pro trial is active. Set up your Managed Edge Proxy in two minutes.",
+  description: "Your Vantio AI Pro trial is active. Set up SDK-side enforcement in two minutes.",
   path: "/success",
   noindex: true,
 });
@@ -50,7 +50,7 @@ export default async function SuccessPage({
             14-day trial started
           </p>
           <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
-            Your Managed Edge Proxy is live.
+            Your Pro plan is live.
           </h1>
           <p className="mt-3 text-sm text-[--muted]">
             Your trial is active — no charge for 14 days. Your tenant has been
@@ -87,7 +87,7 @@ export default async function SuccessPage({
         {/* Setup guide */}
         <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">
-            Managed Edge Proxy Setup (2 min)
+            SDK Enforcement Setup (2 min)
           </p>
 
           <ol className="space-y-5 text-sm">
@@ -117,7 +117,7 @@ VANTIO_INGEST_URL=https://vantio.ai`}</code>
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-[--foreground]">Run your agent — zero code changes</p>
                 <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
-                  <code>{`# The CLI auto-intercepts all outbound LLM calls
+                  <code>{`# The CLI enforces your policy on every agent run
 vantio run node agent.js
 vantio run --audit tsx agent.ts
 

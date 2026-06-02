@@ -60,7 +60,7 @@ export const PRICING_FAQ: FaqItem[] = [
   {
     question: "What's the difference between PRO and Enterprise?",
     answer:
-      "PRO monitors and blocks at the network layer (fast, easy setup). Enterprise enforces at the operating system level — your agents literally cannot make unauthorized calls, even if they try to bypass the network layer.",
+      "PRO enforces inside your SDK/CLI — it redacts PII, caps spend, and blocks off-policy hosts locally, driven by a cloud-managed policy you control (fast, easy setup). Enterprise enforces at the operating system (kernel) level — your agents literally cannot make unauthorized calls, even if they try to bypass user-space controls.",
   },
   {
     question: "Is there a free trial for Enterprise?",
