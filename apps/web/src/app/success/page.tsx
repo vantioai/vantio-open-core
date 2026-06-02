@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = buildMetadata({
@@ -12,8 +14,27 @@ export const metadata: Metadata = buildMetadata({
 
 export const dynamic = "force-dynamic";
 
-async function getApiKey(sessionId: string | null): Promise<string | null> {
-  if (!sessionId) return null;
+/**
+ * Resolve the API key for the checkout session, but ONLY for the tenant that
+ * actually owns it. The `session_id` in the URL is NOT an authorization token —
+ * it is guessable/shareable — so we require a logged-in Supabase session and
+ * only reveal the key when the authenticated user's email matches the tenant
+ * row that the session_id resolves to (i.e. they own the tenant).
+ */
+async function getOwnedApiKey(
+  sessionId: string | null
+): Promise<{ apiKey: string | null; authenticated: boolean }> {
+  // Cookie-based auth client (same pattern as the dashboard).
+  const cookieStore = await cookies();
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+  const { data: { user } } = await authClient.auth.getUser();
+  if (!user?.email) return { apiKey: null, authenticated: false };
+  if (!sessionId) return { apiKey: null, authenticated: true };
+
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,12 +43,17 @@ async function getApiKey(sessionId: string | null): Promise<string | null> {
     );
     const { data } = await supabase
       .from("tenants")
-      .select("api_key")
+      .select("email, api_key")
       .eq("stripe_checkout_session_id", sessionId)
       .single();
-    return (data as { api_key?: string } | null)?.api_key ?? null;
+    const tenant = data as { email?: string; api_key?: string } | null;
+    // Ownership check: the session's tenant email must equal the logged-in user.
+    if (!tenant?.email || tenant.email !== user.email) {
+      return { apiKey: null, authenticated: true };
+    }
+    return { apiKey: tenant.api_key ?? null, authenticated: true };
   } catch {
-    return null;
+    return { apiKey: null, authenticated: true };
   }
 }
 
@@ -37,7 +63,7 @@ export default async function SuccessPage({
   searchParams: Promise<{ session_id?: string }>;
 }) {
   const { session_id } = await searchParams;
-  const apiKey = await getApiKey(session_id ?? null);
+  const { apiKey, authenticated } = await getOwnedApiKey(session_id ?? null);
 
   return (
     <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16">
@@ -73,9 +99,21 @@ export default async function SuccessPage({
                 your dashboard if lost.
               </p>
             </>
-          ) : (
+          ) : authenticated ? (
             <p className="text-sm text-[--muted]">
               Your API key will appear here shortly, or find it in your{" "}
+              <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
+                dashboard
+              </Link>
+              .
+            </p>
+          ) : (
+            <p className="text-sm text-[--muted]">
+              Log in to view your API key on the dashboard.{" "}
+              <Link href="/login" className="text-[--accent]/80 underline hover:text-[--accent]">
+                Log in
+              </Link>{" "}
+              and open your{" "}
               <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
                 dashboard
               </Link>

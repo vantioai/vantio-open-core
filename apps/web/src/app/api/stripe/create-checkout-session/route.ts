@@ -8,10 +8,10 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const origin =
-    req.headers.get("origin") ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    "http://localhost:3000";
+  // Derive redirect URLs from a TRUSTED origin, never the request `origin`
+  // header (attacker-controlled — would enable an open redirect that chains
+  // with the /success API-key disclosure).
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "https://vantio.ai";
 
   let email: string | undefined;
   try {

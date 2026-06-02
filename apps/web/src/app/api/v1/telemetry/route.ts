@@ -129,9 +129,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // ── Rate limit by hashed IP (edge, before DB) ─────────────────────────────
   const limiter = getRatelimiter();
   if (limiter) {
+    // Use the PLATFORM-trusted client IP, not the leftmost (client-supplied)
+    // x-forwarded-for value — an attacker can spoof/rotate that to mint a fresh
+    // bucket and bypass the limit. Assumes Vercel's proxy: `x-real-ip` is set by
+    // the platform, and the RIGHTMOST x-forwarded-for hop is the value appended
+    // by the trusted proxy (leftmost entries are arbitrary client input).
     const rawIp =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       request.headers.get("x-real-ip")?.trim() ||
+      request.headers.get("x-forwarded-for")?.split(",").pop()?.trim() ||
       "unknown";
     const key = await hashIp(rawIp);
     const { success } = await limiter.limit(key);

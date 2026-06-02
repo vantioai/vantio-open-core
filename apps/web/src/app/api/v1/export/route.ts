@@ -40,7 +40,12 @@ function toCSV(rows: AnomalyRow[]): string {
 
   const escape = (v: unknown): string => {
     if (v == null) return "";
-    const s = String(v);
+    let s = String(v);
+    // Neutralize CSV/formula injection: a cell beginning with = + - @ (or a
+    // leading tab/CR) can be executed as a formula by Excel/Sheets. Prefix any
+    // such user-influenced value (target_host, action_taken, …) with a single
+    // quote so spreadsheet apps treat it as literal text.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")
       ? `"${s.replace(/"/g, '""')}"`
       : s;

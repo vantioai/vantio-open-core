@@ -45,6 +45,15 @@ In free mode (no API key), intercepted calls print to the terminal in real time.
 
 ---
 
+## Enforcement notes (Tier 2)
+
+With a `VANTIO_API_KEY`, the interceptor loads a cloud policy and enforces it locally. A few semantics worth knowing:
+
+- **Host scope** — policy applies to known LLM hosts plus any host named in `blocked_hosts`/`allowed_hosts`. `blocked_hosts` blocks **any** matching host (LLM or not); a non-empty `allowed_hosts` blocks any in-scope host not on the list. Unrelated traffic (OS, package managers, etc.) is never touched.
+- **Spend cap** — the USD spend cap is **best-effort and per-process**. Bytes are estimated (request + response, including streamed responses counted after the fact), so the cap gates *subsequent* calls once the running total is crossed rather than aborting a call mid-stream, and it does not aggregate across processes.
+
+---
+
 ## Environment variables
 
 | Variable | Description |

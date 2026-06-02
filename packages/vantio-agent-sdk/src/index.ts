@@ -77,6 +77,43 @@ export const DEFAULT_POLICY: VantioPolicy = {
   spend_cap_usd: 0,
 };
 
+/** Coerce to boolean, falling back to a default for non-boolean input. */
+function asBool(value: unknown, dflt: boolean): boolean {
+  return typeof value === "boolean" ? value : dflt;
+}
+
+/** Coerce to an array of strings, dropping non-string entries. */
+function asStringArray(value: unknown, dflt: string[]): string[] {
+  if (!Array.isArray(value)) return [...dflt];
+  return value.filter((v): v is string => typeof v === "string");
+}
+
+/** Coerce to a finite number ≥ 0, falling back to a default otherwise. */
+function asNonNegativeNumber(value: unknown, dflt: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : dflt;
+}
+
+/**
+ * Validate and normalize an untrusted policy object into a well-typed
+ * VantioPolicy. A malformed cloud policy (null fields, wrong types) is coerced
+ * to safe defaults instead of being trusted verbatim — this is what keeps
+ * downstream enforcement (`.includes`, `for..of`, numeric comparisons) from
+ * throwing on bad input.
+ */
+export function normalizePolicy(raw: unknown): VantioPolicy {
+  const p = (raw && typeof raw === "object" ? raw : {}) as Partial<VantioPolicy>;
+  return {
+    enforce: asBool(p.enforce, DEFAULT_POLICY.enforce),
+    redact_pii: asBool(p.redact_pii, DEFAULT_POLICY.redact_pii),
+    pii_types: asStringArray(p.pii_types, DEFAULT_POLICY.pii_types),
+    allowed_hosts: asStringArray(p.allowed_hosts, DEFAULT_POLICY.allowed_hosts),
+    blocked_hosts: asStringArray(p.blocked_hosts, DEFAULT_POLICY.blocked_hosts),
+    max_request_bytes: asNonNegativeNumber(p.max_request_bytes, DEFAULT_POLICY.max_request_bytes),
+    spend_cap_usd: asNonNegativeNumber(p.spend_cap_usd, DEFAULT_POLICY.spend_cap_usd),
+  };
+}
+
 const _storage = new AsyncLocalStorage<VantioContext>();
 
 /**
@@ -244,11 +281,15 @@ export async function fetchPolicy(
       (data as { policy?: unknown }).policy &&
       typeof (data as { policy: unknown }).policy === "object"
     ) {
-      return { ...DEFAULT_POLICY, ...(data as { policy: Partial<VantioPolicy> }).policy };
+      // Validate the shape rather than trusting it — a malformed policy
+      // (null/array/number where a different type is expected) must never
+      // produce an object that throws when enforcement reads it.
+      return normalizePolicy((data as { policy: unknown }).policy);
     }
     return { ...DEFAULT_POLICY };
   } catch {
-    // Fail open — never block the agent because our control plane is unreachable.
+    // Fail open — never block the agent because our control plane is unreachable
+    // or returns an unparseable / malformed body.
     return { ...DEFAULT_POLICY };
   }
 }

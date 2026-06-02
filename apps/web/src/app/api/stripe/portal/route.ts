@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
@@ -10,7 +10,7 @@ function getStripe() {
   });
 }
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   const cookieStore = await cookies();
   const authClient  = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +45,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ? subscription.customer
       : subscription.customer.id;
 
-    const origin  = req.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    // Trusted origin only — never the attacker-controlled `origin` header.
+    const origin  = process.env.NEXT_PUBLIC_APP_URL ?? "https://vantio.ai";
     const session = await stripe.billingPortal.sessions.create({
       customer:   customerId,
       return_url: `${origin}/dashboard`,
