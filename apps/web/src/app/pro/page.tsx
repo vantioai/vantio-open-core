@@ -46,8 +46,8 @@ export default function ProPage() {
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {[
               { icon: "🛡️", title: "PII redaction", body: "Emails, SSNs, credit cards and more are stripped from requests by the SDK before they ever leave your environment. Vantio never sees the original content." },
-              { icon: "💰", title: "Spend caps", body: "Set a dollar ceiling per run. As an agent approaches the cap, the SDK stops the spend locally — no runaway loops, no surprise bills." },
-              { icon: "🚫", title: "Host & policy blocking", body: "Allow only the hosts you trust and block the rest. Off-policy calls are stopped client-side and logged as BLOCKED_HOST." },
+              { icon: "💰", title: "Spend caps", body: "Set a per-run dollar ceiling. As an agent crosses it, the SDK halts further spend locally — a best-effort, per-process brake on runaway loops and surprise bills." },
+              { icon: "🚫", title: "Host & policy blocking", body: "Allow only the hosts you trust and block the rest — any named host, not just known LLM providers. Off-policy calls are stopped client-side and logged as BLOCKED_HOST." },
               { icon: "📝", title: "Full audit trail", body: "Every decision — observed, allowed, redacted, or blocked — is sealed into a tamper-proof, metadata-only ledger. Export to CSV anytime." },
               { icon: "🎛️", title: "Policy editor", body: "Toggle enforcement, choose PII types, edit host rules and limits from your dashboard. Changes sync to your SDK on its next config pull." },
               { icon: "📊", title: "Peer benchmarks", body: "Compare your call volume and block rate against anonymized industry peers. No tenant is ever identifiable." },
@@ -86,10 +86,12 @@ export default function ProPage() {
           <span className="font-semibold text-[--foreground]">Metadata only.</span> Vantio records
           that an action happened — never the content of your prompts or completions. Enforcement
           and redaction run in your SDK; the cloud just stores your policy and the audit trail.
-          Anonymous, opt-out usage telemetry helps us improve the product — never your data.
+          If our control plane is ever unreachable, the SDK <span className="font-semibold text-[--foreground]">fails open</span> —
+          your agent keeps running and is never blocked by a Vantio outage. Anonymous, opt-out
+          usage telemetry helps us improve the product — never your data.
         </p>
         <p className="mt-6 text-sm text-[--muted]">
-          Need the strongest possible protection for regulated workloads?{" "}
+          Need kernel-level enforcement for regulated workloads?{" "}
           <a href="/enterprise" className="text-red-400 underline">See Enterprise →</a>
         </p>
       </section>

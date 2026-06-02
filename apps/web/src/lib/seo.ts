@@ -117,7 +117,7 @@ export function softwareApplicationJsonLd() {
         "@type": "Offer",
         name: "Enterprise",
         priceCurrency: "USD",
-        description: "Kernel-level enforcement inside your own cluster with 7-year audit records.",
+        description: "Per-agent kernel-level (eBPF) enforcement inside your own Linux/Kubernetes cluster, with a 7-year WORM audit ledger.",
       },
     ],
   };

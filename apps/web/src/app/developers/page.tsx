@@ -82,6 +82,7 @@ export default function DevelopersPage() {
         Install via npm or pip. Use the <code className="rounded bg-[--surface] px-1 text-[--accent]">shield()</code> interceptor
         or invoke any agent with <code className="rounded bg-[--surface] px-1 text-[--accent]">vantio run</code> — zero code changes required.
         10,000 events/month, free. Every event HMAC-signed and cryptographically receipted.
+        SDK, CLI, and Python SDK are all at <code className="rounded bg-[--surface] px-1 text-[--accent]">v0.2.0</code>.
       </p>
       <div className="mb-16 flex gap-3">
         <a href="/dashboard" className="rounded-md bg-[--accent] px-5 py-2.5 text-sm font-semibold text-black hover:bg-[--accent-dim]">
@@ -139,9 +140,9 @@ export default function DevelopersPage() {
         <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[--accent]">Zero-Line Integration</div>
         <h2 className="mb-2 text-xl font-bold">vantio run — Any Process, Any Stack</h2>
         <p className="mb-6 text-sm text-[--muted]">
-          No code changes at all. The CLI injects the interceptor at runtime via Node&apos;s <code className="text-[--accent]">--require</code> flag,
-          patching <code className="text-[--accent]">globalThis.fetch</code> before your agent starts.
-          Python, Ruby, and other runtimes are spawned normally without injection.
+          No code changes at all. The CLI injects the interceptor at runtime via <code className="text-[--accent]">NODE_OPTIONS</code> (which carries <code className="text-[--accent]">--require</code>),
+          patching <code className="text-[--accent]">globalThis.fetch</code> before your agent starts — uniformly across <code className="text-[--accent]">node</code>, <code className="text-[--accent]">npx</code>, <code className="text-[--accent]">tsx</code>, and <code className="text-[--accent]">ts-node</code>.
+          Python, Ruby, and other runtimes are spawned normally without injection; use the Python SDK for those.
         </p>
         <pre className="overflow-x-auto rounded-lg bg-black/40 p-4 text-xs leading-relaxed text-[--muted]">
           <code>{CLI_USAGE}</code>
@@ -156,9 +157,9 @@ export default function DevelopersPage() {
             { title: "HMAC-Signed Telemetry", body: "Every event is HMAC-SHA256 signed with your API key before transmission. Events are cryptographically receipted in the Oracle ledger — independently verifiable without trusting the ledger itself." },
             { title: "AsyncLocalStorage Propagation", body: "The VANTIO_TRACE_ID propagates through the full async call-tree via AsyncLocalStorage — no monkey-patching, no global state, no AST modifications." },
             { title: "Payload Quarantine", body: "Zero linguistic content ever reaches the ledger. The ingest route structurally enforces a whitelist of fields (bytes_severed, pid, target_host, action_taken) — prompts and completions are architecturally excluded." },
-            { title: "Non-Blocking Telemetry", body: "Telemetry emission is fully async. The shield() interceptor introduces microsecond-scale overhead on the synchronous critical path. Production-safe from day one." },
+            { title: "Non-Blocking Telemetry", body: "Telemetry emission is fully async — the shield() interceptor adds microsecond-scale overhead on the synchronous critical path. Anonymous usage telemetry is opt-out (VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1) and metadata only. Production-safe from day one." },
             { title: "Multi-Framework", body: "Works with LangChain, AutoGen, CrewAI, AWS Bedrock Agents, and any raw OpenAI/Anthropic API call. Zero refactoring required." },
-            { title: "SLSA Level 3 Supply Chain", body: "Every npm wheel and PyPI package is produced by an SLSA L3 pipeline — keylessly signed with Sigstore/Cosign and committed to the Rekor transparency log." },
+            { title: "SLSA Level 3 Provenance", body: "Our build pipeline emits SLSA Level 3 provenance: npm and CLI build artifacts are attested with GitHub's build-provenance action and recorded keylessly in the Sigstore/Rekor transparency log." },
           ].map(({ title, body }) => (
             <div key={title} className="rounded-lg border border-[--border] bg-[--surface] p-5">
               <h3 className="mb-2 text-sm font-semibold text-[--accent]">→ {title}</h3>

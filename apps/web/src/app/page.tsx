@@ -36,11 +36,11 @@ const TIERS = [
     color: "text-blue-400", border: "border-blue-400/30", bg: "bg-blue-400/5", glow: "hover:shadow-[0_0_30px_rgba(59,130,246,0.12)]",
     cta: "Start 14-Day Free Trial", href: "/pricing", primary: true,
     points: ["Redact PII before it ever leaves your app","Spend caps & host allow/block rules","Tamper-proof audit trail of every action","Anonymized benchmarks vs. peers"] },
-  { label: "ENTERPRISE", name: "Enterprise", headline: "Total control. Nothing gets past it.",
+  { label: "ENTERPRISE", name: "Enterprise", headline: "Kernel-level enforcement for the agents you enroll.",
     price: "Custom", period: "from $50k/yr",
     color: "text-red-400", border: "border-red-400/20", bg: "bg-red-400/5", glow: "hover:shadow-[0_0_30px_rgba(239,68,68,0.08)]",
     cta: "Talk to Sales", href: "/enterprise",
-    points: ["Maximum-strength enforcement","Runs inside your own cloud","7-year audit records","Built for SOC 2, HIPAA & MiFID II"] },
+    points: ["Kernel-level (eBPF) enforcement for enrolled workloads","Runs inside your own cloud","7-year WORM audit records","Aligned with SOC 2, HIPAA & MiFID II"] },
 ];
 
 export default function HomePage() {
@@ -239,7 +239,7 @@ export default function HomePage() {
         <div className="relative">
           <h2 className="text-3xl font-bold">Your AI agents are running right now.</h2>
           <p className="mx-auto mt-3 max-w-md text-[--muted]">
-            Give them guardrails they can&apos;t cross and ship with confidence — set up in minutes, free to start.
+            Give them guardrails enforced right where they run, and ship with confidence — set up in minutes, free to start.
           </p>
           <Link href="/developers"
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[--accent] px-8 py-3.5 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]">

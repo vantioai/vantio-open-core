@@ -40,7 +40,7 @@ export const PRICING_FAQ: FaqItem[] = [
   {
     question: "Do I need to change my code?",
     answer:
-      "No. The free plan and PRO plan require zero code changes. Run your agent through the Vantio CLI and it handles everything. Enterprise installs at the OS level — also no code changes.",
+      "No. The free plan and PRO plan require zero code changes — run your agent through the Vantio CLI (vantio run) and it handles everything. Enterprise deploys at the kernel level on your own Linux or Kubernetes nodes — also no code changes.",
   },
   {
     question: "What happens after my 14-day trial?",
@@ -60,7 +60,7 @@ export const PRICING_FAQ: FaqItem[] = [
   {
     question: "What's the difference between PRO and Enterprise?",
     answer:
-      "PRO enforces inside your SDK/CLI — it redacts PII, caps spend, and blocks off-policy hosts locally, driven by a cloud-managed policy you control (fast, easy setup). Enterprise enforces at the operating system (kernel) level — your agents literally cannot make unauthorized calls, even if they try to bypass user-space controls.",
+      "PRO enforces inside your SDK/CLI — it redacts PII, caps spend, and blocks off-policy hosts locally, driven by a cloud-managed policy you control (fast, easy setup). It fails open, so a Vantio outage never blocks your agent. Enterprise enforces in the Linux kernel (eBPF) for the workloads you enroll — off-policy network calls from those agents are dropped before they leave the node, even if user-space controls are bypassed. It deploys as a de-privileged DaemonSet on your own Linux or Kubernetes nodes.",
   },
   {
     question: "Is there a free trial for Enterprise?",

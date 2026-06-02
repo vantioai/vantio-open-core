@@ -27,7 +27,7 @@ Second, the inspection point is wrong. By the time a semantic guardrail reads th
 
 Third, latency is the real attack surface. Adding a synchronous LLM inference call to the critical path of every agent action — which many "AI firewall" products do — introduces a 100–2000ms blocking penalty. Under load, this becomes a denial-of-service vector against your own infrastructure.
 
-The only verifiable containment primitive is physics-based: intercept at the syscall layer (Ring-0), where the kernel enforces the boundary between user-space intent and physical resource access. This is what the Vantio Phantom Engine does.`,
+The most verifiable containment primitive is physics-based: intercept at the syscall layer (Ring-0), where the kernel enforces the boundary between user-space intent and physical resource access. This is what the Vantio Phantom Engine does for the workloads you enroll.`,
   },
   {
     id: "02", tier: "03",
@@ -37,9 +37,9 @@ The only verifiable containment primitive is physics-based: intercept at the sys
 
 Wave Function Collapse is the process of collapsing this probability space to a single, cryptographically committed outcome at a deterministic enforcement point. In the Vantio architecture, this collapse point is the kernel boundary.
 
-When an agent's action reaches a monitored syscall — execve, openat, or an SSL_write to a non-allowlisted host — the Phantom Engine's eBPF program makes a binary enforcement decision (TC_ACT_OK or TC_ACT_SHOT) with zero ambiguity. This decision is committed to the TrueTimeLedger with a globally consistent timestamp.
+When an enrolled agent's action reaches a monitored syscall — execve, openat, or an SSL_write to a non-allowlisted host — the Phantom Engine's eBPF program makes a binary enforcement decision (TC_ACT_OK or TC_ACT_SHOT) with zero ambiguity. This decision is committed to the TrueTimeLedger with a globally consistent timestamp.
 
-The result is an audit trail where every agent action has exactly one committed governance verdict — a single, verifiable collapse point — regardless of how many agents are running simultaneously or how non-deterministically they interleave.`,
+The result is an audit trail where every action of an enrolled agent has exactly one committed governance verdict — a single, verifiable collapse point — regardless of how many enrolled agents are running simultaneously or how non-deterministically they interleave. Workloads you have not enrolled are left untouched.`,
   },
   {
     id: "03", tier: "03",
@@ -99,7 +99,7 @@ When VANTIO_CLOUD_INGEST=true is set, the SDK fetches a cloud-managed policy fro
 
 Each decision — OBSERVED, ALLOWED, REDACTED, BLOCKED_HOST, BLOCKED_SIZE, or BLOCKED_SPEND — emits a metadata-only event to the audit trail, sealed with an HMAC-SHA256 receipt. The payload quarantine guarantees only structural metadata (target host, byte counts, action, PID) is ever stored.
 
-Because enforcement is local, there is no added network hop and no man-in-the-middle. Policy changes made in the dashboard propagate to the SDK on its next config pull, and the agent's request path is unchanged.`,
+Because enforcement is local, there is no added network hop and no man-in-the-middle. If the control plane is unreachable, the SDK fails open — it observes only and never blocks the agent on a Vantio outage. Policy changes made in the dashboard propagate to the SDK on its next config pull, and the agent's request path is unchanged.`,
   },
 ];
 

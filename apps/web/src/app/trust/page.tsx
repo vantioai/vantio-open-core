@@ -40,16 +40,32 @@ export default function TrustPage() {
         ))}
       </div>
 
+      {/* Data & telemetry transparency */}
+      <div className="mb-16 rounded-xl border border-[--border] bg-[--surface] p-6">
+        <h2 className="mb-2 text-lg font-semibold">Anonymous usage analytics</h2>
+        <p className="text-sm text-[--muted]">
+          Across every tier, Vantio collects only anonymous, opt-out usage analytics — an anonymous
+          install ID, SDK/CLI version, runtime, OS, and aggregate call/redaction/block counts — to
+          improve the product. No prompt or completion content is ever stored, telemetry carries no
+          API key, email, or IP address, and cross-tenant benchmarks contain no tenant identifiers.
+          Opt out any time with{" "}
+          <code className="rounded bg-[--surface-2] px-1">VANTIO_TELEMETRY_DISABLED=1</code> or{" "}
+          <code className="rounded bg-[--surface-2] px-1">DO_NOT_TRACK=1</code>.
+        </p>
+      </div>
+
       {/* Compliance */}
       <h2 className="mb-4 text-xl font-bold">Compliance signals</h2>
       <p className="mb-6 text-sm text-[--muted]">
         Vantio AI, Inc. is a registered Delaware C-Corporation structured to meet the procurement and vendor risk
-        requirements of Fortune 500 institutions.
+        requirements of Fortune 500 institutions. The items below describe how Vantio&apos;s architecture is
+        designed and aligned — they are engineering and readiness signals, not a claim of completed
+        third-party certification.
       </p>
       <div className="mb-16 grid gap-3 sm:grid-cols-2">
         {[
           ["SOC 2 Type II", "Audit-ready architecture"],
-          ["SLSA Level 3", "Verified supply chain — every release signed"],
+          ["SLSA Level 3", "Build provenance attested (Sigstore/Rekor)"],
           ["ISO 27001 / NIST CSF", "Framework alignment"],
           ["SEC Cybersecurity", "Disclosure rule compliance"],
           ["MiFID II", "TrueTime timestamps for financial audit trails"],

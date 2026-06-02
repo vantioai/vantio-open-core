@@ -19,7 +19,7 @@ const TIERS = [
     color: "text-red-400", border: "border-red-400/30", bg: "bg-red-400/5",
     cta: "Talk to Sales", href: "/enterprise",
     features: [
-      { text: "Strongest-possible enforcement — agents can't send data without your permission", strong: true },
+      { text: "Kernel-level (eBPF) enforcement for the workloads you enroll", strong: true },
       { text: "Runs inside your own cloud — your data never leaves your walls" },
       { text: "7-year tamper-proof audit records" },
       { text: "SAML / Okta single sign-on" },
