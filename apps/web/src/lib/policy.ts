@@ -29,18 +29,35 @@ export const DEFAULT_POLICY: TenantPolicy = {
 
 // Categories the SDK knows how to redact. The editor offers exactly these,
 // and the write path filters incoming values to this allowlist.
+//
+// Canonical storage is LOWERCASE so the values line up 1:1 with the SDK/CLI
+// pattern keys (PII_PATTERNS in interceptor.cjs and the SDK's redactPII).
+// Mismatched case here used to silently disable cloud-driven redaction.
 export const PII_TYPES = [
-  "EMAIL",
-  "PHONE",
-  "SSN",
-  "CREDIT_CARD",
-  "IP_ADDRESS",
-  "API_KEY",
-  "PERSON_NAME",
-  "ADDRESS",
+  "email",
+  "phone",
+  "ssn",
+  "credit_card",
+  "ip_address",
+  "api_key",
+  "person_name",
+  "address",
 ] as const;
 
 export type PiiType = (typeof PII_TYPES)[number];
+
+// Human-friendly labels for the dashboard editor. The stored value stays
+// lowercase/canonical; only the display text is prettified.
+export const PII_TYPE_LABELS: Record<PiiType, string> = {
+  email:       "Email",
+  phone:       "Phone",
+  ssn:         "SSN",
+  credit_card: "Credit Card",
+  ip_address:  "IP Address",
+  api_key:     "API Key",
+  person_name: "Person Name",
+  address:     "Address",
+};
 
 const MAX_HOSTS      = 200;
 const MAX_HOST_LEN   = 255;
@@ -65,8 +82,10 @@ function sanitizePiiTypes(raw: unknown): string[] {
   const out = new Set<string>();
   for (const t of raw) {
     if (typeof t !== "string") continue;
-    const up = t.trim().toUpperCase();
-    if (allow.has(up)) out.add(up);
+    // Normalize to the canonical lowercase form so values match the SDK/CLI
+    // pattern keys. Accepts any case on input (e.g. legacy "EMAIL").
+    const lower = t.trim().toLowerCase();
+    if (allow.has(lower)) out.add(lower);
   }
   return Array.from(out);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PII_TYPES, type TenantPolicy } from "@/lib/policy";
+import { PII_TYPES, PII_TYPE_LABELS, type TenantPolicy } from "@/lib/policy";
 
 function parseHostList(text: string): string[] {
   return Array.from(
@@ -54,7 +54,11 @@ function Toggle({
 export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy }) {
   const [enforce, setEnforce] = useState(initialPolicy.enforce);
   const [redactPii, setRedactPii] = useState(initialPolicy.redact_pii);
-  const [piiTypes, setPiiTypes] = useState<string[]>(initialPolicy.pii_types);
+  // Canonical storage is lowercase; normalize any legacy (e.g. UPPERCASE)
+  // values so checkbox/chip selected-state comparisons against PII_TYPES match.
+  const [piiTypes, setPiiTypes] = useState<string[]>(
+    initialPolicy.pii_types.map((t) => t.trim().toLowerCase())
+  );
   const [allowedHosts, setAllowedHosts] = useState(initialPolicy.allowed_hosts.join("\n"));
   const [blockedHosts, setBlockedHosts] = useState(initialPolicy.blocked_hosts.join("\n"));
   const [maxBytes, setMaxBytes] = useState(String(initialPolicy.max_request_bytes ?? 0));
@@ -161,7 +165,7 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
                     : "border-[--border-2] bg-[--surface-2] text-[--muted] hover:text-[--foreground]"
                 }`}
               >
-                {type.replace(/_/g, " ")}
+                {PII_TYPE_LABELS[type]}
               </button>
             );
           })}

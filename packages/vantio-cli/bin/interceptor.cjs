@@ -121,10 +121,14 @@ function redactBody(text) {
   let out = text;
   const redactions = [];
   for (const type of policy.pii_types) {
-    const p = PII_PATTERNS[type];
+    // Cloud policies may store pii_types in any case (the dashboard persists
+    // UPPERCASE, e.g. "EMAIL"); normalize before looking up the lowercase
+    // pattern keys so redaction fires regardless of stored case.
+    const key = typeof type === "string" ? type.trim().toLowerCase() : type;
+    const p = PII_PATTERNS[key];
     if (!p) continue;
     out = out.replace(p.re, () => {
-      redactions.push(type);
+      redactions.push(key);
       return `[VANTIO_REDACTED:${p.label}]`;
     });
   }
