@@ -96,7 +96,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   ["/enterprise",   "Enterprise"],
                   ["/pro",          "Pro"],
                   ["/developers",   "Developers"],
-                  ["/research",     "Research"],
+                  ["/brief",        "The Brief"],
                 ].map(([href, label]) => (
                   <a key={href} href={href}
                     className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-all hover:bg-white/5 hover:text-[var(--foreground)]">
@@ -131,7 +131,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <div className="flex flex-wrap gap-10 text-sm">
                 {[
                   { heading: "Product",   links: [["/developers","Developers"],["/pro","Pro"],["/enterprise","Enterprise"],["/pricing","Pricing"]] },
-                  { heading: "Resources", links: [["/architecture","Architecture"],["/research","Research"],["https://github.com/vantioai/vantio-open-core","GitHub"]] },
+                  { heading: "Resources", links: [["/architecture","Architecture"],["/brief","The Brief"],["https://github.com/vantioai/vantio-open-core","GitHub"]] },
                   { heading: "Company",   links: [["/trust","Trust Center"],["/dashboard","Dashboard"]] },
                   { heading: "Legal",     links: [["/privacy","Privacy Policy"],["/terms","Terms of Service"]] },
                 ].map(({ heading, links }) => (

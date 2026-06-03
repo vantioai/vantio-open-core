@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/lib/seo";
+import { getAllPosts } from "@/lib/brief";
 
 /**
  * Public, indexable routes only. Private/transactional routes (dashboard,
@@ -12,20 +13,29 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const routes: { path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"] }[] = [
     { path: "/", priority: 1.0, changeFrequency: "weekly" },
     { path: "/pricing", priority: 0.9, changeFrequency: "weekly" },
+    { path: "/brief", priority: 0.8, changeFrequency: "weekly" },
     { path: "/architecture", priority: 0.8, changeFrequency: "monthly" },
     { path: "/enterprise", priority: 0.8, changeFrequency: "monthly" },
     { path: "/pro", priority: 0.8, changeFrequency: "monthly" },
     { path: "/developers", priority: 0.8, changeFrequency: "monthly" },
-    { path: "/research", priority: 0.7, changeFrequency: "weekly" },
     { path: "/trust", priority: 0.6, changeFrequency: "monthly" },
     { path: "/privacy", priority: 0.3, changeFrequency: "yearly" },
     { path: "/terms", priority: 0.3, changeFrequency: "yearly" },
   ];
 
-  return routes.map(({ path, priority, changeFrequency }) => ({
+  const staticEntries: MetadataRoute.Sitemap = routes.map(({ path, priority, changeFrequency }) => ({
     url: new URL(path, SITE.url).toString(),
     lastModified,
     changeFrequency,
     priority,
   }));
+
+  const postEntries: MetadataRoute.Sitemap = getAllPosts().map((p) => ({
+    url: new URL(`/brief/${p.slug}`, SITE.url).toString(),
+    lastModified: new Date(`${p.date}T00:00:00Z`),
+    changeFrequency: "monthly",
+    priority: 0.6,
+  }));
+
+  return [...staticEntries, ...postEntries];
 }

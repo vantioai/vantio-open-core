@@ -12,7 +12,7 @@ const LINKS: ReadonlyArray<readonly [string, string]> = [
   ["/enterprise", "Enterprise"],
   ["/pro", "Pro"],
   ["/developers", "Developers"],
-  ["/research", "Research"],
+  ["/brief", "The Brief"],
 ];
 
 export function MobileNav() {

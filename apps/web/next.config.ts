@@ -13,6 +13,12 @@ const nextConfig: NextConfig = {
         destination: "https://vantio.ai/:path*",
         permanent: true,
       },
+      // Research was renamed to "The Brief". Keep the old URL alive.
+      {
+        source: "/research",
+        destination: "/brief",
+        permanent: true,
+      },
     ];
   },
 };

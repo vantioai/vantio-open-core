@@ -137,6 +137,56 @@ export function breadcrumbJsonLd(items: { name: string; path: string }[]) {
   };
 }
 
+/** BlogPosting JSON-LD for a single article in The Brief. */
+export function blogPostingJsonLd(input: {
+  title: string;
+  description: string;
+  slug: string;
+  author: string;
+  datePublished: string;
+  section?: string;
+}) {
+  const url = new URL(`/brief/${input.slug}`, SITE.url).toString();
+  return {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: input.title,
+    description: input.description,
+    url,
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    datePublished: input.datePublished,
+    dateModified: input.datePublished,
+    articleSection: input.section,
+    author: { "@type": "Person", name: input.author },
+    publisher: {
+      "@type": "Organization",
+      name: "Vantio AI, Inc.",
+      logo: { "@type": "ImageObject", url: `${SITE.url}/icon` },
+    },
+    image: `${SITE.url}/opengraph-image`,
+    isAccessibleForFree: true,
+  };
+}
+
+/** Blog JSON-LD for the hub listing. */
+export function blogJsonLd(posts: { title: string; slug: string; datePublished: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    name: "The Brief — Vantio AI",
+    description:
+      "Field notes on autonomous AI agents: cost, reliability, security, and governance — grounded in what's actually happening in production.",
+    url: `${SITE.url}/brief`,
+    publisher: { "@type": "Organization", name: "Vantio AI, Inc." },
+    blogPost: posts.map((p) => ({
+      "@type": "BlogPosting",
+      headline: p.title,
+      url: new URL(`/brief/${p.slug}`, SITE.url).toString(),
+      datePublished: p.datePublished,
+    })),
+  };
+}
+
 /**
  * FAQPage JSON-LD. Per Google's guidelines the questions/answers must also be
  * visible on the page, so only use this alongside a rendered FAQ section.
