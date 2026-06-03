@@ -10,9 +10,9 @@ export default function TermsPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Terms of Service", path: "/terms" }])} />
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Legal</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Legal</p>
       <h1 className="mb-2 text-3xl font-bold">Terms of Service</h1>
-      <p className="mb-12 text-xs text-[--muted]">Effective date: May 1, 2026 · Vantio AI, Inc. (Delaware C-Corporation)</p>
+      <p className="mb-12 text-xs text-[var(--muted)]">Effective date: May 1, 2026 · Vantio AI, Inc. (Delaware C-Corporation)</p>
       {[
         { h: "1. Acceptance", body: "By accessing or using any Vantio AI product or service, you agree to these Terms of Service and our Privacy Policy. If you are using Vantio on behalf of an organization, you represent that you have authority to bind that organization." },
         { h: "2. Permitted Use", body: "Vantio products may be used for lawful AI governance, observability, and compliance purposes. You may not use Vantio to circumvent security controls, interfere with other users, or violate any applicable law." },
@@ -27,7 +27,7 @@ export default function TermsPage() {
       ].map(({ h, body }) => (
         <section key={h} className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">{h}</h2>
-          <p className="text-sm text-[--muted]">{body}</p>
+          <p className="text-sm text-[var(--muted)]">{body}</p>
         </section>
       ))}
     </main>

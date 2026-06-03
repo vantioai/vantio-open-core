@@ -62,11 +62,11 @@ export default async function PolicyPage() {
   if (!tenant) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center px-6">
-        <div className="rounded-2xl border border-[--border] bg-[--surface] p-10 text-center">
-          <p className="text-sm text-[--muted]">No PRO tenant found for this account.</p>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-10 text-center">
+          <p className="text-sm text-[var(--muted)]">No PRO tenant found for this account.</p>
           <Link
             href="/pricing"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[--accent] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
           >
             Upgrade to PRO →
           </Link>
@@ -87,18 +87,18 @@ export default async function PolicyPage() {
   return (
     <main className="min-h-screen">
       {/* Top bar */}
-      <header className="border-b border-[--border] bg-[--surface]/60 px-6 py-4 backdrop-blur-sm">
+      <header className="border-b border-[var(--border)] bg-[var(--surface)]/60 px-6 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-2.5 font-bold tracking-tight">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[--accent]/10 text-sm font-black text-[--accent]">∅</span>
-              <span className="text-sm font-semibold tracking-wider text-[--foreground]">VANTIO</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-sm font-black text-[var(--accent)]">∅</span>
+              <span className="text-sm font-semibold tracking-wider text-[var(--foreground)]">VANTIO</span>
             </span>
-            <span className="rounded-full bg-[--accent]/15 px-2.5 py-0.5 text-xs font-bold text-[--accent]">{tenant.tier}</span>
+            <span className="rounded-full bg-[var(--accent)]/15 px-2.5 py-0.5 text-xs font-bold text-[var(--accent)]">{tenant.tier}</span>
           </div>
           <Link
             href="/dashboard"
-            className="rounded-lg border border-[--border-2] bg-[--surface-2] px-4 py-1.5 text-xs font-semibold text-[--foreground] transition-all hover:border-[--accent]/40 hover:text-[--accent]"
+            className="rounded-lg border border-[var(--border-2)] bg-[var(--surface-2)] px-4 py-1.5 text-xs font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
           >
             ← Dashboard
           </Link>
@@ -107,8 +107,8 @@ export default async function PolicyPage() {
 
       <div className="mx-auto max-w-4xl px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[--foreground]">Enforcement Policy</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[--muted]">
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Enforcement Policy</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
             These rules are synced to your SDK/CLI, which enforces them locally — redacting
             PII, capping spend, and blocking hosts before any data leaves your environment.
             Vantio stores the policy; your runtime does the enforcing.
@@ -116,11 +116,11 @@ export default async function PolicyPage() {
         </div>
 
         {!isPaid && (
-          <div className="mb-6 rounded-xl border border-blue-400/30 bg-blue-400/5 p-4 text-sm text-[--muted]">
+          <div className="mb-6 rounded-xl border border-blue-400/30 bg-blue-400/5 p-4 text-sm text-[var(--muted)]">
             Policy enforcement applies to{" "}
             <span className="font-semibold text-blue-400">PRO &amp; Enterprise</span> tiers. You can
             configure it now, but the SDK only receives an active policy on a paid plan.{" "}
-            <Link href="/pricing" className="text-[--accent] underline hover:text-[--accent-dim]">
+            <Link href="/pricing" className="text-[var(--accent)] underline hover:text-[var(--accent-dim)]">
               Upgrade →
             </Link>
           </div>

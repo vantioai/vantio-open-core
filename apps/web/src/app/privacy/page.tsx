@@ -10,9 +10,9 @@ export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Privacy Policy", path: "/privacy" }])} />
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Legal</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Legal</p>
       <h1 className="mb-2 text-3xl font-bold">Privacy Policy</h1>
-      <p className="mb-12 text-xs text-[--muted]">Effective date: May 1, 2026 · Vantio AI, Inc. (Delaware C-Corporation)</p>
+      <p className="mb-12 text-xs text-[var(--muted)]">Effective date: May 1, 2026 · Vantio AI, Inc. (Delaware C-Corporation)</p>
       {[
         { h: "1. What We Collect", body: "We collect account information (email address) when you sign up, payment information processed by Stripe (we never store raw card data), per-tenant usage telemetry (structured execution metadata only — bytes_severed, pid, target_host, action_taken, timestamps), and server logs necessary for security and operations. We also collect anonymous, opt-out product telemetry — an anonymous install ID, SDK/CLI version, runtime, OS, and aggregate call/redaction/block counts — to improve the product. This anonymous stream contains no API key, email, IP address, prompt content, or other PII. You can opt out at any time by setting VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1." },
         { h: "2. Payload Quarantine", body: "Vantio enforces a strict payload quarantine by design. Raw linguistic content — prompts, model completions, agent reasoning chains, or any personally identifiable information embedded in AI outputs — is structurally excluded from our ingest pipeline. The whitelist of permitted anomaly_metadata fields is enforced at the API layer and is auditable in our open-source ingest route." },
@@ -24,7 +24,7 @@ export default function PrivacyPage() {
       ].map(({ h, body }) => (
         <section key={h} className="mb-8">
           <h2 className="mb-2 text-lg font-semibold">{h}</h2>
-          <p className="text-sm text-[--muted]">{body}</p>
+          <p className="text-sm text-[var(--muted)]">{body}</p>
         </section>
       ))}
     </main>

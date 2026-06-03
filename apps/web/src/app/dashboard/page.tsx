@@ -71,10 +71,10 @@ function EventStatusBadge({ evt }: { evt: AnomalyEvent }) {
   let label: string, cls: string, dot: string;
   if (evt.audit_mode) {
     if (violation) { label = "FLAGGED";  cls = "bg-amber-400/10 text-amber-400"; dot = "bg-amber-400"; }
-    else           { label = "OBSERVED"; cls = "bg-[--muted]/15 text-[--muted]"; dot = "bg-[--muted]"; }
+    else           { label = "OBSERVED"; cls = "bg-[var(--muted)]/15 text-[var(--muted)]"; dot = "bg-[var(--muted)]"; }
   } else {
     if (violation) { label = "BLOCKED"; cls = "bg-red-500/10 text-red-400";    dot = "bg-red-500"; }
-    else           { label = "ALLOWED"; cls = "bg-[--accent]/10 text-[--accent]"; dot = "bg-[--accent]"; }
+    else           { label = "ALLOWED"; cls = "bg-[var(--accent)]/10 text-[var(--accent)]"; dot = "bg-[var(--accent)]"; }
   }
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
@@ -140,11 +140,11 @@ export default async function DashboardPage() {
   if (!tenant) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center px-6">
-        <div className="rounded-2xl border border-[--border] bg-[--surface] p-10 text-center">
-          <p className="text-sm text-[--muted]">No PRO tenant found for this account.</p>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-10 text-center">
+          <p className="text-sm text-[var(--muted)]">No PRO tenant found for this account.</p>
           <Link
             href="/pricing"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[--accent] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
           >
             Upgrade to PRO →
           </Link>
@@ -166,26 +166,26 @@ export default async function DashboardPage() {
   return (
     <main className="min-h-screen">
       {/* Top bar */}
-      <header className="border-b border-[--border] bg-[--surface]/60 px-6 py-4 backdrop-blur-sm">
+      <header className="border-b border-[var(--border)] bg-[var(--surface)]/60 px-6 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-2.5 font-bold tracking-tight">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[--accent]/10 text-sm font-black text-[--accent]">∅</span>
-              <span className="text-sm font-semibold tracking-wider text-[--foreground]">VANTIO</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-sm font-black text-[var(--accent)]">∅</span>
+              <span className="text-sm font-semibold tracking-wider text-[var(--foreground)]">VANTIO</span>
             </span>
-            <span className="rounded-full bg-[--accent]/15 px-2.5 py-0.5 text-xs font-bold text-[--accent]">PRO</span>
+            <span className="rounded-full bg-[var(--accent)]/15 px-2.5 py-0.5 text-xs font-bold text-[var(--accent)]">PRO</span>
           </div>
-          <div className="flex items-center gap-4 text-sm text-[--muted]">
+          <div className="flex items-center gap-4 text-sm text-[var(--muted)]">
             <span className="hidden sm:inline">{tenant.email}</span>
             <Link
               href="/dashboard/policy"
-              className="rounded-lg border border-[--border-2] bg-[--surface-2] px-4 py-1.5 text-xs font-semibold text-[--foreground] transition-all hover:border-[--accent]/40 hover:text-[--accent]"
+              className="rounded-lg border border-[var(--border-2)] bg-[var(--surface-2)] px-4 py-1.5 text-xs font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
             >
               Policy
             </Link>
             <Link
               href="/dashboard/alerts"
-              className="rounded-lg border border-[--border-2] bg-[--surface-2] px-4 py-1.5 text-xs font-semibold text-[--foreground] transition-all hover:border-[--accent]/40 hover:text-[--accent]"
+              className="rounded-lg border border-[var(--border-2)] bg-[var(--surface-2)] px-4 py-1.5 text-xs font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
             >
               Alerts
             </Link>
@@ -196,11 +196,11 @@ export default async function DashboardPage() {
 
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[--foreground]">Pro Control Plane</h1>
-          <p className="mt-1 text-sm text-[--muted]">
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Pro Control Plane</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">
             Real-time SDK enforcement telemetry.{" "}
             {tenant.stripe_subscription_id && (
-              <code className="rounded bg-[--surface-2] px-1.5 py-0.5 text-xs text-[--muted]">
+              <code className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-[var(--muted)]">
                 {tenant.stripe_subscription_id}
               </code>
             )}
@@ -210,10 +210,10 @@ export default async function DashboardPage() {
         {/* Stats */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((s) => (
-            <div key={s.label} className="rounded-2xl border border-[--border] bg-[--surface] p-5 transition-all hover:border-[--border-2]">
-              <p className="text-xs font-medium uppercase tracking-widest text-[--muted]">{s.label}</p>
-              <p className="mt-2 text-3xl font-bold text-[--foreground]">{s.value}</p>
-              <p className="mt-1 text-xs text-[--muted]">{s.delta}</p>
+            <div key={s.label} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-all hover:border-[var(--border-2)]">
+              <p className="text-xs font-medium uppercase tracking-widest text-[var(--muted)]">{s.label}</p>
+              <p className="mt-2 text-3xl font-bold text-[var(--foreground)]">{s.value}</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">{s.delta}</p>
             </div>
           ))}
         </div>
@@ -221,29 +221,29 @@ export default async function DashboardPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Event table */}
           <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-[--border] bg-[--surface]">
-              <div className="flex items-center justify-between border-b border-[--border] px-6 py-4">
-                <h2 className="text-sm font-semibold text-[--foreground]">Anomaly Events</h2>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+              <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
+                <h2 className="text-sm font-semibold text-[var(--foreground)]">Anomaly Events</h2>
                 <a
                   href="/api/v1/export"
                   download
-                  className="rounded-lg border border-[--border-2] px-3 py-1 text-xs font-medium text-[--muted] transition-colors hover:border-[--accent]/40 hover:text-[--accent]"
+                  className="rounded-lg border border-[var(--border-2)] px-3 py-1 text-xs font-medium text-[var(--muted)] transition-colors hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
                 >
                   Export CSV
                 </a>
               </div>
               {events.length === 0 ? (
-                <div className="px-6 py-12 text-center text-sm text-[--muted]">
+                <div className="px-6 py-12 text-center text-sm text-[var(--muted)]">
                   No events yet. Wrap your agent with{" "}
-                  <code className="rounded bg-[--surface-2] px-1">withVantio()</code> to start tracing.
+                  <code className="rounded bg-[var(--surface-2)] px-1">withVantio()</code> to start tracing.
                 </div>
               ) : (
-                <div className="divide-y divide-[--border]">
+                <div className="divide-y divide-[var(--border)]">
                   {events.map((evt) => (
-                    <div key={evt.id} className="flex items-center gap-4 px-6 py-4 text-sm transition-colors hover:bg-[--surface-2]/50">
+                    <div key={evt.id} className="flex items-center gap-4 px-6 py-4 text-sm transition-colors hover:bg-[var(--surface-2)]/50">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-mono text-xs text-[--foreground]/80">{evt.trace_id}</p>
-                        <p className="mt-0.5 text-xs text-[--muted]">
+                        <p className="truncate font-mono text-xs text-[var(--foreground)]/80">{evt.trace_id}</p>
+                        <p className="mt-0.5 text-xs text-[var(--muted)]">
                           {evt.anomaly_metadata?.pid && <>PID {evt.anomaly_metadata.pid} · </>}
                           {evt.anomaly_metadata?.bytes_severed != null && <>{evt.anomaly_metadata.bytes_severed.toLocaleString()} bytes · </>}
                           {evt.anomaly_metadata?.target_host && <>{evt.anomaly_metadata.target_host} · </>}
@@ -268,31 +268,31 @@ export default async function DashboardPage() {
           {/* Sidebar */}
           <div className="space-y-5">
             {/* Seat usage */}
-            <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-              <h3 className="mb-4 text-sm font-semibold text-[--foreground]">Seat Usage</h3>
-              <div className="mb-2 flex justify-between text-xs text-[--muted]">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">Seat Usage</h3>
+              <div className="mb-2 flex justify-between text-xs text-[var(--muted)]">
                 <span>{seatsUsed} active</span>
                 <span>{seatsTotal} total</span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-[--surface-2]">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
                 <div
-                  className="h-full rounded-full bg-[--accent]"
+                  className="h-full rounded-full bg-[var(--accent)]"
                   style={{ width: `${Math.min((seatsUsed / seatsTotal) * 100, 100)}%` }}
                 />
               </div>
-              <p className="mt-3 text-xs text-[--muted]">{seatsTotal - seatsUsed} seats remaining</p>
+              <p className="mt-3 text-xs text-[var(--muted)]">{seatsTotal - seatsUsed} seats remaining</p>
             </div>
 
             {/* API Key */}
             {tenant.api_key && (
-              <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-                <h3 className="mb-3 text-sm font-semibold text-[--foreground]">API Key</h3>
-                <code className="block break-all rounded-lg bg-black/40 p-2.5 text-xs text-[--accent]">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+                <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">API Key</h3>
+                <code className="block break-all rounded-lg bg-black/40 p-2.5 text-xs text-[var(--accent)]">
                   {tenant.api_key.slice(0, 16)}•••••••••••••••••
                 </code>
-                <p className="mt-2 text-xs text-[--muted]">
+                <p className="mt-2 text-xs text-[var(--muted)]">
                   Use as{" "}
-                  <code className="rounded bg-[--surface-2] px-1">VANTIO_API_KEY</code>{" "}
+                  <code className="rounded bg-[var(--surface-2)] px-1">VANTIO_API_KEY</code>{" "}
                   in your agent environment.
                 </p>
               </div>
@@ -301,15 +301,15 @@ export default async function DashboardPage() {
             {/* Phantom Engine status — shown for Enterprise tenants */}
             {tenant.tier === "ENTERPRISE" && (
               <div className="rounded-2xl border border-red-400/20 bg-red-500/5 p-5">
-                <h3 className="mb-4 text-sm font-semibold text-[--foreground]">Phantom Engine</h3>
+                <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">Phantom Engine</h3>
                 <PhantomEngineStatus tenantEmail={tenant.email} />
               </div>
             )}
 
             {/* Benchmarks — anonymized peer comparison */}
-            <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-              <h3 className="text-sm font-semibold text-[--foreground]">Benchmarks</h3>
-              <p className="mb-4 mt-0.5 text-xs text-[--muted]">Anonymized peers · last 7 days</p>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">Benchmarks</h3>
+              <p className="mb-4 mt-0.5 text-xs text-[var(--muted)]">Anonymized peers · last 7 days</p>
               <ul className="space-y-2.5">
                 {[
                   { label: "Your calls", value: num(benchmarks.your_calls_7d) },
@@ -319,34 +319,34 @@ export default async function DashboardPage() {
                   { label: "Peer block rate", value: pct(benchmarks.peer_block_rate) },
                 ].map((item) => (
                   <li key={item.label} className="flex items-center justify-between text-xs">
-                    <span className="text-[--muted]">{item.label}</span>
-                    <span className="font-mono font-medium text-[--foreground]">{item.value}</span>
+                    <span className="text-[var(--muted)]">{item.label}</span>
+                    <span className="font-mono font-medium text-[var(--foreground)]">{item.value}</span>
                   </li>
                 ))}
               </ul>
               {benchmarks.top_hosts.length > 0 && (
-                <div className="mt-4 border-t border-[--border] pt-3">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-widest text-[--muted]">Top hosts</p>
+                <div className="mt-4 border-t border-[var(--border)] pt-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-widest text-[var(--muted)]">Top hosts</p>
                   <ul className="space-y-1.5">
                     {benchmarks.top_hosts.map((h) => (
                       <li key={h.host} className="flex items-center justify-between text-xs">
-                        <span className="truncate font-mono text-[--foreground]/80">{h.host}</span>
-                        <span className="ml-2 shrink-0 text-[--muted]">{(h.share * 100).toFixed(0)}%</span>
+                        <span className="truncate font-mono text-[var(--foreground)]/80">{h.host}</span>
+                        <span className="ml-2 shrink-0 text-[var(--muted)]">{(h.share * 100).toFixed(0)}%</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
               {!hasPeerData && (
-                <p className="mt-4 border-t border-[--border] pt-3 text-xs text-[--muted]">
+                <p className="mt-4 border-t border-[var(--border)] pt-3 text-xs text-[var(--muted)]">
                   Peer percentiles appear once enough tenants are active. Your own usage is shown above.
                 </p>
               )}
             </div>
 
             {/* SDK enforcement status */}
-            <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-              <h3 className="mb-4 text-sm font-semibold text-[--foreground]">SDK Enforcement</h3>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <h3 className="mb-4 text-sm font-semibold text-[var(--foreground)]">SDK Enforcement</h3>
               <ul className="space-y-2.5">
                 {[
                   { label: "Policy Sync", status: "Active" },
@@ -355,26 +355,26 @@ export default async function DashboardPage() {
                   { label: "90-day Retention", status: "Active" },
                 ].map((item) => (
                   <li key={item.label} className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-[--muted]">{item.label}</span>
-                    <span className="flex items-center gap-1 font-medium text-[--accent]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[--accent]" />
+                    <span className="font-mono text-[var(--muted)]">{item.label}</span>
+                    <span className="flex items-center gap-1 font-medium text-[var(--accent)]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
                       {item.status}
                     </span>
                   </li>
                 ))}
               </ul>
-              <div className="mt-4 border-t border-[--border] pt-3">
-                <p className="text-xs text-[--muted]">
+              <div className="mt-4 border-t border-[var(--border)] pt-3">
+                <p className="text-xs text-[var(--muted)]">
                   Ring-0 enforcement on{" "}
-                  <a href="/auth/enterprise" className="text-[--accent]/80 underline hover:text-[--accent]">Enterprise</a>.
+                  <a href="/auth/enterprise" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">Enterprise</a>.
                 </p>
               </div>
             </div>
 
             {/* Quick install */}
-            <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-              <h3 className="mb-3 text-sm font-semibold text-[--foreground]">Quick Install</h3>
-              <pre className="overflow-x-auto rounded-lg bg-black/40 p-3 text-xs leading-relaxed text-[--foreground]/70">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">Quick Install</h3>
+              <pre className="overflow-x-auto rounded-lg bg-black/40 p-3 text-xs leading-relaxed text-[var(--foreground)]/70">
                 <code>{`npm i @vantio/agent-sdk
 
 import { withVantio } from

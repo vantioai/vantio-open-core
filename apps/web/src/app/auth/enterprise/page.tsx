@@ -36,7 +36,7 @@ export default function EnterpriseAuthPage() {
             Your enrolled AI agents<br />
             <span className="text-red-400">can&apos;t reach off-policy hosts.</span>
           </h1>
-          <p className="mb-8 text-[--muted]">
+          <p className="mb-8 text-[var(--muted)]">
             Enterprise deploys Vantio&apos;s enforcement layer as a de-privileged DaemonSet inside
             your own Kubernetes cluster (or on bare-metal Linux). For the workloads you enroll,
             it enforces egress policy in the Linux kernel — below your applications and your
@@ -53,23 +53,23 @@ export default function EnterpriseAuthPage() {
                 <span className="mt-0.5 text-xl">{icon}</span>
                 <div>
                   <p className="font-semibold">{title}</p>
-                  <p className="text-sm text-[--muted]">{body}</p>
+                  <p className="text-sm text-[var(--muted)]">{body}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="mt-8 text-sm text-[--muted]">
+          <p className="mt-8 text-sm text-[var(--muted)]">
             Pricing starts at $50,000/year. Every Enterprise deployment begins with a
             technical architecture review — no obligation.
           </p>
         </div>
 
         {/* Right: contact form */}
-        <div className="rounded-xl border border-[--border] bg-[--surface] p-8">
-          <div className="mb-6 flex rounded-lg border border-[--border] bg-[--background] p-1">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8">
+          <div className="mb-6 flex rounded-lg border border-[var(--border)] bg-[var(--background)] p-1">
             {(["form", "call"] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)}
-                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${tab === t ? "bg-[--surface] text-[--foreground]" : "text-[--muted] hover:text-[--foreground]"}`}>
+                className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${tab === t ? "bg-[var(--surface)] text-[var(--foreground)]" : "text-[var(--muted)] hover:text-[var(--foreground)]"}`}>
                 {t === "form" ? "Send a Message" : "Schedule a Call"}
               </button>
             ))}
@@ -85,47 +85,47 @@ export default function EnterpriseAuthPage() {
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="mb-4 text-4xl">✓</div>
               <h3 className="font-semibold">Message received.</h3>
-              <p className="mt-2 text-sm text-[--muted]">We&apos;ll reply within one business day.</p>
+              <p className="mt-2 text-sm text-[var(--muted)]">We&apos;ll reply within one business day.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <h2 className="mb-4 font-semibold">Talk to our team</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs text-[--muted]">Name *</label>
+                  <label className="mb-1 block text-xs text-[var(--muted)]">Name *</label>
                   <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="Jane Smith"
-                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-[--muted]">Work Email *</label>
+                  <label className="mb-1 block text-xs text-[var(--muted)]">Work Email *</label>
                   <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
                     placeholder="jane@company.com"
-                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs text-[--muted]">Company *</label>
+                  <label className="mb-1 block text-xs text-[var(--muted)]">Company *</label>
                   <input required value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })}
                     placeholder="Acme Corp"
-                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-[--muted]">Team Size</label>
+                  <label className="mb-1 block text-xs text-[var(--muted)]">Team Size</label>
                   <select value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })}
-                    className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]">
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]">
                     <option value="">Select...</option>
                     {["1–50", "51–500", "501–5,000", "5,000+"].map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[--muted]">What are you trying to solve?</label>
+                <label className="mb-1 block text-xs text-[var(--muted)]">What are you trying to solve?</label>
                 <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                   placeholder="Tell us about your AI deployment and what you need to control."
                   rows={4}
-                  className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm outline-none focus:border-[--accent]" />
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]" />
               </div>
               {error && <p className="text-xs text-red-400">{error}</p>}
               <button type="submit" disabled={submitting}
@@ -135,8 +135,8 @@ export default function EnterpriseAuthPage() {
             </form>
           )}
 
-          <p className="mt-4 text-center text-xs text-[--muted]">
-            Or email us: <a href="mailto:security@vantio.ai" className="text-[--accent] underline">security@vantio.ai</a>
+          <p className="mt-4 text-center text-xs text-[var(--muted)]">
+            Or email us: <a href="mailto:security@vantio.ai" className="text-[var(--accent)] underline">security@vantio.ai</a>
           </p>
         </div>
       </div>

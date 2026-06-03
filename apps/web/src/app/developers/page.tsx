@@ -71,25 +71,25 @@ export default function DevelopersPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Developers", path: "/developers" }])} />
-      <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-4 py-1.5 text-xs font-semibold text-[--accent]">
+      <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-1.5 text-xs font-semibold text-[var(--accent)]">
         Tier 01 — Developer · Open-Core · Free
       </span>
       <h1 className="mb-4 text-4xl font-bold">
         Ship AI Governance in<br />
-        <span className="text-[--accent]">Two Lines of Code.</span>
+        <span className="text-[var(--accent)]">Two Lines of Code.</span>
       </h1>
-      <p className="mb-6 max-w-2xl text-lg text-[--muted]">
-        Install via npm or pip. Use the <code className="rounded bg-[--surface] px-1 text-[--accent]">shield()</code> interceptor
-        or invoke any agent with <code className="rounded bg-[--surface] px-1 text-[--accent]">vantio run</code> — zero code changes required.
+      <p className="mb-6 max-w-2xl text-lg text-[var(--muted)]">
+        Install via npm or pip. Use the <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">shield()</code> interceptor
+        or invoke any agent with <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">vantio run</code> — zero code changes required.
         10,000 events/month, free. Every event HMAC-signed and cryptographically receipted.
-        SDK, CLI, and Python SDK are all at <code className="rounded bg-[--surface] px-1 text-[--accent]">v0.2.0</code>.
+        SDK, CLI, and Python SDK are all at <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">v0.2.0</code>.
       </p>
       <div className="mb-16 flex gap-3">
-        <a href="/dashboard" className="rounded-md bg-[--accent] px-5 py-2.5 text-sm font-semibold text-black hover:bg-[--accent-dim]">
+        <a href="/dashboard" className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black hover:bg-[var(--accent-dim)]">
           Get API Key — Free
         </a>
         <a href="https://github.com/vantioai/vantio-open-core" target="_blank" rel="noopener noreferrer"
-          className="rounded-md border border-[--border] px-5 py-2.5 text-sm font-medium text-[--muted] hover:border-[--foreground] hover:text-[--foreground]">
+          className="rounded-md border border-[var(--border)] px-5 py-2.5 text-sm font-medium text-[var(--muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]">
           View on GitHub
         </a>
       </div>
@@ -102,15 +102,15 @@ export default function DevelopersPage() {
             <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs font-bold text-green-400">npm</span>
             <span className="text-sm font-semibold">TypeScript / Node.js</span>
           </div>
-          <pre className="mb-4 overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs text-[--muted]">
-            <code className="text-[--accent]">npm install @vantio/agent-sdk</code>
+          <pre className="mb-4 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs text-[var(--muted)]">
+            <code className="text-[var(--accent)]">npm install @vantio/agent-sdk</code>
           </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">shield() — basic wrapping</p>
-          <pre className="mb-6 overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">shield() — basic wrapping</p>
+          <pre className="mb-6 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
             <code>{NODE_SHIELD}</code>
           </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">reportAnomaly() — metadata telemetry</p>
-          <pre className="overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">reportAnomaly() — metadata telemetry</p>
+          <pre className="overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
             <code>{NODE_REPORT}</code>
           </pre>
         </div>
@@ -121,30 +121,30 @@ export default function DevelopersPage() {
             <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-xs font-bold text-yellow-400">PyPI</span>
             <span className="text-sm font-semibold">Python</span>
           </div>
-          <pre className="mb-4 overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs text-[--muted]">
-            <code className="text-[--accent]">pip install vantio-agent-sdk</code>
+          <pre className="mb-4 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs text-[var(--muted)]">
+            <code className="text-[var(--accent)]">pip install vantio-agent-sdk</code>
           </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">@shield — decorator / context manager</p>
-          <pre className="mb-6 overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">@shield — decorator / context manager</p>
+          <pre className="mb-6 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
             <code>{PY_SHIELD}</code>
           </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">report_anomaly() — metadata telemetry</p>
-          <pre className="overflow-x-auto rounded-lg bg-[--surface] p-4 text-xs leading-relaxed text-[--muted]">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">report_anomaly() — metadata telemetry</p>
+          <pre className="overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
             <code>{PY_REPORT}</code>
           </pre>
         </div>
       </div>
 
       {/* CLI */}
-      <div className="mb-20 rounded-xl border border-[--border] bg-[--surface] p-8">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[--accent]">Zero-Line Integration</div>
+      <div className="mb-20 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">Zero-Line Integration</div>
         <h2 className="mb-2 text-xl font-bold">vantio run — Any Process, Any Stack</h2>
-        <p className="mb-6 text-sm text-[--muted]">
-          No code changes at all. The CLI injects the interceptor at runtime via <code className="text-[--accent]">NODE_OPTIONS</code> (which carries <code className="text-[--accent]">--require</code>),
-          patching <code className="text-[--accent]">globalThis.fetch</code> before your agent starts — uniformly across <code className="text-[--accent]">node</code>, <code className="text-[--accent]">npx</code>, <code className="text-[--accent]">tsx</code>, and <code className="text-[--accent]">ts-node</code>.
+        <p className="mb-6 text-sm text-[var(--muted)]">
+          No code changes at all. The CLI injects the interceptor at runtime via <code className="text-[var(--accent)]">NODE_OPTIONS</code> (which carries <code className="text-[var(--accent)]">--require</code>),
+          patching <code className="text-[var(--accent)]">globalThis.fetch</code> before your agent starts — uniformly across <code className="text-[var(--accent)]">node</code>, <code className="text-[var(--accent)]">npx</code>, <code className="text-[var(--accent)]">tsx</code>, and <code className="text-[var(--accent)]">ts-node</code>.
           Python, Ruby, and other runtimes are spawned normally without injection; use the Python SDK for those.
         </p>
-        <pre className="overflow-x-auto rounded-lg bg-black/40 p-4 text-xs leading-relaxed text-[--muted]">
+        <pre className="overflow-x-auto rounded-lg bg-black/40 p-4 text-xs leading-relaxed text-[var(--muted)]">
           <code>{CLI_USAGE}</code>
         </pre>
       </div>
@@ -161,9 +161,9 @@ export default function DevelopersPage() {
             { title: "Multi-Framework", body: "Works with LangChain, AutoGen, CrewAI, AWS Bedrock Agents, and any raw OpenAI/Anthropic API call. Zero refactoring required." },
             { title: "SLSA Level 3 Provenance", body: "Our build pipeline emits SLSA Level 3 provenance: npm and CLI build artifacts are attested with GitHub's build-provenance action and recorded keylessly in the Sigstore/Rekor transparency log." },
           ].map(({ title, body }) => (
-            <div key={title} className="rounded-lg border border-[--border] bg-[--surface] p-5">
-              <h3 className="mb-2 text-sm font-semibold text-[--accent]">→ {title}</h3>
-              <p className="text-xs text-[--muted]">{body}</p>
+            <div key={title} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+              <h3 className="mb-2 text-sm font-semibold text-[var(--accent)]">→ {title}</h3>
+              <p className="text-xs text-[var(--muted)]">{body}</p>
             </div>
           ))}
         </div>
@@ -174,13 +174,13 @@ export default function DevelopersPage() {
         <h2 className="mb-4 text-xl font-bold">Supported Frameworks</h2>
         <div className="flex flex-wrap gap-2">
           {FRAMEWORKS.map((f) => (
-            <span key={f} className="rounded-full border border-[--border] bg-[--surface] px-3 py-1 text-xs text-[--muted]">{f}</span>
+            <span key={f} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 text-xs text-[var(--muted)]">{f}</span>
           ))}
         </div>
       </div>
 
-      <div className="rounded-lg border border-[--accent]/20 bg-[--accent]/5 p-5 text-xs text-[--muted]">
-        <strong className="text-[--foreground]">Ring-3 boundary note:</strong>{" "}
+      <div className="rounded-lg border border-[var(--accent)]/20 bg-[var(--accent)]/5 p-5 text-xs text-[var(--muted)]">
+        <strong className="text-[var(--foreground)]">Ring-3 boundary note:</strong>{" "}
         Ring-3 application-layer visibility does not equal Ring-0 OS-level enforcement. The Developer SDK operates entirely in user-space.
         It intercepts application-layer function calls and emits telemetry — it does not enforce at the kernel level.
         For Ring-0 kernel enforcement, see the{" "}

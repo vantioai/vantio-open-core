@@ -11,7 +11,7 @@ export const metadata: Metadata = buildMetadata({
 const TIER_STYLE: Record<string, { badge: string; border: string; bg: string; label: string }> = {
   "03": { badge: "text-red-400",   border: "border-red-400/20",  bg: "bg-red-400/5",   label: "Tier 03 — Enterprise" },
   "02": { badge: "text-blue-400",  border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — Pro" },
-  "01": { badge: "text-[--accent]",border: "border-[--accent]/20",bg: "bg-[--accent]/5",label: "Tier 01 — Developer" },
+  "01": { badge: "text-[var(--accent)]",border: "border-[var(--accent)]/20",bg: "bg-[var(--accent)]/5",label: "Tier 01 — Developer" },
 };
 
 const DOSSIERS = [
@@ -107,16 +107,16 @@ export default function ResearchPage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Research", path: "/research" }])} />
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Research</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">Research</p>
       <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
-      <p className="mb-8 max-w-2xl text-[--muted]">
+      <p className="mb-8 max-w-2xl text-[var(--muted)]">
         Seven research tracks documenting Vantio&apos;s technical architecture across the AI governance market — from enterprise kernel containment for F500 CISOs to developer-grade observability for open-source contributors.
       </p>
 
       {/* Tier legend */}
       <div className="mb-14 flex flex-wrap gap-3">
-        <span className="inline-flex items-center gap-2 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1.5 text-xs font-semibold text-[--accent]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[--accent]" />
+        <span className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-3 py-1.5 text-xs font-semibold text-[var(--accent)]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
           Tier 01 — Developer
         </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1.5 text-xs font-semibold text-blue-400">
@@ -142,7 +142,7 @@ export default function ResearchPage() {
             </div>
             <h2 className="mb-2 text-xl font-bold">{title}</h2>
             <p className={`mb-6 text-sm font-medium ${s.badge}`}>{sub}</p>
-            <div className="space-y-4 text-sm leading-relaxed text-[--muted]">
+            <div className="space-y-4 text-sm leading-relaxed text-[var(--muted)]">
               {body.trim().split("\n\n").map((para, i) => (
                 <p key={i}>{para}</p>
               ))}

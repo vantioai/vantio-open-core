@@ -48,7 +48,7 @@ const TIERS = [
     label: "DEVELOPER", name: "Free",
     for: "For individuals and open-source projects.",
     price: "$0", period: "forever",
-    color: "text-[--accent]", border: "border-[--accent]/30", bg: "bg-[--accent]/5",
+    color: "text-[var(--accent)]", border: "border-[var(--accent)]/30", bg: "bg-[var(--accent)]/5",
     cta: "Get Started Free", href: "/developers",
     features: [
       { text: "See every action your AI agents take", strong: true },
@@ -64,9 +64,9 @@ const TIERS = [
 export default function PricingPage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-24">
-      <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[--muted]">Pricing</p>
+      <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Pricing</p>
       <h1 className="mb-3 text-center text-4xl font-bold">Simple, honest pricing.</h1>
-      <p className="mb-16 text-center text-[--muted]">
+      <p className="mb-16 text-center text-[var(--muted)]">
         Start free. No credit card. Upgrade when you need active enforcement or enterprise controls.
       </p>
 
@@ -80,7 +80,7 @@ export default function PricingPage() {
             )}
             <p className={`mb-1 text-xs font-semibold uppercase tracking-widest ${t.color}`}>{t.label}</p>
             <h2 className="mb-1 text-2xl font-bold">{t.name}</h2>
-            <p className="mb-5 text-sm text-[--muted]">{t.for}</p>
+            <p className="mb-5 text-sm text-[var(--muted)]">{t.for}</p>
             {t.href === "#" && isTier2Waitlist() && (
               <span className="mb-4 inline-flex w-fit items-center rounded-full border border-blue-400/30 bg-blue-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
                 Launching soon
@@ -88,7 +88,7 @@ export default function PricingPage() {
             )}
             <div className="mb-6 flex items-end gap-1">
               <span className="text-4xl font-bold">{t.price}</span>
-              <span className="mb-1 text-xs text-[--muted]">{t.period}</span>
+              <span className="mb-1 text-xs text-[var(--muted)]">{t.period}</span>
             </div>
 
             {t.href === "#" && isTier2Waitlist() ? (
@@ -113,7 +113,7 @@ export default function PricingPage() {
               {t.features.map((f) => (
                 <li key={f.text} className="flex items-start gap-2 text-sm">
                   <span className={`mt-0.5 shrink-0 ${t.color}`}>→</span>
-                  <span className={f.strong ? "font-medium text-[--foreground]" : "text-[--muted]"}>{f.text}</span>
+                  <span className={f.strong ? "font-medium text-[var(--foreground)]" : "text-[var(--muted)]"}>{f.text}</span>
                 </li>
               ))}
             </ul>
@@ -126,9 +126,9 @@ export default function PricingPage() {
         <h2 className="mb-8 text-xl font-bold">Common questions</h2>
         <div className="grid gap-6 md:grid-cols-2">
           {PRICING_FAQ.map(({ question, answer }) => (
-            <div key={question} className="rounded-xl border border-[--border] bg-[--surface] p-5">
+            <div key={question} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
               <p className="mb-2 font-semibold">{question}</p>
-              <p className="text-sm text-[--muted]">{answer}</p>
+              <p className="text-sm text-[var(--muted)]">{answer}</p>
             </div>
           ))}
         </div>

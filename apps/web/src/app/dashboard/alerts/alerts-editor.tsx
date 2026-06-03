@@ -23,16 +23,16 @@ function Toggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className="flex w-full items-start justify-between gap-4 rounded-xl border border-[--border] bg-[--surface-2] p-4 text-left transition-colors hover:border-[--border-2]"
+      className="flex w-full items-start justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-colors hover:border-[var(--border-2)]"
       aria-pressed={checked}
     >
       <span>
-        <span className="block text-sm font-semibold text-[--foreground]">{label}</span>
-        <span className="mt-0.5 block text-xs text-[--muted]">{hint}</span>
+        <span className="block text-sm font-semibold text-[var(--foreground)]">{label}</span>
+        <span className="mt-0.5 block text-xs text-[var(--muted)]">{hint}</span>
       </span>
       <span
         className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
-          checked ? "bg-[--accent]" : "bg-[--border-2]"
+          checked ? "bg-[var(--accent)]" : "bg-[var(--border-2)]"
         }`}
       >
         <span
@@ -88,9 +88,9 @@ export function AlertsEditor({ initialSettings }: { initialSettings: AlertSettin
   return (
     <div className="space-y-6">
       {/* Master switch */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">Alerting</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Alerting</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           When on, each policy violation on your account is delivered to the destinations
           below. Anomaly alerts go ONLY to your own Slack/email — never to a shared channel.
         </p>
@@ -106,14 +106,14 @@ export function AlertsEditor({ initialSettings }: { initialSettings: AlertSettin
       </section>
 
       {/* Slack destination */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">Slack Webhook</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Slack Webhook</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           Your own Slack incoming webhook. Create one at{" "}
-          <span className="font-mono text-[--foreground]/80">api.slack.com/apps</span> → Incoming
+          <span className="font-mono text-[var(--foreground)]/80">api.slack.com/apps</span> → Incoming
           Webhooks. Leave blank to disable Slack alerts.
         </p>
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[--muted]">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
           Webhook URL
         </label>
         <input
@@ -124,17 +124,17 @@ export function AlertsEditor({ initialSettings }: { initialSettings: AlertSettin
             setStatus("idle");
           }}
           placeholder="https://hooks.slack.com/services/T000/B000/xxxx"
-          className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-3 py-2.5 font-mono text-xs text-[--foreground] outline-none transition-colors placeholder-[--muted] focus:border-[--accent]/50"
+          className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-3 py-2.5 font-mono text-xs text-[var(--foreground)] outline-none transition-colors placeholder-[var(--muted)] focus:border-[var(--accent)]/50"
         />
       </section>
 
       {/* Email destination */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">Alert Email</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Alert Email</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           Where to email policy-violation alerts. Leave blank to disable email alerts.
         </p>
-        <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[--muted]">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
           Email address
         </label>
         <input
@@ -145,7 +145,7 @@ export function AlertsEditor({ initialSettings }: { initialSettings: AlertSettin
             setStatus("idle");
           }}
           placeholder="security@yourcompany.com"
-          className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-3 py-2.5 text-sm text-[--foreground] outline-none transition-colors placeholder-[--muted] focus:border-[--accent]/50"
+          className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors placeholder-[var(--muted)] focus:border-[var(--accent)]/50"
         />
       </section>
 
@@ -155,12 +155,12 @@ export function AlertsEditor({ initialSettings }: { initialSettings: AlertSettin
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-xl bg-[--accent] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
+          className="rounded-xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save Alert Settings"}
         </button>
         {message && (
-          <p className={`text-xs ${status === "error" ? "text-red-400" : "text-[--accent]"}`}>
+          <p className={`text-xs ${status === "error" ? "text-red-400" : "text-[var(--accent)]"}`}>
             {message}
           </p>
         )}

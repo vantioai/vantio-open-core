@@ -62,7 +62,7 @@ export default function EnterprisePage() {
               regulated industries on earth.
             </span>
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-[--muted]">
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--muted)]">
             Banks, hospitals, and governments can&apos;t afford an AI agent that colors outside
             the lines. Vantio gives you kernel-level enforcement for the AI workloads you
             enroll — running inside your own cloud on Linux nodes or Kubernetes, with
@@ -74,22 +74,22 @@ export default function EnterprisePage() {
               Request Architecture Review
             </Link>
             <Link href="/architecture"
-              className="rounded-xl border border-[--border-2] bg-[--surface] px-7 py-3.5 text-sm font-medium text-[--muted] transition-all hover:border-[--border] hover:text-[--foreground]">
+              className="rounded-xl border border-[var(--border-2)] bg-[var(--surface)] px-7 py-3.5 text-sm font-medium text-[var(--muted)] transition-all hover:border-[var(--border)] hover:text-[var(--foreground)]">
               View Technical Architecture →
             </Link>
           </div>
 
           {/* Stat bar */}
-          <div className="mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-[--border] bg-[--border] md:grid-cols-4">
+          <div className="mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--border)] md:grid-cols-4">
             {[
               { v: "< 1ms",    l: "Added delay for your agents" },
               { v: "eBPF",     l: "In-kernel enforcement layer" },
               { v: "7 years",  l: "Tamper-proof audit retention" },
               { v: "0",        l: "Bytes of your data we store" },
             ].map(({ v, l }) => (
-              <div key={l} className="bg-[--surface-2] px-6 py-5 text-center">
+              <div key={l} className="bg-[var(--surface-2)] px-6 py-5 text-center">
                 <p className="text-2xl font-black text-red-400">{v}</p>
-                <p className="mt-0.5 text-xs text-[--muted]">{l}</p>
+                <p className="mt-0.5 text-xs text-[var(--muted)]">{l}</p>
               </div>
             ))}
           </div>
@@ -97,26 +97,26 @@ export default function EnterprisePage() {
       </section>
 
       {/* What makes it unique */}
-      <section className="border-t border-[--border] bg-[--surface] px-6 py-24">
+      <section className="border-t border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-5xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-red-400">Why Enterprise Is Different</p>
           <h2 className="mb-3 text-3xl font-bold">Four capabilities that set Enterprise apart.</h2>
-          <p className="mb-14 max-w-2xl text-[--muted]">
+          <p className="mb-14 max-w-2xl text-[var(--muted)]">
             Real kernel-level enforcement for AI agents is genuinely hard to build. Here&apos;s what
             that means for you, in plain terms.
           </p>
           <div className="space-y-6">
             {DIFFERENTIATORS.map(({ label, title, body, code }) => (
-              <div key={title} className="overflow-hidden rounded-2xl border border-red-400/15 bg-[--surface-2]">
+              <div key={title} className="overflow-hidden rounded-2xl border border-red-400/15 bg-[var(--surface-2)]">
                 <div className="grid md:grid-cols-2">
                   <div className="p-7">
                     <span className="mb-3 inline-block rounded-full border border-red-400/30 bg-red-400/10 px-3 py-0.5 text-xs font-semibold text-red-400">
                       {label}
                     </span>
                     <h3 className="mb-3 text-lg font-bold">{title}</h3>
-                    <p className="text-sm leading-relaxed text-[--muted]">{body}</p>
+                    <p className="text-sm leading-relaxed text-[var(--muted)]">{body}</p>
                   </div>
-                  <div className="flex items-center border-t border-red-400/10 bg-[--surface] p-7 md:border-l md:border-t-0">
+                  <div className="flex items-center border-t border-red-400/10 bg-[var(--surface)] p-7 md:border-l md:border-t-0">
                     <pre className="font-mono text-xs leading-relaxed text-red-300/80">
                       <code>{code}</code>
                     </pre>
@@ -133,9 +133,9 @@ export default function EnterprisePage() {
         <div className="mx-auto max-w-5xl">
           <div className="grid gap-10 md:grid-cols-2">
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Deployment</p>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Deployment</p>
               <h2 className="mb-5 text-3xl font-bold">Runs in your cloud.<br />Owned by your team.</h2>
-              <p className="mb-6 text-[--muted]">
+              <p className="mb-6 text-[var(--muted)]">
                 Vantio Enterprise deploys as a de-privileged DaemonSet on your Linux nodes or
                 Kubernetes cluster and enforces the workloads you enroll. Your audit records
                 stay in your own database — Vantio never has access to your data. And your
@@ -151,19 +151,19 @@ export default function EnterprisePage() {
                 ].map((l) => (
                   <div key={l} className="flex items-start gap-2 text-sm">
                     <span className="mt-0.5 text-red-400">→</span>
-                    <span className="font-mono text-xs text-[--muted]">{l}</span>
+                    <span className="font-mono text-xs text-[var(--muted)]">{l}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-[--border] bg-[--surface]">
-              <div className="flex items-center gap-1.5 border-b border-[--border] bg-[--surface-2] px-4 py-2.5">
+            <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+              <div className="flex items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-2.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
                 <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                 <span className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
-                <span className="ml-2 text-xs text-[--muted]">helm install</span>
+                <span className="ml-2 text-xs text-[var(--muted)]">helm install</span>
               </div>
-              <div className="p-5 font-mono text-xs leading-loose text-[--muted]">
+              <div className="p-5 font-mono text-xs leading-loose text-[var(--muted)]">
                 <p><span className="text-red-400">$</span> helm install vantio \</p>
                 <p className="pl-4">vantio/phantom-engine \</p>
                 <p className="pl-4">--set nodeIface=ens5 \</p>
@@ -182,16 +182,16 @@ export default function EnterprisePage() {
       </section>
 
       {/* Compliance */}
-      <section className="border-t border-[--border] bg-[--surface] px-6 py-24">
+      <section className="border-t border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-5xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Compliance</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Compliance</p>
           <h2 className="mb-4 text-3xl font-bold">Designed for regulated industries.</h2>
-          <p className="mb-10 text-[--muted]">Vantio maps directly to the controls behind the most demanding regulatory frameworks — enforced in infrastructure, not just policy documents.</p>
+          <p className="mb-10 text-[var(--muted)]">Vantio maps directly to the controls behind the most demanding regulatory frameworks — enforced in infrastructure, not just policy documents.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {COMPLIANCE.map(({ standard, detail }) => (
-              <div key={standard} className="rounded-xl border border-[--border] bg-[--surface-2] p-4">
+              <div key={standard} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
                 <p className="mb-1 text-sm font-semibold text-red-400">{standard}</p>
-                <p className="text-xs text-[--muted]">{detail}</p>
+                <p className="text-xs text-[var(--muted)]">{detail}</p>
               </div>
             ))}
           </div>
@@ -202,8 +202,8 @@ export default function EnterprisePage() {
       <section className="px-6 py-24 text-center">
         <div className="mx-auto max-w-2xl">
           <h2 className="mb-3 text-3xl font-bold">Every Enterprise deployment begins with a technical architecture review.</h2>
-          <p className="mb-2 text-[--muted]">Includes a custom SLA, dedicated engineering support, and white-glove onboarding. Pricing from $50,000/year.</p>
-          <p className="mb-8 text-xs text-[--muted]">Your platform and security teams review and approve everything before anything goes live — nothing is installed without your sign-off.</p>
+          <p className="mb-2 text-[var(--muted)]">Includes a custom SLA, dedicated engineering support, and white-glove onboarding. Pricing from $50,000/year.</p>
+          <p className="mb-8 text-xs text-[var(--muted)]">Your platform and security teams review and approve everything before anything goes live — nothing is installed without your sign-off.</p>
           <Link href="/auth/enterprise"
             className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-8 py-4 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-400">
             Request Architecture Review →

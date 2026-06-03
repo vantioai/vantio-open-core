@@ -29,16 +29,16 @@ function Toggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className="flex w-full items-start justify-between gap-4 rounded-xl border border-[--border] bg-[--surface-2] p-4 text-left transition-colors hover:border-[--border-2]"
+      className="flex w-full items-start justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4 text-left transition-colors hover:border-[var(--border-2)]"
       aria-pressed={checked}
     >
       <span>
-        <span className="block text-sm font-semibold text-[--foreground]">{label}</span>
-        <span className="mt-0.5 block text-xs text-[--muted]">{hint}</span>
+        <span className="block text-sm font-semibold text-[var(--foreground)]">{label}</span>
+        <span className="mt-0.5 block text-xs text-[var(--muted)]">{hint}</span>
       </span>
       <span
         className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
-          checked ? "bg-[--accent]" : "bg-[--border-2]"
+          checked ? "bg-[var(--accent)]" : "bg-[var(--border-2)]"
         }`}
       >
         <span
@@ -115,9 +115,9 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
   return (
     <div className="space-y-6">
       {/* Enforcement mode */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">Enforcement</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Enforcement</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           When enforcement is off, the SDK observes and reports only. When on, it actively
           redacts and blocks per the rules below.
         </p>
@@ -133,9 +133,9 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
       </section>
 
       {/* PII redaction */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">PII Redaction</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">PII Redaction</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           The SDK strips matching data from requests before they leave your environment.
           Vantio never sees the original content.
         </p>
@@ -161,8 +161,8 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
                 disabled={!redactPii}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
                   active
-                    ? "border-[--accent]/40 bg-[--accent]/10 text-[--accent]"
-                    : "border-[--border-2] bg-[--surface-2] text-[--muted] hover:text-[--foreground]"
+                    ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]"
+                    : "border-[var(--border-2)] bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--foreground)]"
                 }`}
               >
                 {PII_TYPE_LABELS[type]}
@@ -173,15 +173,15 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
       </section>
 
       {/* Host rules */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">Host Policy</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Host Policy</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           One host per line. If an allow-list is set, only those hosts are permitted; blocked
           hosts are always denied.
         </p>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
               Allowed hosts
             </label>
             <textarea
@@ -192,11 +192,11 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
               }}
               rows={5}
               placeholder={"api.openai.com\napi.anthropic.com"}
-              className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-3 py-2.5 font-mono text-xs text-[--foreground] outline-none transition-colors placeholder-[--muted] focus:border-[--accent]/50"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-3 py-2.5 font-mono text-xs text-[var(--foreground)] outline-none transition-colors placeholder-[var(--muted)] focus:border-[var(--accent)]/50"
             />
           </div>
           <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
               Blocked hosts
             </label>
             <textarea
@@ -207,22 +207,22 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
               }}
               rows={5}
               placeholder={"pastebin.com\nunknown-host.example"}
-              className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-3 py-2.5 font-mono text-xs text-[--foreground] outline-none transition-colors placeholder-[--muted] focus:border-red-400/50"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-3 py-2.5 font-mono text-xs text-[var(--foreground)] outline-none transition-colors placeholder-[var(--muted)] focus:border-red-400/50"
             />
           </div>
         </div>
       </section>
 
       {/* Limits */}
-      <section className="rounded-2xl border border-[--border] bg-[--surface] p-6">
-        <h2 className="mb-1 text-sm font-semibold text-[--foreground]">Limits</h2>
-        <p className="mb-4 text-xs text-[--muted]">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Limits</h2>
+        <p className="mb-4 text-xs text-[var(--muted)]">
           Set to 0 to disable a limit. Spend caps are enforced per the SDK&apos;s local cost
           accounting.
         </p>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
               Max request bytes
             </label>
             <input
@@ -233,11 +233,11 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
                 setMaxBytes(e.target.value);
                 setStatus("idle");
               }}
-              className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-3 py-2.5 text-sm text-[--foreground] outline-none transition-colors focus:border-[--accent]/50"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--accent)]/50"
             />
           </div>
           <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
               Spend cap (USD)
             </label>
             <input
@@ -249,7 +249,7 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
                 setSpendCap(e.target.value);
                 setStatus("idle");
               }}
-              className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-3 py-2.5 text-sm text-[--foreground] outline-none transition-colors focus:border-[--accent]/50"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none transition-colors focus:border-[var(--accent)]/50"
             />
           </div>
         </div>
@@ -261,12 +261,12 @@ export function PolicyEditor({ initialPolicy }: { initialPolicy: TenantPolicy })
           type="button"
           onClick={save}
           disabled={saving}
-          className="rounded-xl bg-[--accent] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
+          className="rounded-xl bg-[var(--accent)] px-6 py-3 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save Policy"}
         </button>
         {message && (
-          <p className={`text-xs ${status === "error" ? "text-red-400" : "text-[--accent]"}`}>
+          <p className={`text-xs ${status === "error" ? "text-red-400" : "text-[var(--accent)]"}`}>
             {message}
           </p>
         )}

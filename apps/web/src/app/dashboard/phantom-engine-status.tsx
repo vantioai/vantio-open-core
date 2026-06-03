@@ -59,11 +59,11 @@ export function PhantomEngineStatus({ tenantEmail }: { tenantEmail: string }) {
     {
       label: "Engine Status",
       value: status === "checking" ? "Checking..." : status === "active" ? "Running" : "Offline",
-      color: status === "active" ? "text-[--accent]" : status === "offline" ? "text-red-400" : "text-[--muted]",
-      dot: status === "active" ? "bg-[--accent]" : status === "offline" ? "bg-red-400" : "bg-[--muted]",
+      color: status === "active" ? "text-[var(--accent)]" : status === "offline" ? "text-red-400" : "text-[var(--muted)]",
+      dot: status === "active" ? "bg-[var(--accent)]" : status === "offline" ? "bg-red-400" : "bg-[var(--muted)]",
     },
-    { label: "Loader PID", value: pid ? String(pid) : "—", color: "text-[--foreground]/80", dot: null },
-    { label: "Last heartbeat", value: lastSeen ? new Date(lastSeen).toLocaleTimeString() : "—", color: "text-[--foreground]/80", dot: null },
+    { label: "Loader PID", value: pid ? String(pid) : "—", color: "text-[var(--foreground)]/80", dot: null },
+    { label: "Last heartbeat", value: lastSeen ? new Date(lastSeen).toLocaleTimeString() : "—", color: "text-[var(--foreground)]/80", dot: null },
     { label: "Trace map", value: "/sys/fs/bpf/vantio_trace_map", color: "text-red-400", dot: null },
   ];
 
@@ -71,7 +71,7 @@ export function PhantomEngineStatus({ tenantEmail }: { tenantEmail: string }) {
     <ul className="space-y-2.5">
       {items.map(({ label, value, color, dot }) => (
         <li key={label} className="flex items-center justify-between text-xs">
-          <span className="font-mono text-[--muted]">{label}</span>
+          <span className="font-mono text-[var(--muted)]">{label}</span>
           <span className={`flex items-center gap-1 font-medium ${color}`}>
             {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
             {value}
@@ -79,9 +79,9 @@ export function PhantomEngineStatus({ tenantEmail }: { tenantEmail: string }) {
         </li>
       ))}
       {status === "offline" && (
-        <li className="pt-2 text-xs text-[--muted]">
+        <li className="pt-2 text-xs text-[var(--muted)]">
           Start with:{" "}
-          <code className="rounded bg-[--surface-2] px-1">sudo vantio-loader</code>
+          <code className="rounded bg-[var(--surface-2)] px-1">sudo vantio-loader</code>
         </li>
       )}
     </ul>

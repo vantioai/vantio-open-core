@@ -42,20 +42,20 @@ export default function LoginPage() {
 
   return (
     <main className="hero-glow dot-grid flex min-h-[80vh] flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm rounded-2xl border border-[--border] bg-[--surface]/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm">
         <div className="mb-8 text-center">
-          <span className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[--accent]/10 text-lg font-black text-[--accent]">∅</span>
-          <h1 className="text-2xl font-bold text-[--foreground]">
+          <span className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-lg font-black text-[var(--accent)]">∅</span>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">
             Sign in to your dashboard
           </h1>
-          <p className="mt-2 text-sm text-[--muted]">
+          <p className="mt-2 text-sm text-[var(--muted)]">
             We&apos;ll send a magic link to your email.
           </p>
         </div>
 
         {sent ? (
-          <div className="rounded-xl border border-[--accent]/30 bg-[--accent]/5 p-5 text-center text-sm text-[--accent]">
-            Check your inbox — magic link sent to <strong className="text-[--foreground]">{email}</strong>.
+          <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-5 text-center text-sm text-[var(--accent)]">
+            Check your inbox — magic link sent to <strong className="text-[var(--foreground)]">{email}</strong>.
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -65,7 +65,7 @@ export default function LoginPage() {
               placeholder="you@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-4 py-3 text-sm text-[--foreground] placeholder-[--muted] outline-none transition-colors focus:border-[--accent]/50 focus:ring-1 focus:ring-[--accent]/30"
+              className="w-full rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--foreground)] placeholder-[var(--muted)] outline-none transition-colors focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/30"
             />
             {error && <p className="text-xs text-red-400">{error}</p>}
             <button
@@ -78,9 +78,9 @@ export default function LoginPage() {
           </form>
         )}
 
-        <p className="mt-6 text-center text-xs text-[--muted]">
+        <p className="mt-6 text-center text-xs text-[var(--muted)]">
           No account?{" "}
-          <a href="/pricing" className="text-[--accent]/80 underline hover:text-[--accent]">
+          <a href="/pricing" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">
             Start with PRO →
           </a>
         </p>

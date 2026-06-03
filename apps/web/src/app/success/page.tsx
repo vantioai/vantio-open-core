@@ -71,24 +71,24 @@ export default async function SuccessPage({
     return (
       <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16 text-center">
         <div className="w-full max-w-lg">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[--muted]">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
             Tier 2 — Launching soon
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
+          <h1 className="mt-2 text-3xl font-bold text-[var(--foreground)]">
             Pro isn&apos;t open for signups yet.
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-sm text-[--muted]">
+          <p className="mx-auto mt-3 max-w-md text-sm text-[var(--muted)]">
             We&apos;re putting the finishing touches on Tier 2. Join the waitlist and we&apos;ll
             email you the moment it opens.
           </p>
           <div className="mx-auto mt-8 max-w-xs">
             <WaitlistCta
               source="success"
-              buttonClassName="w-full rounded-xl bg-[--accent] py-3 text-center text-sm font-bold text-black transition-all hover:bg-[--accent-dim]"
+              buttonClassName="w-full rounded-xl bg-[var(--accent)] py-3 text-center text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)]"
             />
           </div>
-          <p className="mt-6 text-xs text-[--muted]">
-            <Link href="/" className="text-[--accent]/80 underline hover:text-[--accent]">
+          <p className="mt-6 text-xs text-[var(--muted)]">
+            <Link href="/" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">
               Back to home
             </Link>
           </p>
@@ -104,52 +104,52 @@ export default async function SuccessPage({
     <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-lg">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[--accent]/10 text-[--accent] shadow-[0_0_30px_rgba(0,232,122,0.2)]">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] shadow-[0_0_30px_rgba(0,232,122,0.2)]">
             <span className="text-2xl">✓</span>
           </div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-[--muted]">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
             14-day trial started
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
+          <h1 className="mt-2 text-3xl font-bold text-[var(--foreground)]">
             Your Pro plan is live.
           </h1>
-          <p className="mt-3 text-sm text-[--muted]">
+          <p className="mt-3 text-sm text-[var(--muted)]">
             Your trial is active — no charge for 14 days. Your tenant has been
             provisioned and your API key is ready.
           </p>
         </div>
 
         {/* API Key */}
-        <div className="mb-6 rounded-2xl border border-[--border] bg-[--surface] p-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[--muted]">
+        <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
             Your API Key
           </p>
           {apiKey ? (
             <>
-              <code className="block break-all rounded-lg bg-black/40 p-3 text-sm text-[--accent]">
+              <code className="block break-all rounded-lg bg-black/40 p-3 text-sm text-[var(--accent)]">
                 {apiKey}
               </code>
-              <p className="mt-2 text-xs text-[--muted]">
+              <p className="mt-2 text-xs text-[var(--muted)]">
                 Store this securely. It cannot be shown again — regenerate from
                 your dashboard if lost.
               </p>
             </>
           ) : authenticated ? (
-            <p className="text-sm text-[--muted]">
+            <p className="text-sm text-[var(--muted)]">
               Your API key will appear here shortly, or find it in your{" "}
-              <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
+              <Link href="/dashboard" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">
                 dashboard
               </Link>
               .
             </p>
           ) : (
-            <p className="text-sm text-[--muted]">
+            <p className="text-sm text-[var(--muted)]">
               Log in to view your API key on the dashboard.{" "}
-              <Link href="/login" className="text-[--accent]/80 underline hover:text-[--accent]">
+              <Link href="/login" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">
                 Log in
               </Link>{" "}
               and open your{" "}
-              <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
+              <Link href="/dashboard" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">
                 dashboard
               </Link>
               .
@@ -158,27 +158,27 @@ export default async function SuccessPage({
         </div>
 
         {/* Setup guide */}
-        <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
             SDK Enforcement Setup (2 min)
           </p>
 
           <ol className="space-y-5 text-sm">
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">01</span>
+              <span className="mt-0.5 font-mono text-xs font-bold text-[var(--border-2)]">01</span>
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-[--foreground]">Install the SDK</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
+                <p className="font-medium text-[var(--foreground)]">Install the SDK</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[var(--foreground)]/70">
                   <code>npm install @vantio/agent-sdk</code>
                 </pre>
               </div>
             </li>
 
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">02</span>
+              <span className="mt-0.5 font-mono text-xs font-bold text-[var(--border-2)]">02</span>
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-[--foreground]">Set your API key — one env var, that&apos;s it</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
+                <p className="font-medium text-[var(--foreground)]">Set your API key — one env var, that&apos;s it</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[var(--foreground)]/70">
                   <code>{`VANTIO_API_KEY=${apiKey ?? "your-api-key-above"}
 VANTIO_INGEST_URL=https://vantio.ai`}</code>
                 </pre>
@@ -186,10 +186,10 @@ VANTIO_INGEST_URL=https://vantio.ai`}</code>
             </li>
 
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">03</span>
+              <span className="mt-0.5 font-mono text-xs font-bold text-[var(--border-2)]">03</span>
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-[--foreground]">Run your agent — zero code changes</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
+                <p className="font-medium text-[var(--foreground)]">Run your agent — zero code changes</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[var(--foreground)]/70">
                   <code>{`# The CLI enforces your policy on every agent run
 vantio run node agent.js
 vantio run --audit tsx agent.ts
@@ -204,7 +204,7 @@ vantio run --audit tsx agent.ts
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
             href="/dashboard"
-            className="rounded-xl bg-[--accent] px-6 py-3 text-center text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
+            className="rounded-xl bg-[var(--accent)] px-6 py-3 text-center text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
           >
             Open Dashboard →
           </Link>
@@ -212,7 +212,7 @@ vantio run --audit tsx agent.ts
             href="https://github.com/vantioai/vantio-open-core"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-xl border border-[--border-2] bg-[--surface] px-6 py-3 text-center text-sm font-semibold text-[--muted] transition-all hover:border-[--border] hover:text-[--foreground]"
+            className="rounded-xl border border-[var(--border-2)] bg-[var(--surface)] px-6 py-3 text-center text-sm font-semibold text-[var(--muted)] transition-all hover:border-[var(--border)] hover:text-[var(--foreground)]"
           >
             SDK Reference
           </a>

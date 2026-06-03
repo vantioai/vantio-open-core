@@ -50,7 +50,7 @@ export function WaitlistCta({
   if (state === "success") {
     return (
       <div className={wrapperClassName}>
-        <p className="rounded-xl border border-[--accent]/30 bg-[--accent]/10 px-4 py-3 text-center text-sm text-[--foreground]">
+        <p className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-4 py-3 text-center text-sm text-[var(--foreground)]">
           You&apos;re on the list — we&apos;ll email you when Tier 2 opens.
         </p>
       </div>
@@ -77,7 +77,7 @@ export function WaitlistCta({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@company.com"
-          className="w-full rounded-lg border border-[--border] bg-[--background] px-3 py-2 text-sm text-[--foreground] outline-none focus:border-[--accent]"
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--accent)]"
         />
         <button type="submit" disabled={state === "submitting"} className={`${buttonClassName} disabled:opacity-60`}>
           {state === "submitting" ? "Joining…" : label}

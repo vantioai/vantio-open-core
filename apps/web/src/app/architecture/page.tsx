@@ -12,7 +12,7 @@ const LAYERS = [
   {
     tier: "RING-0",
     label: "Phantom Engine",
-    color: "text-[--accent]", border: "border-[--accent]/30", bg: "bg-[--accent]/5",
+    color: "text-[var(--accent)]", border: "border-[var(--accent)]/30", bg: "bg-[var(--accent)]/5",
     headline: "eBPF Kernel Enforcement",
     body: "Pure Rust eBPF programs compiled to bpfel-unknown-none and loaded into the Linux kernel via Aya. Only enrolled workloads — matched by cgroup via Kubernetes labels/annotations — are enforced; all other host traffic is passed through untouched. For enrolled agents, activity is intercepted at kernel hook boundaries — tracepoints, uprobes, and a TC egress classifier — before it can affect the host filesystem, network, or external state. The programs run simultaneously:",
     points: [
@@ -67,13 +67,13 @@ export default function ArchitecturePage() {
     <main className="mx-auto max-w-5xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Architecture", path: "/architecture" }])} />
       <div className="mb-4 flex flex-wrap gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[--accent]/30 bg-[--accent]/5 px-3 py-1 text-xs font-semibold text-[--accent]">Tier 01</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-3 py-1 text-xs font-semibold text-[var(--accent)]">Tier 01</span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1 text-xs font-semibold text-blue-400">Tier 02</span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1 text-xs font-semibold text-red-400">Tier 03</span>
       </div>
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">Architecture</p>
+      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Architecture</p>
       <h1 className="mb-4 text-4xl font-bold">The Architecture of Verifiable Enforcement.</h1>
-      <p className="mb-20 max-w-2xl text-lg text-[--muted]">
+      <p className="mb-20 max-w-2xl text-lg text-[var(--muted)]">
         Three components across three tiers. Enforcement where each tier can reach — and a
         cryptographic record you can verify without trusting us.
       </p>
@@ -88,16 +88,16 @@ export default function ArchitecturePage() {
                 <p className={`text-sm font-medium ${l.color}`}>{l.headline}</p>
               </div>
             </div>
-            <p className="mb-6 text-sm text-[--muted]">{l.body}</p>
+            <p className="mb-6 text-sm text-[var(--muted)]">{l.body}</p>
             <div className="mb-6 space-y-4">
               {l.points.map(({ code, desc }) => (
                 <div key={code} className="flex gap-4">
                   <code className={`mt-0.5 shrink-0 rounded px-2 py-0.5 text-xs ${l.color} bg-black/20`}>{code}</code>
-                  <p className="text-sm text-[--muted]">{desc}</p>
+                  <p className="text-sm text-[var(--muted)]">{desc}</p>
                 </div>
               ))}
             </div>
-            <p className={`text-xs font-medium ${l.color}`}>Deploy: <span className="font-normal text-[--muted]">{l.deploy}</span></p>
+            <p className={`text-xs font-medium ${l.color}`}>Deploy: <span className="font-normal text-[var(--muted)]">{l.deploy}</span></p>
           </div>
         ))}
       </div>
@@ -105,21 +105,21 @@ export default function ArchitecturePage() {
       {/* Stack table */}
       <div className="mt-20">
         <h2 className="mb-6 text-xl font-bold">Technology Stack</h2>
-        <div className="overflow-hidden rounded-xl border border-[--border]">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)]">
           <table className="w-full text-sm">
-            <thead className="bg-[--surface]">
+            <thead className="bg-[var(--surface)]">
               <tr>
                 {["Component", "Technology", "Purpose"].map((h) => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-widest text-[--muted]">{h}</th>
+                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[--border]">
+            <tbody className="divide-y divide-[var(--border)]">
               {STACK.map(([c, t, p]) => (
-                <tr key={c} className="transition-colors hover:bg-[--surface]">
+                <tr key={c} className="transition-colors hover:bg-[var(--surface)]">
                   <td className="px-5 py-3 font-medium">{c}</td>
-                  <td className="px-5 py-3 font-mono text-xs text-[--accent]">{t}</td>
-                  <td className="px-5 py-3 text-[--muted]">{p}</td>
+                  <td className="px-5 py-3 font-mono text-xs text-[var(--accent)]">{t}</td>
+                  <td className="px-5 py-3 text-[var(--muted)]">{p}</td>
                 </tr>
               ))}
             </tbody>
@@ -128,10 +128,10 @@ export default function ArchitecturePage() {
       </div>
 
       <div className="mt-12 flex gap-4">
-        <a href="/enterprise" className="rounded-md bg-[--accent] px-6 py-3 text-sm font-semibold text-black hover:bg-[--accent-dim]">
+        <a href="/enterprise" className="rounded-md bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-black hover:bg-[var(--accent-dim)]">
           Deploy Enterprise Stack
         </a>
-        <a href="/developers" className="rounded-md border border-[--border] px-6 py-3 text-sm font-medium text-[--muted] hover:border-[--foreground] hover:text-[--foreground]">
+        <a href="/developers" className="rounded-md border border-[var(--border)] px-6 py-3 text-sm font-medium text-[var(--muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]">
           Start with Free SDK
         </a>
       </div>
