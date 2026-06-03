@@ -106,14 +106,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   //    the volunteered email). Never throw to the client on a DB failure. ─────
   try {
     const supabase = getSupabaseAdmin();
-    await supabase
+    const { error } = await supabase
       .from("waitlist")
       .upsert(
         { email: input.email, source: input.source, metadata: {} },
         { onConflict: "email", ignoreDuplicates: true }
       );
+    if (error) {
+      console.error("[vantio:waitlist] Supabase write failed:", error.message, error);
+      return NextResponse.json(
+        { error: "Could not save your signup. Please try again.", detail: error.message },
+        { status: 500 }
+      );
+    }
   } catch (err) {
-    console.error("[vantio:waitlist] Supabase write failed:", err);
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[vantio:waitlist] Supabase write threw:", detail, err);
+    return NextResponse.json(
+      { error: "Could not save your signup. Please try again.", detail },
+      { status: 500 }
+    );
   }
 
   // ── Notify internal Slack channel if configured. Escape the only
