@@ -41,7 +41,7 @@ export function ContainmentVisual() {
       >
         <div className="h-px w-full bg-gradient-to-r from-red-500/0 via-red-500/30 to-red-500/0" />
         <span className="cv-blocked absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]" />
-        <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: "62%" }}>
+        <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: "64%" }}>
           <span className="cv-sever block">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="rgb(248 113 113)" strokeWidth="2" strokeLinecap="round">
               <line x1="4" y1="4" x2="12" y2="12" />

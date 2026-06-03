@@ -140,9 +140,9 @@ body {
 @keyframes cv-blocked {
   0%, 100% { left: 4%;  opacity: 0; }
   15%      { opacity: 1; }
-  55%      { left: 62%; opacity: 1; }
-  66%      { left: 62%; opacity: 0; }
-  99%      { left: 62%; opacity: 0; }
+  55%      { left: 64%; opacity: 1; }   /* 64% of the spoke == the ring radius */
+  66%      { left: 64%; opacity: 0; }
+  99%      { left: 64%; opacity: 0; }
 }
 @keyframes cv-sever {
   0%, 50%, 100% { opacity: 0; transform: scale(0.5); }
@@ -155,18 +155,39 @@ body {
 .cv-blocked { animation: cv-blocked 3.4s ease-in infinite; }
 .cv-sever   { animation: cv-sever 3.4s ease-out infinite; }
 
-/* Observe-vs-contain visual. */
-@keyframes ovc-radar { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-@keyframes ovc-ping  { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(1.5); opacity: 0; } }
-.ovc-radar { animation: ovc-radar 6s linear infinite; transform-origin: center; }
-.ovc-ping  { animation: ovc-ping 2.6s ease-out infinite; }
+/* Living dashboard hero visual. */
+@property --dv-count { syntax: "<integer>"; initial-value: 1297; inherits: false; }
+@keyframes dv-count  { from { --dv-count: 1240; } to { --dv-count: 1297; } }
+.dv-counter { --dv-count: 1297; counter-reset: dvc var(--dv-count); animation: dv-count 2.6s ease-out forwards; }
+.dv-counter::after { content: counter(dvc); }
+
+/* Seamless event-feed marquee (track holds two identical row sets). */
+@keyframes dv-scroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+.dv-track { animation: dv-scroll 16s linear infinite; }
+
+@keyframes dv-live { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-glow); } 50% { opacity: 0.55; box-shadow: 0 0 0 5px transparent; } }
+.dv-live { animation: dv-live 1.8s ease-in-out infinite; }
+
+@keyframes dv-bar { 0%, 100% { transform: scaleY(0.55); } 50% { transform: scaleY(1); } }
+.dv-bar { transform-origin: bottom; animation: dv-bar 2.4s ease-in-out infinite; }
+
+@keyframes dv-redact-from { 0%, 42% { opacity: 1; } 56%, 100% { opacity: 0; } }
+@keyframes dv-redact-to   { 0%, 42% { opacity: 0; } 56%, 100% { opacity: 1; } }
+.dv-redact-from { animation: dv-redact-from 5s ease-in-out infinite; }
+.dv-redact-to   { animation: dv-redact-to 5s ease-in-out infinite; }
+
+@keyframes dv-flash { 0%, 100% { background-color: rgba(239, 68, 68, 0.08); } 50% { background-color: rgba(239, 68, 68, 0.22); } }
+.dv-flash { animation: dv-flash 2s ease-in-out infinite; }
 
 /* Reduced-motion safety net: stop all continuous motion and reveal-in content. */
 @media (prefers-reduced-motion: reduce) {
   .cv-ring, .cv-core, .cv-flow, .cv-blocked, .cv-sever,
-  .ovc-radar, .ovc-ping, .flow-connector, .flow-connector-v,
-  .animate-fade-up {
+  .flow-connector, .flow-connector-v, .animate-fade-up,
+  .dv-track, .dv-live, .dv-bar, .dv-redact-from, .dv-redact-to, .dv-flash, .dv-counter {
     animation: none !important;
   }
   .reveal-hidden, .reveal-in { opacity: 1 !important; transform: none !important; }
+  /* Show the populated/safe end state of the redaction micro-moment. */
+  .dv-redact-from { opacity: 0 !important; }
+  .dv-redact-to   { opacity: 1 !important; }
 }

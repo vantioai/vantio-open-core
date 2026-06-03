@@ -6,7 +6,7 @@ import { HOME_FAQ } from "@/lib/faq";
 import { isTier2Waitlist } from "@/lib/tier2";
 import { WaitlistCta } from "@/components/waitlist-cta";
 import { ContainmentVisual } from "@/components/containment-visual";
-import { ObserveVsContain } from "@/components/observe-vs-contain";
+import { DashboardVisual } from "@/components/dashboard-visual";
 import { Reveal } from "@/components/reveal";
 
 export const metadata: Metadata = buildMetadata({ path: "/" });
@@ -164,9 +164,9 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Containment visual (replaces the terminal as the hero focal piece) */}
+          {/* Living telemetry dashboard — the hero focal piece */}
           <div className="relative">
-            <ContainmentVisual />
+            <DashboardVisual />
           </div>
         </div>
       </section>
@@ -202,7 +202,11 @@ export default function HomePage() {
             </Reveal>
 
             <Reveal delayMs={120}>
-              <ObserveVsContain />
+              <ContainmentVisual />
+              <p className="mx-auto mt-5 max-w-sm text-center text-xs leading-relaxed text-[var(--muted)]">
+                Allowed traffic flows out; the rogue request is severed at the boundary.
+                Observe stops at the dashboard — <span className="text-[var(--foreground)]">Vantio stops it here.</span>
+              </p>
             </Reveal>
           </div>
         </div>
