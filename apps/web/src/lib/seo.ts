@@ -111,7 +111,7 @@ export function softwareApplicationJsonLd() {
         name: "Pro",
         price: "499",
         priceCurrency: "USD",
-        description: "SDK-side PII redaction, spend caps, host/policy blocking, and a tamper-proof audit trail.",
+        description: "SDK-side PII redaction, spend caps, host/policy blocking, and a tamper-proof audit trail — production-grade AI governance you can run yourself, live in under an hour with no security team, ops team, or infrastructure required.",
       },
       {
         "@type": "Offer",

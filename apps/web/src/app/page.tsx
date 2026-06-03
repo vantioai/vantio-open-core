@@ -152,15 +152,15 @@ export default function HomePage() {
             </p>
 
             <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
-              <Link href="/developers"
-                className="group flex items-center gap-2 rounded-xl bg-[var(--accent)] px-8 py-3.5 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_40px_rgba(0,232,122,0.4)]">
-                Start free
-                <span className="transition-transform group-hover:translate-x-0.5">→</span>
-              </Link>
               <a href="#how"
-                className="flex items-center gap-2 rounded-xl border border-[var(--border-2)] bg-[var(--surface)] px-6 py-3.5 text-sm font-medium text-[var(--muted)] transition-all hover:border-[var(--border)] hover:text-[var(--foreground)]">
+                className="group flex items-center gap-2 rounded-xl bg-[var(--accent)] px-8 py-3.5 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_40px_rgba(0,232,122,0.4)]">
                 See how it works
+                <span className="transition-transform group-hover:translate-y-0.5">↓</span>
               </a>
+              <Link href="/developers"
+                className="flex items-center gap-2 rounded-xl border border-[var(--border-2)] bg-[var(--surface)] px-6 py-3.5 text-sm font-medium text-[var(--muted)] transition-all hover:border-[var(--border)] hover:text-[var(--foreground)]">
+                Start free →
+              </Link>
             </div>
           </div>
 
@@ -238,7 +238,7 @@ export default function HomePage() {
       </section>
 
       {/* ── How it works (connected flow) ─────────────────────────────────────── */}
-      <section id="how" className="border-y border-[var(--border)] bg-[var(--surface)] px-6 py-24">
+      <section id="how" className="scroll-mt-24 border-y border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-5xl">
           <Reveal>
             <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">How It Works</p>
@@ -270,52 +270,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── See it in action (relocated, polished terminal) ───────────────────── */}
-      <section id="see-it" className="px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="grid items-center gap-12 lg:grid-cols-2">
-            <Reveal>
-              <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">See it in action</p>
-              <h2 className="mt-3 text-3xl font-bold leading-tight">
-                One command. Enforcement and a receipt.
-              </h2>
-              <p className="mt-4 text-sm leading-relaxed text-[var(--muted)]">
-                Wrap your agent with the Vantio SDK or CLI. Policy syncs locally, PII is redacted before
-                it leaves, off-policy hosts are severed at the edge — and every decision lands in a
-                tamper-proof log. No proxy, no prompt content, no slowdown.
-              </p>
-              <Link href="/developers"
-                className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)] transition-colors hover:text-[var(--accent-dim)]">
-                Read the developer quickstart →
-              </Link>
-            </Reveal>
-
-            <Reveal delayMs={120}>
-              <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl shadow-black/40">
-                <div className="flex items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-2.5">
-                  <span className="h-3 w-3 rounded-full bg-red-500/70" />
-                  <span className="h-3 w-3 rounded-full bg-yellow-500/70" />
-                  <span className="h-3 w-3 rounded-full bg-green-500/70" />
-                  <span className="ml-2 text-xs text-[var(--muted)]">agent.js — vantio</span>
-                </div>
-                <div className="space-y-1 p-4 text-left font-mono text-xs leading-relaxed">
-                  <p className="text-[var(--muted)]">$ <span className="text-[var(--accent)]">vantio run</span> node agent.js</p>
-                  <p className="text-[var(--muted)]"><span className="text-[var(--accent)]">[ ∅ VANTIO ]</span> policy synced · enforce mode</p>
-                  <p className="text-[var(--muted)]">  redact pii : email, credit_card <span className="text-green-400">on</span></p>
-                  <p className="text-[var(--muted)]">  spend cap  : $50.00 / run</p>
-                  <p className="text-[var(--muted)]">  allow host : <span className="text-blue-400">api.openai.com</span> <span className="text-green-400">allowed</span></p>
-                  <p className="pt-1 text-[var(--muted)]"><span className="text-yellow-400">⚠</span>  request → scraper.unknown.tld</p>
-                  <p className="text-[var(--muted)]">  not on allow-list · action: <span className="text-red-400">BLOCKED_HOST</span></p>
-                  <p className="text-[var(--muted)]"><span className="text-[var(--accent)]">✓</span> 1 action blocked · audit log written</p>
-                </div>
-              </div>
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
       {/* ── Where do you fit? (persona → tier) ─────────────────────────────────── */}
-      <section id="fit" className="border-y border-[var(--border)] bg-[var(--surface)] px-6 py-24">
+      <section id="fit" className="scroll-mt-24 border-y border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <Reveal>
             <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Where do you fit?</p>
@@ -367,8 +323,9 @@ export default function HomePage() {
                 <p className="text-xs font-semibold uppercase tracking-widest text-blue-400">I run a business</p>
                 <h3 className="mt-2 text-lg font-bold text-[var(--foreground)]">Put agents in front of customers</h3>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                  You&apos;re deploying AI and marketplace agents for real customers and need enforceable
-                  guardrails — not just dashboards.
+                  You&apos;re putting AI in front of real customers and need enforceable guardrails —
+                  production-grade governance you can run yourself, without a security team, an ops team,
+                  or a procurement cycle.
                 </p>
                 <div className="mt-5 flex items-baseline gap-2">
                   <span className="rounded-full bg-blue-400/10 px-2.5 py-0.5 text-xs font-bold text-blue-400">PRO</span>
@@ -484,20 +441,25 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Final CTA ─────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-t border-[var(--border)] bg-[var(--surface)] px-6 py-20 text-center">
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-64 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent)]/8 blur-3xl" />
-        <div className="relative">
-          <h2 className="text-3xl font-bold">Your AI agents are running right now.</h2>
-          <p className="mx-auto mt-3 max-w-md text-[var(--muted)]">
-            Give them guardrails enforced right where they run, and ship with confidence —
-            set up in minutes, free to start.
+      {/* ── Finale ────────────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden border-t border-[var(--border)] bg-[var(--surface)] px-6 py-28 text-center">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-[40rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--accent)]/8 blur-3xl" />
+        <div className="relative mx-auto max-w-3xl">
+          <p className="text-sm font-medium text-[var(--muted)]">
+            Your agents are ready to run free — <span className="text-[var(--foreground)]">get there before your competition does.</span>
           </p>
-          <Link href="/developers"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-8 py-3.5 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_40px_rgba(0,232,122,0.35)]">
-            Start free →
-          </Link>
-          <p className="mt-4 text-xs text-[var(--muted)]">No credit card · No infrastructure changes · Works with any AI framework</p>
+          <h2 className="mt-4 text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
+            <span className="bg-gradient-to-r from-[var(--accent)] via-emerald-300 to-[var(--accent)] bg-clip-text text-transparent">
+              Own the future of autonomous AI.
+            </span>
+          </h2>
+          <div className="mt-8">
+            <a href="#fit"
+              className="group inline-flex items-center gap-2 rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-6 py-3 text-sm font-medium text-[var(--muted)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--foreground)]">
+              Find where you fit
+              <span className="transition-transform group-hover:-translate-y-0.5">↑</span>
+            </a>
+          </div>
         </div>
       </section>
     </main>

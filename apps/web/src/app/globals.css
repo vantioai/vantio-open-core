@@ -6,7 +6,7 @@
   --surface-2:   #0f0f1a;
   --border:      #1e1e2e;
   --border-2:    #2a2a3e;
-  --muted:       #6b6b8a;
+  --muted:       #9090ab;
   --foreground:  #e8e8f0;
   --accent:      #00e87a;
   --accent-dim:  #00c466;
@@ -190,4 +190,6 @@ body {
   /* Show the populated/safe end state of the redaction micro-moment. */
   .dv-redact-from { opacity: 0 !important; }
   .dv-redact-to   { opacity: 1 !important; }
+  /* No animated jump-scrolling for reduced-motion users. */
+  html { scroll-behavior: auto !important; }
 }

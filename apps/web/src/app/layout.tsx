@@ -130,9 +130,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               </div>
               <div className="flex flex-wrap gap-10 text-sm">
                 {[
-                  { heading: "Product", links: [["/architecture","Architecture"],["/pricing","Pricing"],["/developers","Developers"],["/research","Research"]] },
-                  { heading: "Company", links: [["/trust","Trust Center"],["/enterprise","Enterprise"],["https://github.com/vantioai/vantio-open-core","GitHub"],["/dashboard","Dashboard"]] },
-                  { heading: "Legal",   links: [["/privacy","Privacy Policy"],["/terms","Terms of Service"]] },
+                  { heading: "Product",   links: [["/developers","Developers"],["/pro","Pro"],["/enterprise","Enterprise"],["/pricing","Pricing"]] },
+                  { heading: "Resources", links: [["/architecture","Architecture"],["/research","Research"],["https://github.com/vantioai/vantio-open-core","GitHub"]] },
+                  { heading: "Company",   links: [["/trust","Trust Center"],["/dashboard","Dashboard"]] },
+                  { heading: "Legal",     links: [["/privacy","Privacy Policy"],["/terms","Terms of Service"]] },
                 ].map(({ heading, links }) => (
                   <div key={heading} className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">{heading}</p>

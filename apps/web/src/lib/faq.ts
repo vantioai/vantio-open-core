@@ -60,7 +60,7 @@ export const PRICING_FAQ: FaqItem[] = [
   {
     question: "What's the difference between PRO and Enterprise?",
     answer:
-      "PRO enforces inside your SDK/CLI — it redacts PII, caps spend, and blocks off-policy hosts locally, driven by a cloud-managed policy you control (fast, easy setup). It fails open, so a Vantio outage never blocks your agent. Enterprise enforces in the Linux kernel (eBPF) for the workloads you enroll — off-policy network calls from those agents are dropped before they leave the node, even if user-space controls are bypassed. It deploys as a de-privileged DaemonSet on your own Linux or Kubernetes nodes.",
+      "PRO enforces inside your SDK/CLI — it redacts PII, caps spend, and blocks off-policy hosts locally, driven by a cloud-managed policy you control. It's fast, self-serve setup you can run yourself in under an hour — no security team, ops team, or procurement cycle — and it fails open, so a Vantio outage never blocks your agent. Enterprise enforces in the Linux kernel (eBPF) for the workloads you enroll — off-policy network calls from those agents are dropped before they leave the node, even if user-space controls are bypassed. It deploys as a de-privileged DaemonSet on your own Linux or Kubernetes nodes.",
   },
   {
     question: "Is there a free trial for Enterprise?",

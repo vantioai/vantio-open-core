@@ -28,10 +28,12 @@ export default function ProPage() {
           <span className="text-blue-400">You stay in control.</span>
         </h1>
         <p className="mx-auto mb-10 max-w-2xl text-lg text-[var(--muted)]">
-          Vantio Pro syncs a policy you control down to the SDK running with your agent. It
-          redacts PII, blocks off-policy hosts, and caps spend right where your agent runs —
-          before anything leaves your environment. No proxy, no servers to manage, no code to
-          change.
+          <span className="font-semibold text-[var(--foreground)]">Vantio Pro</span> syncs a policy you
+          control down to the SDK running with your agent. It redacts PII, blocks off-policy hosts, and
+          caps spend right where your agent runs — before anything leaves your environment. It&apos;s
+          production-grade governance you can stand up yourself — without a security team, an ops team,
+          or a procurement cycle. No proxy, no infrastructure to run, no code to change — live in under
+          an hour.
         </p>
         <div className="flex flex-wrap items-start justify-center gap-3">
           {isTier2Waitlist() ? (
