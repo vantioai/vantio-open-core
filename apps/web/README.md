@@ -24,7 +24,6 @@ Next.js 15 App Router application serving the Vantio AI Pro and Enterprise contr
 | `/api/stripe/create-checkout-session` | Stripe checkout session with 14-day trial |
 | `/api/stripe/portal` | Stripe Customer Portal redirect |
 | `/api/webhooks/stripe` | Stripe event handler (provision, downgrade, cancel) |
-| `/api/webhooks/supabase/anomaly` | Supabase INSERT hook → Slack alert |
 | `/api/contact` | Enterprise lead capture → Supabase + Slack |
 
 ## Local Development
