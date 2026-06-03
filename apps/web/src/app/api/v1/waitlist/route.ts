@@ -115,15 +115,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) {
       console.error("[vantio:waitlist] Supabase write failed:", error.message, error);
       return NextResponse.json(
-        { error: "Could not save your signup. Please try again.", detail: error.message },
+        { error: "Could not save your signup. Please try again." },
         { status: 500 }
       );
     }
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error("[vantio:waitlist] Supabase write threw:", detail, err);
+    console.error("[vantio:waitlist] Supabase write threw:", err);
     return NextResponse.json(
-      { error: "Could not save your signup. Please try again.", detail },
+      { error: "Could not save your signup. Please try again." },
       { status: 500 }
     );
   }
@@ -132,22 +131,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   //    user-supplied field (email) before interpolation. ─────────────────────
   const slackUrl = process.env.SLACK_WEBHOOK_URL;
   if (slackUrl) {
-    void fetch(slackUrl, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        blocks: [
-          { type: "header", text: { type: "plain_text", text: "📝 New Tier 2 Waitlist Signup" } },
-          {
-            type: "section",
-            fields: [
-              { type: "mrkdwn", text: `*Email*\n${slackEscape(input.email)}` },
-              { type: "mrkdwn", text: `*Source*\n${input.source ?? "—"}` },
-            ],
-          },
-        ],
-      }),
-    }).catch(() => {});
+    // Await the Slack POST: in the edge runtime a fire-and-forget promise is
+    // killed once the response is returned, so it must complete before we return.
+    // Bounded + failure-safe so a slow/broken Slack never breaks the signup.
+    try {
+      await fetch(slackUrl, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocks: [
+            { type: "header", text: { type: "plain_text", text: "📝 New Tier 2 Waitlist Signup" } },
+            {
+              type: "section",
+              fields: [
+                { type: "mrkdwn", text: `*Email*\n${slackEscape(input.email)}` },
+                { type: "mrkdwn", text: `*Source*\n${input.source ?? "—"}` },
+              ],
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch (err) {
+      console.error("[vantio:waitlist] Slack notify failed:", err);
+    }
   }
 
   return NextResponse.json({ ok: true }, { status: 202 });
