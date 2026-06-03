@@ -39,25 +39,26 @@ export default async function Image({ params }: { params: Promise<{ slug: string
           backgroundImage: `radial-gradient(900px 450px at 88% -10%, ${accent}26, transparent)`,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: "52px",
               height: "52px",
               borderRadius: "14px",
               background: `${accent}22`,
               color: accent,
-              fontSize: "34px",
+              padding: "0 18px",
+              fontSize: "26px",
               fontWeight: 900,
+              letterSpacing: "2px",
             }}
           >
-            ∅
+            VANTIO
           </div>
-          <div style={{ display: "flex", color: "#e8e8f0", fontSize: "26px", fontWeight: 700, letterSpacing: "3px" }}>
-            VANTIO · THE BRIEF
+          <div style={{ display: "flex", color: "#a0a0ba", fontSize: "26px", fontWeight: 700, letterSpacing: "3px" }}>
+            THE BRIEF
           </div>
         </div>
 

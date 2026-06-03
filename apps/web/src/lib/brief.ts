@@ -43,8 +43,15 @@ import { post as pShadow } from "@/lib/brief/posts/shadow-agents-new-shadow-it";
 import { post as pAudit } from "@/lib/brief/posts/audit-trail-for-ai-agents";
 import { post as pLing } from "@/lib/brief/posts/linguistics-cannot-secure-compute";
 import { post as pLedger } from "@/lib/brief/posts/the-cryptographic-anomaly-record";
+import { post as pProducts } from "@/lib/brief/posts/hot-agent-products-2026";
+import { post as pNineSec } from "@/lib/brief/posts/it-deleted-the-database-in-nine-seconds";
+import { post as pPhysical } from "@/lib/brief/posts/governing-agents-in-the-physical-world";
+import { post as pControl } from "@/lib/brief/posts/control-not-capability";
 
-const POSTS: Post[] = [p47k, pLoops, pShadow, pAudit, pLing, pLedger];
+const POSTS: Post[] = [
+  p47k, pLoops, pShadow, pAudit, pLing, pLedger,
+  pProducts, pNineSec, pPhysical, pControl,
+];
 
 /** All posts, newest first. */
 export function getAllPosts(): Post[] {
