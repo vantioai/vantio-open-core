@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { buildMetadata } from "@/lib/seo";
+import { isTier2Waitlist } from "@/lib/tier2";
+import { WaitlistCta } from "@/components/waitlist-cta";
 
 export const metadata: Metadata = buildMetadata({
   title: "Welcome to Pro",
@@ -62,6 +64,39 @@ export default async function SuccessPage({
 }: {
   searchParams: Promise<{ session_id?: string }>;
 }) {
+  // In waitlist mode no checkout can occur, so /success may be reached without a
+  // real session. Degrade gracefully: never imply a trial started or expose a
+  // key — just offer the waitlist.
+  if (isTier2Waitlist()) {
+    return (
+      <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16 text-center">
+        <div className="w-full max-w-lg">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            Tier 2 — Launching soon
+          </p>
+          <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
+            Pro isn&apos;t open for signups yet.
+          </h1>
+          <p className="mx-auto mt-3 max-w-md text-sm text-[--muted]">
+            We&apos;re putting the finishing touches on Tier 2. Join the waitlist and we&apos;ll
+            email you the moment it opens.
+          </p>
+          <div className="mx-auto mt-8 max-w-xs">
+            <WaitlistCta
+              source="success"
+              buttonClassName="w-full rounded-xl bg-[--accent] py-3 text-center text-sm font-bold text-black transition-all hover:bg-[--accent-dim]"
+            />
+          </div>
+          <p className="mt-6 text-xs text-[--muted]">
+            <Link href="/" className="text-[--accent]/80 underline hover:text-[--accent]">
+              Back to home
+            </Link>
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   const { session_id } = await searchParams;
   const { apiKey, authenticated } = await getOwnedApiKey(session_id ?? null);
 

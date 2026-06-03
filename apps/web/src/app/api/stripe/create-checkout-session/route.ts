@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { isTier2Waitlist } from "@/lib/tier2";
 
 function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -8,6 +9,16 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // SAFETY: while Tier 2 is waitlist-only, hard-disable checkout BEFORE creating
+  // any Stripe session — so even a direct POST cannot start a charge. Waitlist
+  // mode is on by default and only off when NEXT_PUBLIC_TIER2_WAITLIST==="false".
+  if (isTier2Waitlist()) {
+    return NextResponse.json(
+      { error: "tier2_waitlist", message: "Tier 2 is currently waitlist-only." },
+      { status: 403 }
+    );
+  }
+
   // Derive redirect URLs from a TRUSTED origin, never the request `origin`
   // header (attacker-controlled — would enable an open redirect that chains
   // with the /success API-key disclosure).

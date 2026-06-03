@@ -3,6 +3,8 @@ import Link from "next/link";
 import { buildMetadata, faqJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/json-ld";
 import { HOME_FAQ } from "@/lib/faq";
+import { isTier2Waitlist } from "@/lib/tier2";
+import { WaitlistCta } from "@/components/waitlist-cta";
 
 export const metadata: Metadata = buildMetadata({ path: "/" });
 
@@ -172,7 +174,9 @@ export default function HomePage() {
           <h2 className="mb-4 text-center text-3xl font-bold">Start free. Upgrade when you&apos;re ready.</h2>
           <p className="mb-14 text-center text-sm text-[--muted]">No long-term contracts. Cancel any time.</p>
           <div className="grid gap-5 md:grid-cols-3">
-            {TIERS.map((t) => (
+            {TIERS.map((t) => {
+              const waitlist = t.name === "Pro" && isTier2Waitlist();
+              return (
               <div key={t.name}
                 className={`relative flex flex-col rounded-2xl border ${t.border} ${t.bg} p-7 transition-all ${t.glow}`}>
                 {t.badge && (
@@ -183,6 +187,11 @@ export default function HomePage() {
                 <p className={`mb-1 text-xs font-semibold uppercase tracking-widest ${t.color}`}>{t.label}</p>
                 <h3 className="mb-1 text-xl font-bold">{t.name}</h3>
                 <p className="mb-5 text-xs text-[--muted]">{t.headline}</p>
+                {waitlist && (
+                  <span className="mb-4 inline-flex w-fit items-center rounded-full border border-blue-400/30 bg-blue-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                    Launching soon
+                  </span>
+                )}
                 <div className="mb-6 flex items-end gap-1">
                   <span className="text-4xl font-black">{t.price}</span>
                   <span className="mb-1 text-xs text-[--muted]">{t.period}</span>
@@ -195,7 +204,12 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                {t.primary ? (
+                {waitlist ? (
+                  <WaitlistCta
+                    source="home"
+                    buttonClassName="block w-full rounded-xl bg-blue-500 py-3 text-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-400 hover:shadow-blue-500/30"
+                  />
+                ) : t.primary ? (
                   <Link href={t.href}
                     className="block rounded-xl bg-blue-500 py-3 text-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-400 hover:shadow-blue-500/30">
                     {t.cta}
@@ -207,7 +221,8 @@ export default function HomePage() {
                   </Link>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>

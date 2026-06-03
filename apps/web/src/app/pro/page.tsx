@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/json-ld";
+import { isTier2Waitlist } from "@/lib/tier2";
+import { WaitlistCta } from "@/components/waitlist-cta";
 
 export const metadata: Metadata = buildMetadata({
   title: "Pro",
@@ -16,6 +18,11 @@ export default function ProPage() {
         <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-4 py-1.5 text-xs font-semibold text-blue-400">
           Tier 02 — Pro · $499/month
         </span>
+        {isTier2Waitlist() && (
+          <span className="mb-4 ml-2 inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/10 px-4 py-1.5 text-xs font-semibold text-blue-400">
+            Launching soon
+          </span>
+        )}
         <h1 className="mb-4 text-4xl font-bold sm:text-5xl">
           Let your agents run free.<br />
           <span className="text-blue-400">You stay in control.</span>
@@ -26,11 +33,19 @@ export default function ProPage() {
           before anything leaves your environment. No proxy, no servers to manage, no code to
           change.
         </p>
-        <div className="flex flex-wrap justify-center gap-3">
-          <a href="/pricing"
-            className="rounded-md bg-blue-400 px-6 py-3 text-sm font-semibold text-black hover:bg-blue-300">
-            Start 14-Day Free Trial
-          </a>
+        <div className="flex flex-wrap items-start justify-center gap-3">
+          {isTier2Waitlist() ? (
+            <WaitlistCta
+              source="pro"
+              wrapperClassName="w-full max-w-xs sm:w-auto"
+              buttonClassName="w-full rounded-md bg-blue-400 px-6 py-3 text-sm font-semibold text-black hover:bg-blue-300"
+            />
+          ) : (
+            <a href="/pricing"
+              className="rounded-md bg-blue-400 px-6 py-3 text-sm font-semibold text-black hover:bg-blue-300">
+              Start 14-Day Free Trial
+            </a>
+          )}
           <a href="/dashboard"
             className="rounded-md border border-blue-400/30 px-6 py-3 text-sm font-medium text-blue-400 hover:bg-blue-400/5">
             View Demo Dashboard

@@ -1,6 +1,8 @@
 "use client";
 
 import { PRICING_FAQ } from "@/lib/faq";
+import { isTier2Waitlist } from "@/lib/tier2";
+import { WaitlistCta } from "@/components/waitlist-cta";
 
 async function startTrial() {
   const res = await fetch("/api/stripe/create-checkout-session", {
@@ -79,12 +81,23 @@ export default function PricingPage() {
             <p className={`mb-1 text-xs font-semibold uppercase tracking-widest ${t.color}`}>{t.label}</p>
             <h2 className="mb-1 text-2xl font-bold">{t.name}</h2>
             <p className="mb-5 text-sm text-[--muted]">{t.for}</p>
+            {t.href === "#" && isTier2Waitlist() && (
+              <span className="mb-4 inline-flex w-fit items-center rounded-full border border-blue-400/30 bg-blue-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                Launching soon
+              </span>
+            )}
             <div className="mb-6 flex items-end gap-1">
               <span className="text-4xl font-bold">{t.price}</span>
               <span className="mb-1 text-xs text-[--muted]">{t.period}</span>
             </div>
 
-            {t.href === "#" ? (
+            {t.href === "#" && isTier2Waitlist() ? (
+              <WaitlistCta
+                source="pricing"
+                wrapperClassName="mb-8"
+                buttonClassName="w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300"
+              />
+            ) : t.href === "#" ? (
               <button onClick={startTrial}
                 className="mb-8 w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300">
                 {t.cta}
