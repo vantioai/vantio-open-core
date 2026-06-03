@@ -3,6 +3,7 @@ import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/json-ld";
 import { isTier2Waitlist } from "@/lib/tier2";
 import { WaitlistCta } from "@/components/waitlist-cta";
+import { CodeBlock } from "@/components/code-block";
 
 export const metadata: Metadata = buildMetadata({
   title: "Pro",
@@ -81,24 +82,18 @@ export default function ProPage() {
 
       {/* Setup */}
       <section className="mx-auto max-w-4xl px-6 py-20">
-        <h2 className="mb-2 text-2xl font-bold">Running in under 60 seconds.</h2>
-        <p className="mb-10 text-[var(--muted)]">Seriously. Here&apos;s the entire integration.</p>
-        <div className="space-y-6">
-          {[
-            { n: "1", title: "Start your trial", body: "Click the button, enter your card. No charge for 14 days. Your account and API key are created instantly." },
-            { n: "2", title: "Set two environment variables", body: "VANTIO_API_KEY=your-key-here\nVANTIO_INGEST_URL=https://vantio.ai\n\nThat's the entire configuration." },
-            { n: "3", title: "Run your agent through Vantio", body: "vantio run node agent.js\n\nOr: vantio run python agent.py\n\nYour code doesn't change. The CLI handles everything." },
-            { n: "4", title: "Watch the dashboard", body: "Open /dashboard. Every AI call your agent makes shows up in real time — what it called, when, and whether it was allowed." },
-          ].map(({ n, title, body }) => (
-            <div key={n} className="flex gap-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
-              <span className="mt-0.5 shrink-0 text-2xl font-bold text-blue-400">{n}</span>
-              <div>
-                <p className="font-semibold">{title}</p>
-                <p className="mt-1 whitespace-pre-line text-sm text-[var(--muted)]">{body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <h2 className="mb-2 text-2xl font-bold">Running in under a minute.</h2>
+        <p className="mb-6 text-[var(--muted)]">
+          Start your trial, grab your key, then two commands — no env vars, no code changes.
+        </p>
+        <CodeBlock code={"vantio login <your-key>     # once — saved to ~/.vantio\nvantio run node agent.js"} className="bg-black/40" />
+        <p className="mt-5 rounded-xl border border-blue-400/20 bg-blue-400/5 p-4 text-sm text-[var(--muted)]">
+          <span className="font-semibold text-[var(--foreground)]">
+            Get your key and the full, copy-paste quickstart in your{" "}
+            <a href="/dashboard" className="text-blue-400 underline">dashboard</a>.
+          </span>{" "}
+          It prefills your real API key into <code className="rounded bg-[var(--surface)] px-1 text-blue-400">vantio login</code>, and the dashboard is where your agent&apos;s activity shows up in real time.
+        </p>
         <p className="mt-10 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
           <span className="font-semibold text-[var(--foreground)]">Metadata only.</span> Vantio records
           that an action happened — never the content of your prompts or completions. Enforcement

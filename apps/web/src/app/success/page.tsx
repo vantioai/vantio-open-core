@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { buildMetadata } from "@/lib/seo";
 import { isTier2Waitlist } from "@/lib/tier2";
 import { WaitlistCta } from "@/components/waitlist-cta";
+import { Quickstart } from "@/components/quickstart";
 
 export const metadata: Metadata = buildMetadata({
   title: "Welcome to Pro",
@@ -157,48 +158,12 @@ export default async function SuccessPage({
           )}
         </div>
 
-        {/* Setup guide */}
+        {/* Quickstart — the real setup, with your key prefilled */}
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
-            SDK Enforcement Setup (2 min)
+          <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">
+            Quickstart
           </p>
-
-          <ol className="space-y-5 text-sm">
-            <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-[var(--border-2)]">01</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-[var(--foreground)]">Install the SDK</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[var(--foreground)]/70">
-                  <code>npm install @vantio/agent-sdk</code>
-                </pre>
-              </div>
-            </li>
-
-            <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-[var(--border-2)]">02</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-[var(--foreground)]">Set your API key — one env var, that&apos;s it</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[var(--foreground)]/70">
-                  <code>{`VANTIO_API_KEY=${apiKey ?? "your-api-key-above"}
-VANTIO_INGEST_URL=https://vantio.ai`}</code>
-                </pre>
-              </div>
-            </li>
-
-            <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-[var(--border-2)]">03</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-[var(--foreground)]">Run your agent — zero code changes</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[var(--foreground)]/70">
-                  <code>{`# The CLI enforces your policy on every agent run
-vantio run node agent.js
-vantio run --audit tsx agent.ts
-
-# Anomalies appear on your dashboard automatically`}</code>
-                </pre>
-              </div>
-            </li>
-          </ol>
+          <Quickstart apiKey={apiKey} />
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">

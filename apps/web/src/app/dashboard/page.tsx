@@ -8,6 +8,7 @@ import { BillingPortalButton } from "./billing-portal-button";
 import { PhantomEngineStatus } from "./phantom-engine-status";
 import { buildMetadata } from "@/lib/seo";
 import { computeBenchmarks } from "@/lib/benchmarks";
+import { Quickstart } from "@/components/quickstart";
 
 export const metadata: Metadata = buildMetadata({
   title: "Dashboard",
@@ -207,6 +208,17 @@ export default async function DashboardPage() {
           </p>
         </div>
 
+        {/* Quickstart — the real setup home, with the tenant's key prefilled */}
+        {tenant.api_key && (
+          <div className="mb-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+            <h2 className="mb-1 text-sm font-semibold text-[var(--foreground)]">Quickstart</h2>
+            <p className="mb-5 text-xs text-[var(--muted)]">
+              Get your agents reporting in under a minute — your API key is filled in below.
+            </p>
+            <Quickstart apiKey={tenant.api_key} />
+          </div>
+        )}
+
         {/* Stats */}
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((s) => (
@@ -371,19 +383,14 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            {/* Quick install */}
+            {/* Setup pointer */}
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-              <h3 className="mb-3 text-sm font-semibold text-[var(--foreground)]">Quick Install</h3>
-              <pre className="overflow-x-auto rounded-lg bg-black/40 p-3 text-xs leading-relaxed text-[var(--foreground)]/70">
-                <code>{`npm i @vantio/agent-sdk
-
-import { withVantio } from
-  "@vantio/agent-sdk";
-
-await withVantio(async () => {
-  await runMyAgent();
-});`}</code>
-              </pre>
+              <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">Set up the CLI</h3>
+              <p className="text-xs leading-relaxed text-[var(--muted)]">
+                The copy-paste quickstart with your key is at the top of this page. Full SDK + CLI docs
+                live on the{" "}
+                <a href="/developers" className="text-[var(--accent)]/80 underline hover:text-[var(--accent)]">developer guide</a>.
+              </p>
             </div>
           </div>
         </div>

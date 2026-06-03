@@ -9,58 +9,16 @@ export const metadata: Metadata = buildMetadata({
   path: "/developers",
 });
 
-const NODE_SHIELD = `import { shield, getCurrentTraceId } from "@vantio/agent-sdk";
+const QUICK_INSTALL = `curl -fsSL https://vantio.ai/install.sh | sh`;
 
-// shield() wraps any async agent call.
-// Generates a VANTIO_TRACE_ID and propagates it via AsyncLocalStorage.
-const result = await shield(async () => {
-  return await runMyLLMAgent();
-});`;
+const QUICK_RUN = `vantio login <your-key>     # once — saved to ~/.vantio
+vantio run node agent.js     # no env vars, zero code changes`;
 
-const NODE_REPORT = `import { shield, reportAnomaly } from "@vantio/agent-sdk";
+const SDK_TASTE = `import { shield } from "@vantio/agent-sdk";
 
 await shield(async () => {
-  await runMyAgent();
-
-  // Report a detected anomaly to the Oracle ledger.
-  // Zero linguistic content — execution metadata only.
-  await reportAnomaly({
-    target_host:   "api.openai.com",
-    bytes_severed: 14382,
-    action_taken:  "POLICY_VIOLATION",
-  });
+  await runMyAgent();   // every LLM call is now observed
 });`;
-
-const PY_SHIELD = `from vantio import shield, report_anomaly
-
-# Decorator form — zero changes to your agent logic.
-@shield
-async def run_agent():
-    result = await call_openai(prompt)
-    return result
-
-# Or as a context manager:
-async with shield() as trace:
-    print(f"Trace ID: {trace.trace_id}")
-    result = await run_agent()`;
-
-const PY_REPORT = `from vantio import shield, report_anomaly
-
-async with shield():
-    await run_agent()
-    
-    # Report anomaly — fires async, never blocks your agent.
-    await report_anomaly(
-        target_host="api.openai.com",
-        bytes_severed=14382,
-        action_taken="POLICY_VIOLATION",
-    )`;
-
-const CLI_USAGE = `# Zero code changes — wraps any process
-vantio run node agent.js
-vantio run python agent.py
-vantio run --audit tsx agent.ts   # VANTIO_AUDIT_MODE=1
-vantio run --summary node agent.js  # prints run summary on exit`;
 
 const FRAMEWORKS = [
   "LangChain", "AutoGen", "CrewAI", "AWS Bedrock Agents",
@@ -85,7 +43,7 @@ export default function DevelopersPage() {
         npm or pip, wrap a call with <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">shield()</code> or
         invoke any agent with <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">vantio run</code> —
         zero code changes required. 10,000 events/month, free, with every event HMAC-signed and
-        cryptographically receipted. SDK, CLI, and Python SDK are all at <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">v0.2.0</code>.
+        cryptographically receipted.
       </p>
       <div className="mb-16 flex gap-3">
         <a href="/dashboard" className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black hover:bg-[var(--accent-dim)]">
@@ -97,45 +55,37 @@ export default function DevelopersPage() {
         </a>
       </div>
 
-      {/* SDK tabs */}
-      <div className="mb-20 grid gap-12 md:grid-cols-2">
-        {/* Node.js */}
+      {/* Quick taste — two ways in, short on purpose. Full quickstart lives in the dashboard. */}
+      <div className="mb-6 grid gap-6 md:grid-cols-2">
         <div>
-          <div className="mb-4 flex items-center gap-2">
-            <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs font-bold text-green-400">npm</span>
-            <span className="text-sm font-semibold">TypeScript / Node.js</span>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded bg-[var(--accent)]/15 px-2 py-0.5 text-xs font-bold text-[var(--accent)]">CLI</span>
+            <span className="text-sm font-semibold">Zero-line — any stack</span>
           </div>
-          <div className="space-y-5">
-            <CodeBlock code="npm install @vantio/agent-sdk" accent />
-            <CodeBlock label="shield() — basic wrapping" code={NODE_SHIELD} />
-            <CodeBlock label="reportAnomaly() — metadata telemetry" code={NODE_REPORT} />
+          <div className="space-y-3">
+            <CodeBlock code={QUICK_INSTALL} className="bg-black/40" />
+            <CodeBlock code={QUICK_RUN} className="bg-black/40" />
           </div>
         </div>
-
-        {/* Python */}
         <div>
-          <div className="mb-4 flex items-center gap-2">
-            <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-xs font-bold text-yellow-400">PyPI</span>
-            <span className="text-sm font-semibold">Python</span>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded bg-blue-400/15 px-2 py-0.5 text-xs font-bold text-blue-400">SDK</span>
+            <span className="text-sm font-semibold">Explicit trace control</span>
           </div>
-          <div className="space-y-5">
-            <CodeBlock code="pip install vantio-agent-sdk" accent />
-            <CodeBlock label="@shield — decorator / context manager" code={PY_SHIELD} />
-            <CodeBlock label="report_anomaly() — metadata telemetry" code={PY_REPORT} />
-          </div>
+          <CodeBlock label="shield() — wrap any async agent" code={SDK_TASTE} />
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Python too — <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">pip install vantio-agent-sdk</code>,
+            then the <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">@shield</code> decorator.
+          </p>
         </div>
       </div>
 
-      {/* CLI */}
-      <div className="mb-20 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">Zero-Line Integration</div>
-        <h2 className="mb-2 text-xl font-bold">vantio run — Any Process, Any Stack</h2>
-        <p className="mb-6 text-sm text-[var(--muted)]">
-          No code changes at all. The CLI injects the interceptor at runtime via <code className="text-[var(--accent)]">NODE_OPTIONS</code> (which carries <code className="text-[var(--accent)]">--require</code>),
-          patching <code className="text-[var(--accent)]">globalThis.fetch</code> before your agent starts — uniformly across <code className="text-[var(--accent)]">node</code>, <code className="text-[var(--accent)]">npx</code>, <code className="text-[var(--accent)]">tsx</code>, and <code className="text-[var(--accent)]">ts-node</code>.
-          Python, Ruby, and other runtimes are spawned normally without injection; use the Python SDK for those.
-        </p>
-        <CodeBlock code={CLI_USAGE} className="bg-black/40" />
+      {/* Dashboard pointer — the full setup home */}
+      <div className="mb-20 rounded-xl border border-[var(--accent)]/20 bg-[var(--accent)]/5 p-5 text-sm text-[var(--muted)]">
+        <span className="font-semibold text-[var(--foreground)]">Get your key and the full, copy-paste quickstart in your{" "}
+          <a href="/dashboard" className="text-[var(--accent)] underline hover:text-[var(--accent-dim)]">dashboard</a>.
+        </span>{" "}
+        It prefills your real API key into <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">vantio login</code>, so you&apos;re reporting in under a minute.
       </div>
 
       {/* What the SDK does */}

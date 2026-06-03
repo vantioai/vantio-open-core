@@ -4,7 +4,33 @@
 
 ```bash
 npm install -g @vantio/cli
+# or:
+curl -fsSL https://vantio.ai/install.sh | sh
 ```
+
+---
+
+## Quick start
+
+```bash
+vantio login <your-api-key>     # validates + saves your key once
+vantio run node agent.js        # no env vars needed — the key is loaded for you
+```
+
+`vantio login` validates your key against `https://vantio.ai/api/v1/config` and, on success, stores it at `~/.vantio/config.json` (chmod `600`). After that, `vantio run` injects it automatically — no `VANTIO_API_KEY` juggling. Grab your key from your [dashboard](https://vantio.ai/dashboard).
+
+---
+
+## Commands
+
+```bash
+vantio login [key]    # save & validate your API key (prompts if omitted; input masked on a TTY)
+vantio logout         # remove the stored key
+vantio whoami         # show the stored key (masked) + live connection status
+vantio run <program>  # spawn a program under the Vantio execution context
+```
+
+`login` refuses to save a key the server rejects (HTTP 401). The full key is never printed — `whoami` and login output only ever show a masked form like `vk_liv…a1b2`.
 
 ---
 
@@ -18,7 +44,7 @@ vantio run tsx agent.ts
 
 Wrap any process with `vantio run`. The CLI automatically intercepts every outbound call to a known LLM API — OpenAI, Anthropic, Gemini, Cohere, Mistral, and more — and streams the metadata to your dashboard.
 
-Your code doesn't change. Your agent runs normally.
+Your code doesn't change. Your agent runs normally. If you've run `vantio login`, the stored key is injected into the child process; an explicit `VANTIO_API_KEY` in your environment always takes precedence.
 
 ---
 
