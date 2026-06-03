@@ -183,6 +183,12 @@ export default async function DashboardPage() {
             >
               Policy
             </Link>
+            <Link
+              href="/dashboard/alerts"
+              className="rounded-lg border border-[--border-2] bg-[--surface-2] px-4 py-1.5 text-xs font-semibold text-[--foreground] transition-all hover:border-[--accent]/40 hover:text-[--accent]"
+            >
+              Alerts
+            </Link>
             <BillingPortalButton />
           </div>
         </div>

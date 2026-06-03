@@ -59,33 +59,43 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     console.error("[vantio:contact] Failed to store lead:", err);
   }
 
-  // Notify internal Slack channel if configured
-  const slackUrl = process.env.SLACK_WEBHOOK_URL;
+  // Notify the dedicated signups Slack channel if configured. Uses its OWN
+  // webhook — never falls back to SLACK_WEBHOOK_URL, so leads can never land in
+  // Vantio's telemetry/alerts channel.
+  const slackUrl = process.env.SLACK_SIGNUPS_WEBHOOK_URL;
   if (slackUrl) {
-    void fetch(slackUrl, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        blocks: [
-          {
-            type: "header",
-            text: { type: "plain_text", text: "🏢 New Enterprise Lead" },
-          },
-          {
-            type: "section",
-            fields: [
-              { type: "mrkdwn", text: `*Name*\n${payload.name}` },
-              { type: "mrkdwn", text: `*Email*\n${payload.email}` },
-              { type: "mrkdwn", text: `*Company*\n${payload.company}` },
-              { type: "mrkdwn", text: `*Team Size*\n${payload.size || "—"}` },
-            ],
-          },
-          payload.message
-            ? { type: "section", text: { type: "mrkdwn", text: `*Message*\n${payload.message}` } }
-            : null,
-        ].filter(Boolean),
-      }),
-    }).catch(() => {});
+    // Await the Slack POST (bounded + failure-safe) so a fire-and-forget promise
+    // isn't dropped before it sends, while a slow/broken Slack never breaks the
+    // lead capture.
+    try {
+      await fetch(slackUrl, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocks: [
+            {
+              type: "header",
+              text: { type: "plain_text", text: "🏢 New Enterprise Lead" },
+            },
+            {
+              type: "section",
+              fields: [
+                { type: "mrkdwn", text: `*Name*\n${payload.name}` },
+                { type: "mrkdwn", text: `*Email*\n${payload.email}` },
+                { type: "mrkdwn", text: `*Company*\n${payload.company}` },
+                { type: "mrkdwn", text: `*Team Size*\n${payload.size || "—"}` },
+              ],
+            },
+            payload.message
+              ? { type: "section", text: { type: "mrkdwn", text: `*Message*\n${payload.message}` } }
+              : null,
+          ].filter(Boolean),
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch (err) {
+      console.error("[vantio:contact] Slack notify failed:", err);
+    }
   }
 
   return NextResponse.json({ ok: true });

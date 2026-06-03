@@ -127,9 +127,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Notify internal Slack channel if configured. Escape the only
-  //    user-supplied field (email) before interpolation. ─────────────────────
-  const slackUrl = process.env.SLACK_WEBHOOK_URL;
+  // ── Notify the dedicated signups Slack channel if configured. Escape the
+  //    only user-supplied field (email) before interpolation. Uses its OWN
+  //    webhook — never falls back to SLACK_WEBHOOK_URL, so signups can never
+  //    land in Vantio's telemetry/alerts channel. ─────────────────────────────
+  const slackUrl = process.env.SLACK_SIGNUPS_WEBHOOK_URL;
   if (slackUrl) {
     // Await the Slack POST: in the edge runtime a fire-and-forget promise is
     // killed once the response is returned, so it must complete before we return.
