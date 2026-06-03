@@ -63,10 +63,11 @@ export default function EnterprisePage() {
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--muted)]">
-            Banks, hospitals, and governments can&apos;t afford an AI agent that colors outside
-            the lines. Vantio gives you kernel-level enforcement for the AI workloads you
-            enroll — running inside your own cloud on Linux nodes or Kubernetes, with
-            audit-ready proof for every decision and zero data ever leaving your walls.
+            <span className="font-semibold text-[var(--foreground)]">Vantio for Enterprise</span> gives
+            you kernel-level enforcement for the AI workloads you enroll — running inside your own
+            cloud on Linux nodes or Kubernetes, with audit-ready proof for every decision and zero
+            data ever leaving your walls. Banks, hospitals, and governments can&apos;t afford an AI
+            agent that colors outside the lines.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link href="/auth/enterprise"

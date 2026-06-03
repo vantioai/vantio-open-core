@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/json-ld";
+import { Reveal } from "@/components/reveal";
 
 export const metadata: Metadata = buildMetadata({
   title: "Research — Engineering Dossiers",
@@ -8,10 +9,12 @@ export const metadata: Metadata = buildMetadata({
   path: "/research",
 });
 
-const TIER_STYLE: Record<string, { badge: string; border: string; bg: string; label: string }> = {
-  "03": { badge: "text-red-400",   border: "border-red-400/20",  bg: "bg-red-400/5",   label: "Tier 03 — Enterprise" },
-  "02": { badge: "text-blue-400",  border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — Pro" },
-  "01": { badge: "text-[var(--accent)]",border: "border-[var(--accent)]/20",bg: "bg-[var(--accent)]/5",label: "Tier 01 — Developer" },
+// `dot` is a literal bg class (not derived at runtime) so Tailwind's static
+// scanner actually generates it.
+const TIER_STYLE: Record<string, { badge: string; dot: string; border: string; bg: string; label: string }> = {
+  "03": { badge: "text-red-400",   dot: "bg-red-400",          border: "border-red-400/20",  bg: "bg-red-400/5",   label: "Tier 03 — Enterprise" },
+  "02": { badge: "text-blue-400",  dot: "bg-blue-400",         border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — Pro" },
+  "01": { badge: "text-[var(--accent)]", dot: "bg-[var(--accent)]", border: "border-[var(--accent)]/20", bg: "bg-[var(--accent)]/5", label: "Tier 01 — Developer" },
 };
 
 const DOSSIERS = [
@@ -103,53 +106,88 @@ Because enforcement is local, there is no added network hop and no man-in-the-mi
   },
 ];
 
+// Reading flow: Developer (01) → Pro (02) → Enterprise (03), simple → advanced.
+const TIER_ORDER = ["01", "02", "03"];
+const GROUPS = TIER_ORDER.map((tier) => ({
+  tier,
+  ...TIER_STYLE[tier],
+  dossiers: DOSSIERS.filter((d) => d.tier === tier),
+}));
+
 export default function ResearchPage() {
   return (
-    <main className="mx-auto max-w-4xl px-6 py-24">
+    <main className="relative mx-auto max-w-4xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Research", path: "/research" }])} />
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">Research</p>
-      <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
-      <p className="mb-8 max-w-2xl text-[var(--muted)]">
-        Seven research tracks documenting Vantio&apos;s technical architecture across the AI governance market — from enterprise kernel containment for F500 CISOs to developer-grade observability for open-source contributors.
-      </p>
+      <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-[620px] -translate-x-1/2 rounded-full bg-[var(--accent)]/5 blur-3xl" />
 
-      {/* Tier legend */}
-      <div className="mb-14 flex flex-wrap gap-3">
-        <span className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-3 py-1.5 text-xs font-semibold text-[var(--accent)]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-          Tier 01 — Developer
-        </span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1.5 text-xs font-semibold text-blue-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-          Tier 02 — Pro
-        </span>
-        <span className="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-          Tier 03 — Enterprise
-        </span>
+      <div className="relative">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">Research</p>
+        <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
+        <p className="mb-12 max-w-2xl text-[var(--muted)]">
+          Seven research tracks documenting Vantio&apos;s technical architecture across the AI governance
+          market — from developer-grade observability for open-source contributors to enterprise kernel
+          containment for F500 CISOs. Grouped by tier; jump to any dossier below.
+        </p>
+
+        {/* Clickable index */}
+        <nav aria-label="Dossier index" className="mb-16 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Contents</p>
+          <div className="grid gap-6 sm:grid-cols-3">
+            {GROUPS.map((g) => (
+              <div key={g.tier}>
+                <p className={`mb-3 flex items-center gap-2 text-xs font-semibold ${g.badge}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${g.dot}`} />
+                  {g.label}
+                </p>
+                <ul className="space-y-2">
+                  {g.dossiers.map((d) => (
+                    <li key={d.id}>
+                      <a href={`#dossier-${d.id}`} className="text-sm leading-snug text-[var(--muted)] transition-colors hover:text-[var(--foreground)]">
+                        {d.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </nav>
       </div>
 
-      <div className="space-y-8">
-        {DOSSIERS.map(({ id, tier, title, sub, body }) => {
-          const s = TIER_STYLE[tier] ?? TIER_STYLE["01"];
-          return (
-          <div key={id} className={`rounded-xl border ${s.border} ${s.bg} p-8`}>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <span className={`font-mono text-xs font-semibold ${s.badge}`}>Dossier {id}</span>
-              <span className={`rounded-full border ${s.border} px-2.5 py-0.5 text-xs font-semibold ${s.badge}`}>
-                {s.label}
+      <div className="relative space-y-16">
+        {GROUPS.map((g) => (
+          <section key={g.tier}>
+            <div className="mb-6 flex items-center gap-3">
+              <span className={`inline-flex items-center gap-2 rounded-full border ${g.border} ${g.bg} px-3 py-1.5 text-xs font-semibold ${g.badge}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${g.dot}`} />
+                {g.label}
               </span>
+              <span className="h-px flex-1 bg-[var(--border)]" />
             </div>
-            <h2 className="mb-2 text-xl font-bold">{title}</h2>
-            <p className={`mb-6 text-sm font-medium ${s.badge}`}>{sub}</p>
-            <div className="space-y-4 text-sm leading-relaxed text-[var(--muted)]">
-              {body.trim().split("\n\n").map((para, i) => (
-                <p key={i}>{para}</p>
+
+            <div className="space-y-8">
+              {g.dossiers.map((d) => (
+                <Reveal key={d.id}>
+                  <article id={`dossier-${d.id}`} className={`lift scroll-mt-24 rounded-xl border ${g.border} ${g.bg} p-8`}>
+                    <div className="mb-4 flex flex-wrap items-center gap-3">
+                      <span className={`font-mono text-xs font-semibold ${g.badge}`}>Dossier {d.id}</span>
+                      <span className={`rounded-full border ${g.border} px-2.5 py-0.5 text-xs font-semibold ${g.badge}`}>
+                        {g.label}
+                      </span>
+                    </div>
+                    <h2 className="mb-2 text-xl font-bold">{d.title}</h2>
+                    <p className={`mb-6 text-sm font-medium ${g.badge}`}>{d.sub}</p>
+                    <div className="space-y-4 text-sm leading-relaxed text-[var(--muted)]">
+                      {d.body.trim().split("\n\n").map((para, i) => (
+                        <p key={i}>{para}</p>
+                      ))}
+                    </div>
+                  </article>
+                </Reveal>
               ))}
             </div>
-          </div>
-          );
-        })}
+          </section>
+        ))}
       </div>
     </main>
   );

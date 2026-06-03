@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/json-ld";
+import { CodeBlock } from "@/components/code-block";
 
 export const metadata: Metadata = buildMetadata({
   title: "Developers",
@@ -79,10 +80,12 @@ export default function DevelopersPage() {
         <span className="text-[var(--accent)]">Two Lines of Code.</span>
       </h1>
       <p className="mb-6 max-w-2xl text-lg text-[var(--muted)]">
-        Install via npm or pip. Use the <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">shield()</code> interceptor
-        or invoke any agent with <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">vantio run</code> — zero code changes required.
-        10,000 events/month, free. Every event HMAC-signed and cryptographically receipted.
-        SDK, CLI, and Python SDK are all at <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">v0.2.0</code>.
+        <span className="font-semibold text-[var(--foreground)]">Vantio Open Core</span> is the free,
+        open-source SDK + CLI that gives your AI agents governance in two lines of code. Install via
+        npm or pip, wrap a call with <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">shield()</code> or
+        invoke any agent with <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">vantio run</code> —
+        zero code changes required. 10,000 events/month, free, with every event HMAC-signed and
+        cryptographically receipted. SDK, CLI, and Python SDK are all at <code className="rounded bg-[var(--surface)] px-1 text-[var(--accent)]">v0.2.0</code>.
       </p>
       <div className="mb-16 flex gap-3">
         <a href="/dashboard" className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black hover:bg-[var(--accent-dim)]">
@@ -102,17 +105,11 @@ export default function DevelopersPage() {
             <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs font-bold text-green-400">npm</span>
             <span className="text-sm font-semibold">TypeScript / Node.js</span>
           </div>
-          <pre className="mb-4 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs text-[var(--muted)]">
-            <code className="text-[var(--accent)]">npm install @vantio/agent-sdk</code>
-          </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">shield() — basic wrapping</p>
-          <pre className="mb-6 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
-            <code>{NODE_SHIELD}</code>
-          </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">reportAnomaly() — metadata telemetry</p>
-          <pre className="overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
-            <code>{NODE_REPORT}</code>
-          </pre>
+          <div className="space-y-5">
+            <CodeBlock code="npm install @vantio/agent-sdk" accent />
+            <CodeBlock label="shield() — basic wrapping" code={NODE_SHIELD} />
+            <CodeBlock label="reportAnomaly() — metadata telemetry" code={NODE_REPORT} />
+          </div>
         </div>
 
         {/* Python */}
@@ -121,17 +118,11 @@ export default function DevelopersPage() {
             <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-xs font-bold text-yellow-400">PyPI</span>
             <span className="text-sm font-semibold">Python</span>
           </div>
-          <pre className="mb-4 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs text-[var(--muted)]">
-            <code className="text-[var(--accent)]">pip install vantio-agent-sdk</code>
-          </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">@shield — decorator / context manager</p>
-          <pre className="mb-6 overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
-            <code>{PY_SHIELD}</code>
-          </pre>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">report_anomaly() — metadata telemetry</p>
-          <pre className="overflow-x-auto rounded-lg bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--muted)]">
-            <code>{PY_REPORT}</code>
-          </pre>
+          <div className="space-y-5">
+            <CodeBlock code="pip install vantio-agent-sdk" accent />
+            <CodeBlock label="@shield — decorator / context manager" code={PY_SHIELD} />
+            <CodeBlock label="report_anomaly() — metadata telemetry" code={PY_REPORT} />
+          </div>
         </div>
       </div>
 
@@ -144,9 +135,7 @@ export default function DevelopersPage() {
           patching <code className="text-[var(--accent)]">globalThis.fetch</code> before your agent starts — uniformly across <code className="text-[var(--accent)]">node</code>, <code className="text-[var(--accent)]">npx</code>, <code className="text-[var(--accent)]">tsx</code>, and <code className="text-[var(--accent)]">ts-node</code>.
           Python, Ruby, and other runtimes are spawned normally without injection; use the Python SDK for those.
         </p>
-        <pre className="overflow-x-auto rounded-lg bg-black/40 p-4 text-xs leading-relaxed text-[var(--muted)]">
-          <code>{CLI_USAGE}</code>
-        </pre>
+        <CodeBlock code={CLI_USAGE} className="bg-black/40" />
       </div>
 
       {/* What the SDK does */}

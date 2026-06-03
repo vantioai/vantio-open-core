@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/json-ld";
+import { Reveal } from "@/components/reveal";
 
 export const metadata: Metadata = buildMetadata({
   title: "Architecture",
@@ -8,23 +9,33 @@ export const metadata: Metadata = buildMetadata({
   path: "/architecture",
 });
 
+// Tier → layer overview. Tier colors are canonical: 01 green, 02 blue, 03 red,
+// and the shared ledger is neutral (violet) because it is not a tier.
+const MAP = [
+  { tier: "Tier 01", ring: "Ring-3 · SDK", role: "Observe in your SDK", color: "text-[var(--accent)]", border: "border-[var(--accent)]/30" },
+  { tier: "Tier 02", ring: "Ring-3 · SDK", role: "Enforce in your SDK", color: "text-blue-400", border: "border-blue-400/30" },
+  { tier: "Tier 03", ring: "Ring-0 · Kernel", role: "Enforce in the kernel", color: "text-red-400", border: "border-red-400/30" },
+  { tier: "Ledger", ring: "Shared", role: "One signed audit record", color: "text-violet-300", border: "border-violet-400/30" },
+];
+
 const LAYERS = [
   {
-    tier: "RING-0",
-    label: "Phantom Engine",
+    tier: "Tier 01",
+    ring: "Ring-3 · SDK · observe-only",
+    label: "Agent SDK — Observe",
     color: "text-[var(--accent)]", border: "border-[var(--accent)]/30", bg: "bg-[var(--accent)]/5",
-    headline: "eBPF Kernel Enforcement",
-    body: "Pure Rust eBPF programs compiled to bpfel-unknown-none and loaded into the Linux kernel via Aya. Only enrolled workloads — matched by cgroup via Kubernetes labels/annotations — are enforced; all other host traffic is passed through untouched. For enrolled agents, activity is intercepted at kernel hook boundaries — tracepoints, uprobes, and a TC egress classifier — before it can affect the host filesystem, network, or external state. The programs run simultaneously:",
+    headline: "SDK-Side Observability (Observe-Only)",
+    body: "The free, open-source SDK runs in-process in user-space (Ring-3). It wraps any agent call with shield(), threads a trace_id through the full async call-tree, and emits metadata-only telemetry. This is the SAME SDK as Tier 02 with enforcement switched off — it observes and reports, it never blocks. Prompt and completion content never leave your environment.",
     points: [
-      { code: "sched_process_fork", desc: "BTF tracepoint — inherits trace_id from parent to all child PIDs. LLM agents that spawn bash, curl, or python subprocesses are covered without re-seeding." },
-      { code: "ssl_write uprobe",   desc: "Attaches to SSL_write in libssl.so.3 and gnutls_record_send in libgnutls.so.30. Intercepts the egress buffer before encryption — full TLS coverage across OpenSSL and GnuTLS (the default curl backend on Ubuntu). Records PID, trace_id, bytes, and target host." },
-      { code: "execve / openat",    desc: "Syscall tracepoints (sys_enter_execve, sys_enter_openat) attribute every subprocess spawn and file open to a trace_id. Each event carries a type discriminant so it is never confused with a TLS record on the shared ring buffer." },
-      { code: "tc_enforce",         desc: "TC egress classifier on the network interface. For enrolled cgroups, drops packets to non-allowlisted destinations (TC_ACT_SHOT) across both IPv4 and IPv6 — RFC-1918 plus IPv6 ULA/link-local matched via bitmask, so resolving an AAAA record cannot bypass enforcement. Traffic from unenrolled workloads is never dropped." },
+      { code: "shield() / getCurrentTraceId", desc: "Wraps any async agent call and generates a VANTIO_TRACE_ID, propagated via AsyncLocalStorage to every async hop and spawned child call — no monkey-patching, no AST modification, no global state." },
+      { code: "reportAnomaly()",              desc: "Emits structured, metadata-only events (target_host, bytes_severed, pid, action_taken). Zero linguistic content ever reaches the ledger; prompts and completions are architecturally excluded." },
+      { code: "observe-only",                 desc: "No policy is fetched and nothing is blocked — the SDK records what happened. Turn on Tier 02 to make the very same SDK enforce client-side." },
     ],
-    deploy: "De-privileged Kubernetes DaemonSet (one pod per node) or bare-metal Linux. Runs with minimal Linux capabilities (CAP_BPF, CAP_NET_ADMIN), a seccomp profile, and a read-only root filesystem. Per-agent enrollment via Kubernetes labels/annotations. Compatible with EKS, GKE, AKS on kernel ≥ 5.8.",
+    deploy: "npm i @vantio/agent-sdk or pip install vantio-agent-sdk. Set VANTIO_API_KEY — 10,000 events/month free. No infrastructure, no proxy, no code changes.",
   },
   {
-    tier: "RING-3",
+    tier: "Tier 02",
+    ring: "Ring-3 · SDK · enforce",
     label: "Oracle Policy Plane",
     color: "text-blue-400", border: "border-blue-400/30", bg: "bg-blue-400/5",
     headline: "SDK-Side Policy Enforcement",
@@ -37,11 +48,27 @@ const LAYERS = [
     deploy: "No infrastructure required for Tier 02. Set VANTIO_API_KEY and VANTIO_INGEST_URL — the CLI instruments Node.js processes in-process via NODE_OPTIONS (--require) injection, not a proxy. Enforcement fails open if the control plane is unreachable — a Vantio outage never blocks your agent.",
   },
   {
-    tier: "LEDGER",
-    label: "Anomaly Record",
+    tier: "Tier 03",
+    ring: "Ring-0 · Kernel",
+    label: "Phantom Engine",
     color: "text-red-400", border: "border-red-400/30", bg: "bg-red-400/5",
+    headline: "eBPF Kernel Enforcement",
+    body: "Pure Rust eBPF programs compiled to bpfel-unknown-none and loaded into the Linux kernel via Aya. Only enrolled workloads — matched by cgroup via Kubernetes labels/annotations — are enforced; all other host traffic is passed through untouched. For enrolled agents, activity is intercepted at kernel hook boundaries — tracepoints, uprobes, and a TC egress classifier — before it can affect the host filesystem, network, or external state. The programs run simultaneously:",
+    points: [
+      { code: "sched_process_fork", desc: "BTF tracepoint — inherits trace_id from parent to all child PIDs. LLM agents that spawn bash, curl, or python subprocesses are covered without re-seeding." },
+      { code: "ssl_write uprobe",   desc: "Attaches to SSL_write in libssl.so.3 and gnutls_record_send in libgnutls.so.30. Intercepts the egress buffer before encryption — full TLS coverage across OpenSSL and GnuTLS (the default curl backend on Ubuntu). Records PID, trace_id, bytes, and target host." },
+      { code: "execve / openat",    desc: "Syscall tracepoints (sys_enter_execve, sys_enter_openat) attribute every subprocess spawn and file open to a trace_id. Each event carries a type discriminant so it is never confused with a TLS record on the shared ring buffer." },
+      { code: "tc_enforce",         desc: "TC egress classifier on the network interface. For enrolled cgroups, drops packets to non-allowlisted destinations (TC_ACT_SHOT) across both IPv4 and IPv6 — RFC-1918 plus IPv6 ULA/link-local matched via bitmask, so resolving an AAAA record cannot bypass enforcement. Traffic from unenrolled workloads is never dropped." },
+    ],
+    deploy: "De-privileged Kubernetes DaemonSet (one pod per node) or bare-metal Linux. Runs with minimal Linux capabilities (CAP_BPF, CAP_NET_ADMIN), a seccomp profile, and a read-only root filesystem. Per-agent enrollment via Kubernetes labels/annotations. Compatible with EKS, GKE, AKS on kernel ≥ 5.8.",
+  },
+  {
+    tier: "Shared",
+    ring: "All tiers · compliance substrate",
+    label: "Anomaly Record",
+    color: "text-violet-300", border: "border-violet-400/25", bg: "bg-violet-400/5",
     headline: "Cryptographic Compliance Ledger",
-    body: "Every event — observed, allowed, redacted, or blocked — is committed to the compliance ledger as a structured, HMAC-signed, metadata-only record. Two substrate modes:",
+    body: "A shared component written by every tier. Every event — observed, allowed, redacted, or blocked — is committed to the compliance ledger as a structured, HMAC-signed, metadata-only record. Two substrate modes:",
     points: [
       { code: "SOVEREIGN_MODE=cloud",    desc: "GCP Spanner TrueTime WORM ledger (allow_commit_timestamp=true). Globally consistent timestamps. The ingest service account holds strictly append-only INSERT privileges." },
       { code: "SOVEREIGN_MODE=local",    desc: "NDJSON file output (--output-file). Compatible with the gcloud spanner import format for air-gapped environments. Immutable on local disk before upload." },
@@ -64,46 +91,64 @@ const STACK = [
 
 export default function ArchitecturePage() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-24">
+    <main className="relative mx-auto max-w-5xl px-6 py-24">
       <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Architecture", path: "/architecture" }])} />
-      <div className="mb-4 flex flex-wrap gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-3 py-1 text-xs font-semibold text-[var(--accent)]">Tier 01</span>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1 text-xs font-semibold text-blue-400">Tier 02</span>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1 text-xs font-semibold text-red-400">Tier 03</span>
-      </div>
-      <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Architecture</p>
-      <h1 className="mb-4 text-4xl font-bold">The Architecture of Verifiable Enforcement.</h1>
-      <p className="mb-20 max-w-2xl text-lg text-[var(--muted)]">
-        Three components across three tiers. Enforcement where each tier can reach — and a
-        cryptographic record you can verify without trusting us.
-      </p>
+      <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-[640px] -translate-x-1/2 rounded-full bg-[var(--accent)]/5 blur-3xl" />
 
-      <div className="space-y-10">
+      <div className="relative">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Architecture</p>
+        <h1 className="mb-4 text-4xl font-bold">The Architecture of Verifiable Enforcement.</h1>
+        <p className="mb-12 max-w-2xl text-lg text-[var(--muted)]">
+          Three tiers across two rings — enforcement where each tier can reach — plus one shared,
+          cryptographic record you can verify without trusting us.
+        </p>
+
+        {/* How tiers map to layers */}
+        <div className="mb-20 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+          <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">How tiers map to layers</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {MAP.map((m) => (
+              <div key={m.tier} className={`rounded-xl border ${m.border} bg-[var(--surface-2)] p-4`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`font-mono text-xs font-bold ${m.color}`}>{m.tier}</span>
+                  <span className="rounded-full border border-[var(--border-2)] px-2 py-0.5 font-mono text-[10px] text-[var(--muted)]">{m.ring}</span>
+                </div>
+                <p className="mt-2 text-sm font-medium text-[var(--foreground)]">{m.role}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative space-y-10">
         {LAYERS.map((l) => (
-          <div key={l.tier} className={`rounded-xl border ${l.border} ${l.bg} p-8`}>
-            <div className="mb-6 flex items-start justify-between gap-4">
-              <div>
-                <span className={`font-mono text-xs ${l.color}`}>{l.tier}</span>
-                <h2 className="mt-1 text-2xl font-bold">{l.label}</h2>
+          <Reveal key={l.tier} className="h-full">
+            <div className={`lift rounded-xl border ${l.border} ${l.bg} p-8`}>
+              <div className="mb-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border ${l.border} px-2.5 py-0.5 font-mono text-xs font-bold ${l.color}`}>{l.tier}</span>
+                  <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-2)] px-2.5 py-0.5 font-mono text-[10px] text-[var(--muted)]">{l.ring}</span>
+                </div>
+                <h2 className="mt-3 text-2xl font-bold">{l.label}</h2>
                 <p className={`text-sm font-medium ${l.color}`}>{l.headline}</p>
               </div>
+              <p className="mb-6 text-sm text-[var(--muted)]">{l.body}</p>
+              <div className="mb-6 space-y-4">
+                {l.points.map(({ code, desc }) => (
+                  <div key={code} className="flex gap-4">
+                    <code className={`mt-0.5 shrink-0 rounded bg-black/20 px-2 py-0.5 text-xs ${l.color}`}>{code}</code>
+                    <p className="text-sm text-[var(--muted)]">{desc}</p>
+                  </div>
+                ))}
+              </div>
+              <p className={`text-xs font-medium ${l.color}`}>Deploy: <span className="font-normal text-[var(--muted)]">{l.deploy}</span></p>
             </div>
-            <p className="mb-6 text-sm text-[var(--muted)]">{l.body}</p>
-            <div className="mb-6 space-y-4">
-              {l.points.map(({ code, desc }) => (
-                <div key={code} className="flex gap-4">
-                  <code className={`mt-0.5 shrink-0 rounded px-2 py-0.5 text-xs ${l.color} bg-black/20`}>{code}</code>
-                  <p className="text-sm text-[var(--muted)]">{desc}</p>
-                </div>
-              ))}
-            </div>
-            <p className={`text-xs font-medium ${l.color}`}>Deploy: <span className="font-normal text-[var(--muted)]">{l.deploy}</span></p>
-          </div>
+          </Reveal>
         ))}
       </div>
 
       {/* Stack table */}
-      <div className="mt-20">
+      <div className="relative mt-20">
         <h2 className="mb-6 text-xl font-bold">Technology Stack</h2>
         <div className="overflow-hidden rounded-xl border border-[var(--border)]">
           <table className="w-full text-sm">
@@ -127,12 +172,12 @@ export default function ArchitecturePage() {
         </div>
       </div>
 
-      <div className="mt-12 flex gap-4">
-        <a href="/enterprise" className="rounded-md bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-black hover:bg-[var(--accent-dim)]">
-          Deploy Enterprise Stack
+      <div className="relative mt-12 flex flex-wrap gap-4">
+        <a href="/developers" className="rounded-md bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-[var(--accent-dim)]">
+          Start with the Free SDK
         </a>
-        <a href="/developers" className="rounded-md border border-[var(--border)] px-6 py-3 text-sm font-medium text-[var(--muted)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]">
-          Start with Free SDK
+        <a href="/enterprise" className="rounded-md border border-red-400/30 px-6 py-3 text-sm font-medium text-red-400 transition-colors hover:bg-red-400/10">
+          Deploy the Enterprise Stack →
         </a>
       </div>
     </main>
