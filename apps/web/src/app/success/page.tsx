@@ -1,15 +1,42 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { buildMetadata } from "@/lib/seo";
+import { isTier2Waitlist } from "@/lib/tier2";
+import { WaitlistCta } from "@/components/waitlist-cta";
 
-export const metadata: Metadata = {
-  title: "Welcome to Vantio AI PRO",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Welcome to Pro",
+  description: "Your Vantio AI Pro trial is active. Set up SDK-side enforcement in two minutes.",
+  path: "/success",
+  noindex: true,
+});
 
 export const dynamic = "force-dynamic";
 
-async function getApiKey(sessionId: string | null): Promise<string | null> {
-  if (!sessionId) return null;
+/**
+ * Resolve the API key for the checkout session, but ONLY for the tenant that
+ * actually owns it. The `session_id` in the URL is NOT an authorization token —
+ * it is guessable/shareable — so we require a logged-in Supabase session and
+ * only reveal the key when the authenticated user's email matches the tenant
+ * row that the session_id resolves to (i.e. they own the tenant).
+ */
+async function getOwnedApiKey(
+  sessionId: string | null
+): Promise<{ apiKey: string | null; authenticated: boolean }> {
+  // Cookie-based auth client (same pattern as the dashboard).
+  const cookieStore = await cookies();
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+  const { data: { user } } = await authClient.auth.getUser();
+  if (!user?.email) return { apiKey: null, authenticated: false };
+  if (!sessionId) return { apiKey: null, authenticated: true };
+
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,12 +45,17 @@ async function getApiKey(sessionId: string | null): Promise<string | null> {
     );
     const { data } = await supabase
       .from("tenants")
-      .select("api_key")
+      .select("email, api_key")
       .eq("stripe_checkout_session_id", sessionId)
       .single();
-    return (data as { api_key?: string } | null)?.api_key ?? null;
+    const tenant = data as { email?: string; api_key?: string } | null;
+    // Ownership check: the session's tenant email must equal the logged-in user.
+    if (!tenant?.email || tenant.email !== user.email) {
+      return { apiKey: null, authenticated: true };
+    }
+    return { apiKey: tenant.api_key ?? null, authenticated: true };
   } catch {
-    return null;
+    return { apiKey: null, authenticated: true };
   }
 }
 
@@ -32,47 +64,92 @@ export default async function SuccessPage({
 }: {
   searchParams: Promise<{ session_id?: string }>;
 }) {
+  // In waitlist mode no checkout can occur, so /success may be reached without a
+  // real session. Degrade gracefully: never imply a trial started or expose a
+  // key — just offer the waitlist.
+  if (isTier2Waitlist()) {
+    return (
+      <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16 text-center">
+        <div className="w-full max-w-lg">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            Tier 2 — Launching soon
+          </p>
+          <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
+            Pro isn&apos;t open for signups yet.
+          </h1>
+          <p className="mx-auto mt-3 max-w-md text-sm text-[--muted]">
+            We&apos;re putting the finishing touches on Tier 2. Join the waitlist and we&apos;ll
+            email you the moment it opens.
+          </p>
+          <div className="mx-auto mt-8 max-w-xs">
+            <WaitlistCta
+              source="success"
+              buttonClassName="w-full rounded-xl bg-[--accent] py-3 text-center text-sm font-bold text-black transition-all hover:bg-[--accent-dim]"
+            />
+          </div>
+          <p className="mt-6 text-xs text-[--muted]">
+            <Link href="/" className="text-[--accent]/80 underline hover:text-[--accent]">
+              Back to home
+            </Link>
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   const { session_id } = await searchParams;
-  const apiKey = await getApiKey(session_id ?? null);
+  const { apiKey, authenticated } = await getOwnedApiKey(session_id ?? null);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-white px-6">
+    <main className="hero-glow dot-grid flex min-h-[85vh] flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-lg">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-green-50">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[--accent]/10 text-[--accent] shadow-[0_0_30px_rgba(0,232,122,0.2)]">
             <span className="text-2xl">✓</span>
           </div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+          <p className="text-xs font-semibold uppercase tracking-widest text-[--muted]">
             14-day trial started
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-gray-900">
-            Your Managed Edge Proxy is live.
+          <h1 className="mt-2 text-3xl font-bold text-[--foreground]">
+            Your Pro plan is live.
           </h1>
-          <p className="mt-3 text-sm text-gray-500">
+          <p className="mt-3 text-sm text-[--muted]">
             Your trial is active — no charge for 14 days. Your tenant has been
             provisioned and your API key is ready.
           </p>
         </div>
 
         {/* API Key */}
-        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-400">
+        <div className="mb-6 rounded-2xl border border-[--border] bg-[--surface] p-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[--muted]">
             Your API Key
           </p>
           {apiKey ? (
             <>
-              <code className="block break-all rounded-lg bg-gray-900 p-3 text-sm text-green-400">
+              <code className="block break-all rounded-lg bg-black/40 p-3 text-sm text-[--accent]">
                 {apiKey}
               </code>
-              <p className="mt-2 text-xs text-gray-400">
+              <p className="mt-2 text-xs text-[--muted]">
                 Store this securely. It cannot be shown again — regenerate from
                 your dashboard if lost.
               </p>
             </>
-          ) : (
-            <p className="text-sm text-gray-500">
+          ) : authenticated ? (
+            <p className="text-sm text-[--muted]">
               Your API key will appear here shortly, or find it in your{" "}
-              <Link href="/dashboard" className="underline">
+              <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
+                dashboard
+              </Link>
+              .
+            </p>
+          ) : (
+            <p className="text-sm text-[--muted]">
+              Log in to view your API key on the dashboard.{" "}
+              <Link href="/login" className="text-[--accent]/80 underline hover:text-[--accent]">
+                Log in
+              </Link>{" "}
+              and open your{" "}
+              <Link href="/dashboard" className="text-[--accent]/80 underline hover:text-[--accent]">
                 dashboard
               </Link>
               .
@@ -81,39 +158,39 @@ export default async function SuccessPage({
         </div>
 
         {/* Setup guide */}
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Managed Edge Proxy Setup (2 min)
+        <div className="rounded-2xl border border-[--border] bg-[--surface] p-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--muted]">
+            SDK Enforcement Setup (2 min)
           </p>
 
           <ol className="space-y-5 text-sm">
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">01</span>
-              <div>
-                <p className="font-medium text-gray-900">Install the SDK</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">01</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-[--foreground]">Install the SDK</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
                   <code>npm install @vantio/agent-sdk</code>
                 </pre>
               </div>
             </li>
 
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">02</span>
-              <div>
-                <p className="font-medium text-gray-900">Set your API key — one env var, that&apos;s it</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
+              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">02</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-[--foreground]">Set your API key — one env var, that&apos;s it</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
                   <code>{`VANTIO_API_KEY=${apiKey ?? "your-api-key-above"}
-VANTIO_INGEST_URL=https://app.vantio.ai`}</code>
+VANTIO_INGEST_URL=https://vantio.ai`}</code>
                 </pre>
               </div>
             </li>
 
             <li className="flex gap-3">
-              <span className="mt-0.5 font-mono text-xs font-bold text-gray-300">03</span>
-              <div>
-                <p className="font-medium text-gray-900">Run your agent — zero code changes</p>
-                <pre className="mt-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300">
-                  <code>{`# The CLI auto-intercepts all outbound LLM calls
+              <span className="mt-0.5 font-mono text-xs font-bold text-[--border-2]">03</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-[--foreground]">Run your agent — zero code changes</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 p-3 text-xs text-[--foreground]/70">
+                  <code>{`# The CLI enforces your policy on every agent run
 vantio run node agent.js
 vantio run --audit tsx agent.ts
 
@@ -127,7 +204,7 @@ vantio run --audit tsx agent.ts
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
             href="/dashboard"
-            className="rounded-lg bg-gray-900 px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-gray-700"
+            className="rounded-xl bg-[--accent] px-6 py-3 text-center text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]"
           >
             Open Dashboard →
           </Link>
@@ -135,7 +212,7 @@ vantio run --audit tsx agent.ts
             href="https://github.com/vantioai/vantio-open-core"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg border border-gray-300 px-6 py-3 text-center text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            className="rounded-xl border border-[--border-2] bg-[--surface] px-6 py-3 text-center text-sm font-semibold text-[--muted] transition-all hover:border-[--border] hover:text-[--foreground]"
           >
             SDK Reference
           </a>

@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
+import { buildMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
 
-export const metadata: Metadata = {
-  title: "Research — Vantio AI Engineering Dossiers",
+export const metadata: Metadata = buildMetadata({
+  title: "Research — Engineering Dossiers",
   description: "Engineering dossiers documenting Vantio's technical architecture across the AI governance market.",
-};
+  path: "/research",
+});
 
 const TIER_STYLE: Record<string, { badge: string; border: string; bg: string; label: string }> = {
   "03": { badge: "text-red-400",   border: "border-red-400/20",  bg: "bg-red-400/5",   label: "Tier 03 — Enterprise" },
-  "02": { badge: "text-blue-400",  border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — PRO / SMB" },
+  "02": { badge: "text-blue-400",  border: "border-blue-400/20", bg: "bg-blue-400/5",  label: "Tier 02 — Pro" },
   "01": { badge: "text-[--accent]",border: "border-[--accent]/20",bg: "bg-[--accent]/5",label: "Tier 01 — Developer" },
 };
 
@@ -24,7 +27,7 @@ Second, the inspection point is wrong. By the time a semantic guardrail reads th
 
 Third, latency is the real attack surface. Adding a synchronous LLM inference call to the critical path of every agent action — which many "AI firewall" products do — introduces a 100–2000ms blocking penalty. Under load, this becomes a denial-of-service vector against your own infrastructure.
 
-The only verifiable containment primitive is physics-based: intercept at the syscall layer (Ring-0), where the kernel enforces the boundary between user-space intent and physical resource access. This is what the Vantio Phantom Engine does.`,
+The most verifiable containment primitive is physics-based: intercept at the syscall layer (Ring-0), where the kernel enforces the boundary between user-space intent and physical resource access. This is what the Vantio Phantom Engine does for the workloads you enroll.`,
   },
   {
     id: "02", tier: "03",
@@ -34,17 +37,17 @@ The only verifiable containment primitive is physics-based: intercept at the sys
 
 Wave Function Collapse is the process of collapsing this probability space to a single, cryptographically committed outcome at a deterministic enforcement point. In the Vantio architecture, this collapse point is the kernel boundary.
 
-When an agent's action reaches a monitored syscall — execve, openat, or an SSL_write to a non-allowlisted host — the Phantom Engine's eBPF program makes a binary enforcement decision (TC_ACT_OK or TC_ACT_SHOT) with zero ambiguity. This decision is committed to the TrueTimeLedger with a globally consistent timestamp.
+When an enrolled agent's action reaches a monitored syscall — execve, openat, or an SSL_write to a non-allowlisted host — the Phantom Engine's eBPF program makes a binary enforcement decision (TC_ACT_OK or TC_ACT_SHOT) with zero ambiguity. This decision is committed to the TrueTimeLedger with a globally consistent timestamp.
 
-The result is an audit trail where every agent action has exactly one committed governance verdict — a single, verifiable collapse point — regardless of how many agents are running simultaneously or how non-deterministically they interleave.`,
+The result is an audit trail where every action of an enrolled agent has exactly one committed governance verdict — a single, verifiable collapse point — regardless of how many enrolled agents are running simultaneously or how non-deterministically they interleave. Workloads you have not enrolled are left untouched.`,
   },
   {
     id: "03", tier: "03",
     title: "The Cryptographic Anomaly Record",
     sub: "The Vantio Anomaly Record schema — a cryptographic receipt committed to a TrueTime-stamped Spanner ledger — and its direct mapping to GDPR Article 30, SOC 2 CC7.2, and SEC Cybersecurity Disclosure rules.",
-    body: `The Anomaly Record is the foundational artifact of the Vantio compliance system. It is a structured record containing: a VANTIO_TRACE_ID (UUID v4), execution metadata (PID, bytes_severed, target_host, action_taken), an HMAC-SHA256 signature of the payload, and a TrueTime commit timestamp from GCP Spanner.
+    body: `The Anomaly Record is the foundational artifact of the Vantio compliance system. It is a structured record containing: a VANTIO_TRACE_ID (UUID v4), execution metadata (PID, bytes_severed, target_host, action_taken), an HMAC-SHA256 receipt over the event's trace ID, and a TrueTime commit timestamp from GCP Spanner.
 
-The HMAC signature is computed using the tenant's API key as the signing secret. This means every event in the ledger is independently verifiable: a regulator or auditor can recompute the HMAC from the published key and confirm the event was not tampered with after ingestion.
+The HMAC receipt is computed using the tenant's API key as the signing secret and returned in the x-vantio-signature header. This means every event is independently verifiable: a holder of the tenant key can recompute the HMAC and confirm the receipt was issued for that exact trace ID.
 
 The payload quarantine is enforced at two layers: structurally (the ingest route whitelists only specific metadata fields — prompts and completions are architecturally excluded) and contractually (the Supabase service role key used for writes has no read access on the raw input columns).
 
@@ -89,20 +92,21 @@ For enterprise deployments where even pip install is restricted, the SDK can be 
   {
     id: "07", tier: "02",
     title: "Application-Layer Governance: Enforcing Multi-Provider Policy",
-    sub: "Tier 02 Managed Edge Proxy providing transparent HTTPS interception and multi-provider AI governance. Update one environment variable — gain 30-day WORM logs and active policy enforcement.",
-    body: `The Tier 02 Managed Edge Proxy solves a specific deployment constraint: teams that need active AI governance but cannot or will not modify their infrastructure to install a kernel-level enforcement agent.
+    sub: "Tier 02 SDK-side policy enforcement across multiple AI providers. The SDK pulls a cloud-managed policy and redacts PII, caps spend, and blocks off-policy hosts locally — Vantio stores the policy and a metadata-only audit trail, never your prompts or completions.",
+    body: `The Tier 02 model solves a specific deployment constraint: teams that need active AI governance but cannot — or will not — install a kernel-level enforcement agent. Enforcement runs inside the customer's own SDK/CLI. Vantio is not a network proxy and never sits in the request path.
 
-The proxy operates at Layer 7. When VANTIO_CLOUD_INGEST=true is set, the SDK's global.fetch patch routes all outbound AI API calls through the Vantio Edge Proxy before they reach OpenAI, Anthropic, Google Vertex, AWS Bedrock, or Cohere. The routing is transparent to the calling code — the same API responses are returned, with the same format and latency characteristics.
+When VANTIO_CLOUD_INGEST=true is set, the SDK fetches a cloud-managed policy from /api/v1/config and enforces it in-process: it redacts the configured PII categories from outbound requests, blocks calls to hosts outside the allow-list, and stops spend once a per-run cap is reached. Outbound AI API calls go directly to OpenAI, Anthropic, Google Vertex, AWS Bedrock, or Cohere — they are never routed through Vantio, so no prompt or completion content ever reaches our servers.
 
-Non-compliant calls — calls that match a configured policy violation pattern — are blocked before they reach the model, and a signed rejection receipt is committed to the 30-day WORM log.
+Each decision — OBSERVED, ALLOWED, REDACTED, BLOCKED_HOST, BLOCKED_SIZE, or BLOCKED_SPEND — emits a metadata-only event to the audit trail, sealed with an HMAC-SHA256 receipt. The payload quarantine guarantees only structural metadata (target host, byte counts, action, PID) is ever stored.
 
-The edge proxy is deployed on Vercel's global edge network. The p99 routing latency addition is 5–25ms depending on geographic proximity. For teams running AI agents in production, this is well within acceptable bounds and dramatically less expensive than the alternative: hiring a compliance team to manually audit LLM usage logs after the fact.`,
+Because enforcement is local, there is no added network hop and no man-in-the-middle. If the control plane is unreachable, the SDK fails open — it observes only and never blocks the agent on a Vantio outage. Policy changes made in the dashboard propagate to the SDK on its next config pull, and the agent's request path is unchanged.`,
   },
 ];
 
 export default function ResearchPage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-24">
+      <JsonLd data={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Research", path: "/research" }])} />
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[--accent]">Research</p>
       <h1 className="mb-4 text-4xl font-bold">Engineering Dossiers.</h1>
       <p className="mb-8 max-w-2xl text-[--muted]">
@@ -117,7 +121,7 @@ export default function ResearchPage() {
         </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-blue-400/5 px-3 py-1.5 text-xs font-semibold text-blue-400">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-          Tier 02 — PRO / SMB
+          Tier 02 — Pro
         </span>
         <span className="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-400">
           <span className="h-1.5 w-1.5 rounded-full bg-red-400" />

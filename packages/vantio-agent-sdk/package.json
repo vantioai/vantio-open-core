@@ -1,6 +1,6 @@
 {
   "name": "@vantio/agent-sdk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "See what your AI agents are doing. Two lines of code.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
@@ -29,7 +29,7 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && tsc -p tsconfig.types.json",
+    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && tsc -p tsconfig.types.json && node scripts/postbuild.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsc -p tsconfig.esm.json --watch"
   },

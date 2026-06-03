@@ -13,7 +13,7 @@ function validate(raw: unknown): ContactPayload | null {
   if (typeof raw !== "object" || raw === null) return null;
   const b = raw as Record<string, unknown>;
   if (typeof b["name"]    !== "string" || b["name"].trim().length    === 0) return null;
-  if (typeof b["email"]   !== "string" || !b["email"].includes("@"))        return null;
+  if (typeof b["email"]   !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b["email"])) return null;
   if (typeof b["company"] !== "string" || b["company"].trim().length === 0) return null;
   return {
     name:    (b["name"]    as string).trim().slice(0, 128),

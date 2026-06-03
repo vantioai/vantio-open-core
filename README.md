@@ -71,6 +71,21 @@ The CLI patches `globalThis.fetch` at runtime via `--require`. Your code doesn't
 
 ---
 
+## Telemetry
+
+The `vantio` CLI and the Python SDK send **anonymous, opt-out** usage analytics so we can see which runtimes and LLM providers to prioritize. Each ping carries only aggregate metadata: a random anonymous id (stored at `~/.vantio/telemetry-id`), the runtime + OS strings, an event name, the set of LLM hostnames contacted, and call/redaction/block counts.
+
+It **never** includes prompts, completions, API keys, emails, or anything that could reconstruct your content. Requests are fire-and-forget with a short timeout and can never block or crash your agent.
+
+Opt out at any time:
+
+```bash
+export VANTIO_TELEMETRY_DISABLED=1   # or
+export DO_NOT_TRACK=1
+```
+
+---
+
 ## Dashboard
 
 [vantio.ai/dashboard](https://vantio.ai/dashboard) — free tier includes 10,000 events/month.

@@ -26,7 +26,7 @@ export function BillingPortalButton() {
     <button
       onClick={openPortal}
       disabled={loading}
-      className="font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
+      className="rounded-lg border border-[--border-2] bg-[--surface-2] px-4 py-1.5 text-xs font-semibold text-[--foreground] transition-all hover:border-[--accent]/40 hover:text-[--accent] disabled:opacity-50"
     >
       {loading ? "Loading…" : "Manage Billing"}
     </button>

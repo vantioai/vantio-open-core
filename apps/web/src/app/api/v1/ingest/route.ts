@@ -143,6 +143,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       pid:           typeof raw["pid"]           === "number" ? raw["pid"]           : null,
       timestamp_ns:  typeof raw["timestamp_ns"]  === "number" ? raw["timestamp_ns"]  : null,
       target_host:   typeof raw["target_host"]   === "string" ? raw["target_host"]   : null,
+      // action_taken is stored verbatim as a string. The SDK-side enforcement
+      // values — "OBSERVED" | "ALLOWED" | "REDACTED" | "BLOCKED_HOST" |
+      // "BLOCKED_SIZE" | "BLOCKED_SPEND" — therefore persist as-is with no
+      // change needed here. Still metadata only: never the request content.
       action_taken:  typeof raw["action_taken"]  === "string" ? raw["action_taken"]  : null,
     };
   };
@@ -162,10 +166,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   };
 
-  void writeToSupabase();
-
-  // HMAC signature over the response so callers can verify the receipt.
-  const hmacSig = await computeHmac(identity, payload.traceId);
+  // Run the Supabase write and HMAC computation concurrently.
+  // Both must complete before we return — in Edge runtime a fire-and-forget
+  // void promise is killed the moment the response is dispatched.
+  const [hmacSig] = await Promise.all([
+    computeHmac(identity, payload.traceId),
+    writeToSupabase(),
+  ]);
 
   return NextResponse.json(
     { status: 0, traceId: payload.traceId },

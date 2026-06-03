@@ -41,6 +41,17 @@ VANTIO_CLOUD_INGEST=true          # Enable cloud routing
 VANTIO_AUDIT_MODE=1               # Optional: flag as audit mode
 ```
 
+## Anonymous telemetry (opt-out)
+
+The SDK sends a single **anonymous** usage ping per process the first time `shield()` runs. It contains only aggregate, non-identifying metadata — a random anonymous id (stored at `~/.vantio/telemetry-id`), the Python version, the OS string, and an event name. It **never** sends prompts, completions, API keys, emails, or any content/PII. The request is fire-and-forget on a short-timeout daemon thread, so it can never block or crash your agent.
+
+Opt out at any time:
+
+```bash
+export VANTIO_TELEMETRY_DISABLED=1   # or
+export DO_NOT_TRACK=1
+```
+
 ## Zero dependencies
 
-Core tracing requires only the Python standard library (`contextvars`, `asyncio`, `hashlib`, `hmac`). Cloud ingest uses `urllib.request`. No aiohttp, no httpx, no requests.
+Core tracing requires only the Python standard library (`contextvars`, `asyncio`, `hashlib`, `hmac`). Cloud ingest and anonymous telemetry use `urllib.request` and `threading`. No aiohttp, no httpx, no requests.

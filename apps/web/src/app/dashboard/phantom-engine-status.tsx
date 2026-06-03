@@ -23,27 +23,31 @@ export function PhantomEngineStatus({ tenantEmail }: { tenantEmail: string }) {
     );
 
     async function check() {
-      // Look for ENGINE_STARTED event in the last 5 minutes
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      // The loader emits ENGINE_STARTED at startup and ENGINE_HEARTBEAT every
+      // 4 minutes. A 10-minute window tolerates an occasional dropped ping
+      // without flapping to Offline, while still catching a truly dead engine.
+      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       const { data } = await supabase
         .from("anomaly_events")
         .select("created_at, anomaly_metadata")
         .eq("tenant_identity", tenantEmail)
-        .gte("created_at", fiveMinutesAgo)
+        .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(10);
 
-      if (data && data.length > 0) {
-        const evt = data[0] as EngineEvent;
-        const action = evt.anomaly_metadata?.action_taken;
-        if (action === "ENGINE_STARTED") {
-          setStatus("active");
-          setLastSeen(evt.created_at);
-          setPid(evt.anomaly_metadata?.pid ?? null);
-          return;
-        }
+      // Find the most recent engine health ping (ignoring ordinary anomalies).
+      const health = (data as EngineEvent[] | null)?.find((e) => {
+        const a = (e.anomaly_metadata?.action_taken ?? "").toUpperCase();
+        return a === "ENGINE_STARTED" || a === "ENGINE_HEARTBEAT";
+      });
+
+      if (health) {
+        setStatus("active");
+        setLastSeen(health.created_at);
+        setPid(health.anomaly_metadata?.pid ?? null);
+      } else {
+        setStatus("offline");
       }
-      setStatus("offline");
     }
 
     check();
@@ -55,19 +59,19 @@ export function PhantomEngineStatus({ tenantEmail }: { tenantEmail: string }) {
     {
       label: "Engine Status",
       value: status === "checking" ? "Checking..." : status === "active" ? "Running" : "Offline",
-      color: status === "active" ? "text-green-600" : status === "offline" ? "text-red-500" : "text-gray-400",
-      dot: status === "active" ? "bg-green-500" : status === "offline" ? "bg-red-400" : "bg-gray-300",
+      color: status === "active" ? "text-[--accent]" : status === "offline" ? "text-red-400" : "text-[--muted]",
+      dot: status === "active" ? "bg-[--accent]" : status === "offline" ? "bg-red-400" : "bg-[--muted]",
     },
-    { label: "Loader PID", value: pid ? String(pid) : "—", color: "text-gray-600", dot: null },
-    { label: "Last heartbeat", value: lastSeen ? new Date(lastSeen).toLocaleTimeString() : "—", color: "text-gray-600", dot: null },
-    { label: "Trace map", value: "/sys/fs/bpf/vantio_trace_map", color: "text-red-500", dot: null },
+    { label: "Loader PID", value: pid ? String(pid) : "—", color: "text-[--foreground]/80", dot: null },
+    { label: "Last heartbeat", value: lastSeen ? new Date(lastSeen).toLocaleTimeString() : "—", color: "text-[--foreground]/80", dot: null },
+    { label: "Trace map", value: "/sys/fs/bpf/vantio_trace_map", color: "text-red-400", dot: null },
   ];
 
   return (
     <ul className="space-y-2.5">
       {items.map(({ label, value, color, dot }) => (
         <li key={label} className="flex items-center justify-between text-xs">
-          <span className="font-mono text-gray-600">{label}</span>
+          <span className="font-mono text-[--muted]">{label}</span>
           <span className={`flex items-center gap-1 font-medium ${color}`}>
             {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
             {value}
@@ -75,9 +79,9 @@ export function PhantomEngineStatus({ tenantEmail }: { tenantEmail: string }) {
         </li>
       ))}
       {status === "offline" && (
-        <li className="pt-2 text-xs text-gray-400">
+        <li className="pt-2 text-xs text-[--muted]">
           Start with:{" "}
-          <code className="rounded bg-gray-100 px-1">sudo vantio-loader</code>
+          <code className="rounded bg-[--surface-2] px-1">sudo vantio-loader</code>
         </li>
       )}
     </ul>

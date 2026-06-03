@@ -61,12 +61,17 @@ function buildSlackMessage(record: AnomalyRecord): object {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // Verify the request is from Supabase using a shared secret.
+  // Fail closed: if the secret is not configured the endpoint must not be open.
   const webhookSecret = process.env.SUPABASE_WEBHOOK_SECRET;
-  if (webhookSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${webhookSecret}`) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-    }
+  if (!webhookSecret) {
+    return NextResponse.json(
+      { error: "Webhook secret not configured." },
+      { status: 503 }
+    );
+  }
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${webhookSecret}`) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
   const slackUrl = process.env.SLACK_WEBHOOK_URL;

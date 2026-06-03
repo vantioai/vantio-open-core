@@ -29,7 +29,10 @@ jobs:
           version: 11
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        # SLSA L3 requires a hermetic build: the dependency graph must not mutate
+        # at build time. --frozen-lockfile fails the build on any lockfile drift,
+        # which is the property the provenance attestation below is asserting.
+        run: pnpm install --frozen-lockfile
 
       - name: Build @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run build

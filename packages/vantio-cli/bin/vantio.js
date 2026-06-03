@@ -80,21 +80,37 @@ function isNodeRuntime(prog) {
   return NODE_RUNTIMES.has(base);
 }
 
-let finalArgs = programArgs;
+// Node runtimes get the interceptor via NODE_OPTIONS (a Node *env* flag) rather
+// than a CLI argument. Passing `--require` in argv to npx/tsx/ts-node hands the
+// flag to THOSE wrapper tools — which never forward it to the node process they
+// spawn — so interception silently never loads. NODE_OPTIONS is honored by every
+// node invocation in the tree, so this works uniformly for node, npx, tsx, and
+// ts-node. The child's argv is left exactly as the user wrote it.
+let extraNodeOptions = "";
 
 if (isNodeRuntime(program)) {
   const interceptorPath = join(
     dirname(fileURLToPath(import.meta.url)),
     "interceptor.cjs",
   );
-  finalArgs = ["--require", interceptorPath, ...programArgs];
+  // NODE_OPTIONS is space-delimited; quote the path if it contains whitespace.
+  const requirePath = /\s/.test(interceptorPath) ? `"${interceptorPath}"` : interceptorPath;
+  extraNodeOptions = `--require ${requirePath}`;
 }
 
+const finalArgs = programArgs;
+
 // ── build child environment ───────────────────────────────────────────────────
+
+// Append our --require to any NODE_OPTIONS the user already set, preserving theirs.
+const mergedNodeOptions = [process.env.NODE_OPTIONS, extraNodeOptions]
+  .filter(Boolean)
+  .join(" ");
 
 const childEnv = Object.assign(Object.create(null), process.env, {
   ...(values.audit   ? { VANTIO_AUDIT_MODE: "1" } : {}),
   ...(values.summary ? { VANTIO_SUMMARY:    "1" } : {}),
+  ...(extraNodeOptions ? { NODE_OPTIONS: mergedNodeOptions } : {}),
 });
 
 // ── spawn ─────────────────────────────────────────────────────────────────────

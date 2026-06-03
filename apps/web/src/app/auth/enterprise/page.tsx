@@ -33,13 +33,14 @@ export default function EnterpriseAuthPage() {
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-red-400">Enterprise — Tier 03</p>
           <h1 className="mb-4 text-4xl font-bold">
-            Your AI agents<br />
-            <span className="text-red-400">can&apos;t send a byte without permission.</span>
+            Your enrolled AI agents<br />
+            <span className="text-red-400">can&apos;t reach off-policy hosts.</span>
           </h1>
           <p className="mb-8 text-[--muted]">
-            Enterprise deploys Vantio&apos;s enforcement layer inside your own Kubernetes cluster.
-            It operates at the operating system level — below your applications, below your network.
-            Agents that try to exfiltrate data fail silently before the packet leaves your machine.
+            Enterprise deploys Vantio&apos;s enforcement layer as a de-privileged DaemonSet inside
+            your own Kubernetes cluster (or on bare-metal Linux). For the workloads you enroll,
+            it enforces egress policy in the Linux kernel — below your applications and your
+            network. Off-policy packets from an enrolled agent are dropped before they leave the node.
           </p>
           <div className="space-y-4">
             {[

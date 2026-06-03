@@ -39,23 +39,21 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-6">
-      <div className="w-full max-w-sm">
+    <main className="hero-glow dot-grid flex min-h-[80vh] flex-col items-center justify-center px-6">
+      <div className="w-full max-w-sm rounded-2xl border border-[--border] bg-[--surface]/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm">
         <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Vantio AI
-          </p>
-          <h1 className="mt-2 text-2xl font-bold text-gray-900">
+          <span className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[--accent]/10 text-lg font-black text-[--accent]">∅</span>
+          <h1 className="text-2xl font-bold text-[--foreground]">
             Sign in to your dashboard
           </h1>
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-[--muted]">
             We&apos;ll send a magic link to your email.
           </p>
         </div>
 
         {sent ? (
-          <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center text-sm text-green-800">
-            Check your inbox — magic link sent to <strong>{email}</strong>.
+          <div className="rounded-xl border border-[--accent]/30 bg-[--accent]/5 p-5 text-center text-sm text-[--accent]">
+            Check your inbox — magic link sent to <strong className="text-[--foreground]">{email}</strong>.
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -65,22 +63,22 @@ export default function LoginPage() {
               placeholder="you@company.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+              className="w-full rounded-xl border border-[--border-2] bg-[--surface-2] px-4 py-3 text-sm text-[--foreground] placeholder-[--muted] outline-none transition-colors focus:border-[--accent]/50 focus:ring-1 focus:ring-[--accent]/30"
             />
-            {error && <p className="text-xs text-red-600">{error}</p>}
+            {error && <p className="text-xs text-red-400">{error}</p>}
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
+              className="w-full rounded-xl bg-[--accent] px-4 py-3 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
             >
               {loading ? "Sending…" : "Send magic link"}
             </button>
           </form>
         )}
 
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="mt-6 text-center text-xs text-[--muted]">
           No account?{" "}
-          <a href="/pricing" className="underline hover:text-gray-700">
+          <a href="/pricing" className="text-[--accent]/80 underline hover:text-[--accent]">
             Start with PRO →
           </a>
         </p>
