@@ -26,7 +26,9 @@ export default function LoginPage() {
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
+        // Route through the PKCE callback so the `?code=...` is exchanged for a
+        // session cookie before landing on the (server-rendered) dashboard.
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
       },
     });
 
@@ -69,7 +71,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-[--accent] px-4 py-3 text-sm font-bold text-black transition-all hover:bg-[--accent-dim] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
+              className="w-full rounded-xl bg-[var(--accent)] px-4 py-3 text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)] disabled:opacity-50"
             >
               {loading ? "Sending…" : "Send magic link"}
             </button>
