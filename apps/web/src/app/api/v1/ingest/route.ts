@@ -2,11 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { sendTenantAnomalyAlert, type TenantAlertSettings } from "@/lib/alerts";
 
 interface IngestPayload {
   traceId: string;
   eventPayload: unknown;
   auditMode: boolean;
+}
+
+// Coarse, allowlisted anomaly metadata — never request content. Mirrors the
+// SDK-side enforcement fields.
+interface AnomalyMetadata {
+  bytes_severed: number | null;
+  pid:           number | null;
+  timestamp_ns:  number | null;
+  target_host:   string | null;
+  action_taken:  string | null;
+}
+
+// Gate alerts to ACTUAL policy violations. The SDK records action_taken as one
+// of OBSERVED | ALLOWED | REDACTED | BLOCKED_HOST | BLOCKED_SIZE | BLOCKED_SPEND
+// (or POLICY_VIOLATION). Only the blocking/violation actions should alert —
+// never OBSERVED / ALLOWED / REDACTED.
+function isViolationAction(action: string | null): boolean {
+  if (!action) return false;
+  const a = action.toUpperCase();
+  return a.startsWith("BLOCKED") || a === "POLICY_VIOLATION";
 }
 
 function parsePayload(raw: unknown): IngestPayload | null {
@@ -85,11 +106,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // ── Validate API key against tenants table ────────────────────────────────
   let tenantEmail: string;
+  let tenantSettings: TenantAlertSettings;
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("tenants")
-      .select("email, tier")
+      .select("email, tier, alert_slack_webhook_url, alert_email, alerts_enabled")
       .eq("api_key", identity)
       .single();
 
@@ -97,7 +119,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: "Invalid API key." }, { status: 401 });
     }
 
-    const tenant = data as { email: string; tier: string };
+    const tenant = data as {
+      email: string;
+      tier: string;
+      alert_slack_webhook_url: string | null;
+      alert_email: string | null;
+      alerts_enabled: boolean | null;
+    };
     if (tenant.tier !== "PRO" && tenant.tier !== "ENTERPRISE") {
       return NextResponse.json(
         { error: "Ingest requires an active PRO or Enterprise subscription." },
@@ -106,6 +134,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     tenantEmail = tenant.email;
+    tenantSettings = {
+      alert_slack_webhook_url: tenant.alert_slack_webhook_url,
+      alert_email:             tenant.alert_email,
+      alerts_enabled:          tenant.alerts_enabled,
+    };
   } catch {
     return NextResponse.json({ error: "Failed to validate identity." }, { status: 500 });
   }
@@ -133,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── Payload Quarantine ────────────────────────────────────────────────────
-  const buildAnomalyMetadata = (p: IngestPayload): Record<string, unknown> => {
+  const buildAnomalyMetadata = (p: IngestPayload): AnomalyMetadata => {
     const raw =
       typeof p.eventPayload === "object" && p.eventPayload !== null
         ? (p.eventPayload as Record<string, unknown>)
@@ -151,28 +184,58 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     };
   };
 
-  const writeToSupabase = async () => {
+  // Build the metadata + timestamp once so the persisted row and any alert
+  // describe exactly the same event.
+  const metadata  = buildAnomalyMetadata(payload);
+  const createdAt = new Date().toISOString();
+
+  const writeToSupabase = async (): Promise<boolean> => {
     try {
       const supabase = getSupabaseAdmin();
-      await supabase.from("anomaly_events").insert({
+      const { error } = await supabase.from("anomaly_events").insert({
         tenant_identity: tenantEmail,
         trace_id:        payload.traceId,
-        anomaly_metadata: buildAnomalyMetadata(payload),
+        anomaly_metadata: metadata,
         audit_mode:      payload.auditMode,
-        created_at:      new Date().toISOString(),
+        created_at:      createdAt,
       });
+      if (error) {
+        console.error("[vantio:ingest] Supabase write failed:", error.message, error);
+        return false;
+      }
+      return true;
     } catch (err) {
       console.error("[vantio:ingest] Supabase write failed:", err);
+      return false;
     }
   };
 
   // Run the Supabase write and HMAC computation concurrently.
   // Both must complete before we return — in Edge runtime a fire-and-forget
   // void promise is killed the moment the response is dispatched.
-  const [hmacSig] = await Promise.all([
+  const [hmacSig, writeOk] = await Promise.all([
     computeHmac(identity, payload.traceId),
     writeToSupabase(),
   ]);
+
+  // Fire the per-tenant alert inline the instant a real policy VIOLATION is
+  // recorded — no Supabase DB webhook required. Only BLOCKED_* / POLICY_VIOLATION
+  // events alert; OBSERVED / ALLOWED / REDACTED never do. Awaited (bounded by the
+  // helper's 3s timeouts) but fully failure-safe: any problem is caught + logged
+  // so ingest still returns its normal 200 + HMAC signature.
+  if (writeOk && isViolationAction(metadata.action_taken)) {
+    try {
+      await sendTenantAnomalyAlert(tenantSettings, {
+        tenant_identity:  tenantEmail,
+        trace_id:         payload.traceId,
+        audit_mode:       payload.auditMode,
+        created_at:       createdAt,
+        anomaly_metadata: metadata,
+      });
+    } catch (err) {
+      console.error("[vantio:ingest] alert send failed:", err);
+    }
+  }
 
   return NextResponse.json(
     { status: 0, traceId: payload.traceId },
