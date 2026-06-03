@@ -74,6 +74,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script type="application/ld+json" dangerouslySetInnerHTML={{
           __html: JSON.stringify(softwareApplicationJsonLd()),
         }} />
+        {/* Without JS the scroll-reveal class never flips — keep content visible. */}
+        <noscript dangerouslySetInnerHTML={{
+          __html: "<style>.reveal-hidden{opacity:1 !important;transform:none !important;}</style>",
+        }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {/* Nav */}

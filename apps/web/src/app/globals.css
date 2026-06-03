@@ -93,3 +93,80 @@ body {
 }
 
 .animate-fade-up { animation: fadeUp 0.6s ease forwards; }
+
+/* ─── Homepage visual system ──────────────────────────────────────────────
+   All motion below is CSS-only and self-disables under prefers-reduced-motion
+   (see the reduce block at the bottom). Hidden/entrance states are gated behind
+   `no-preference` so reduced-motion users always see fully-rendered content. */
+
+/* Scroll-reveal. Items SSR as `.reveal-hidden`; the Reveal client component
+   swaps to `.reveal-in` when in view. A <noscript> override in layout keeps the
+   content visible if JS never runs. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-hidden { opacity: 0; transform: translateY(18px); }
+  .reveal-hidden,
+  .reveal-in     { transition: opacity 0.6s ease, transform 0.6s ease; }
+  .reveal-in     { opacity: 1; transform: none; }
+  .lift          { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+  .lift:hover    { transform: translateY(-4px); }
+}
+
+/* Animated gradient connectors for the How-it-works flow. */
+@keyframes connector-flow   { 0% { background-position: 0% 50%; }  100% { background-position: 200% 50%; } }
+@keyframes connector-flow-v { 0% { background-position: 50% 0%; }  100% { background-position: 50% 200%; } }
+.flow-connector {
+  background-image: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: connector-flow 3s linear infinite;
+}
+.flow-connector-v {
+  background-image: linear-gradient(180deg, transparent, var(--accent), transparent);
+  background-size: 100% 200%;
+  animation: connector-flow-v 3s linear infinite;
+}
+
+/* Containment hero visual. */
+@keyframes cv-ring {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent-glow), 0 0 30px var(--accent-glow); opacity: 0.85; }
+  50%      { box-shadow: 0 0 0 1px var(--accent-glow), 0 0 60px var(--accent-glow); opacity: 1; }
+}
+@keyframes cv-core  { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } }
+@keyframes cv-flow {
+  0%   { left: 4%;  opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { left: 98%; opacity: 0; }
+}
+@keyframes cv-blocked {
+  0%, 100% { left: 4%;  opacity: 0; }
+  15%      { opacity: 1; }
+  55%      { left: 62%; opacity: 1; }
+  66%      { left: 62%; opacity: 0; }
+  99%      { left: 62%; opacity: 0; }
+}
+@keyframes cv-sever {
+  0%, 50%, 100% { opacity: 0; transform: scale(0.5); }
+  60%           { opacity: 1; transform: scale(1.2); }
+  80%           { opacity: 0.4; transform: scale(1); }
+}
+.cv-ring    { animation: cv-ring 4s ease-in-out infinite; }
+.cv-core    { animation: cv-core 3s ease-in-out infinite; }
+.cv-flow    { animation: cv-flow 3.2s linear infinite; }
+.cv-blocked { animation: cv-blocked 3.4s ease-in infinite; }
+.cv-sever   { animation: cv-sever 3.4s ease-out infinite; }
+
+/* Observe-vs-contain visual. */
+@keyframes ovc-radar { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes ovc-ping  { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(1.5); opacity: 0; } }
+.ovc-radar { animation: ovc-radar 6s linear infinite; transform-origin: center; }
+.ovc-ping  { animation: ovc-ping 2.6s ease-out infinite; }
+
+/* Reduced-motion safety net: stop all continuous motion and reveal-in content. */
+@media (prefers-reduced-motion: reduce) {
+  .cv-ring, .cv-core, .cv-flow, .cv-blocked, .cv-sever,
+  .ovc-radar, .ovc-ping, .flow-connector, .flow-connector-v,
+  .animate-fade-up {
+    animation: none !important;
+  }
+  .reveal-hidden, .reveal-in { opacity: 1 !important; transform: none !important; }
+}
