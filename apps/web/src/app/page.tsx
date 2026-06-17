@@ -8,6 +8,7 @@ import { WaitlistCta } from "@/components/waitlist-cta";
 import { ContainmentVisual } from "@/components/containment-visual";
 import { DashboardVisual } from "@/components/dashboard-visual";
 import { Reveal } from "@/components/reveal";
+import { StatsStrip } from "@/components/stats-strip";
 
 export const metadata: Metadata = buildMetadata({ path: "/" });
 
@@ -171,6 +172,9 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Market-data stats strip ───────────────────────────────────────────── */}
+      <StatsStrip />
+
       {/* ── Manifesto: Watching isn't governing ───────────────────────────────── */}
       <section className="border-y border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-6xl">
@@ -273,6 +277,14 @@ export default function HomePage() {
       <section id="fit" className="scroll-mt-24 border-y border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <Reveal>
+            {/* Single callout — most urgent stat, above the tier picker */}
+            <p className="mx-auto mb-8 max-w-2xl rounded-xl border border-[var(--border-2)] bg-[var(--surface-2)] px-6 py-4 text-center text-sm leading-relaxed text-[var(--muted)]">
+              Right now,{" "}
+              <span className="font-bold text-[var(--foreground)]">4 in 5 enterprises deploying AI agents have no mature governance</span>
+              {" "}— no defined boundaries, no real-time monitoring, no audit trail.{" "}
+              <span className="text-[10px]">(Deloitte State of AI in the Enterprise, 2026 · 3,235 leaders · 24 countries)</span>
+            </p>
+
             <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Where do you fit?</p>
             <h2 className="mb-4 text-center text-3xl font-bold">One platform. Three ways in.</h2>
             <p className="mx-auto mb-14 max-w-xl text-center text-sm text-[var(--muted)]">

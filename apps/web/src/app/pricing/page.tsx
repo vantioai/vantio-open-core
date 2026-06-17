@@ -62,14 +62,47 @@ const TIERS = [
   },
 ];
 
+const PRICING_STATS = [
+  {
+    metric: "~80%",
+    label: "of enterprises have no mature AI governance",
+    source: "Deloitte, 2026",
+  },
+  {
+    metric: "97%",
+    label: "of AI breaches had zero access controls",
+    source: "IBM / Ponemon, 2025",
+  },
+  {
+    metric: "+$670K",
+    label: "added to breaches by ungoverned AI",
+    source: "IBM / Ponemon, 2025",
+  },
+] as const;
+
 export default function PricingPage() {
   return (
     <main className="mx-auto max-w-6xl px-6 py-24">
       <p className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Pricing</p>
       <h1 className="mb-3 text-center text-4xl font-bold">Simple, honest pricing.</h1>
-      <p className="mb-16 text-center text-[var(--muted)]">
+      <p className="mb-10 text-center text-[var(--muted)]">
         Start free. No credit card. Upgrade when you need active enforcement or enterprise controls.
       </p>
+
+      {/* Compact stats — why governance pays */}
+      <div className="mb-14 grid grid-cols-1 gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:grid-cols-3">
+        {PRICING_STATS.map((s) => (
+          <div key={s.metric} className="flex items-center gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+            <span className="shrink-0 bg-gradient-to-r from-[var(--accent)] via-emerald-300 to-[var(--accent)] bg-clip-text text-3xl font-black leading-none text-transparent">
+              {s.metric}
+            </span>
+            <div>
+              <p className="text-xs font-medium leading-snug text-[var(--foreground)]">{s.label}</p>
+              <p className="mt-0.5 text-[10px] text-[var(--muted)]/60">{s.source}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div className="grid gap-6 md:grid-cols-3 md:items-stretch">
         {TIERS.map((t) => (
