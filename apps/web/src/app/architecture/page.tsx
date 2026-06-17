@@ -5,7 +5,7 @@ import { Reveal } from "@/components/reveal";
 
 export const metadata: Metadata = buildMetadata({
   title: "Architecture",
-  description: "Three components. One atomic operation. Zero trust required at any layer.",
+  description: "How Vantio works: three tiers across two Linux privilege rings, each enforcing where it can reach, with one shared cryptographic audit ledger you can verify without trusting us.",
   path: "/architecture",
 });
 
@@ -99,8 +99,8 @@ export default function ArchitecturePage() {
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Architecture</p>
         <h1 className="mb-4 text-4xl font-bold">The Architecture of Verifiable Enforcement.</h1>
         <p className="mb-12 max-w-2xl text-lg text-[var(--muted)]">
-          Three tiers across two rings — enforcement where each tier can reach — plus one shared,
-          cryptographic record you can verify without trusting us.
+          Three tiers, two privilege rings. Each tier enforces where it can reach. All three share one
+          cryptographic audit record you can verify yourself — without having to trust us.
         </p>
 
         {/* How tiers map to layers */}

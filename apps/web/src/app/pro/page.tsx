@@ -7,7 +7,7 @@ import { CodeBlock } from "@/components/code-block";
 
 export const metadata: Metadata = buildMetadata({
   title: "Pro",
-  description: "Put your AI agents in production with confidence. Vantio Pro automatically stops risky actions, alerts your team, and keeps an audit-ready record — live in minutes, no ops team needed.",
+  description: "Vantio Pro enforces PII redaction, spend caps, and host blocking inside your own SDK — no ops team, no infrastructure, live in under an hour.",
   path: "/pro",
 });
 
@@ -29,12 +29,11 @@ export default function ProPage() {
           <span className="text-blue-400">You stay in control.</span>
         </h1>
         <p className="mx-auto mb-10 max-w-2xl text-lg text-[var(--muted)]">
-          <span className="font-semibold text-[var(--foreground)]">Vantio Pro</span> syncs a policy you
-          control down to the SDK running with your agent. It redacts PII, blocks off-policy hosts, and
-          caps spend right where your agent runs — before anything leaves your environment. It&apos;s
-          production-grade governance you can stand up yourself — without a security team, an ops team,
-          or a procurement cycle. No proxy, no infrastructure to run, no code to change — live in under
-          an hour.
+          <span className="font-semibold text-[var(--foreground)]">Vantio Pro</span> pushes a policy you
+          control down to the SDK running alongside your agent. PII gets redacted, off-policy hosts get
+          blocked, and spend gets capped right where your agent runs — before anything leaves your
+          environment. No proxy, no infrastructure to manage, no code to change. You can run it yourself
+          in under an hour without a security team or a procurement cycle.
         </p>
         <div className="flex flex-wrap items-start justify-center gap-3">
           {isTier2Waitlist() ? (
@@ -60,15 +59,15 @@ export default function ProPage() {
       <section className="border-t border-[var(--border)] bg-[var(--surface)] px-6 py-20">
         <div className="mx-auto max-w-5xl">
           <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">What You Get</h2>
-          <p className="mb-12 text-center text-2xl font-bold">Four pillars of SDK-side enforcement.</p>
+          <p className="mb-12 text-center text-2xl font-bold">Four things Pro does for you.</p>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { icon: "🛡️", title: "PII redaction", body: "Emails, SSNs, credit cards and more are stripped from requests by the SDK before they ever leave your environment. Vantio never sees the original content." },
-              { icon: "💰", title: "Spend caps", body: "Set a per-run dollar ceiling. As an agent crosses it, the SDK halts further spend locally — a best-effort, per-process brake on runaway loops and surprise bills." },
-              { icon: "🚫", title: "Host & policy blocking", body: "Allow only the hosts you trust and block the rest — any named host, not just known LLM providers. Off-policy calls are stopped client-side and logged as BLOCKED_HOST." },
-              { icon: "📝", title: "Full audit trail", body: "Every decision — observed, allowed, redacted, or blocked — is sealed into a tamper-proof, metadata-only ledger. Export to CSV anytime." },
-              { icon: "🎛️", title: "Policy editor", body: "Toggle enforcement, choose PII types, edit host rules and limits from your dashboard. Changes sync to your SDK on its next config pull." },
-              { icon: "📊", title: "Peer benchmarks", body: "Compare your call volume and block rate against anonymized industry peers. No tenant is ever identifiable." },
+              { icon: "🛡️", title: "PII redaction", body: "Emails, SSNs, and credit card numbers are stripped from requests inside the SDK before they leave your environment. Vantio never sees the original content." },
+              { icon: "💰", title: "Spend caps", body: "Set a per-run dollar ceiling. When an agent hits it, the SDK halts further spend locally — a per-process brake on runaway loops and surprise bills." },
+              { icon: "🚫", title: "Host & policy blocking", body: "Allow only the hosts you trust and block everything else — any named host, not just known LLM providers. Off-policy calls are stopped client-side and logged." },
+              { icon: "📝", title: "Full audit trail", body: "Every decision — observed, allowed, redacted, or blocked — is sealed into a tamper-proof, metadata-only ledger. Export to CSV any time." },
+              { icon: "🎛️", title: "Policy editor", body: "Toggle enforcement, choose PII types, and edit host rules from your dashboard. Changes sync to your SDK on the next config pull." },
+              { icon: "📊", title: "Peer benchmarks", body: "See how your call volume and block rate compare against anonymized industry peers. No tenant is ever identifiable." },
             ].map(({ icon, title, body }) => (
               <div key={title} className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-5">
                 <div className="mb-3 text-2xl">{icon}</div>
@@ -82,24 +81,24 @@ export default function ProPage() {
 
       {/* Setup */}
       <section className="mx-auto max-w-4xl px-6 py-20">
-        <h2 className="mb-2 text-2xl font-bold">Running in under a minute.</h2>
+        <h2 className="mb-2 text-2xl font-bold">Two commands, then you&apos;re live.</h2>
         <p className="mb-6 text-[var(--muted)]">
-          Start your trial, grab your key, then two commands — no env vars, no code changes.
+          Start your trial, grab your key, then run these two commands. No env vars, no code changes.
         </p>
         <CodeBlock code={"vantio login <your-key>     # once — saved to ~/.vantio\nvantio run node agent.js"} className="bg-black/40" />
         <p className="mt-5 rounded-xl border border-blue-400/20 bg-blue-400/5 p-4 text-sm text-[var(--muted)]">
           <span className="font-semibold text-[var(--foreground)]">
-            Get your key and the full, copy-paste quickstart in your{" "}
+            Your API key and a copy-paste quickstart are waiting in your{" "}
             <a href="/dashboard" className="text-blue-400 underline">dashboard</a>.
           </span>{" "}
-          It prefills your real API key into <code className="rounded bg-[var(--surface)] px-1 text-blue-400">vantio login</code>, and the dashboard is where your agent&apos;s activity shows up in real time.
+          It prefills your real key into <code className="rounded bg-[var(--surface)] px-1 text-blue-400">vantio login</code>, and agent activity shows up there in real time.
         </p>
         <p className="mt-10 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">
           <span className="font-semibold text-[var(--foreground)]">Metadata only.</span> Vantio records
           that an action happened — never the content of your prompts or completions. Enforcement
-          and redaction run in your SDK; the cloud just stores your policy and the audit trail.
-          If our control plane is ever unreachable, the SDK <span className="font-semibold text-[var(--foreground)]">fails open</span> —
-          your agent keeps running and is never blocked by a Vantio outage. Anonymous, opt-out
+          and redaction run in your SDK; the cloud stores your policy and the audit trail.
+          If our control plane goes down, the SDK <span className="font-semibold text-[var(--foreground)]">fails open</span> —
+          your agent keeps running. A Vantio outage will never block you. Anonymous, opt-out
           usage telemetry helps us improve the product — never your data.
         </p>
         <p className="mt-6 text-sm text-[var(--muted)]">

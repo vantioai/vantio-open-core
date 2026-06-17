@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { Logo } from "@/components/logo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -44,7 +45,9 @@ export default function LoginPage() {
     <main className="hero-glow dot-grid flex min-h-[80vh] flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm">
         <div className="mb-8 text-center">
-          <span className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-lg font-black text-[var(--accent)]">∅</span>
+          <span className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
+            <Logo size={28} />
+          </span>
           <h1 className="text-2xl font-bold text-[var(--foreground)]">
             Sign in to your dashboard
           </h1>

@@ -15,18 +15,18 @@ async function startTrial() {
 
 const TIERS = [
   {
-    label: "ENTERPRISE", name: "Enterprise",
-    for: "For regulated industries and large teams.",
-    price: "Custom", period: "from $50k/year",
-    color: "text-red-400", border: "border-red-400/30", bg: "bg-red-400/5",
-    cta: "Talk to Sales", href: "/enterprise",
+    label: "DEVELOPER", name: "Free",
+    for: "For individuals and open-source projects.",
+    price: "$0", period: "forever",
+    color: "text-[var(--accent)]", border: "border-[var(--accent)]/30", bg: "bg-[var(--accent)]/5",
+    cta: "Get Started Free", href: "/developers",
     features: [
-      { text: "Kernel-level (eBPF) enforcement for the workloads you enroll", strong: true },
-      { text: "Runs inside your own cloud — your data never leaves your walls" },
-      { text: "7-year tamper-proof audit records" },
-      { text: "SAML / Okta single sign-on" },
-      { text: "Dedicated support + engineering onboarding" },
-      { text: "SOC 2, MiFID II, HIPAA, GDPR compliance ready" },
+      { text: "See every action your AI agents take", strong: true },
+      { text: "10,000 events per month included" },
+      { text: "Works with Node.js and Python" },
+      { text: "Real-time activity dashboard" },
+      { text: "Open-source on GitHub" },
+      { text: "Community support" },
     ],
   },
   {
@@ -45,18 +45,19 @@ const TIERS = [
     ],
   },
   {
-    label: "DEVELOPER", name: "Free",
-    for: "For individuals and open-source projects.",
-    price: "$0", period: "forever",
-    color: "text-[var(--accent)]", border: "border-[var(--accent)]/30", bg: "bg-[var(--accent)]/5",
-    cta: "Get Started Free", href: "/developers",
+    label: "ENTERPRISE", name: "Enterprise",
+    for: "For regulated industries and large teams.",
+    price: "Custom", period: "from $50k/year",
+    color: "text-red-400", border: "border-red-400/30", bg: "bg-red-400/5",
+    cta: "Talk to Sales", href: "/enterprise",
     features: [
-      { text: "See every action your AI agents take", strong: true },
-      { text: "10,000 events per month included" },
-      { text: "Works with Node.js and Python" },
-      { text: "Real-time activity dashboard" },
-      { text: "Open-source on GitHub" },
-      { text: "Community support" },
+      { text: "Start in audit mode — observe everything, block nothing, zero risk", strong: true },
+      { text: "Kernel-level (eBPF) enforcement for the workloads you enroll" },
+      { text: "Runs inside your own cloud — your data never leaves your walls" },
+      { text: "7-year tamper-proof audit records" },
+      { text: "SAML / Okta single sign-on" },
+      { text: "Dedicated support + engineering onboarding" },
+      { text: "SOC 2, MiFID II, HIPAA, GDPR compliance ready" },
     ],
   },
 ];
@@ -70,9 +71,9 @@ export default function PricingPage() {
         Start free. No credit card. Upgrade when you need active enforcement or enterprise controls.
       </p>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-3 md:items-stretch">
         {TIERS.map((t) => (
-          <div key={t.name} className={`relative flex flex-col rounded-xl border ${t.border} ${t.bg} p-8`}>
+          <div key={t.name} className={`relative flex h-full flex-col rounded-xl border ${t.border} ${t.bg} p-8`}>
             {t.badge && (
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-blue-400 px-3 py-0.5 text-xs font-bold text-black">
                 {t.badge}
@@ -86,28 +87,6 @@ export default function PricingPage() {
                 Launching soon
               </span>
             )}
-            <div className="mb-6 flex items-end gap-1">
-              <span className="text-4xl font-bold">{t.price}</span>
-              <span className="mb-1 text-xs text-[var(--muted)]">{t.period}</span>
-            </div>
-
-            {t.href === "#" && isTier2Waitlist() ? (
-              <WaitlistCta
-                source="pricing"
-                wrapperClassName="mb-8"
-                buttonClassName="w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300"
-              />
-            ) : t.href === "#" ? (
-              <button onClick={startTrial}
-                className="mb-8 w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300">
-                {t.cta}
-              </button>
-            ) : (
-              <a href={t.href}
-                className={`mb-8 block w-full rounded-md border ${t.border} py-3 text-center text-sm font-semibold ${t.color} transition-colors hover:bg-white/5`}>
-                {t.cta}
-              </a>
-            )}
 
             <ul className="flex-1 space-y-3">
               {t.features.map((f) => (
@@ -117,6 +96,31 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
+
+            <div className="mt-auto pt-6">
+              <div className="mb-4 flex items-end gap-1">
+                <span className="text-4xl font-bold">{t.price}</span>
+                <span className="mb-1 text-xs text-[var(--muted)]">{t.period}</span>
+              </div>
+
+              {t.href === "#" && isTier2Waitlist() ? (
+                <WaitlistCta
+                  source="pricing"
+                  wrapperClassName=""
+                  buttonClassName="w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300"
+                />
+              ) : t.href === "#" ? (
+                <button onClick={startTrial}
+                  className="w-full rounded-md bg-blue-400 py-3 text-sm font-semibold text-black transition-colors hover:bg-blue-300">
+                  {t.cta}
+                </button>
+              ) : (
+                <a href={t.href}
+                  className={`block w-full rounded-md border ${t.border} py-3 text-center text-sm font-semibold ${t.color} transition-colors hover:bg-white/5`}>
+                  {t.cta}
+                </a>
+              )}
+            </div>
           </div>
         ))}
       </div>

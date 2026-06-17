@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+  <!-- Outer crosshair ring: 4 arcs with gaps at N/E/S/W cardinal points -->
+  <!-- Arc 1: top-right quadrant (276° ’ 354°, gap centered at 0°/top and 90°/right) -->
+  <path stroke="currentColor" stroke-width="7" stroke-linecap="butt"
+    d="M 54.75 8.27 A 42 42 0 0 1 91.73 45.25"/>
+  <!-- Arc 2: bottom-right quadrant (6° ’ 84°) -->
+  <path stroke="currentColor" stroke-width="7" stroke-linecap="butt"
+    d="M 91.73 54.75 A 42 42 0 0 1 54.75 91.73"/>
+  <!-- Arc 3: bottom-left quadrant (96° ’ 174°) -->
+  <path stroke="currentColor" stroke-width="7" stroke-linecap="butt"
+    d="M 45.25 91.73 A 42 42 0 0 1 8.27 54.75"/>
+  <!-- Arc 4: top-left quadrant (186° ’ 264°) -->
+  <path stroke="currentColor" stroke-width="7" stroke-linecap="butt"
+    d="M 8.27 45.25 A 42 42 0 0 1 45.25 8.27"/>
+  <!-- Inner  mark: circle + diagonal slash (bottom-left ’ top-right) -->
+  <circle cx="50" cy="50" r="22" stroke="currentColor" stroke-width="6"/>
+  <line x1="31" y1="69" x2="69" y2="31" stroke="currentColor" stroke-width="6" stroke-linecap="butt"/>
+</svg>

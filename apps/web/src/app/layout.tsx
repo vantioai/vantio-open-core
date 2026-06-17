@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 import { SITE, organizationJsonLd, softwareApplicationJsonLd } from "@/lib/seo";
-import { MobileNav } from "@/components/mobile-nav";
+import { Logo } from "@/components/logo";
+import { Nav } from "@/components/nav";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -31,6 +31,7 @@ export const metadata: Metadata = {
     "data exfiltration prevention",
     "AI agent guardrails",
   ],
+  icons: { icon: "/logo.png", apple: "/logo.png" },
   alternates: { canonical: "/" },
   formatDetection: { email: false, address: false, telephone: false },
   robots: {
@@ -80,38 +81,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* Nav */}
-        <nav className="fixed top-0 z-50 w-full">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-            {/* Frosted glass pill */}
-            <div className="relative flex w-full items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 px-5 py-2.5 shadow-lg shadow-black/20 backdrop-blur-xl">
-              <Link href="/" className="flex items-center gap-2.5 font-bold tracking-tight">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-sm font-black text-[var(--accent)]">∅</span>
-                <span className="text-sm font-semibold tracking-wider text-[var(--foreground)]">VANTIO</span>
-              </Link>
-              <div className="hidden items-center gap-1 md:flex">
-                {[
-                  ["/architecture", "Architecture"],
-                  ["/pricing",      "Pricing"],
-                  ["/enterprise",   "Enterprise"],
-                  ["/pro",          "Pro"],
-                  ["/developers",   "Developers"],
-                  ["/brief",        "The Brief"],
-                ].map(([href, label]) => (
-                  <a key={href} href={href}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted)] transition-all hover:bg-white/5 hover:text-[var(--foreground)]">
-                    {label}
-                  </a>
-                ))}
-              </div>
-              <a href="/dashboard"
-                className="hidden md:inline-flex items-center rounded-lg border border-[var(--border-2)] bg-[var(--surface-2)] px-4 py-1.5 text-xs font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)]">
-                Dashboard
-              </a>
-              <MobileNav />
-            </div>
-          </div>
-        </nav>
+        <Nav />
 
         <div className="pt-20">{children}</div>
 
@@ -121,7 +91,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <div className="flex flex-col gap-10 md:flex-row md:justify-between">
               <div className="max-w-xs">
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-sm font-black text-[var(--accent)]">∅</span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)]">
+                    <Logo size={18} />
+                  </span>
                   <span className="font-semibold tracking-wider">VANTIO</span>
                 </div>
                 <p className="text-xs leading-relaxed text-[var(--muted)]">

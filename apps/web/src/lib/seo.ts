@@ -10,9 +10,9 @@ export const SITE = {
   shortName: "Vantio",
   url: "https://vantio.ai",
   locale: "en_US",
-  defaultTitle: "Vantio AI — Go Fully Autonomous, Stay Fully Compliant",
+  defaultTitle: "Vantio AI — Ship AI Agents Safely",
   defaultDescription:
-    "Vantio is regulated AI governance for autonomous AI agents — secure every agent, prove compliance to regulators, and accelerate deployment with confidence.",
+    "Vantio gives your AI agents real guardrails — stop risky actions before they happen, keep a tamper-proof audit trail, and prove compliance to anyone who asks.",
   // Social profiles surfaced in structured data (Organization.sameAs).
   social: {
     linkedin: "https://www.linkedin.com/company/vantio-ai",
@@ -104,20 +104,20 @@ export function softwareApplicationJsonLd() {
         name: "Developer",
         price: "0",
         priceCurrency: "USD",
-        description: "Real-time visibility into your AI agents. 10,000 events/month, free forever.",
+        description: "See every action your AI agents take. 10,000 events/month, free forever.",
       },
       {
         "@type": "Offer",
         name: "Pro",
         price: "499",
         priceCurrency: "USD",
-        description: "SDK-side PII redaction, spend caps, host/policy blocking, and a tamper-proof audit trail — production-grade AI governance you can run yourself, live in under an hour with no security team, ops team, or infrastructure required.",
+        description: "PII redaction, spend caps, and host blocking enforced inside your own SDK — production-grade governance you can run yourself in under an hour.",
       },
       {
         "@type": "Offer",
         name: "Enterprise",
         priceCurrency: "USD",
-        description: "Per-agent kernel-level (eBPF) enforcement inside your own Linux/Kubernetes cluster, with a 7-year WORM audit ledger.",
+        description: "Kernel-level (eBPF) enforcement inside your own Linux or Kubernetes cluster, with a 7-year tamper-proof audit ledger.",
       },
     ],
   };

@@ -5,7 +5,7 @@ import { JsonLd } from "@/components/json-ld";
 
 export const metadata: Metadata = buildMetadata({
   title: "Enterprise",
-  description: "Deploy AI agents in the most regulated industries — kernel-level (eBPF) enforcement for the workloads you enroll, running inside your own cloud, with audit-ready proof for every decision and zero data leaving your walls.",
+  description: "Kernel-level eBPF enforcement for AI agents running inside your own cloud — tamper-proof audit records, zero data outside your walls, and audit mode so you see before you enforce.",
   path: "/enterprise",
 });
 
@@ -63,11 +63,11 @@ export default function EnterprisePage() {
             </span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--muted)]">
-            <span className="font-semibold text-[var(--foreground)]">Vantio for Enterprise</span> gives
-            you kernel-level enforcement for the AI workloads you enroll — running inside your own
-            cloud on Linux nodes or Kubernetes, with audit-ready proof for every decision and zero
-            data ever leaving your walls. Banks, hospitals, and governments can&apos;t afford an AI
-            agent that colors outside the lines.
+            <span className="font-semibold text-[var(--foreground)]">Vantio for Enterprise</span>{" "}
+            enforces policy at the Linux kernel level for the AI workloads you enroll — running
+            inside your own cloud on Linux nodes or Kubernetes. Every decision goes into a
+            cryptographic audit ledger, and your data never leaves your walls. Banks, hospitals,
+            and governments need agents that can&apos;t break policy. This is how you build them.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link href="/auth/enterprise"
@@ -101,10 +101,10 @@ export default function EnterprisePage() {
       <section className="border-t border-[var(--border)] bg-[var(--surface)] px-6 py-24">
         <div className="mx-auto max-w-5xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-red-400">Why Enterprise Is Different</p>
-          <h2 className="mb-3 text-3xl font-bold">Four capabilities that set Enterprise apart.</h2>
+          <h2 className="mb-3 text-3xl font-bold">What makes Enterprise different.</h2>
           <p className="mb-14 max-w-2xl text-[var(--muted)]">
-            Real kernel-level enforcement for AI agents is genuinely hard to build. Here&apos;s what
-            that means for you, in plain terms.
+            Kernel-level enforcement for AI agents is genuinely hard to build. Here&apos;s what
+            each capability actually does for you.
           </p>
           <div className="space-y-6">
             {DIFFERENTIATORS.map(({ label, title, body, code }) => (
@@ -202,8 +202,8 @@ export default function EnterprisePage() {
       {/* CTA */}
       <section className="px-6 py-24 text-center">
         <div className="mx-auto max-w-2xl">
-          <h2 className="mb-3 text-3xl font-bold">Every Enterprise deployment begins with a technical architecture review.</h2>
-          <p className="mb-2 text-[var(--muted)]">Includes a custom SLA, dedicated engineering support, and white-glove onboarding. Pricing from $50,000/year.</p>
+          <h2 className="mb-3 text-3xl font-bold">Every Enterprise deployment starts with a technical architecture review.</h2>
+          <p className="mb-2 text-[var(--muted)]">Includes a custom SLA, dedicated engineering support, and hands-on onboarding. Pricing from $50,000/year.</p>
           <p className="mb-8 text-xs text-[var(--muted)]">Your platform and security teams review and approve everything before anything goes live — nothing is installed without your sign-off.</p>
           <Link href="/auth/enterprise"
             className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-8 py-4 text-sm font-bold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-400">

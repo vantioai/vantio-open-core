@@ -183,21 +183,20 @@ export default function HomePage() {
               </h2>
               <div className="mt-6 space-y-4 text-sm leading-relaxed text-[var(--muted)]">
                 <p>
-                  Monitoring tools light up after an agent leaks data, calls the wrong tool, or burns
-                  your budget — a post-mortem, not protection. That&apos;s why agents stay trapped in
-                  pilots: nobody can actually promise control.
+                  Monitoring tools fire alerts after an agent leaks data, calls the wrong tool, or burns
+                  your budget. That&apos;s a post-mortem, not protection. It&apos;s why agents stay trapped
+                  in pilots: nobody can actually promise control.
                 </p>
                 <p>
-                  Vantio is built on one belief: there&apos;s only one right way to govern an autonomous
-                  agent — enforce it where it runs, stop it before anything leaves, and never read its
-                  data to do it.
+                  We believe there&apos;s one right way to govern an autonomous agent — enforce it where it
+                  runs, stop the action before anything leaves, and never read its data to do it.
                 </p>
                 <p className="text-[var(--foreground)]">
-                  That&apos;s the difference between hoping your agents behave and deploying them at scale.
+                  That&apos;s the gap between hoping your agents behave and deploying them at scale.
                 </p>
               </div>
               <p className="mt-6 border-l-2 border-[var(--accent)]/50 pl-4 text-sm font-medium text-[var(--foreground)]">
-                This is the control layer that finally takes agents out of pilot purgatory.
+                Real control is what finally moves agents out of pilot purgatory.
               </p>
             </Reveal>
 
@@ -293,12 +292,7 @@ export default function HomePage() {
                   You&apos;re shipping AI agents and want real visibility — every tool call, every host,
                   every byte — without touching your code.
                 </p>
-                <div className="mt-5 flex items-baseline gap-2">
-                  <span className="rounded-full bg-[var(--accent)]/10 px-2.5 py-0.5 text-xs font-bold text-[var(--accent)]">FREE</span>
-                  <span className="text-2xl font-black text-[var(--foreground)]">$0</span>
-                  <span className="text-xs text-[var(--muted)]">forever</span>
-                </div>
-                <ul className="mb-7 mt-5 flex-1 space-y-2 text-xs text-[var(--muted)]">
+                <ul className="mb-0 mt-5 flex-1 space-y-2 text-xs text-[var(--muted)]">
                   {["Every agent action, live", "Works with Node.js & Python", "No credit card required"].map((p) => (
                     <li key={p} className="flex items-start gap-2">
                       <span className="mt-0.5 shrink-0 text-[var(--accent)]">→</span>
@@ -306,10 +300,17 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/developers"
-                  className="mt-auto block rounded-xl bg-[var(--accent)] py-3 text-center text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]">
-                  Start free →
-                </Link>
+                <div className="mt-auto pt-5">
+                  <div className="mb-4 flex items-baseline gap-2">
+                    <span className="rounded-full bg-[var(--accent)]/10 px-2.5 py-0.5 text-xs font-bold text-[var(--accent)]">FREE</span>
+                    <span className="text-2xl font-black text-[var(--foreground)]">$0</span>
+                    <span className="text-xs text-[var(--muted)]">forever</span>
+                  </div>
+                  <Link href="/developers"
+                    className="block rounded-xl bg-[var(--accent)] py-3 text-center text-sm font-bold text-black transition-all hover:bg-[var(--accent-dim)] hover:shadow-[0_0_30px_rgba(0,232,122,0.3)]">
+                    Start free →
+                  </Link>
+                </div>
               </div>
             </Reveal>
 
@@ -323,16 +324,10 @@ export default function HomePage() {
                 <p className="text-xs font-semibold uppercase tracking-widest text-blue-400">I run a business</p>
                 <h3 className="mt-2 text-lg font-bold text-[var(--foreground)]">Put agents in front of customers</h3>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                  You&apos;re putting AI in front of real customers and need enforceable guardrails —
-                  production-grade governance you can run yourself, without a security team, an ops team,
-                  or a procurement cycle.
+                  You need real guardrails on AI your customers interact with — enforcement you can
+                  run yourself, without a security team, an ops team, or a procurement cycle.
                 </p>
-                <div className="mt-5 flex items-baseline gap-2">
-                  <span className="rounded-full bg-blue-400/10 px-2.5 py-0.5 text-xs font-bold text-blue-400">PRO</span>
-                  <span className="text-2xl font-black text-[var(--foreground)]">$499</span>
-                  <span className="text-xs text-[var(--muted)]">/month</span>
-                </div>
-                <ul className="mb-7 mt-5 flex-1 space-y-2 text-xs text-[var(--muted)]">
+                <ul className="mb-0 mt-5 flex-1 space-y-2 text-xs text-[var(--muted)]">
                   {["Redact PII before it ever leaves", "Spend caps & host allow/block rules", "Tamper-proof audit trail"].map((p) => (
                     <li key={p} className="flex items-start gap-2">
                       <span className="mt-0.5 shrink-0 text-blue-400">→</span>
@@ -340,23 +335,30 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                {proWaitlist ? (
-                  <div className="mt-auto">
-                    <span className="mb-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
-                      <span className="h-1 w-1 rounded-full bg-blue-400" /> Launching soon
-                    </span>
-                    <WaitlistCta
-                      source="home"
-                      label="Join the waitlist"
-                      buttonClassName="block w-full rounded-xl bg-blue-500 py-3 text-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-400 hover:shadow-blue-500/30"
-                    />
+                <div className="mt-auto pt-5">
+                  <div className="mb-4 flex items-baseline gap-2">
+                    <span className="rounded-full bg-blue-400/10 px-2.5 py-0.5 text-xs font-bold text-blue-400">PRO</span>
+                    <span className="text-2xl font-black text-[var(--foreground)]">$499</span>
+                    <span className="text-xs text-[var(--muted)]">/month</span>
                   </div>
-                ) : (
-                  <Link href="/pricing"
-                    className="mt-auto block rounded-xl bg-blue-500 py-3 text-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-400 hover:shadow-blue-500/30">
-                    Start 14-day free trial →
-                  </Link>
-                )}
+                  {proWaitlist ? (
+                    <>
+                      <span className="mb-2 inline-flex w-fit items-center gap-1.5 rounded-full border border-blue-400/30 bg-blue-400/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+                        <span className="h-1 w-1 rounded-full bg-blue-400" /> Launching soon
+                      </span>
+                      <WaitlistCta
+                        source="home"
+                        label="Join the waitlist"
+                        buttonClassName="block w-full rounded-xl bg-blue-500 py-3 text-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-400 hover:shadow-blue-500/30"
+                      />
+                    </>
+                  ) : (
+                    <Link href="/pricing"
+                      className="block rounded-xl bg-blue-500 py-3 text-center text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-400 hover:shadow-blue-500/30">
+                      Start 14-day free trial →
+                    </Link>
+                  )}
+                </div>
               </div>
             </Reveal>
 
@@ -365,17 +367,12 @@ export default function HomePage() {
               <div className="border-gradient-red lift flex h-full flex-col rounded-2xl p-7 hover:shadow-[0_0_40px_rgba(239,68,68,0.12)]">
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-red-400/10 text-red-400">{IconEnterprise}</div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-red-400">I&apos;m enterprise</p>
-                <h3 className="mt-2 text-lg font-bold text-[var(--foreground)]">Autonomous AI at scale, safely</h3>
+                <h3 className="mt-2 text-lg font-bold text-[var(--foreground)]">Autonomous AI at scale, with proof</h3>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                  You&apos;re running autonomous AI across the org and need to do the impossible —
-                  provably, inside your own cloud.
+                  You need AI agents that can&apos;t break policy — enforced in the kernel, running
+                  inside your own cloud, with an audit trail that stands up to regulators.
                 </p>
-                <div className="mt-5 flex items-baseline gap-2">
-                  <span className="rounded-full bg-red-400/10 px-2.5 py-0.5 text-xs font-bold text-red-400">ENTERPRISE</span>
-                  <span className="text-2xl font-black text-[var(--foreground)]">Custom</span>
-                  <span className="text-xs text-[var(--muted)]">from $50k/yr</span>
-                </div>
-                <ul className="mb-7 mt-5 flex-1 space-y-2 text-xs text-[var(--muted)]">
+                <ul className="mb-0 mt-5 flex-1 space-y-2 text-xs text-[var(--muted)]">
                   {["Kernel-level (eBPF) enforcement", "Runs inside your own cloud", "7-year WORM audit records"].map((p) => (
                     <li key={p} className="flex items-start gap-2">
                       <span className="mt-0.5 shrink-0 text-red-400">→</span>
@@ -383,10 +380,17 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/enterprise"
-                  className="mt-auto block rounded-xl border border-red-400/30 py-3 text-center text-sm font-bold text-red-400 transition-all hover:bg-red-400/10">
-                  Talk to sales →
-                </Link>
+                <div className="mt-auto pt-5">
+                  <div className="mb-4 flex items-baseline gap-2">
+                    <span className="rounded-full bg-red-400/10 px-2.5 py-0.5 text-xs font-bold text-red-400">ENTERPRISE</span>
+                    <span className="text-2xl font-black text-[var(--foreground)]">Custom</span>
+                    <span className="text-xs text-[var(--muted)]">from $50k/yr</span>
+                  </div>
+                  <Link href="/enterprise"
+                    className="block rounded-xl border border-red-400/30 py-3 text-center text-sm font-bold text-red-400 transition-all hover:bg-red-400/10">
+                    Talk to sales →
+                  </Link>
+                </div>
               </div>
             </Reveal>
           </div>
