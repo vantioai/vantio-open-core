@@ -69,7 +69,7 @@ export function RoiStrip() {
           {ROI_STATS.map((s, i) => (
             <div
               key={i}
-              className="flex flex-col items-center px-6 py-5 text-center first:pt-0 last:pb-0 sm:first:pt-5 sm:last:pb-5 lg:py-0"
+              className="flex flex-col items-center px-6 py-5 text-center lg:py-2"
             >
               {/* Large metric — solid emerald (positive, confident) */}
               <span className="text-4xl font-black leading-none tracking-tight text-[var(--accent)] sm:text-5xl">
