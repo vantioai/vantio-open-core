@@ -28,6 +28,7 @@ vantio login [key]    # save & validate your API key (prompts if omitted; input 
 vantio logout         # remove the stored key
 vantio whoami         # show the stored key (masked) + live connection status
 vantio run <program>  # spawn a program under the Vantio execution context
+vantio discover       # show your Shadow AI attack surface (Pro / Enterprise)
 ```
 
 `login` refuses to save a key the server rejects (HTTP 401). The full key is never printed — `whoami` and login output only ever show a masked form like `vk_liv…a1b2`.
@@ -68,6 +69,42 @@ vantio run --summary node agent.js   # print a run summary on exit
 ```
 
 In free mode (no API key), intercepted calls print to the terminal in real time.
+
+---
+
+## vantio discover — Shadow AI Attack Surface
+
+```bash
+vantio discover [--since=24h|7d|30d] [--host=<hostname>] [--json]
+```
+
+Shows every AI agent call recorded in your Vantio workspace, grouped by target host. Answers the question: **"What AI agents are running in my environment, and are they all governed?"**
+
+- **Pro users** — see all SDK-monitored LLM calls with governance status (ALLOWED / REDACTED / BLOCKED / OBSERVED).
+- **Enterprise users (Phantom Engine)** — additionally surfaces processes that called LLM endpoints without a Vantio `trace_id` — the **Shadow AI** agents that have no governance coverage.
+
+```
+Shadow AI Attack Surface — last 7d
+------------------------------------------------------------------------
+TARGET HOST                       CALLS    ALLOWED   REDACTED  BLOCKED   OBSERVED  SHADOW?   LAST SEEN
+------------------------------------------------------------------------
+api.openai.com                    142      138       3         0         1         ⚠ YES     2026-06-17 09:12:04 UTC
+api.anthropic.com                 57       57        0         0         0         no        2026-06-17 14:33:21 UTC
+------------------------------------------------------------------------
+2 host(s) shown  |  ⚠  1 Shadow AI indicator(s) detected
+```
+
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `--since=<period>` | Look back `24h`, `7d`, or `30d` (default: `24h`) |
+| `--host=<hostname>` | Filter to a specific target host |
+| `--json` | Output raw JSON instead of a formatted table |
+
+Run `vantio discover --help` for full documentation.
+
+> **Availability:** Discovery requires a Pro or Enterprise account. If the endpoint returns a 404, visit [vantio.ai/dashboard](https://vantio.ai/dashboard) to view your event history.
 
 ---
 
