@@ -55,6 +55,21 @@ export default function ProPage() {
         </div>
       </section>
 
+      {/* Single ROI callout — governance ships AI faster */}
+      <div className="border-t border-[var(--accent)]/15 bg-[var(--surface)] px-6 py-6">
+        <div className="mx-auto flex max-w-4xl flex-col items-center gap-1 text-center sm:flex-row sm:justify-center sm:gap-6 sm:text-left">
+          <span className="text-5xl font-black leading-none tracking-tight text-[var(--accent)]">12×</span>
+          <div>
+            <p className="text-sm font-semibold text-[var(--foreground)]">
+              more AI projects ship to production with governance in place
+            </p>
+            <p className="mt-0.5 text-[10px] text-[var(--muted)]/60">
+              Databricks 2026 State of AI Agents · vendor telemetry · 20,000+ orgs · directional
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* What you actually get */}
       <section className="border-t border-[var(--border)] bg-[var(--surface)] px-6 py-20">
         <div className="mx-auto max-w-5xl">
