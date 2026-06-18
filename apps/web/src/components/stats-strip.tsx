@@ -62,7 +62,7 @@ export function StatsStrip() {
           {STATS.map((s, i) => (
             <div
               key={i}
-              className="flex flex-col items-center px-6 py-5 text-center first:pt-0 last:pb-0 sm:first:pt-5 sm:last:pb-5 lg:py-0"
+              className="flex flex-col items-center px-6 py-5 text-center lg:py-2"
             >
               {/* Large metric */}
               <span className="bg-gradient-to-r from-[var(--accent)] via-emerald-300 to-[var(--accent)] bg-clip-text text-4xl font-black leading-none tracking-tight text-transparent sm:text-5xl">
