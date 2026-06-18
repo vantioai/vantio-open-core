@@ -34,6 +34,12 @@ const DIFFERENTIATORS = [
     body: "Enterprise deployments live inside your own cloud, and your records stay in your own database. Vantio never sees or stores a single byte of your data — real sovereignty for teams that can't send data anywhere.",
     code: "Deploys inside your own cloud\nYour data never leaves your walls\nZero access for Vantio",
   },
+  {
+    label: "Shadow AI attack surface",
+    title: "Find every AI agent on your network — including the ones nobody told you about",
+    body: "Most enterprises have AI agents running that IT doesn't know about — developers testing tools, automated workflows someone set up last quarter, third-party integrations nobody reviewed. Vantio's eBPF daemon monitors all processes on enrolled nodes at the kernel level. Any process making outbound calls to an LLM endpoint without a valid trace ID is flagged automatically. You get a map of your entire AI attack surface, not just the agents your team officially deployed.",
+    code: "Monitors all processes — not just SDK-instrumented ones\nFlags LLM calls without a valid VANTIO_TRACE_ID\nMaps your full AI attack surface, including Shadow AI",
+  },
 ];
 
 const COMPLIANCE = [
@@ -125,6 +131,41 @@ export default function EnterprisePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Roadmap */}
+      <section className="px-6 py-24">
+        <div className="mx-auto max-w-5xl">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">Roadmap</p>
+          <h2 className="mb-3 text-3xl font-bold">What we&apos;re building next.</h2>
+          <p className="mb-10 max-w-2xl text-[var(--muted)]">
+            These capabilities are on the roadmap — honest about timing, built in the open.
+          </p>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
+              <div className="p-7">
+                <span className="mb-3 inline-block rounded-full border border-[var(--border-2)] bg-[var(--surface)] px-3 py-0.5 text-xs font-semibold text-[var(--muted)]">
+                  Coming soon
+                </span>
+                <h3 className="mb-3 text-lg font-bold">Service Mesh Enforcement (WASM Sidecar)</h3>
+                <p className="text-sm leading-relaxed text-[var(--muted)]">
+                  Policy evaluation compiled to WebAssembly, running as a local sidecar filter in your service mesh (Envoy, Istio) or edge runtime (Cloudflare Workers). Enforcement and policy sync happen locally — zero round-trip latency, no control plane in the critical path.
+                </p>
+              </div>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
+              <div className="p-7">
+                <span className="mb-3 inline-block rounded-full border border-[var(--border-2)] bg-[var(--surface)] px-3 py-0.5 text-xs font-semibold text-[var(--muted)]">
+                  On the roadmap
+                </span>
+                <h3 className="mb-3 text-lg font-bold">Dynamic Credential Scoping</h3>
+                <p className="text-sm leading-relaxed text-[var(--muted)]">
+                  Agents request scoped, ephemeral credentials for each tool call instead of holding long-lived API keys. Vantio evaluates the request context and issues a short-lived token (AWS IAM, database session, API scope) valid only for that one transaction — compressing the blast radius to a single call.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>

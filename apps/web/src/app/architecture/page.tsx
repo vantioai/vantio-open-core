@@ -59,6 +59,7 @@ const LAYERS = [
       { code: "ssl_write uprobe",   desc: "Attaches to SSL_write in libssl.so.3 and gnutls_record_send in libgnutls.so.30. Intercepts the egress buffer before encryption — full TLS coverage across OpenSSL and GnuTLS (the default curl backend on Ubuntu). Records PID, trace_id, bytes, and target host." },
       { code: "execve / openat",    desc: "Syscall tracepoints (sys_enter_execve, sys_enter_openat) attribute every subprocess spawn and file open to a trace_id. Each event carries a type discriminant so it is never confused with a TLS record on the shared ring buffer." },
       { code: "tc_enforce",         desc: "TC egress classifier on the network interface. For enrolled cgroups, drops packets to non-allowlisted destinations (TC_ACT_SHOT) across both IPv4 and IPv6 — RFC-1918 plus IPv6 ULA/link-local matched via bitmask, so resolving an AAAA record cannot bypass enforcement. Traffic from unenrolled workloads is never dropped." },
+      { code: "Shadow AI detection", desc: "Any process on an enrolled node that initiates outbound traffic to a known LLM endpoint (OpenAI, Anthropic, Bedrock, etc.) without a valid trace_id is flagged — including processes that have no SDK instrumentation at all. This maps your full AI attack surface, not just the agents your team officially deployed." },
     ],
     deploy: "De-privileged Kubernetes DaemonSet (one pod per node) or bare-metal Linux. Runs with minimal Linux capabilities (CAP_BPF, CAP_NET_ADMIN), a seccomp profile, and a read-only root filesystem. Per-agent enrollment via Kubernetes labels/annotations. Compatible with EKS, GKE, AKS on kernel ≥ 5.8.",
   },
@@ -87,6 +88,7 @@ const STACK = [
   ["API runtime", "Next.js 15 Edge", "Vercel global edge network"],
   ["Auth", "Supabase magic link", "Zero-password, session-scoped"],
   ["Supply chain", "SLSA Level 3", "Sigstore + Rekor attestation"],
+  ["Shadow AI detection", "eBPF process monitoring", "Flags unenrolled processes calling LLM endpoints"],
 ];
 
 export default function ArchitecturePage() {
