@@ -1,8 +1,4 @@
 packages:
-  - 'apps/*'
   - 'packages/vantio-agent-sdk'
   - 'packages/vantio-cli'
-  - 'packages/edge-proxy'
-allowBuilds:
-  sharp: true
-  unrs-resolver: true
+  - 'packages/vantio-agent-sdk-py'

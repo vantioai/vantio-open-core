@@ -1,21 +1,29 @@
-# @vantio/agent-sdk
+# vantio-open-core
 
-> See what your AI agents are doing. Two lines of code. Free.
+Open-source SDK and CLI for the [Vantio](https://vantio.ai) AI agent visibility platform.
+
+> The web application, dashboard, and API have moved to the private [`vantioai/vantio-app`](https://github.com/vantioai/vantio-app) repository.
+
+---
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | Node.js agent SDK (`@vantio/agent-sdk`) |
+| [`packages/vantio-cli`](./packages/vantio-cli) | CLI runner (`@vantio/cli`) |
+| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | Python agent SDK (`vantio-agent-sdk`) |
+
+---
+
+## Quick start
 
 ```bash
 npm install @vantio/agent-sdk   # Node.js
 pip install vantio-agent-sdk    # Python
 ```
 
----
-
-## The idea
-
-AI agents make outbound calls you can't see. Vantio wraps your agent, intercepts every network call to a known LLM provider, and streams the metadata to a dashboard — without ever reading your prompts.
-
----
-
-## Node.js
+### Node.js
 
 ```ts
 import { shield } from "@vantio/agent-sdk";
@@ -25,11 +33,7 @@ await shield(async () => {
 });
 ```
 
-That's the integration. `shield()` propagates a trace ID through every async hop in your agent's call tree.
-
----
-
-## Python
+### Python
 
 ```python
 from vantio import shield
@@ -39,24 +43,13 @@ async def run_agent():
     await call_openai(prompt)
 ```
 
-Or as a context manager:
-
-```python
-async with shield():
-    await run_agent()
-```
-
----
-
-## CLI — zero code changes
+### CLI — zero code changes
 
 ```bash
 npx vantio run node agent.js
 npx vantio run python agent.py
-npx vantio run --summary node agent.js   # print call summary on exit
+npx vantio run --summary node agent.js
 ```
-
-The CLI patches `globalThis.fetch` at runtime via `--require`. Your code doesn't change.
 
 ---
 
@@ -73,11 +66,7 @@ The CLI patches `globalThis.fetch` at runtime via `--require`. Your code doesn't
 
 ## Telemetry
 
-The `vantio` CLI and the Python SDK send **anonymous, opt-out** usage analytics so we can see which runtimes and LLM providers to prioritize. Each ping carries only aggregate metadata: a random anonymous id (stored at `~/.vantio/telemetry-id`), the runtime + OS strings, an event name, the set of LLM hostnames contacted, and call/redaction/block counts.
-
-It **never** includes prompts, completions, API keys, emails, or anything that could reconstruct your content. Requests are fire-and-forget with a short timeout and can never block or crash your agent.
-
-Opt out at any time:
+Anonymous, opt-out usage analytics — no prompts, completions, API keys, or emails. Opt out at any time:
 
 ```bash
 export VANTIO_TELEMETRY_DISABLED=1   # or
@@ -86,14 +75,15 @@ export DO_NOT_TRACK=1
 
 ---
 
-## Dashboard
+## Platform
 
-[vantio.ai/dashboard](https://vantio.ai/dashboard) — free tier includes 10,000 events/month.
+[vantio.ai](https://vantio.ai) — free tier includes 10,000 events/month.
 
-For active blocking, compliance logs, and Slack alerts, see [vantio.ai/pricing](https://vantio.ai/pricing).
+Dashboard: [vantio.ai/dashboard](https://vantio.ai/dashboard)
+Pricing: [vantio.ai/pricing](https://vantio.ai/pricing)
 
 ---
 
 ## License
 
-MIT — [vantio.ai](https://vantio.ai)
+MIT
