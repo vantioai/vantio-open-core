@@ -19,7 +19,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const post = getPost(slug);
   if (!post) return buildMetadata({ title: "The Brief", description: "Not found.", path: `/brief/${slug}`, noindex: true });
-  return buildMetadata({ title: post.title, description: post.excerpt, path: `/brief/${slug}` });
+  return buildMetadata({
+    title: post.title,
+    description: post.excerpt,
+    path: `/brief/${slug}`,
+    article: {
+      publishedTime: post.date,
+      modifiedTime: post.date,
+      authors: [post.author],
+      section: post.category,
+    },
+  });
 }
 
 const TIER_CTA: Record<string, { href: string; label: string; note: string; box: string; btn: string }> = {

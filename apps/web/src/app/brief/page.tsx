@@ -13,6 +13,7 @@ export const metadata: Metadata = buildMetadata({
   description:
     "Field notes on autonomous AI agents — cost, reliability, security, and governance. Grounded in what's actually happening in production, written for the people shipping it.",
   path: "/brief",
+  rssAlternate: "/brief/feed.xml",
 });
 
 export default function BriefHub() {

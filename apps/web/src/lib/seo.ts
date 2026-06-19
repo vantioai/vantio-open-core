@@ -29,6 +29,22 @@ interface BuildMetadataInput {
   path: string;
   /** Set true for private/transactional pages that must stay out of the index. */
   noindex?: boolean;
+  /**
+   * Pass for article/blog-post pages. Switches openGraph.type to "article" and
+   * populates article-specific Open Graph properties that Google uses to render
+   * article rich results (date, byline, section).
+   */
+  article?: {
+    publishedTime?: string;
+    modifiedTime?: string;
+    authors?: string[];
+    section?: string;
+  };
+  /**
+   * Relative URL for an RSS/Atom alternate feed to include in <head>.
+   * e.g. "/brief/feed.xml"
+   */
+  rssAlternate?: string;
 }
 
 /**
@@ -42,6 +58,8 @@ export function buildMetadata({
   description = SITE.defaultDescription,
   path,
   noindex = false,
+  article,
+  rssAlternate,
 }: BuildMetadataInput): Metadata {
   const fullTitle = title ? `${title} — ${SITE.name}` : SITE.defaultTitle;
   const canonical = path === "/" ? "/" : path.replace(/\/$/, "");
@@ -50,18 +68,36 @@ export function buildMetadata({
   return {
     title: { absolute: fullTitle },
     description,
-    alternates: { canonical },
+    alternates: {
+      canonical,
+      ...(rssAlternate && {
+        types: { "application/rss+xml": rssAlternate },
+      }),
+    },
     robots: noindex
       ? { index: false, follow: false, googleBot: { index: false, follow: false } }
       : { index: true, follow: true },
-    openGraph: {
-      type: "website",
-      siteName: SITE.name,
-      locale: SITE.locale,
-      url,
-      title: fullTitle,
-      description,
-    },
+    openGraph: article
+      ? {
+          type: "article",
+          siteName: SITE.name,
+          locale: SITE.locale,
+          url,
+          title: fullTitle,
+          description,
+          publishedTime: article.publishedTime,
+          modifiedTime: article.modifiedTime,
+          authors: article.authors,
+          section: article.section,
+        }
+      : {
+          type: "website",
+          siteName: SITE.name,
+          locale: SITE.locale,
+          url,
+          title: fullTitle,
+          description,
+        },
     twitter: {
       card: "summary_large_image",
       title: fullTitle,
@@ -144,9 +180,12 @@ export function blogPostingJsonLd(input: {
   slug: string;
   author: string;
   datePublished: string;
+  /** Defaults to datePublished when not provided. */
+  dateModified?: string;
   section?: string;
 }) {
   const url = new URL(`/brief/${input.slug}`, SITE.url).toString();
+  const ogImage = `${SITE.url}/brief/${input.slug}/opengraph-image`;
   return {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -155,15 +194,21 @@ export function blogPostingJsonLd(input: {
     url,
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     datePublished: input.datePublished,
-    dateModified: input.datePublished,
+    dateModified: input.dateModified ?? input.datePublished,
     articleSection: input.section,
     author: { "@type": "Person", name: input.author },
     publisher: {
       "@type": "Organization",
       name: "Vantio AI, Inc.",
+      url: SITE.url,
       logo: { "@type": "ImageObject", url: `${SITE.url}/icon` },
     },
-    image: `${SITE.url}/opengraph-image`,
+    image: {
+      "@type": "ImageObject",
+      url: ogImage,
+      width: 1200,
+      height: 630,
+    },
     isAccessibleForFree: true,
   };
 }
