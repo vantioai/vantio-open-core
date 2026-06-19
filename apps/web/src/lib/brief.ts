@@ -47,10 +47,15 @@ import { post as pProducts } from "@/lib/brief/posts/hot-agent-products-2026";
 import { post as pNineSec } from "@/lib/brief/posts/it-deleted-the-database-in-nine-seconds";
 import { post as pPhysical } from "@/lib/brief/posts/governing-agents-in-the-physical-world";
 import { post as pControl } from "@/lib/brief/posts/control-not-capability";
+import { post as pComputer } from "@/lib/brief/posts/computer-use-agents-prompt-injection";
+import { post as pMcp } from "@/lib/brief/posts/mcp-tool-supply-chain-risk";
+import { post as pEuAct } from "@/lib/brief/posts/eu-ai-act-omnibus-june-2026";
+import { post as pPermissions } from "@/lib/brief/posts/agents-inherit-your-permission-debt";
 
 const POSTS: Post[] = [
   p47k, pLoops, pShadow, pAudit, pLing, pLedger,
   pProducts, pNineSec, pPhysical, pControl,
+  pComputer, pMcp, pEuAct, pPermissions,
 ];
 
 /** All posts, newest first. */
