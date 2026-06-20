@@ -123,7 +123,6 @@ With a `VANTIO_API_KEY`, the interceptor loads a cloud policy and enforces it lo
 |---|---|
 | `VANTIO_API_KEY` | Your API key from [vantio.ai/success](https://vantio.ai/success) |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
-| `VANTIO_CLOUD_INGEST` | Set to `true` to route events to your dashboard |
 | `VANTIO_TELEMETRY_DISABLED` | Set to `1` to opt out of anonymous usage telemetry |
 | `DO_NOT_TRACK` | Set to `1` to opt out of anonymous usage telemetry |
 

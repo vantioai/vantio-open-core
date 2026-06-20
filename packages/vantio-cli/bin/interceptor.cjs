@@ -494,7 +494,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
       `  pid:     ${process.pid}`,
       `  bytes:   ${bytes != null ? bytes.toLocaleString() : "unknown"}`,
       `  time:    ${ts}`,
-      `  ${c.dim}→ Set VANTIO_API_KEY to enforce policy and route to your dashboard.${c.reset}`,
+      `  ${c.dim}→ Set VANTIO_API_KEY to enforce policy and route to your dashboard. (vantio.ai/pricing)${c.reset}`,
     ].join("\n"));
     return response;
   }

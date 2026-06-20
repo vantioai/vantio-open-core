@@ -265,6 +265,8 @@ function runCommand(rest) {
     const interceptorPath = join(dirname(fileURLToPath(import.meta.url)), "interceptor.cjs");
     const requirePath = /\s/.test(interceptorPath) ? `"${interceptorPath}"` : interceptorPath;
     extraNodeOptions = `--require ${requirePath}`;
+  } else {
+    process.stderr.write('\n[ ∅ VANTIO ] Python runtime — use the Python SDK for interception: pip install vantio-agent-sdk\n\n');
   }
 
   // Auto-load the saved key/server if the environment doesn't already set them,
@@ -432,10 +434,17 @@ async function discoverCommand(args) {
     process.exit(1);
   }
 
+  if (res.status === 401) {
+    process.stdout.write(
+      "[ ∅ VANTIO ] Invalid or expired API key. Run `vantio login` to reconnect.\n"
+    );
+    process.exit(1);
+  }
+
   if (res.status === 404) {
     process.stdout.write(
       "Discovery is available for Pro and Enterprise accounts. " +
-      "Visit your dashboard at vantio.ai/dashboard to view your event history.\n"
+      "Upgrade at vantio.ai/pricing to unlock full access.\n"
     );
     return;
   }
