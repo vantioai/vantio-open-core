@@ -181,7 +181,7 @@ async function loginCommand(args) {
   if (result.status === 401) {
     process.stderr.write(
       `vantio login: that API key was rejected (401). Key not saved.\n` +
-      `  Get your key from your dashboard: ${base}/dashboard\n`
+      `  Get your key at vantio.ai/dashboard\n`
     );
     process.exit(1);
   }
@@ -437,6 +437,14 @@ async function discoverCommand(args) {
   if (res.status === 401) {
     process.stdout.write(
       "[ ∅ VANTIO ] Invalid or expired API key. Run `vantio login` to reconnect.\n"
+    );
+    process.exit(1);
+  }
+
+  if (res.status === 403) {
+    process.stdout.write(
+      '[ ∅ VANTIO ] Discovery requires a Pro or Enterprise plan.\n' +
+      '  Upgrade at vantio.ai/pricing\n'
     );
     process.exit(1);
   }

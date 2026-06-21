@@ -1,8 +1,24 @@
 # vantio-open-core
 
-Open-source SDK and CLI for the [Vantio](https://vantio.ai) AI agent visibility platform.
+Vantio intercepts every outbound LLM call your agent makes — without a proxy and without code changes — so you can see, redact, and enforce policy on AI traffic from day one.
 
-> The web application, dashboard, and API have moved to the private [`vantioai/vantio-app`](https://github.com/vantioai/vantio-app) repository.
+---
+
+## Get started in 60 seconds
+
+```bash
+npm install -g @vantio/cli
+vantio login          # validates + saves your API key once
+vantio run node agent.js
+```
+
+No-install path:
+
+```bash
+npx @vantio/cli run node agent.js
+```
+
+After `vantio login`, any process you start with `vantio run` is automatically observed. Grab your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard).
 
 ---
 
@@ -10,20 +26,29 @@ Open-source SDK and CLI for the [Vantio](https://vantio.ai) AI agent visibility 
 
 | Package | Description |
 |---------|-------------|
-| [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | Node.js agent SDK (`@vantio/agent-sdk`) |
 | [`packages/vantio-cli`](./packages/vantio-cli) | CLI runner (`@vantio/cli`) |
+| [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | Node.js agent SDK (`@vantio/agent-sdk`) |
 | [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | Python agent SDK (`vantio-agent-sdk`) |
 
 ---
 
-## Quick start
+## Tiers
 
-```bash
-npm install @vantio/agent-sdk   # Node.js
-pip install vantio-agent-sdk    # Python
-```
+| Tier | What you get | How |
+|------|-------------|-----|
+| **Tier 1 — Observe** (free) | See every LLM call: host, bytes, timestamp, trace ID | `vantio run` or `@shield` |
+| **Tier 2 — Enforce** (Pro) | Block hosts, redact PII, spend caps, cloud-managed policy | API key + `vantio run` or `@shield` |
+| **Tier 3 — Kernel** (Enterprise) | Shadow AI detection of unenrolled processes, eBPF | Phantom Engine |
+
+---
+
+## SDK — explicit trace correlation
 
 ### Node.js
+
+```bash
+npm install @vantio/agent-sdk
+```
 
 ```ts
 import { shield } from "@vantio/agent-sdk";
@@ -35,6 +60,10 @@ await shield(async () => {
 
 ### Python
 
+```bash
+pip install vantio-agent-sdk
+```
+
 ```python
 from vantio import shield
 
@@ -43,20 +72,18 @@ async def run_agent():
     await call_openai(prompt)
 ```
 
-### CLI — zero code changes
+---
 
-```bash
-npx vantio run node agent.js
-npx vantio run python agent.py
-npx vantio run --summary node agent.js
-```
+## Supported LLM providers
+
+`api.openai.com` · `api.anthropic.com` · `generativelanguage.googleapis.com` · `api.cohere.ai` · `api.mistral.ai` · `api.groq.com` · `api.together.xyz` · `api.perplexity.ai` · `inference.ai.azure.com`
 
 ---
 
 ## What gets captured
 
 - Which LLM endpoint was called
-- Bytes in the response
+- Response size in bytes
 - The process ID
 - A trace ID that links calls across your agent's full execution
 
@@ -66,7 +93,7 @@ npx vantio run --summary node agent.js
 
 ## Telemetry
 
-Anonymous, opt-out usage analytics — no prompts, completions, API keys, or emails. Opt out at any time:
+Anonymous, opt-out usage analytics. No prompts, completions, API keys, or emails. Opt out at any time:
 
 ```bash
 export VANTIO_TELEMETRY_DISABLED=1   # or
@@ -75,15 +102,4 @@ export DO_NOT_TRACK=1
 
 ---
 
-## Platform
-
-[vantio.ai](https://vantio.ai) — free tier includes 10,000 events/month.
-
-Dashboard: [vantio.ai/dashboard](https://vantio.ai/dashboard)
-Pricing: [vantio.ai/pricing](https://vantio.ai/pricing)
-
----
-
-## License
-
-MIT
+[vantio.ai](https://vantio.ai) · [Dashboard](https://vantio.ai/dashboard) · [Pricing](https://vantio.ai/pricing) · MIT License

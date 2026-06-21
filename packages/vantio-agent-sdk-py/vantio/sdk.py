@@ -102,7 +102,7 @@ async def report_anomaly(
     bytes_severed: Optional[int] = None,
     pid: Optional[int] = None,
     timestamp_ns: Optional[int] = None,
-    action_taken: str = "POLICY_VIOLATION",
+    action_taken: str = "OBSERVED",
     ingest_url: Optional[str] = None,
     api_key: Optional[str] = None,
     audit_mode: Optional[bool] = None,

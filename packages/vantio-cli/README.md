@@ -66,6 +66,7 @@ vantio run --summary node agent.js   # print a run summary on exit
   Hosts:        api.openai.com, api.anthropic.com
   Total bytes:  94,201
   Duration:     12.4s
+  → Run `vantio login` to enforce policy and persist events.
 ```
 
 In free mode (no API key), intercepted calls print to the terminal in real time.
@@ -104,7 +105,7 @@ api.anthropic.com                 57       57        0         0         0      
 
 Run `vantio discover --help` for full documentation.
 
-> **Availability:** Discovery requires a Pro or Enterprise account. If the endpoint returns a 404, visit [vantio.ai/dashboard](https://vantio.ai/dashboard) to view your event history.
+> **Availability:** Discovery requires a Pro or Enterprise account. If the endpoint returns a 404 or 403, visit [vantio.ai/pricing](https://vantio.ai/pricing) to upgrade.
 
 ---
 
@@ -121,7 +122,7 @@ With a `VANTIO_API_KEY`, the interceptor loads a cloud policy and enforces it lo
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Your API key from [vantio.ai/success](https://vantio.ai/success) |
+| `VANTIO_API_KEY` | Your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard) |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_TELEMETRY_DISABLED` | Set to `1` to opt out of anonymous usage telemetry |
 | `DO_NOT_TRACK` | Set to `1` to opt out of anonymous usage telemetry |

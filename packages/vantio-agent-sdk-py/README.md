@@ -46,18 +46,33 @@ async with shield():
     await report_anomaly(
         target_host="api.openai.com",
         bytes_severed=14382,
-        action_taken="POLICY_VIOLATION",
+        # Valid values: "OBSERVED" | "ALLOWED" | "REDACTED" | "BLOCKED_HOST" | "BLOCKED_SIZE" | "BLOCKED_SPEND"
+        action_taken="BLOCKED_HOST",
     )
+```
+
+## get_current_trace_id()
+
+Returns the active trace ID for the current async context, or `None` outside a `shield()` frame.
+
+```python
+from vantio import shield, get_current_trace_id
+
+async with shield() as ctx:
+    trace_id = get_current_trace_id()  # same as ctx.trace_id
+    print(f"Trace: {trace_id}")
+
+get_current_trace_id()  # None — outside shield() frame
 ```
 
 ## Environment Variables
 
-```bash
-VANTIO_API_KEY=vantio_xxxx       # From app.vantio.ai/success
-VANTIO_INGEST_URL=https://vantio.ai
-VANTIO_CLOUD_INGEST=true          # Enable cloud routing
-VANTIO_AUDIT_MODE=1               # Optional: flag as audit mode
-```
+| Variable | Description |
+|---|---|
+| `VANTIO_API_KEY` | Your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard) |
+| `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
+| `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing — `report_anomaly()` is a no-op without this |
+| `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
 
 ## Anonymous telemetry (opt-out)
 

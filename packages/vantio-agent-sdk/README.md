@@ -54,7 +54,8 @@ await shield(async () => {
   await reportAnomaly({
     target_host:   "api.openai.com",
     bytes_severed: 14382,
-    action_taken:  "POLICY_VIOLATION",
+    // VantioActionTaken: "OBSERVED" | "ALLOWED" | "REDACTED" | "BLOCKED_HOST" | "BLOCKED_SIZE" | "BLOCKED_SPEND"
+    action_taken:  "BLOCKED_HOST",
     pid:           process.pid,
   });
 });
@@ -115,7 +116,7 @@ getCurrentTraceId(); // undefined — outside shield() frame
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Your API key from [vantio.ai/success](https://vantio.ai/success) |
+| `VANTIO_API_KEY` | Your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard) |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |

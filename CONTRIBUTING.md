@@ -1,10 +1,43 @@
-# Vantio AI — Contribution Matrix
+# Vantio AI — Contributing
 
-By submitting a pull request you acknowledge and agree to these architectural boundaries.
+## What's in this repo
 
-## The Open-Core Schism
+Three open-core packages:
 
-**This repository (`vantio-open-core`) is strictly Ring-3 user-space.** Do not submit PRs that introduce:
+- `packages/vantio-cli` — CLI runner (`@vantio/cli`) — end users install with `npm install -g @vantio/cli`
+- `packages/vantio-agent-sdk` — Node.js agent SDK (`@vantio/agent-sdk`)
+- `packages/vantio-agent-sdk-py` — Python agent SDK (`vantio-agent-sdk`)
+
+## Development
+
+```bash
+# Install dependencies (pnpm only — see Dependency Governance below)
+pnpm install
+
+# Build all packages
+pnpm build
+
+# Run CLI directly from source
+node packages/vantio-cli/bin/vantio.js
+
+# Type-check the Node SDK
+cd packages/vantio-agent-sdk && pnpm exec tsc --noEmit
+```
+
+## Engineering Directives
+
+**Type Safety**
+The `any` keyword is banned across the entire TypeScript codebase. Use `unknown` with strict type guards. PRs containing `any` will not be merged.
+
+**Payload Quarantine**
+No raw user prompts, LLM responses, or PII may be passed to the SDK telemetry payload. Strip all linguistic content at the API boundary before ingestion.
+
+**Dependency Governance**
+`pnpm` is the only authorized package manager. `npm install` and `yarn` are banned to prevent phantom dependency vectors. Do not commit `package-lock.json` or `yarn.lock`.
+
+## Architectural Boundaries
+
+**This repository is strictly Ring-3 user-space.** Do not submit PRs that introduce:
 
 - eBPF programs, kernel probes, or any Ring-0 logic
 - References to `/sys/fs/bpf/`, `bpf_*` helpers, or `aya-ebpf`
@@ -12,29 +45,10 @@ By submitting a pull request you acknowledge and agree to these architectural bo
 
 Violations are automatically rejected by CI.
 
-## Engineering Directives
-
-**Type Safety**  
-The `any` keyword is banned across the entire TypeScript codebase. Use `unknown` with strict type guards or `zod` schemas. PRs containing `any` will not be merged.
-
-**Payload Quarantine**  
-No raw user prompts, LLM responses, or PII may be passed to the `@vantio/agent-sdk` telemetry payload or written to the Supabase ledger. Strip all linguistic content at the API boundary before ingestion.
-
-**Dependency Governance**  
-`pnpm` is the only authorized package manager. `npm install` and `yarn` are banned to prevent phantom dependency vectors. Do not commit `package-lock.json` or `yarn.lock`.
-
-**Build Compliance**  
-All PRs must pass the GitHub Actions CI pipeline (`pnpm build`) with zero Next.js compilation errors or warnings. Merges to `main` trigger the SLSA L3 Sigstore provenance attestation — your artifact must be reproducibly buildable.
-
-**Supabase Schema Changes**  
-Any migration that alters the `tenants`, `anomaly_events`, or `enterprise_leads` tables must be reviewed by a maintainer. Changes to column types or primary keys are breaking changes and require a major version bump in the affected package.
-
 ## What belongs here
 
 | ✅ In scope | ❌ Out of scope |
 |---|---|
 | `@vantio/agent-sdk` improvements | eBPF / kernel code |
 | `vantio` CLI enhancements | Modifications to the Phantom Engine loader |
-| Next.js control plane features | Direct Spanner writes (enterprise tier only) |
-| Supabase schema migrations (with review) | Auth.js / SAML plumbing |
-| `@vantio/edge-proxy` Spanner mutation helpers | Raw syscall hooks or IDS-style telemetry |
+| Python SDK improvements | Raw syscall hooks or IDS-style telemetry |

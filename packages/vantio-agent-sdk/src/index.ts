@@ -5,19 +5,13 @@ export interface VantioContext {
   readonly traceId: string;
 }
 
+/**
+ * Options for `withVantio()` / `shield()`.
+ * Controls only trace ID generation — cloud ingest options (ingestUrl, identity)
+ * belong on `reportAnomaly()` where they are actually used.
+ */
 export interface WithVantioOptions {
   traceId?: string;
-  /**
-   * When set, anomaly events are POSTed to this URL via /api/v1/ingest.
-   * Typically your Vantio control plane URL, e.g. https://app.vantio.ai
-   * Set VANTIO_CLOUD_INGEST=true to activate via the CLI supervisor.
-   */
-  ingestUrl?: string;
-  /**
-   * Identity header sent with every ingest request.
-   * Defaults to the VANTIO_IDENTITY env var.
-   */
-  identity?: string;
 }
 
 export interface VantioEventPayload {
@@ -164,7 +158,7 @@ export function getCurrentContext(): VantioContext | undefined {
  *     target_host: "api.openai.com",
  *     action_taken: "SEVERED",
  *   }, {
- *     ingestUrl: process.env.VANTIO_INGEST_URL,
+ *     ingestUrl: process.env.VANTIO_INGEST_URL,  // https://vantio.ai
  *     identity: process.env.VANTIO_IDENTITY,
  *     auditMode: process.env.VANTIO_AUDIT_MODE === "1",
  *   });
