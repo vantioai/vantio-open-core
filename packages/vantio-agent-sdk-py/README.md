@@ -6,6 +6,24 @@
 pip install vantio-agent-sdk
 ```
 
+## v3.0.0 — Breaking change from v2.x
+
+v3.0.0 is a complete rewrite. The old `VantioSession` / `VANTIO_PROXY_ENDPOINT` API is removed.
+The new API uses `@shield` (a decorator or async context manager) with zero dependencies and no proxy — governance runs inside your SDK, not through an external endpoint.
+
+**Migrate from v2.x:**
+```python
+# Old (v2.x) — remove this
+from vantio.session import VantioSession
+with VantioSession(agent_name="my-agent") as session: ...
+
+# New (v3.x) — use this instead
+from vantio import shield
+@shield
+async def run_agent(): ...
+# or: async with shield() as ctx: ...
+```
+
 ## Usage
 
 ```python
