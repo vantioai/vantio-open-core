@@ -64,6 +64,8 @@ await shield(async () => {
 pip install vantio-agent-sdk
 ```
 
+> On Ubuntu/Debian (23.04+), global `pip install` is blocked by default (PEP 668). Use a virtualenv or `pipx install vantio-agent-sdk` instead.
+
 ```python
 from vantio import shield
 

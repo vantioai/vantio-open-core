@@ -44,7 +44,7 @@ The first time you run it, you'll see every outbound AI call intercepted in real
   → Set VANTIO_API_KEY to route events to your dashboard.
 ```
 
-Add `--summary` to get a report when your agent finishes:
+A summary prints automatically when your agent finishes. You can also request it explicitly:
 
 ```bash
 vantio run --summary node agent.js
