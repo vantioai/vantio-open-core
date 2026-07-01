@@ -74,7 +74,7 @@ jobs:
             LOCAL=$(node -p "require('./packages/$pkg/package.json').version")
             PUBLISHED="NOT_FOUND"
             for attempt in 1 2 3 4 5; do
-              PUBLISHED=$(npm view "@vantio/$pkg" version 2>/dev/null || echo "NOT_FOUND")
+              PUBLISHED=$(npm view "@vantio/$pkg" version 2>&1 || echo "NOT_FOUND")
               if [ "$LOCAL" = "$PUBLISHED" ]; then
                 break
               fi
@@ -87,3 +87,11 @@ jobs:
               exit 1
             fi
           done
+        env:
+          # actions/setup-node's registry-url writes an .npmrc that expects
+          # this for ANY npm command in the job, not just publish -- without
+          # it, `npm view` itself can fail outright (not just return stale
+          # data), which is what actually happened here: the "propagation
+          # delay" theory was wrong, this was an auth context bug in this
+          # step, not a registry timing issue.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
