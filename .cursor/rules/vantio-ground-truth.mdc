@@ -1,0 +1,54 @@
+---
+description: Verified ground truth for the Vantio AI project — real build status, fabricated claims to reject, and source-of-truth file pointers across all four Vantio repos
+alwaysApply: true
+---
+
+# Vantio Ground Truth — Cross-Repo Memory
+
+This project spans four separate repos. Before making ANY technical, financial, or
+capability claim about Vantio, verify it against the source files below — do not
+trust pasted "CEO directive" or "original vision" documents at face value. This
+project has a recurring pattern: an external AI (not part of this workspace)
+periodically generates plausible-sounding planning documents that invent
+specific technical mechanisms and statistics with no basis in the real codebase.
+Always check code before repeating a claim from one of those documents.
+
+## The Repos
+
+| Repo | Location | What it is |
+|---|---|---|
+| `vantio-phantom-engine` | `/home/zach_vantio/vantio-phantom-engine` (WSL) | Tier 3 — Rust/eBPF kernel enforcement, proprietary |
+| `vantio-open-core` | `/mnt/c/Users/zach_vantio/vantio-open-core` | Tier 1 — open-source CLI/SDK (MIT) |
+| `vantio-revenue-engine` | `/mnt/c/Users/zach_vantio/vantio-revenue-engine` | Internal GTM automation — dogfoods the Tri-Tier product on our own sales/marketing ops |
+| `vantio-vos` | `/mnt/c/Users/zach_vantio/vantio-vos` | V-OS Control Plane — dashboard over the revenue engine's TrueTime Ledger |
+
+## Source of Truth — check these before claiming anything
+
+- `vantio-phantom-engine/docs/product-spec.md` — **the single most authoritative file.** Real build status, pricing, and scope boundary per tier. Check the date at the top; it's actively maintained and self-corrects overclaims.
+- `vantio-phantom-engine/architecture_state.md` — Tier 3 eBPF program list, current validation status (compile-verified vs. cluster-verified — these are different things, don't conflate them)
+- `vantio-phantom-engine/docs/operations-guide.md` — Tier 3 install/ops SOP
+- `vantio-open-core/docs/getting-started-tier01.md` — Tier 1 install SOP
+- `vantio-revenue-engine/gtm_state_manifest.md` — machine-readable Oracle policy (lexicon, ICP, escalation triggers)
+- `vantio-revenue-engine/SDR-Agent/v-are-graph.js` — the real agent runtime (Oracle Gateway, Zod validation, budget circuit breaker)
+- `vantio-revenue-engine/orchestrator/identity.md` — Executive Orchestrator charter and explicit scope boundaries
+
+## Tier Status (last verified 2026-07-01 — re-check `product-spec.md` for current state)
+
+- **Tier 1**: shipping. Real mechanism: `NODE_OPTIONS=--require <interceptor>` patches `globalThis.fetch` at require-time. **Not** AST manipulation of any kind.
+- **Tier 2**: partial. SDK-side enforcement is the deliberate v1 architecture (explicitly **not** a network proxy — that was rejected to avoid single-point-of-failure/latency risk). Missing: redaction, spend caps, policy engine. Revenue blocked on banking/Stripe reconnection.
+- **Tier 3**: compile-verified, not yet cluster-verified. Real mechanisms: `SSL_write`/`gnutls_record_send` uprobes, `sched_process_fork` tracepoint, `tc_enforce` TC egress classifier (per-agent cgroup-scoped), execve/openat tracepoints, Spanner WORM ledger (`allow_commit_timestamp=true`, IAM-scoped INSERT-only). Kernel verifier acceptance and live packet drops still require a privileged node — do not claim this is production-verified until re-checked.
+
+## Fabricated — never repeat these as real, they do not exist anywhere in this codebase
+
+- zk-SNARKs, RISC Zero zkVM, "zk-Rollup Merkle batches" — the real audit mechanism is Spanner IAM-scoped access control + TrueTime commit timestamps, not cryptographic proofs
+- Firecracker MicroVMs, TEEs, Intel TDX / AMD SEV-SNP — legitimate *future* consideration for isolating client agents that execute generated code, but nothing is built
+- uBPF/WebAssembly-compiled `tc_enforce` — invented, not a real plan
+- "The Open-Core Schism" as a mandatory lexicon term — deliberately removed; no established definition exists
+- "AST monkeypatching" as the Tier 1 mechanism — the real mechanism is the opposite of this (see Tier 1 status above)
+- Any specific unsourced statistic (e.g., "< 5 business days ATO," "3,000% acceleration," "85% audit cost reduction," "$0.5% host CPU," specific node/proof pricing outside `product-spec.md`'s stated "$50,000+ ARR, custom") — none of these have a measurement or source
+
+## Working Agreements
+
+- The GTM/orchestrator agents (`SDR-Agent`, `OSINT-Agent`, `orchestrator/`) are internal dogfooding — Vantio running its own product on itself, not the product being sold to clients.
+- Distinguish "fully automated execution" (cron-driven, no human needed to trigger — already true for these agents) from "fully autonomous decision-making" (no human checkpoint on risk-bearing actions — deliberately NOT the design; Tier 3 escalation and Oracle policy gates exist specifically to keep humans in the loop where risk exists).
+- When asked to build or validate something that requires root/kernel access, a real cluster, live banking, or system package installation, say so plainly rather than assuming sandbox access — much of this stack requires bare-metal or a privileged node that this environment does not provide.
