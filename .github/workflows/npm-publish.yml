@@ -3,6 +3,7 @@ name: Publish to npm
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}   # allows manual re-run from the Actions tab without a dummy commit
 
 jobs:
   publish:
@@ -32,12 +33,45 @@ jobs:
 
       - name: Publish @vantio/agent-sdk
         working-directory: packages/vantio-agent-sdk
-        run: pnpm publish --access public --no-git-checks || echo "Already published."
+        run: |
+          set -o pipefail
+          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
+          echo "$OUTPUT"
+          # Only tolerate the specific "version already published" case.
+          # Any other failure (auth, network, etc.) must fail the job loudly —
+          # do not silently swallow errors here again.
+          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
+            echo "Version already published — this is expected, not an error."
+            exit 0
+          fi
+          echo "::error::@vantio/agent-sdk publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
+          exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @vantio/cli
         working-directory: packages/vantio-cli
-        run: pnpm publish --access public --no-git-checks || echo "Already published."
+        run: |
+          set -o pipefail
+          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
+            echo "Version already published — this is expected, not an error."
+            exit 0
+          fi
+          echo "::error::@vantio/cli publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
+          exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify published versions match package.json
+        run: |
+          for pkg in vantio-agent-sdk vantio-cli; do
+            LOCAL=$(node -p "require('./packages/$pkg/package.json').version")
+            PUBLISHED=$(npm view "@vantio/$pkg" version 2>/dev/null || echo "NOT_FOUND")
+            echo "$pkg: local=$LOCAL published=$PUBLISHED"
+            if [ "$LOCAL" != "$PUBLISHED" ]; then
+              echo "::error::@vantio/$pkg version mismatch — local package.json says $LOCAL but npm registry still shows $PUBLISHED. The publish step above did not actually take effect."
+              exit 1
+            fi
+          done
