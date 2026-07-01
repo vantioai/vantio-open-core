@@ -66,12 +66,24 @@ jobs:
 
       - name: Verify published versions match package.json
         run: |
+          # npm's registry has a brief propagation delay after a publish
+          # completes -- a read immediately afterward can still return the
+          # previous version. Retry with backoff before treating a mismatch
+          # as a real failure.
           for pkg in vantio-agent-sdk vantio-cli; do
             LOCAL=$(node -p "require('./packages/$pkg/package.json').version")
-            PUBLISHED=$(npm view "@vantio/$pkg" version 2>/dev/null || echo "NOT_FOUND")
-            echo "$pkg: local=$LOCAL published=$PUBLISHED"
+            PUBLISHED="NOT_FOUND"
+            for attempt in 1 2 3 4 5; do
+              PUBLISHED=$(npm view "@vantio/$pkg" version 2>/dev/null || echo "NOT_FOUND")
+              if [ "$LOCAL" = "$PUBLISHED" ]; then
+                break
+              fi
+              echo "$pkg: attempt $attempt — local=$LOCAL published=$PUBLISHED (not yet propagated, retrying in 5s)"
+              sleep 5
+            done
+            echo "$pkg: final local=$LOCAL published=$PUBLISHED"
             if [ "$LOCAL" != "$PUBLISHED" ]; then
-              echo "::error::@vantio/$pkg version mismatch — local package.json says $LOCAL but npm registry still shows $PUBLISHED. The publish step above did not actually take effect."
+              echo "::error::@vantio/$pkg version mismatch after 5 retries — local package.json says $LOCAL but npm registry still shows $PUBLISHED. The publish step above did not actually take effect."
               exit 1
             fi
           done
