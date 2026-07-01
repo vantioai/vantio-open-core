@@ -74,16 +74,22 @@ jobs:
             LOCAL=$(node -p "require('./packages/$pkg/package.json').version")
             PUBLISHED="NOT_FOUND"
             for attempt in 1 2 3 4 5; do
-              PUBLISHED=$(npm view "@vantio/$pkg" version 2>&1 || echo "NOT_FOUND")
+              # --silent suppresses npm's routine warnings (e.g. "Unknown env
+              # config") from stdout so they can never pollute $PUBLISHED --
+              # a previous version of this step used 2>&1 for debugging and
+              # that warning noise leaked into the comparison, making it
+              # always fail regardless of the real (correct) values.
+              PUBLISHED=$(npm view --silent "@vantio/$pkg" version 2>/dev/null || echo "NOT_FOUND")
+              PUBLISHED=$(echo "$PUBLISHED" | tr -d '[:space:]')
               if [ "$LOCAL" = "$PUBLISHED" ]; then
                 break
               fi
-              echo "$pkg: attempt $attempt — local=$LOCAL published=$PUBLISHED (not yet propagated, retrying in 5s)"
+              echo "$pkg: attempt $attempt — local=[$LOCAL] published=[$PUBLISHED] (retrying in 5s)"
               sleep 5
             done
-            echo "$pkg: final local=$LOCAL published=$PUBLISHED"
+            echo "$pkg: final local=[$LOCAL] published=[$PUBLISHED]"
             if [ "$LOCAL" != "$PUBLISHED" ]; then
-              echo "::error::@vantio/$pkg version mismatch after 5 retries — local package.json says $LOCAL but npm registry still shows $PUBLISHED. The publish step above did not actually take effect."
+              echo "::error::@vantio/$pkg version mismatch after 5 retries — local package.json says $LOCAL but npm registry shows $PUBLISHED. The publish step above did not actually take effect."
               exit 1
             fi
           done
