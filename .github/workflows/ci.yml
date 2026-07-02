@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+
+jobs:
+  lint-and-test-js:
+    name: Lint, typecheck, and test (CLI + Node SDK)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint @vantio/cli
+        run: pnpm --filter @vantio/cli run lint
+
+      - name: Typecheck @vantio/agent-sdk (src)
+        run: pnpm --filter @vantio/agent-sdk run typecheck
+
+      - name: Typecheck @vantio/agent-sdk (tests)
+        run: pnpm --filter @vantio/agent-sdk run typecheck:test
+
+      - name: Test @vantio/cli
+        run: pnpm --filter @vantio/cli run test
+
+      - name: Test @vantio/agent-sdk
+        run: pnpm --filter @vantio/agent-sdk run test
+
+      - name: Build @vantio/agent-sdk (verify dist output is producible)
+        run: pnpm --filter @vantio/agent-sdk run build
+
+  test-python:
+    name: Test Python SDK (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run tests (stdlib unittest — zero test dependencies, matching the SDK itself)
+        working-directory: packages/vantio-agent-sdk-py
+        run: python -m unittest discover -s tests -t . -v

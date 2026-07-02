@@ -6,8 +6,46 @@ on:
   workflow_dispatch: {}   # allows manual re-run from the Actions tab without a dummy commit
 
 jobs:
+  # Gates publish below via `needs:`. This is what actually enforces "no
+  # broken build reaches npm" — before this job existed, publish ran
+  # immediately after `pnpm install` with zero lint/typecheck/test gate, so a
+  # syntax error or a broken interceptor could ship straight to real users.
+  test:
+    name: Lint, typecheck, and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint @vantio/cli
+        run: pnpm --filter @vantio/cli run lint
+
+      - name: Typecheck @vantio/agent-sdk
+        run: pnpm --filter @vantio/agent-sdk run typecheck && pnpm --filter @vantio/agent-sdk run typecheck:test
+
+      - name: Test @vantio/cli
+        run: pnpm --filter @vantio/cli run test
+
+      - name: Test @vantio/agent-sdk
+        run: pnpm --filter @vantio/agent-sdk run test
+
   publish:
     name: Build & Publish
+    needs: test
     runs-on: ubuntu-latest
 
     steps:

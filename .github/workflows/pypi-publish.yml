@@ -1,0 +1,80 @@
+name: Publish to PyPI
+
+# NOTE: before this workflow can succeed, the repo owner must complete a
+# one-time manual step on PyPI's side — see the "REQUIRED SETUP" comment
+# below. Until then, the publish step will fail with an authentication
+# error. This is the correct, safe failure mode for a workflow with zero
+# secrets configured (as opposed to the npm workflow's now-fixed silent
+# no-op, which is exactly the failure class this design avoids).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/vantio-agent-sdk-py/**"
+      - ".github/workflows/pypi-publish.yml"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    name: Test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run tests
+        working-directory: packages/vantio-agent-sdk-py
+        run: python -m unittest discover -s tests -t . -v
+
+  build-and-publish:
+    name: Build & Publish
+    needs: test
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # Required for PyPI's Trusted Publishing (OIDC) — no API token secret
+      # needed or stored in this repo.
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build
+
+      - name: Build sdist + wheel
+        working-directory: packages/vantio-agent-sdk-py
+        run: python -m build
+
+      # REQUIRED SETUP (one-time, done on pypi.org — not in this repo):
+      #   1. Go to https://pypi.org/manage/project/vantio-agent-sdk/settings/publishing/
+      #   2. Add a new trusted publisher:
+      #        Owner:      vantioai
+      #        Repository: vantio-open-core
+      #        Workflow:   pypi-publish.yml
+      #        Environment: pypi
+      #   3. That's it — no token to generate, copy, or rotate. PyPI trusts
+      #      GitHub Actions' OIDC assertion directly for this exact
+      #      repo+workflow+environment combination.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/vantio-agent-sdk-py/dist
+          # Mirrors the npm workflow's "already published" tolerance, but via
+          # a supported flag instead of string-matching error output.
+          skip-existing: true

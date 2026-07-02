@@ -37,14 +37,18 @@ jobs:
       - name: Build @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run build
 
-      - name: Build @vantio/edge-proxy
-        run: pnpm --filter @vantio/edge-proxy run build
+      # NOTE: @vantio/edge-proxy was removed from this repo in
+      # 724b954 ("extract web app to vantio-app; open-core is now SDK/CLI
+      # only") — its ingest/policy logic now lives in vantio-app's own API
+      # routes, which have their own build/deploy pipeline. This workflow
+      # referenced the deleted package for every run since that refactor,
+      # which meant every SLSA provenance attestation build silently failed —
+      # confirmed 5/5 red runs on main before this fix.
 
       - name: Bundle artifacts
         run: |
           tar -czf vantio-artifacts.tar.gz \
             packages/vantio-agent-sdk/dist \
-            packages/edge-proxy/dist \
             packages/vantio-cli/bin
 
       - name: Attest build provenance
