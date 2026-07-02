@@ -41,7 +41,7 @@ The first time you run it, you'll see every outbound AI call intercepted in real
   pid:     12345
   bytes:   237
   time:    2026-05-28T22:30:00.000Z
-  → Set VANTIO_API_KEY to route events to your dashboard.
+  → Run `vantio login` to enforce policy and route events to your dashboard.
 ```
 
 A summary prints automatically when your agent finishes. You can also request it explicitly:
@@ -60,17 +60,66 @@ vantio run --summary node agent.js
 
 ---
 
-## Step 4 — Send events to your dashboard (optional)
+## Step 4 — Connect your dashboard (optional)
 
-Sign up at [vantio.ai](https://vantio.ai), get your free API key, and add two environment variables:
+Sign up at [vantio.ai](https://vantio.ai), grab your API key from the dashboard, then run:
 
 ```bash
-export VANTIO_API_KEY=vantio_your_key_here
-export VANTIO_INGEST_URL=https://vantio.ai
-export VANTIO_CLOUD_INGEST=true
+vantio login
 ```
 
-Now run your agent again. Events appear in your dashboard at [vantio.ai/dashboard](https://vantio.ai/dashboard) within seconds.
+Paste your key when prompted (or pass it directly: `vantio login vk_live_xxx`). Vantio
+validates it and saves it to `~/.vantio/config.json` (chmod 600) — **no environment
+variables to manage.** Every `vantio run` after this automatically picks up the saved
+key:
+
+```bash
+vantio run node agent.js
+```
+
+Check your connection status anytime:
+
+```bash
+vantio whoami
+# Key:    vk_live…a3f2
+# Server: https://vantio.ai
+# Status: connected — PRO plan
+```
+
+To disconnect: `vantio logout`.
+
+> **Free plan note:** `vantio login` works with a free account too, so you can still
+> use `whoami`/`logout` and remove env-var management. But dashboard sync (events
+> persisting to your dashboard) and `vantio discover` (below) both require a Pro or
+> Enterprise plan — the CLI tells you this honestly at login and in every run summary
+> rather than silently doing nothing. Upgrade anytime at [vantio.ai/pricing](https://vantio.ai/pricing).
+
+---
+
+## Step 5 — Find your Shadow AI attack surface (Pro / Enterprise)
+
+Once connected on a paid plan, `vantio discover` shows every AI call Vantio has seen
+across your workspace — grouped by host, with a governance breakdown per host:
+
+```bash
+vantio discover
+vantio discover --since=7d
+vantio discover --host=api.openai.com
+vantio discover --since=30d --json
+```
+
+```
+Shadow AI Attack Surface — last 24h
+--------------------------------------------------------------------------------
+TARGET HOST                       CALLS    ALLOWED   REDACTED  BLOCKED   OBSERVED  SHADOW?   LAST SEEN
+--------------------------------------------------------------------------------
+api.openai.com                       42         38          4        0         0   no        2026-05-28 22:30:00 UTC
+--------------------------------------------------------------------------------
+1 host(s) shown  |  No Shadow AI indicators detected.
+```
+
+`OBSERVED` calls with no policy trace are your Shadow AI indicator — unenrolled
+processes calling LLM endpoints outside Vantio's governance.
 
 ---
 
@@ -96,14 +145,22 @@ Vantio records *that* a call was made, *when*, *to which provider*, and *how man
 
 ## Common questions
 
-**My agent uses Python, not Node.js.**  
-Use `pip install vantio-agent-sdk` and the `@shield` decorator. See the [Developers page](https://vantio.ai/developers) for examples.
+**My agent uses Python, not Node.js.**
+Use `pip install vantio-agent-sdk` and the `@shield` decorator. See the [Developers page](https://vantio.ai/developers) for examples. `vantio run` itself only instruments Node.js/TypeScript runtimes (`node`, `npx`, `tsx`, `ts-node`) via `NODE_OPTIONS`; other runtimes run normally without interception.
 
-**Nothing is appearing in my terminal.**  
-Make sure you're using `node`, `npx`, `tsx`, or `ts-node` as the runtime. Python and other runtimes run normally without interception at Tier 01.
+**Nothing is appearing in my terminal.**
+Make sure you're using `node`, `npx`, `tsx`, or `ts-node` as the runtime — `vantio run python agent.py` runs your script normally but prints a one-line notice instead of intercepting, since Tier 1 Node interception uses a Node-specific mechanism. Use the Python SDK's `@shield` for Python agents.
 
-**I want events in my dashboard.**  
-Set `VANTIO_API_KEY`, `VANTIO_INGEST_URL`, and `VANTIO_CLOUD_INGEST=true`. Get your key at [vantio.ai](https://vantio.ai).
+**I ran `vantio login` but nothing shows up in my dashboard.**
+Run `vantio whoami` and check the plan shown next to "Status: connected". If it says
+FREE, that's expected — dashboard sync and `vantio discover` are Pro/Enterprise
+features. Your agent's calls are still being observed locally in your terminal either
+way. Upgrade at [vantio.ai/pricing](https://vantio.ai/pricing) to unlock sync.
+
+**How do I log out / remove my saved key?**
+`vantio logout` removes `~/.vantio/config.json`. You can also always override the
+saved key for a single run with an explicit `VANTIO_API_KEY` environment variable,
+which takes precedence over the saved config.
 
 ---
 
