@@ -13,6 +13,7 @@ import json
 import os
 import urllib.request
 import uuid
+import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, TypeVar
@@ -38,8 +39,33 @@ class VantioContext:
     trace_id: str
 
 
+def _decorate(fn: Callable, trace_id: Optional[str]) -> Callable:
+    """Shared decorator implementation used by both `@shield` (bare) and
+    `@shield(trace_id=...)` (via _ShieldContextManager.__call__ below) so the
+    two entry points can never drift out of sync with each other."""
+
+    @functools.wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        tid = trace_id or str(uuid.uuid4())
+        token = _trace_id_var.set(tid)
+        # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
+        send_run_telemetry_once(_sdk_version())
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            _trace_id_var.reset(token)
+
+    return wrapper
+
+
 class _ShieldContextManager:
-    """Async context manager form: async with shield() as ctx: ..."""
+    """Async context manager form: async with shield() as ctx: ...
+
+    Also callable as a decorator factory so `@shield(trace_id="x")` works —
+    without __call__ here, `shield(trace_id="x")` returns this object, and
+    `@shield(trace_id="x")` would then try to call it as a decorator and fail
+    with a confusing "object is not callable" TypeError.
+    """
 
     def __init__(self, trace_id: Optional[str] = None):
         self._trace_id = trace_id or str(uuid.uuid4())
@@ -55,6 +81,9 @@ class _ShieldContextManager:
         if self._token is not None:
             _trace_id_var.reset(self._token)
 
+    def __call__(self, fn: Callable) -> Callable:
+        return _decorate(fn, self._trace_id)
+
 
 def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
     """
@@ -62,6 +91,10 @@ def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
 
     Use as a decorator:
         @shield
+        async def run_agent(): ...
+
+    With an explicit, pinned trace id:
+        @shield(trace_id="my-fixed-id")
         async def run_agent(): ...
 
     Or as a context manager:
@@ -73,22 +106,14 @@ def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
     every async hop in the call tree. Zero monkey-patching. Zero globals.
     """
     if fn is None:
-        # Called as shield() or shield(trace_id=...) — return context manager.
+        # Called as shield() or shield(trace_id=...) — return an object that
+        # works as either an async context manager or a decorator factory,
+        # since the caller's intent isn't known until it's used one way or
+        # the other.
         return _ShieldContextManager(trace_id=trace_id)
 
-    # Called as @shield decorator.
-    @functools.wraps(fn)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        tid = trace_id or str(uuid.uuid4())
-        token = _trace_id_var.set(tid)
-        # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
-        send_run_telemetry_once(_sdk_version())
-        try:
-            return await fn(*args, **kwargs)
-        finally:
-            _trace_id_var.reset(token)
-
-    return wrapper
+    # Called as bare @shield.
+    return _decorate(fn, trace_id)
 
 
 def get_current_trace_id() -> Optional[str]:
@@ -114,7 +139,6 @@ async def report_anomaly(
     """
     trace_id = get_current_trace_id()
     if trace_id is None:
-        import warnings
         warnings.warn("[vantio] report_anomaly() called outside shield() context — skipping")
         return
 
@@ -166,5 +190,10 @@ async def report_anomaly(
         await loop.run_in_executor(
             None, functools.partial(urllib.request.urlopen, req, timeout=5)
         )
-    except Exception:
-        pass  # Non-fatal — telemetry failures must never crash the agent.
+    except Exception as exc:
+        # Non-fatal — never crash the agent over an ingest failure. But NOT
+        # silent: a bare `except: pass` here made a 403 (e.g. a free-tier key
+        # attempting cloud ingest, which requires Pro/Enterprise) or any other
+        # persistent failure completely invisible. Mirrors the JS SDK, which
+        # already surfaces non-fatal ingest failures via console.warn.
+        warnings.warn(f"[vantio] report_anomaly() ingest request failed (non-fatal): {exc}")
