@@ -107,8 +107,19 @@ function maskKey(key) {
   return `${key.slice(0, 6)}…${key.slice(-4)}`;
 }
 
-// Validate a key against GET /api/v1/config. Returns { ok, status, policyActive };
+// Validate a key against GET /api/v1/config. Returns { ok, status, policyActive, tier };
 // throws on a network failure so the caller can refuse to save.
+//
+// `tier` distinguishes an authenticated-but-free key from a paid one. This
+// matters because /api/v1/ingest and /api/v1/discover 403 for non-PRO/
+// ENTERPRISE tenants (by design — dashboard sync is a paid feature), while
+// /api/v1/config fails open with a permissive policy for everyone. Without
+// checking tier explicitly, a free-tier user who logs in looks identical to a
+// paid one until their events start silently 403ing.
+function isPaidTier(tier) {
+  return tier === "PRO" || tier === "ENTERPRISE";
+}
+
 async function validateKey(base, key) {
   const res = await fetch(`${base}/api/v1/config`, {
     method: "GET",
@@ -116,10 +127,12 @@ async function validateKey(base, key) {
     signal: AbortSignal.timeout(8000),
   });
   let policyActive = false;
+  let tier = null;
   if (res.ok) {
     try {
       const data = await res.json();
       const p = data && data.policy;
+      tier = typeof data?.tier === "string" ? data.tier : null;
       policyActive = !!(
         p && (p.enforce || p.redact_pii ||
           (Array.isArray(p.blocked_hosts) && p.blocked_hosts.length) ||
@@ -128,7 +141,7 @@ async function validateKey(base, key) {
       );
     } catch { /* body not JSON — still a valid 200 */ }
   }
-  return { ok: res.ok, status: res.status, policyActive };
+  return { ok: res.ok, status: res.status, policyActive, tier };
 }
 
 // Masked-input prompt. Masks typed characters with '*' on a TTY; falls back to a
@@ -196,6 +209,13 @@ async function loginCommand(args) {
     `  Saved to ${configPath()} (chmod 600)\n\n` +
     `Next — run your agent with no env vars:\n  vantio run node agent.js\n`
   );
+  if (!isPaidTier(result.tier)) {
+    process.stdout.write(
+      "\nYou're on the Free plan — `vantio run` will keep observing calls locally in your\n" +
+      "terminal, but dashboard sync, `vantio discover`, and policy enforcement require\n" +
+      "Pro or Enterprise. Upgrade at vantio.ai/pricing.\n"
+    );
+  }
 }
 
 function logoutCommand() {
@@ -217,7 +237,11 @@ async function whoamiCommand() {
     if (result.status === 401) {
       process.stdout.write("Status: key rejected (401) — run `vantio login` again.\n");
     } else if (result.ok) {
-      process.stdout.write(`Status: connected${result.policyActive ? " — policy active" : ""}\n`);
+      const plan = result.tier ? ` — ${isPaidTier(result.tier) ? result.tier : "FREE"} plan` : "";
+      process.stdout.write(`Status: connected${plan}${result.policyActive ? ", policy active" : ""}\n`);
+      if (!isPaidTier(result.tier)) {
+        process.stdout.write("  Dashboard sync and `vantio discover` require Pro or Enterprise — vantio.ai/pricing\n");
+      }
     } else {
       process.stdout.write(`Status: unexpected response (HTTP ${result.status}).\n`);
     }
@@ -315,24 +339,21 @@ function col(str, width) {
   return s.padEnd(width);
 }
 
-// Render a human-readable discovery table from grouped event data.
-// Expected shape: { period?, groups: [{ target_host, call_count,
-//   action_breakdown: { ALLOWED?, REDACTED?, BLOCKED?, OBSERVED? },
-//   first_seen?, last_seen?, shadow_ai? }] }
-// Falls back gracefully when the shape differs.
+// Render a human-readable discovery table from the /api/v1/discover response.
+// Actual shape (see apps' /api/v1/discover route — the source of truth this
+// must match field-for-field):
+//   { since, generated_at, summary: { total_calls, governed_calls,
+//     shadow_ai_calls, blocked_calls, redacted_calls },
+//     hosts: [{ host, total, allowed, redacted, blocked, observed,
+//       first_seen, last_seen }] }
 function renderDiscoveryTable(data, since) {
-  const groups = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.groups)
-      ? data.groups
-      : null;
+  const hosts = Array.isArray(data?.hosts) ? data.hosts : null;
 
-  if (!groups || groups.length === 0) {
+  if (!hosts || hosts.length === 0) {
     process.stdout.write(`No AI agent calls recorded in the last ${since}.\n`);
     return;
   }
 
-  const STATUSES = ["ALLOWED", "REDACTED", "BLOCKED", "OBSERVED"];
   const W = { host: 32, calls: 7, allowed: 9, redacted: 9, blocked: 9, observed: 9, shadow: 8, last: 20 };
 
   const header =
@@ -350,23 +371,22 @@ function renderDiscoveryTable(data, since) {
   process.stdout.write(`\nShadow AI Attack Surface — last ${since}\n`);
   process.stdout.write(`${divider}\n${header}\n${divider}\n`);
 
-  let shadowCount = 0;
-  for (const g of groups) {
-    const breakdown = g.action_breakdown || g.actionBreakdown || {};
-    const isShadow  = g.shadow_ai ?? (Number(breakdown.OBSERVED) > 0 && !g.trace_id);
-    if (isShadow) shadowCount++;
+  for (const h of hosts) {
+    // A host is a Shadow AI indicator when it has any OBSERVED calls — traffic
+    // seen by the network interceptor with no SDK-side policy trace attached.
+    const isShadow = Number(h.observed) > 0;
 
-    const lastSeen = g.last_seen || g.lastSeen
-      ? new Date(g.last_seen || g.lastSeen).toISOString().replace("T", " ").slice(0, 19) + " UTC"
+    const lastSeen = h.last_seen
+      ? new Date(h.last_seen).toISOString().replace("T", " ").slice(0, 19) + " UTC"
       : "—";
 
     const row =
-      col(g.target_host || g.host || "unknown", W.host) + "  " +
-      col(g.call_count ?? g.callCount ?? "—", W.calls) + "  " +
-      col(breakdown.ALLOWED  ?? "—", W.allowed)  + "  " +
-      col(breakdown.REDACTED ?? "—", W.redacted) + "  " +
-      col(breakdown.BLOCKED  ?? "—", W.blocked)  + "  " +
-      col(breakdown.OBSERVED ?? "—", W.observed) + "  " +
+      col(h.host ?? "unknown", W.host) + "  " +
+      col(h.total ?? "—", W.calls) + "  " +
+      col(h.allowed  ?? "—", W.allowed)  + "  " +
+      col(h.redacted ?? "—", W.redacted) + "  " +
+      col(h.blocked  ?? "—", W.blocked)  + "  " +
+      col(h.observed ?? "—", W.observed) + "  " +
       col(isShadow ? "⚠ YES" : "no", W.shadow)  + "  " +
       col(lastSeen, W.last);
 
@@ -374,10 +394,12 @@ function renderDiscoveryTable(data, since) {
   }
 
   process.stdout.write(`${divider}\n`);
-  process.stdout.write(`${groups.length} host(s) shown`);
+  process.stdout.write(`${hosts.length} host(s) shown`);
+
+  const shadowCount = Number(data?.summary?.shadow_ai_calls) || 0;
   if (shadowCount > 0) {
     process.stdout.write(
-      `  |  ⚠  ${shadowCount} Shadow AI indicator(s) detected — unenrolled processes calling LLM endpoints.\n` +
+      `  |  ⚠  ${shadowCount} Shadow AI call(s) detected — unenrolled processes calling LLM endpoints.\n` +
       `   Visit vantio.ai/dashboard to investigate and enroll them under governance.\n`
     );
   } else {

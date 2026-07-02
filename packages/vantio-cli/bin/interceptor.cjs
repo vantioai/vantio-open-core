@@ -70,6 +70,20 @@ const DEFAULT_POLICY = {
 
 let policy = { ...DEFAULT_POLICY };
 
+// Whether this key actually unlocks cloud sync. /api/v1/config fails open
+// with a permissive policy for EVERY valid key (paid or free) so free users
+// are never blocked — but /api/v1/ingest and /api/v1/discover correctly
+// 403 for non-PRO/ENTERPRISE tenants. Without tracking tier separately, a
+// free-tier user who has merely run `vantio login` looks identical to a paid
+// one right up until their events start silently 403ing (report() swallows
+// all errors by design, so that failure is otherwise invisible). Checked
+// before every report() call and before claiming "routed to your dashboard"
+// in the run summary.
+let cloudSyncActive = false;
+function isPaidTier(tier) {
+  return tier === "PRO" || tier === "ENTERPRISE";
+}
+
 // ── Policy validation ────────────────────────────────────────────────────────
 // A cloud policy is untrusted input. Coerce every field to its expected type so
 // a malformed payload (e.g. blocked_hosts:null, pii_types:"email",
@@ -140,7 +154,11 @@ const policyReady = (async () => {
         // Validate the merged policy rather than trusting it verbatim so a
         // malformed cloud payload can never make enforcement throw.
         policy = normalizePolicy({ ...policy, ...data.policy });
+        cloudSyncActive = isPaidTier(data.tier);
         log(`${c.dim}[ ∅ VANTIO ]${c.reset} Policy loaded — enforce=${policy.enforce}, redact=${policy.redact_pii}`);
+        if (!cloudSyncActive) {
+          log(`${c.dim}[ ∅ VANTIO ] Free plan — calls observed locally only. Dashboard sync requires Pro or Enterprise (vantio.ai/pricing).${c.reset}`);
+        }
       }
     }
   } catch {
@@ -276,7 +294,7 @@ function blockedResponse(reason) {
 }
 
 function report(metadata) {
-  if (FREE_MODE || !INGEST_URL) return;
+  if (FREE_MODE || !INGEST_URL || !cloudSyncActive) return;
   void _originalFetch.call(globalThis, `${INGEST_URL}/api/v1/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-vantio-identity": API_KEY },
@@ -579,7 +597,11 @@ process.on("exit", () => {
     lines.push(`  Redacted:     ${redacted > 0 ? c.green : ""}${redacted}${c.reset}`);
     lines.push(`  Blocked:      ${blocked > 0 ? c.red : ""}${blocked}${c.reset}`);
     lines.push(`  Est. spend:   $${spentUsd.toFixed(4)}`);
-    lines.push(`  ${c.dim}→ Events routed to your Vantio dashboard.${c.reset}`);
+    lines.push(
+      cloudSyncActive
+        ? `  ${c.dim}→ Events routed to your Vantio dashboard.${c.reset}`
+        : `  ${c.dim}→ Free plan — observed locally only. Upgrade at vantio.ai/pricing to sync your dashboard.${c.reset}`
+    );
   } else {
     lines.push(`  ${c.dim}→ Upgrade at vantio.ai to enforce policy and persist events.${c.reset}`);
     if (!telemetryDisabled()) {

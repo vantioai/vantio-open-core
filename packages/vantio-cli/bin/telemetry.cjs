@@ -15,7 +15,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
-const TELEMETRY_BASE = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
+// Read fresh on every call rather than cached at module-load time — this
+// module is required once and reused for the lifetime of the process, so a
+// module-level constant would freeze in whatever VANTIO_INGEST_URL happened
+// to be at first require.
+function telemetryBase() {
+  return process.env.VANTIO_INGEST_URL || "https://vantio.ai";
+}
+
+// Captured at require time — interceptor.cjs requires this module BEFORE it
+// patches globalThis.fetch. Using this reference (instead of the bare global
+// `fetch` at call time) is what stops this module's own telemetry ping from
+// recursively re-entering the interceptor's patched fetch. Without it, if the
+// ingest host ever happened to fall in-scope (a known LLM host, or named in
+// an allow/block list — e.g. a self-hosted control plane), the telemetry
+// request would be caught by the interceptor's own enforcement and reported
+// to /api/v1/ingest a second time as if it were a real LLM call.
+const _fetch = typeof globalThis.fetch === "function" ? globalThis.fetch : undefined;
 
 // Fields explicitly allowed onto the wire. Anything not in this whitelist is
 // never transmitted — a deliberate guard against accidentally leaking content.
@@ -56,7 +72,7 @@ function getAnonymousId() {
 function sendTelemetry(payload = {}) {
   try {
     if (telemetryDisabled()) return;
-    if (typeof fetch !== "function") return; // Node < 18 — nothing to send with.
+    if (typeof _fetch !== "function") return; // Node < 18 — nothing to send with.
 
     const body = {
       anonymousId: getAnonymousId(),
@@ -77,7 +93,7 @@ function sendTelemetry(payload = {}) {
     if (Number.isFinite(payload.blockedCount)) body.blockedCount = payload.blockedCount;
     if (payload.framework != null) body.framework = String(payload.framework);
 
-    void fetch(`${TELEMETRY_BASE}/api/v1/telemetry`, {
+    void _fetch(`${telemetryBase()}/api/v1/telemetry`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }, // No api key. No auth header.
       body: JSON.stringify(body),
