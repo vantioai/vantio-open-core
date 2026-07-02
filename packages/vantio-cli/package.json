@@ -18,7 +18,8 @@
   },
   "files": ["bin"],
   "scripts": {
-    "lint": "node --check bin/vantio.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs"
+    "lint": "node --check bin/vantio.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18.3.0"

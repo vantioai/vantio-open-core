@@ -12,6 +12,7 @@
   },
   "bugs": { "url": "https://github.com/vantioai/vantio-open-core/issues" },
   "keywords": ["vantio", "ai", "agent", "sdk", "observability", "governance", "tracing", "langchain", "openai"],
+  "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
@@ -31,7 +32,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && tsc -p tsconfig.types.json && node scripts/postbuild.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsc -p tsconfig.esm.json --watch"
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "dev": "tsc -p tsconfig.esm.json --watch",
+    "test": "node --test"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

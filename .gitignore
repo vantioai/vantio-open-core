@@ -23,3 +23,9 @@ packages/*/dist/
 
 # CLI build output
 apps/cli/dist/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
