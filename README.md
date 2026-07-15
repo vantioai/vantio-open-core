@@ -32,13 +32,15 @@ After `vantio login`, any process you start with `vantio run` is automatically o
 
 ---
 
-## Tiers
+## Products
 
-| Tier | What you get | How |
-|------|-------------|-----|
-| **Tier 1 — Observe** (free) | See every LLM call: host, bytes, timestamp, trace ID | `vantio run` or `@shield` |
-| **Tier 2 — Enforce** (Pro) | Block hosts, redact PII, spend caps, cloud-managed policy | API key + `vantio run` or `@shield` |
-| **Tier 3 — Kernel** (Enterprise) | Shadow AI detection of unenrolled processes, eBPF | Phantom Engine |
+| Product | Repository | What you get |
+|---------|------------|--------------|
+| **Open-core** (this repo) | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | Free developer tools — observe LLM traffic; CLI and SDK |
+| **Vantio Pro** | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | Policy control plane — block hosts, redact PII, spend caps |
+| **Phantom Engine** (Enterprise) | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | Kernel-level enforcement — eBPF, CIDR, Kubernetes |
+
+**This repo** ships the free observe layer and the local enforcement *client*. With a Pro API key, the CLI fetches policy from [Vantio Pro](https://github.com/vantioai/vantio-pro) and applies it on your machine — Vantio is not a network proxy. Enterprise kernel enforcement lives in [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine).
 
 ---
 

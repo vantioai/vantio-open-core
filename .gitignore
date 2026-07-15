@@ -29,3 +29,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+
+# Local soak / test artifacts — never commit
+passwd.txt
+output.sh
+output.txt
+**/passwd.txt
+**/output.sh
+**/output.txt

@@ -65,9 +65,9 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 
 ---
 
-## Policy & redaction (Tier 2)
+## Policy & redaction (Vantio Pro)
 
-Tier 2 enforcement runs **locally** in the SDK/CLI — Vantio is not a network proxy. The SDK ships two building blocks so you can enforce a cloud-managed policy yourself.
+Enforcement policy is served by the [Vantio Pro](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
 
 ### `fetchPolicy(apiKey, opts?)` — load the cloud-managed policy
 
