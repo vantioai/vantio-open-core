@@ -1,8 +1,11 @@
-# vantio-open-core
+# vantio-open-core · Observe Layer
 
-**Sees everything** — Open Core is the free developer layer of the Vantio suite. It intercepts every outbound LLM call your agent makes — without a proxy and without code changes — so you have complete visibility into all AI traffic from day one.
+**Observe** — The Free-tier governance layer of the Vantio platform. Open Core intercepts every outbound LLM call your agent makes — without a proxy and without code changes — giving you complete visibility into all AI traffic from day one.
 
-Open Core is the observe tier. Enforcement (block, redact, spend caps) requires [Vantio Pro](https://github.com/vantioai/vantio-pro). Kernel-level absolute control requires [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine).
+This repo is the **Observe feature plane**. It is the foundation that runs inside every tier: Free customers get observation alone; Pro and Enterprise customers get observation *plus* the enforcement layers those tiers unlock.
+
+> **Vantio tiers unlock governance:**
+> `Observe (Free · Open Core)` → `Enforce (Pro unlocked)` → `Absolute Control (Enterprise · Phantom Engine unlocked)`
 
 ---
 
@@ -34,18 +37,17 @@ After `vantio login`, any process you start with `vantio run` is automatically o
 
 ---
 
-## Product lineup
+## Tier model — one platform, unlocked layers
 
-| Product | Repository | Promise |
-|---------|------------|---------|
-| **Open Core** ← you are here | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Sees everything** — observe all agent/LLM traffic |
-| **Pro** | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Enforces** — block, redact, caps; dashboard shows what policy stops |
-| **Phantom Engine** | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Absolute control** — fewer events, inescapable kernel catch |
-| **Enterprise suite** | all three together | Full stack: observe + enforce + absolute control |
+| Tier | Feature layer | Repo |
+|------|--------------|------|
+| **Free** | **Observe** ← you are here | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
+| **Pro** | + **Enforce** (block, redact, caps) | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
+| **Enterprise** | + **Absolute Control** (kernel eBPF) | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
 
-**Open Core alone** = observe tier. With a Pro API key the CLI fetches policy from [Vantio Pro](https://github.com/vantioai/vantio-pro) and enforces it locally — block, redact, and spend caps happen client-side, policy lives in the Pro control plane. Enterprise customers get all three products as a suite.
+Open Core is the client that runs at every tier. With a Free API key it observes. With a Pro API key it fetches policy from [Vantio Pro](https://github.com/vantioai/vantio-pro) and enforces locally — block, redact, and spend caps happen client-side, policy lives in the Pro control plane. Enterprise customers get all three layers active simultaneously; the dashboard shows all three columns because all three feature layers are running, not because three products compete to claim the event.
 
-Full breakdown: [docs/PRODUCT_LINEUP.md](docs/PRODUCT_LINEUP.md)
+Full breakdown: [PRODUCT_LINEUP.md](../PRODUCT_LINEUP.md)
 
 ---
 
