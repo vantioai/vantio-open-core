@@ -1,10 +1,17 @@
-// [ ∅ VANTIO ] Zero-Line Enforcement Interceptor
+// [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
-// Patches globalThis.fetch to observe (Tier 1) and enforce (Tier 2) outbound
-// LLM calls. The developer writes zero code — the CLI handles everything.
+// Patches globalThis.fetch to intercept outbound LLM calls — zero code changes.
 //
-//   Tier 1 (no API key):  observe + print to terminal
-//   Tier 2 (API key):     fetch cloud policy, then redact / cap / block / report
+// Layer identity in the Vantio suite:
+//   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
+//   Pro control plane     = ENFORCE PLANE — policy (block/redact/cap) is fetched
+//                           from the Pro server and applied locally by this interceptor.
+//   Phantom Engine        = KERNEL PLANE  — eBPF enforcement beneath the app layer.
+//   Enterprise suite      = all three running simultaneously.
+//
+//   Standalone (no API key):  observe + print to terminal only
+//   With Pro API key:         fetch policy from Pro, then enforce locally (redact / cap / block / report)
+//   Enterprise deployment:    this interceptor + Pro + Phantom Engine all active at once
 
 "use strict";
 
@@ -26,6 +33,11 @@ const API_KEY    = process.env.VANTIO_API_KEY;
 const AUDIT_MODE = process.env.VANTIO_AUDIT_MODE === "1";
 const SUMMARY    = process.env.VANTIO_SUMMARY    === "1";
 const FREE_MODE  = !API_KEY;
+// Stable for the life of this process (set by `vantio run` into child env).
+const RUN_TRACE_ID = process.env.VANTIO_TRACE_ID || randomUUID();
+// Explicit phantom-box soak only — do NOT infer from localhost (breaks unit tests
+// that spin up ephemeral mock control planes on 127.0.0.1).
+const SOAK_LOCAL = process.env.VANTIO_SOAK_LOCAL === "1";
 
 // ── Lane 1 anonymous telemetry (optional, fire-and-forget) ───────────────────
 // Loaded defensively so a missing/broken telemetry module can never break the
@@ -56,6 +68,12 @@ const LLM_HOSTS = new Set([
   "api.perplexity.ai",
   "inference.ai.azure.com",
 ]);
+// Local soak / self-hosted LLMs via env only — never hardcode 127.0.0.1
+// (would make every out-of-scope localhost call look like LLM traffic).
+for (const h of String(process.env.VANTIO_EXTRA_LLM_HOSTS || "").split(",")) {
+  const t = h.trim();
+  if (t) LLM_HOSTS.add(t);
+}
 
 // ── Default policy (fail-open until cloud policy loads) ──────────────────────
 const DEFAULT_POLICY = {
@@ -154,10 +172,12 @@ const policyReady = (async () => {
         // Validate the merged policy rather than trusting it verbatim so a
         // malformed cloud payload can never make enforcement throw.
         policy = normalizePolicy({ ...policy, ...data.policy });
-        cloudSyncActive = isPaidTier(data.tier);
+        cloudSyncActive = isPaidTier(data.tier) || SOAK_LOCAL;
         log(`${c.dim}[ ∅ VANTIO ]${c.reset} Policy loaded — enforce=${policy.enforce}, redact=${policy.redact_pii}`);
         if (!cloudSyncActive) {
           log(`${c.dim}[ ∅ VANTIO ] Free plan — calls observed locally only. Dashboard sync requires Pro or Enterprise (vantio.ai/pricing).${c.reset}`);
+        } else if (SOAK_LOCAL) {
+          log(`${c.dim}[ ∅ VANTIO ] Soak-local mode — syncing events to ${INGEST_URL}${c.reset}`);
         }
       }
     }
@@ -297,9 +317,13 @@ function report(metadata) {
   if (FREE_MODE || !INGEST_URL || !cloudSyncActive) return;
   void _originalFetch.call(globalThis, `${INGEST_URL}/api/v1/ingest`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-vantio-identity": API_KEY },
+    headers: {
+      "Content-Type": "application/json",
+      "x-vantio-identity": API_KEY,
+      "x-vantio-trace-id": RUN_TRACE_ID,
+    },
     body: JSON.stringify({
-      traceId:   process.env.VANTIO_TRACE_ID ?? randomUUID(),
+      traceId:   RUN_TRACE_ID,
       auditMode: AUDIT_MODE,
       eventPayload: metadata,
     }),
