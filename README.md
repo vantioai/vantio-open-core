@@ -1,6 +1,8 @@
 # vantio-open-core
 
-Vantio intercepts every outbound LLM call your agent makes — without a proxy and without code changes — so you can see, redact, and enforce policy on AI traffic from day one.
+**Sees everything** — Open Core is the free developer layer of the Vantio suite. It intercepts every outbound LLM call your agent makes — without a proxy and without code changes — so you have complete visibility into all AI traffic from day one.
+
+Open Core is the observe tier. Enforcement (block, redact, spend caps) requires [Vantio Pro](https://github.com/vantioai/vantio-pro). Kernel-level absolute control requires [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine).
 
 ---
 
@@ -32,15 +34,18 @@ After `vantio login`, any process you start with `vantio run` is automatically o
 
 ---
 
-## Products
+## Product lineup
 
-| Product | Repository | What you get |
-|---------|------------|--------------|
-| **Open-core** (this repo) | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | Free developer tools — observe LLM traffic; CLI and SDK |
-| **Vantio Pro** | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | Policy control plane — block hosts, redact PII, spend caps |
-| **Phantom Engine** (Enterprise) | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | Kernel-level enforcement — eBPF, CIDR, Kubernetes |
+| Product | Repository | Promise |
+|---------|------------|---------|
+| **Open Core** ← you are here | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Sees everything** — observe all agent/LLM traffic |
+| **Pro** | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Enforces** — block, redact, caps; dashboard shows what policy stops |
+| **Phantom Engine** | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Absolute control** — fewer events, inescapable kernel catch |
+| **Enterprise suite** | all three together | Full stack: observe + enforce + absolute control |
 
-**This repo** ships the free observe layer and the local enforcement *client*. With a Pro API key, the CLI fetches policy from [Vantio Pro](https://github.com/vantioai/vantio-pro) and applies it on your machine — Vantio is not a network proxy. Enterprise kernel enforcement lives in [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine).
+**Open Core alone** = observe tier. With a Pro API key the CLI fetches policy from [Vantio Pro](https://github.com/vantioai/vantio-pro) and enforces it locally — block, redact, and spend caps happen client-side, policy lives in the Pro control plane. Enterprise customers get all three products as a suite.
+
+Full breakdown: [docs/PRODUCT_LINEUP.md](docs/PRODUCT_LINEUP.md)
 
 ---
 
