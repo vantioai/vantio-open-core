@@ -1,68 +1,82 @@
-# Vantio Product Lineup
+# Vantio — Governance Platform: Tier Feature Unlock
 
-This is the canonical product lineup for Vantio. All READMEs, docs, and dashboard copy derive from this table.
-
----
-
-## The three products
-
-| Product | Repo | Promise |
-|---------|------|---------|
-| **Open Core** (Developers) | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Sees everything** — observe all agent/LLM traffic |
-| **Pro** | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Enforces** — block, redact, caps; dashboard shows what policy stops |
-| **Phantom Engine** (Enterprise kernel) | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Absolute control** — fewer events, inescapable kernel catch |
-| **Enterprise suite** | all three together | Full stack: observe + enforce + absolute control |
+> Same platform. Higher tiers unlock more governance control.
+> This is the canonical tier model. All READMEs, docs, and dashboard copy derive from this file.
 
 ---
 
-## What each tier does
+## The governance unlock ladder
 
-### Open Core — Sees everything
-- Free developer tool; no paid account required to start observing
-- `vantio run` wraps any agent process with a TLS interceptor — no code changes needed
-- Captures: endpoint, response size, process ID, trace ID across the agent's full execution
-- Does **not** capture prompts, completions, or any content
-- Does **not** block, redact, or enforce policy on its own — that is Pro's job
+Vantio is **one platform** with a layered governance architecture. Each tier unlocks the next control plane — you don't swap products, you gain more enforcement authority.
+
+```
+Tier 1 · Free / Open Core ────── unlocks ► Observe
+Tier 2 · Pro ─────────────────── unlocks ► + Enforce   (includes Tier 1)
+Tier 3 · Enterprise ───────────── unlocks ► + Absolute Control   (includes Tier 1 + 2)
+```
+
+Enterprise = all three feature layers active simultaneously. The Mission Control dashboard shows all three columns because all three governance layers are running — not because three products compete to claim the event.
+
+| Tier | Unlocks | What you see in data |
+|------|---------|----------------------|
+| **Free · Open Core** | **Observe** — governance visibility | ALLOWED / observed events for every LLM/agent call |
+| **Pro** | **+ Enforce** — block, redact, caps | Enforce column: governance actions Pro enables |
+| **Enterprise** | **+ Absolute Control** — Phantom Engine kernel eBPF | Full stack: Observe + Enforce + kernel-decisive events |
+
+---
+
+## Feature layers
+
+### Observe · Open Core (Free tier)
+- The base governance layer — no paid account required to start
+- Intercepts every outbound LLM call; no code changes needed
+- Captures: endpoint, response size, process ID, trace ID — no content, no prompts
+- Does **not** block or redact — those require the Enforce layer (Pro)
 - SDK: `@vantio/agent-sdk` (Node.js), `vantio-agent-sdk` (Python)
 
-### Pro — Enforces
-- Policy control plane for teams that need enforceable governance
-- Owns tenant configuration (`GET /api/v1/config`) and telemetry ingest (`POST /api/v1/ingest`)
-- Tells the Open Core client **what** to enforce; enforcement runs locally in the client interceptor
-- Capabilities: block by hostname, PII redaction, spend/size caps
-- Dashboard shows what policy stops in real time
+### Enforce · Pro (Pro tier unlocks)
+- Activates the policy enforcement control plane
+- Unlocks: block by hostname, PII redaction, spend/size caps
+- Policy lives in the Pro control plane; enforcement runs in the Open Core client interceptor
+- Dashboard Enforce column shows what the Pro tier's governance actions prevented
+- API: `GET /api/v1/config` (policy fetch), `POST /api/v1/ingest` (telemetry)
 
-### Phantom Engine — Absolute control
-- Enterprise kernel layer; deployed as a Linux daemon or Kubernetes DaemonSet
+### Absolute Control · Phantom Engine (Enterprise tier unlocks)
+- Kernel enforcement layer — deployed as Linux daemon or Kubernetes DaemonSet
 - eBPF uprobes on TLS libraries (`SSL_write`, `gnutls_record_send`) at Ring-0
-- Enforcement is inescapable: sits beneath the application layer, below any possible bypass
-- Fork inheritance: child processes cannot escape trace context by spawning subprocesses
-- Produces fewer events than Open Core/Pro — but every event is high-signal and decisive
-- Adds the unbypassable guarantee beneath the Pro HTTP contract; does not replace it
-
-### Enterprise suite
-- All three products together
-- **Observe** (Open Core) + **Enforce** (Pro) + **Absolute control** (Phantom Engine)
-- Enterprise customers get the full stack: observe everything, enforce policy, catch the rest at the kernel
+- Enforcement is inescapable: sits beneath the application layer, below any bypass
+- Fork inheritance: child processes cannot escape trace context
+- Adds the unbypassable kernel guarantee beneath the Pro HTTP contract
+- Enterprise includes all lower tiers: Observe + Enforce + Absolute Control all active
 
 ---
 
-## Tier comparison
+## Tier capability matrix
 
-| Capability | Open Core | Pro | Enterprise |
-|------------|-----------|-----|------------|
+| Capability | Free (Open Core) | Pro | Enterprise |
+|------------|:-----------------:|:---:|:----------:|
 | Observe all LLM/agent calls | ✓ | ✓ | ✓ |
 | Block by hostname | — | ✓ | ✓ |
 | PII redaction | — | ✓ | ✓ |
 | Spend / size caps | — | ✓ | ✓ |
-| Dashboard: what policy stops | — | ✓ | ✓ |
+| Dashboard: enforcement actions | — | ✓ | ✓ |
 | eBPF / kernel enforcement | — | — | ✓ |
 | Inescapable catch (below app layer) | — | — | ✓ |
-| CIDR / k8s network policies | — | — | ✓ |
 | Fork inheritance enforcement | — | — | ✓ |
+| CIDR / k8s network policy | — | — | ✓ |
+
+---
+
+## Repos — one feature plane each
+
+| Repo | Layer | Role |
+|------|-------|------|
+| [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Observe** | Free-tier governance visibility; the client that runs in every tier |
+| [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Enforce** | Pro-tier policy control plane; tells Open Core what to enforce |
+| [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Absolute Control** | Enterprise-tier kernel layer; the inescapable enforcement guarantee |
 
 ---
 
 ## One-line story
 
-> **Open Core sees everything. Pro enforces it. Phantom Engine makes it inescapable.**
+> **Vantio tiers unlock governance: Observe free · Enforce with Pro · Absolute kernel control with Enterprise. No way to be more absolute.**
