@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.vantioai/vantio-optics",
+  "title": "Vantio Optics",
+  "description": "Vantio Optics — read-only Sight Loop observe for agents. Proofs, hosts, upgrade path.",
+  "websiteUrl": "https://vantio.ai/platform",
+  "repository": {
+    "url": "https://github.com/vantioai/vantio-open-core",
+    "source": "github",
+    "subdirectory": "packages/vantio-optics-mcp"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@vantio/optics-mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
