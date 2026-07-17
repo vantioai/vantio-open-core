@@ -1,6 +1,12 @@
-# vantio-open-core
+# vantio-open-core · Vantio Optics
 
-Vantio intercepts every outbound LLM call your agent makes — without a proxy and without code changes — so you can see, redact, and enforce policy on AI traffic from day one.
+**Vantio Optics** — See LLM egress. Blind by design, not a proxy.  
+The Free · Open Core observe plane: intercept outbound LLM calls without code changes, capture metadata (never prompts), and export proof — **observe only, no enforce**.
+
+This repo ships **Vantio Optics**. The same client runs in every tier; higher tiers unlock **Vantio Gate** (Pro · enforce) and **Vantio Phantom Engine** (Enterprise · absolute control) on top of Optics.
+
+> **Vantio tiers unlock governance:**  
+> **Vantio Optics** (Free · Open Core) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
 
 ---
 
@@ -8,8 +14,7 @@ Vantio intercepts every outbound LLM call your agent makes — without a proxy a
 
 ```bash
 npm install -g @vantio/cli
-vantio login          # validates + saves your API key once
-vantio run node agent.js
+vantio run node agent.js          # no key needed — Free Observe works immediately
 ```
 
 No-install path:
@@ -18,7 +23,48 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-After `vantio login`, any process you start with `vantio run` is automatically observed. Grab your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard).
+Optionally connect to your dashboard (Pro/Enterprise features):
+
+```bash
+vantio login <your-api-key>       # validates + saves the key; no env vars needed
+```
+
+Grab your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard).
+
+After a run, generate an auditor-ready proof artifact or explore local history:
+
+```bash
+vantio prove                      # HTML proof artifact (Free, no key needed)
+vantio discover --local           # local run history (Free, no key needed)
+vantio discover                   # full workspace history (Pro/Enterprise)
+```
+
+---
+
+## Sight Loop (Optics workflow)
+
+Optics ships one named workflow — **Sight Loop**:
+
+1. **Wrap** — `vantio run` / SDK  
+2. **Capture** — host · process · bytes · time · trace (no prompts/completions)  
+3. **Inspect / export** — `vantio prove`, `vantio discover --local`, or **Optics MCP**  
+4. **Honest residual** — ungoverned paths stay silent → upgrade cue  
+
+Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optics-mcp.md](./docs/optics-mcp.md) · Offline prove: `./scripts/sight-loop-prove.sh`
+
+---
+
+## Docs
+
+| Doc | Purpose |
+|-----|---------|
+| [Sight Loop](./docs/sight-loop.md) | Optics workflow (wrap → capture → inspect → residual) |
+| [Optics MCP](./docs/optics-mcp.md) | Read-only MCP for agent hosts / IDEs |
+| [Surfaces](./docs/surfaces.md) | Hooks, Action, Docker, webhooks + deeper earmarks |
+| [Observe only — no enforce](./docs/observe-only.md) | Free-tier fence |
+| [Getting started](./docs/getting-started-tier01.md) | 60-second quickstart |
+| [Prove artifacts](./docs/prove.md) | `vantio prove` reference |
+| [Framework integrations](./docs/framework-integrations.md) | LangChain, LlamaIndex, CrewAI, AutoGen |
 
 ---
 
@@ -27,18 +73,26 @@ After `vantio login`, any process you start with `vantio run` is automatically o
 | Package | Description |
 |---------|-------------|
 | [`packages/vantio-cli`](./packages/vantio-cli) | CLI runner (`@vantio/cli`) |
+| [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | Optics MCP (`@vantio/optics-mcp`) — observe only |
+| [`packages/vantio-gate-mcp`](./packages/vantio-gate-mcp) | Gate MCP (`@vantio/gate-mcp`) — dry-run evaluate |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | Node.js agent SDK (`@vantio/agent-sdk`) |
 | [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | Python agent SDK (`vantio-agent-sdk`) |
+| [`extensions/vantio-optics`](./extensions/vantio-optics) | Thin VS Code extension |
+| [`integrations/hooks`](./integrations/hooks) | Cursor / Claude / OpenClaw hooks |
 
 ---
 
-## Tiers
+## Tier model — one platform, unlocked layers
 
-| Tier | What you get | How |
-|------|-------------|-----|
-| **Tier 1 — Observe** (free) | See every LLM call: host, bytes, timestamp, trace ID | `vantio run` or `@shield` |
-| **Tier 2 — Enforce** (Pro) | Block hosts, redact PII, spend caps, cloud-managed policy | API key + `vantio run` or `@shield` |
-| **Tier 3 — Kernel** (Enterprise) | Shadow AI detection of unenrolled processes, eBPF | Phantom Engine |
+| Tier | Feature layer | Repo |
+|------|--------------|------|
+| **Free** | **Vantio Optics** · Observe ← you are here | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
+| **Pro** | + **Vantio Gate** · Enforce (block, redact, caps) | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
+| **Enterprise** | + **Vantio Phantom Engine** · Absolute Control | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
+
+Optics is the client at every tier. On Free (no Pro key), it **observes only** — events are labelled `OBSERVED`. With a Pro key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can block, redact, or cap locally. Enterprise adds **Vantio Phantom Engine** beneath the app layer. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
+
+Full breakdown: [PRODUCT_LINEUP.md](../PRODUCT_LINEUP.md)
 
 ---
 
@@ -90,6 +144,25 @@ async def run_agent():
 - A trace ID that links calls across your agent's full execution
 
 **What never gets captured:** prompts, completions, or any content from your requests.
+
+---
+
+## Optics: honest about bypassability
+
+`vantio run` intercepts LLM calls by patching `globalThis.fetch` in the Node process.
+This covers the vast majority of agents without code changes.
+
+**It can be bypassed** — by native socket calls, un-instrumented subprocesses, or
+processes not started with `vantio run`. This is intentional. Optics surfaces your
+governance gap; it does not paper over it.
+
+- **Vantio Gate (Pro)** — Policy Latch: block, redact, caps, dashboard sync, fleet discovery. App layer.
+- **Vantio Phantom Engine (Enterprise)** — Ring-0 eBPF TLS observe, Bypass Reconciliation when app and kernel diverge.
+
+Use `vantio discover --local` to see what Free observes on your machine.
+Use `vantio prove` to generate an auditor-ready proof artifact from any run.
+
+---
 
 ---
 

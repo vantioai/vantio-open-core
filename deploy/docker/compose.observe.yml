@@ -1,0 +1,27 @@
+# Example: run an agent under Optics and persist local run logs.
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.observe
+      args:
+        BASE_IMAGE: node:22-bookworm-slim
+    environment:
+      - VANTIO_HOOKS=0
+    volumes:
+      - vantio-runs:/root/.vantio/runs
+    # command: ["node", "agent.js"]
+
+  # Optional: sidecar that tails proofs (placeholder — mount runs volume)
+  prove:
+    image: node:22-bookworm-slim
+    profiles: ["tools"]
+    volumes:
+      - vantio-runs:/root/.vantio/runs
+    working_dir: /root
+    entrypoint: ["bash", "-lc"]
+    command:
+      - npm install -g @vantio/cli && vantio prove --format=md --list || true
+
+volumes:
+  vantio-runs:

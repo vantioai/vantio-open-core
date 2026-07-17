@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "packages/vantio-optics-mcp/**"
+      - "packages/vantio-gate-mcp/**"
       - ".github/workflows/mcp-registry-publish.yml"
   workflow_dispatch: {}
 
@@ -14,8 +15,14 @@ permissions:
 
 jobs:
   publish:
-    name: Publish Optics MCP metadata
+    name: Publish MCP registry metadata
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - vantio-optics-mcp
+          - vantio-gate-mcp
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,9 +37,9 @@ jobs:
         run: mcp-publisher login github-oidc
 
       - name: Validate server.json
-        working-directory: packages/vantio-optics-mcp
+        working-directory: packages/${{ matrix.package }}
         run: mcp-publisher validate
 
       - name: Publish to MCP Registry
-        working-directory: packages/vantio-optics-mcp
+        working-directory: packages/${{ matrix.package }}
         run: mcp-publisher publish
