@@ -1,0 +1,49 @@
+{
+  "name": "@vantio/gate-mcp",
+  "version": "0.1.0",
+  "mcpName": "io.github.vantioai/vantio-gate",
+  "description": "Vantio Gate MCP — Policy Latch dry-run evaluate. No live enforce. Upgrade path to Phantom Engine.",
+  "license": "MIT",
+  "author": "Vantio AI, Inc.",
+  "homepage": "https://vantio.ai/pro",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vantioai/vantio-open-core.git",
+    "directory": "packages/vantio-gate-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/vantioai/vantio-open-core/issues"
+  },
+  "keywords": [
+    "vantio",
+    "vantio-gate",
+    "gate",
+    "policy-latch",
+    "mcp",
+    "model-context-protocol",
+    "governance",
+    "dry-run"
+  ],
+  "type": "module",
+  "bin": {
+    "vantio-gate-mcp": "bin/vantio-gate-mcp.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "server.json"
+  ],
+  "scripts": {
+    "start": "node bin/vantio-gate-mcp.js",
+    "lint": "node --check bin/vantio-gate-mcp.js && node --check src/policy.js && node --check src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  }
+}

@@ -1,0 +1,30 @@
+# Example Job: run a Node agent once under Vantio Optics.
+# Replace image/command for your workload. Observe only — not Absolute Control.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vantio-optics-agent
+  labels:
+    app.kubernetes.io/name: vantio-optics
+    app.kubernetes.io/part-of: vantio
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: agent
+          image: your-registry/your-agent:latest
+          command: ["vantio", "run", "node", "agent.js"]
+          env:
+            - name: VANTIO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vantio
+                  key: api-key
+                  optional: true
+          volumeMounts:
+            - name: vantio-runs
+              mountPath: /root/.vantio/runs
+      volumes:
+        - name: vantio-runs
+          emptyDir: {}

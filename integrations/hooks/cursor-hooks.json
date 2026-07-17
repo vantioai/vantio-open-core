@@ -1,0 +1,16 @@
+{
+  "$schema": "https://cursor.com/schemas/hooks.json",
+  "description": "Vantio Optics — wrap agent shell tasks with vantio run when VANTIO_HOOKS=1",
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node",
+        "args": ["${workspaceFolder}/integrations/hooks/lib/maybe-vantio-run.mjs"],
+        "env": {
+          "VANTIO_HOOK_PHASE": "beforeShellExecution"
+        }
+      }
+    ]
+  },
+  "notes": "Copy into .cursor/hooks.json or merge. Requires @vantio/cli on PATH. Observe only."
+}
