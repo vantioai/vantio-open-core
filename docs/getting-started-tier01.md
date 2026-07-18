@@ -129,7 +129,7 @@ Works with any framework that makes HTTP calls:
 
 LangChain · AutoGen · CrewAI · OpenAI SDK · Anthropic SDK · AWS Bedrock · Google Vertex · Cohere · Groq · Together AI · Perplexity · any `fetch`-based agent
 
-**Python agents:** `pip install vantio-agent-sdk` — see [vantio.ai/developers](https://vantio.ai/platform)
+**Python agents:** `pip install vantio-agent-sdk` — see [vantio.ai/platform](https://vantio.ai/platform)
 
 ---
 
