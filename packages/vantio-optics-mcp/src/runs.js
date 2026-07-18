@@ -191,7 +191,7 @@ export const UPGRADE_PATH = {
       brand: "Vantio Gate",
       workflow: "Policy Latch",
       unlocks: "Dry-run → enforce (block / redact / caps), residual-risk report",
-      url: "https://vantio.ai/pro",
+      url: "https://vantio.ai/gate",
     },
     {
       tier: "Enterprise",

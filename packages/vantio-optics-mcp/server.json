@@ -3,7 +3,7 @@
   "name": "io.github.vantioai/vantio-optics",
   "title": "Vantio Optics",
   "description": "Vantio Optics — read-only Sight Loop observe for agents. Proofs, hosts, upgrade path.",
-  "websiteUrl": "https://vantio.ai/platform",
+  "websiteUrl": "https://vantio.ai/optics",
   "repository": {
     "url": "https://github.com/vantioai/vantio-open-core",
     "source": "github",

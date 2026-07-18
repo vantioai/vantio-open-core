@@ -6,7 +6,7 @@
 pip install vantio-agent-sdk
 ```
 
-Platform: [vantio.ai/platform](https://vantio.ai/platform)
+Optics: [vantio.ai/optics](https://vantio.ai/optics)
 
 ## v3.0.x — Breaking change from v2.x
 

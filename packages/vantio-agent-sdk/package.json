@@ -4,7 +4,7 @@
   "description": "See what your AI agents are doing. Two lines of code.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
-  "homepage": "https://vantio.ai/platform",
+  "homepage": "https://vantio.ai/optics",
   "repository": {
     "type": "git",
     "url": "https://github.com/vantioai/vantio-open-core.git",
