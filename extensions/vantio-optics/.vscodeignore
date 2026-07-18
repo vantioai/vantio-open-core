@@ -1,0 +1,10 @@
+.vscode/**
+.vscode-test/**
+.gitignore
+**/*.vsix
+**/.DS_Store
+media/icon.svg
+*.md
+!README.md
+!CHANGELOG.md
+!LICENSE.txt
