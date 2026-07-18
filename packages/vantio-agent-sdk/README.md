@@ -144,4 +144,4 @@ npx @vantio/cli run node agent.js
 
 ---
 
-[vantio.ai](https://vantio.ai) · [Docs](https://vantio.ai/developers) · [Pricing](https://vantio.ai/pricing) · MIT License
+[vantio.ai](https://vantio.ai) · [Platform](https://vantio.ai/platform) · [Pricing](https://vantio.ai/pricing) · MIT License

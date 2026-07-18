@@ -129,7 +129,7 @@ Works with any framework that makes HTTP calls:
 
 LangChain · AutoGen · CrewAI · OpenAI SDK · Anthropic SDK · AWS Bedrock · Google Vertex · Cohere · Groq · Together AI · Perplexity · any `fetch`-based agent
 
-**Python agents:** `pip install vantio-agent-sdk` — see [vantio.ai/developers](https://vantio.ai/developers)
+**Python agents:** `pip install vantio-agent-sdk` — see [vantio.ai/platform](https://vantio.ai/platform)
 
 ---
 
@@ -146,7 +146,7 @@ Vantio records *that* a call was made, *when*, *to which provider*, and *how man
 ## Common questions
 
 **My agent uses Python, not Node.js.**
-Use `pip install vantio-agent-sdk` and the `@shield` decorator. See the [Developers page](https://vantio.ai/developers) for examples. `vantio run` itself only instruments Node.js/TypeScript runtimes (`node`, `npx`, `tsx`, `ts-node`) via `NODE_OPTIONS`; other runtimes run normally without interception.
+Use `pip install vantio-agent-sdk` and the `@shield` decorator. See the [Platform page](https://vantio.ai/platform) for examples. `vantio run` itself only instruments Node.js/TypeScript runtimes (`node`, `npx`, `tsx`, `ts-node`) via `NODE_OPTIONS`; other runtimes run normally without interception.
 
 **Nothing is appearing in my terminal.**
 Make sure you're using `node`, `npx`, `tsx`, or `ts-node` as the runtime — `vantio run python agent.py` runs your script normally but prints a one-line notice instead of intercepting, since Tier 1 Node interception uses a Node-specific mechanism. Use the Python SDK's `@shield` for Python agents.
