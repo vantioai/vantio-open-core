@@ -6,13 +6,15 @@ Package: [`@vantio/gate-mcp`](../packages/vantio-gate-mcp/)
 
 ## Fence
 
+> **Commercial/production deferred** until Stripe/banking. This package is a dry-run POC — do not market as production enforce.
+
 - Evaluates host / size / spend decisions  
 - Fetches Pro policy + residual risk (with API key)  
 - **Never** blocks live traffic from inside the MCP  
 - **Never** pushes unconstrained policy to production  
 - **Never** exposes Absolute Control  
 
-Live latch remains `vantio run` + Pro. Absolute Control remains Phantom Engine.
+Live latch remains `vantio run` + Pro (when billing is live). Absolute Control remains Phantom Engine.
 
 ## Quick start
 

@@ -9,7 +9,7 @@ How Optics / Gate show up where agents already run — and what is earmarked for
 | Surface | Status | Location |
 |---------|--------|----------|
 | Optics MCP | Live | `packages/vantio-optics-mcp` · `@vantio/optics-mcp` |
-| Gate MCP (dry-run) | Shipping | `packages/vantio-gate-mcp` · `@vantio/gate-mcp` |
+| Gate MCP (dry-run) | POC — commercial deferred | `packages/vantio-gate-mcp` · `@vantio/gate-mcp` |
 | Framework adapters | Shipping | [framework-integrations.md](./framework-integrations.md) + `examples/adapters/` |
 | Cursor / Claude / OpenClaw hooks | Shipping | `integrations/hooks/` |
 | VS Code extension (thin) | Shipping | `extensions/vantio-optics/` |
