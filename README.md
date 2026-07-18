@@ -58,6 +58,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Doc | Purpose |
 |-----|---------|
+| [Dogfood Optics](./docs/dogfood-optics.md) | Local loop: `vantio run` → prove → Optics MCP |
 | [Sight Loop](./docs/sight-loop.md) | Optics workflow (wrap → capture → inspect → residual) |
 | [Optics MCP](./docs/optics-mcp.md) | Read-only MCP for agent hosts / IDEs |
 | [Surfaces](./docs/surfaces.md) | Hooks, Action, Docker, webhooks + deeper earmarks |
