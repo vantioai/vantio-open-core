@@ -1,8 +1,26 @@
 """
-[ ∅ VANTIO ] Agent SDK — Python
-Zero-line AI governance telemetry. Zero dependencies beyond stdlib.
+Vantio Optics Python SDK — Sight Loop observe via shield().
+Metadata-only telemetry. Zero dependencies beyond stdlib.
 """
-from .sdk import shield, report_anomaly, get_current_trace_id, VantioContext
+from .sdk import (
+    shield,
+    report_anomaly,
+    get_current_trace_id,
+    VantioContext,
+    fetch_policy,
+    redact_pii,
+    VantioPolicy,
+    RedactionResult,
+)
 
-__all__ = ["shield", "report_anomaly", "get_current_trace_id", "VantioContext"]
-__version__ = "3.0.0"
+__all__ = [
+    "shield",
+    "report_anomaly",
+    "get_current_trace_id",
+    "VantioContext",
+    "fetch_policy",
+    "redact_pii",
+    "VantioPolicy",
+    "RedactionResult",
+]
+__version__ = "3.0.1"
