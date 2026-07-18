@@ -39,8 +39,8 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://vantio.ai"
-Platform = "https://vantio.ai/platform"
+Optics = "https://vantio.ai/optics"
 Pricing = "https://vantio.ai/pricing"
 Repository = "https://github.com/vantioai/vantio-open-core"
 Issues = "https://github.com/vantioai/vantio-open-core/issues"
-Documentation = "https://vantio.ai/platform"
+Documentation = "https://vantio.ai/optics"

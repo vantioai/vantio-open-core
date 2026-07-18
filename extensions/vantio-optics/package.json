@@ -53,7 +53,7 @@
     "url": "https://github.com/vantioai/vantio-open-core.git",
     "directory": "extensions/vantio-optics"
   },
-  "homepage": "https://vantio.ai/platform",
+  "homepage": "https://vantio.ai/optics",
   "bugs": {
     "url": "https://github.com/vantioai/vantio-open-core/issues"
   },

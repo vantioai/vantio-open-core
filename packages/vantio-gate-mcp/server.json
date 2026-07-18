@@ -3,7 +3,7 @@
   "name": "io.github.vantioai/vantio-gate",
   "title": "Vantio Gate",
   "description": "Vantio Gate — Policy Latch dry-run evaluate for agents. No live enforce from MCP.",
-  "websiteUrl": "https://vantio.ai/pro",
+  "websiteUrl": "https://vantio.ai/gate",
   "repository": {
     "url": "https://github.com/vantioai/vantio-open-core",
     "source": "github",

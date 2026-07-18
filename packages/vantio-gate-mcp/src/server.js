@@ -144,7 +144,7 @@ export function createGateMcpServer() {
         enable_live:
           "Set policy.dry_run=true on Pro, run agents under vantio run, review DRY_RUN_* events, then latch enforce=true.",
         pricing: "https://vantio.ai/pricing",
-        platform: "https://vantio.ai/pro",
+        gate: "https://vantio.ai/gate",
       }),
   );
 

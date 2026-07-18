@@ -172,7 +172,7 @@ export function createOpticsMcpServer() {
             }
           : null,
         docs: {
-          platform: "https://vantio.ai/platform",
+          optics: "https://vantio.ai/optics",
           pricing: "https://vantio.ai/pricing",
         },
       });
