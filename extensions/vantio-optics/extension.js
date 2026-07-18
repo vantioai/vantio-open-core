@@ -38,14 +38,19 @@ function activate(context) {
     }),
     vscode.commands.registerCommand("vantio.upgradePath", async () => {
       show(
-        "Vantio · Upgrade path",
+        "Vantio Optics · Upgrade path",
         [
-          "Vantio Optics (Free) — Sight Loop observe",
-          "  → @vantio/optics-mcp / vantio prove",
-          "Vantio Gate (Pro) — Policy Latch enforce",
-          "  → @vantio/gate-mcp (dry-run evaluate)",
-          "Vantio Phantom Engine (Enterprise) — Absolute Control",
-          "  https://vantio.ai/pricing",
+          "Vantio Optics (Free) — Sight Loop · observe only",
+          "  prove · discover local · this residual cue",
+          "",
+          "Honest residual: Optics does not enforce.",
+          "Ungoverned paths stay silent — that gap is the upgrade signal.",
+          "",
+          "When observe is not enough:",
+          "  → Pro · Vantio Gate — Policy Latch (enforce) — see pricing",
+          "  → Enterprise · Vantio Phantom Engine — Absolute Control",
+          "",
+          "https://vantio.ai/pricing",
         ].join("\n"),
       );
     }),
