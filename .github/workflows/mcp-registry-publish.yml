@@ -42,4 +42,13 @@ jobs:
 
       - name: Publish to MCP Registry
         working-directory: packages/${{ matrix.package }}
-        run: mcp-publisher publish
+        run: |
+          set -o pipefail
+          OUTPUT=$(mcp-publisher publish 2>&1) && { echo "$OUTPUT"; exit 0; }
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qiE 'duplicate version|cannot publish duplicate'; then
+            echo "Version already published — expected on re-runs."
+            exit 0
+          fi
+          echo "::error::MCP registry publish failed for ${{ matrix.package }}"
+          exit 1
