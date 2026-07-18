@@ -1,5 +1,7 @@
 # Vantio integration surfaces
 
+> **Gate commercial/production:** deferred until Stripe/banking. Gate MCP dry-run may exist as POC; do not market as production enforce.
+
 How Optics / Gate show up where agents already run — and what is earmarked for later.
 
 ## High leverage (shipping)
