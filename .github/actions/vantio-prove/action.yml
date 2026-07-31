@@ -1,0 +1,48 @@
+name: Vantio Prove
+description: Install @vantio/cli and export a Sight Loop proof artifact from local or prior-step runs.
+inputs:
+  format:
+    description: Proof format (html or md)
+    required: false
+    default: md
+  output-path:
+    description: Where to write the proof file
+    required: false
+    default: vantio-proof.md
+  working-directory:
+    description: Directory containing agent run context
+    required: false
+    default: "."
+runs:
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Install Vantio CLI
+      shell: bash
+      run: npm install -g @vantio/cli
+
+    - name: Export proof
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$(dirname "${{ inputs.output-path }}")"
+        if vantio prove --format="${{ inputs.format }}" --out="${{ inputs.output-path }}" 2>/tmp/vantio-prove.err; then
+          echo "Wrote ${{ inputs.output-path }}"
+        else
+          echo "::warning::vantio prove produced no artifact (no local runs?). See docs/surfaces.md"
+          cat /tmp/vantio-prove.err || true
+          echo "# Vantio proof unavailable" > "${{ inputs.output-path }}"
+          echo "No ~/.vantio/runs logs in this job. Run agents under \`vantio run\` in a prior step." >> "${{ inputs.output-path }}"
+        fi
+
+    - name: Upload proof
+      uses: actions/upload-artifact@v4
+      with:
+        name: vantio-proof
+        path: ${{ inputs.working-directory }}/${{ inputs.output-path }}
+        if-no-files-found: warn

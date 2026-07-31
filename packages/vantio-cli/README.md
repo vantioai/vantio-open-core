@@ -13,11 +13,11 @@ curl -fsSL https://vantio.ai/install.sh | sh
 ## Quick start
 
 ```bash
-vantio login <your-api-key>     # validates + saves your key once
-vantio run node agent.js        # no env vars needed — the key is loaded for you
+vantio run node agent.js        # Free Observe — no key needed
+vantio login <your-api-key>     # optional — Gate / paid features
 ```
 
-`vantio login` validates your key against `https://vantio.ai/api/v1/config` and, on success, stores it at `~/.vantio/config.json` (chmod `600`). After that, `vantio run` injects it automatically — no `VANTIO_API_KEY` juggling. Grab your key from your [dashboard](https://vantio.ai/dashboard).
+`vantio login` validates your key against `https://vantio.ai/api/v1/config` and, on success, stores it at `~/.vantio/config.json` (chmod `600`). After that, `vantio run` injects it automatically — no `VANTIO_API_KEY` juggling. Free Optics needs no key. Paid Gate keys come from a trial (`hello@vantio.ai`) or Stripe once live — there is no public self-serve key dashboard yet (`/dashboard` redirects).
 
 ---
 
@@ -29,6 +29,7 @@ vantio logout         # remove the stored key
 vantio whoami         # show the stored key (masked) + live connection status
 vantio run <program>  # spawn a program under the Vantio execution context
 vantio discover       # show your Shadow AI attack surface (Pro / Enterprise)
+vantio prove          # generate an auditor-ready proof artifact from a run log (Free)
 ```
 
 `login` refuses to save a key the server rejects (HTTP 401). The full key is never printed — `whoami` and login output only ever show a masked form like `vk_liv…a1b2`.
@@ -43,7 +44,7 @@ vantio run python agent.py
 vantio run tsx agent.ts
 ```
 
-Wrap any process with `vantio run`. The CLI automatically intercepts every outbound call to a known LLM API — OpenAI, Anthropic, Gemini, Cohere, Mistral, and more — and streams the metadata to your dashboard.
+Wrap any process with `vantio run`. The CLI automatically intercepts every outbound call to a known LLM API — OpenAI, Anthropic, Gemini, Cohere, Mistral, and more — and records connection metadata locally (and to Gate when a key is configured).
 
 Your code doesn't change. Your agent runs normally. If you've run `vantio login`, the stored key is injected into the child process; an explicit `VANTIO_API_KEY` in your environment always takes precedence.
 
@@ -73,15 +74,37 @@ In free mode (no API key), intercepted calls print to the terminal in real time.
 
 ---
 
+## vantio prove — Auditor-Ready Proof Artifacts (Free)
+
+```bash
+vantio prove                           # HTML report — most recent run
+vantio prove --list                    # list all local run logs
+vantio prove --run=<trace-id>          # report for a specific run
+vantio prove --format=md               # Markdown to stdout
+vantio prove --format=html --out=proof.html
+```
+
+`vantio prove` reads the run logs that `vantio run` automatically writes to
+`~/.vantio/runs/` and generates a self-contained proof document. Reports include
+trace IDs, machine/PID, byte counts, host breakdown, and action labels.
+
+**Reports contain zero prompts or completions** — safe to share with auditors.
+
+Available on Free — no API key required. Full reference: [`docs/prove.md`](../../docs/prove.md)
+
+---
+
 ## vantio discover — Shadow AI Attack Surface
 
 ```bash
 vantio discover [--since=24h|7d|30d] [--host=<hostname>] [--json]
+vantio discover --local                # Free-tier: local run logs only, no key needed
 ```
 
 Shows every AI agent call recorded in your Vantio workspace, grouped by target host. Answers the question: **"What AI agents are running in my environment, and are they all governed?"**
 
-- **Pro users** — see all SDK-monitored LLM calls with governance status (ALLOWED / REDACTED / BLOCKED / OBSERVED).
+- **Free (--local)** — reads local run logs from `~/.vantio/runs/`. No API key needed. Covers only processes started with `vantio run` on this machine.
+- **Pro users** — see all SDK-monitored LLM calls with governance status (`OBSERVED` / `ALLOWED` / `REDACTED` / `BLOCKED`).
 - **Enterprise users (Phantom Engine)** — additionally surfaces processes that called LLM endpoints without a Vantio `trace_id` — the **Shadow AI** agents that have no governance coverage.
 
 ```
@@ -102,10 +125,11 @@ api.anthropic.com                 57       57        0         0         0      
 | `--since=<period>` | Look back `24h`, `7d`, or `30d` (default: `24h`) |
 | `--host=<hostname>` | Filter to a specific target host |
 | `--json` | Output raw JSON instead of a formatted table |
+| `--local` | Local run logs only — no API key required (Free tier) |
 
 Run `vantio discover --help` for full documentation.
 
-> **Availability:** Discovery requires a Pro or Enterprise account. If the endpoint returns a 404 or 403, visit [vantio.ai/pricing](https://vantio.ai/pricing) to upgrade.
+> **Full discovery** requires a Pro or Enterprise account. `--local` works on Free without any key.
 
 ---
 
@@ -167,4 +191,4 @@ await shield(async () => {
 
 ---
 
-[vantio.ai](https://vantio.ai) · [Docs](https://vantio.ai/developers) · [Pricing](https://vantio.ai/pricing) · MIT License
+[vantio.ai](https://vantio.ai) · [Optics](https://vantio.ai/optics) · [Pricing](https://vantio.ai/pricing) · MIT License

@@ -1,9 +1,11 @@
 # vantio-open-core · Vantio Optics
 
+[![CI](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml/badge.svg)](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml)
+
 **Vantio Optics** — See LLM egress. Blind by design, not a proxy.  
 The Free · Open Core observe plane: intercept outbound LLM calls without code changes, capture metadata (never prompts), and export proof — **observe only, no enforce**.
 
-This repo ships **Vantio Optics**. The same client runs in every tier; higher tiers unlock **Vantio Gate** (Pro · enforce) and **Vantio Phantom Engine** (Enterprise · absolute control) on top of Optics.
+This repo ships **Vantio Optics**. The same client runs in every tier; higher tiers unlock **Vantio Gate** (Pro · enforce) and **Vantio Phantom Engine** (Enterprise · Absolute Control plane) on top of Optics.
 
 > **Vantio tiers unlock governance:**  
 > **Vantio Optics** (Free · Open Core) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
@@ -95,7 +97,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 Optics is the client at every tier. On Free (no Pro key), it **observes only** — events are labelled `OBSERVED`. With a Pro key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can block, redact, or cap locally. Enterprise adds **Vantio Phantom Engine** beneath the app layer. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
 
-Full breakdown: [PRODUCT_LINEUP.md](../PRODUCT_LINEUP.md)
+Full breakdown: [docs/PRODUCT_LINEUP.md](./docs/PRODUCT_LINEUP.md)
 
 ---
 
@@ -159,8 +161,8 @@ This covers the vast majority of agents without code changes.
 processes not started with `vantio run`. This is intentional. Optics surfaces your
 governance gap; it does not paper over it.
 
-- **Vantio Gate (Pro)** — Policy Latch: block, redact, caps, dashboard sync, fleet discovery. App layer.
-- **Vantio Phantom Engine (Enterprise)** — Ring-0 eBPF TLS observe, Rogue Reconciliation when app and kernel diverge.
+- **Vantio Gate (Pro)** — Rules that stick: refuse destinations, strip sensitive fields, hard spend ceilings, residual-risk report. App layer.
+- **Vantio Phantom Engine (Enterprise)** — Host runtime control + Rogue Reconciliation when app and host diverge.
 
 Use `vantio discover --local` to see what Free observes on your machine.
 Use `vantio prove` to generate an auditor-ready proof artifact from any run.
