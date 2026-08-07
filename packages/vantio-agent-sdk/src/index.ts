@@ -26,6 +26,14 @@ export interface VantioEventPayload {
  * The action Vantio took for a single intercepted outbound LLM call.
  * Mirrors the `action_taken` field in the /api/v1/ingest contract and the
  * enforcement engine in the CLI interceptor.
+ *
+ * DRY_RUN_* variants are emitted when dry_run=true in the policy — the
+ * enforcement decision was made but the call was allowed through. Use these
+ * to validate a policy before enabling hard enforcement.
+ *
+ * ENFORCEMENT_GAP is emitted when the interceptor could not apply a policy
+ * (e.g. streaming body that cannot be scanned for PII). These events feed
+ * the /api/v1/residual-risk endpoint and surface the Pro→Enterprise upgrade path.
  */
 export type VantioActionTaken =
   | "OBSERVED"
@@ -33,7 +41,11 @@ export type VantioActionTaken =
   | "REDACTED"
   | "BLOCKED_HOST"
   | "BLOCKED_SIZE"
-  | "BLOCKED_SPEND";
+  | "BLOCKED_SPEND"
+  | "ENFORCEMENT_GAP"
+  | "DRY_RUN_BLOCKED_HOST"
+  | "DRY_RUN_BLOCKED_SIZE"
+  | "DRY_RUN_BLOCKED_SPEND";
 
 /**
  * Cloud-managed policy returned by GET /api/v1/config (Tier 2).
@@ -54,6 +66,12 @@ export interface VantioPolicy {
   max_request_bytes: number;
   /** Soft USD spend cap for the run; 0 means no cap. */
   spend_cap_usd: number;
+  /**
+   * When true, enforcement decisions are logged and reported as DRY_RUN_* events
+   * but requests are NOT blocked. Use this to validate a policy against live traffic
+   * before enabling hard enforcement. Has no effect when enforce=false.
+   */
+  dry_run: boolean;
 }
 
 /**
@@ -69,6 +87,7 @@ export const DEFAULT_POLICY: VantioPolicy = {
   blocked_hosts: [],
   max_request_bytes: 0,
   spend_cap_usd: 0,
+  dry_run: false,
 };
 
 /** Coerce to boolean, falling back to a default for non-boolean input. */
@@ -105,6 +124,7 @@ export function normalizePolicy(raw: unknown): VantioPolicy {
     blocked_hosts: asStringArray(p.blocked_hosts, DEFAULT_POLICY.blocked_hosts),
     max_request_bytes: asNonNegativeNumber(p.max_request_bytes, DEFAULT_POLICY.max_request_bytes),
     spend_cap_usd: asNonNegativeNumber(p.spend_cap_usd, DEFAULT_POLICY.spend_cap_usd),
+    dry_run: asBool(p.dry_run, DEFAULT_POLICY.dry_run),
   };
 }
 

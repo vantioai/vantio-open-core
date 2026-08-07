@@ -33,7 +33,7 @@ export const UPGRADE_PATH = [
     plane: "Absolute Control",
     brand: "Vantio Phantom Engine",
     sku: "Enterprise",
-    workflow: "Bypass Reconciliation",
+    workflow: "Rogue Reconciliation",
     note: "Not exposed as free-form agent tools",
   },
 ];
@@ -166,6 +166,8 @@ export async function fetchCloudConfig({
       "x-vantio-identity": key,
       accept: "application/json",
     },
+    // Bound the call so a stalled control plane cannot hang the MCP tool.
+    signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) {
     return {
@@ -200,6 +202,8 @@ export async function fetchResidualRisk({
       "x-vantio-identity": key,
       accept: "application/json",
     },
+    // Bound the call so a stalled control plane cannot hang the MCP tool.
+    signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) {
     return { ok: false, error: `residual_http_${res.status}` };

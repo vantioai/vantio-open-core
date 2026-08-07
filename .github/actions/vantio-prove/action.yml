@@ -31,7 +31,7 @@ runs:
       run: |
         set -euo pipefail
         mkdir -p "$(dirname "${{ inputs.output-path }}")"
-        if vantio prove --format="${{ inputs.format }}" --output="${{ inputs.output-path }}" 2>/tmp/vantio-prove.err; then
+        if vantio prove --format="${{ inputs.format }}" --out="${{ inputs.output-path }}" 2>/tmp/vantio-prove.err; then
           echo "Wrote ${{ inputs.output-path }}"
         else
           echo "::warning::vantio prove produced no artifact (no local runs?). See docs/surfaces.md"

@@ -93,10 +93,15 @@ export function proveMarkdown(log) {
     ? summary.hosts
     : [...new Set(calls.map((c) => c.hostname).filter(Boolean))];
 
+  const providers = Array.isArray(summary.providers)
+    ? summary.providers
+    : [...new Set(calls.map((c) => c.provider).filter(Boolean))];
+
   const rows = calls
     .map((c, i) => {
       const act = (c.action || "OBSERVED").toUpperCase();
-      return `| ${i + 1} | ${c.hostname || "—"} | ${act} | ${c.bytes ?? "—"} | ${c.ts || "—"} |`;
+      const mp = [c.method, c.path].filter(Boolean).join(" ") || "—";
+      return `| ${i + 1} | ${c.hostname || "—"} | ${c.provider || "—"} | ${mp} | ${c.status ?? "—"} | ${c.duration_ms ?? "—"} | ${act} | ${c.bytes ?? "—"} | ${c.ts || "—"} |`;
     })
     .join("\n");
 
@@ -105,7 +110,7 @@ export function proveMarkdown(log) {
     "",
     "**Plane:** Observe (Vantio Optics) · **Workflow:** Sight Loop",
     "",
-    "> No prompts or completions are captured. Traffic metadata only.",
+    "> Developer egress data log — metadata only. No prompts or completions.",
     "",
     "## Run",
     "",
@@ -114,27 +119,32 @@ export function proveMarkdown(log) {
     `| Trace ID | \`${log.trace_id || "—"}\` |`,
     `| Machine | ${log.machine || "—"} |`,
     `| PID | ${log.pid ?? "—"} |`,
+    `| Node | ${log.node_version || "—"} |`,
+    `| Platform | ${log.platform || "—"} ${log.arch || ""} |`,
     `| Started | ${log.started_at || "—"} |`,
     `| Duration | ${log.duration_ms != null ? `${log.duration_ms} ms` : "—"} |`,
     `| CLI | ${log.cli_version || "—"} |`,
+    `| Schema | ${log.schema_version ?? 1} |`,
     "",
     "## Summary",
     "",
     `- Total calls: **${totalCalls}**`,
     `- Total bytes: **${Number(totalBytes).toLocaleString()}**`,
     `- Hosts: ${hosts.length ? hosts.map((h) => `\`${h}\``).join(", ") : "—"}`,
+    `- Providers: ${providers.length ? providers.map((p) => `\`${p}\``).join(", ") : "—"}`,
+    `- Errors / non-OK: **${summary.errors ?? 0}**`,
     "",
     "## Calls",
     "",
-    "| # | Host | Action | Bytes | Timestamp |",
-    "| --- | --- | --- | --- | --- |",
-    rows || "| — | — | — | — | — |",
+    "| # | Host | Provider | Method path | Status | Duration ms | Action | Bytes | Timestamp |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    rows || "| — | — | — | — | — | — | — | — | — |",
     "",
     "## Residual (honest)",
     "",
-    "Optics observes only. Ungoverned paths stay silent. Upgrade to **Vantio Gate** (Policy Latch) to enforce, then **Vantio Phantom Engine** (Bypass Reconciliation) for Absolute Control.",
+    "Optics fills your data log on the attach path. Ungoverned paths (curl, raw sockets, unwrapped processes) stay silent. Upgrade to **Vantio Gate** to enforce, then **Vantio Phantom Engine** Absolute Control when the app path is skipped.",
     "",
-    "https://vantio.ai/pricing",
+    "https://vantio.ai/optics · https://vantio.ai/pricing",
     "",
   ].join("\n");
 }
@@ -196,7 +206,7 @@ export const UPGRADE_PATH = {
     {
       tier: "Enterprise",
       brand: "Vantio Phantom Engine",
-      workflow: "Bypass Reconciliation",
+      workflow: "Rogue Reconciliation",
       unlocks: "Absolute Control, Ring-0 evidence, bypass indicators (patent pending)",
       url: "https://vantio.ai/enterprise",
     },

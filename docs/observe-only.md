@@ -52,14 +52,14 @@ If the org must **guarantee** control when engineers route around the intercepto
 | Out of scope for Optics (and Pro alone) | Tier |
 |----------------------------------------|------|
 | eBPF TLS observe at Ring-0 | Enterprise · **Vantio Phantom Engine** |
-| Bypass Reconciliation (kernel ∧ ¬ app record) | Enterprise |
+| Rogue Reconciliation (kernel ∧ ¬ app record) | Enterprise |
 | Fork inheritance proof | Enterprise |
 | CIDR / enrolled-cgroup kernel egress policy | Enterprise |
 | Append-oriented regulator-grade ledger | Enterprise |
 
 **Fence:** if bypass must be **proven closed** → **Vantio Phantom Engine**.
 
-Enterprise workflow: **Bypass Reconciliation** — correlate app + kernel evidence, surface `BYPASS_INDICATOR`.
+Enterprise workflow: **Rogue Reconciliation** — correlate app + kernel evidence, surface `BYPASS_INDICATOR`.
 
 ---
 

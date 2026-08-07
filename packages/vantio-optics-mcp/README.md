@@ -66,7 +66,7 @@ Local checkout:
 
 1. **Optics** (this MCP) — see  
 2. **Gate** (Pro) — Policy Latch / enforce  
-3. **Phantom Engine** (Enterprise) — Bypass Reconciliation / Absolute Control  
+3. **Phantom Engine** (Enterprise) — Rogue Reconciliation / Absolute Control  
 
 https://vantio.ai/pricing
 

@@ -101,7 +101,7 @@ export function createGateMcpServer() {
         plane: "Enforce",
         brand: "Vantio Gate",
         ...result,
-        upgrade: "Silent bypass residual → Vantio Phantom Engine (Absolute Control).",
+        upgrade: "Paths that never reach the app layer are closed by Vantio Phantom Engine (Absolute Control).",
       });
     },
   );
@@ -138,7 +138,7 @@ export function createGateMcpServer() {
         does_not: [
           "Block or redact traffic from inside this MCP",
           "Push unconstrained policy changes to production",
-          "Provide Absolute Control / bypass reconciliation (Phantom Engine)",
+          "Provide Absolute Control / Rogue Reconciliation (Phantom Engine)",
           "Capture prompts or completions",
         ],
         enable_live:

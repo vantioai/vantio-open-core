@@ -1,12 +1,25 @@
-name: SLSA L3 Enterprise Provenance
+name: SLSA Enterprise Provenance
+
+# Tagged releases *can* produce GitHub attest-build-provenance artifacts.
+# That does NOT make slsa_verified=true in-repo until subjects are copied
+# under logs/dogfood/evidence/slsa_attestations/ and the verify checklist passes.
+# Do not claim SLSA Level X verified from this workflow alone.
 
 on:
   push:
     branches: [main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this provenance build was triggered"
+        required: false
+        default: "manual provenance rebuild"
 
 permissions:
-  id-token:     write
-  contents:     read
+  id-token: write
+  contents: read
   attestations: write
 
 jobs:
@@ -29,29 +42,44 @@ jobs:
           version: 11
 
       - name: Install dependencies
-        # SLSA L3 requires a hermetic build: the dependency graph must not mutate
-        # at build time. --frozen-lockfile fails the build on any lockfile drift,
-        # which is the property the provenance attestation below is asserting.
+        # Hermetic intent: frozen lockfile fails on drift (SLSA L3-oriented property).
+        # Target level for releases = L3; do not claim verified until checklist subjects exist.
         run: pnpm install --frozen-lockfile
 
       - name: Build @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run build
 
-      # NOTE: @vantio/edge-proxy was removed from this repo in
-      # 724b954 ("extract web app to vantio-app; open-core is now SDK/CLI
-      # only") — its ingest/policy logic now lives in vantio-app's own API
-      # routes, which have their own build/deploy pipeline. This workflow
-      # referenced the deleted package for every run since that refactor,
-      # which meant every SLSA provenance attestation build silently failed —
-      # confirmed 5/5 red runs on main before this fix.
+      # NOTE: @vantio/edge-proxy was removed from this repo — open-core is SDK/CLI only.
 
       - name: Bundle artifacts
         run: |
           tar -czf vantio-artifacts.tar.gz \
             packages/vantio-agent-sdk/dist \
             packages/vantio-cli/bin
+          sha256sum vantio-artifacts.tar.gz | tee vantio-artifacts.sha256
+
+      - name: Upload release bundle (tags + manual)
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vantio-artifacts-${{ github.sha }}
+          path: |
+            vantio-artifacts.tar.gz
+            vantio-artifacts.sha256
+          if-no-files-found: error
 
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: vantio-artifacts.tar.gz
+
+      - name: Provenance honesty note
+        run: |
+          echo "Attestation step completed (GitHub attestations API)."
+          echo "In-repo slsa_verified stays false until subjects are verified via:"
+          echo "  python3 scripts/slsa_verify_checklist.py --require-verified"
+          echo "Required release target level: SLSA 3 (not verified Present)."
+          if [ -n "${{ steps.attest.outputs.bundle-path }}" ]; then
+            echo "bundle-path=${{ steps.attest.outputs.bundle-path }}"
+          fi

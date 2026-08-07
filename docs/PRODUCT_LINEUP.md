@@ -1,0 +1,84 @@
+# Vantio — Governance Platform: Tier Feature Unlock
+
+> Same platform. Higher tiers unlock more governance control — and close residual risk.  
+> **Vantio Optics** (Free) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
+
+---
+
+## The governance unlock ladder
+
+```
+Tier 1 · Free / Vantio Optics ── unlocks ► Observe (Sight Loop)
+                                residual ► no block; silent ungoverned paths
+Tier 2 · Pro / Vantio Gate ───── unlocks ► + Enforce (Policy Latch)
+                                residual ► SDK omission · raw sockets · fork escape
+Tier 3 · Enterprise / Phantom ─ unlocks ► + Absolute Control (Rogue Reconciliation)
+                                closes   ► kernel + bypass indicators + ledger
+```
+
+**Enterprise wedge:** correlated Observe + Enforce + kernel with bypass indicators — not “we also have eBPF.”
+
+| Tier | Unlocks | What you see in data |
+|------|---------|----------------------|
+| **Free · Vantio Optics** | **Observe** · Sight Loop | `OBSERVED` (no enforce) |
+| **Pro · Vantio Gate** | **+ Enforce** · Policy Latch | Blocks, redactions, caps · `ALLOWED` / `BLOCKED` / `REDACTED` |
+| **Enterprise · Phantom Engine** | **+ Absolute Control** · Rogue Reconciliation | Full stack + `BYPASS_INDICATOR` when layers diverge |
+
+---
+
+## Feature layers
+
+### Observe · Vantio Optics (Free tier)
+- The base observe plane — no paid account required
+- Intercepts outbound LLM calls; no code changes needed
+- Captures: endpoint, response size, process ID, trace ID — no content, no prompts
+- Does **not** block or redact — **observe only** ([fence](./observe-only.md))
+- Workflow: **Sight Loop**
+- SDK: `@vantio/agent-sdk` (Node.js), `vantio-agent-sdk` (Python)
+
+### Enforce · Vantio Gate (Pro tier unlocks)
+- Activates the policy enforcement control plane
+- Unlocks: block by hostname, PII redaction, spend/size caps
+- Policy lives in the Gate control plane; enforcement runs in the Optics client interceptor
+- Workflow: **Policy Latch**
+- Dashboard Enforce column shows what the Pro tier's governance actions prevented
+- API: `GET /api/v1/config` (policy fetch), `POST /api/v1/ingest` (telemetry)
+
+### Absolute Control · Vantio Phantom Engine (Enterprise tier unlocks)
+- Closes Gate residual risk with correlated kernel evidence + Rogue Reconciliation
+- eBPF TLS observe, fork inheritance, CIDR / enrolled-cgroup policy
+- Kernel transmission with no app-layer record → BYPASS_INDICATOR
+- Does not replace Pro — Enterprise runs Observe + Enforce + Absolute Control together
+- Proof pack: `vantio-phantom-engine/docs/enterprise/`
+
+---
+
+## Tier capability matrix
+
+| Capability | Free (Open Core) | Pro | Enterprise |
+|------------|:-----------------:|:---:|:----------:|
+| Observe all LLM/agent calls | ✓ | ✓ | ✓ |
+| Block by hostname | — | ✓ | ✓ |
+| PII redaction | — | ✓ | ✓ |
+| Spend / size caps | — | ✓ | ✓ |
+| Dashboard: enforcement actions | — | ✓ | ✓ |
+| eBPF / kernel enforcement | — | — | ✓ |
+| Inescapable catch (below app layer) | — | — | ✓ |
+| Fork inheritance enforcement | — | — | ✓ |
+| CIDR / k8s network policy | — | — | ✓ |
+
+---
+
+## Repos — one feature plane each
+
+| Repo | Layer | Role |
+|------|-------|------|
+| [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Vantio Optics** · Observe | Free-tier visibility; client at every tier |
+| [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Vantio Gate** · Enforce | Pro policy control plane |
+| [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Vantio Phantom Engine** · Absolute Control | Enterprise Ring-0 plane |
+
+---
+
+## One-line story
+
+> **Vantio tiers unlock governance: Observe free · Enforce with Pro · Absolute kernel control with Enterprise. No way to be more absolute.**

@@ -44,7 +44,8 @@ test("list/load/prove/discover from fixture runs dir", () => {
   const md = proveMarkdown(loaded.log);
   assert.match(md, /Vantio Optics/);
   assert.match(md, /api\.openai\.com/);
-  assert.match(md, /No prompts or completions are captured/);
+  assert.match(md, /metadata only|No prompts or completions/i);
+  assert.match(md, /Developer egress data log|Traffic metadata only/i);
   assert.doesNotMatch(md, /"role"\s*:\s*"user"|completion_tokens/);
 
   const hosts = discoverLocal(30 * 24 * 60 * 60 * 1000, dir);

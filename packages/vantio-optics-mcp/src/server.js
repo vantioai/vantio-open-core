@@ -160,7 +160,7 @@ export function createOpticsMcpServer() {
         does_not: [
           "Capture prompts or completions (blind by design)",
           "Block, redact, or cap spend (that is Vantio Gate)",
-          "Provide Absolute Control / bypass reconciliation (that is Phantom Engine)",
+          "Provide Absolute Control / Rogue Reconciliation (that is Phantom Engine)",
         ],
         fence: UPGRADE_PATH.fence,
         latest_run: latest

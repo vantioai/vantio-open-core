@@ -19,7 +19,7 @@ import uuid
 import warnings
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, List, Optional, TypeVar
 
 from ._telemetry import send_run_telemetry_once
 
@@ -225,6 +225,9 @@ class VantioPolicy:
     blocked_hosts: List[str] = field(default_factory=list)
     max_request_bytes: int = 0
     spend_cap_usd: float = 0.0
+    # When true, enforcement decisions should be logged/reported as DRY_RUN_*
+    # events but requests are NOT blocked. Mirrors dry_run in the JS SDK.
+    dry_run: bool = False
 
 
 def _normalize_policy(raw: dict) -> VantioPolicy:
@@ -239,9 +242,9 @@ def _normalize_policy(raw: dict) -> VantioPolicy:
 
     def _nonneg(v: Any, d: float) -> float:
         try:
-            n = float(v) if not isinstance(v, (int, float)) else float(v)
+            n = float(v)
             return n if n >= 0 else d
-        except Exception:
+        except (TypeError, ValueError):
             return d
 
     return VantioPolicy(
@@ -252,6 +255,7 @@ def _normalize_policy(raw: dict) -> VantioPolicy:
         blocked_hosts=_str_list(raw.get("blocked_hosts"), []),
         max_request_bytes=int(_nonneg(raw.get("max_request_bytes"), 0)),
         spend_cap_usd=float(_nonneg(raw.get("spend_cap_usd"), 0.0)),
+        dry_run=_bool(raw.get("dry_run"), False),
     )
 
 

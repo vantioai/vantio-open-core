@@ -37,33 +37,45 @@ No API key required. Optics works immediately in **observe-only** mode.
 
 ---
 
-## Step 2 — Capture metadata (never content)
+## Step 2 — Capture a developer data log (never content)
 
-Each intercepted call records:
+Optics exists to give you a useful egress dataset — not to police the agent. Each intercepted call records (schema_version **2**):
 
-| Field | Example |
-|-------|---------|
-| Host | `api.openai.com` |
-| Response size | `4,821` bytes |
-| Process ID | `12345` |
-| Trace ID | `0x1a2b3c4d5e6f7a8b` |
-| Timestamp | ISO-8601 |
+| Field | Example | Why you need it |
+|-------|---------|-----------------|
+| Host | `api.openai.com` | Where the agent went |
+| Provider | `openai` | Group spend/debug by vendor |
+| Method + path | `POST /v1/chat/completions` | Which API surface (query string stripped — may contain keys) |
+| Status / ok | `200` / `true` | Failures without reading bodies |
+| Duration ms | `842` | Latency per call |
+| Request bytes | `1204` | Size of outbound payload (length only) |
+| Response bytes | `4,821` | Volume when `Content-Length` is present |
+| Content-Type | `application/json` | Response shape hint |
+| Process / PID / Node / platform | runtime facts | Which process, which environment |
+| Trace ID | `0x1a2b3c4d5e6f7a8b` | Correlate the whole run |
+| Timestamp | ISO-8601 | Ordering and audits |
+| Error class | `TypeError` / `network_error` | Failed fetches still land in your log |
+| Summary `by_host` / `by_provider` | rollups | Quick triage without a dashboard |
 
-**Never captured:** prompts, completions, request bodies, or PII from your payloads.
+**Never captured:** prompts, completions, request/response bodies, Authorization headers, or query strings.
 
-Free-tier action label: **`OBSERVED`** (grey in proof artifacts). Optics does not block, redact, or cap — those actions belong to **Vantio Gate** (Pro).
+Free-tier action label: **`OBSERVED`**. Optics does not block, redact, or cap — those belong to **Vantio Gate** (Pro).
 
 Terminal output on each call:
 
 ```
 [ ∅ VANTIO ] Outbound LLM call intercepted
-  host:    api.openai.com
-  pid:     12345
-  bytes:   4,821
-  time:    2026-07-16T18:00:01.100Z
+  host:     api.openai.com
+  provider: openai
+  method:   POST /v1/chat/completions
+  status:   200
+  duration: 842ms
+  bytes:    4,821
+  pid:      12345
+  time:     2026-07-16T18:00:01.100Z
 ```
 
-On exit, run logs are written locally to `~/.vantio/runs/<trace-id>.json` (mode `0600`).
+On exit, run logs are written locally to `~/.vantio/runs/<trace-id>.json` (mode `0600`) — **your** data log on disk.
 
 ---
 
@@ -99,7 +111,7 @@ That gap is intentional. It is the honest sell-up:
 | Residual | Closes with |
 |----------|-------------|
 | No block / redact / cap | **Vantio Gate** (Pro) — Policy Latch |
-| App-layer bypass (sockets, unenrolled processes) | **Vantio Phantom Engine** (Enterprise) — Bypass Reconciliation |
+| App-layer bypass (sockets, unenrolled processes) | **Vantio Phantom Engine** (Enterprise) — Rogue Reconciliation |
 
 Run `vantio discover --local` to see what Optics actually observed on your machine. Compare that to what you *know* your stack calls — the delta is residual risk.
 

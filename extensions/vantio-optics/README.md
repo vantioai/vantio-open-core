@@ -29,7 +29,7 @@ For Cursor agent hosts, prefer the [Cursor / Open plugin](https://github.com/van
 
 ## Links
 
-- Platform: https://vantio.ai/optics
+- Optics: https://vantio.ai/optics
 - Pricing / upgrade: https://vantio.ai/pricing
 - Source: https://github.com/vantioai/vantio-open-core/tree/main/extensions/vantio-optics
 

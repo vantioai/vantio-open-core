@@ -1,5 +1,7 @@
 # Vantio Open-Core — Phase I Architecture Ledger
 
+> **Note (2026):** The Tier 02 control plane (`apps/web` API routes, billing, dashboards) has moved to [`vantio-pro`](https://github.com/vantioai/vantio-pro) and the hosted app (`vantio-app`). This ledger retains historical build logs for open-core packages; references to `apps/web` as the live control plane are archival only.
+
 ## Phase I Checklist
 
 - [x] **Ledger Init** — `architecture_state.md` initialized at workspace root

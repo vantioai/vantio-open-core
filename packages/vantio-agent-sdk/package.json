@@ -1,7 +1,7 @@
 {
   "name": "@vantio/agent-sdk",
-  "version": "0.2.0",
-  "description": "See what your AI agents are doing. Two lines of code.",
+  "version": "0.2.1",
+  "description": "Vantio Optics Node SDK — shield() for Sight Loop observe. Metadata only; no prompts. Upgrade path to Gate and Phantom Engine.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
   "homepage": "https://vantio.ai/optics",
@@ -11,7 +11,20 @@
     "directory": "packages/vantio-agent-sdk"
   },
   "bugs": { "url": "https://github.com/vantioai/vantio-open-core/issues" },
-  "keywords": ["vantio", "ai", "agent", "sdk", "observability", "governance", "tracing", "langchain", "openai"],
+  "keywords": [
+    "vantio",
+    "vantio-optics",
+    "optics",
+    "sight-loop",
+    "ai",
+    "agent",
+    "sdk",
+    "observability",
+    "governance",
+    "tracing",
+    "langchain",
+    "openai"
+  ],
   "type": "module",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
@@ -34,7 +47,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "dev": "tsc -p tsconfig.esm.json --watch",
-    "test": "node --test"
+    "test": "node --experimental-strip-types --test test/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

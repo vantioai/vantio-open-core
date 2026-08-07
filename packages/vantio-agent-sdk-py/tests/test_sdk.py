@@ -7,7 +7,7 @@ import unittest
 import warnings
 
 from vantio import get_current_trace_id, report_anomaly, shield
-from vantio.sdk import VantioContext
+from vantio.sdk import VantioContext, _normalize_policy
 
 from .mock_server import MockServer
 
@@ -199,6 +199,26 @@ class ReportAnomalyTests(unittest.IsolatedAsyncioTestCase):
                     target_host="x", ingest_url="http://127.0.0.1:1", api_key="vk_test_key"
                 )
         self.assertTrue(any("ingest request failed" in str(w.message) for w in caught))
+
+
+class NormalizePolicyTests(unittest.TestCase):
+    def test_coerces_bad_fields_to_safe_defaults(self) -> None:
+        p = _normalize_policy(
+            {"enforce": "yes", "blocked_hosts": None, "max_request_bytes": -1}
+        )
+        self.assertFalse(p.enforce)
+        self.assertEqual(p.blocked_hosts, [])
+        self.assertEqual(p.max_request_bytes, 0)
+        self.assertFalse(p.dry_run)
+
+    def test_parses_dry_run_matching_js_sdk(self) -> None:
+        p = _normalize_policy({"enforce": True, "dry_run": True})
+        self.assertTrue(p.enforce)
+        self.assertTrue(p.dry_run)
+
+    def test_dry_run_defaults_false_on_non_boolean(self) -> None:
+        p = _normalize_policy({"dry_run": "true"})
+        self.assertFalse(p.dry_run)
 
 
 if __name__ == "__main__":

@@ -12,8 +12,19 @@ describe("normalizePolicy()", () => {
       blocked_hosts: ["evil.example.com"],
       max_request_bytes: 4096,
       spend_cap_usd: 5,
+      dry_run: false,
     };
     assert.deepEqual(normalizePolicy(input), input);
+  });
+
+  test("dry_run defaults to false when absent", () => {
+    assert.equal(normalizePolicy({}).dry_run, false);
+    assert.equal(normalizePolicy({ dry_run: true }).dry_run, true);
+  });
+
+  test("coerces a non-boolean dry_run to the default (false)", () => {
+    assert.equal(normalizePolicy({ dry_run: "true" }).dry_run, false);
+    assert.equal(normalizePolicy({ dry_run: 1 }).dry_run, false);
   });
 
   test("falls back to DEFAULT_POLICY entirely for null/non-object input", () => {
