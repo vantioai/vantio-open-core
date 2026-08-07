@@ -34,6 +34,12 @@ jobs:
       - name: Lint @vantio/cli
         run: pnpm --filter @vantio/cli run lint
 
+      - name: Lint @vantio/optics-mcp
+        run: pnpm --filter @vantio/optics-mcp run lint
+
+      - name: Lint @vantio/gate-mcp
+        run: pnpm --filter @vantio/gate-mcp run lint
+
       - name: Typecheck @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run typecheck && pnpm --filter @vantio/agent-sdk run typecheck:test
 
@@ -42,6 +48,12 @@ jobs:
 
       - name: Test @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run test
+
+      - name: Test @vantio/optics-mcp
+        run: pnpm --filter @vantio/optics-mcp run test
+
+      - name: Test @vantio/gate-mcp
+        run: pnpm --filter @vantio/gate-mcp run test
 
   publish:
     name: Build & Publish
@@ -98,6 +110,36 @@ jobs:
             exit 0
           fi
           echo "::error::@vantio/cli publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
+          exit 1
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @vantio/optics-mcp
+        working-directory: packages/vantio-optics-mcp
+        run: |
+          set -o pipefail
+          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
+            echo "Version already published — this is expected, not an error."
+            exit 0
+          fi
+          echo "::error::@vantio/optics-mcp publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
+          exit 1
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @vantio/gate-mcp
+        working-directory: packages/vantio-gate-mcp
+        run: |
+          set -o pipefail
+          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
+            echo "Version already published — this is expected, not an error."
+            exit 0
+          fi
+          echo "::error::@vantio/gate-mcp publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
           exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

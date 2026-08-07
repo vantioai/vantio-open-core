@@ -1,0 +1,62 @@
+{
+  "name": "vantio-optics",
+  "displayName": "Vantio Optics",
+  "description": "Observe-only Sight Loop for VS Code — export Optics proof, discover local LLM hosts, and surface the residual upgrade path. Blind by design; no enforce.",
+  "version": "0.1.0",
+  "publisher": "vantioai",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#121826",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Machine Learning"],
+  "keywords": [
+    "vantio",
+    "optics",
+    "llm",
+    "observe",
+    "sight-loop",
+    "prove",
+    "shadow-ai",
+    "discover"
+  ],
+  "activationEvents": [
+    "onCommand:vantio.prove",
+    "onCommand:vantio.discoverLocal",
+    "onCommand:vantio.upgradePath"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vantio.prove",
+        "title": "Vantio: Export Optics proof",
+        "category": "Vantio Optics"
+      },
+      {
+        "command": "vantio.discoverLocal",
+        "title": "Vantio: Discover local LLM hosts",
+        "category": "Vantio Optics"
+      },
+      {
+        "command": "vantio.upgradePath",
+        "title": "Vantio: Show upgrade path",
+        "category": "Vantio Optics"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vantioai/vantio-open-core.git",
+    "directory": "extensions/vantio-optics"
+  },
+  "homepage": "https://vantio.ai/optics",
+  "bugs": {
+    "url": "https://github.com/vantioai/vantio-open-core/issues"
+  },
+  "qna": false,
+  "license": "MIT"
+}

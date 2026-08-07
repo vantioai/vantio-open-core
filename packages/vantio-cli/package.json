@@ -1,17 +1,30 @@
 {
   "name": "@vantio/cli",
-  "version": "0.3.0",
-  "description": "Run any AI agent with full observability. Zero code changes.",
+  "version": "0.3.1",
+  "description": "Vantio Optics CLI — wrap any AI agent and observe LLM egress. Blind by design, not a proxy. Sight Loop: wrap → capture → inspect.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
-  "homepage": "https://vantio.ai/developers",
+  "homepage": "https://vantio.ai/optics",
   "repository": {
     "type": "git",
     "url": "https://github.com/vantioai/vantio-open-core.git",
     "directory": "packages/vantio-cli"
   },
   "bugs": { "url": "https://github.com/vantioai/vantio-open-core/issues" },
-  "keywords": ["vantio", "ai", "agent", "cli", "observability", "governance", "openai", "anthropic"],
+  "keywords": [
+    "vantio",
+    "vantio-optics",
+    "optics",
+    "sight-loop",
+    "ai",
+    "agent",
+    "cli",
+    "observability",
+    "governance",
+    "openai",
+    "anthropic",
+    "mcp"
+  ],
   "type": "module",
   "bin": {
     "vantio": "bin/vantio.js"

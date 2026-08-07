@@ -2,3 +2,5 @@ packages:
   - 'packages/vantio-agent-sdk'
   - 'packages/vantio-cli'
   - 'packages/vantio-agent-sdk-py'
+  - 'packages/vantio-optics-mcp'
+  - 'packages/vantio-gate-mcp'

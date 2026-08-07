@@ -1,6 +1,7 @@
 """
 [ ∅ VANTIO ] Python Agent SDK
-Provides shield() decorator/context-manager and report_anomaly() for cloud ingest.
+Provides shield() decorator/context-manager, report_anomaly() for cloud ingest,
+fetch_policy() for policy retrieval, and redact_pii() for local PII scrubbing.
 Zero dependencies beyond the Python standard library.
 """
 from __future__ import annotations
@@ -11,12 +12,14 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import urllib.request
+import urllib.error
 import uuid
 import warnings
 from contextvars import ContextVar
-from dataclasses import dataclass
-from typing import Any, Callable, Optional, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, Callable, List, Optional, TypeVar
 
 from ._telemetry import send_run_telemetry_once
 
@@ -197,3 +200,201 @@ async def report_anomaly(
         # persistent failure completely invisible. Mirrors the JS SDK, which
         # already surfaces non-fatal ingest failures via console.warn.
         warnings.warn(f"[vantio] report_anomaly() ingest request failed (non-fatal): {exc}")
+
+
+# ── Policy fetch (parity with JS SDK fetchPolicy) ─────────────────────────────
+
+
+@dataclass
+class VantioPolicy:
+    """
+    Cloud-managed policy returned by GET /api/v1/config (Tier 2).
+    Mirrors VantioPolicy in @vantio/agent-sdk.
+
+    Enforcement runs locally — this object drives block/redact/cap decisions
+    in your SDK code. Fetch with fetch_policy(); build manually for testing.
+
+    Note: the ``pii_redact`` attribute corresponds to ``redact_pii`` in the
+    JSON policy object and in the JS SDK. Named ``pii_redact`` here to avoid
+    shadowing the module-level ``redact_pii()`` function.
+    """
+    enforce: bool = False
+    pii_redact: bool = False
+    pii_types: List[str] = field(default_factory=lambda: ["ssn", "email", "credit_card", "phone"])
+    allowed_hosts: List[str] = field(default_factory=list)
+    blocked_hosts: List[str] = field(default_factory=list)
+    max_request_bytes: int = 0
+    spend_cap_usd: float = 0.0
+    # When true, enforcement decisions should be logged/reported as DRY_RUN_*
+    # events but requests are NOT blocked. Mirrors dry_run in the JS SDK.
+    dry_run: bool = False
+
+
+def _normalize_policy(raw: dict) -> VantioPolicy:
+    """Coerce an untrusted policy dict to a VantioPolicy with safe defaults."""
+    def _bool(v: Any, d: bool) -> bool:
+        return v if isinstance(v, bool) else d
+
+    def _str_list(v: Any, d: List[str]) -> List[str]:
+        if isinstance(v, list):
+            return [x for x in v if isinstance(x, str)]
+        return list(d)
+
+    def _nonneg(v: Any, d: float) -> float:
+        try:
+            n = float(v)
+            return n if n >= 0 else d
+        except (TypeError, ValueError):
+            return d
+
+    return VantioPolicy(
+        enforce=_bool(raw.get("enforce"), False),
+        pii_redact=_bool(raw.get("redact_pii"), False),
+        pii_types=_str_list(raw.get("pii_types"), ["ssn", "email", "credit_card", "phone"]),
+        allowed_hosts=_str_list(raw.get("allowed_hosts"), []),
+        blocked_hosts=_str_list(raw.get("blocked_hosts"), []),
+        max_request_bytes=int(_nonneg(raw.get("max_request_bytes"), 0)),
+        spend_cap_usd=float(_nonneg(raw.get("spend_cap_usd"), 0.0)),
+        dry_run=_bool(raw.get("dry_run"), False),
+    )
+
+
+def fetch_policy(
+    api_key: str,
+    *,
+    ingest_url: Optional[str] = None,
+    timeout: float = 5.0,
+) -> VantioPolicy:
+    """
+    Fetch the cloud-managed policy from GET /api/v1/config.
+
+    Fails open: on any network failure, non-2xx status, malformed body, or
+    timeout, a permissive default :class:`VantioPolicy` is returned so an
+    unreachable control plane can never block the agent.
+
+    Mirrors ``fetchPolicy()`` in ``@vantio/agent-sdk``.
+
+    Args:
+        api_key:    Your Vantio API key (``VANTIO_API_KEY``).
+        ingest_url: Override the control plane base URL.
+                    Defaults to ``VANTIO_INGEST_URL`` env var or ``https://vantio.ai``.
+        timeout:    Request timeout in seconds (default 5.0).
+
+    Returns:
+        A :class:`VantioPolicy` reflecting the tenant's current policy.
+
+    Example::
+
+        from vantio import fetch_policy, redact_pii
+        import os
+
+        policy = fetch_policy(os.environ["VANTIO_API_KEY"])
+        if policy.pii_redact:
+            result = redact_pii(user_input, policy.pii_types)
+            prompt = result.text   # PII scrubbed before it reaches the LLM
+    """
+    url = (
+        ingest_url or os.environ.get("VANTIO_INGEST_URL", "https://vantio.ai")
+    ).rstrip("/")
+    try:
+        req = urllib.request.Request(
+            f"{url}/api/v1/config",
+            headers={"x-vantio-identity": api_key},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                return VantioPolicy()
+            data = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(data, dict) or "policy" not in data:
+                return VantioPolicy()
+            p = data["policy"]
+            return _normalize_policy(p) if isinstance(p, dict) else VantioPolicy()
+    except Exception:
+        # Fail open — the control plane being unreachable must never crash the agent.
+        return VantioPolicy()
+
+
+# ── Local PII redaction (parity with JS SDK redactPII) ────────────────────────
+
+# Patterns kept identical to interceptor.cjs and @vantio/agent-sdk.
+_PY_PII_PATTERNS: dict = {
+    "ssn":         (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+                    "SSN"),
+    "email":       (re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),
+                    "EMAIL"),
+    "credit_card": (re.compile(r"\b(?:\d[ \-]?){13,16}\b"),
+                    "CC"),
+    "phone":       (re.compile(r"\b\(?\d{3}\)?[\-.\s]?\d{3}[\-.\s]?\d{4}\b"),
+                    "PHONE"),
+}
+
+
+@dataclass
+class RedactionResult:
+    """
+    Result of a :func:`redact_pii` call.
+
+    Attributes:
+        text:       The input string with matched PII spans replaced by
+                    ``[VANTIO_REDACTED:LABEL]`` tokens.
+        redactions: The PII category name for each redacted span, one entry
+                    per replacement, in the order they appear in *text*.
+                    Empty when no PII was found.
+    """
+    text: str
+    redactions: List[str]
+
+
+def redact_pii(
+    text: str,
+    pii_types: Optional[List[str]] = None,
+) -> RedactionResult:
+    """
+    Locally redact PII from *text* using the same patterns as the CLI
+    interceptor and the Node.js SDK (``redactPII``).
+
+    Replaces matches with ``[VANTIO_REDACTED:LABEL]``. Pure and
+    side-effect-free — no content ever leaves the process.
+
+    Mirrors ``redactPII()`` in ``@vantio/agent-sdk``.
+
+    Args:
+        text:      The string to scan and redact.
+        pii_types: PII categories to check. Defaults to all four built-in
+                   categories: ``["ssn", "email", "credit_card", "phone"]``.
+                   Values are normalised to lowercase before lookup, so
+                   ``"EMAIL"`` and ``"email"`` are equivalent.
+
+    Returns:
+        A :class:`RedactionResult` with ``.text`` (redacted string) and
+        ``.redactions`` (list of matched category names).
+
+    Example::
+
+        from vantio import redact_pii
+
+        result = redact_pii("Contact bob@example.com or call 555-123-4567")
+        # result.text       → "Contact [VANTIO_REDACTED:EMAIL] or call [VANTIO_REDACTED:PHONE]"
+        # result.redactions → ["email", "phone"]
+    """
+    if pii_types is None:
+        pii_types = ["ssn", "email", "credit_card", "phone"]
+    if not isinstance(text, str):
+        return RedactionResult(text=text, redactions=[])
+
+    out = text
+    redactions: List[str] = []
+
+    for typ in pii_types:
+        key = typ.strip().lower() if isinstance(typ, str) else str(typ)
+        entry = _PY_PII_PATTERNS.get(key)
+        if not entry:
+            continue
+        pattern, label = entry
+        new_out, count = pattern.subn(f"[VANTIO_REDACTED:{label}]", out)
+        if count > 0:
+            redactions.extend([key] * count)
+            out = new_out
+
+    return RedactionResult(text=out, redactions=redactions)

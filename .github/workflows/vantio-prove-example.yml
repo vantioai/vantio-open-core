@@ -1,0 +1,17 @@
+name: Vantio Prove (example)
+
+# Example consumer of the composite action. Enable on your app repos by
+# copying .github/actions/vantio-prove or depending on this org action pattern.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate proof
+        uses: ./.github/actions/vantio-prove
+        with:
+          format: md
+          output-path: artifacts/vantio-proof.md

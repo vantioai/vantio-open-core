@@ -1,0 +1,15 @@
+# Wrap any Node agent image with Vantio Optics (Sight Loop observe).
+# Build: docker build -f deploy/docker/Dockerfile.observe -t my-agent:optics .
+# Run:   docker run --rm -v vantio-runs:/root/.vantio/runs my-agent:optics
+ARG BASE_IMAGE=node:22-bookworm-slim
+FROM ${BASE_IMAGE}
+
+RUN npm install -g @vantio/cli@^0.3.1
+
+WORKDIR /app
+COPY . /app
+
+# Default: observe the package start script. Override CMD as needed.
+ENV VANTIO_OBSERVE=1
+ENTRYPOINT ["vantio", "run"]
+CMD ["npm", "start"]

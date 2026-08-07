@@ -1,0 +1,47 @@
+{
+  "name": "@vantio/optics-mcp",
+  "version": "0.1.1",
+  "mcpName": "io.github.vantioai/vantio-optics",
+  "description": "Vantio Optics MCP — read-only observe/explain for AI agents. Sight Loop via Model Context Protocol. Upgrade path to Gate and Phantom Engine.",
+  "license": "MIT",
+  "author": "Vantio AI, Inc.",
+  "homepage": "https://vantio.ai/optics",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vantioai/vantio-open-core.git",
+    "directory": "packages/vantio-optics-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/vantioai/vantio-open-core/issues"
+  },
+  "keywords": [
+    "vantio",
+    "optics",
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "governance",
+    "observability"
+  ],
+  "type": "module",
+  "bin": {
+    "vantio-optics-mcp": "bin/vantio-optics-mcp.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node bin/vantio-optics-mcp.js",
+    "lint": "node --check bin/vantio-optics-mcp.js && node --check src/runs.js && node --check src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  }
+}

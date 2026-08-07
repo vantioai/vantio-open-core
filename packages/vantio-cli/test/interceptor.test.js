@@ -191,4 +191,107 @@ describe("interceptor.cjs (integration)", () => {
     assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
     assert.equal(requests.ingest.length, 0);
   });
+
+  test("PAID_MODE, enforce=true + max_request_bytes: oversized request is blocked", async () => {
+    configPolicy.enforce = true;
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.max_request_bytes = 10; // tiny cap — FETCH_ONCE_SCRIPT body >> 10 bytes
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 403, "oversized request must be blocked with 403");
+    assert.match(result.body, /request_too_large/);
+
+    assert.equal(requests.target.length, 0, "blocked request must never reach the target");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_SIZE");
+  });
+
+  test("PAID_MODE, enforce=true + spend_cap_usd: second call blocked after cap exceeded", async () => {
+    // Set an impossibly small cap so it's exceeded by any call.
+    // The mock server responds with a content-length so spend accounting is synchronous.
+    configPolicy.enforce = true;
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.spend_cap_usd = 0.000001; // sub-micro cap: any response exceeds it
+
+    // Two sequential fetches in the same process — first succeeds, second is blocked.
+    const TWO_CALLS_SCRIPT = `
+(async () => {
+  const r1 = await fetch(process.env.TARGET_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ msg: "first call" }),
+  });
+  const t1 = await r1.text();
+  const r2 = await fetch(process.env.TARGET_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ msg: "second call" }),
+  });
+  const t2 = await r2.text();
+  process.stdout.write(JSON.stringify({ s1: r1.status, s2: r2.status, b2: t2 }) + "\\n");
+})();
+`;
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      TWO_CALLS_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.s1, 200, "first call must succeed");
+    assert.equal(result.s2, 403, "second call must be blocked once spend cap is reached");
+    assert.match(result.b2, /spend_cap_reached/);
+
+    const spendBlocks = requests.ingest.filter(
+      (r) => r.body?.eventPayload?.action_taken === "BLOCKED_SPEND"
+    );
+    assert.equal(spendBlocks.length, 1, "exactly one BLOCKED_SPEND event must be reported");
+  });
+
+  test("PAID_MODE, dry_run=true + blocked_hosts: call is allowed through and DRY_RUN event reported", async () => {
+    // dry_run=true + enforce=true: the interceptor must LOG the would-be block
+    // and report a DRY_RUN_BLOCKED_HOST event, but NOT return a 403.
+    configPolicy.enforce = true;
+    configPolicy.dry_run = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout, stderr } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    // Call must go through (no 403) because dry_run=true
+    assert.equal(result.status, 200, "dry_run must not block the call");
+    assert.equal(requests.target.length, 1, "target must receive the call in dry_run mode");
+
+    // Stderr must mention DRY_RUN
+    assert.match(stderr, /DRY_RUN/);
+
+    // Ingest must carry a DRY_RUN_BLOCKED_HOST event
+    const dryRunEvents = requests.ingest.filter(
+      (r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_HOST"
+    );
+    assert.equal(dryRunEvents.length, 1, "exactly one DRY_RUN_BLOCKED_HOST event must be reported");
+  });
+
+  test("PAID_MODE, dry_run=true + max_request_bytes: oversized call allowed, DRY_RUN_BLOCKED_SIZE reported", async () => {
+    configPolicy.enforce = true;
+    configPolicy.dry_run = true;
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.max_request_bytes = 10; // smaller than FETCH_ONCE_SCRIPT body
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 200, "dry_run must not block oversized request");
+
+    const sizeEvents = requests.ingest.filter(
+      (r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_SIZE"
+    );
+    assert.equal(sizeEvents.length, 1, "exactly one DRY_RUN_BLOCKED_SIZE event must be reported");
+  });
 });

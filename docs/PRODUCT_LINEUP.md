@@ -1,53 +1,55 @@
 # Vantio — Governance Platform: Tier Feature Unlock
 
-> Same platform. Higher tiers unlock more governance control.
-> This is the canonical tier model. All READMEs, docs, and dashboard copy derive from this file.
+> Same platform. Higher tiers unlock more governance control — and close residual risk.  
+> **Vantio Optics** (Free) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
 
 ---
 
 ## The governance unlock ladder
 
-Vantio is **one platform** with a layered governance architecture. Each tier unlocks the next control plane — you don't swap products, you gain more enforcement authority.
-
 ```
-Tier 1 · Free / Open Core ────── unlocks ► Observe
-Tier 2 · Pro ─────────────────── unlocks ► + Enforce   (includes Tier 1)
-Tier 3 · Enterprise ───────────── unlocks ► + Absolute Control   (includes Tier 1 + 2)
+Tier 1 · Free / Vantio Optics ── unlocks ► Observe (Sight Loop)
+                                residual ► no block; silent ungoverned paths
+Tier 2 · Pro / Vantio Gate ───── unlocks ► + Enforce (Policy Latch)
+                                residual ► SDK omission · raw sockets · fork escape
+Tier 3 · Enterprise / Phantom ─ unlocks ► + Absolute Control (Rogue Reconciliation)
+                                closes   ► kernel + bypass indicators + ledger
 ```
 
-Enterprise = all three feature layers active simultaneously. The Mission Control dashboard shows all three columns because all three governance layers are running — not because three products compete to claim the event.
+**Enterprise wedge:** correlated Observe + Enforce + kernel with bypass indicators — not “we also have eBPF.”
 
 | Tier | Unlocks | What you see in data |
 |------|---------|----------------------|
-| **Free · Open Core** | **Observe** — governance visibility | ALLOWED / observed events for every LLM/agent call |
-| **Pro** | **+ Enforce** — block, redact, caps | Enforce column: governance actions Pro enables |
-| **Enterprise** | **+ Absolute Control** — Phantom Engine kernel eBPF | Full stack: Observe + Enforce + kernel-decisive events |
+| **Free · Vantio Optics** | **Observe** · Sight Loop | `OBSERVED` (no enforce) |
+| **Pro · Vantio Gate** | **+ Enforce** · Policy Latch | Blocks, redactions, caps · `ALLOWED` / `BLOCKED` / `REDACTED` |
+| **Enterprise · Phantom Engine** | **+ Absolute Control** · Rogue Reconciliation | Full stack + `BYPASS_INDICATOR` when layers diverge |
 
 ---
 
 ## Feature layers
 
-### Observe · Open Core (Free tier)
-- The base governance layer — no paid account required to start
-- Intercepts every outbound LLM call; no code changes needed
+### Observe · Vantio Optics (Free tier)
+- The base observe plane — no paid account required
+- Intercepts outbound LLM calls; no code changes needed
 - Captures: endpoint, response size, process ID, trace ID — no content, no prompts
-- Does **not** block or redact — those require the Enforce layer (Pro)
+- Does **not** block or redact — **observe only** ([fence](./observe-only.md))
+- Workflow: **Sight Loop**
 - SDK: `@vantio/agent-sdk` (Node.js), `vantio-agent-sdk` (Python)
 
-### Enforce · Pro (Pro tier unlocks)
+### Enforce · Vantio Gate (Pro tier unlocks)
 - Activates the policy enforcement control plane
 - Unlocks: block by hostname, PII redaction, spend/size caps
-- Policy lives in the Pro control plane; enforcement runs in the Open Core client interceptor
+- Policy lives in the Gate control plane; enforcement runs in the Optics client interceptor
+- Workflow: **Policy Latch**
 - Dashboard Enforce column shows what the Pro tier's governance actions prevented
 - API: `GET /api/v1/config` (policy fetch), `POST /api/v1/ingest` (telemetry)
 
-### Absolute Control · Phantom Engine (Enterprise tier unlocks)
-- Kernel enforcement layer — deployed as Linux daemon or Kubernetes DaemonSet
-- eBPF uprobes on TLS libraries (`SSL_write`, `gnutls_record_send`) at Ring-0
-- Enforcement is inescapable: sits beneath the application layer, below any bypass
-- Fork inheritance: child processes cannot escape trace context
-- Adds the unbypassable kernel guarantee beneath the Pro HTTP contract
-- Enterprise includes all lower tiers: Observe + Enforce + Absolute Control all active
+### Absolute Control · Vantio Phantom Engine (Enterprise tier unlocks)
+- Closes Gate residual risk with correlated kernel evidence + Rogue Reconciliation
+- eBPF TLS observe, fork inheritance, CIDR / enrolled-cgroup policy
+- Kernel transmission with no app-layer record → BYPASS_INDICATOR
+- Does not replace Pro — Enterprise runs Observe + Enforce + Absolute Control together
+- Proof pack: `vantio-phantom-engine/docs/enterprise/`
 
 ---
 
@@ -71,9 +73,9 @@ Enterprise = all three feature layers active simultaneously. The Mission Control
 
 | Repo | Layer | Role |
 |------|-------|------|
-| [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Observe** | Free-tier governance visibility; the client that runs in every tier |
-| [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Enforce** | Pro-tier policy control plane; tells Open Core what to enforce |
-| [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Absolute Control** | Enterprise-tier kernel layer; the inescapable enforcement guarantee |
+| [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Vantio Optics** · Observe | Free-tier visibility; client at every tier |
+| [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Vantio Gate** · Enforce | Pro policy control plane |
+| [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Vantio Phantom Engine** · Absolute Control | Enterprise Ring-0 plane |
 
 ---
 

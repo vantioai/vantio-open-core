@@ -7,20 +7,40 @@ packages = ["vantio"]
 
 [project]
 name = "vantio-agent-sdk"
-version = "3.0.0"
-description = "[ ∅ VANTIO ] Python agent SDK — SDK-side AI governance: shield(), report_anomaly(), opt-out telemetry"
+version = "3.0.1"
+description = "Vantio Optics Python SDK — shield() for Sight Loop observe. Metadata only; no prompts."
 readme = "README.md"
 license = { text = "MIT" }
+authors = [{ name = "Vantio AI, Inc.", email = "hello@vantio.ai" }]
 requires-python = ">=3.10"
-keywords = ["vantio", "ai", "governance", "security", "ebpf", "tracing"]
+keywords = [
+  "vantio",
+  "vantio-optics",
+  "optics",
+  "sight-loop",
+  "ai",
+  "agent",
+  "governance",
+  "observability",
+  "security",
+  "tracing",
+]
 classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 [project.urls]
-Homepage   = "https://vantio.ai"
+Homepage = "https://vantio.ai"
+Optics = "https://vantio.ai/optics"
+Pricing = "https://vantio.ai/pricing"
 Repository = "https://github.com/vantioai/vantio-open-core"
+Issues = "https://github.com/vantioai/vantio-open-core/issues"
+Documentation = "https://vantio.ai/optics"

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node integrations/hooks/lib/maybe-vantio-run.mjs"
+          }
+        ]
+      }
+    ]
+  },
+  "_comment": "Merge into Claude Code settings. Prefer documenting vantio run in CLAUDE.md for agents that spawn Node processes."
+}

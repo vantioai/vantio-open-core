@@ -1,0 +1,45 @@
+name: Publish to MCP Registry
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/vantio-optics-mcp/**"
+      - "packages/vantio-gate-mcp/**"
+      - ".github/workflows/mcp-registry-publish.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish MCP registry metadata
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - vantio-optics-mcp
+          - vantio-gate-mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          sudo mv mcp-publisher /usr/local/bin/
+
+      - name: Authenticate (GitHub OIDC)
+        run: mcp-publisher login github-oidc
+
+      - name: Validate server.json
+        working-directory: packages/${{ matrix.package }}
+        run: mcp-publisher validate
+
+      - name: Publish to MCP Registry
+        working-directory: packages/${{ matrix.package }}
+        run: mcp-publisher publish

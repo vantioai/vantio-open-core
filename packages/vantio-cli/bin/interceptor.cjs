@@ -16,6 +16,9 @@
 "use strict";
 
 const { randomUUID } = require("node:crypto");
+const { mkdirSync, writeFileSync } = require("node:fs");
+const { homedir, hostname: osHostname } = require("node:os");
+const { join } = require("node:path");
 
 const USE_COLOR = process.stderr.isTTY === true;
 const c = {
@@ -38,6 +41,8 @@ const RUN_TRACE_ID = process.env.VANTIO_TRACE_ID || randomUUID();
 // Explicit phantom-box soak only — do NOT infer from localhost (breaks unit tests
 // that spin up ephemeral mock control planes on 127.0.0.1).
 const SOAK_LOCAL = process.env.VANTIO_SOAK_LOCAL === "1";
+// Local Gate control plane (Phantom-Box / dogfood) — never upsell Optics-only.
+const LOCAL_GATE = SOAK_LOCAL || /:5001\/?$/.test(String(INGEST_URL || ""));
 
 // ── Lane 1 anonymous telemetry (optional, fire-and-forget) ───────────────────
 // Loaded defensively so a missing/broken telemetry module can never break the
@@ -75,6 +80,79 @@ for (const h of String(process.env.VANTIO_EXTRA_LLM_HOSTS || "").split(",")) {
   if (t) LLM_HOSTS.add(t);
 }
 
+/** Map hostname → coarse provider id for developer dashboards (never content). */
+function guessProvider(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  if (!h) return "unknown";
+  if (h.includes("openai") || h === "api.openai.com") return "openai";
+  if (h.includes("anthropic")) return "anthropic";
+  if (h.includes("googleapis") || h.includes("generativelanguage")) return "google";
+  if (h.includes("cohere")) return "cohere";
+  if (h.includes("mistral")) return "mistral";
+  if (h.includes("groq")) return "groq";
+  if (h.includes("together")) return "together";
+  if (h.includes("perplexity")) return "perplexity";
+  if (h.includes("azure") || h.includes("openai.azure")) return "azure_openai";
+  if (h.includes("localhost") || h.startsWith("127.")) return "local";
+  return "other";
+}
+
+/** Safe URL metadata — path only, never query string (may contain keys). */
+function extractRequestMeta(input, init) {
+  let href = "";
+  let method = (init && init.method) || "GET";
+  try {
+    if (typeof input === "string") href = input;
+    else if (input instanceof URL) href = input.href;
+    else if (typeof Request !== "undefined" && input instanceof Request) {
+      href = input.url;
+      method = init?.method || input.method || method;
+    } else if (input && input.url) href = input.url;
+  } catch {
+    href = "";
+  }
+  let path = "/";
+  let scheme = "https";
+  try {
+    const u = new URL(href);
+    path = u.pathname || "/";
+    scheme = u.protocol.replace(":", "") || "https";
+  } catch {
+    /* keep defaults */
+  }
+  let request_bytes = null;
+  try {
+    const body = init && init.body;
+    if (typeof body === "string") request_bytes = Buffer.byteLength(body);
+    else if (Buffer.isBuffer(body)) request_bytes = body.length;
+    else if (body instanceof Uint8Array) request_bytes = body.byteLength;
+  } catch {
+    request_bytes = null;
+  }
+  return {
+    method: String(method || "GET").toUpperCase(),
+    path,
+    scheme,
+    request_bytes,
+  };
+}
+
+function responseMeta(response) {
+  if (!response) {
+    return { status: null, ok: null, content_type: null, bytes: null };
+  }
+  const cl = response.headers?.get?.("content-length");
+  const bytes = cl != null && cl !== "" ? parseInt(cl, 10) || 0 : null;
+  const ctRaw = response.headers?.get?.("content-type") || "";
+  const content_type = ctRaw.split(";")[0].trim() || null;
+  return {
+    status: typeof response.status === "number" ? response.status : null,
+    ok: typeof response.ok === "boolean" ? response.ok : null,
+    content_type,
+    bytes,
+  };
+}
+
 // ── Default policy (fail-open until cloud policy loads) ──────────────────────
 const DEFAULT_POLICY = {
   enforce:           false,
@@ -84,6 +162,7 @@ const DEFAULT_POLICY = {
   blocked_hosts:     [],
   max_request_bytes: 0,       // 0 = no limit
   spend_cap_usd:     0,       // 0 = no cap
+  dry_run:           false,   // when true: log enforcement decisions without blocking
 };
 
 let policy = { ...DEFAULT_POLICY };
@@ -127,6 +206,7 @@ function normalizePolicy(raw) {
     blocked_hosts:     asStrArray(p.blocked_hosts, DEFAULT_POLICY.blocked_hosts),
     max_request_bytes: asNonNegNum(p.max_request_bytes, DEFAULT_POLICY.max_request_bytes),
     spend_cap_usd:     asNonNegNum(p.spend_cap_usd, DEFAULT_POLICY.spend_cap_usd),
+    dry_run:           asBool(p.dry_run, DEFAULT_POLICY.dry_run),
   };
 }
 
@@ -175,9 +255,13 @@ const policyReady = (async () => {
         cloudSyncActive = isPaidTier(data.tier) || SOAK_LOCAL;
         log(`${c.dim}[ ∅ VANTIO ]${c.reset} Policy loaded — enforce=${policy.enforce}, redact=${policy.redact_pii}`);
         if (!cloudSyncActive) {
-          log(`${c.dim}[ ∅ VANTIO ] Free plan — calls observed locally only. Dashboard sync requires Pro or Enterprise (vantio.ai/pricing).${c.reset}`);
+          log(
+            LOCAL_GATE
+              ? `${c.dim}[ ∅ VANTIO ] Local Gate — events sync to the on-box control plane (${INGEST_URL}).${c.reset}`
+              : `${c.dim}[ ∅ VANTIO ] Free plan — calls observed locally only. Dashboard sync requires Pro or Enterprise (vantio.ai/pricing).${c.reset}`
+          );
         } else if (SOAK_LOCAL) {
-          log(`${c.dim}[ ∅ VANTIO ] Soak-local mode — syncing events to ${INGEST_URL}${c.reset}`);
+          log(`${c.dim}[ ∅ VANTIO ] Local Gate mode — syncing events to ${INGEST_URL}${c.reset}`);
         }
       }
     }
@@ -259,14 +343,22 @@ function unscannableBodyLabel(body) {
   return null;
 }
 
+// Maximum bytes we will buffer from a ReadableStream to scan for PII.
+// Requests larger than this threshold pass through unscanned rather than being
+// held in memory, preserving back-pressure for true streaming workloads.
+const MAX_STREAM_SCAN_BYTES = 64 * 1024; // 64 KB
+
 // Redact a concrete request body value, preserving its original type.
 // Returns { value, bytes, redactions, replaced, unscanned }:
 //   - string / URLSearchParams / Uint8Array / Buffer / ArrayBuffer → decoded to
 //     text, redacted, and re-encoded to the same type. `replaced` is true when
 //     any redaction happened (so the caller knows to swap the body).
-//   - ReadableStream / FormData / Blob → not scanned; `unscanned` is its label.
+//   - ReadableStream ≤ 64 KB → tee'd, buffered, scanned; redacted copy returned
+//     as Uint8Array when PII found, pass-through branch returned unchanged when not.
+//   - ReadableStream > 64 KB / FormData / Blob → not scanned; `unscanned` is its label.
 // Never throws — on any unexpected shape it returns the body unchanged.
-function redactRequestBody(body) {
+// This function is async because ReadableStream buffering requires awaiting reads.
+async function redactRequestBody(body) {
   const none = { value: body, bytes: 0, redactions: [], replaced: false, unscanned: null };
   if (body == null) return none;
 
@@ -299,6 +391,54 @@ function redactRequestBody(body) {
     return { value: r.redactions.length > 0 ? ab : body, bytes: buf.length, redactions: r.redactions, replaced: r.redactions.length > 0, unscanned: null };
   }
 
+  // ── ReadableStream: tee + buffer up to MAX_STREAM_SCAN_BYTES ─────────────
+  // We tee the stream so the pass-through branch (b) always carries the full
+  // original content. The scan branch (a) is read until we confirm the body
+  // fits within the scan window. If PII is found we return the redacted text as
+  // a Uint8Array (the stream was small enough that buffering is safe). If no PII
+  // is found we return the pass-through branch so the network call is unaffected.
+  // Streams larger than the threshold fall back to unscanned — no bytes consumed
+  // on the pass-through branch, preserving back-pressure.
+  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) {
+    try {
+      const [scanBranch, passBranch] = body.tee();
+      const reader = scanBranch.getReader();
+      const chunks = [];
+      let total = 0;
+      let oversized = false;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const n = value ? (value.byteLength != null ? value.byteLength : value.length || 0) : 0;
+        total += n;
+        if (total > MAX_STREAM_SCAN_BYTES) { oversized = true; break; }
+        if (value) chunks.push(value);
+      }
+      // Release our scan reader regardless of outcome so GC can clean up.
+      try { reader.cancel(); } catch { /* ignore */ }
+
+      if (!oversized) {
+        // Full body fits — scan and optionally redact.
+        const all = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+        const text = all.toString("utf8");
+        const r = redactBody(text);
+        if (r.redactions.length > 0) {
+          // PII found: return the redacted content as a Uint8Array so the
+          // caller can substitute it for the original stream.
+          const buf = Buffer.from(r.text, "utf8");
+          return { value: new Uint8Array(buf), bytes: buf.length, redactions: r.redactions, replaced: true, unscanned: null };
+        }
+        // No PII: use the pass-through branch (original content, no latency).
+        return { value: passBranch, bytes: total, redactions: [], replaced: false, unscanned: null };
+      }
+      // Oversized — use pass-through branch unmodified; log as unscanned.
+      return { value: passBranch, bytes: 0, redactions: [], replaced: false, unscanned: "ReadableStream" };
+    } catch {
+      // tee() / read failed (e.g. stream already locked) — fall through below.
+    }
+    return { value: body, bytes: 0, redactions: [], replaced: false, unscanned: "ReadableStream" };
+  }
+
   const label = unscannableBodyLabel(body);
   if (label) return { value: body, bytes: 0, redactions: [], replaced: false, unscanned: label };
 
@@ -315,6 +455,14 @@ function blockedResponse(reason) {
 
 function report(metadata) {
   if (FREE_MODE || !INGEST_URL || !cloudSyncActive) return;
+  // Additive Optics Sight Loop fields — Gate stores opaque JSON; PE joins on traceId.
+  const host = metadata && metadata.target_host;
+  const eventPayload = {
+    ...metadata,
+    provider: metadata.provider || (host ? guessProvider(host) : undefined),
+    mediation: metadata.mediation || "sight_loop",
+    plane: metadata.plane || "optics_gate",
+  };
   void _originalFetch.call(globalThis, `${INGEST_URL}/api/v1/ingest`, {
     method: "POST",
     headers: {
@@ -325,7 +473,7 @@ function report(metadata) {
     body: JSON.stringify({
       traceId:   RUN_TRACE_ID,
       auditMode: AUDIT_MODE,
-      eventPayload: metadata,
+      eventPayload,
     }),
     signal: AbortSignal.timeout(5000),
   }).catch(() => {});
@@ -432,14 +580,34 @@ function blockSpend(hostname) {
 // { blocked:false, input, init, reqBytes, redactions } describing the
 // (possibly redacted) request to send. Pure decision logic — any throw here is
 // caught by the caller and fails OPEN.
+//
+// dry_run mode: when policy.dry_run=true, enforcement decisions are logged and
+// reported as DRY_RUN_* events but the call is never blocked. Use this to
+// validate a new policy against live traffic before enabling hard enforcement.
 async function enforceRequest(hostname, input, init) {
   // 1. Host allow/block policy. blocked_hosts blocks ANY in-scope host; a
   //    non-empty allow-list blocks any in-scope host not on it. (Out-of-scope
   //    hosts never reach here — they pass through before enforcement.)
   if (policy.enforce) {
-    if (policy.blocked_hosts.includes(hostname)) return blockHost(hostname);
-    if (policy.allowed_hosts.length > 0 && !policy.allowed_hosts.includes(hostname)) {
-      return blockHost(hostname);
+    if (policy.blocked_hosts.includes(hostname)) {
+      if (policy.dry_run) {
+        _calls.push({ hostname, action: "DRY_RUN_BLOCKED_HOST" });
+        log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (host_not_permitted); dry_run=true passes through`);
+        report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
+                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+        // Fall through — allow call in dry_run mode
+      } else {
+        return blockHost(hostname);
+      }
+    } else if (policy.allowed_hosts.length > 0 && !policy.allowed_hosts.includes(hostname)) {
+      if (policy.dry_run) {
+        _calls.push({ hostname, action: "DRY_RUN_BLOCKED_HOST" });
+        log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (not_in_allowed_hosts); dry_run=true passes through`);
+        report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
+                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+      } else {
+        return blockHost(hostname);
+      }
     }
   }
 
@@ -450,11 +618,18 @@ async function enforceRequest(hostname, input, init) {
   let newInit = init;
 
   if (init && init.body != null) {
-    const r = redactRequestBody(init.body);
+    const r = await redactRequestBody(init.body);
     reqBytes = r.bytes;
     redactions = r.redactions;
     if (r.unscanned) {
       log(`${c.dim}[ ∅ VANTIO ] ${hostname} — ${r.unscanned} request body not scanned for PII (passed through)${c.reset}`);
+      // Emit enforcement gap: Pro cannot redact streaming/opaque bodies.
+      // These events feed /api/v1/residual-risk and surface the Enterprise upgrade path.
+      if (policy.redact_pii) {
+        report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
+                 gap_type: "unscanned_body", body_type: r.unscanned,
+                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+      }
     } else if (r.replaced) {
       newInit = { ...init, body: r.value };
     }
@@ -477,17 +652,36 @@ async function enforceRequest(hostname, input, init) {
     } else if (input.body) {
       // A streaming body on the Request that text() could not materialize.
       log(`${c.dim}[ ∅ VANTIO ] ${hostname} — streaming request body not scanned for PII (passed through)${c.reset}`);
+      if (policy.redact_pii) {
+        report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
+                 gap_type: "unscanned_body", body_type: "ReadableStream",
+                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+      }
     }
   }
 
   // 3. Request size policy
   if (policy.enforce && policy.max_request_bytes > 0 && reqBytes > policy.max_request_bytes) {
-    return blockSize(hostname, reqBytes);
+    if (policy.dry_run) {
+      _calls.push({ hostname, action: "DRY_RUN_BLOCKED_SIZE" });
+      log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (${reqBytes}B > cap ${policy.max_request_bytes}B); dry_run=true passes through`);
+      report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SIZE",
+               timestamp_ns: Date.now() * 1e6, bytes_severed: reqBytes });
+    } else {
+      return blockSize(hostname, reqBytes);
+    }
   }
 
   // 4. Spend cap policy
   if (policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
-    return blockSpend(hostname);
+    if (policy.dry_run) {
+      _calls.push({ hostname, action: "DRY_RUN_BLOCKED_SPEND" });
+      log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (spend cap $${policy.spend_cap_usd} reached); dry_run=true passes through`);
+      report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SPEND",
+               timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+    } else {
+      return blockSpend(hostname);
+    }
   }
 
   return { blocked: false, input: newInput, init: newInit, reqBytes, redactions };
@@ -525,18 +719,77 @@ globalThis.fetch = async function vantioFetch(input, init) {
 
   // ── FREE TIER — observe only ────────────────────────────────────────────────
   if (FREE_MODE) {
-    const response = await _originalFetch.call(this, input, init);
-    const bytes = parseInt(response.headers.get("content-length") || "0", 10) || null;
+    const reqMeta = extractRequestMeta(input, init);
+    const provider = guessProvider(hostname);
+    const t0 = Date.now();
+    let response;
+    try {
+      response = await _originalFetch.call(this, input, init);
+    } catch (err) {
+      const ts = new Date().toISOString();
+      const duration_ms = Date.now() - t0;
+      _calls.push({
+        hostname,
+        provider,
+        method: reqMeta.method,
+        path: reqMeta.path,
+        scheme: reqMeta.scheme,
+        request_bytes: reqMeta.request_bytes,
+        bytes: null,
+        status: null,
+        ok: false,
+        content_type: null,
+        duration_ms,
+        ts,
+        action: "OBSERVED",
+        error_class: err && err.name ? String(err.name) : "Error",
+        error: "network_error",
+      });
+      log([
+        "",
+        `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.red}Outbound LLM call failed${c.reset}`,
+        `  host:     ${c.cyan}${hostname}${c.reset}`,
+        `  provider: ${provider}`,
+        `  method:   ${reqMeta.method} ${reqMeta.path}`,
+        `  error:    ${err && err.name ? err.name : "Error"}`,
+        `  duration: ${duration_ms}ms`,
+        `  pid:      ${process.pid}`,
+        `  time:     ${ts}`,
+      ].join("\n"));
+      throw err;
+    }
+    const resp = responseMeta(response);
+    const duration_ms = Date.now() - t0;
     const ts = new Date().toISOString();
-    _calls.push({ hostname, bytes, ts, action: "OBSERVED" });
+    _calls.push({
+      hostname,
+      provider,
+      method: reqMeta.method,
+      path: reqMeta.path,
+      scheme: reqMeta.scheme,
+      request_bytes: reqMeta.request_bytes,
+      bytes: resp.bytes,
+      status: resp.status,
+      ok: resp.ok,
+      content_type: resp.content_type,
+      duration_ms,
+      ts,
+      action: "OBSERVED",
+    });
     log([
       "",
       `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.yellow}Outbound LLM call intercepted${c.reset}`,
-      `  host:    ${c.cyan}${hostname}${c.reset}`,
-      `  pid:     ${process.pid}`,
-      `  bytes:   ${bytes != null ? bytes.toLocaleString() : "unknown"}`,
-      `  time:    ${ts}`,
-      `  ${c.dim}→ Run \`vantio login\` to enforce policy and route events to your dashboard.${c.reset}`,
+      `  host:     ${c.cyan}${hostname}${c.reset}`,
+      `  provider: ${provider}`,
+      `  method:   ${reqMeta.method} ${reqMeta.path}`,
+      `  status:   ${resp.status != null ? resp.status : "unknown"}`,
+      `  duration: ${duration_ms}ms`,
+      `  bytes:    ${resp.bytes != null ? resp.bytes.toLocaleString() : "unknown"}`,
+      `  pid:      ${process.pid}`,
+      `  time:     ${ts}`,
+      LOCAL_GATE
+        ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
+        : `  ${c.dim}→ Optics data log (your machine). See docs/sight-loop.md · Gate enforces on this path.${c.reset}`,
     ].join("\n"));
     return response;
   }
@@ -558,13 +811,32 @@ globalThis.fetch = async function vantioFetch(input, init) {
 
   // Make the (possibly redacted) call. A rejection here is the agent's own
   // network error and propagates unchanged.
+  const t0 = Date.now();
   const response = await _originalFetch.call(this, plan.input, plan.init);
+  const duration_ms = Math.max(0, Date.now() - t0);
 
   // Post-call accounting + reporting — guarded so a metering error never
   // surfaces to the agent, which already holds a valid response.
   try {
     const action = plan.redactions.length > 0 ? "REDACTED" : "ALLOWED";
-    const callRec = { hostname, bytes: 0, action, redactions: plan.redactions.length };
+    const reqMeta = extractRequestMeta(plan.input, plan.init);
+    const resp = responseMeta(response);
+    const callRec = {
+      hostname,
+      provider: guessProvider(hostname),
+      method: reqMeta.method,
+      path: reqMeta.path,
+      scheme: reqMeta.scheme,
+      request_bytes: plan.reqBytes || reqMeta.request_bytes,
+      bytes: 0,
+      status: resp.status,
+      ok: resp.ok,
+      content_type: resp.content_type,
+      duration_ms,
+      action,
+      redactions: plan.redactions.length,
+      ts: new Date().toISOString(),
+    };
     _calls.push(callRec);
 
     const len = response.headers.get("content-length");
@@ -582,8 +854,21 @@ globalThis.fetch = async function vantioFetch(input, init) {
     if (plan.redactions.length > 0) {
       log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — stripped ${plan.redactions.length} PII item(s): ${plan.redactions.join(", ")}`);
     }
-    report({ target_host: hostname, pid: process.pid, action_taken: action,
-             timestamp_ns: Date.now() * 1e6, bytes_severed: callRec.bytes });
+    report({
+      target_host: hostname,
+      pid: process.pid,
+      action_taken: action,
+      timestamp_ns: Date.now() * 1e6,
+      bytes_severed: callRec.bytes,
+      provider: callRec.provider,
+      method: callRec.method,
+      path: callRec.path,
+      status: callRec.status,
+      content_type: callRec.content_type,
+      request_bytes: callRec.request_bytes,
+      duration_ms: callRec.duration_ms,
+      ok: callRec.ok,
+    });
   } catch {
     // Accounting/reporting must never break the agent's call.
   }
@@ -598,16 +883,102 @@ process.on("exit", () => {
   const hosts      = [...new Set(_calls.map((x) => x.hostname))];
   const redacted   = _calls.filter((x) => x.action === "REDACTED").length;
   const blocked    = _calls.filter((x) => String(x.action).startsWith("BLOCKED")).length;
+  const now        = Date.now();
+  const totalBytes = _calls.reduce((a, x) => a + (x.bytes || 0), 0);
 
   // NOTE: anonymous Lane 1 usage telemetry is NOT sent here. A fetch scheduled
   // inside a process "exit" handler never flushes (the event loop is already
   // draining), so the ping is emitted once on the first intercepted call via
   // sendRunTelemetryOnce() instead. This handler only prints the local summary.
 
+  // ── Write a local run log for `vantio prove` / `vantio discover --local` ──
+  // Always written when LLM calls were observed, regardless of tier or SUMMARY
+  // flag. Non-fatal — run log write must never crash the agent exit.
+  try {
+    const vantioHome = process.env.VANTIO_HOME || join(homedir(), ".vantio");
+    const runsDir = join(vantioHome, "runs");
+    mkdirSync(runsDir, { recursive: true, mode: 0o700 });
+    const machineHost = (() => { try { return osHostname(); } catch { return "unknown"; } })();
+    const providers = [...new Set(_calls.map((x) => x.provider).filter(Boolean))];
+    const errors = _calls.filter((x) => x.error || x.ok === false).length;
+    const by_host = {};
+    const by_provider = {};
+    for (const call of _calls) {
+      const h = call.hostname || "unknown";
+      const p = call.provider || "unknown";
+      by_host[h] = by_host[h] || { calls: 0, bytes: 0, errors: 0 };
+      by_host[h].calls += 1;
+      by_host[h].bytes += call.bytes || 0;
+      if (call.error || call.ok === false) by_host[h].errors += 1;
+      by_provider[p] = by_provider[p] || { calls: 0, bytes: 0 };
+      by_provider[p].calls += 1;
+      by_provider[p].bytes += call.bytes || 0;
+    }
+    const log = {
+      vantio_run_log: "1",
+      schema_version: 2,
+      plane: "optics",
+      workflow: "sight_loop",
+      data_note: "Developer egress data log — metadata only; never prompts or completions.",
+      trace_id:    RUN_TRACE_ID,
+      pid:         process.pid,
+      ppid:        typeof process.ppid === "number" ? process.ppid : null,
+      node_version: process.version,
+      platform:    process.platform,
+      arch:        process.arch,
+      cwd:         (() => { try { return process.cwd(); } catch { return null; } })(),
+      machine:     machineHost,
+      started_at:  new Date(_startMs).toISOString(),
+      generated_at: new Date(now).toISOString(),
+      duration_ms: now - _startMs,
+      cli_version: CLI_VERSION,
+      free_mode:   FREE_MODE,
+      calls: _calls.map((call) => ({
+        hostname:      call.hostname,
+        provider:      call.provider || guessProvider(call.hostname),
+        method:        call.method || null,
+        path:          call.path || null,
+        scheme:        call.scheme || null,
+        request_bytes: call.request_bytes != null ? call.request_bytes : null,
+        bytes:         call.bytes || 0,
+        status:        call.status != null ? call.status : null,
+        ok:            call.ok != null ? call.ok : null,
+        content_type:  call.content_type || null,
+        duration_ms:   call.duration_ms != null ? call.duration_ms : null,
+        action:        call.action,
+        ts:            call.ts || null,
+        redactions:    call.redactions || 0,
+        error:         call.error || null,
+        error_class:   call.error_class || null,
+      })),
+      summary: {
+        total_calls:   _calls.length,
+        total_bytes:   totalBytes,
+        hosts:         hosts,
+        providers,
+        errors,
+        by_host,
+        by_provider,
+        redacted:      redacted,
+        blocked:       blocked,
+        est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
+      },
+      residual: {
+        note: "Paths that never load this interceptor (curl, raw sockets, unwrapped processes) produce no Optics row.",
+        upgrade_gate: "https://vantio.ai/gate",
+        upgrade_enterprise: "https://vantio.ai/enterprise",
+      },
+    };
+    const safeid   = RUN_TRACE_ID.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+    const logPath  = join(runsDir, `${safeid}.json`);
+    writeFileSync(logPath, JSON.stringify(log, null, 2) + "\n", { mode: 0o600 });
+  } catch {
+    // Non-fatal — never let log writing affect the exiting agent.
+  }
+
   if (!SUMMARY && !FREE_MODE) return;
 
-  const durationS  = ((Date.now() - _startMs) / 1000).toFixed(1);
-  const totalBytes = _calls.reduce((a, x) => a + (x.bytes || 0), 0);
+  const durationS  = ((now - _startMs) / 1000).toFixed(1);
 
   const lines = [
     "",
@@ -624,10 +995,17 @@ process.on("exit", () => {
     lines.push(
       cloudSyncActive
         ? `  ${c.dim}→ Events routed to your Vantio dashboard.${c.reset}`
-        : `  ${c.dim}→ Free plan — observed locally only. Upgrade at vantio.ai/pricing to sync your dashboard.${c.reset}`
+        : (LOCAL_GATE
+            ? `  ${c.dim}→ Local Gate — events stay on this control plane (${INGEST_URL}).${c.reset}`
+            : `  ${c.dim}→ Free plan — observed locally only. Upgrade at vantio.ai/pricing to sync your dashboard.${c.reset}`)
     );
   } else {
-    lines.push(`  ${c.dim}→ Upgrade at vantio.ai to enforce policy and persist events.${c.reset}`);
+    lines.push(`  ${c.dim}→ Run \`vantio prove\` to export an auditor-ready artifact from this run.${c.reset}`);
+    lines.push(
+      LOCAL_GATE
+        ? `  ${c.dim}→ Local Gate control plane detected — set VANTIO_API_KEY=soak-pro for enforce on this box.${c.reset}`
+        : `  ${c.dim}→ Optics observes only — upgrade to Vantio Gate (Pro) to enforce policy.${c.reset}`
+    );
     if (!telemetryDisabled()) {
       lines.push(`  ${c.dim}Anonymous usage telemetry helps improve Vantio. Opt out with VANTIO_TELEMETRY_DISABLED=1.${c.reset}`);
     }
