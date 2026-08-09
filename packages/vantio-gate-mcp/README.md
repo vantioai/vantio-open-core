@@ -1,10 +1,10 @@
 # @vantio/gate-mcp
 
-**Vantio Gate** MCP — **Policy Latch** dry-run / evaluate for IDEs and agent hosts.
+**Vantio Gate** MCP — dry-run / evaluate **rules that stick** for IDEs and agent hosts (internal workflow id: Policy Latch).
 
 This MCP can fetch policy, normalize it, and evaluate “would this call be blocked?” decisions. It **cannot** block live traffic, push unconstrained policy, or expose Absolute Control.
 
-> Fence: dry-run evaluate only. Live latch = `vantio run` + Pro policy.
+> Dry-run evaluate only. Live enforce = `vantio run` + Pro policy.
 
 ## Install
 
@@ -36,14 +36,14 @@ Cursor / Claude Desktop:
 | `gate_get_policy` | Fetch Pro policy (needs API key) |
 | `gate_residual_risk` | Enforcement-gap ledger (Pro) |
 | `gate_normalize_policy` | Coerce policy to canonical schema |
-| `gate_explain` | Fence + Policy Latch |
+| `gate_explain` | Fence + rules that stick |
 | `gate_upgrade_path` | Optics → Gate → Phantom Engine |
 
 ## Upgrade path
 
 1. **Optics** — see (`@vantio/optics-mcp`)  
-2. **Gate** — this MCP (evaluate) + Pro runtime (latch)  
-3. **Phantom Engine** — Absolute Control  
+2. **Gate** — this MCP (evaluate) + Pro runtime (enforce)  
+3. **Phantom Engine** — premium Absolute Control  
 
 https://vantio.ai/pricing
 

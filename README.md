@@ -2,13 +2,11 @@
 
 [![CI](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml/badge.svg)](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml)
 
-**Vantio Optics** — See LLM egress. Blind by design, not a proxy.  
-The Free · Open Core observe plane: intercept outbound LLM calls without code changes, capture metadata (never prompts), and export proof — **observe only, no enforce**.
+**Vantio Optics** is free visibility into what your agents send. Wrap a process with `vantio run`, see outbound LLM calls (host, size, process, time — never prompts), and export proof. Observe only — no block, redact, or spend cap on Free.
 
-This repo ships **Vantio Optics**. The same client runs in every tier; higher tiers unlock **Vantio Gate** (Pro · enforce) and **Vantio Phantom Engine** (Enterprise · Absolute Control plane) on top of Optics.
+The same client runs in every tier. **Vantio Gate** (Pro) adds rules that stick on the agent path. **Vantio Phantom Engine** (Enterprise) is the premium lock-down on servers you own when something tries to go around Optics and Gate.
 
-> **Vantio tiers unlock governance:**  
-> **Vantio Optics** (Free · Open Core) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
+> **Vantio Optics** (Free) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
 
 ---
 
@@ -52,7 +50,7 @@ Optics ships one named workflow — **Sight Loop**:
 1. **Wrap** — `vantio run` / SDK  
 2. **Capture** — host · process · bytes · time · trace (no prompts/completions)  
 3. **Inspect / export** — `vantio prove`, `vantio discover --local`, or **Optics MCP**  
-4. **Honest residual** — ungoverned paths stay silent → upgrade cue  
+4. **Honest residual** — paths that never hit the interceptor stay unnamed here → upgrade cue  
 
 Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optics-mcp.md](./docs/optics-mcp.md) · Offline prove: `./scripts/sight-loop-prove.sh`
 
@@ -95,7 +93,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 | **Pro** | + **Vantio Gate** · Enforce (block, redact, caps) | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
 | **Enterprise** | + **Vantio Phantom Engine** · Absolute Control | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
 
-Optics is the client at every tier. On Free (no Pro key), it **observes only** — events are labelled `OBSERVED`. With a Pro key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can block, redact, or cap locally. Enterprise adds **Vantio Phantom Engine** beneath the app layer. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
+Optics is the client at every tier. On Free (no Pro key), it **observes only** — events are labelled `OBSERVED`. With a Pro key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can block, redact, or cap locally. Enterprise adds **Vantio Phantom Engine** on your hosts. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
 
 Full breakdown: [docs/PRODUCT_LINEUP.md](./docs/PRODUCT_LINEUP.md)
 
@@ -152,22 +150,20 @@ async def run_agent():
 
 ---
 
-## Optics: honest about bypassability
+## Optics: honest about what it covers
 
 `vantio run` intercepts LLM calls by patching `globalThis.fetch` in the Node process.
-This covers the vast majority of agents without code changes.
+That covers most agents without code changes.
 
-**It can be bypassed** — by native socket calls, un-instrumented subprocesses, or
-processes not started with `vantio run`. This is intentional. Optics surfaces your
-governance gap; it does not paper over it.
+Native sockets, un-instrumented subprocesses, or processes not started with `vantio run`
+never hit Optics — and Optics does not invent a record for them. That residual is the
+upgrade cue:
 
 - **Vantio Gate (Pro)** — Rules that stick: refuse destinations, strip sensitive fields, hard spend ceilings, residual-risk report. App layer.
-- **Vantio Phantom Engine (Enterprise)** — Host runtime control + Rogue Reconciliation when app and host diverge.
+- **Vantio Phantom Engine (Enterprise)** — Premium host lock-down + **Rogue Reconciliation** when app and host diverge.
 
 Use `vantio discover --local` to see what Free observes on your machine.
 Use `vantio prove` to generate an auditor-ready proof artifact from any run.
-
----
 
 ---
 

@@ -100,23 +100,23 @@ See [prove.md](./prove.md) for the full `vantio prove` reference.
 
 ## Step 4 — Honest residual → upgrade cue
 
-Optics is **blind by design, not a proxy** — and **bypassable by design**:
+Optics intercepts via in-process hooks — and paths that skip them leave no Optics record:
 
 - Processes not started with `vantio run` (or without the Python `@shield`) stay silent
 - Native socket calls that skip `fetch` are not observed
 - Ungoverned paths do not appear in your timeline
 
-That gap is intentional. It is the honest sell-up:
+That residual is the upgrade cue:
 
 | Residual | Closes with |
 |----------|-------------|
-| No block / redact / cap | **Vantio Gate** (Pro) — Policy Latch |
-| App-layer bypass (sockets, unenrolled processes) | **Vantio Phantom Engine** (Enterprise) — Rogue Reconciliation |
+| No block / redact / cap | **Vantio Gate** (Pro) — rules that stick |
+| App-layer miss (sockets, unenrolled processes) | **Vantio Phantom Engine** (Enterprise) — Rogue Reconciliation |
 
 Run `vantio discover --local` to see what Optics actually observed on your machine. Compare that to what you *know* your stack calls — the delta is residual risk.
 
 > Optics accepts: **no block**, and **ungoverned paths stay silent**.  
-> Pro sells enforce; Enterprise sells proof when enforce was skipped.
+> Pro sells enforce; Enterprise sells Phantom Engine when enforce was skipped.
 
 Full fence: [observe-only.md](./observe-only.md)
 

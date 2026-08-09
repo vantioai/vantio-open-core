@@ -41,7 +41,7 @@ If it can **change or block** behavior in production, it is **not** Free:
 
 **Fence:** if it can say **no** in production → **Vantio Gate**.
 
-Pro workflow: [**Policy Latch**](https://github.com/vantioai/vantio-pro) — author policy, dry-run, latch enforce, ledger.
+Pro workflow: [**Rules that stick**](https://github.com/vantioai/vantio-pro) — author policy, dry-run, enforce, ledger.
 
 ---
 
@@ -51,30 +51,30 @@ If the org must **guarantee** control when engineers route around the intercepto
 
 | Out of scope for Optics (and Pro alone) | Tier |
 |----------------------------------------|------|
-| eBPF TLS observe at Ring-0 | Enterprise · **Vantio Phantom Engine** |
-| Rogue Reconciliation (kernel ∧ ¬ app record) | Enterprise |
+| Host TLS observe (eBPF) | Enterprise · **Vantio Phantom Engine** |
+| Rogue Reconciliation (host ∧ ¬ app record) | Enterprise |
 | Fork inheritance proof | Enterprise |
-| CIDR / enrolled-cgroup kernel egress policy | Enterprise |
-| Append-oriented regulator-grade ledger | Enterprise |
+| CIDR / enrolled-cgroup host egress policy | Enterprise |
+| Append-oriented durable ledger | Enterprise |
 
-**Fence:** if bypass must be **proven closed** → **Vantio Phantom Engine**.
+**Fence:** if bypass must be **proven closed** → **Vantio Phantom Engine** (premium).
 
-Enterprise workflow: **Rogue Reconciliation** — correlate app + kernel evidence, surface `BYPASS_INDICATOR`.
+Enterprise workflow: **Rogue Reconciliation** — correlate app + host evidence, surface `BYPASS_INDICATOR`.
 
 ---
 
 ## Honest residual (by design)
 
-Optics intercepts via in-process `fetch` patching (Node) or SDK hooks (Python). That covers most real agents — and **can be bypassed**:
+Optics intercepts via in-process `fetch` patching (Node) or SDK hooks (Python). That covers most real agents — and paths that skip it leave no Optics record:
 
 - Native sockets without `fetch`
 - Subprocesses not wrapped with `vantio run` / `@shield`
 - Runtimes without instrumentation
 
-**This is not a bug.** Silent ungoverned paths are the upgrade cue:
+That residual is the upgrade cue:
 
 ```
-Vantio Optics (see)  →  Vantio Gate (enforce)  →  Vantio Phantom Engine (prove bypass closed)
+Vantio Optics (see)  →  Vantio Gate (enforce)  →  Vantio Phantom Engine (host lock-down + Rogue Reconciliation)
 ```
 
 Use `vantio discover --local` to inspect what Optics actually saw. The gap between that and full org coverage is residual risk — documented, not hidden.
@@ -91,10 +91,10 @@ vantio discover --local
 
 # Gate — requires Pro key + vantio login (enforcement unlocked)
 vantio login <pro-key>
-vantio run node agent.js    # may BLOCK / REDACT when policy latched
+vantio run node agent.js    # may BLOCK / REDACT when policy is enforced
 
 # Phantom Engine — Enterprise deployment (not in this repo)
-# See vantio-phantom-engine for Ring-0 plane
+# See vantio-phantom-engine for host Absolute Control
 ```
 
 ---

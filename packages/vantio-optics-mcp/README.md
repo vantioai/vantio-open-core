@@ -2,9 +2,9 @@
 
 **Vantio Optics** MCP server — read-only **Observe** / **Sight Loop** for AI agents and IDEs.
 
-This MCP lets hosts list local run logs, inspect traffic metadata, export proofs, and discover hosts. It **cannot** enforce policy. When agents need to block, redact, or cap spend, upgrade to **Vantio Gate**. When residual bypass must be closed, upgrade to **Vantio Phantom Engine**.
+This MCP lets hosts list local run logs, inspect traffic metadata, export proofs, and discover hosts. It **cannot** enforce policy. For rules that stick, upgrade to **Vantio Gate**. For premium host lock-down when paths miss the app layer, upgrade to **Vantio Phantom Engine**.
 
-> Blind by design: no prompts or completions. Fence: observe only.
+> No prompts or completions. Observe only.
 
 ## Install
 
@@ -65,7 +65,7 @@ Local checkout:
 ## Upgrade path
 
 1. **Optics** (this MCP) — see  
-2. **Gate** (Pro) — Policy Latch / enforce  
+2. **Gate** (Pro) — rules that stick / enforce  
 3. **Phantom Engine** (Enterprise) — Rogue Reconciliation / Absolute Control  
 
 https://vantio.ai/pricing
