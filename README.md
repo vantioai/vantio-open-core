@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.11** (npm) and **`vantio-agent-sdk` 3.0.6** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.12** (npm) and **`vantio-agent-sdk` 3.0.6** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -85,7 +85,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Package | Published | Description |
 |---------|-----------|-------------|
-| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.11** | CLI runner — Node fetch, undici, http/https, http2, net/tls, upgrade/CONNECT frames, Node-spawned curl |
+| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.12** | CLI runner — Node fetch, undici, http/https, http2, net/tls, upgrade/CONNECT frames, Node-spawned curl and wget |
 | [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.6** | Python `shield()` — urllib + optional requests/httpx/aiohttp + socket.connect + subprocess curl |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
@@ -126,7 +126,7 @@ await shield(async () => {
 });
 ```
 
-Node wrap of `fetch`, undici, `http`/`https`, `http2`, `net`/`tls`, `undici.upgrade` / CONNECT tunnel bytes, and Node-spawned `curl` is in **`@vantio/cli` 0.3.11** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
+Node wrap of `fetch`, undici, `http`/`https`, `http2`, `net`/`tls`, `undici.upgrade` / CONNECT tunnel bytes, and Node-spawned `curl` and `wget` is in **`@vantio/cli` 0.3.12** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
 
 ### Python
 
@@ -150,7 +150,7 @@ While `shield()` is active, Optics records urllib to in-scope hosts. If `request
 
 ## Supported wraps
 
-**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https`, Node `http2.connect` / `session.request`, Node `net` / `tls` connect to in-scope hosts, and outbound bytes on `undici.upgrade` / CONNECT sockets (observe and size/spend caps; frame payloads are not read).
+**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https`, Node `http2.connect` / `session.request`, Node `net` / `tls` connect to in-scope hosts, outbound bytes on `undici.upgrade` / CONNECT sockets (observe and size/spend caps; frame payloads are not read), and Node-spawned `curl` / `wget`.
 
 **Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed; `socket.connect` / `create_connection` / `ssl.SSLSocket.connect` to in-scope hosts (host-block and observe; no TLS payload redaction); `subprocess` / `os.system` / `asyncio` curl spawns to in-scope hosts (host-block and observe; curl bodies are not rewritten).
 
@@ -178,7 +178,7 @@ Browser paths stay outside this wrap.
 `vantio run` intercepts LLM calls by wrapping Node `fetch` and Node `http`/`https`.
 That covers most Node agents without code changes.
 
-Browser paths, wget, or processes not started with `vantio run` / `shield()` never hit
+Browser paths, or processes not started with `vantio run` / `shield()`, never hit
 Optics — and Optics does not invent a record for them.
 
 - **Vantio Gate** — when an agent crosses a line you already set on the wrapped path, Gate can stop the request, strip sensitive details before they leave, or put a hard limit on spend.

@@ -4,7 +4,7 @@
 // request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
 // http/https.request|get, Node http2.connect / session.request, Node
 // net.Socket.connect / tls.connect, undici.upgrade / CONNECT tunnel writes,
-// and Node child_process spawn/exec of curl to in-scope hosts.
+// and Node child_process spawn/exec of curl and wget to in-scope hosts.
 // Browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
@@ -2446,8 +2446,9 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 })();
 
-// Node child_process spawn/exec of curl — host-block and observe before curl
-// starts. Bodies are not rewritten. Residual: browsers, Python subprocess curl.
+// Node child_process spawn/exec of curl and wget — host-block and observe
+// before the child starts. Bodies are not rewritten. Residual: browsers,
+// Python subprocess wget.
 (function patchCurlSpawn() {
   let cp;
   try { cp = require("node:child_process"); } catch { try { cp = require("child_process"); } catch { return; } }
@@ -2512,26 +2513,29 @@ globalThis.fetch = function vantioFetch(input, init) {
     return { command, argv, options };
   }
 
-  function curlArgvFromSpawn(command, argv, options) {
+  function httpCliFromSpawn(command, argv, options) {
     const args = Array.isArray(argv) ? argv.map((a) => String(a)) : [];
     if (options && options.shell) {
-      return curlArgvFromExec([String(command || ""), ...args].join(" "));
+      return httpCliFromExec([String(command || ""), ...args].join(" "));
     }
-    if (cmdBase(command) === "curl") return args;
-    const shell = cmdBase(command);
-    if (shell !== "sh" && shell !== "bash" && shell !== "dash" && shell !== "zsh") return null;
+    const base = cmdBase(command);
+    if (base === "curl" || base === "wget") return { tool: base, argv: args };
+    if (base !== "sh" && base !== "bash" && base !== "dash" && base !== "zsh") return null;
     const cIdx = args.indexOf("-c");
     if (cIdx < 0 || args[cIdx + 1] == null) return null;
     const tokens = tokenizeShell(args[cIdx + 1]);
-    if (!tokens.length || cmdBase(tokens[0]) !== "curl") return null;
-    return tokens.slice(1);
+    if (!tokens.length) return null;
+    const tool = cmdBase(tokens[0]);
+    if (tool !== "curl" && tool !== "wget") return null;
+    return { tool, argv: tokens.slice(1) };
   }
 
-  function curlArgvFromExec(command) {
+  function httpCliFromExec(command) {
     const tokens = tokenizeShell(command);
     if (!tokens.length) return null;
-    if (cmdBase(tokens[0]) === "curl") return tokens.slice(1);
-    return curlArgvFromSpawn(tokens[0], tokens.slice(1), null);
+    const tool = cmdBase(tokens[0]);
+    if (tool === "curl" || tool === "wget") return { tool, argv: tokens.slice(1) };
+    return httpCliFromSpawn(tokens[0], tokens.slice(1), null);
   }
 
   function parseCurlArgv(argv) {
@@ -2565,6 +2569,35 @@ globalThis.fetch = function vantioFetch(input, init) {
       if (!url && /^https?:\/\//i.test(a)) url = a;
     }
     return { url, dataBytes };
+  }
+
+  function parseWgetArgv(argv) {
+    let url = null;
+    let dataBytes = 0;
+    const args = Array.isArray(argv) ? argv : [];
+    for (let i = 0; i < args.length; i++) {
+      const a = String(args[i]);
+      if (a === "--post-data" || a === "--body-data") {
+        const v = args[i + 1] != null ? String(args[i + 1]) : "";
+        dataBytes += Buffer.byteLength(v);
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--post-data=")) {
+        dataBytes += Buffer.byteLength(a.slice("--post-data=".length));
+        continue;
+      }
+      if (a.startsWith("--body-data=")) {
+        dataBytes += Buffer.byteLength(a.slice("--body-data=".length));
+        continue;
+      }
+      if (!url && /^https?:\/\//i.test(a)) url = a;
+    }
+    return { url, dataBytes };
+  }
+
+  function parseCliArgv(tool, argv) {
+    return tool === "wget" ? parseWgetArgv(argv) : parseCurlArgv(argv);
   }
 
   function destFromCurlUrl(url) {
@@ -2652,15 +2685,17 @@ globalThis.fetch = function vantioFetch(input, init) {
     };
   }
 
-  function recordCurl(hostname, port, action, dataBytes) {
+  function recordCli(tool, hostname, port, action, dataBytes) {
     sendRunTelemetryOnce(hostname);
     const provider = guessProvider(hostname, port);
+    const mediation = tool === "wget" ? "node_wget" : "node_curl";
+    const label = tool === "wget" ? "wget" : "curl";
     _calls.push({
-      hostname, provider, method: "CURL", path: null, scheme: "http",
+      hostname, provider, method: tool === "wget" ? "WGET" : "CURL", path: null, scheme: "http",
       request_bytes: dataBytes, bytes: dataBytes, status: null,
       ok: !String(action).startsWith("BLOCKED"),
       content_type: null, duration_ms: 0, ts: new Date().toISOString(),
-      action, mediation: "node_curl", optics_plane: "app_curl",
+      action, mediation, optics_plane: tool === "wget" ? "app_wget" : "app_curl",
     });
     report({
       target_host: hostname, pid: process.pid, action_taken: action,
@@ -2668,45 +2703,45 @@ globalThis.fetch = function vantioFetch(input, init) {
       bytes_severed: String(action).startsWith("BLOCKED") ? dataBytes : 0,
       bytes_observed: dataBytes,
       request_bytes: dataBytes,
-      mediation: "node_curl", plane: "optics_gate",
+      mediation, plane: "optics_gate",
     });
     if (action === "BLOCKED_HOST") {
-      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — curl`);
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${label}`);
     } else if (action === "BLOCKED_SIZE") {
-      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — curl ${dataBytes}B exceeds cap`);
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${label} ${dataBytes}B exceeds cap`);
     } else if (action === "BLOCKED_SPEND") {
-      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — curl spend cap`);
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${label} spend cap`);
     } else if (FREE_MODE) {
-      log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — curl`);
+      log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — ${label}`);
     }
   }
 
-  function applyCurlGate(argv) {
-    const parsed = parseCurlArgv(argv);
+  function applyCliGate(tool, argv) {
+    const parsed = parseCliArgv(tool, argv);
     if (!parsed.url) return { decision: "pass" };
     const dest = destFromCurlUrl(parsed.url);
     const decision = decideCurl(parsed.url, dest.hostname, dest.port, parsed.dataBytes);
     if (decision === "pass") return { decision };
     if (decision === "block") {
-      recordCurl(dest.hostname, dest.port, "BLOCKED_HOST", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, "BLOCKED_HOST", parsed.dataBytes);
       return { decision, err: gateError(dest.hostname, "host_not_permitted") };
     }
     if (decision === "block_size") {
-      recordCurl(dest.hostname, dest.port, "BLOCKED_SIZE", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, "BLOCKED_SIZE", parsed.dataBytes);
       return { decision, err: gateError(dest.hostname, "request_too_large") };
     }
     if (decision === "block_spend") {
-      recordCurl(dest.hostname, dest.port, "BLOCKED_SPEND", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, "BLOCKED_SPEND", parsed.dataBytes);
       return { decision, err: gateError(dest.hostname, "spend_cap_reached") };
     }
     if (decision === "dry_block") {
-      recordCurl(dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes);
     } else if (decision === "dry_size") {
-      recordCurl(dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes);
     } else if (decision === "dry_spend") {
-      recordCurl(dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes);
     } else {
-      recordCurl(dest.hostname, dest.port, FREE_MODE ? "OBSERVED" : "ALLOWED", parsed.dataBytes);
+      recordCli(tool, dest.hostname, dest.port, FREE_MODE ? "OBSERVED" : "ALLOWED", parsed.dataBytes);
       spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
     }
     return { decision };
@@ -2715,9 +2750,9 @@ globalThis.fetch = function vantioFetch(input, init) {
   cp.spawn = function vantioSpawn(...args) {
     try {
       const { command, argv, options } = splitSpawnArgs(args);
-      const curlArgv = curlArgvFromSpawn(command, argv, options);
-      if (!curlArgv) return origSpawn(...args);
-      const gated = applyCurlGate(curlArgv);
+      const cli = httpCliFromSpawn(command, argv, options);
+      if (!cli) return origSpawn(...args);
+      const gated = applyCliGate(cli.tool, cli.argv);
       if (gated.err) return blockedChild(gated.err);
       return origSpawn(...args);
     } catch {
@@ -2729,9 +2764,9 @@ globalThis.fetch = function vantioFetch(input, init) {
     cp.spawnSync = function vantioSpawnSync(...args) {
       try {
         const { command, argv, options } = splitSpawnArgs(args);
-        const curlArgv = curlArgvFromSpawn(command, argv, options);
-        if (!curlArgv) return origSpawnSync(...args);
-        const gated = applyCurlGate(curlArgv);
+        const cli = httpCliFromSpawn(command, argv, options);
+        if (!cli) return origSpawnSync(...args);
+        const gated = applyCliGate(cli.tool, cli.argv);
         if (gated.err) return blockedSync(gated.err);
         return origSpawnSync(...args);
       } catch {
@@ -2744,10 +2779,10 @@ globalThis.fetch = function vantioFetch(input, init) {
     cp.execFile = function vantioExecFile(...args) {
       try {
         const { command: file, argv, options } = splitSpawnArgs(args);
-        const curlArgv = curlArgvFromSpawn(file, argv, options);
-        if (!curlArgv) return origExecFile(...args);
+        const cli = httpCliFromSpawn(file, argv, options);
+        if (!cli) return origExecFile(...args);
         const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
-        const gated = applyCurlGate(curlArgv);
+        const gated = applyCliGate(cli.tool, cli.argv);
         if (gated.err) {
           if (cb) process.nextTick(() => cb(gated.err, "", ""));
           return blockedChild(gated.err);
@@ -2763,9 +2798,9 @@ globalThis.fetch = function vantioFetch(input, init) {
     cp.execFileSync = function vantioExecFileSync(...args) {
       try {
         const { command: file, argv, options } = splitSpawnArgs(args);
-        const curlArgv = curlArgvFromSpawn(file, argv, options);
-        if (curlArgv) {
-          const gated = applyCurlGate(curlArgv);
+        const cli = httpCliFromSpawn(file, argv, options);
+        if (cli) {
+          const gated = applyCliGate(cli.tool, cli.argv);
           if (gated.err) {
             gated.err.status = 1;
             throw gated.err;
@@ -2782,10 +2817,10 @@ globalThis.fetch = function vantioFetch(input, init) {
     cp.exec = function vantioExec(...args) {
       try {
         const command = args[0];
-        const curlArgv = curlArgvFromExec(command);
-        if (!curlArgv) return origExec(...args);
+        const cli = httpCliFromExec(command);
+        if (!cli) return origExec(...args);
         const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
-        const gated = applyCurlGate(curlArgv);
+        const gated = applyCliGate(cli.tool, cli.argv);
         if (gated.err) {
           if (cb) process.nextTick(() => cb(gated.err, "", ""));
           return blockedChild(gated.err);
@@ -2801,9 +2836,9 @@ globalThis.fetch = function vantioFetch(input, init) {
     cp.execSync = function vantioExecSync(...args) {
       try {
         const command = args[0];
-        const curlArgv = curlArgvFromExec(command);
-        if (curlArgv) {
-          const gated = applyCurlGate(curlArgv);
+        const cli = httpCliFromExec(command);
+        if (cli) {
+          const gated = applyCliGate(cli.tool, cli.argv);
           if (gated.err) {
             gated.err.status = 1;
             throw gated.err;
@@ -2906,7 +2941,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl to in-scope hosts. Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl and wget to in-scope hosts. Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
