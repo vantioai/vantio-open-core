@@ -215,11 +215,11 @@ const UNDICI_UPGRADE_ONCE_SCRIPT = `
 })();
 `;
 
-describe("interceptor.cjs (integration)", () => {
+describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
   let server, baseUrl, targetUrl, configPolicy, configTier, requests;
 
   beforeEach(async () => {
-    requests = { config: [], ingest: [], target: [] };
+    requests = { config: [], ingest: [], target: [], wsFrames: [] };
     configPolicy = { enforce: false, redact_pii: false, pii_types: [], allowed_hosts: [], blocked_hosts: [], max_request_bytes: 0, spend_cap_usd: 0 };
     configTier = "ENTERPRISE";
 
@@ -258,6 +258,17 @@ describe("interceptor.cjs (integration)", () => {
     });
     server.on("upgrade", (req, socket) => {
       requests.target.push({ method: "UPGRADE", url: req.url, headers: req.headers, body: "" });
+      if (req.url && String(req.url).startsWith("/v1/ws")) {
+        socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+        const idle = setTimeout(() => { try { socket.destroy(); } catch { /* ignore */ } }, 300);
+        socket.on("data", (c) => {
+          requests.wsFrames.push(Buffer.from(c));
+          clearTimeout(idle);
+          try { socket.destroy(); } catch { /* ignore */ }
+        });
+        socket.on("close", () => clearTimeout(idle));
+        return;
+      }
       socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       socket.destroy();
     });
@@ -267,6 +278,7 @@ describe("interceptor.cjs (integration)", () => {
   });
 
   afterEach(async () => {
+    if (typeof server.closeAllConnections === "function") server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
 
@@ -790,6 +802,69 @@ function one(url) {
     assert.equal(result.error, "VANTIO_GATE_BLOCKED");
     assert.equal(requests.target.length, 0, "undici.upgrade must not bypass destination blocking");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+  });
+
+  const UNDICI_WS_WRITE_SCRIPT = `
+(async () => {
+  const { upgrade } = require("undici");
+  try {
+    const data = await upgrade(process.env.WS_URL, { protocol: "Websocket" });
+    await new Promise((resolve, reject) => {
+      const sock = data && data.socket;
+      if (!sock) return reject(new Error("no_socket"));
+      sock.once("error", reject);
+      sock.write("hello-ws", (err) => err ? reject(err) : resolve());
+    });
+    try { data.socket.destroy(); } catch {}
+    await new Promise((r) => setTimeout(r, 150));
+    process.stdout.write(JSON.stringify({ ok: true }) + "\\n");
+    process.exit(0);
+  } catch (err) {
+    process.stdout.write(JSON.stringify({
+      ok: false,
+      error: err && err.code ? String(err.code) : "Error",
+      body: err && err.message ? String(err.message) : "",
+    }) + "\\n");
+    process.exit(0);
+  }
+})();
+`;
+
+  test("PAID_MODE, undici.upgrade write: ingest undici_ws ALLOWED with bytes_observed", { timeout: 15000 }, async () => {
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    const wsUrl = `${baseUrl}/v1/ws`;
+    const { code, stdout } = await runAgent(
+      { WS_URL: wsUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_WS_WRITE_SCRIPT
+    );
+    assert.equal(code, 0, stdout);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.ok, true);
+    const frames = requests.wsFrames.map((b) => b.toString()).join("");
+    assert.match(frames, /hello-ws/);
+    const wsEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "undici_ws");
+    assert.equal(wsEvents.length, 1);
+    assert.equal(wsEvents[0].body.eventPayload.action_taken, "ALLOWED");
+    assert.equal(wsEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-ws"));
+  });
+
+  test("PAID_MODE, undici.upgrade write over max_request_bytes: BLOCKED_SIZE, payload never lands", { timeout: 15000 }, async () => {
+    configPolicy.enforce = true;
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.max_request_bytes = 4;
+    const wsUrl = `${baseUrl}/v1/ws`;
+    const { code, stdout } = await runAgent(
+      { WS_URL: wsUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_WS_WRITE_SCRIPT
+    );
+    assert.equal(code, 0, stdout);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+    const frames = requests.wsFrames.map((b) => b.toString()).join("");
+    assert.equal(frames.includes("hello-ws"), false, "oversized tunnel write must not reach the target");
+    const sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+    assert.ok(sizeEvents.length >= 1);
+    assert.equal(sizeEvents[0].body.eventPayload.mediation, "undici_ws");
   });
 
   const HTTP2_ONCE_SCRIPT = `

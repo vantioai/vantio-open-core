@@ -2,9 +2,9 @@
 // Injected at runtime by `vantio run node agent.js` via Node --require.
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
 // request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
-// http/https.request|get, Node http2.connect / session.request, and Node
-// net.Socket.connect / tls.connect to in-scope hosts.
-// Curl, browsers, and Python sockets stay outside this wrap.
+// http/https.request|get, Node http2.connect / session.request, Node
+// net.Socket.connect / tls.connect, and undici.upgrade / CONNECT tunnel writes
+// to in-scope hosts. Curl and browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -1215,6 +1215,159 @@ globalThis.fetch = function vantioFetch(input, init) {
     return true;
   }
 
+  function chunkByteLength(chunk, encoding) {
+    if (chunk == null) return 0;
+    if (Buffer.isBuffer(chunk)) return chunk.length;
+    if (typeof Uint8Array !== "undefined" && chunk instanceof Uint8Array) return chunk.byteLength;
+    if (typeof chunk === "string") {
+      return Buffer.byteLength(chunk, typeof encoding === "string" ? encoding : "utf8");
+    }
+    try {
+      return Buffer.byteLength(String(chunk));
+    } catch {
+      return 0;
+    }
+  }
+
+  function parseSocketWriteArgs(chunk, encoding, cb) {
+    if (typeof chunk === "function") return { chunk: undefined, encoding: undefined, cb: chunk };
+    if (typeof encoding === "function") return { chunk, encoding: undefined, cb: encoding };
+    return { chunk, encoding, cb };
+  }
+
+  // After undici.upgrade / CONNECT, Gate already decided the host. Frame
+  // payloads are not parsed (Optics never reads the conversation). Outbound
+  // bytes are observed and size/spend caps can stop further writes.
+  function wrapTunnelSocket(socket, hostname) {
+    if (!socket || typeof socket.write !== "function" || socket.__vantioWsPatched) return;
+    socket.__vantioWsPatched = true;
+    const origWrite = socket.write.bind(socket);
+    const origEnd = typeof socket.end === "function" ? socket.end.bind(socket) : null;
+    let written = 0;
+    let frameReported = false;
+    const provider = guessProvider(hostname, null);
+
+    function refuse(action, reason) {
+      _calls.push({
+        hostname, provider, method: "UPGRADE", path: null, scheme: "ws",
+        request_bytes: written, bytes: 0, status: null, ok: false,
+        content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+        action, mediation: "undici_ws",
+      });
+      report({
+        target_host: hostname, pid: process.pid, action_taken: action,
+        timestamp_ns: Date.now() * 1e6, bytes_severed: written, bytes_observed: written,
+        mediation: "undici_ws", plane: "optics_gate",
+      });
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — tunnel ${reason}`);
+      const err = new Error(`Vantio Gate blocked request: ${reason}`);
+      err.code = "VANTIO_GATE_BLOCKED";
+      process.nextTick(() => {
+        try { socket.emit("error", err); } catch { /* ignore */ }
+        try { socket.destroy(); } catch { /* ignore */ }
+      });
+      return err;
+    }
+
+    function gateBytes(n) {
+      if (n <= 0) return true;
+      written += n;
+      if (!FREE_MODE && policy.enforce && policy.max_request_bytes > 0 && written > policy.max_request_bytes) {
+        if (policy.dry_run) {
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SIZE",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: written, bytes_observed: written,
+            mediation: "undici_ws",
+          });
+          return true;
+        }
+        refuse("BLOCKED_SIZE", "request_too_large");
+        return false;
+      }
+      if (!FREE_MODE && policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
+        if (policy.dry_run) {
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SPEND",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_ws",
+          });
+          return true;
+        }
+        refuse("BLOCKED_SPEND", "spend_cap_reached");
+        return false;
+      }
+      spentUsd += n * USD_PER_BYTE;
+      if (!frameReported) {
+        frameReported = true;
+        const action = FREE_MODE ? "OBSERVED" : "ALLOWED";
+        _calls.push({
+          hostname, provider, method: "UPGRADE", path: null, scheme: "ws",
+          request_bytes: n, bytes: n, status: null, ok: true,
+          content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+          action, mediation: "undici_ws",
+        });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: action,
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0, bytes_observed: n,
+          request_bytes: n, mediation: "undici_ws", plane: "optics_gate",
+        });
+        if (FREE_MODE) {
+          log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — tunnel frames`);
+        }
+      }
+      return true;
+    }
+
+    socket.write = function vantioTunnelWrite(chunk, encoding, cb) {
+      const args = parseSocketWriteArgs(chunk, encoding, cb);
+      try {
+        if (!gateBytes(chunkByteLength(args.chunk, args.encoding))) {
+          if (typeof args.cb === "function") {
+            const err = new Error("Vantio Gate blocked request: request_too_large");
+            err.code = "VANTIO_GATE_BLOCKED";
+            process.nextTick(() => args.cb(err));
+          }
+          return false;
+        }
+      } catch {
+        /* fail open */
+      }
+      return origWrite(chunk, encoding, cb);
+    };
+    if (origEnd) {
+      socket.end = function vantioTunnelEnd(chunk, encoding, cb) {
+        const args = parseSocketWriteArgs(chunk, encoding, cb);
+        try {
+          if (args.chunk != null && !gateBytes(chunkByteLength(args.chunk, args.encoding))) {
+            return socket;
+          }
+        } catch {
+          /* fail open */
+        }
+        return origEnd(chunk, encoding, cb);
+      };
+    }
+  }
+
+  function attachTunnelHandler(handler, hostname) {
+    if (!handler || handler.__vantioTunnelWrapped) return handler;
+    handler.__vantioTunnelWrapped = true;
+    if (typeof handler.onUpgrade === "function") {
+      const orig = handler.onUpgrade.bind(handler);
+      handler.onUpgrade = function vantioOnUpgrade(statusCode, headers, socket) {
+        try { wrapTunnelSocket(socket, hostname); } catch { /* fail open */ }
+        return orig(statusCode, headers, socket);
+      };
+    }
+    return handler;
+  }
+
+  function launchDispatch(dispatcher, orig, opts, handler, hostname) {
+    if (isUpgradeOrConnect(opts)) {
+      handler = attachTunnelHandler(handler, hostname);
+    }
+    return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
+  }
+
   function applyDispatchGate(dispatcher, orig, opts, handler) {
     const href = hrefFromDispatcher(dispatcher, opts);
     if (!href) return orig.call(dispatcher, opts, handler);
@@ -1249,7 +1402,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         target_host: hostname, pid: process.pid, action_taken: "OBSERVED",
         timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
       });
-      return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
+      return launchDispatch(dispatcher, orig, opts, handler, hostname);
     }
 
     if (policy.enforce) {
@@ -1323,7 +1476,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       target_host: hostname, pid: process.pid, action_taken: action,
       timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
     });
-    return launchUndiciBackend(() => orig.call(dispatcher, sendOpts, handler));
+    return launchDispatch(dispatcher, orig, sendOpts, handler, hostname);
   }
 
   let dispatchPolicySettled = FREE_MODE;
@@ -1791,7 +1944,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 
 // Node http2.connect / session.request — same Sight Loop / Gate rules as
 // Node http. Host block happens before the session opens. Residual: curl,
-// browsers, Python sockets, WebSocket frames after upgrade.
+// browsers.
 (function patchNodeHttp2() {
   let http2;
   try { http2 = require("node:http2"); } catch { try { http2 = require("http2"); } catch { return; } }
@@ -2380,7 +2533,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, and Node net/tls to in-scope hosts. Host Sight covers host egress observe. curl, browsers, and Python sockets stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, and undici.upgrade / CONNECT tunnel bytes to in-scope hosts. Host Sight covers host egress observe. Curl and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },

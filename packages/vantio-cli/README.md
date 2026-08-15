@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.9**.
+> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.10**.
 
 ```bash
 npm install -g @vantio/cli
@@ -46,7 +46,7 @@ vantio run python agent.py
 vantio run tsx agent.ts
 ```
 
-Wrap any Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch`, `undici.fetch`, `undici.request` (including `Client` / `Pool` / `Agent` `.request()`), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2.connect` / `session.request`, and Node `net`/`tls` connect to in-scope hosts, and records connection metadata locally (and to Gate when a key is configured). For Python, install `vantio-agent-sdk` and run `vantio run python agent.py` — same wrap, no script edit. `shield()` is optional when you want a trace id inside the process.
+Wrap any Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch`, `undici.fetch`, `undici.request` (including `Client` / `Pool` / `Agent` `.request()`), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2.connect` / `session.request`, Node `net`/`tls` connect to in-scope hosts, and outbound bytes after `undici.upgrade` / CONNECT, and records connection metadata locally (and to Gate when a key is configured). For Python, install `vantio-agent-sdk` and run `vantio run python agent.py` — same wrap, no script edit. `shield()` is optional when you want a trace id inside the process.
 
 Your code doesn't change. Your agent runs normally. If you've run `vantio login`, the stored key is injected into the child process; an explicit `VANTIO_API_KEY` in your environment always takes precedence.
 
@@ -163,7 +163,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2`, and Node `net`/`tls`. Current npm release: **`@vantio/cli` 0.3.9**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https`, Node `http2`, and Node `net`/`tls`. Current npm release: **`@vantio/cli` 0.3.10**.
 
 Python, Ruby, and other runtimes are spawned normally without this interceptor — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.5**, `shield()`) for Python urllib / requests / httpx / aiohttp / socket.connect.
 
@@ -173,7 +173,7 @@ Python, Ruby, and other runtimes are spawned normally without this interceptor �
 
 OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
-curl and browser paths stay outside this wrap. After `undici.upgrade`, WebSocket frames on the raw socket are also outside this wrap. Phantom Engine is the Linux-host product when you need protection beneath the app wrap.
+curl and browser paths stay outside this wrap. Phantom Engine is the Linux-host product when you need protection beneath the app wrap.
 
 ---
 
