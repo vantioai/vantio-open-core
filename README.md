@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.9** (npm) and **`vantio-agent-sdk` 3.0.4** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.9** (npm) and **`vantio-agent-sdk` 3.0.5** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -27,10 +27,10 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-Python agents use `shield()` from `vantio-agent-sdk` 3.0.4 (urllib always; requests, httpx, and aiohttp when those libraries are already installed):
+Python agents use `shield()` from `vantio-agent-sdk` 3.0.5 (urllib always; requests, httpx, and aiohttp when those libraries are already installed; `socket.connect` / `create_connection` to in-scope hosts):
 
 ```bash
-pip install vantio-agent-sdk==3.0.4
+pip install vantio-agent-sdk==3.0.5
 ```
 
 Optionally connect a Gate key (paid features):
@@ -86,7 +86,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 | Package | Published | Description |
 |---------|-----------|-------------|
 | [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.9** | CLI runner — Node fetch, undici, http/https, http2, net/tls wrap |
-| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.4** | Python `shield()` — urllib + optional requests/httpx/aiohttp |
+| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.5** | Python `shield()` — urllib + optional requests/httpx/aiohttp + socket.connect |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
 | [`packages/vantio-gate-mcp`](./packages/vantio-gate-mcp) | `@vantio/gate-mcp` | Gate MCP — dry-run evaluate |
@@ -152,7 +152,7 @@ While `shield()` is active, Optics records urllib to in-scope hosts. If `request
 
 **Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https`, Node `http2.connect` / `session.request`, and Node `net` / `tls` connect to in-scope hosts.
 
-**Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed.
+**Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed; `socket.connect` / `create_connection` / `ssl.SSLSocket.connect` to in-scope hosts (host-block and observe; no TLS payload redaction).
 
 **Phantom Engine:** Linux hosts you own.
 
