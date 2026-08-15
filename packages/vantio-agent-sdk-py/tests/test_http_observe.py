@@ -218,6 +218,7 @@ class PythonGateWrapTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("python_http_client", {c.get("mediation") for c in data["calls"]})
             self.assertNotIn("python_httpie", {c.get("mediation") for c in data["calls"]})
             self.assertNotIn("python_aria2c", {c.get("mediation") for c in data["calls"]})
+            self.assertNotIn("python_pycurl", {c.get("mediation") for c in data["calls"]})
         finally:
             self._clear_env()
 
@@ -1310,6 +1311,230 @@ class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
             data = json.loads((Path(home) / "runs" / "py-aria2c.json").read_text(encoding="utf-8"))
             self.assertEqual(data["calls"][0]["mediation"], "python_aria2c")
             self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
+        finally:
+            self._clear_env()
+
+
+class InlineRedact310Tests(unittest.IsolatedAsyncioTestCase):
+    def _gate_env(self, home: str) -> None:
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        os.environ["VANTIO_API_KEY"] = "vk_test_dummy"
+
+    def _clear_env(self) -> None:
+        for key in (
+            "VANTIO_HOME",
+            "VANTIO_EXTRA_LLM_HOSTS",
+            "VANTIO_API_KEY",
+            "VANTIO_INGEST_URL",
+        ):
+            os.environ.pop(key, None)
+
+    def _config_handler(self, blocked: bool = False, redact: bool = False, max_request_bytes: int = 0):
+        def handler(req):
+            if req.path.startswith("/api/v1/config"):
+                body = {
+                    "tier": "PRO",
+                    "policy": {
+                        "enforce": True if not redact else False,
+                        "blocked_hosts": ["127.0.0.1"] if blocked else [],
+                        "allowed_hosts": [] if blocked else ["127.0.0.1"],
+                        "redact_pii": redact,
+                        "pii_types": ["email"] if redact else [],
+                        "max_request_bytes": max_request_bytes,
+                        "spend_cap_usd": 0,
+                        "dry_run": False,
+                    },
+                }
+                return 200, json.dumps(body).encode("utf-8")
+            if req.path.startswith("/api/v1/ingest"):
+                return 200, b'{"status":0}'
+            return 200, b'{"ok":true}'
+
+        return handler
+
+    async def test_curl_inline_redacts_pii_before_leave(self) -> None:
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(redact=True))
+                target = server.url + "/v1/target"
+                async with shield(trace_id="py-curl-redact"):
+                    subprocess.run(
+                        ["curl", "-sS", "--max-time", "2", "-X", "POST",
+                         "-d", "email=shouldnotleak@example.com", target],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(hits), 1)
+                self.assertNotIn(b"shouldnotleak@example.com", hits[0].body)
+                self.assertIn(b"[VANTIO_REDACTED:EMAIL]", hits[0].body)
+            data = json.loads((Path(home) / "runs" / "py-curl-redact.json").read_text(encoding="utf-8"))
+            curl_calls = [c for c in data["calls"] if c.get("mediation") == "python_curl"]
+            self.assertEqual(len(curl_calls), 1)
+            self.assertEqual(curl_calls[0]["action"], "REDACTED")
+        finally:
+            self._clear_env()
+
+    async def test_wget_inline_redacts_pii_before_leave(self) -> None:
+        if not shutil.which("wget"):
+            self.skipTest("wget is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(redact=True))
+                target = server.url + "/v1/target"
+                async with shield(trace_id="py-wget-redact"):
+                    subprocess.run(
+                        ["wget", "-q", "-O", "-", "--timeout=2", "--tries=1",
+                         "--post-data=email=shouldnotleak@example.com", target],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(hits), 1)
+                self.assertNotIn(b"shouldnotleak@example.com", hits[0].body)
+                self.assertIn(b"[VANTIO_REDACTED:EMAIL]", hits[0].body)
+            data = json.loads((Path(home) / "runs" / "py-wget-redact.json").read_text(encoding="utf-8"))
+            wget_calls = [c for c in data["calls"] if c.get("mediation") == "python_wget"]
+            self.assertEqual(len(wget_calls), 1)
+            self.assertEqual(wget_calls[0]["action"], "REDACTED")
+        finally:
+            self._clear_env()
+
+    async def test_curl_file_body_not_rewritten_contents_never_ingested(self) -> None:
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        secret = "shouldnotleak@example.com"
+        post_file = Path(home) / "body.txt"
+        post_file.write_text("email=" + secret, encoding="utf-8")
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(redact=True))
+                target = server.url + "/v1/target"
+                async with shield(trace_id="py-curl-file-skip"):
+                    subprocess.run(
+                        ["curl", "-sS", "--max-time", "2", "-X", "POST",
+                         "-d", "@" + str(post_file), target],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(hits), 1)
+                self.assertIn(secret.encode("utf-8"), hits[0].body)
+            log = (Path(home) / "runs" / "py-curl-file-skip.json").read_text(encoding="utf-8")
+            self.assertNotIn(secret, log)
+        finally:
+            self._clear_env()
+
+    async def test_httpie_raw_redacts_pii_before_leave(self) -> None:
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        stub = Path(home) / "http"
+        stub.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys, urllib.request\n"
+            "args = sys.argv[1:]\n"
+            "raw = ''\n"
+            "url = ''\n"
+            "i = 0\n"
+            "while i < len(args):\n"
+            "    if args[i] == '--raw' and i + 1 < len(args):\n"
+            "        raw = args[i+1]; i += 2; continue\n"
+            "    if args[i].startswith('http://') or args[i].startswith('https://'):\n"
+            "        url = args[i]\n"
+            "    i += 1\n"
+            "urllib.request.urlopen(urllib.request.Request(url, data=raw.encode(), method='POST'), timeout=2)\n",
+            encoding="utf-8",
+        )
+        stub.chmod(0o755)
+        env = {**os.environ, "PATH": str(home) + ":" + os.environ.get("PATH", "")}
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(redact=True))
+                target = server.url + "/v1/target"
+                async with shield(trace_id="py-httpie-redact"):
+                    subprocess.run(
+                        ["http", "POST", target, "--raw", "email=shouldnotleak@example.com"],
+                        capture_output=True,
+                        timeout=5,
+                        env=env,
+                    )
+                hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(hits), 1)
+                self.assertNotIn(b"shouldnotleak@example.com", hits[0].body)
+                self.assertIn(b"[VANTIO_REDACTED:EMAIL]", hits[0].body)
+            data = json.loads((Path(home) / "runs" / "py-httpie-redact.json").read_text(encoding="utf-8"))
+            calls = [c for c in data["calls"] if c.get("mediation") == "python_httpie"]
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]["action"], "REDACTED")
+        finally:
+            self._clear_env()
+
+    async def test_pycurl_redacts_and_blocks(self) -> None:
+        try:
+            import pycurl
+        except ImportError:
+            self.skipTest("pycurl is not installed")
+        from io import BytesIO
+        from vantio._http_observe import GateBlockedError
+
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=True))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError):
+                    async with shield(trace_id="py-pycurl-block"):
+                        c = pycurl.Curl()
+                        c.setopt(pycurl.URL, target)
+                        c.setopt(pycurl.WRITEDATA, BytesIO())
+                        c.perform()
+                        c.close()
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            data = json.loads((Path(home) / "runs" / "py-pycurl-block.json").read_text(encoding="utf-8"))
+            self.assertIn("python_pycurl", {c.get("mediation") for c in data["calls"]})
+            self.assertIn("BLOCKED_HOST", {c.get("action") for c in data["calls"]})
+        finally:
+            self._clear_env()
+
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(redact=True))
+                target = server.url + "/v1/target"
+                async with shield(trace_id="py-pycurl-redact"):
+                    buf = BytesIO()
+                    c = pycurl.Curl()
+                    c.setopt(pycurl.URL, target)
+                    c.setopt(pycurl.POSTFIELDS, "email=shouldnotleak@example.com")
+                    c.setopt(pycurl.WRITEDATA, buf)
+                    c.perform()
+                    c.close()
+                hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(hits), 1)
+                self.assertNotIn(b"shouldnotleak@example.com", hits[0].body)
+                self.assertIn(b"[VANTIO_REDACTED:EMAIL]", hits[0].body)
+            data = json.loads((Path(home) / "runs" / "py-pycurl-redact.json").read_text(encoding="utf-8"))
+            calls = [c for c in data["calls"] if c.get("mediation") == "python_pycurl"]
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]["action"], "REDACTED")
+            self.assertNotIn("python_urllib", {c.get("mediation") for c in data["calls"]})
         finally:
             self._clear_env()
 

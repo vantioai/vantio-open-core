@@ -1,7 +1,7 @@
 """
 Process-lifetime wrap for `vantio run python …`.
 
-Installs the same urllib / requests / httpx / aiohttp / urllib3 / http.client /
+Installs the same urllib / requests / httpx / aiohttp / urllib3 / pycurl / http.client /
 socket / subprocess curl, wget, httpie, and aria2c hooks as shield(), then writes
 the run log on interpreter exit. Browser paths stay outside.
 """

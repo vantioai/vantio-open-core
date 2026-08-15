@@ -7,7 +7,8 @@
 // (host-block and outbound frame size; payloads are not parsed), undici.upgrade /
 // CONNECT tunnel writes, and Node child_process spawn/exec of curl, wget,
 // httpie, and aria2c (including env/timeout/nice prefixes, curl -K url=,
-// curl -F stat size, wget -i URL lists, and stdin size when stdin is a file)
+// curl -F stat size, wget -i URL lists, stdin size when stdin is a file,
+// and Gate PII rewrite of inline argv bodies — not file contents or stdin pipes)
 // to in-scope hosts. Browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
@@ -2693,9 +2694,9 @@ globalThis.fetch = function vantioFetch(input, init) {
 })();
 
 // Node child_process spawn/exec of curl, wget, httpie, and aria2c —
-// host-block and observe before the child starts. Bodies are not rewritten.
-// File-body and curl -F size come from stat. Stdin @- size comes from fstat
-// when stdin is a regular file (pipes stay 0). Residual: browsers.
+// host-block and observe before the child starts. Inline argv bodies are
+// rewritten when Gate redact_pii is on. File-body and curl -F size come from
+// stat; contents and stdin pipes are not read. Residual: browsers.
 (function patchCurlSpawn() {
   let cp;
   try { cp = require("node:child_process"); } catch { try { cp = require("child_process"); } catch { return; } }
@@ -3248,16 +3249,199 @@ globalThis.fetch = function vantioFetch(input, init) {
     return { mediation: "node_curl", label: "curl", method: "CURL", plane: "app_curl" };
   }
 
-  function recordCli(tool, hostname, port, action, dataBytes) {
+  function shellQuote(s) {
+    const str = String(s);
+    if (str.length === 0) return "''";
+    if (/^[A-Za-z0-9_./:=+,@%+-]+$/.test(str)) return str;
+    return "'" + str.replace(/'/g, "'\\''") + "'";
+  }
+
+  function rewriteHttpieItem(token, takeRedact) {
+    const a = String(token);
+    const at = a.indexOf("@");
+    if (at > 0 && a.indexOf("=") < 0 && a.indexOf(":") < 0) return a;
+    for (const sep of [":=", "==", "="]) {
+      const idx = a.indexOf(sep);
+      if (idx <= 0) continue;
+      const rhs = a.slice(idx + sep.length);
+      if (rhs.startsWith("@") || rhs.startsWith("<")) return a;
+      return a.slice(0, idx + sep.length) + takeRedact(rhs);
+    }
+    return a;
+  }
+
+  function rewriteCurlFormValue(value, treatAtAsFile, takeRedact) {
+    const v = String(value ?? "");
+    const eq = v.indexOf("=");
+    const rhs = eq >= 0 ? v.slice(eq + 1) : v;
+    if (treatAtAsFile && (rhs.startsWith("@") || rhs.startsWith("<"))) return v;
+    const next = takeRedact(rhs);
+    if (next === rhs) return v;
+    return eq >= 0 ? v.slice(0, eq + 1) + next : next;
+  }
+
+  function rewriteInlineCliBodies(tool, argv) {
+    const out = Array.isArray(argv) ? argv.map(String) : [];
+    const redactions = [];
+    function takeRedact(v) {
+      const r = redactBody(String(v));
+      if (r.redactions.length) {
+        for (const k of r.redactions) redactions.push(k);
+        return r.text;
+      }
+      return v;
+    }
+    if (tool === "aria2c") return { argv: out, redactions };
+    if (tool === "httpie") {
+      for (let i = 0; i < out.length; i++) {
+        const a = out[i];
+        if (a === "--raw" && i + 1 < out.length) {
+          out[i + 1] = takeRedact(out[i + 1]);
+          i += 1;
+          continue;
+        }
+        if (a.startsWith("--raw=")) {
+          out[i] = "--raw=" + takeRedact(a.slice("--raw=".length));
+          continue;
+        }
+        if (a.startsWith("-") && a !== "-") continue;
+        if (/^https?:\/\//i.test(a)) continue;
+        out[i] = rewriteHttpieItem(a, takeRedact);
+      }
+      return { argv: out, redactions };
+    }
+    if (tool === "wget") {
+      for (let i = 0; i < out.length; i++) {
+        const a = out[i];
+        if (a === "--post-data" || a === "--body-data") {
+          if (i + 1 < out.length) out[i + 1] = takeRedact(out[i + 1]);
+          i += 1;
+          continue;
+        }
+        if (a.startsWith("--post-data=")) {
+          out[i] = "--post-data=" + takeRedact(a.slice("--post-data=".length));
+          continue;
+        }
+        if (a.startsWith("--body-data=")) {
+          out[i] = "--body-data=" + takeRedact(a.slice("--body-data=".length));
+          continue;
+        }
+      }
+      return { argv: out, redactions };
+    }
+    for (let i = 0; i < out.length; i++) {
+      const a = out[i];
+      if (Object.prototype.hasOwnProperty.call(CURL_DATA_AT_FILE, a)) {
+        const v = i + 1 < out.length ? out[i + 1] : "";
+        if (!(CURL_DATA_AT_FILE[a] && String(v).startsWith("@"))) {
+          if (i + 1 < out.length) out[i + 1] = takeRedact(v);
+        }
+        i += 1;
+        continue;
+      }
+      let eqHandled = false;
+      for (const flag of Object.keys(CURL_DATA_AT_FILE)) {
+        if (flag.startsWith("--") && a.startsWith(flag + "=")) {
+          const v = a.slice(flag.length + 1);
+          if (!(CURL_DATA_AT_FILE[flag] && v.startsWith("@"))) {
+            out[i] = flag + "=" + takeRedact(v);
+          }
+          eqHandled = true;
+          break;
+        }
+      }
+      if (eqHandled) continue;
+      if (a.startsWith("-d") && a.length > 2 && !a.startsWith("--")) {
+        const v = a.slice(2);
+        if (!v.startsWith("@")) out[i] = "-d" + takeRedact(v);
+        continue;
+      }
+      if (a === "-F" || a === "--form") {
+        if (i + 1 < out.length) out[i + 1] = rewriteCurlFormValue(out[i + 1], true, takeRedact);
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--form=")) {
+        out[i] = "--form=" + rewriteCurlFormValue(a.slice("--form=".length), true, takeRedact);
+        continue;
+      }
+      if (a.startsWith("-F") && a.length > 2 && !a.startsWith("--")) {
+        out[i] = "-F" + rewriteCurlFormValue(a.slice(2), true, takeRedact);
+        continue;
+      }
+      if (a === "--form-string") {
+        if (i + 1 < out.length) out[i + 1] = rewriteCurlFormValue(out[i + 1], false, takeRedact);
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--form-string=")) {
+        out[i] = "--form-string=" + rewriteCurlFormValue(a.slice("--form-string=".length), false, takeRedact);
+        continue;
+      }
+    }
+    return { argv: out, redactions };
+  }
+
+  function spliceRewrittenCliArgv(tokens, rewrittenArgv) {
+    const list = tokens.map((t) => String(t));
+    const stripped = stripSpawnPrefixes(list);
+    const prefix = list.slice(0, list.length - stripped.length);
+    if (!stripped.length) return list;
+    const base = cmdBase(stripped[0]);
+    if (base === "sh" || base === "bash" || base === "dash" || base === "zsh") {
+      const rest = stripped.slice(1);
+      const cIdx = rest.indexOf("-c");
+      if (cIdx >= 0 && rest[cIdx + 1] != null) {
+        const innerTokens = tokenizeShell(rest[cIdx + 1]);
+        const innerStripped = stripSpawnPrefixes(innerTokens);
+        const innerPrefix = innerTokens.slice(0, innerTokens.length - innerStripped.length);
+        const newInner = innerStripped.length
+          ? innerPrefix.concat([innerStripped[0]], rewrittenArgv)
+          : innerTokens;
+        const newStripped = stripped.slice();
+        newStripped[cIdx + 2] = newInner.map(shellQuote).join(" ");
+        return prefix.concat(newStripped);
+      }
+    }
+    return prefix.concat([stripped[0]], rewrittenArgv);
+  }
+
+  function applyRewrittenSpawnArgs(args, rewrittenArgv) {
+    const { command, argv, options } = splitSpawnArgs(args);
+    if (options && options.shell) {
+      const extra = Array.isArray(argv) ? argv.map(String) : [];
+      const tokens = tokenizeShell(String(command || "")).concat(extra);
+      args[0] = spliceRewrittenCliArgv(tokens, rewrittenArgv).map(shellQuote).join(" ");
+      return;
+    }
+    if (Array.isArray(args[1])) {
+      const tokens = [String(command), ...args[1].map(String)];
+      const newTokens = spliceRewrittenCliArgv(tokens, rewrittenArgv);
+      args[0] = newTokens[0];
+      args[1] = newTokens.slice(1);
+      return;
+    }
+    args[0] = spliceRewrittenCliArgv(tokenizeShell(String(command || "")), rewrittenArgv)
+      .map(shellQuote).join(" ");
+  }
+
+  function applyRewrittenExecCommand(command, rewrittenArgv) {
+    return spliceRewrittenCliArgv(tokenizeShell(String(command || "")), rewrittenArgv)
+      .map(shellQuote).join(" ");
+  }
+
+  function recordCli(tool, hostname, port, action, dataBytes, redactions) {
     sendRunTelemetryOnce(hostname);
     const provider = guessProvider(hostname, port);
     const meta = cliMeta(tool);
+    const nRedact = Array.isArray(redactions) ? redactions.length : 0;
     _calls.push({
       hostname, provider, method: meta.method, path: null, scheme: "http",
       request_bytes: dataBytes, bytes: dataBytes, status: null,
       ok: !String(action).startsWith("BLOCKED"),
       content_type: null, duration_ms: 0, ts: new Date().toISOString(),
       action, mediation: meta.mediation, optics_plane: meta.plane,
+      redactions: nRedact,
     });
     report({
       target_host: hostname, pid: process.pid, action_taken: action,
@@ -3266,6 +3450,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       bytes_observed: dataBytes,
       request_bytes: dataBytes,
       mediation: meta.mediation, plane: "optics_gate",
+      redactions: nRedact,
     });
     if (action === "BLOCKED_HOST") {
       log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${meta.label}`);
@@ -3273,6 +3458,8 @@ globalThis.fetch = function vantioFetch(input, init) {
       log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${meta.label} ${dataBytes}B exceeds cap`);
     } else if (action === "BLOCKED_SPEND") {
       log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${meta.label} spend cap`);
+    } else if (action === "REDACTED") {
+      log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — ${meta.label} — stripped ${nRedact} PII item(s)`);
     } else if (FREE_MODE) {
       log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — ${meta.label}`);
     }
@@ -3288,7 +3475,8 @@ globalThis.fetch = function vantioFetch(input, init) {
       rows.push({ dest, decision: decideCurl(url, dest.hostname, dest.port, parsed.dataBytes) });
     }
     const hard = rows.filter((r) => r.decision === "block" || r.decision === "block_size" || r.decision === "block_spend");
-    const toRecord = hard.length ? hard : rows.filter((r) => r.decision !== "pass");
+    const inScope = rows.filter((r) => r.decision !== "pass");
+    const toRecord = hard.length ? hard : inScope;
     let blockErr = null;
     let lastDecision = "pass";
     for (const row of toRecord) {
@@ -3304,19 +3492,36 @@ globalThis.fetch = function vantioFetch(input, init) {
       } else if (decision === "block_spend") {
         recordCli(tool, dest.hostname, dest.port, "BLOCKED_SPEND", parsed.dataBytes);
         if (!blockErr) blockErr = gateError(dest.hostname, "spend_cap_reached");
-      } else if (decision === "dry_block") {
-        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes);
-      } else if (decision === "dry_size") {
-        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes);
-      } else if (decision === "dry_spend") {
-        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes);
-      } else {
-        recordCli(tool, dest.hostname, dest.port, FREE_MODE ? "OBSERVED" : "ALLOWED", parsed.dataBytes);
-        spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
       }
     }
     if (blockErr) return { decision: lastDecision, err: blockErr };
-    return { decision: lastDecision };
+    let newArgv = argv;
+    let redactions = [];
+    if (!FREE_MODE && policy.redact_pii && inScope.length) {
+      const rw = rewriteInlineCliBodies(tool, argv);
+      newArgv = rw.argv;
+      redactions = rw.redactions;
+    }
+    for (const row of toRecord) {
+      const dest = row.dest;
+      const decision = row.decision;
+      lastDecision = decision;
+      if (decision === "dry_block") {
+        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes, redactions);
+      } else if (decision === "dry_size") {
+        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes, redactions);
+      } else if (decision === "dry_spend") {
+        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes, redactions);
+      } else if (decision === "observe") {
+        const action = redactions.length ? "REDACTED" : (FREE_MODE ? "OBSERVED" : "ALLOWED");
+        recordCli(tool, dest.hostname, dest.port, action, parsed.dataBytes, redactions);
+        spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
+      }
+    }
+    return {
+      decision: lastDecision,
+      argv: redactions.length ? newArgv : null,
+    };
   }
 
   cp.spawn = function vantioSpawn(...args) {
@@ -3326,6 +3531,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       if (!cli) return origSpawn(...args);
       const gated = applyCliGate(cli.tool, cli.argv, options);
       if (gated.err) return blockedChild(gated.err);
+      if (gated.argv) applyRewrittenSpawnArgs(args, gated.argv);
       return origSpawn(...args);
     } catch {
       return origSpawn(...args);
@@ -3340,6 +3546,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         if (!cli) return origSpawnSync(...args);
         const gated = applyCliGate(cli.tool, cli.argv, options);
         if (gated.err) return blockedSync(gated.err);
+        if (gated.argv) applyRewrittenSpawnArgs(args, gated.argv);
         return origSpawnSync(...args);
       } catch {
         return origSpawnSync(...args);
@@ -3359,6 +3566,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           if (cb) process.nextTick(() => cb(gated.err, "", ""));
           return blockedChild(gated.err);
         }
+        if (gated.argv) applyRewrittenSpawnArgs(args, gated.argv);
         return origExecFile(...args);
       } catch {
         return origExecFile(...args);
@@ -3377,6 +3585,7 @@ globalThis.fetch = function vantioFetch(input, init) {
             gated.err.status = 1;
             throw gated.err;
           }
+          if (gated.argv) applyRewrittenSpawnArgs(args, gated.argv);
         }
       } catch (err) {
         if (err && err.code === "VANTIO_GATE_BLOCKED") throw err;
@@ -3398,6 +3607,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           if (cb) process.nextTick(() => cb(gated.err, "", ""));
           return blockedChild(gated.err);
         }
+        if (gated.argv) args[0] = applyRewrittenExecCommand(args[0], gated.argv);
         return origExec(...args);
       } catch {
         return origExec(...args);
@@ -3417,6 +3627,7 @@ globalThis.fetch = function vantioFetch(input, init) {
             gated.err.status = 1;
             throw gated.err;
           }
+          if (gated.argv) args[0] = applyRewrittenExecCommand(args[0], gated.argv);
         }
       } catch (err) {
         if (err && err.code === "VANTIO_GATE_BLOCKED") throw err;
@@ -3515,7 +3726,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; contents of file bodies are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; inline argv bodies are rewritten for Gate PII; file contents are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
