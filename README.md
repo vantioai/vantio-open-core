@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml/badge.svg)](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml)
 
-**Vantio Optics** is free visibility into what your agents send. Wrap a process with `vantio run`, see outbound LLM calls (host, size, process, time — never prompts), and export proof. Observe only — no block, redact, or spend cap on Free.
+**Vantio Optics** is free visibility into what your agents send. Wrap a process with `vantio run`, see outbound LLM calls (host, size, process, time — never prompts), and export a proof. Observe only — Free does not block, redact, or cap spend.
 
-The same client runs in every tier. **Vantio Gate** (Pro) adds rules that stick on the agent path. **Vantio Phantom Engine** (Enterprise) is the premium lock-down on servers you own when something tries to go around Optics and Gate.
+The same client runs with every product. **Vantio Gate** ($499) adds rules that stick on the agent path. **Vantio Phantom Engine** ($799 per node) protects Linux machines you own — enforce and control together, one purchase. Do not stack Gate cloud on a Phantom Engine quote.
 
-> **Vantio Optics** (Free) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
+> **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales)
 
 ---
 
@@ -23,7 +23,7 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-Optionally connect a Gate / Enterprise API key (paid features):
+Optionally connect a Gate key (paid features):
 
 ```bash
 vantio login <your-api-key>       # validates + saves the key; no env vars needed
@@ -38,7 +38,7 @@ After a run, generate an auditor-ready proof artifact or explore local history:
 ```bash
 vantio prove                      # HTML proof artifact (Free, no key needed)
 vantio discover --local           # local run history (Free, no key needed)
-vantio discover                   # full workspace history (Pro/Enterprise)
+vantio discover                   # full workspace history (Gate / Phantom Engine)
 ```
 
 ---
@@ -85,17 +85,18 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 ---
 
-## Tier model — one platform, unlocked layers
+## Suite — peer products
 
-| Tier | Feature layer | Repo |
-|------|--------------|------|
-| **Free** | **Vantio Optics** · Observe ← you are here | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
-| **Pro** | + **Vantio Gate** · Enforce (block, redact, caps) | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
-| **Enterprise** | + **Vantio Phantom Engine** · Absolute Control | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
+| Product | Job | List | Repo |
+|---------|-----|------|------|
+| **Vantio Optics** | Observe ← you are here | Free | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
+| **Vantio Gate** | Enforce — rules you set, where the agent is wired | $499/month | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
+| **Vantio Phantom Engine** | Protect machines you own — enforce and control together | $799/node | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
+| **Phantom Engine Enterprise** | Governance on that protection (ledger, evidence, process) | Talk to sales | same |
 
-Optics is the client at every tier. On Free (no Pro key), it **observes only** — events are labelled `OBSERVED`. With a Pro key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can block, redact, or cap locally. Enterprise adds **Vantio Phantom Engine** on your hosts. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
+Optics is the client at every product. On Free (no Gate key), it **observes only** — events are labelled `OBSERVED`. With a Gate key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can refuse a destination, strip sensitive fields, or cap spend on the wrapped path. Phantom Engine is a separate purchase for Linux hosts you enroll — not a leftover after Optics and Gate. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
 
-Full breakdown: [docs/PRODUCT_LINEUP.md](./docs/PRODUCT_LINEUP.md)
+Full breakdown: [docs/PRODUCT_LINEUP.md](./docs/PRODUCT_LINEUP.md) · [vantio.ai/pricing](https://vantio.ai/pricing)
 
 ---
 
@@ -159,8 +160,8 @@ Native sockets, un-instrumented subprocesses, or processes not started with `van
 never hit Optics — and Optics does not invent a record for them. That residual is the
 upgrade cue:
 
-- **Vantio Gate (Pro)** — Rules that stick: refuse destinations, strip sensitive fields, hard spend ceilings, residual-risk report. App layer.
-- **Vantio Phantom Engine (Enterprise)** — Premium host lock-down + **Rogue Reconciliation** when app and host diverge.
+- **Vantio Gate** — when an agent crosses a line you already set on the wrapped path, Gate can stop the request, strip sensitive details before they leave, or put a hard limit on spend.
+- **Vantio Phantom Engine** — protection on Linux machines you own. Enforce and control together, one purchase. **Rogue Reconciliation** names the gap when the host sees traffic the app layer never recorded.
 
 Use `vantio discover --local` to see what Free observes on your machine.
 Use `vantio prove` to generate an auditor-ready proof artifact from any run.
