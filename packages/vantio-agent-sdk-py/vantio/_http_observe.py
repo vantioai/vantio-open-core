@@ -5,9 +5,10 @@ Records host, path, status, and size — never prompts or completions.
 In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
-Wraps urllib.request.urlopen always. If requests or httpx are installed,
-wraps those too. With a Gate API key, the same wrap can block a destination,
-redact PII, or enforce a spend limit. Raw sockets and curl stay outside this wrap.
+Wraps urllib.request.urlopen always. If requests, httpx, or aiohttp are
+installed, wraps those too. With a Gate API key, the same wrap can block a
+destination, redact PII, or enforce a spend limit. Raw sockets and curl stay
+outside this wrap.
 """
 from __future__ import annotations
 
@@ -31,6 +32,11 @@ try:
     import httpx as _httpx
 except ImportError:
     _httpx = None  # type: ignore[assignment]
+
+try:
+    import aiohttp as _aiohttp
+except ImportError:
+    _aiohttp = None  # type: ignore[assignment]
 
 # Keep in lockstep with vantio-cli/bin/llm-hosts.cjs
 _LLM_HOSTS = {
@@ -66,6 +72,7 @@ _orig_urlopen = urllib.request.urlopen
 _orig_requests_send: Any = None
 _orig_httpx_sync_send: Any = None
 _orig_httpx_async_send: Any = None
+_orig_aiohttp_request: Any = None
 _calls: list[dict[str, Any]] = []
 _started_ms = 0.0
 _trace_id = ""
@@ -322,6 +329,42 @@ def _gate_blocked_httpx(reason: str) -> Any:
         json={"error": "blocked_by_vantio", "reason": reason},
     )
 
+
+def _gate_blocked_aiohttp(method: str, url: Any, reason: str) -> BaseException:
+    if _aiohttp is None:
+        return urllib.error.URLError(reason)
+    try:
+        from multidict import CIMultiDict, CIMultiDictProxy
+        from yarl import URL as YarlURL
+
+        parsed = url if hasattr(url, "human_repr") else YarlURL(str(url))
+        empty = CIMultiDict()
+        request_info = _aiohttp.RequestInfo(
+            parsed,
+            str(method or "GET").upper(),
+            CIMultiDictProxy(empty),
+            parsed,
+        )
+        return _aiohttp.ClientResponseError(
+            request_info,
+            (),
+            status=403,
+            message=reason,
+            headers=CIMultiDict({"content-type": "application/json"}),
+        )
+    except Exception:
+        return _aiohttp.ClientError(f"blocked_by_vantio:{reason}")
+
+
+def _aiohttp_request_body(kwargs: dict[str, Any]) -> Any:
+    if kwargs.get("data") is not None:
+        return kwargs["data"]
+    if kwargs.get("json") is not None:
+        try:
+            return json.dumps(kwargs["json"])
+        except Exception:
+            return None
+    return None
 
 def _decide(hostname: str, port: Optional[str], path: str, body_len: int) -> str:
     """pass | observe | block | dry_block | block_size | dry_size | block_spend | dry_spend"""
@@ -722,6 +765,86 @@ def _uninstall_httpx() -> None:
     _orig_httpx_async_send = None
 
 
+def _install_aiohttp() -> None:
+    global _orig_aiohttp_request
+    if _aiohttp is None:
+        return
+    _orig_aiohttp_request = _aiohttp.ClientSession._request
+
+    async def _observe_request(self, method, str_or_url, **kwargs):  # type: ignore[no-untyped-def]
+        hostname, port, path = _host_port_from_url(str_or_url)
+        body = _aiohttp_request_body(kwargs)
+        kind, payload, redactions, record_send = _dispatch_gate(
+            hostname, port, path, body, "python_aiohttp"
+        )
+        if kind == "pass":
+            return await _orig_aiohttp_request(self, method, str_or_url, **kwargs)
+        if kind == "block":
+            raise _gate_blocked_aiohttp(str(method), str_or_url, str(payload))
+        send_kwargs = dict(kwargs)
+        if redactions:
+            if kwargs.get("json") is not None and isinstance(payload, str):
+                try:
+                    send_kwargs["json"] = json.loads(payload)
+                except json.JSONDecodeError:
+                    send_kwargs.pop("json", None)
+                    send_kwargs["data"] = payload
+            else:
+                send_kwargs["data"] = payload
+        t0 = time.time()
+        method_s = str(method or "GET").upper()
+        try:
+            raw = str(str_or_url)
+        except Exception:
+            raw = ""
+        scheme = "https" if raw.startswith("https") else "http"
+        try:
+            resp = await _orig_aiohttp_request(self, method, str_or_url, **send_kwargs)
+            _account_response_bytes(getattr(resp, "headers", None))
+            if record_send:
+                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                _record(
+                    hostname,
+                    action,
+                    "python_aiohttp",
+                    method=method_s,
+                    path=path,
+                    scheme=scheme,
+                    status=getattr(resp, "status", None),
+                    ok=True,
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
+            return resp
+        except Exception as exc:
+            _record(
+                hostname,
+                "OBSERVED",
+                "python_aiohttp",
+                method=method_s,
+                path=path,
+                scheme=scheme,
+                ok=False,
+                duration_ms=int((time.time() - t0) * 1000),
+                error="network_error",
+                error_class=type(exc).__name__,
+            )
+            raise
+
+    _aiohttp.ClientSession._request = _observe_request  # type: ignore[assignment]
+
+
+def _uninstall_aiohttp() -> None:
+    global _orig_aiohttp_request
+    if _orig_aiohttp_request is None:
+        return
+    try:
+        if _aiohttp is not None:
+            _aiohttp.ClientSession._request = _orig_aiohttp_request
+    except Exception:
+        pass
+    _orig_aiohttp_request = None
+
+
 def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
@@ -749,7 +872,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib, and requests/httpx when those libraries are installed, to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on that same wrap. Raw sockets and curl stay outside this wrap.",
+                "note": "Python wrap observes urllib, and requests/httpx/aiohttp when those libraries are installed, to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on that same wrap. Raw sockets and curl stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
@@ -777,6 +900,7 @@ def install(trace_id: str) -> None:
             urllib.request.urlopen = _observe_urlopen  # type: ignore[assignment]
             _install_requests()
             _install_httpx()
+            _install_aiohttp()
 
 
 def uninstall() -> None:
@@ -789,4 +913,5 @@ def uninstall() -> None:
             urllib.request.urlopen = _orig_urlopen  # type: ignore[assignment]
             _uninstall_requests()
             _uninstall_httpx()
+            _uninstall_aiohttp()
             _write_run_log()

@@ -1,6 +1,6 @@
 """
 Vantio Optics Python SDK — Sight Loop observe via shield().
-Zero dependencies beyond stdlib. Optional observe of requests/httpx when installed.
+Zero dependencies beyond stdlib. Optional observe of requests/httpx/aiohttp when installed.
 """
 from .sdk import (
     shield,
@@ -23,4 +23,4 @@ __all__ = [
     "VantioPolicy",
     "RedactionResult",
 ]
-__version__ = "3.0.3"
+__version__ = "3.0.4"

@@ -65,7 +65,7 @@ Enterprise workflow: **Rogue Reconciliation** — correlate app + host evidence 
 
 ## Honest gap (by design)
 
-Optics intercepts via Node `fetch` + `http`/`https` (`vantio run`) or Python `shield()` (urllib; requests/httpx when installed). That covers most real agents — and **can be skipped**:
+Optics intercepts via Node `fetch`, `undici.fetch`, and `http`/`https` (`vantio run`) or Python `shield()` (urllib; requests/httpx/aiohttp when installed). That covers most real agents — and **can be skipped**:
 
 - Native sockets / curl
 - Subprocesses not wrapped with `vantio run` / `@shield`
