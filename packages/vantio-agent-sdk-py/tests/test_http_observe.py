@@ -216,6 +216,8 @@ class PythonGateWrapTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("python_curl", {c.get("mediation") for c in data["calls"]})
             self.assertNotIn("python_wget", {c.get("mediation") for c in data["calls"]})
             self.assertNotIn("python_http_client", {c.get("mediation") for c in data["calls"]})
+            self.assertNotIn("python_httpie", {c.get("mediation") for c in data["calls"]})
+            self.assertNotIn("python_aria2c", {c.get("mediation") for c in data["calls"]})
         finally:
             self._clear_env()
 
@@ -1135,6 +1137,179 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
             mediations = {c.get("mediation") for c in data["calls"]}
             self.assertTrue("python_urllib3" in mediations or "python_http_client" in mediations)
             self.assertIn("BLOCKED_HOST", {c.get("action") for c in data["calls"]})
+        finally:
+            self._clear_env()
+
+
+class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
+    def _gate_env(self, home: str) -> None:
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        os.environ["VANTIO_API_KEY"] = "vk_test_dummy"
+
+    def _clear_env(self) -> None:
+        for key in (
+            "VANTIO_HOME",
+            "VANTIO_EXTRA_LLM_HOSTS",
+            "VANTIO_API_KEY",
+            "VANTIO_INGEST_URL",
+        ):
+            os.environ.pop(key, None)
+
+    def _config_handler(self, blocked: bool, max_request_bytes: int = 0):
+        def handler(req):
+            if req.path.startswith("/api/v1/config"):
+                body = {
+                    "tier": "PRO",
+                    "policy": {
+                        "enforce": True,
+                        "blocked_hosts": ["127.0.0.1"] if blocked else [],
+                        "allowed_hosts": [] if blocked else ["127.0.0.1"],
+                        "redact_pii": False,
+                        "pii_types": [],
+                        "max_request_bytes": max_request_bytes,
+                        "spend_cap_usd": 0,
+                        "dry_run": False,
+                    },
+                }
+                return 200, json.dumps(body).encode("utf-8")
+            if req.path.startswith("/api/v1/ingest"):
+                return 200, b'{"status":0}'
+            return 200, b'{"ok":true}'
+
+        return handler
+
+    async def test_curl_stdin_over_max_never_hits(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        body_path = Path(home) / "body.txt"
+        body_path.write_text("hello-stdin-body", encoding="utf-8")
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=False, max_request_bytes=4))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError):
+                    async with shield(trace_id="py-curl-stdin"):
+                        with open(body_path, "rb") as fh:
+                            subprocess.run(
+                                ["curl", "-sS", "--max-time", "2", "-X", "POST", "-d", "@-", target],
+                                stdin=fh,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                timeout=5,
+                            )
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            data = json.loads((Path(home) / "runs" / "py-curl-stdin.json").read_text(encoding="utf-8"))
+            size_calls = [c for c in data["calls"] if c.get("action") == "BLOCKED_SIZE"]
+            self.assertGreaterEqual(len(size_calls), 1)
+            self.assertEqual(size_calls[0]["mediation"], "python_curl")
+            self.assertEqual(size_calls[0]["bytes_observed"], len(b"hello-stdin-body"))
+        finally:
+            self._clear_env()
+
+    async def test_curl_form_file_over_max_never_ingests_contents(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        secret = "SECRET_SHOULD_NOT_INGEST_py_curl_form"
+        body_path = Path(home) / "body.txt"
+        body_path.write_text(secret, encoding="utf-8")
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=False, max_request_bytes=4))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError):
+                    async with shield(trace_id="py-curl-form"):
+                        subprocess.run(
+                            ["curl", "-sS", "--max-time", "2", "-F", "file=@" + str(body_path), target],
+                            capture_output=True,
+                            timeout=5,
+                        )
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            raw = (Path(home) / "runs" / "py-curl-form.json").read_text(encoding="utf-8")
+            self.assertNotIn(secret, raw)
+            data = json.loads(raw)
+            size_calls = [c for c in data["calls"] if c.get("action") == "BLOCKED_SIZE"]
+            self.assertGreaterEqual(len(size_calls), 1)
+            self.assertEqual(size_calls[0]["mediation"], "python_curl")
+            self.assertEqual(size_calls[0]["bytes_observed"], len(secret.encode("utf-8")))
+        finally:
+            self._clear_env()
+
+    async def test_wget_input_file_blocked_never_starts(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        if not shutil.which("wget"):
+            self.skipTest("wget is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=True))
+                target = server.url + "/v1/target"
+                list_path = Path(home) / "urls.txt"
+                list_path.write_text(target + "\n", encoding="utf-8")
+                with self.assertRaises(GateBlockedError):
+                    async with shield(trace_id="py-wget-i"):
+                        subprocess.run(
+                            ["wget", "-q", "-O", "-", "--timeout=2", "--tries=1", "-i", str(list_path)],
+                            capture_output=True,
+                            timeout=5,
+                        )
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            data = json.loads((Path(home) / "runs" / "py-wget-i.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["mediation"], "python_wget")
+            self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
+        finally:
+            self._clear_env()
+
+    async def test_httpie_blocked_never_starts(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=True))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError):
+                    async with shield(trace_id="py-httpie"):
+                        subprocess.run(["http", "GET", target], capture_output=True, timeout=5)
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            data = json.loads((Path(home) / "runs" / "py-httpie.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["mediation"], "python_httpie")
+            self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
+        finally:
+            self._clear_env()
+
+    async def test_aria2c_blocked_never_starts(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=True))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError):
+                    async with shield(trace_id="py-aria2c"):
+                        subprocess.run(["aria2c", target], capture_output=True, timeout=5)
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            data = json.loads((Path(home) / "runs" / "py-aria2c.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["mediation"], "python_aria2c")
+            self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
         finally:
             self._clear_env()
 

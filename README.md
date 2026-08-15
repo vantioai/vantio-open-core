@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.14** (npm) and **`vantio-agent-sdk` 3.0.8** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.15** (npm) and **`vantio-agent-sdk` 3.0.9** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -27,10 +27,10 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-Python agents use `shield()` from `vantio-agent-sdk` 3.0.8 (urllib always; requests, httpx, aiohttp, and urllib3 when those libraries are already installed; `http.client`; `socket.connect` / `connect_ex` / `create_connection`; and subprocess curl/wget to in-scope hosts):
+Python agents use `shield()` from `vantio-agent-sdk` 3.0.9 (urllib always; requests, httpx, aiohttp, and urllib3 when those libraries are already installed; `http.client`; `socket.connect` / `connect_ex` / `create_connection`; and subprocess curl/wget to in-scope hosts):
 
 ```bash
-pip install vantio-agent-sdk==3.0.8
+pip install vantio-agent-sdk==3.0.9
 ```
 
 Optionally connect a Gate key (paid features):
@@ -85,8 +85,8 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Package | Published | Description |
 |---------|-----------|-------------|
-| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.14** | CLI runner — Node fetch, undici, http/https, ClientRequest, http2, net/tls, WebSocket, upgrade/CONNECT frames, Node-spawned curl and wget |
-| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.8** | Python `shield()` — urllib + http.client + optional requests/httpx/aiohttp/urllib3 + socket.connect + subprocess curl/wget |
+| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.15** | CLI runner — Node fetch, undici, http/https, ClientRequest, http2, net/tls, WebSocket, upgrade/CONNECT frames, Node-spawned curl and wget |
+| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.9** | Python `shield()` — urllib + http.client + optional requests/httpx/aiohttp/urllib3 + socket.connect + subprocess curl/wget |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
 | [`packages/vantio-gate-mcp`](./packages/vantio-gate-mcp) | `@vantio/gate-mcp` | Gate MCP — dry-run evaluate |
@@ -126,12 +126,12 @@ await shield(async () => {
 });
 ```
 
-Node wrap of `fetch`, undici, `http`/`https`, `ClientRequest`, `http2`, `net`/`tls`, `WebSocket` (host-block and outbound frame size), `undici.upgrade` / CONNECT tunnel bytes, and Node-spawned `curl` and `wget` is in **`@vantio/cli` 0.3.14** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
+Node wrap of `fetch`, undici, `http`/`https`, `ClientRequest`, `http2`, `net`/`tls`, `WebSocket` (host-block and outbound frame size), `undici.upgrade` / CONNECT tunnel bytes, and Node-spawned `curl` and `wget` is in **`@vantio/cli` 0.3.15** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
 
 ### Python
 
 ```bash
-pip install vantio-agent-sdk==3.0.8
+pip install vantio-agent-sdk==3.0.9
 ```
 
 > On Ubuntu/Debian (23.04+), global `pip install` is blocked by default (PEP 668). Use a virtualenv or `pipx install vantio-agent-sdk` instead.
@@ -150,9 +150,9 @@ While `shield()` is active, Optics records urllib and http.client to in-scope ho
 
 ## Supported wraps
 
-**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https` including `ClientRequest`, Node `http2.connect` / `session.request`, Node `net` / `tls` connect to in-scope hosts, `WebSocket` host-block and outbound frame size (payloads are not read), outbound bytes on `undici.upgrade` / CONNECT sockets, and Node-spawned `curl` / `wget` (including `env` / `timeout` / `nice` prefixes, `curl -K` `url=` lines, and file-body size from `--post-file` / `@file`; file contents are not read).
+**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https` including `ClientRequest`, Node `http2.connect` / `session.request`, Node `net` / `tls` connect to in-scope hosts, `WebSocket` host-block and outbound frame size (payloads are not read), outbound bytes on `undici.upgrade` / CONNECT sockets, and Node-spawned `curl` / `wget` (including `env` / `timeout` / `nice` prefixes, `curl -K` `url=` lines, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, and file-body size from `--post-file` / `@file`; file contents are not read). Spawned httpie and aria2c share host-block from argv URLs.
 
-**Python (`shield()`):** `urllib` (urlopen and custom openers); `http.client`; `requests`, `httpx`, `aiohttp`, and `urllib3` when those libraries are already installed; `socket.connect` / `connect_ex` / `create_connection` / `ssl.SSLSocket.connect` to in-scope hosts (host-block and observe; no TLS payload redaction); `subprocess` / `os.system` / `asyncio` curl and wget spawns to in-scope hosts (host-block, observe, and file-body size from stat; curl/wget bodies are not rewritten).
+**Python (`shield()`):** `urllib` (urlopen and custom openers); `http.client`; `requests`, `httpx`, `aiohttp`, and `urllib3` when those libraries are already installed; `socket.connect` / `connect_ex` / `create_connection` / `ssl.SSLSocket.connect` to in-scope hosts (host-block and observe; no TLS payload redaction); `subprocess` / `os.system` / `asyncio` curl and wget spawns to in-scope hosts (host-block, observe, file-body and curl `-F` size from stat, stdin size when stdin is a file, `wget -i` URL lines; curl/wget bodies are not rewritten). Spawned httpie and aria2c share host-block from argv URLs.
 
 **Phantom Engine:** Linux hosts you own.
 

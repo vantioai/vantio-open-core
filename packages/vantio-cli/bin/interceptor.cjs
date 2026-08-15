@@ -5,9 +5,10 @@
 // http/https.request|get and ClientRequest, Node http2.connect / session.request,
 // Node net.Socket.connect / tls.connect, globalThis.WebSocket / undici.WebSocket
 // (host-block and outbound frame size; payloads are not parsed), undici.upgrade /
-// CONNECT tunnel writes, and Node child_process spawn/exec of curl and wget
-// (including env/timeout/nice prefixes and curl -K url=) to in-scope hosts.
-// Browsers stay outside this wrap.
+// CONNECT tunnel writes, and Node child_process spawn/exec of curl, wget,
+// httpie, and aria2c (including env/timeout/nice prefixes, curl -K url=,
+// curl -F stat size, wget -i URL lists, and stdin size when stdin is a file)
+// to in-scope hosts. Browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -23,7 +24,7 @@
 "use strict";
 
 const { randomUUID } = require("node:crypto");
-const { mkdirSync, writeFileSync, statSync, readFileSync } = require("node:fs");
+const { mkdirSync, writeFileSync, statSync, fstatSync, readFileSync, openSync, readSync, closeSync } = require("node:fs");
 const { homedir, hostname: osHostname } = require("node:os");
 const { join, basename } = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
@@ -2691,10 +2692,10 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 })();
 
-// Node child_process spawn/exec of curl and wget — host-block and observe
-// before the child starts. Bodies are not rewritten. File-body size comes
-// from stat (not file contents). Residual: browsers, stdin @-, Python
-// subprocess --post-file.
+// Node child_process spawn/exec of curl, wget, httpie, and aria2c —
+// host-block and observe before the child starts. Bodies are not rewritten.
+// File-body and curl -F size come from stat. Stdin @- size comes from fstat
+// when stdin is a regular file (pipes stay 0). Residual: browsers.
 (function patchCurlSpawn() {
   let cp;
   try { cp = require("node:child_process"); } catch { try { cp = require("child_process"); } catch { return; } }
@@ -2799,19 +2800,28 @@ globalThis.fetch = function vantioFetch(input, init) {
     return list.slice(i);
   }
 
+  function canonicalCliTool(base) {
+    if (base === "curl") return "curl";
+    if (base === "wget") return "wget";
+    if (base === "http" || base === "https" || base === "httpie") return "httpie";
+    if (base === "aria2c" || base === "aria2") return "aria2c";
+    return null;
+  }
+
   function cliFromTokens(tokens) {
     const stripped = stripSpawnPrefixes(tokens);
     if (!stripped.length) return null;
+    const direct = canonicalCliTool(cmdBase(stripped[0]));
+    if (direct) return { tool: direct, argv: stripped.slice(1) };
     const base = cmdBase(stripped[0]);
-    if (base === "curl" || base === "wget") return { tool: base, argv: stripped.slice(1) };
     if (base !== "sh" && base !== "bash" && base !== "dash" && base !== "zsh") return null;
     const args = stripped.slice(1);
     const cIdx = args.indexOf("-c");
     if (cIdx < 0 || args[cIdx + 1] == null) return null;
     const inner = stripSpawnPrefixes(tokenizeShell(args[cIdx + 1]));
     if (!inner.length) return null;
-    const tool = cmdBase(inner[0]);
-    if (tool !== "curl" && tool !== "wget") return null;
+    const tool = canonicalCliTool(cmdBase(inner[0]));
+    if (!tool) return null;
     return { tool, argv: inner.slice(1) };
   }
 
@@ -2829,9 +2839,34 @@ globalThis.fetch = function vantioFetch(input, init) {
     return cliFromTokens(tokens);
   }
 
-  function fileByteLength(rel) {
+  function stdinByteLength(options) {
+    if (options && options.input != null) {
+      try {
+        if (Buffer.isBuffer(options.input)) return options.input.length;
+        if (typeof options.input === "string") return Buffer.byteLength(options.input);
+      } catch { /* ignore */ }
+    }
+    try {
+      let fd = null;
+      const stdio = options && options.stdio;
+      if (stdio == null) return 0;
+      const s0 = Array.isArray(stdio) ? stdio[0] : stdio;
+      if (s0 === "pipe" || s0 === "ignore" || s0 === "ipc") return 0;
+      if (s0 === "inherit") fd = 0;
+      else if (typeof s0 === "number") fd = s0;
+      else if (s0 && typeof s0.fd === "number") fd = s0.fd;
+      else return 0;
+      const st = fstatSync(fd);
+      return st.isFile() ? Number(st.size) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function fileByteLength(rel, stdinSize) {
     const p = String(rel || "");
-    if (!p || p === "-") return 0;
+    if (!p) return 0;
+    if (p === "-") return Number(stdinSize) || 0;
     try {
       const st = statSync(p);
       return st.isFile() ? Number(st.size) || 0 : 0;
@@ -2840,10 +2875,75 @@ globalThis.fetch = function vantioFetch(input, init) {
     }
   }
 
-  function bytesFromAtOrLiteral(value, atMeansFile) {
+  function bytesFromAtOrLiteral(value, atMeansFile, stdinSize) {
     const v = String(value ?? "");
-    if (atMeansFile && v.startsWith("@")) return fileByteLength(v.slice(1));
+    if (atMeansFile && v.startsWith("@")) return fileByteLength(v.slice(1), stdinSize);
     return Buffer.byteLength(v);
+  }
+
+  function bytesFromCurlFormValue(value, treatAtAsFile, stdinSize) {
+    const v = String(value ?? "");
+    const eq = v.indexOf("=");
+    const rhs = eq >= 0 ? v.slice(eq + 1) : v;
+    if (!treatAtAsFile) return Buffer.byteLength(rhs);
+    if (rhs.startsWith("@") || rhs.startsWith("<")) {
+      let path = rhs.slice(1);
+      const semi = path.indexOf(";");
+      if (semi >= 0) path = path.slice(0, semi);
+      return fileByteLength(path, stdinSize);
+    }
+    return Buffer.byteLength(rhs);
+  }
+
+  function urlsFromListFile(path, stdinSize, options) {
+    const cap = 65536;
+    const maxUrls = 32;
+    let text = "";
+    try {
+      if (String(path || "") === "-") {
+        if (options && options.input != null) {
+          const raw = Buffer.isBuffer(options.input)
+            ? options.input
+            : Buffer.from(String(options.input), "utf8");
+          text = raw.slice(0, cap).toString("utf8");
+        } else {
+          if (!stdinSize) return [];
+          let fd = 0;
+          const stdio = options && options.stdio;
+          if (stdio != null) {
+            const s0 = Array.isArray(stdio) ? stdio[0] : stdio;
+            if (typeof s0 === "number") fd = s0;
+            else if (s0 && typeof s0.fd === "number") fd = s0.fd;
+            else if (s0 !== "inherit") return [];
+          }
+          const buf = Buffer.alloc(Math.min(Number(stdinSize) || 0, cap));
+          const n = readSync(fd, buf, 0, buf.length, 0);
+          text = buf.slice(0, n).toString("utf8");
+        }
+      } else {
+        const st = statSync(path);
+        if (!st.isFile()) return [];
+        const fd = openSync(String(path), "r");
+        try {
+          const buf = Buffer.alloc(Math.min(Number(st.size) || 0, cap));
+          const n = readSync(fd, buf, 0, buf.length, 0);
+          text = buf.slice(0, n).toString("utf8");
+        } finally {
+          closeSync(fd);
+        }
+      }
+    } catch {
+      return [];
+    }
+    const urls = [];
+    for (const line of String(text).split(/\r?\n/)) {
+      const s = line.trim();
+      if (!s || s.startsWith("#")) continue;
+      const token = s.split(/\s+/)[0];
+      if (/^https?:\/\//i.test(token)) urls.push(token);
+      if (urls.length >= maxUrls) break;
+    }
+    return urls;
   }
 
   const CURL_DATA_AT_FILE = {
@@ -2872,7 +2972,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     return null;
   }
 
-  function parseCurlArgv(argv) {
+  function parseCurlArgv(argv, stdinSize) {
     let url = null;
     let dataBytes = 0;
     const configPaths = [];
@@ -2899,34 +2999,56 @@ globalThis.fetch = function vantioFetch(input, init) {
       }
       if (Object.prototype.hasOwnProperty.call(CURL_DATA_AT_FILE, a)) {
         const v = args[i + 1] != null ? String(args[i + 1]) : "";
-        dataBytes += bytesFromAtOrLiteral(v, CURL_DATA_AT_FILE[a]);
+        dataBytes += bytesFromAtOrLiteral(v, CURL_DATA_AT_FILE[a], stdinSize);
         i += 1;
         continue;
       }
       let eqHandled = false;
       for (const flag of Object.keys(CURL_DATA_AT_FILE)) {
         if (flag.startsWith("--") && a.startsWith(flag + "=")) {
-          dataBytes += bytesFromAtOrLiteral(a.slice(flag.length + 1), CURL_DATA_AT_FILE[flag]);
+          dataBytes += bytesFromAtOrLiteral(a.slice(flag.length + 1), CURL_DATA_AT_FILE[flag], stdinSize);
           eqHandled = true;
           break;
         }
       }
       if (eqHandled) continue;
       if (a.startsWith("-d") && a.length > 2 && !a.startsWith("--")) {
-        dataBytes += bytesFromAtOrLiteral(a.slice(2), true);
+        dataBytes += bytesFromAtOrLiteral(a.slice(2), true, stdinSize);
+        continue;
+      }
+      if (a === "-F" || a === "--form") {
+        dataBytes += bytesFromCurlFormValue(args[i + 1] != null ? String(args[i + 1]) : "", true, stdinSize);
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--form=")) {
+        dataBytes += bytesFromCurlFormValue(a.slice("--form=".length), true, stdinSize);
+        continue;
+      }
+      if (a.startsWith("-F") && a.length > 2 && !a.startsWith("--")) {
+        dataBytes += bytesFromCurlFormValue(a.slice(2), true, stdinSize);
+        continue;
+      }
+      if (a === "--form-string") {
+        dataBytes += bytesFromCurlFormValue(args[i + 1] != null ? String(args[i + 1]) : "", false, stdinSize);
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--form-string=")) {
+        dataBytes += bytesFromCurlFormValue(a.slice("--form-string=".length), false, stdinSize);
         continue;
       }
       if (a === "-T" || a === "--upload-file") {
-        dataBytes += fileByteLength(args[i + 1] != null ? String(args[i + 1]) : "");
+        dataBytes += fileByteLength(args[i + 1] != null ? String(args[i + 1]) : "", stdinSize);
         i += 1;
         continue;
       }
       if (a.startsWith("--upload-file=")) {
-        dataBytes += fileByteLength(a.slice("--upload-file=".length));
+        dataBytes += fileByteLength(a.slice("--upload-file=".length), stdinSize);
         continue;
       }
       if (a.startsWith("-T") && a.length > 2 && !a.startsWith("--")) {
-        dataBytes += fileByteLength(a.slice(2));
+        dataBytes += fileByteLength(a.slice(2), stdinSize);
         continue;
       }
       if (!url && /^https?:\/\//i.test(a)) url = a;
@@ -2940,12 +3062,23 @@ globalThis.fetch = function vantioFetch(input, init) {
         }
       }
     }
-    return { url, dataBytes };
+    return { urls: url ? [url] : [], dataBytes };
   }
 
-  function parseWgetArgv(argv) {
+  function takeInputFileArg(args, i, a) {
+    if (a === "-i" || a === "--input-file") {
+      return { path: args[i + 1] != null ? String(args[i + 1]) : "", next: i + 2 };
+    }
+    if (a.startsWith("--input-file=")) {
+      return { path: a.slice("--input-file=".length), next: i + 1 };
+    }
+    return null;
+  }
+
+  function parseWgetArgv(argv, stdinSize, options) {
     let url = null;
     let dataBytes = 0;
+    const listPaths = [];
     const args = Array.isArray(argv) ? argv : [];
     for (let i = 0; i < args.length; i++) {
       const a = String(args[i]);
@@ -2964,25 +3097,63 @@ globalThis.fetch = function vantioFetch(input, init) {
         continue;
       }
       if (a === "--post-file" || a === "--body-file") {
-        dataBytes += fileByteLength(args[i + 1] != null ? String(args[i + 1]) : "");
+        dataBytes += fileByteLength(args[i + 1] != null ? String(args[i + 1]) : "", stdinSize);
         i += 1;
         continue;
       }
       if (a.startsWith("--post-file=")) {
-        dataBytes += fileByteLength(a.slice("--post-file=".length));
+        dataBytes += fileByteLength(a.slice("--post-file=".length), stdinSize);
         continue;
       }
       if (a.startsWith("--body-file=")) {
-        dataBytes += fileByteLength(a.slice("--body-file=".length));
+        dataBytes += fileByteLength(a.slice("--body-file=".length), stdinSize);
+        continue;
+      }
+      const inputFile = takeInputFileArg(args, i, a);
+      if (inputFile) {
+        if (inputFile.path) listPaths.push(inputFile.path);
+        i = inputFile.next - 1;
         continue;
       }
       if (!url && /^https?:\/\//i.test(a)) url = a;
     }
-    return { url, dataBytes };
+    const urls = [];
+    if (url) urls.push(url);
+    for (const p of listPaths) {
+      for (const u of urlsFromListFile(p, stdinSize, options)) {
+        if (!urls.includes(u)) urls.push(u);
+      }
+    }
+    return { urls, dataBytes };
   }
 
-  function parseCliArgv(tool, argv) {
-    return tool === "wget" ? parseWgetArgv(argv) : parseCurlArgv(argv);
+  function parseUrlOnlyArgv(argv, stdinSize, options) {
+    const urls = [];
+    const listPaths = [];
+    const args = Array.isArray(argv) ? argv : [];
+    for (let i = 0; i < args.length; i++) {
+      const a = String(args[i]);
+      const inputFile = takeInputFileArg(args, i, a);
+      if (inputFile) {
+        if (inputFile.path) listPaths.push(inputFile.path);
+        i = inputFile.next - 1;
+        continue;
+      }
+      if (/^https?:\/\//i.test(a) && !urls.includes(a)) urls.push(a);
+    }
+    for (const p of listPaths) {
+      for (const u of urlsFromListFile(p, stdinSize, options)) {
+        if (!urls.includes(u)) urls.push(u);
+      }
+    }
+    return { urls, dataBytes: 0 };
+  }
+
+  function parseCliArgv(tool, argv, options) {
+    const stdinSize = stdinByteLength(options);
+    if (tool === "wget") return parseWgetArgv(argv, stdinSize, options);
+    if (tool === "httpie" || tool === "aria2c") return parseUrlOnlyArgv(argv, stdinSize, options);
+    return parseCurlArgv(argv, stdinSize);
   }
 
   function destFromCurlUrl(url) {
@@ -3070,17 +3241,23 @@ globalThis.fetch = function vantioFetch(input, init) {
     };
   }
 
+  function cliMeta(tool) {
+    if (tool === "wget") return { mediation: "node_wget", label: "wget", method: "WGET", plane: "app_wget" };
+    if (tool === "httpie") return { mediation: "node_httpie", label: "httpie", method: "HTTPIE", plane: "app_httpie" };
+    if (tool === "aria2c") return { mediation: "node_aria2c", label: "aria2c", method: "ARIA2C", plane: "app_aria2c" };
+    return { mediation: "node_curl", label: "curl", method: "CURL", plane: "app_curl" };
+  }
+
   function recordCli(tool, hostname, port, action, dataBytes) {
     sendRunTelemetryOnce(hostname);
     const provider = guessProvider(hostname, port);
-    const mediation = tool === "wget" ? "node_wget" : "node_curl";
-    const label = tool === "wget" ? "wget" : "curl";
+    const meta = cliMeta(tool);
     _calls.push({
-      hostname, provider, method: tool === "wget" ? "WGET" : "CURL", path: null, scheme: "http",
+      hostname, provider, method: meta.method, path: null, scheme: "http",
       request_bytes: dataBytes, bytes: dataBytes, status: null,
       ok: !String(action).startsWith("BLOCKED"),
       content_type: null, duration_ms: 0, ts: new Date().toISOString(),
-      action, mediation, optics_plane: tool === "wget" ? "app_wget" : "app_curl",
+      action, mediation: meta.mediation, optics_plane: meta.plane,
     });
     report({
       target_host: hostname, pid: process.pid, action_taken: action,
@@ -3088,48 +3265,58 @@ globalThis.fetch = function vantioFetch(input, init) {
       bytes_severed: String(action).startsWith("BLOCKED") ? dataBytes : 0,
       bytes_observed: dataBytes,
       request_bytes: dataBytes,
-      mediation, plane: "optics_gate",
+      mediation: meta.mediation, plane: "optics_gate",
     });
     if (action === "BLOCKED_HOST") {
-      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${label}`);
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${meta.label}`);
     } else if (action === "BLOCKED_SIZE") {
-      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${label} ${dataBytes}B exceeds cap`);
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${meta.label} ${dataBytes}B exceeds cap`);
     } else if (action === "BLOCKED_SPEND") {
-      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${label} spend cap`);
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — ${meta.label} spend cap`);
     } else if (FREE_MODE) {
-      log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — ${label}`);
+      log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — ${meta.label}`);
     }
   }
 
-  function applyCliGate(tool, argv) {
-    const parsed = parseCliArgv(tool, argv);
-    if (!parsed.url) return { decision: "pass" };
-    const dest = destFromCurlUrl(parsed.url);
-    const decision = decideCurl(parsed.url, dest.hostname, dest.port, parsed.dataBytes);
-    if (decision === "pass") return { decision };
-    if (decision === "block") {
-      recordCli(tool, dest.hostname, dest.port, "BLOCKED_HOST", parsed.dataBytes);
-      return { decision, err: gateError(dest.hostname, "host_not_permitted") };
+  function applyCliGate(tool, argv, options) {
+    const parsed = parseCliArgv(tool, argv, options);
+    const urls = Array.isArray(parsed.urls) ? parsed.urls : [];
+    if (!urls.length) return { decision: "pass" };
+    const rows = [];
+    for (const url of urls) {
+      const dest = destFromCurlUrl(url);
+      rows.push({ dest, decision: decideCurl(url, dest.hostname, dest.port, parsed.dataBytes) });
     }
-    if (decision === "block_size") {
-      recordCli(tool, dest.hostname, dest.port, "BLOCKED_SIZE", parsed.dataBytes);
-      return { decision, err: gateError(dest.hostname, "request_too_large") };
+    const hard = rows.filter((r) => r.decision === "block" || r.decision === "block_size" || r.decision === "block_spend");
+    const toRecord = hard.length ? hard : rows.filter((r) => r.decision !== "pass");
+    let blockErr = null;
+    let lastDecision = "pass";
+    for (const row of toRecord) {
+      const dest = row.dest;
+      const decision = row.decision;
+      lastDecision = decision;
+      if (decision === "block") {
+        recordCli(tool, dest.hostname, dest.port, "BLOCKED_HOST", parsed.dataBytes);
+        if (!blockErr) blockErr = gateError(dest.hostname, "host_not_permitted");
+      } else if (decision === "block_size") {
+        recordCli(tool, dest.hostname, dest.port, "BLOCKED_SIZE", parsed.dataBytes);
+        if (!blockErr) blockErr = gateError(dest.hostname, "request_too_large");
+      } else if (decision === "block_spend") {
+        recordCli(tool, dest.hostname, dest.port, "BLOCKED_SPEND", parsed.dataBytes);
+        if (!blockErr) blockErr = gateError(dest.hostname, "spend_cap_reached");
+      } else if (decision === "dry_block") {
+        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes);
+      } else if (decision === "dry_size") {
+        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes);
+      } else if (decision === "dry_spend") {
+        recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes);
+      } else {
+        recordCli(tool, dest.hostname, dest.port, FREE_MODE ? "OBSERVED" : "ALLOWED", parsed.dataBytes);
+        spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
+      }
     }
-    if (decision === "block_spend") {
-      recordCli(tool, dest.hostname, dest.port, "BLOCKED_SPEND", parsed.dataBytes);
-      return { decision, err: gateError(dest.hostname, "spend_cap_reached") };
-    }
-    if (decision === "dry_block") {
-      recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes);
-    } else if (decision === "dry_size") {
-      recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes);
-    } else if (decision === "dry_spend") {
-      recordCli(tool, dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes);
-    } else {
-      recordCli(tool, dest.hostname, dest.port, FREE_MODE ? "OBSERVED" : "ALLOWED", parsed.dataBytes);
-      spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
-    }
-    return { decision };
+    if (blockErr) return { decision: lastDecision, err: blockErr };
+    return { decision: lastDecision };
   }
 
   cp.spawn = function vantioSpawn(...args) {
@@ -3137,7 +3324,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       const { command, argv, options } = splitSpawnArgs(args);
       const cli = httpCliFromSpawn(command, argv, options);
       if (!cli) return origSpawn(...args);
-      const gated = applyCliGate(cli.tool, cli.argv);
+      const gated = applyCliGate(cli.tool, cli.argv, options);
       if (gated.err) return blockedChild(gated.err);
       return origSpawn(...args);
     } catch {
@@ -3151,7 +3338,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const { command, argv, options } = splitSpawnArgs(args);
         const cli = httpCliFromSpawn(command, argv, options);
         if (!cli) return origSpawnSync(...args);
-        const gated = applyCliGate(cli.tool, cli.argv);
+        const gated = applyCliGate(cli.tool, cli.argv, options);
         if (gated.err) return blockedSync(gated.err);
         return origSpawnSync(...args);
       } catch {
@@ -3167,7 +3354,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const cli = httpCliFromSpawn(file, argv, options);
         if (!cli) return origExecFile(...args);
         const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
-        const gated = applyCliGate(cli.tool, cli.argv);
+        const gated = applyCliGate(cli.tool, cli.argv, options);
         if (gated.err) {
           if (cb) process.nextTick(() => cb(gated.err, "", ""));
           return blockedChild(gated.err);
@@ -3185,7 +3372,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const { command: file, argv, options } = splitSpawnArgs(args);
         const cli = httpCliFromSpawn(file, argv, options);
         if (cli) {
-          const gated = applyCliGate(cli.tool, cli.argv);
+          const gated = applyCliGate(cli.tool, cli.argv, options);
           if (gated.err) {
             gated.err.status = 1;
             throw gated.err;
@@ -3205,7 +3392,8 @@ globalThis.fetch = function vantioFetch(input, init) {
         const cli = httpCliFromExec(command);
         if (!cli) return origExec(...args);
         const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
-        const gated = applyCliGate(cli.tool, cli.argv);
+        const options = args[1] && typeof args[1] === "object" ? args[1] : null;
+        const gated = applyCliGate(cli.tool, cli.argv, options);
         if (gated.err) {
           if (cb) process.nextTick(() => cb(gated.err, "", ""));
           return blockedChild(gated.err);
@@ -3223,7 +3411,8 @@ globalThis.fetch = function vantioFetch(input, init) {
         const command = args[0];
         const cli = httpCliFromExec(command);
         if (cli) {
-          const gated = applyCliGate(cli.tool, cli.argv);
+          const options = args[1] && typeof args[1] === "object" ? args[1] : null;
+          const gated = applyCliGate(cli.tool, cli.argv, options);
           if (gated.err) {
             gated.err.status = 1;
             throw gated.err;
@@ -3326,7 +3515,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl and wget to in-scope hosts (file-body size from stat; contents are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; contents of file bodies are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
