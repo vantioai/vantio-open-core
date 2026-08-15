@@ -16,4 +16,4 @@ async def ask(q: str):
     return await llm.acomplete(q)
 ```
 
-Fence: observe / optional Gate PII helpers. Not Absolute Control.
+Fence: observe / optional Gate PII helpers. Not Phantom Engine host protection. Python `shield()` (3.0.2) records urllib and, when installed, httpx — which LlamaIndex uses.

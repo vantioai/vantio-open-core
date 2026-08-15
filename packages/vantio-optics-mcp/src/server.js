@@ -160,7 +160,7 @@ export function createOpticsMcpServer() {
         does_not: [
           "Capture prompts or completions (blind by design)",
           "Block, redact, or cap spend (that is Vantio Gate)",
-          "Provide Absolute Control / Rogue Reconciliation (that is Phantom Engine)",
+          "Provide host protection / Rogue Reconciliation (that is Phantom Engine)",
         ],
         fence: UPGRADE_PATH.fence,
         latest_run: latest
@@ -181,7 +181,7 @@ export function createOpticsMcpServer() {
 
   server.tool(
     "optics_upgrade_path",
-    "Return the Vantio upgrade ladder from Optics (this MCP) → Gate (enforce) → Phantom Engine (Absolute Control). Use when the user needs policy or bypass proof.",
+    "Return the Vantio ladder from Optics (this MCP) → Gate (enforce) → Phantom Engine (protect machines you own). Use when the user needs policy or host protection.",
     {},
     async () => text(UPGRADE_PATH),
   );

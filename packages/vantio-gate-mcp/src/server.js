@@ -1,6 +1,6 @@
 /**
- * Vantio Gate MCP — Policy Latch dry-run / evaluate only.
- * Does not block traffic, mutate production policy, or expose Absolute Control.
+ * Vantio Gate MCP — rules-that-stick dry-run / evaluate only.
+ * Does not block traffic, mutate production policy, or expose Phantom Engine.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -101,7 +101,7 @@ export function createGateMcpServer() {
         plane: "Enforce",
         brand: "Vantio Gate",
         ...result,
-        upgrade: "Paths that never reach the app layer are closed by Vantio Phantom Engine (Absolute Control).",
+        upgrade: "Paths that never reach the app wrap need Vantio Phantom Engine on Linux hosts you enroll.",
       });
     },
   );
@@ -123,26 +123,26 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_explain",
-    "Explain Vantio Gate (Policy Latch), dry-run fence, and what this MCP will never do.",
+    "Explain Vantio Gate (rules that stick), dry-run fence, and what this MCP will never do.",
     {},
     async () =>
       text({
         brand: "Vantio Gate",
-        workflow: "Policy Latch",
+        workflow: "Rules that stick",
         sku: "Pro (includes Optics)",
         does: [
           "Evaluate host allow/block, size caps, spend caps, PII redact flags",
           "Dry-run decisions without blocking (this MCP)",
-          "Live enforce when wired through vantio run + Pro policy",
+          "Live enforce when wired through vantio run + Gate policy",
         ],
         does_not: [
           "Block or redact traffic from inside this MCP",
           "Push unconstrained policy changes to production",
-          "Provide Absolute Control / Rogue Reconciliation (Phantom Engine)",
+          "Provide Phantom Engine host protection / Rogue Reconciliation",
           "Capture prompts or completions",
         ],
         enable_live:
-          "Set policy.dry_run=true on Pro, run agents under vantio run, review DRY_RUN_* events, then latch enforce=true.",
+          "Set policy.dry_run=true on Gate, run agents under vantio run, review DRY_RUN_* events, then set enforce=true.",
         pricing: "https://vantio.ai/pricing",
         gate: "https://vantio.ai/gate",
       }),

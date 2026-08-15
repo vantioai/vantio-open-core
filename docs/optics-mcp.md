@@ -15,11 +15,11 @@ A **read-only** MCP server so IDEs and agent hosts can:
 
 ## What it is not
 
-- Not Vantio Gate — cannot block, redact, or latch policy  
-- Not Phantom Engine — no Absolute Control / bypass tools  
-- Not a content store — blind by design  
+- Not Vantio Gate — cannot block, redact, or turn policy on
+- Not Phantom Engine — no host protection tools
+- Not a content store — blind by design
 
-Agents that outgrow observe call `optics_upgrade_path` and move to Pro / Enterprise.
+Agents that outgrow observe call `optics_upgrade_path` and move to Gate or Phantom Engine.
 
 ## Quick start
 

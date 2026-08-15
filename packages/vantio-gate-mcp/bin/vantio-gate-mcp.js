@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * stdio entry for Vantio Gate MCP (Policy Latch dry-run / evaluate).
+ * stdio entry for Vantio Gate MCP (dry-run / evaluate).
  * stdout is reserved for MCP framing — log only to stderr.
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";

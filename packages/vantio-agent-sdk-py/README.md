@@ -1,12 +1,16 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts.
+> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.2**.
 
 ```bash
-pip install vantio-agent-sdk
+pip install vantio-agent-sdk==3.0.2
 ```
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics)
+
+While `shield()` is active, Optics records **urllib** to in-scope LLM hosts. If **requests** or **httpx** are already installed, those are recorded the same way. curl and raw sockets stay outside this wrap.
+
+**Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
 ## v3.0.x — Breaking change from v2.x
 

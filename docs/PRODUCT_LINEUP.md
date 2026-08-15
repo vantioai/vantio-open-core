@@ -1,84 +1,85 @@
-# Vantio — Governance Platform: Tier Feature Unlock
+# Vantio — product lineup (Optics repo)
 
-> Same platform. Higher tiers unlock more governance control — and close residual risk.  
-> **Vantio Optics** (Free) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
+> Architecture first, then SKU. Peer products — not nested dolls that each close every gap below them.
+
+**Vantio Optics** (Free) · **Vantio Gate** ($499) · **Vantio Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
+
+Talk-track: Optics helps you see. Gate applies the rules you set. Phantom Engine protects the machines you own — enforce and control together, one purchase. Phantom Engine Enterprise adds governance when you need proof and process on top.
+
+Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. Site: [vantio.ai/pricing](https://vantio.ai/pricing).
 
 ---
 
-## The governance unlock ladder
+## Honest gaps
 
-```
-Tier 1 · Free / Vantio Optics ── unlocks ► Observe (Sight Loop)
-                                residual ► no block; silent ungoverned paths
-Tier 2 · Pro / Vantio Gate ───── unlocks ► + Enforce (Policy Latch)
-                                residual ► SDK omission · raw sockets · fork escape
-Tier 3 · Enterprise / Phantom ─ unlocks ► + Absolute Control (Rogue Reconciliation)
-                                closes   ► kernel + bypass indicators + ledger
-```
+| Product | Job | What is still open |
+|---------|-----|--------------------|
+| **Optics** (Free) | **Observe** · Sight Loop | No block; traffic that never hits the interceptor is never recorded |
+| **Gate** ($499) | **Enforce** · rules that stick where the agent is wired | SDK omission, raw sockets, fork escape; oversized streams may pass unscanned |
+| **Phantom Engine** ($799/node) | **Control** on Linux hosts you enroll | Privileged disable of loader; pod-network caveats; only on enrolled hosts |
+| **Phantom Engine Enterprise** | Governance on that protection | Same host scope |
 
-**Enterprise wedge:** correlated Observe + Enforce + kernel with bypass indicators — not “we also have eBPF.”
-
-| Tier | Unlocks | What you see in data |
-|------|---------|----------------------|
-| **Free · Vantio Optics** | **Observe** · Sight Loop | `OBSERVED` (no enforce) |
-| **Pro · Vantio Gate** | **+ Enforce** · Policy Latch | Blocks, redactions, caps · `ALLOWED` / `BLOCKED` / `REDACTED` |
-| **Enterprise · Phantom Engine** | **+ Absolute Control** · Rogue Reconciliation | Full stack + `BYPASS_INDICATOR` when layers diverge |
+| Product | What you see in data |
+|---------|----------------------|
+| **Optics** | `OBSERVED` (no enforce) |
+| **Gate** | `ALLOWED` / `BLOCKED` / `REDACTED` on the wrapped path |
+| **Phantom Engine** | Host `BLOCKED` + Rogue Reconciliation when app and host diverge |
 
 ---
 
 ## Feature layers
 
-### Observe · Vantio Optics (Free tier)
-- The base observe plane — no paid account required
-- Intercepts outbound LLM calls; no code changes needed
+### Observe · Vantio Optics (Free)
+
+- Free visibility — no paid account required
+- Node `vantio run`: `fetch` + Node `http`/`https`. Python `shield()`: urllib; requests and httpx when already installed
 - Captures: endpoint, response size, process ID, trace ID — no content, no prompts
 - Does **not** block or redact — **observe only** ([fence](./observe-only.md))
 - Workflow: **Sight Loop**
 - SDK: `@vantio/agent-sdk` (Node.js), `vantio-agent-sdk` (Python)
 
-### Enforce · Vantio Gate (Pro tier unlocks)
-- Activates the policy enforcement control plane
-- Unlocks: block by hostname, PII redaction, spend/size caps
+### Enforce · Vantio Gate ($499)
+
+- Policy where the agent is wired — not a claim that Gate closes raw sockets or SDK omission
+- When an agent crosses a line you set, Gate can refuse a destination, strip sensitive fields, or cap spend
 - Policy lives in the Gate control plane; enforcement runs in the Optics client interceptor
-- Workflow: **Policy Latch**
-- Dashboard Enforce column shows what the Pro tier's governance actions prevented
+- Workflow: **Rules that stick**
 - API: `GET /api/v1/config` (policy fetch), `POST /api/v1/ingest` (telemetry)
 
-### Absolute Control · Vantio Phantom Engine (Enterprise tier unlocks)
-- Closes Gate residual risk with correlated kernel evidence + Rogue Reconciliation
-- eBPF TLS observe, fork inheritance, CIDR / enrolled-cgroup policy
-- Kernel transmission with no app-layer record → BYPASS_INDICATOR
-- Does not replace Pro — Enterprise runs Observe + Enforce + Absolute Control together
-- Proof pack: `vantio-phantom-engine/docs/enterprise/`
+### Control · Vantio Phantom Engine ($799/node)
+
+- Protection on **Linux machines you own** — enforce and control together, one purchase
+- Do not stack Gate cloud $499 on this quote; the enforce plane ships with the node
+- Rogue Reconciliation when the host sees a transmission with no app-layer record
+- Phantom Engine Enterprise adds ledger, evidence, and dual-control depth — talk to sales
+- This repo does not ship Phantom Engine. See `vantio-phantom-engine`.
 
 ---
 
-## Tier capability matrix
+## Capability matrix
 
-| Capability | Free (Open Core) | Pro | Enterprise |
-|------------|:-----------------:|:---:|:----------:|
-| Observe all LLM/agent calls | ✓ | ✓ | ✓ |
-| Block by hostname | — | ✓ | ✓ |
-| PII redaction | — | ✓ | ✓ |
-| Spend / size caps | — | ✓ | ✓ |
-| Dashboard: enforcement actions | — | ✓ | ✓ |
-| eBPF / kernel enforcement | — | — | ✓ |
-| Inescapable catch (below app layer) | — | — | ✓ |
-| Fork inheritance enforcement | — | — | ✓ |
-| CIDR / k8s network policy | — | — | ✓ |
+| Capability | Optics | Gate | Phantom Engine |
+|------------|:------:|:----:|:--------------:|
+| Observe wrapped LLM/agent calls | ✓ | ✓ | ✓ |
+| Block by hostname (wrapped path) | — | ✓ | ✓ |
+| PII redaction (wrapped path) | — | ✓ | ✓ |
+| Spend / size caps (wrapped path) | — | ✓ | ✓ |
+| Host enforcement on enrolled Linux | — | — | ✓ |
+| Fork inheritance on enrolled hosts | — | — | ✓ |
+| CIDR / k8s network policy (enrolled) | — | — | ✓ |
 
 ---
 
-## Repos — one feature plane each
+## Repos
 
-| Repo | Layer | Role |
-|------|-------|------|
-| [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Vantio Optics** · Observe | Free-tier visibility; client at every tier |
-| [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Vantio Gate** · Enforce | Pro policy control plane |
-| [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Vantio Phantom Engine** · Absolute Control | Enterprise Ring-0 plane |
+| Repo | Product | Role |
+|------|---------|------|
+| [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) | **Vantio Optics** · Observe | Free visibility; client used with Gate |
+| [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) | **Vantio Gate** · Enforce | Policy control plane |
+| [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) | **Vantio Phantom Engine** · Control | Linux host protection |
 
 ---
 
 ## One-line story
 
-> **Vantio tiers unlock governance: Observe free · Enforce with Pro · Absolute kernel control with Enterprise. No way to be more absolute.**
+> Optics helps you see. Gate applies the rules you set. Phantom Engine protects the machines you own.

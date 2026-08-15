@@ -779,7 +779,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
       `  pid:      ${process.pid}`,
       `  time:     ${ts}`,
       LOCAL_GATE
-        ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
+        ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Gate enforce.${c.reset}`
         : `  ${c.dim}→ Optics data log (your machine). See docs/sight-loop.md · Gate enforces on this path.${c.reset}`,
     ].join("\n"));
     return response;
