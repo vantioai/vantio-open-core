@@ -7,6 +7,7 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import http2 from "node:http2";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -300,6 +301,10 @@ describe("interceptor.cjs (integration)", () => {
     assert.equal(requests.target.length, 1);
     assert.equal(requests.ingest.length, 1);
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "ALLOWED");
+    assert.ok(
+      requests.ingest[0].body.eventPayload.bytes_observed != null,
+      "ingest must set bytes_observed so Mission Control KPIs roll up wrap events"
+    );
   });
 
   test("PAID_MODE, redact_pii=true: email stripped before the call leaves the process", async () => {
@@ -783,5 +788,100 @@ function one(url) {
     assert.equal(result.error, "VANTIO_GATE_BLOCKED");
     assert.equal(requests.target.length, 0, "undici.upgrade must not bypass destination blocking");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+  });
+
+  const HTTP2_ONCE_SCRIPT = `
+const http2 = require("http2");
+function go() {
+  const u = new URL(process.env.H2_URL);
+  const client = http2.connect(u.origin);
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    try { client.close(); } catch {}
+  };
+  client.on("error", (err) => out({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }));
+  const req = client.request({
+    ":method": "POST",
+    ":path": "/v1/target",
+    ":scheme": "http",
+    ":authority": u.host,
+    "content-type": "application/json",
+  });
+  let status = 0;
+  let body = "";
+  req.setEncoding("utf8");
+  req.on("response", (headers) => { status = headers[":status"] || 0; });
+  req.on("data", (c) => { body += c; });
+  req.on("end", () => out({ status, body }));
+  req.on("error", (err) => out({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }));
+  req.end(JSON.stringify({ email: "shouldnotleak@example.com", msg: "hi" }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  describe("Node http2.connect / session.request", () => {
+    let h2Server;
+    let h2Url;
+
+    beforeEach(async () => {
+      h2Server = http2.createServer();
+      h2Server.on("stream", (stream, headers) => {
+        const chunks = [];
+        stream.on("data", (c) => chunks.push(Buffer.from(c)));
+        stream.on("end", () => {
+          requests.target.push({
+            headers,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+          const payload = JSON.stringify({ reply: "ok" });
+          stream.respond({
+            ":status": 200,
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(payload),
+          });
+          stream.end(payload);
+        });
+      });
+      await new Promise((resolve) => h2Server.listen(0, "127.0.0.1", resolve));
+      h2Url = `http://127.0.0.1:${h2Server.address().port}/v1/target`;
+    });
+
+    afterEach(async () => {
+      await new Promise((resolve) => h2Server.close(resolve));
+    });
+
+    test("PAID_MODE, http2.request redact_pii: email stripped before the call leaves", async () => {
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.redact_pii = true;
+      configPolicy.pii_types = ["email"];
+      const { code } = await runAgent(
+        { H2_URL: h2Url, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        HTTP2_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      assert.equal(requests.target.length, 1);
+      assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+      assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+      const redacted = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "REDACTED");
+      assert.equal(redacted.length, 1);
+    });
+
+    test("PAID_MODE, http2.connect blocked_hosts: session never reaches the target", async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { H2_URL: h2Url, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        HTTP2_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "http2.connect must not bypass destination blocking");
+      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    });
   });
 });
