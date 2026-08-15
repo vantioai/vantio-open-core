@@ -1,9 +1,9 @@
 // [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
-// Patches globalThis.fetch, undici.fetch (node:undici and the undici package),
-// and Node http/https.request|get to intercept outbound LLM calls — zero code
-// changes. Raw sockets, curl, undici.Client/request, and browser paths stay
-// outside this wrap.
+// Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
+// request(), and Node http/https.request|get to intercept outbound LLM calls —
+// zero code changes. Raw sockets, curl, undici.stream/pipeline/dispatch, and
+// browser paths stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -872,12 +872,224 @@ globalThis.fetch = function vantioFetch(input, init) {
   return wrapFetch(_originalFetch, input, init);
 };
 
-// OpenAI Node SDK and other agents often `import { fetch } from "undici"`
-// (or pass undici.fetch) instead of globalThis.fetch. Same Gate path.
-// Patch now if the package is already loaded, and again on first require —
-// the agent usually loads undici after this interceptor.
-(function patchUndiciFetch() {
-  function patchMod(mod) {
+// undici.fetch, undici.request, and Dispatcher.prototype.request (Client / Pool /
+// Agent). Fetch uses dispatcher.dispatch internally, so wrapping .request does
+// not double-count globalThis.fetch. stream / pipeline / dispatch stay residual.
+(function patchUndici() {
+  const { Readable } = require("node:stream");
+
+  function blockedUndiciResult(reason) {
+    const payload = JSON.stringify({ error: "blocked_by_vantio", reason });
+    const body = Readable.from([Buffer.from(payload)]);
+    body.text = async () => payload;
+    body.json = async () => JSON.parse(payload);
+    return {
+      statusCode: 403,
+      headers: { "content-type": "application/json", "x-vantio-blocked": reason },
+      trailers: {},
+      body,
+    };
+  }
+
+  function headerGet(headers, name) {
+    if (!headers) return null;
+    const want = String(name).toLowerCase();
+    try {
+      if (typeof headers.get === "function") {
+        return headers.get(name) || headers.get(want) || null;
+      }
+      if (Array.isArray(headers)) {
+        for (let i = 0; i < headers.length - 1; i += 2) {
+          if (String(headers[i]).toLowerCase() === want) return headers[i + 1];
+        }
+        return null;
+      }
+      for (const k of Object.keys(headers)) {
+        if (k.toLowerCase() === want) {
+          const v = headers[k];
+          return Array.isArray(v) ? v[0] : v;
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function isControlPlaneHref(href) {
+    try {
+      const ingest = new URL(INGEST_URL);
+      const u = new URL(href);
+      const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+      const reqPort = u.port || (u.protocol === "https:" ? "443" : "80");
+      return u.hostname.toLowerCase() === ingest.hostname.toLowerCase()
+        && reqPort === ingestPort
+        && u.pathname.startsWith("/api/v1/");
+    } catch {
+      return false;
+    }
+  }
+
+  function hrefFromDispatcher(dispatcher, opts) {
+    opts = opts || {};
+    try {
+      if (opts.origin) {
+        const path = opts.path || "/";
+        return new URL(String(path).startsWith("http") ? path : path, String(opts.origin)).href;
+      }
+    } catch { /* fall through */ }
+    try {
+      for (const sym of Object.getOwnPropertySymbols(dispatcher || {})) {
+        const v = dispatcher[sym];
+        if (v && typeof v === "object" && typeof v.hostname === "string" && (v.origin || v.href)) {
+          const origin = v.origin || new URL(v.href).origin;
+          return new URL(opts.path || "/", origin).href;
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function hrefFromTopLevel(url, opts) {
+    try {
+      if (typeof url === "string") return url;
+      if (typeof URL !== "undefined" && url instanceof URL) return url.href;
+      if (url && typeof url === "object" && url.href) return String(url.href);
+      if (url && typeof url === "object" && url.origin) {
+        return new URL((opts && opts.path) || "/", String(url.origin)).href;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function accountUndiciResult(result, plan, hostname, port, href, duration_ms) {
+    try {
+      const action = plan.redactions.length > 0 ? "REDACTED" : "ALLOWED";
+      const reqMeta = extractRequestMeta(href, plan.init);
+      const cl = headerGet(result && result.headers, "content-length");
+      const respBytes = cl != null && cl !== "" ? (parseInt(cl, 10) || 0) : 0;
+      const callRec = {
+        hostname,
+        provider: guessProvider(hostname, port),
+        method: reqMeta.method,
+        path: reqMeta.path,
+        scheme: reqMeta.scheme,
+        request_bytes: plan.reqBytes || reqMeta.request_bytes,
+        bytes: respBytes,
+        status: result && result.statusCode,
+        ok: result && result.statusCode >= 200 && result.statusCode < 400,
+        content_type: headerGet(result && result.headers, "content-type"),
+        duration_ms,
+        action,
+        redactions: plan.redactions.length,
+        ts: new Date().toISOString(),
+        mediation: "undici_request",
+      };
+      _calls.push(callRec);
+      spentUsd += ((plan.reqBytes || 0) + respBytes) * USD_PER_BYTE;
+      if (plan.redactions.length > 0) {
+        log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — stripped ${plan.redactions.length} PII item(s): ${plan.redactions.join(", ")}`);
+      }
+      report({
+        target_host: hostname,
+        pid: process.pid,
+        action_taken: action,
+        timestamp_ns: Date.now() * 1e6,
+        bytes_severed: callRec.bytes,
+        provider: callRec.provider,
+        method: callRec.method,
+        path: callRec.path,
+        status: callRec.status,
+        content_type: callRec.content_type,
+        request_bytes: callRec.request_bytes,
+        duration_ms: callRec.duration_ms,
+        ok: callRec.ok,
+        mediation: "undici_request",
+      });
+    } catch {
+      /* accounting must never break the agent */
+    }
+  }
+
+  async function wrapUndiciHttp(href, opts, launch) {
+    let hostname;
+    let port;
+    try {
+      const dest = destFromHref(href);
+      hostname = dest.hostname;
+      port = dest.port;
+    } catch {
+      return launch(opts);
+    }
+
+    if (!FREE_MODE) {
+      await policyReady;
+    }
+    if (isControlPlaneHref(href) || !inScope(hostname, port)) {
+      return launch(opts);
+    }
+
+    sendRunTelemetryOnce(hostname);
+    const method = (opts && opts.method) || (opts && opts.body ? "PUT" : "GET");
+    const init = { method, headers: opts && opts.headers, body: opts && opts.body };
+
+    if (FREE_MODE) {
+      const reqMeta = extractRequestMeta(href, init);
+      const provider = guessProvider(hostname, port);
+      const t0 = Date.now();
+      let result;
+      try {
+        result = await launch(opts);
+      } catch (err) {
+        const duration_ms = Date.now() - t0;
+        _calls.push({
+          hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
+          request_bytes: reqMeta.request_bytes, bytes: null, status: null, ok: false,
+          content_type: null, duration_ms, ts: new Date().toISOString(), action: "OBSERVED",
+          error_class: err && err.name ? String(err.name) : "Error", error: "network_error",
+          mediation: "undici_request",
+        });
+        throw err;
+      }
+      const duration_ms = Date.now() - t0;
+      const cl = headerGet(result && result.headers, "content-length");
+      _calls.push({
+        hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
+        request_bytes: reqMeta.request_bytes,
+        bytes: cl != null && cl !== "" ? (parseInt(cl, 10) || 0) : 0,
+        status: result && result.statusCode,
+        ok: result && result.statusCode >= 200 && result.statusCode < 400,
+        content_type: headerGet(result && result.headers, "content-type"),
+        duration_ms, ts: new Date().toISOString(), action: "OBSERVED",
+        mediation: "undici_request",
+      });
+      return result;
+    }
+
+    let plan;
+    try {
+      plan = await enforceRequest(hostname, href, init);
+    } catch {
+      return launch(opts);
+    }
+    if (plan.blocked) {
+      const reason = (plan.response && plan.response.headers && typeof plan.response.headers.get === "function")
+        ? (plan.response.headers.get("x-vantio-blocked") || "blocked")
+        : "blocked";
+      return blockedUndiciResult(reason);
+    }
+
+    const sendOpts = Object.assign({}, opts, {
+      body: plan.init && Object.prototype.hasOwnProperty.call(plan.init, "body") ? plan.init.body : (opts && opts.body),
+      method: plan.init && plan.init.method ? plan.init.method : method,
+    });
+    const t0 = Date.now();
+    const result = await launch(sendOpts);
+    accountUndiciResult(result, plan, hostname, port, href, Math.max(0, Date.now() - t0));
+    return result;
+  }
+
+  function patchFetch(mod) {
     if (!mod || typeof mod.fetch !== "function") return;
     if (mod.__vantioFetchPatched) return;
     const orig = mod.fetch;
@@ -886,12 +1098,53 @@ globalThis.fetch = function vantioFetch(input, init) {
       return;
     }
     const backend = typeof orig.bind === "function" ? orig.bind(mod) : orig;
-    // Do not assign globalThis.fetch onto undici.fetch. Node's original
-    // fetch may re-enter the live undici export and recurse.
     mod.fetch = function vantioUndiciFetch(input, init) {
       return wrapFetch(backend, input, init);
     };
     mod.__vantioFetchPatched = true;
+  }
+
+  function patchRequest(mod) {
+    if (!mod || mod.__vantioRequestPatched) return;
+
+    if (typeof mod.request === "function") {
+      const origRequest = mod.request;
+      mod.request = function vantioUndiciRequest(url, opts, handler) {
+        if (typeof opts === "function") {
+          handler = opts;
+          opts = null;
+        }
+        if (handler) return origRequest.call(this, url, opts, handler);
+        const href = hrefFromTopLevel(url, opts);
+        if (!href) return origRequest.call(this, url, opts);
+        return wrapUndiciHttp(href, opts || {}, (o) => origRequest.call(this, url, o));
+      };
+    }
+
+    const proto = mod.Dispatcher && mod.Dispatcher.prototype;
+    if (proto && typeof proto.request === "function" && !proto.__vantioRequestPatched) {
+      const origProto = proto.request;
+      proto.request = function vantioDispatcherRequest(opts, callback) {
+        const href = hrefFromDispatcher(this, opts);
+        if (!href) return origProto.call(this, opts, callback);
+        if (typeof callback === "function") {
+          wrapUndiciHttp(href, opts || {}, (o) => new Promise((resolve, reject) => {
+            origProto.call(this, o, (err, data) => (err ? reject(err) : resolve(data)));
+          })).then((data) => callback(null, data), (err) => callback(err));
+          return;
+        }
+        return wrapUndiciHttp(href, opts || {}, (o) => origProto.call(this, o));
+      };
+      proto.__vantioRequestPatched = true;
+    }
+
+    mod.__vantioRequestPatched = true;
+  }
+
+  function patchMod(mod) {
+    if (!mod) return;
+    try { patchFetch(mod); } catch { /* fail open */ }
+    try { patchRequest(mod); } catch { /* fail open */ }
   }
 
   try {
@@ -1306,7 +1559,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici.fetch, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, undici.Client/request, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici.fetch, undici.request, Client/Pool/Agent.request, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, undici.stream/pipeline/dispatch, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },

@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.4** (npm) and **`vantio-agent-sdk` 3.0.4** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.5** (npm) and **`vantio-agent-sdk` 3.0.4** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -85,7 +85,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Package | Published | Description |
 |---------|-----------|-------------|
-| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.4** | CLI runner — Node fetch, undici.fetch, http/https wrap |
+| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.5** | CLI runner — Node fetch, undici.fetch, undici.request, http/https wrap |
 | [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.4** | Python `shield()` — urllib + optional requests/httpx/aiohttp |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
@@ -150,7 +150,7 @@ While `shield()` is active, Optics records urllib to in-scope hosts. If `request
 
 ## Supported wraps
 
-**Node (`vantio run`):** `fetch`, `undici.fetch`, and Node `http` / `https`.
+**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), and Node `http` / `https`.
 
 **Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed.
 

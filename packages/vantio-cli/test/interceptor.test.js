@@ -61,6 +61,39 @@ const UNDICI_FETCH_ONCE_SCRIPT = `
 })();
 `;
 
+const UNDICI_REQUEST_ONCE_SCRIPT = `
+(async () => {
+  const { request } = require("undici");
+  const { statusCode, body } = await request(process.env.TARGET_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "shouldnotleak@example.com", msg: "hi" }),
+  });
+  const text = await body.text();
+  process.stdout.write(JSON.stringify({ status: statusCode, body: text }) + "\\n");
+})();
+`;
+
+const UNDICI_CLIENT_ONCE_SCRIPT = `
+(async () => {
+  const { Client } = require("undici");
+  const u = new URL(process.env.TARGET_URL);
+  const client = new Client(u.origin);
+  try {
+    const { statusCode, body } = await client.request({
+      path: u.pathname,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "shouldnotleak@example.com", msg: "hi" }),
+    });
+    const text = await body.text();
+    process.stdout.write(JSON.stringify({ status: statusCode, body: text }) + "\\n");
+  } finally {
+    await client.close();
+  }
+})();
+`;
+
 describe("interceptor.cjs (integration)", () => {
   let server, baseUrl, targetUrl, configPolicy, configTier, requests;
 
@@ -472,6 +505,66 @@ function one(url) {
     assert.equal(result.status, 403);
     assert.match(result.body, /blocked_by_vantio/);
     assert.equal(requests.target.length, 0, "undici.fetch must not bypass destination blocking");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+  });
+
+  test("PAID_MODE, undici.request redact_pii: email stripped before the call leaves", async () => {
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.redact_pii = true;
+    configPolicy.pii_types = ["email"];
+    const { code } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_REQUEST_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    assert.equal(requests.target.length, 1);
+    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+  });
+
+  test("PAID_MODE, undici.request blocked_hosts: request never reaches the target", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_REQUEST_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 403);
+    assert.match(result.body, /blocked_by_vantio/);
+    assert.equal(requests.target.length, 0, "undici.request must not bypass destination blocking");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+  });
+
+  test("PAID_MODE, undici.Client.request redact_pii: email stripped before the call leaves", async () => {
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.redact_pii = true;
+    configPolicy.pii_types = ["email"];
+    const { code } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_CLIENT_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    assert.equal(requests.target.length, 1);
+    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+  });
+
+  test("PAID_MODE, undici.Client.request blocked_hosts: request never reaches the target", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_CLIENT_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 403);
+    assert.match(result.body, /blocked_by_vantio/);
+    assert.equal(requests.target.length, 0, "Client.request must not bypass destination blocking");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
   });
 });
