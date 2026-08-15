@@ -194,3 +194,19 @@ describe("vantio CLI — login / whoami / logout (against a mock control plane)"
     assert.match(stdout, /No stored credentials/);
   });
 });
+
+describe("vantio run python wrap", () => {
+  test("injects python-wrap onto PYTHONPATH for python3", async () => {
+    const { code, stdout, stderr } = await runCli([
+      "run",
+      "python3",
+      "-c",
+      "import sys; print('WRAP_OK' if any('python-wrap' in p for p in sys.path) else 'WRAP_MISSING')",
+    ]);
+    if (code === 127 || /failed to start/.test(stderr)) {
+      return; // python3 not on PATH in this environment
+    }
+    assert.equal(code, 0);
+    assert.match(stdout, /WRAP_OK/);
+  });
+});

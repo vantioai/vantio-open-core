@@ -32,6 +32,7 @@ explicit VANTIO_API_KEY in your environment always takes precedence.
 Examples:
   vantio login vk_live_xxx
   vantio run node agent.js
+  vantio run python agent.py
   vantio run --audit tsx agent.ts
   vantio discover --since=7d
   vantio discover --local
@@ -325,16 +326,22 @@ function runCommand(rest) {
     const base = prog.split(/[\\/]/).pop().replace(/\.exe$/, "");
     return NODE_RUNTIMES.has(base);
   };
+  const isPythonRuntime = (prog) => {
+    const base = prog.split(/[\\/]/).pop().replace(/\.exe$/, "").toLowerCase();
+    return base === "python" || base === "python3" || base === "py" || /^python3\.\d+$/.test(base);
+  };
 
   // Node runtimes get the interceptor via NODE_OPTIONS (honored by every node
   // invocation in the tree) rather than a CLI argument.
+  // Python runtimes get sitecustomize.py on PYTHONPATH (needs vantio-agent-sdk).
   let extraNodeOptions = "";
+  let extraPythonPath = "";
   if (isNodeRuntime(program)) {
     const interceptorPath = join(dirname(fileURLToPath(import.meta.url)), "interceptor.cjs");
     const requirePath = /\s/.test(interceptorPath) ? `"${interceptorPath}"` : interceptorPath;
     extraNodeOptions = `--require ${requirePath}`;
-  } else {
-    process.stderr.write('\n[ ∅ VANTIO ] Python runtime — use the Python SDK for interception: pip install vantio-agent-sdk\n\n');
+  } else if (isPythonRuntime(program)) {
+    extraPythonPath = join(dirname(fileURLToPath(import.meta.url)), "python-wrap");
   }
 
   // Auto-load the saved key/server if the environment doesn't already set them,
@@ -352,6 +359,10 @@ function runCommand(rest) {
   }
 
   const mergedNodeOptions = [process.env.NODE_OPTIONS, extraNodeOptions].filter(Boolean).join(" ");
+  const delim = process.platform === "win32" ? ";" : ":";
+  const mergedPythonPath = extraPythonPath
+    ? [extraPythonPath, process.env.PYTHONPATH].filter(Boolean).join(delim)
+    : "";
 
   // One stable trace id for this `vantio run` — shared with interceptor ingest
   // and (on Enterprise) Phantom Engine --inject for Tier 1↔3 correlation.
@@ -362,6 +373,7 @@ function runCommand(rest) {
     ...(values.audit     ? { VANTIO_AUDIT_MODE: "1" } : {}),
     ...(values.summary   ? { VANTIO_SUMMARY:    "1" } : {}),
     ...(extraNodeOptions ? { NODE_OPTIONS: mergedNodeOptions } : {}),
+    ...(mergedPythonPath ? { PYTHONPATH: mergedPythonPath } : {}),
     ...(injectedKey      ? { VANTIO_API_KEY: injectedKey } : {}),
     ...(injectedBase     ? { VANTIO_INGEST_URL: injectedBase } : {}),
   });

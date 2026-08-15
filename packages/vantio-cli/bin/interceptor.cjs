@@ -779,7 +779,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
       `  pid:      ${process.pid}`,
       `  time:     ${ts}`,
       LOCAL_GATE
-        ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Gate enforce.${c.reset}`
+        ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
         : `  ${c.dim}→ Optics data log (your machine). See docs/sight-loop.md · Gate enforces on this path.${c.reset}`,
     ].join("\n"));
     return response;
@@ -1036,6 +1036,29 @@ globalThis.fetch = async function vantioFetch(input, init) {
         return blockedClientRequest(err);
       }
 
+      if (!FREE_MODE && policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
+        if (policy.dry_run) {
+          _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_SPEND" });
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SPEND",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+            mediation: "node_http", plane: "optics_gate",
+          });
+          log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK Node ${scheme} spend cap $${policy.spend_cap_usd}; dry_run=true passes through`);
+        } else {
+          _calls.push({ ...baseCall, action: "BLOCKED_SPEND", ok: false });
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "BLOCKED_SPEND",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+            mediation: "node_http", plane: "optics_gate",
+          });
+          log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node ${scheme} spend cap $${policy.spend_cap_usd} reached`);
+          const err = new Error("Vantio Gate blocked request: spend_cap_reached");
+          err.code = "VANTIO_GATE_BLOCKED";
+          return blockedClientRequest(err);
+        }
+      }
+
       if (decision === "dry_block") {
         _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_HOST" });
         report({
@@ -1058,6 +1081,14 @@ globalThis.fetch = async function vantioFetch(input, init) {
       }
 
       const req = launch();
+      if (req && typeof req.on === "function") {
+        req.on("response", (res) => {
+          try {
+            const cl = parseInt(res && res.headers && res.headers["content-length"], 10);
+            if (Number.isFinite(cl) && cl > 0) spentUsd += cl * USD_PER_BYTE;
+          } catch { /* ignore */ }
+        });
+      }
       if (!req || typeof req.write !== "function") return req;
       if (FREE_MODE || (!policy.redact_pii && !(policy.enforce && policy.max_request_bytes > 0))) {
         return req;

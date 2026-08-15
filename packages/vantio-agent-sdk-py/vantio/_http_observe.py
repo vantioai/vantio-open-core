@@ -6,8 +6,8 @@ In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
 Wraps urllib.request.urlopen always. If requests or httpx are installed,
-wraps those too so agents that skip urllib are still observed. Raw sockets
-and curl stay outside this wrap.
+wraps those too. With a Gate API key, the same wrap can block a destination,
+redact PII, or enforce a spend limit. Raw sockets and curl stay outside this wrap.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -68,6 +69,21 @@ _orig_httpx_async_send: Any = None
 _calls: list[dict[str, Any]] = []
 _started_ms = 0.0
 _trace_id = ""
+# Gate on the wrap (same job as Node interceptor). Empty / missing key = Optics only.
+_policy: dict[str, Any] = {
+    "enforce": False,
+    "redact_pii": False,
+    "pii_types": ["ssn", "email", "credit_card", "phone"],
+    "allowed_hosts": [],
+    "blocked_hosts": [],
+    "max_request_bytes": 0,
+    "spend_cap_usd": 0.0,
+    "dry_run": False,
+}
+_cloud_sync = False
+_spent_usd = 0.0
+# Same estimator as interceptor.cjs (rough token→USD; not a billing meter).
+_USD_PER_BYTE = (5 / 1_000_000) / 4
 
 
 def _extra_hosts() -> set[str]:
@@ -134,6 +150,203 @@ def _in_scope(hostname: str, port: Optional[str] = None) -> bool:
     )
 
 
+def _reset_policy() -> None:
+    global _cloud_sync, _spent_usd
+    _policy.update({
+        "enforce": False,
+        "redact_pii": False,
+        "pii_types": ["ssn", "email", "credit_card", "phone"],
+        "allowed_hosts": [],
+        "blocked_hosts": [],
+        "max_request_bytes": 0,
+        "spend_cap_usd": 0.0,
+        "dry_run": False,
+    })
+    _cloud_sync = False
+    _spent_usd = 0.0
+
+
+def _is_control_plane(hostname: str, path: str) -> bool:
+    try:
+        ingest = os.environ.get("VANTIO_INGEST_URL", "https://vantio.ai")
+        parsed = urlparse(ingest)
+        host = (parsed.hostname or "").lower()
+        if not host or (hostname or "").lower() != host:
+            return False
+        return str(path or "").startswith("/api/v1/")
+    except Exception:
+        return False
+
+
+def _load_policy() -> None:
+    """Fetch Gate policy before urllib is patched. Fail-open. Optics-only when no key."""
+    global _cloud_sync
+    _reset_policy()
+    key = os.environ.get("VANTIO_API_KEY") or ""
+    if not key.strip():
+        return
+    ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
+    try:
+        req = urllib.request.Request(
+            f"{ingest}/api/v1/config",
+            headers={"x-vantio-identity": key},
+            method="GET",
+        )
+        with _orig_urlopen(req, timeout=5.0) as resp:
+            if getattr(resp, "status", 200) != 200:
+                return
+            data = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(data, dict):
+            return
+        _cloud_sync = data.get("tier") in ("PRO", "ENTERPRISE")
+        raw = data.get("policy") if isinstance(data.get("policy"), dict) else {}
+
+        def _bool(v: Any, d: bool) -> bool:
+            return v if isinstance(v, bool) else d
+
+        def _str_list(v: Any) -> list[str]:
+            return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+        def _nonneg(v: Any, d: float) -> float:
+            try:
+                n = float(v)
+                return n if n >= 0 else d
+            except (TypeError, ValueError):
+                return d
+
+        _policy.update({
+            "enforce": _bool(raw.get("enforce"), False),
+            "redact_pii": _bool(raw.get("redact_pii"), False),
+            "pii_types": _str_list(raw.get("pii_types")) or ["ssn", "email", "credit_card", "phone"],
+            "allowed_hosts": _str_list(raw.get("allowed_hosts")),
+            "blocked_hosts": _str_list(raw.get("blocked_hosts")),
+            "max_request_bytes": int(_nonneg(raw.get("max_request_bytes"), 0)),
+            "spend_cap_usd": float(_nonneg(raw.get("spend_cap_usd"), 0.0)),
+            "dry_run": _bool(raw.get("dry_run"), False),
+        })
+    except Exception:
+        _reset_policy()
+
+
+def _ingest(hostname: str, action: str, extra: Optional[dict[str, Any]] = None) -> None:
+    if not _cloud_sync:
+        return
+    key = os.environ.get("VANTIO_API_KEY") or ""
+    ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
+    if not key:
+        return
+    payload = {
+        "eventPayload": {
+            "target_host": hostname,
+            "pid": os.getpid(),
+            "action_taken": action,
+            "timestamp_ns": int(time.time() * 1e9),
+            "bytes_severed": 0,
+            "mediation": "python_wrap",
+            "plane": "optics_gate",
+            **(extra or {}),
+        }
+    }
+    try:
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{ingest}/api/v1/ingest",
+            data=body,
+            headers={
+                "content-type": "application/json",
+                "x-vantio-identity": key,
+            },
+            method="POST",
+        )
+        _orig_urlopen(req, timeout=2.0).read()
+    except Exception:
+        return
+
+
+def _redact_text(text: str) -> tuple[str, list[str]]:
+    if not text or not _policy.get("redact_pii"):
+        return text, []
+    from vantio.sdk import redact_pii  # noqa: PLC0415
+
+    result = redact_pii(text, _policy.get("pii_types") or None)
+    return result.text, list(result.redactions)
+
+
+def _body_to_text(body: Any) -> tuple[Optional[str], Optional[bytes], int]:
+    """Return (text, bytes, length). Never raises."""
+    if body is None:
+        return None, None, 0
+    if isinstance(body, bytes):
+        try:
+            return body.decode("utf-8"), body, len(body)
+        except Exception:
+            return None, body, len(body)
+    if isinstance(body, bytearray):
+        b = bytes(body)
+        try:
+            return b.decode("utf-8"), b, len(b)
+        except Exception:
+            return None, b, len(b)
+    if isinstance(body, str):
+        encoded = body.encode("utf-8")
+        return body, encoded, len(encoded)
+    return None, None, 0
+
+
+def _gate_blocked_urllib(url: str, reason: str) -> urllib.error.HTTPError:
+    payload = json.dumps({"error": "blocked_by_vantio", "reason": reason}).encode("utf-8")
+    from email.message import EmailMessage
+
+    hdrs = EmailMessage()
+    hdrs["content-type"] = "application/json"
+    hdrs["content-length"] = str(len(payload))
+    return urllib.error.HTTPError(url, 403, reason, hdrs, BytesIO(payload))
+
+
+def _gate_blocked_requests(reason: str) -> Any:
+    if _requests is None:
+        raise urllib.error.URLError(reason)
+    resp = _requests.models.Response()
+    resp.status_code = 403
+    resp._content = json.dumps({"error": "blocked_by_vantio", "reason": reason}).encode("utf-8")
+    resp.headers["content-type"] = "application/json"
+    resp.reason = reason
+    return resp
+
+
+def _gate_blocked_httpx(reason: str) -> Any:
+    if _httpx is None:
+        raise urllib.error.URLError(reason)
+    return _httpx.Response(
+        403,
+        json={"error": "blocked_by_vantio", "reason": reason},
+    )
+
+
+def _decide(hostname: str, port: Optional[str], path: str, body_len: int) -> str:
+    """pass | observe | block | dry_block | block_size | dry_size | block_spend | dry_spend"""
+    if not hostname or _is_control_plane(hostname, path) or not _in_scope(hostname, port):
+        return "pass"
+    key = os.environ.get("VANTIO_API_KEY") or ""
+    if not key.strip():
+        return "observe"
+    if _policy.get("enforce"):
+        blocked_list = set(_policy.get("blocked_hosts") or [])
+        allowed_list = set(_policy.get("allowed_hosts") or [])
+        blocked = _host_listed(hostname, blocked_list) or (
+            len(allowed_list) > 0 and not _host_listed(hostname, allowed_list)
+        )
+        if blocked:
+            return "dry_block" if _policy.get("dry_run") else "block"
+        cap = int(_policy.get("max_request_bytes") or 0)
+        if cap > 0 and body_len > cap:
+            return "dry_size" if _policy.get("dry_run") else "block_size"
+        spend_cap = float(_policy.get("spend_cap_usd") or 0.0)
+        if spend_cap > 0 and _spent_usd >= spend_cap:
+            return "dry_spend" if _policy.get("dry_run") else "block_spend"
+    return "observe"
+
+
 def _host_port_from_url(url: Any) -> tuple[str, Optional[str], str]:
     """Return (hostname, port, path). Never raises."""
     try:
@@ -159,59 +372,168 @@ def _append(rec: dict[str, Any]) -> None:
         _calls.append(rec)
 
 
+def _record(
+    hostname: str,
+    action: str,
+    mediation: str,
+    **extra: Any,
+) -> None:
+    rec = {
+        "hostname": hostname,
+        "provider": extra.pop("provider", "other"),
+        "action": action,
+        "mediation": mediation,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        **extra,
+    }
+    _append(rec)
+    ingest_map = {
+        "OBSERVED": None,
+        "ALLOWED": "ALLOWED",
+        "REDACTED": "REDACTED",
+        "BLOCKED_HOST": "BLOCKED_HOST",
+        "BLOCKED_SIZE": "BLOCKED_SIZE",
+        "BLOCKED_SPEND": "BLOCKED_SPEND",
+        "DRY_RUN_BLOCKED_HOST": "DRY_RUN_BLOCKED_HOST",
+        "DRY_RUN_BLOCKED_SIZE": "DRY_RUN_BLOCKED_SIZE",
+        "DRY_RUN_BLOCKED_SPEND": "DRY_RUN_BLOCKED_SPEND",
+    }
+    ingest_action = ingest_map.get(action)
+    if ingest_action:
+        _ingest(hostname, ingest_action, {"mediation": mediation})
+
+
+def _apply_body(body: Any) -> tuple[Any, list[str], int]:
+    text, raw, length = _body_to_text(body)
+    if text is None:
+        return body, [], length
+    new_text, redactions = _redact_text(text)
+    if not redactions:
+        return body, [], length
+    encoded = new_text.encode("utf-8")
+    if isinstance(body, (bytes, bytearray)):
+        return encoded, redactions, len(encoded)
+    return new_text, redactions, len(encoded)
+
+
+def _dispatch_gate(
+    hostname: str,
+    port: Optional[str],
+    path: str,
+    body: Any,
+    mediation: str,
+) -> tuple[str, Any, list[str], bool]:
+    """Returns (kind, payload, redactions, record_send).
+
+    kind: pass | block | send
+    payload: original body, a block reason string, or the (possibly redacted) body
+    record_send: False when a dry-run event was already recorded
+    """
+    _, _, length = _body_to_text(body)
+    decision = _decide(hostname, port, path, length)
+    if decision == "pass":
+        return "pass", body, [], False
+    if decision == "block":
+        _record(hostname, "BLOCKED_HOST", mediation, path=path, ok=False)
+        return "block", "host_not_permitted", [], False
+    if decision == "block_size":
+        _record(hostname, "BLOCKED_SIZE", mediation, path=path, ok=False)
+        return "block", "request_too_large", [], False
+    if decision == "block_spend":
+        _record(hostname, "BLOCKED_SPEND", mediation, path=path, ok=False)
+        return "block", "spend_cap_reached", [], False
+    send_body, redactions, _ = _apply_body(body)
+    if decision == "dry_block":
+        _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, path=path)
+        return "send", send_body, redactions, False
+    if decision == "dry_size":
+        _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, path=path)
+        return "send", send_body, redactions, False
+    if decision == "dry_spend":
+        _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, path=path)
+        return "send", send_body, redactions, False
+    return "send", send_body, redactions, True
+
+
+def _account_response_bytes(headers: Any) -> None:
+    global _spent_usd
+    if not headers:
+        return
+    try:
+        cl = headers.get("content-length") if hasattr(headers, "get") else None
+        if cl:
+            _spent_usd += int(cl) * _USD_PER_BYTE
+    except (TypeError, ValueError, AttributeError):
+        return
+
+
 def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
     hostname, port, path = _host_port_from_url(url)
     try:
-        raw = url
+        raw_url = url
         if hasattr(url, "full_url"):
-            raw = url.full_url
-        scheme = "https" if str(raw).startswith("https") else "http"
+            raw_url = url.full_url
+        scheme = "https" if str(raw_url).startswith("https") else "http"
+        url_s = str(raw_url)
     except Exception:
         scheme = "https"
+        url_s = str(url)
 
-    if not hostname or not _in_scope(hostname, port):
+    body = data if data is not None else getattr(url, "data", None)
+    kind, payload, redactions, record_send = _dispatch_gate(
+        hostname, port, path, body, "python_urllib"
+    )
+    if kind == "pass":
         return _orig_urlopen(url, data, timeout, *args, **kwargs)
+    if kind == "block":
+        raise _gate_blocked_urllib(url_s, str(payload))
+
+    send_data = data
+    if data is None and hasattr(url, "data"):
+        if redactions:
+            try:
+                url.data = (
+                    payload
+                    if isinstance(payload, (bytes, bytearray))
+                    else str(payload).encode("utf-8")
+                )
+            except Exception:
+                send_data = payload
+    else:
+        send_data = payload
 
     t0 = time.time()
     try:
-        resp = _orig_urlopen(url, data, timeout, *args, **kwargs)
-        status = getattr(resp, "status", None) or getattr(resp, "code", None)
-        _append({
-            "hostname": hostname,
-            "provider": "other",
-            "method": "POST" if data is not None else "GET",
-            "path": path,
-            "scheme": scheme,
-            "request_bytes": len(data) if isinstance(data, (bytes, bytearray)) else None,
-            "bytes": None,
-            "status": status,
-            "ok": True,
-            "content_type": None,
-            "duration_ms": int((time.time() - t0) * 1000),
-            "action": "OBSERVED",
-            "mediation": "python_urllib",
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
+        resp = _orig_urlopen(url, send_data, timeout, *args, **kwargs)
+        _account_response_bytes(getattr(resp, "headers", None))
+        if record_send:
+            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            _record(
+                hostname,
+                action,
+                "python_urllib",
+                method="POST" if data is not None else "GET",
+                path=path,
+                scheme=scheme,
+                status=getattr(resp, "status", None) or getattr(resp, "code", None),
+                ok=True,
+                duration_ms=int((time.time() - t0) * 1000),
+            )
         return resp
     except Exception as exc:
-        _append({
-            "hostname": hostname,
-            "provider": "other",
-            "method": "POST" if data is not None else "GET",
-            "path": path,
-            "scheme": scheme,
-            "request_bytes": None,
-            "bytes": None,
-            "status": getattr(exc, "code", None),
-            "ok": False,
-            "content_type": None,
-            "duration_ms": int((time.time() - t0) * 1000),
-            "action": "OBSERVED",
-            "mediation": "python_urllib",
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "error": "network_error",
-            "error_class": type(exc).__name__,
-        })
+        _record(
+            hostname,
+            "OBSERVED",
+            "python_urllib",
+            method="POST" if data is not None else "GET",
+            path=path,
+            scheme=scheme,
+            status=getattr(exc, "code", None),
+            ok=False,
+            duration_ms=int((time.time() - t0) * 1000),
+            error="network_error",
+            error_class=type(exc).__name__,
+        )
         raise
 
 
@@ -223,50 +545,49 @@ def _install_requests() -> None:
 
     def _observe_send(self, request, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(getattr(request, "url", ""))
-        if not hostname or not _in_scope(hostname, port):
+        body = getattr(request, "body", None)
+        kind, payload, redactions, record_send = _dispatch_gate(
+            hostname, port, path, body, "python_requests"
+        )
+        if kind == "pass":
             return _orig_requests_send(self, request, **kwargs)
+        if kind == "block":
+            return _gate_blocked_requests(str(payload))
+        if redactions:
+            request.body = payload
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
-        body = getattr(request, "body", None)
-        req_bytes = len(body) if isinstance(body, (bytes, bytearray)) else None
+        scheme = "https" if str(getattr(request, "url", "")).startswith("https") else "http"
         try:
             resp = _orig_requests_send(self, request, **kwargs)
-            _append({
-                "hostname": hostname,
-                "provider": "other",
-                "method": method,
-                "path": path,
-                "scheme": "https" if str(getattr(request, "url", "")).startswith("https") else "http",
-                "request_bytes": req_bytes,
-                "bytes": None,
-                "status": getattr(resp, "status_code", None),
-                "ok": True,
-                "content_type": None,
-                "duration_ms": int((time.time() - t0) * 1000),
-                "action": "OBSERVED",
-                "mediation": "python_requests",
-                "ts": datetime.now(timezone.utc).isoformat(),
-            })
+            _account_response_bytes(getattr(resp, "headers", None))
+            if record_send:
+                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                _record(
+                    hostname,
+                    action,
+                    "python_requests",
+                    method=method,
+                    path=path,
+                    scheme=scheme,
+                    status=getattr(resp, "status_code", None),
+                    ok=True,
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
             return resp
         except Exception as exc:
-            _append({
-                "hostname": hostname,
-                "provider": "other",
-                "method": method,
-                "path": path,
-                "scheme": "https" if str(getattr(request, "url", "")).startswith("https") else "http",
-                "request_bytes": req_bytes,
-                "bytes": None,
-                "status": None,
-                "ok": False,
-                "content_type": None,
-                "duration_ms": int((time.time() - t0) * 1000),
-                "action": "OBSERVED",
-                "mediation": "python_requests",
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "error": "network_error",
-                "error_class": type(exc).__name__,
-            })
+            _record(
+                hostname,
+                "OBSERVED",
+                "python_requests",
+                method=method,
+                path=path,
+                scheme=scheme,
+                ok=False,
+                duration_ms=int((time.time() - t0) * 1000),
+                error="network_error",
+                error_class=type(exc).__name__,
+            )
             raise
 
     _requests.sessions.Session.send = _observe_send  # type: ignore[assignment]
@@ -293,94 +614,92 @@ def _install_httpx() -> None:
 
     def _observe_sync(self, request, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(getattr(request, "url", ""))
-        if not hostname or not _in_scope(hostname, port):
+        body = getattr(request, "content", None)
+        kind, payload, redactions, record_send = _dispatch_gate(
+            hostname, port, path, body, "python_httpx"
+        )
+        if kind == "pass":
             return _orig_httpx_sync_send(self, request, **kwargs)
+        if kind == "block":
+            return _gate_blocked_httpx(str(payload))
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
+        scheme = "https" if str(request.url).startswith("https") else "http"
         try:
             resp = _orig_httpx_sync_send(self, request, **kwargs)
-            _append({
-                "hostname": hostname,
-                "provider": "other",
-                "method": method,
-                "path": path,
-                "scheme": "https" if str(request.url).startswith("https") else "http",
-                "request_bytes": None,
-                "bytes": None,
-                "status": getattr(resp, "status_code", None),
-                "ok": True,
-                "content_type": None,
-                "duration_ms": int((time.time() - t0) * 1000),
-                "action": "OBSERVED",
-                "mediation": "python_httpx",
-                "ts": datetime.now(timezone.utc).isoformat(),
-            })
+            _account_response_bytes(getattr(resp, "headers", None))
+            if record_send:
+                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                _record(
+                    hostname,
+                    action,
+                    "python_httpx",
+                    method=method,
+                    path=path,
+                    scheme=scheme,
+                    status=getattr(resp, "status_code", None),
+                    ok=True,
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
             return resp
         except Exception as exc:
-            _append({
-                "hostname": hostname,
-                "provider": "other",
-                "method": method,
-                "path": path,
-                "scheme": "https" if str(getattr(request, "url", "")).startswith("https") else "http",
-                "request_bytes": None,
-                "bytes": None,
-                "status": None,
-                "ok": False,
-                "content_type": None,
-                "duration_ms": int((time.time() - t0) * 1000),
-                "action": "OBSERVED",
-                "mediation": "python_httpx",
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "error": "network_error",
-                "error_class": type(exc).__name__,
-            })
+            _record(
+                hostname,
+                "OBSERVED",
+                "python_httpx",
+                method=method,
+                path=path,
+                scheme=scheme,
+                ok=False,
+                duration_ms=int((time.time() - t0) * 1000),
+                error="network_error",
+                error_class=type(exc).__name__,
+            )
             raise
 
     async def _observe_async(self, request, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(getattr(request, "url", ""))
-        if not hostname or not _in_scope(hostname, port):
+        body = getattr(request, "content", None)
+        kind, payload, redactions, record_send = _dispatch_gate(
+            hostname, port, path, body, "python_httpx"
+        )
+        if kind == "pass":
             return await _orig_httpx_async_send(self, request, **kwargs)
+        if kind == "block":
+            return _gate_blocked_httpx(str(payload))
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
+        scheme = "https" if str(request.url).startswith("https") else "http"
         try:
             resp = await _orig_httpx_async_send(self, request, **kwargs)
-            _append({
-                "hostname": hostname,
-                "provider": "other",
-                "method": method,
-                "path": path,
-                "scheme": "https" if str(request.url).startswith("https") else "http",
-                "request_bytes": None,
-                "bytes": None,
-                "status": getattr(resp, "status_code", None),
-                "ok": True,
-                "content_type": None,
-                "duration_ms": int((time.time() - t0) * 1000),
-                "action": "OBSERVED",
-                "mediation": "python_httpx",
-                "ts": datetime.now(timezone.utc).isoformat(),
-            })
+            _account_response_bytes(getattr(resp, "headers", None))
+            if record_send:
+                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                _record(
+                    hostname,
+                    action,
+                    "python_httpx",
+                    method=method,
+                    path=path,
+                    scheme=scheme,
+                    status=getattr(resp, "status_code", None),
+                    ok=True,
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
             return resp
         except Exception as exc:
-            _append({
-                "hostname": hostname,
-                "provider": "other",
-                "method": method,
-                "path": path,
-                "scheme": "https" if str(getattr(request, "url", "")).startswith("https") else "http",
-                "request_bytes": None,
-                "bytes": None,
-                "status": None,
-                "ok": False,
-                "content_type": None,
-                "duration_ms": int((time.time() - t0) * 1000),
-                "action": "OBSERVED",
-                "mediation": "python_httpx",
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "error": "network_error",
-                "error_class": type(exc).__name__,
-            })
+            _record(
+                hostname,
+                "OBSERVED",
+                "python_httpx",
+                method=method,
+                path=path,
+                scheme=scheme,
+                ok=False,
+                duration_ms=int((time.time() - t0) * 1000),
+                error="network_error",
+                error_class=type(exc).__name__,
+            )
             raise
 
     _httpx.Client.send = _observe_sync  # type: ignore[assignment]
@@ -430,7 +749,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python shield observes urllib, and requests/httpx when those libraries are installed, to in-scope LLM hosts. Raw sockets and curl stay outside this wrap.",
+                "note": "Python wrap observes urllib, and requests/httpx when those libraries are installed, to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on that same wrap. Raw sockets and curl stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
@@ -454,6 +773,7 @@ def install(trace_id: str) -> None:
             _calls.clear()
             _started_ms = time.time()
             _trace_id = trace_id
+            _load_policy()
             urllib.request.urlopen = _observe_urlopen  # type: ignore[assignment]
             _install_requests()
             _install_httpx()

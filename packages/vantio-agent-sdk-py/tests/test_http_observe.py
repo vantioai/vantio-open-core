@@ -110,3 +110,113 @@ class RequestsHttpxObserveTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(log.exists())
         finally:
             os.environ.pop("VANTIO_HOME", None)
+
+
+class PythonGateWrapTests(unittest.IsolatedAsyncioTestCase):
+    def _gate_env(self, home: str) -> None:
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        os.environ["VANTIO_API_KEY"] = "vk_test_dummy"
+
+    def _clear_env(self) -> None:
+        for key in (
+            "VANTIO_HOME",
+            "VANTIO_EXTRA_LLM_HOSTS",
+            "VANTIO_API_KEY",
+            "VANTIO_INGEST_URL",
+        ):
+            os.environ.pop(key, None)
+
+    async def test_urlopen_blocked_host_never_hits_target(self) -> None:
+        import urllib.error
+        import urllib.request
+
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+
+                def handler(req):
+                    if req.path.startswith("/api/v1/config"):
+                        body = {
+                            "tier": "PRO",
+                            "policy": {
+                                "enforce": True,
+                                "blocked_hosts": ["127.0.0.1"],
+                                "allowed_hosts": [],
+                                "redact_pii": False,
+                                "pii_types": [],
+                                "max_request_bytes": 0,
+                                "spend_cap_usd": 0,
+                                "dry_run": False,
+                            },
+                        }
+                        return 200, json.dumps(body).encode("utf-8")
+                    if req.path.startswith("/api/v1/ingest"):
+                        return 200, b'{"status":0}'
+                    return 200, b'{"ok":true}'
+
+                server.respond_with_handler(handler)
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    async with shield(trace_id="py-gate-block"):
+                        urllib.request.urlopen(server.url + "/v1/target", timeout=2)
+                self.assertEqual(raised.exception.code, 403)
+                target_hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(target_hits, [])
+            log = Path(home) / "runs" / "py-gate-block.json"
+            self.assertTrue(log.is_file())
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
+        finally:
+            self._clear_env()
+
+    async def test_urlopen_redacts_pii_before_leave(self) -> None:
+        import urllib.request
+
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+
+                def handler(req):
+                    if req.path.startswith("/api/v1/config"):
+                        body = {
+                            "tier": "PRO",
+                            "policy": {
+                                "enforce": False,
+                                "blocked_hosts": [],
+                                "allowed_hosts": ["127.0.0.1"],
+                                "redact_pii": True,
+                                "pii_types": ["email"],
+                                "max_request_bytes": 0,
+                                "spend_cap_usd": 0,
+                                "dry_run": False,
+                            },
+                        }
+                        return 200, json.dumps(body).encode("utf-8")
+                    if req.path.startswith("/api/v1/ingest"):
+                        return 200, b'{"status":0}'
+                    return 200, b'{"ok":true}'
+
+                server.respond_with_handler(handler)
+                payload = json.dumps({"email": "shouldnotleak@example.com"}).encode("utf-8")
+                req = urllib.request.Request(
+                    server.url + "/v1/target",
+                    data=payload,
+                    method="POST",
+                    headers={"content-type": "application/json"},
+                )
+                async with shield(trace_id="py-gate-redact"):
+                    urllib.request.urlopen(req, timeout=2)
+                targets = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(targets), 1)
+                self.assertNotIn(b"shouldnotleak@example.com", targets[0].body)
+                self.assertIn(b"[VANTIO_REDACTED:EMAIL]", targets[0].body)
+            log = Path(home) / "runs" / "py-gate-redact.json"
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["action"], "REDACTED")
+        finally:
+            self._clear_env()
+
