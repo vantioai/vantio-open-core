@@ -1,6 +1,6 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.8**.
+> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.9**.
 
 ```bash
 pip install vantio-agent-sdk
@@ -8,7 +8,7 @@ pip install vantio-agent-sdk
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics)
 
-`vantio run python agent.py` (CLI 0.3.4+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** (urlopen and custom openers) and **http.client** to in-scope LLM hosts. If **requests**, **httpx**, **aiohttp**, or **urllib3** are already installed, those are recorded the same way. `socket.connect` / `connect_ex` / `create_connection` to in-scope hosts share host-block and observe. `subprocess` / `os.system` / `asyncio` curl and wget spawns to in-scope hosts share host-block, observe, and file-body size from stat (curl and wget bodies are not rewritten). With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
+`vantio run python agent.py` (CLI 0.3.4+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** (urlopen and custom openers) and **http.client** to in-scope LLM hosts. If **requests**, **httpx**, **aiohttp**, or **urllib3** are already installed, those are recorded the same way. `socket.connect` / `connect_ex` / `create_connection` to in-scope hosts share host-block and observe. `subprocess` / `os.system` / `asyncio` curl and wget spawns to in-scope hosts share host-block, observe, file-body and curl `-F` size from stat, stdin size when stdin is a file, and `wget -i` URL lines (bodies are not rewritten). Spawned httpie and aria2c share host-block from argv URLs. With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
 
 **Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 

@@ -9,10 +9,12 @@ Wraps urllib.request.urlopen and OpenerDirector.open always. If requests,
 httpx, aiohttp, or urllib3 are installed, wraps those too. Also wraps
 socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and
 http.client request/putrequest to in-scope hosts (host-block and observe; TLS
-payloads are not read). Also wraps subprocess / os.system / asyncio curl and
-wget spawns (host-block and observe; file-body size from stat; curl/wget bodies
-are not rewritten). With a Gate API key, the same wrap can block, redact PII,
-or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
+payloads are not read). Also wraps subprocess / os.system / asyncio curl, wget,
+httpie, and aria2c spawns to in-scope hosts (host-block and observe; file-body
+and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines;
+curl/wget bodies are not rewritten). With a Gate API key, the same wrap can
+block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay
+outside this wrap.
 """
 from __future__ import annotations
 
@@ -23,7 +25,9 @@ import os
 import shlex
 import socket
 import ssl
+import stat
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -1392,14 +1396,26 @@ def _strip_spawn_prefixes(tokens: list[str]) -> list[str]:
     return tokens[i:] if i < n else []
 
 
+def _canonical_cli_tool(base: str) -> Optional[str]:
+    if base == "curl":
+        return "curl"
+    if base == "wget":
+        return "wget"
+    if base in ("http", "https", "httpie"):
+        return "httpie"
+    if base in ("aria2c", "aria2"):
+        return "aria2c"
+    return None
+
+
 def _cli_from_tokens(tokens: list[str]) -> Optional[tuple[str, list[str]]]:
     stripped = _strip_spawn_prefixes([str(t) for t in tokens])
     if not stripped:
         return None
-    base = _cmd_base(stripped[0])
-    if base in ("curl", "wget"):
-        return base, stripped[1:]
-    if base not in ("sh", "bash", "dash", "zsh"):
+    direct = _canonical_cli_tool(_cmd_base(stripped[0]))
+    if direct:
+        return direct, stripped[1:]
+    if _cmd_base(stripped[0]) not in ("sh", "bash", "dash", "zsh"):
         return None
     args = stripped[1:]
     try:
@@ -1411,8 +1427,8 @@ def _cli_from_tokens(tokens: list[str]) -> Optional[tuple[str, list[str]]]:
     inner = _strip_spawn_prefixes(_tokenize_shell(args[c_idx + 1]))
     if not inner:
         return None
-    tool = _cmd_base(inner[0])
-    if tool not in ("curl", "wget"):
+    tool = _canonical_cli_tool(_cmd_base(inner[0]))
+    if not tool:
         return None
     return tool, inner[1:]
 
@@ -1448,10 +1464,49 @@ def _http_cli_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[tuple[st
     return _cli_from_tokens([str(x) for x in seq])
 
 
-def _file_byte_length(rel: Any) -> int:
-    p = str(rel or "")
-    if not p or p == "-":
+def _stdin_byte_length(kwargs: Optional[dict[str, Any]]) -> int:
+    kwargs = kwargs or {}
+    data = kwargs.get("input")
+    if data is not None:
+        try:
+            if isinstance(data, bytes):
+                return len(data)
+            if isinstance(data, str):
+                enc = str(kwargs.get("encoding") or "utf-8")
+                return len(data.encode(enc, "replace"))
+        except Exception:
+            return 0
+    stdin = kwargs.get("stdin", None)
+    fd: Optional[int] = None
+    if stdin is None:
+        try:
+            fd = sys.stdin.fileno()
+        except Exception:
+            return 0
+    elif stdin in (subprocess.PIPE, subprocess.DEVNULL):
         return 0
+    elif isinstance(stdin, int):
+        fd = stdin
+    else:
+        try:
+            fd = stdin.fileno()
+        except Exception:
+            return 0
+    try:
+        st = os.fstat(fd)
+        if stat.S_ISREG(st.st_mode):
+            return int(st.st_size) or 0
+    except Exception:
+        return 0
+    return 0
+
+
+def _file_byte_length(rel: Any, stdin_size: int = 0) -> int:
+    p = str(rel or "")
+    if not p:
+        return 0
+    if p == "-":
+        return int(stdin_size) or 0
     try:
         if os.path.isfile(p):
             return int(os.stat(p).st_size) or 0
@@ -1460,11 +1515,74 @@ def _file_byte_length(rel: Any) -> int:
     return 0
 
 
-def _bytes_from_at_or_literal(value: Any, at_means_file: bool) -> int:
+def _bytes_from_at_or_literal(value: Any, at_means_file: bool, stdin_size: int = 0) -> int:
     v = str(value if value is not None else "")
     if at_means_file and v.startswith("@"):
-        return _file_byte_length(v[1:])
+        return _file_byte_length(v[1:], stdin_size)
     return len(v.encode("utf-8"))
+
+
+def _bytes_from_curl_form_value(value: Any, treat_at_as_file: bool, stdin_size: int = 0) -> int:
+    v = str(value if value is not None else "")
+    eq = v.find("=")
+    rhs = v[eq + 1:] if eq >= 0 else v
+    if not treat_at_as_file:
+        return len(rhs.encode("utf-8"))
+    if rhs.startswith("@") or rhs.startswith("<"):
+        path = rhs[1:]
+        semi = path.find(";")
+        if semi >= 0:
+            path = path[:semi]
+        return _file_byte_length(path, stdin_size)
+    return len(rhs.encode("utf-8"))
+
+
+def _urls_from_list_file(path: str, stdin_size: int = 0, kwargs: Optional[dict[str, Any]] = None) -> list[str]:
+    cap = 65536
+    max_urls = 32
+    text = ""
+    kwargs = kwargs or {}
+    try:
+        if str(path or "") == "-":
+            data = kwargs.get("input")
+            if data is not None:
+                if isinstance(data, bytes):
+                    text = data[:cap].decode("utf-8", "replace")
+                else:
+                    text = str(data)[:cap]
+            else:
+                if not stdin_size:
+                    return []
+                stdin = kwargs.get("stdin", None)
+                fd = 0
+                if isinstance(stdin, int):
+                    fd = stdin
+                elif stdin is not None and stdin not in (subprocess.PIPE, subprocess.DEVNULL):
+                    fd = stdin.fileno()
+                elif stdin is None:
+                    fd = sys.stdin.fileno()
+                raw = os.pread(fd, min(int(stdin_size) or 0, cap), 0)
+                text = raw.decode("utf-8", "replace")
+        else:
+            fd = os.open(str(path), os.O_RDONLY)
+            try:
+                raw = os.read(fd, cap)
+                text = raw.decode("utf-8", "replace")
+            finally:
+                os.close(fd)
+    except Exception:
+        return []
+    urls: list[str] = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        token = s.split()[0]
+        if token.startswith("http://") or token.startswith("https://"):
+            urls.append(token)
+        if len(urls) >= max_urls:
+            break
+    return urls
 
 
 _CURL_DATA_AT_FILE = {
@@ -1499,7 +1617,7 @@ def _url_from_curl_config(path: str) -> Optional[str]:
     return None
 
 
-def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
+def _parse_curl_argv(argv: list[str], stdin_size: int = 0) -> tuple[list[str], int]:
     url: Optional[str] = None
     data_bytes = 0
     config_paths: list[str] = []
@@ -1526,32 +1644,52 @@ def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
             continue
         if a in _CURL_DATA_AT_FILE:
             value = args[i + 1] if i + 1 < len(args) else ""
-            data_bytes += _bytes_from_at_or_literal(value, _CURL_DATA_AT_FILE[a])
+            data_bytes += _bytes_from_at_or_literal(value, _CURL_DATA_AT_FILE[a], stdin_size)
             i += 2
             continue
         eq_handled = False
         for flag, at_file in _CURL_DATA_AT_FILE.items():
             if flag.startswith("--") and a.startswith(flag + "="):
-                data_bytes += _bytes_from_at_or_literal(a[len(flag) + 1:], at_file)
+                data_bytes += _bytes_from_at_or_literal(a[len(flag) + 1:], at_file, stdin_size)
                 eq_handled = True
                 break
         if eq_handled:
             i += 1
             continue
         if a.startswith("-d") and len(a) > 2 and not a.startswith("--"):
-            data_bytes += _bytes_from_at_or_literal(a[2:], True)
+            data_bytes += _bytes_from_at_or_literal(a[2:], True, stdin_size)
+            i += 1
+            continue
+        if a in ("-F", "--form"):
+            data_bytes += _bytes_from_curl_form_value(args[i + 1] if i + 1 < len(args) else "", True, stdin_size)
+            i += 2
+            continue
+        if a.startswith("--form="):
+            data_bytes += _bytes_from_curl_form_value(a[len("--form="):], True, stdin_size)
+            i += 1
+            continue
+        if a.startswith("-F") and len(a) > 2 and not a.startswith("--"):
+            data_bytes += _bytes_from_curl_form_value(a[2:], True, stdin_size)
+            i += 1
+            continue
+        if a == "--form-string":
+            data_bytes += _bytes_from_curl_form_value(args[i + 1] if i + 1 < len(args) else "", False, stdin_size)
+            i += 2
+            continue
+        if a.startswith("--form-string="):
+            data_bytes += _bytes_from_curl_form_value(a[len("--form-string="):], False, stdin_size)
             i += 1
             continue
         if a in ("-T", "--upload-file"):
-            data_bytes += _file_byte_length(args[i + 1] if i + 1 < len(args) else "")
+            data_bytes += _file_byte_length(args[i + 1] if i + 1 < len(args) else "", stdin_size)
             i += 2
             continue
         if a.startswith("--upload-file="):
-            data_bytes += _file_byte_length(a[len("--upload-file="):])
+            data_bytes += _file_byte_length(a[len("--upload-file="):], stdin_size)
             i += 1
             continue
         if a.startswith("-T") and len(a) > 2 and not a.startswith("--"):
-            data_bytes += _file_byte_length(a[2:])
+            data_bytes += _file_byte_length(a[2:], stdin_size)
             i += 1
             continue
         if url is None and (a.startswith("http://") or a.startswith("https://")):
@@ -1563,12 +1701,21 @@ def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
             if found:
                 url = found
                 break
-    return url, data_bytes
+    return ([url] if url else []), data_bytes
 
 
-def _parse_wget_argv(argv: list[str]) -> tuple[Optional[str], int]:
+def _take_input_file_arg(args: list[str], i: int, a: str) -> Optional[tuple[str, int]]:
+    if a in ("-i", "--input-file"):
+        return (args[i + 1] if i + 1 < len(args) else ""), i + 2
+    if a.startswith("--input-file="):
+        return a[len("--input-file="):], i + 1
+    return None
+
+
+def _parse_wget_argv(argv: list[str], stdin_size: int = 0, kwargs: Optional[dict[str, Any]] = None) -> tuple[list[str], int]:
     url: Optional[str] = None
     data_bytes = 0
+    list_paths: list[str] = []
     args = [str(a) for a in argv]
     i = 0
     while i < len(args):
@@ -1587,60 +1734,119 @@ def _parse_wget_argv(argv: list[str]) -> tuple[Optional[str], int]:
             i += 1
             continue
         if a in ("--post-file", "--body-file"):
-            data_bytes += _file_byte_length(args[i + 1] if i + 1 < len(args) else "")
+            data_bytes += _file_byte_length(args[i + 1] if i + 1 < len(args) else "", stdin_size)
             i += 2
             continue
         if a.startswith("--post-file="):
-            data_bytes += _file_byte_length(a[len("--post-file="):])
+            data_bytes += _file_byte_length(a[len("--post-file="):], stdin_size)
             i += 1
             continue
         if a.startswith("--body-file="):
-            data_bytes += _file_byte_length(a[len("--body-file="):])
+            data_bytes += _file_byte_length(a[len("--body-file="):], stdin_size)
             i += 1
+            continue
+        taken = _take_input_file_arg(args, i, a)
+        if taken is not None:
+            path, nxt = taken
+            if path:
+                list_paths.append(path)
+            i = nxt
             continue
         if url is None and (a.startswith("http://") or a.startswith("https://")):
             url = a
         i += 1
-    return url, data_bytes
+    urls: list[str] = []
+    if url:
+        urls.append(url)
+    for path in list_paths:
+        for found in _urls_from_list_file(path, stdin_size, kwargs):
+            if found not in urls:
+                urls.append(found)
+    return urls, data_bytes
 
 
-def _parse_cli_argv(tool: str, argv: list[str]) -> tuple[Optional[str], int]:
+def _parse_url_only_argv(argv: list[str], stdin_size: int = 0, kwargs: Optional[dict[str, Any]] = None) -> tuple[list[str], int]:
+    urls: list[str] = []
+    list_paths: list[str] = []
+    args = [str(a) for a in argv]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        taken = _take_input_file_arg(args, i, a)
+        if taken is not None:
+            path, nxt = taken
+            if path:
+                list_paths.append(path)
+            i = nxt
+            continue
+        if (a.startswith("http://") or a.startswith("https://")) and a not in urls:
+            urls.append(a)
+        i += 1
+    for path in list_paths:
+        for found in _urls_from_list_file(path, stdin_size, kwargs):
+            if found not in urls:
+                urls.append(found)
+    return urls, 0
+
+
+def _parse_cli_argv(tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None) -> tuple[list[str], int]:
+    stdin_size = _stdin_byte_length(kwargs)
     if tool == "wget":
-        return _parse_wget_argv(argv)
-    return _parse_curl_argv(argv)
+        return _parse_wget_argv(argv, stdin_size, kwargs)
+    if tool in ("httpie", "aria2c"):
+        return _parse_url_only_argv(argv, stdin_size, kwargs)
+    return _parse_curl_argv(argv, stdin_size)
 
 
-def _apply_cli_gate(tool: str, argv: list[str]) -> Optional[GateBlockedError]:
+def _cli_mediation(tool: str) -> str:
+    if tool == "wget":
+        return "python_wget"
+    if tool == "httpie":
+        return "python_httpie"
+    if tool == "aria2c":
+        return "python_aria2c"
+    return "python_curl"
+
+
+def _apply_cli_gate(tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None) -> Optional[GateBlockedError]:
     global _spent_usd
-    url, data_bytes = _parse_cli_argv(tool, argv)
-    if not url:
+    urls, data_bytes = _parse_cli_argv(tool, argv, kwargs)
+    if not urls:
         return None
-    hostname, port, path = _host_port_from_url(url)
-    decision = _decide(hostname, port, path, data_bytes)
-    if decision == "pass":
-        return None
-    mediation = "python_wget" if tool == "wget" else "python_curl"
-    extra = {"path": path, "bytes_observed": data_bytes}
-    if decision == "block":
-        _record(hostname, "BLOCKED_HOST", mediation, ok=False, **extra)
-        return GateBlockedError(hostname or "")
-    if decision == "block_size":
-        _record(hostname, "BLOCKED_SIZE", mediation, ok=False, **extra)
-        return GateBlockedError(hostname or "")
-    if decision == "block_spend":
-        _record(hostname, "BLOCKED_SPEND", mediation, ok=False, **extra)
-        return GateBlockedError(hostname or "")
-    if decision == "dry_block":
-        _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, **extra)
-    elif decision == "dry_size":
-        _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, **extra)
-    elif decision == "dry_spend":
-        _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, **extra)
-    else:
-        action = "ALLOWED" if _cloud_sync else "OBSERVED"
-        _record(hostname, action, mediation, **extra)
-        _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
-    return None
+    rows: list[tuple[Optional[str], Optional[str], str, str]] = []
+    for url in urls:
+        hostname, port, path = _host_port_from_url(url)
+        decision = _decide(hostname, port, path, data_bytes)
+        rows.append((hostname, path, decision, url))
+    hard = [r for r in rows if r[2] in ("block", "block_size", "block_spend")]
+    to_record = hard if hard else [r for r in rows if r[2] != "pass"]
+    mediation = _cli_mediation(tool)
+    err: Optional[GateBlockedError] = None
+    for hostname, path, decision, _url in to_record:
+        extra = {"path": path, "bytes_observed": data_bytes}
+        if decision == "block":
+            _record(hostname, "BLOCKED_HOST", mediation, ok=False, **extra)
+            if err is None:
+                err = GateBlockedError(hostname or "")
+        elif decision == "block_size":
+            _record(hostname, "BLOCKED_SIZE", mediation, ok=False, **extra)
+            if err is None:
+                err = GateBlockedError(hostname or "")
+        elif decision == "block_spend":
+            _record(hostname, "BLOCKED_SPEND", mediation, ok=False, **extra)
+            if err is None:
+                err = GateBlockedError(hostname or "")
+        elif decision == "dry_block":
+            _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, **extra)
+        elif decision == "dry_size":
+            _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, **extra)
+        elif decision == "dry_spend":
+            _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, **extra)
+        else:
+            action = "ALLOWED" if _cloud_sync else "OBSERVED"
+            _record(hostname, action, mediation, **extra)
+            _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
+    return err
 
 
 class _VantioPopen(subprocess.Popen):
@@ -1648,7 +1854,7 @@ class _VantioPopen(subprocess.Popen):
         try:
             cli = _http_cli_from_popen(args, kwargs)
             if cli is not None:
-                err = _apply_cli_gate(cli[0], cli[1])
+                err = _apply_cli_gate(cli[0], cli[1], kwargs)
                 if err is not None:
                     raise err
         except GateBlockedError:
@@ -1676,7 +1882,7 @@ async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_spawn(program, args)
         if cli is not None:
-            err = _apply_cli_gate(cli[0], cli[1])
+            err = _apply_cli_gate(cli[0], cli[1], kwargs)
             if err is not None:
                 raise err
     except GateBlockedError:
@@ -1690,7 +1896,7 @@ async def _observe_asyncio_shell(cmd: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_exec(cmd)
         if cli is not None:
-            err = _apply_cli_gate(cli[0], cli[1])
+            err = _apply_cli_gate(cli[0], cli[1], kwargs)
             if err is not None:
                 raise err
     except GateBlockedError:

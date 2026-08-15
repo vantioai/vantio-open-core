@@ -340,8 +340,13 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     );
     assert.notEqual(
       requests.ingest[0].body.eventPayload.mediation,
-      "node_ws",
-      "fetch must stay a single ingest event, not a node_ws wrap"
+      "node_httpie",
+      "fetch must stay a single ingest event, not a node_httpie wrap"
+    );
+    assert.notEqual(
+      requests.ingest[0].body.eventPayload.mediation,
+      "node_aria2c",
+      "fetch must stay a single ingest event, not a node_aria2c wrap"
     );
     assert.ok(
       requests.ingest[0].body.eventPayload.bytes_observed != null,
@@ -1620,6 +1625,254 @@ else go();
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
+    });
+  });
+
+  const CURL_STDIN_SCRIPT = `
+const { spawn } = require("child_process");
+const { openSync } = require("fs");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const fd = openSync(process.env.POST_FILE, "r");
+  const child = spawn("curl", [
+    "-sS", "--max-time", "2", "-X", "POST", "-d", "@-",
+    process.env.TARGET_URL,
+  ], { stdio: [fd, "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const CURL_FORM_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("curl", [
+    "-sS", "--max-time", "2", "-F", "file=@" + process.env.POST_FILE,
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const WGET_INPUT_FILE_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("wget", [
+    "-q", "-O", "-", "--timeout=2", "--tries=1",
+    "-i", process.env.URL_LIST,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const HTTPIE_SPAWN_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("http", ["GET", process.env.TARGET_URL], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const ARIA2C_SPAWN_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("aria2c", [process.env.TARGET_URL], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  describe("Node-spawned stdin, curl -F, wget -i, extra CLIs", () => {
+    test("PAID_MODE, spawn curl -d @- file stdin over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_CURL, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-curl-stdin-"));
+      const postFile = join(dir, "body.txt");
+      writeFileSync(postFile, "hello-stdin-body");
+      configPolicy.enforce = true;
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.max_request_bytes = 4;
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            POST_FILE: postFile,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          CURL_STDIN_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        const result = JSON.parse(stdout.trim().split("\n").pop());
+        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+        assert.equal(requests.target.length, 0, "oversized curl stdin body must not reach the target");
+        const sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+        assert.ok(sizeEvents.length >= 1);
+        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
+        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-stdin-body"));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("PAID_MODE, spawn curl -F @file over max_request_bytes: BLOCKED_SIZE, file contents never ingested", { skip: !HAS_CURL, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-curl-form-"));
+      const postFile = join(dir, "body.txt");
+      const secret = "SECRET_SHOULD_NOT_INGEST_curl_form";
+      writeFileSync(postFile, secret);
+      configPolicy.enforce = true;
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.max_request_bytes = 4;
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            POST_FILE: postFile,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          CURL_FORM_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        const result = JSON.parse(stdout.trim().split("\n").pop());
+        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+        assert.equal(requests.target.length, 0, "oversized curl -F body must not reach the target");
+        const sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+        assert.ok(sizeEvents.length >= 1);
+        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
+        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength(secret));
+        assert.equal(
+          JSON.stringify(requests.ingest).includes(secret),
+          false,
+          "curl -F file contents must never be ingested"
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("PAID_MODE, spawn wget -i blocked URL list: wget never starts", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-wget-i-"));
+      const listFile = join(dir, "urls.txt");
+      writeFileSync(listFile, targetUrl + "\n");
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            URL_LIST: listFile,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          WGET_INPUT_FILE_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        const result = JSON.parse(stdout.trim().split("\n").pop());
+        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+        assert.equal(requests.target.length, 0, "wget -i blocked dest must never hit the target");
+        const wgetEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
+        assert.ok(wgetEvents.length >= 1);
+        assert.equal(wgetEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("PAID_MODE, spawn httpie blocked_hosts: child never starts", { timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        HTTPIE_SPAWN_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "blocked httpie must never hit the target");
+      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_httpie");
+      assert.ok(events.length >= 1);
+      assert.equal(events[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    });
+
+    test("PAID_MODE, spawn aria2c blocked_hosts: child never starts", { timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        ARIA2C_SPAWN_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "blocked aria2c must never hit the target");
+      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_aria2c");
+      assert.ok(events.length >= 1);
+      assert.equal(events[0].body.eventPayload.action_taken, "BLOCKED_HOST");
     });
   });
 
