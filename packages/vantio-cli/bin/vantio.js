@@ -155,6 +155,9 @@ Options:
   --json              Output raw JSON
   -h, --help          Show this help
 
+A run log is written when the wrapped agent exits, so --follow stays quiet
+during a run that is still going and prints the calls once it finishes.
+
 Examples:
   vantio tail
   vantio tail -n 50
