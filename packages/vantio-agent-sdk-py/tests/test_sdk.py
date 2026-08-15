@@ -223,6 +223,8 @@ class HttpObserveTests(unittest.IsolatedAsyncioTestCase):
             data = json.loads(log.read_text(encoding="utf-8"))
             self.assertEqual(data["vantio_run_log"], "1")
             self.assertEqual(data["calls"][0]["action"], "OBSERVED")
+            self.assertEqual(data["calls"][0]["mediation"], "python_urllib")
+            self.assertEqual(len(data["calls"]), 1)
             self.assertEqual(data["calls"][0]["hostname"], "127.0.0.1")
             self.assertNotIn("prompt", data["calls"][0])
         finally:

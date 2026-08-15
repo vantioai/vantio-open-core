@@ -6,21 +6,26 @@ In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
 Wraps urllib.request.urlopen always. If requests, httpx, or aiohttp are
-installed, wraps those too. With a Gate API key, the same wrap can block a
-destination, redact PII, or enforce a spend limit. Raw sockets and curl stay
-outside this wrap.
+installed, wraps those too. Also wraps socket.connect / create_connection /
+ssl.SSLSocket.connect to in-scope hosts (host-block and observe only — no TLS
+payload redaction). With a Gate API key, the same wrap can block, redact PII,
+or enforce a spend limit on HTTP bodies. Curl and browsers stay outside this wrap.
 """
 from __future__ import annotations
 
 import json
 import os
+import socket
+import ssl
 import threading
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 from urllib.parse import urlparse
 
 try:
@@ -73,6 +78,9 @@ _orig_requests_send: Any = None
 _orig_httpx_sync_send: Any = None
 _orig_httpx_async_send: Any = None
 _orig_aiohttp_request: Any = None
+_orig_socket_connect: Any = None
+_orig_create_connection: Any = None
+_orig_ssl_connect: Any = None
 _calls: list[dict[str, Any]] = []
 _started_ms = 0.0
 _trace_id = ""
@@ -91,6 +99,44 @@ _cloud_sync = False
 _spent_usd = 0.0
 # Same estimator as interceptor.cjs (rough token→USD; not a billing meter).
 _USD_PER_BYTE = (5 / 1_000_000) / 4
+
+# HTTP orig calls mark this so inner socket.connect is not ingested twice.
+_http_owns_connect: ContextVar[bool] = ContextVar("vantio_http_owns_connect", default=False)
+_http_owns_tls = threading.local()
+
+
+class GateBlockedError(OSError):
+    """Raised when Gate blocks a raw socket connect. Agents see this as a connect failure."""
+
+    def __init__(self, hostname: str) -> None:
+        super().__init__(f"Vantio Gate blocked host: {hostname}")
+        self.hostname = hostname
+        self.code = "VANTIO_GATE_BLOCKED"
+
+
+@contextmanager
+def _http_handled() -> Iterator[None]:
+    token = _http_owns_connect.set(True)
+    _http_owns_tls.depth = getattr(_http_owns_tls, "depth", 0) + 1
+    try:
+        yield
+    finally:
+        _http_owns_tls.depth = getattr(_http_owns_tls, "depth", 1) - 1
+        _http_owns_connect.reset(token)
+
+
+def _http_owns() -> bool:
+    return _http_owns_connect.get() or getattr(_http_owns_tls, "depth", 0) > 0
+
+
+def _http_orig(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    with _http_handled():
+        return fn(*args, **kwargs)
+
+
+async def _http_orig_async(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    with _http_handled():
+        return await fn(*args, **kwargs)
 
 
 def _extra_hosts() -> set[str]:
@@ -154,6 +200,8 @@ def _in_scope(hostname: str, port: Optional[str] = None) -> bool:
         _host_listed(hostname, _LLM_HOSTS | _extra_hosts())
         or _host_matches_regional(hostname)
         or _is_ollama_local(hostname, port)
+        or _host_listed(hostname, set(_policy.get("blocked_hosts") or []))
+        or _host_listed(hostname, set(_policy.get("allowed_hosts") or []))
     )
 
 
@@ -181,6 +229,21 @@ def _is_control_plane(hostname: str, path: str) -> bool:
         if not host or (hostname or "").lower() != host:
             return False
         return str(path or "").startswith("/api/v1/")
+    except Exception:
+        return False
+
+
+def _is_control_plane_dest(hostname: str, port: Optional[str]) -> bool:
+    """True when this TCP dest is the Gate control plane (any path)."""
+    try:
+        ingest = urlparse(os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai")
+        host = (ingest.hostname or "").lower()
+        if not host or (hostname or "").lower() != host:
+            return False
+        ingest_port = ingest.port or (443 if ingest.scheme == "https" else 80)
+        if port is None or port == "":
+            return True
+        return str(port) == str(ingest_port)
     except Exception:
         return False
 
@@ -265,7 +328,8 @@ def _ingest(hostname: str, action: str, extra: Optional[dict[str, Any]] = None) 
             },
             method="POST",
         )
-        _orig_urlopen(req, timeout=2.0).read()
+        with _http_handled():
+            _orig_urlopen(req, timeout=2.0).read()
     except Exception:
         return
 
@@ -527,7 +591,7 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
         hostname, port, path, body, "python_urllib"
     )
     if kind == "pass":
-        return _orig_urlopen(url, data, timeout, *args, **kwargs)
+        return _http_orig(_orig_urlopen, url, data, timeout, *args, **kwargs)
     if kind == "block":
         raise _gate_blocked_urllib(url_s, str(payload))
 
@@ -547,7 +611,7 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
 
     t0 = time.time()
     try:
-        resp = _orig_urlopen(url, send_data, timeout, *args, **kwargs)
+        resp = _http_orig(_orig_urlopen, url, send_data, timeout, *args, **kwargs)
         _account_response_bytes(getattr(resp, "headers", None))
         if record_send:
             action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
@@ -593,7 +657,7 @@ def _install_requests() -> None:
             hostname, port, path, body, "python_requests"
         )
         if kind == "pass":
-            return _orig_requests_send(self, request, **kwargs)
+            return _http_orig(_orig_requests_send, self, request, **kwargs)
         if kind == "block":
             return _gate_blocked_requests(str(payload))
         if redactions:
@@ -602,7 +666,7 @@ def _install_requests() -> None:
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(getattr(request, "url", "")).startswith("https") else "http"
         try:
-            resp = _orig_requests_send(self, request, **kwargs)
+            resp = _http_orig(_orig_requests_send, self, request, **kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
@@ -662,14 +726,14 @@ def _install_httpx() -> None:
             hostname, port, path, body, "python_httpx"
         )
         if kind == "pass":
-            return _orig_httpx_sync_send(self, request, **kwargs)
+            return _http_orig(_orig_httpx_sync_send, self, request, **kwargs)
         if kind == "block":
             return _gate_blocked_httpx(str(payload))
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(request.url).startswith("https") else "http"
         try:
-            resp = _orig_httpx_sync_send(self, request, **kwargs)
+            resp = _http_orig(_orig_httpx_sync_send, self, request, **kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
@@ -707,14 +771,14 @@ def _install_httpx() -> None:
             hostname, port, path, body, "python_httpx"
         )
         if kind == "pass":
-            return await _orig_httpx_async_send(self, request, **kwargs)
+            return await _http_orig_async(_orig_httpx_async_send, self, request, **kwargs)
         if kind == "block":
             return _gate_blocked_httpx(str(payload))
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(request.url).startswith("https") else "http"
         try:
-            resp = await _orig_httpx_async_send(self, request, **kwargs)
+            resp = await _http_orig_async(_orig_httpx_async_send, self, request, **kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
@@ -778,7 +842,7 @@ def _install_aiohttp() -> None:
             hostname, port, path, body, "python_aiohttp"
         )
         if kind == "pass":
-            return await _orig_aiohttp_request(self, method, str_or_url, **kwargs)
+            return await _http_orig_async(_orig_aiohttp_request, self, method, str_or_url, **kwargs)
         if kind == "block":
             raise _gate_blocked_aiohttp(str(method), str_or_url, str(payload))
         send_kwargs = dict(kwargs)
@@ -799,7 +863,7 @@ def _install_aiohttp() -> None:
             raw = ""
         scheme = "https" if raw.startswith("https") else "http"
         try:
-            resp = await _orig_aiohttp_request(self, method, str_or_url, **send_kwargs)
+            resp = await _http_orig_async(_orig_aiohttp_request, self, method, str_or_url, **send_kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
@@ -845,6 +909,116 @@ def _uninstall_aiohttp() -> None:
     _orig_aiohttp_request = None
 
 
+def _addr_host_port(address: Any) -> tuple[Optional[str], Optional[str], bool]:
+    """Return (hostname, port, is_ipc). Never raises."""
+    try:
+        if isinstance(address, bytes):
+            address = address.decode("utf-8", "replace")
+        if isinstance(address, str):
+            return None, None, True
+        if isinstance(address, (tuple, list)) and address:
+            host = address[0]
+            port = address[1] if len(address) > 1 else None
+            if isinstance(host, bytes):
+                host = host.decode("utf-8", "replace")
+            if isinstance(host, str) and ("/" in host or host.startswith("\0")):
+                return None, None, True
+            hostname = str(host).replace("[", "").replace("]", "") if host else None
+            return hostname, (str(port) if port is not None else None), False
+    except Exception:
+        return None, None, False
+    return None, None, False
+
+
+def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> str:
+    """pass | connect | block. Records observe/dry-run when needed."""
+    if not hostname or _http_owns() or _is_control_plane_dest(hostname, port):
+        return "pass"
+    kind, _payload, _redactions, record_send = _dispatch_gate(
+        hostname, port, "/", None, "python_socket"
+    )
+    if kind == "pass":
+        return "pass"
+    if kind == "block":
+        return "block"
+    if record_send:
+        action = "ALLOWED" if _cloud_sync else "OBSERVED"
+        _record(hostname, action, "python_socket")
+    return "connect"
+
+
+def _observe_socket_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
+    hostname, port, ipc = _addr_host_port(address)
+    if ipc:
+        return _orig_socket_connect(self, address, *args, **kwargs)
+    decision = _gate_socket_dest(hostname, port)
+    if decision == "block":
+        raise GateBlockedError(hostname or "")
+    return _orig_socket_connect(self, address, *args, **kwargs)
+
+
+def _observe_ssl_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
+    hostname, port, ipc = _addr_host_port(address)
+    if ipc:
+        with _http_handled():
+            return _orig_ssl_connect(self, address, *args, **kwargs)
+    decision = _gate_socket_dest(hostname, port)
+    if decision == "block":
+        raise GateBlockedError(hostname or "")
+    with _http_handled():
+        return _orig_ssl_connect(self, address, *args, **kwargs)
+
+
+def _observe_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
+    hostname, port, ipc = _addr_host_port(address)
+    if ipc:
+        with _http_handled():
+            return _orig_create_connection(address, *args, **kwargs)
+    decision = _gate_socket_dest(hostname, port)
+    if decision == "block":
+        raise GateBlockedError(hostname or "")
+    with _http_handled():
+        return _orig_create_connection(address, *args, **kwargs)
+
+
+def _install_socket() -> None:
+    global _orig_socket_connect, _orig_create_connection, _orig_ssl_connect
+    if _orig_socket_connect is not None:
+        return
+    _orig_socket_connect = socket.socket.connect
+    _orig_create_connection = socket.create_connection
+    ssl_own = None
+    try:
+        ssl_own = ssl.SSLSocket.connect
+        if ssl_own is _orig_socket_connect:
+            ssl_own = None
+    except Exception:
+        ssl_own = None
+    socket.socket.connect = _observe_socket_connect  # type: ignore[method-assign]
+    socket.create_connection = _observe_create_connection  # type: ignore[assignment]
+    if ssl_own is not None:
+        _orig_ssl_connect = ssl_own
+        ssl.SSLSocket.connect = _observe_ssl_connect  # type: ignore[method-assign]
+    else:
+        _orig_ssl_connect = None
+
+
+def _uninstall_socket() -> None:
+    global _orig_socket_connect, _orig_create_connection, _orig_ssl_connect
+    try:
+        if _orig_socket_connect is not None:
+            socket.socket.connect = _orig_socket_connect
+        if _orig_create_connection is not None:
+            socket.create_connection = _orig_create_connection
+        if _orig_ssl_connect is not None:
+            ssl.SSLSocket.connect = _orig_ssl_connect
+    except Exception:
+        pass
+    _orig_socket_connect = None
+    _orig_create_connection = None
+    _orig_ssl_connect = None
+
+
 def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
@@ -872,7 +1046,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib, and requests/httpx/aiohttp when those libraries are installed, to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on that same wrap. Raw sockets and curl stay outside this wrap.",
+                "note": "Python wrap observes urllib, requests/httpx/aiohttp when installed, and socket.connect / create_connection to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl and browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
@@ -901,6 +1075,7 @@ def install(trace_id: str) -> None:
             _install_requests()
             _install_httpx()
             _install_aiohttp()
+            _install_socket()
 
 
 def uninstall() -> None:
@@ -914,4 +1089,6 @@ def uninstall() -> None:
             _uninstall_requests()
             _uninstall_httpx()
             _uninstall_aiohttp()
+            _uninstall_socket()
             _write_run_log()
+            _reset_policy()

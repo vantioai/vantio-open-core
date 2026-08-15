@@ -1,6 +1,6 @@
 # Injected onto PYTHONPATH by `vantio run python …`.
-# Optics (and Gate, when a paid key is present on SDK 3.0.4+) wrap urllib /
-# requests / httpx / aiohttp for this interpreter. Missing SDK is a warning, not a crash.
+# Optics (and Gate, when a paid key is present on SDK 3.0.5+) wrap urllib /
+# requests / httpx / aiohttp / socket.connect for this interpreter. Missing SDK is a warning, not a crash.
 import sys
 
 try:
