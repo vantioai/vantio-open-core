@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.12** (npm) and **`vantio-agent-sdk` 3.0.6** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.12** (npm) and **`vantio-agent-sdk` 3.0.7** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -27,10 +27,10 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-Python agents use `shield()` from `vantio-agent-sdk` 3.0.6 (urllib always; requests, httpx, and aiohttp when those libraries are already installed; `socket.connect` / `create_connection` and subprocess curl to in-scope hosts):
+Python agents use `shield()` from `vantio-agent-sdk` 3.0.7 (urllib always; requests, httpx, and aiohttp when those libraries are already installed; `socket.connect` / `create_connection` and subprocess curl/wget to in-scope hosts):
 
 ```bash
-pip install vantio-agent-sdk==3.0.6
+pip install vantio-agent-sdk==3.0.7
 ```
 
 Optionally connect a Gate key (paid features):
@@ -86,7 +86,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 | Package | Published | Description |
 |---------|-----------|-------------|
 | [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.12** | CLI runner — Node fetch, undici, http/https, http2, net/tls, upgrade/CONNECT frames, Node-spawned curl and wget |
-| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.6** | Python `shield()` — urllib + optional requests/httpx/aiohttp + socket.connect + subprocess curl |
+| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.7** | Python `shield()` — urllib + optional requests/httpx/aiohttp + socket.connect + subprocess curl/wget |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
 | [`packages/vantio-gate-mcp`](./packages/vantio-gate-mcp) | `@vantio/gate-mcp` | Gate MCP — dry-run evaluate |
@@ -131,7 +131,7 @@ Node wrap of `fetch`, undici, `http`/`https`, `http2`, `net`/`tls`, `undici.upgr
 ### Python
 
 ```bash
-pip install vantio-agent-sdk==3.0.6
+pip install vantio-agent-sdk==3.0.7
 ```
 
 > On Ubuntu/Debian (23.04+), global `pip install` is blocked by default (PEP 668). Use a virtualenv or `pipx install vantio-agent-sdk` instead.
@@ -152,7 +152,7 @@ While `shield()` is active, Optics records urllib to in-scope hosts. If `request
 
 **Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https`, Node `http2.connect` / `session.request`, Node `net` / `tls` connect to in-scope hosts, outbound bytes on `undici.upgrade` / CONNECT sockets (observe and size/spend caps; frame payloads are not read), and Node-spawned `curl` / `wget`.
 
-**Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed; `socket.connect` / `create_connection` / `ssl.SSLSocket.connect` to in-scope hosts (host-block and observe; no TLS payload redaction); `subprocess` / `os.system` / `asyncio` curl spawns to in-scope hosts (host-block and observe; curl bodies are not rewritten).
+**Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed; `socket.connect` / `create_connection` / `ssl.SSLSocket.connect` to in-scope hosts (host-block and observe; no TLS payload redaction); `subprocess` / `os.system` / `asyncio` curl and wget spawns to in-scope hosts (host-block and observe; curl/wget bodies are not rewritten).
 
 **Phantom Engine:** Linux hosts you own.
 
