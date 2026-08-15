@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import time
 import unittest
@@ -211,6 +213,7 @@ class PythonGateWrapTests(unittest.IsolatedAsyncioTestCase):
             data = json.loads(log.read_text(encoding="utf-8"))
             self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
             self.assertNotIn("python_socket", {c.get("mediation") for c in data["calls"]})
+            self.assertNotIn("python_curl", {c.get("mediation") for c in data["calls"]})
         finally:
             self._clear_env()
 
@@ -548,5 +551,154 @@ class PythonSocketWrapTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(log.exists())
         finally:
             srv.close()
+            self._clear_env()
+
+
+class PythonCurlWrapTests(unittest.IsolatedAsyncioTestCase):
+    def _gate_env(self, home: str) -> None:
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        os.environ["VANTIO_API_KEY"] = "vk_test_dummy"
+
+    def _clear_env(self) -> None:
+        for key in (
+            "VANTIO_HOME",
+            "VANTIO_EXTRA_LLM_HOSTS",
+            "VANTIO_API_KEY",
+            "VANTIO_INGEST_URL",
+        ):
+            os.environ.pop(key, None)
+
+    def _config_handler(self, blocked: bool, max_request_bytes: int = 0):
+        def handler(req):
+            if req.path.startswith("/api/v1/config"):
+                body = {
+                    "tier": "PRO",
+                    "policy": {
+                        "enforce": True,
+                        "blocked_hosts": ["127.0.0.1"] if blocked else [],
+                        "allowed_hosts": [] if blocked else ["127.0.0.1"],
+                        "redact_pii": False,
+                        "pii_types": [],
+                        "max_request_bytes": max_request_bytes,
+                        "spend_cap_usd": 0,
+                        "dry_run": False,
+                    },
+                }
+                return 200, json.dumps(body).encode("utf-8")
+            if req.path.startswith("/api/v1/ingest"):
+                return 200, b'{"status":0}'
+            return 200, b'{"ok":true}'
+
+        return handler
+
+    def _curl_cmd(self, url: str, data: str = "hello-curl") -> list[str]:
+        return ["curl", "-sS", "--max-time", "2", "-X", "POST", "-d", data, url]
+
+    async def test_subprocess_curl_blocked_host_never_starts(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=True))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError) as raised:
+                    async with shield(trace_id="py-curl-block"):
+                        subprocess.run(self._curl_cmd(target), capture_output=True, timeout=5)
+                self.assertEqual(raised.exception.code, "VANTIO_GATE_BLOCKED")
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            log = Path(home) / "runs" / "py-curl-block.json"
+            data = json.loads(log.read_text(encoding="utf-8"))
+            curl_calls = [c for c in data["calls"] if c.get("mediation") == "python_curl"]
+            self.assertEqual(len(curl_calls), 1)
+            self.assertEqual(curl_calls[0]["action"], "BLOCKED_HOST")
+        finally:
+            self._clear_env()
+
+    async def test_subprocess_curl_allowed_records_python_curl(self) -> None:
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=False))
+                target = server.url + "/v1/target"
+                async with shield(trace_id="py-curl-allow"):
+                    completed = subprocess.run(
+                        self._curl_cmd(target), capture_output=True, timeout=5
+                    )
+                self.assertEqual(completed.returncode, 0)
+                hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(hits), 1)
+                self.assertIn(b"hello-curl", hits[0].body)
+            log = Path(home) / "runs" / "py-curl-allow.json"
+            data = json.loads(log.read_text(encoding="utf-8"))
+            curl_calls = [c for c in data["calls"] if c.get("mediation") == "python_curl"]
+            self.assertEqual(len(curl_calls), 1)
+            self.assertEqual(curl_calls[0]["action"], "ALLOWED")
+            self.assertEqual(curl_calls[0]["bytes_observed"], len(b"hello-curl"))
+        finally:
+            self._clear_env()
+
+    async def test_shell_curl_blocked_host_never_starts(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(self._config_handler(blocked=True))
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError) as raised:
+                    async with shield(trace_id="py-curl-sh"):
+                        subprocess.run(
+                            ["sh", "-c", "curl -sS --max-time 2 " + target],
+                            capture_output=True,
+                            timeout=5,
+                        )
+                self.assertEqual(raised.exception.code, "VANTIO_GATE_BLOCKED")
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            log = Path(home) / "runs" / "py-curl-sh.json"
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
+            self.assertEqual(data["calls"][0]["mediation"], "python_curl")
+        finally:
+            self._clear_env()
+
+    async def test_subprocess_curl_over_max_request_bytes_never_hits(self) -> None:
+        from vantio._http_observe import GateBlockedError
+
+        if not shutil.which("curl"):
+            self.skipTest("curl is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+                server.respond_with_handler(
+                    self._config_handler(blocked=False, max_request_bytes=4)
+                )
+                target = server.url + "/v1/target"
+                with self.assertRaises(GateBlockedError) as raised:
+                    async with shield(trace_id="py-curl-size"):
+                        subprocess.run(self._curl_cmd(target), capture_output=True, timeout=5)
+                self.assertEqual(raised.exception.code, "VANTIO_GATE_BLOCKED")
+                self.assertEqual([r for r in server.requests if r.path == "/v1/target"], [])
+            log = Path(home) / "runs" / "py-curl-size.json"
+            data = json.loads(log.read_text(encoding="utf-8"))
+            size_calls = [c for c in data["calls"] if c.get("action") == "BLOCKED_SIZE"]
+            self.assertGreaterEqual(len(size_calls), 1)
+            self.assertEqual(size_calls[0]["mediation"], "python_curl")
+        finally:
             self._clear_env()
 

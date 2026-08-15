@@ -1,6 +1,6 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.5**.
+> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.6**.
 
 ```bash
 pip install vantio-agent-sdk
@@ -8,7 +8,7 @@ pip install vantio-agent-sdk
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics)
 
-`vantio run python agent.py` (CLI 0.3.4+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** to in-scope LLM hosts. If **requests**, **httpx**, or **aiohttp** are already installed, those are recorded the same way. `socket.connect` / `create_connection` to in-scope hosts share host-block and observe. With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit on HTTP bodies. Curl and browsers stay outside this wrap.
+`vantio run python agent.py` (CLI 0.3.4+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** to in-scope LLM hosts. If **requests**, **httpx**, or **aiohttp** are already installed, those are recorded the same way. `socket.connect` / `create_connection` to in-scope hosts share host-block and observe. `subprocess` / `os.system` / `asyncio` curl spawns to in-scope hosts share host-block and observe (curl bodies are not rewritten). With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
 
 **Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
@@ -188,4 +188,5 @@ Anthropic, Bedrock, Vertex AI, Hugging Face Inference, Replicate, Ollama, NVIDIA
 the rest of the catalog). If `requests`, `httpx`, or `aiohttp` are already installed in the agent
 environment, those are recorded the same way. They are optional; installing this
 package does not pull them in. `socket.connect` / `create_connection` to in-scope hosts
-share host-block and observe. Curl and browsers stay outside this wrap.
+share host-block and observe. `subprocess` curl to in-scope hosts shares host-block and
+observe; curl bodies are not rewritten. Browsers stay outside this wrap.

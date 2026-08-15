@@ -116,7 +116,8 @@ def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
     Generates a VANTIO_TRACE_ID and propagates it via contextvars through
     every async hop in the call tree. While active, shield() observes urllib
     and, when those libraries are installed, requests, httpx, and aiohttp —
-    metadata only. Raw sockets and curl stay outside this wrap.
+    metadata only. socket.connect and subprocess curl to in-scope hosts share
+    host-block and observe. Browsers stay outside this wrap.
     """
     if fn is None:
         # Called as shield() or shield(trace_id=...) — return an object that

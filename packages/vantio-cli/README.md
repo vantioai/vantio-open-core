@@ -165,7 +165,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https`, Node `http2`, Node `net`/`tls`, and Node-spawned `curl` (including `sh -c 'curl …'`). Current npm release: **`@vantio/cli` 0.3.11**.
 
-Python, Ruby, and other runtimes are spawned normally without this interceptor — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.5**, `shield()`) for Python urllib / requests / httpx / aiohttp / socket.connect.
+Python, Ruby, and other runtimes are spawned normally without this interceptor — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.6**, `shield()`) for Python urllib / requests / httpx / aiohttp / socket.connect / subprocess curl.
 
 ---
 

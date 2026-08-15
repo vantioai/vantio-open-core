@@ -8,15 +8,20 @@ and Vertex patterns and local Ollama on port 11434.
 Wraps urllib.request.urlopen always. If requests, httpx, or aiohttp are
 installed, wraps those too. Also wraps socket.connect / create_connection /
 ssl.SSLSocket.connect to in-scope hosts (host-block and observe only — no TLS
-payload redaction). With a Gate API key, the same wrap can block, redact PII,
-or enforce a spend limit on HTTP bodies. Curl and browsers stay outside this wrap.
+payload redaction). Also wraps subprocess / os.system / asyncio curl spawns to
+in-scope hosts (host-block and observe; curl bodies are not rewritten). With a
+Gate API key, the same wrap can block, redact PII, or enforce a spend limit on
+HTTP bodies. Browsers stay outside this wrap.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import shlex
 import socket
 import ssl
+import subprocess
 import threading
 import time
 import urllib.error
@@ -81,6 +86,10 @@ _orig_aiohttp_request: Any = None
 _orig_socket_connect: Any = None
 _orig_create_connection: Any = None
 _orig_ssl_connect: Any = None
+_orig_popen: Any = None
+_orig_os_system: Any = None
+_orig_asyncio_exec: Any = None
+_orig_asyncio_shell: Any = None
 _calls: list[dict[str, Any]] = []
 _started_ms = 0.0
 _trace_id = ""
@@ -106,7 +115,7 @@ _http_owns_tls = threading.local()
 
 
 class GateBlockedError(OSError):
-    """Raised when Gate blocks a raw socket connect. Agents see this as a connect failure."""
+    """Raised when Gate blocks a raw socket connect or a curl spawn."""
 
     def __init__(self, hostname: str) -> None:
         super().__init__(f"Vantio Gate blocked host: {hostname}")
@@ -507,7 +516,10 @@ def _record(
     }
     ingest_action = ingest_map.get(action)
     if ingest_action:
-        _ingest(hostname, ingest_action, {"mediation": mediation})
+        ingest_extra: dict[str, Any] = {"mediation": mediation}
+        if rec.get("bytes_observed") is not None:
+            ingest_extra["bytes_observed"] = rec["bytes_observed"]
+        _ingest(hostname, ingest_action, ingest_extra)
 
 
 def _apply_body(body: Any) -> tuple[Any, list[str], int]:
@@ -1019,6 +1031,226 @@ def _uninstall_socket() -> None:
     _orig_ssl_connect = None
 
 
+def _cmd_base(file: Any) -> str:
+    try:
+        name = os.path.basename(str(file or "")).lower()
+        if name.endswith(".exe"):
+            name = name[:-4]
+        return name
+    except Exception:
+        return ""
+
+
+def _tokenize_shell(s: str) -> list[str]:
+    try:
+        return shlex.split(str(s or ""), posix=True)
+    except Exception:
+        return []
+
+
+def _curl_argv_from_spawn(command: Any, argv: Any) -> Optional[list[str]]:
+    args = [str(a) for a in list(argv or [])]
+    if _cmd_base(command) == "curl":
+        return args
+    if _cmd_base(command) not in ("sh", "bash", "dash", "zsh"):
+        return None
+    try:
+        c_idx = args.index("-c")
+    except ValueError:
+        return None
+    if c_idx + 1 >= len(args):
+        return None
+    tokens = _tokenize_shell(args[c_idx + 1])
+    if not tokens or _cmd_base(tokens[0]) != "curl":
+        return None
+    return tokens[1:]
+
+
+def _curl_argv_from_exec(command: Any) -> Optional[list[str]]:
+    tokens = _tokenize_shell(str(command or ""))
+    if not tokens:
+        return None
+    if _cmd_base(tokens[0]) == "curl":
+        return tokens[1:]
+    return _curl_argv_from_spawn(tokens[0], tokens[1:])
+
+
+def _curl_argv_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[list[str]]:
+    shell = bool(kwargs.get("shell"))
+    if isinstance(args, bytes):
+        args = args.decode("utf-8", "replace")
+    if isinstance(args, str):
+        if shell:
+            return _curl_argv_from_exec(args)
+        if _cmd_base(args) == "curl":
+            return []
+        return None
+    try:
+        seq = list(args)
+    except TypeError:
+        return None
+    if not seq:
+        return None
+    if shell:
+        return _curl_argv_from_exec(" ".join(str(x) for x in seq))
+    return _curl_argv_from_spawn(seq[0], seq[1:])
+
+
+def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
+    url: Optional[str] = None
+    data_bytes = 0
+    args = [str(a) for a in argv]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("--url", "-url"):
+            url = args[i + 1] if i + 1 < len(args) else None
+            i += 2
+            continue
+        if a.startswith("--url="):
+            url = a[len("--url="):]
+            i += 1
+            continue
+        if a in (
+            "-d", "--data", "--data-raw", "--data-binary",
+            "--data-ascii", "--data-urlencode", "--json",
+        ):
+            value = args[i + 1] if i + 1 < len(args) else ""
+            data_bytes += len(str(value).encode("utf-8"))
+            i += 2
+            continue
+        if a.startswith("-d") and len(a) > 2 and not a.startswith("--"):
+            data_bytes += len(a[2:].encode("utf-8"))
+            i += 1
+            continue
+        if url is None and (a.startswith("http://") or a.startswith("https://")):
+            url = a
+        i += 1
+    return url, data_bytes
+
+
+def _apply_curl_gate(argv: list[str]) -> Optional[GateBlockedError]:
+    global _spent_usd
+    url, data_bytes = _parse_curl_argv(argv)
+    if not url:
+        return None
+    hostname, port, path = _host_port_from_url(url)
+    decision = _decide(hostname, port, path, data_bytes)
+    if decision == "pass":
+        return None
+    extra = {"path": path, "bytes_observed": data_bytes}
+    if decision == "block":
+        _record(hostname, "BLOCKED_HOST", "python_curl", ok=False, **extra)
+        return GateBlockedError(hostname or "")
+    if decision == "block_size":
+        _record(hostname, "BLOCKED_SIZE", "python_curl", ok=False, **extra)
+        return GateBlockedError(hostname or "")
+    if decision == "block_spend":
+        _record(hostname, "BLOCKED_SPEND", "python_curl", ok=False, **extra)
+        return GateBlockedError(hostname or "")
+    if decision == "dry_block":
+        _record(hostname, "DRY_RUN_BLOCKED_HOST", "python_curl", **extra)
+    elif decision == "dry_size":
+        _record(hostname, "DRY_RUN_BLOCKED_SIZE", "python_curl", **extra)
+    elif decision == "dry_spend":
+        _record(hostname, "DRY_RUN_BLOCKED_SPEND", "python_curl", **extra)
+    else:
+        action = "ALLOWED" if _cloud_sync else "OBSERVED"
+        _record(hostname, action, "python_curl", **extra)
+        _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
+    return None
+
+
+class _VantioPopen(subprocess.Popen):
+    def __init__(self, args: Any, *pargs: Any, **kwargs: Any) -> None:
+        try:
+            curl_argv = _curl_argv_from_popen(args, kwargs)
+            if curl_argv is not None:
+                err = _apply_curl_gate(curl_argv)
+                if err is not None:
+                    raise err
+        except GateBlockedError:
+            raise
+        except Exception:
+            pass
+        super().__init__(args, *pargs, **kwargs)
+
+
+def _observe_os_system(command: Any) -> Any:
+    try:
+        curl_argv = _curl_argv_from_exec(command)
+        if curl_argv is not None:
+            err = _apply_curl_gate(curl_argv)
+            if err is not None:
+                raise err
+    except GateBlockedError:
+        raise
+    except Exception:
+        pass
+    return _orig_os_system(command)
+
+
+async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
+    try:
+        curl_argv = _curl_argv_from_spawn(program, args)
+        if curl_argv is not None:
+            err = _apply_curl_gate(curl_argv)
+            if err is not None:
+                raise err
+    except GateBlockedError:
+        raise
+    except Exception:
+        pass
+    return await _orig_asyncio_exec(program, *args, **kwargs)
+
+
+async def _observe_asyncio_shell(cmd: Any, **kwargs: Any) -> Any:
+    try:
+        curl_argv = _curl_argv_from_exec(cmd)
+        if curl_argv is not None:
+            err = _apply_curl_gate(curl_argv)
+            if err is not None:
+                raise err
+    except GateBlockedError:
+        raise
+    except Exception:
+        pass
+    return await _orig_asyncio_shell(cmd, **kwargs)
+
+
+def _install_curl_spawn() -> None:
+    global _orig_popen, _orig_os_system, _orig_asyncio_exec, _orig_asyncio_shell
+    if _orig_popen is not None:
+        return
+    _orig_popen = subprocess.Popen
+    subprocess.Popen = _VantioPopen  # type: ignore[misc,assignment]
+    _orig_os_system = os.system
+    os.system = _observe_os_system  # type: ignore[assignment]
+    _orig_asyncio_exec = asyncio.create_subprocess_exec
+    _orig_asyncio_shell = asyncio.create_subprocess_shell
+    asyncio.create_subprocess_exec = _observe_asyncio_exec  # type: ignore[assignment]
+    asyncio.create_subprocess_shell = _observe_asyncio_shell  # type: ignore[assignment]
+
+
+def _uninstall_curl_spawn() -> None:
+    global _orig_popen, _orig_os_system, _orig_asyncio_exec, _orig_asyncio_shell
+    try:
+        if _orig_popen is not None:
+            subprocess.Popen = _orig_popen
+        if _orig_os_system is not None:
+            os.system = _orig_os_system
+        if _orig_asyncio_exec is not None:
+            asyncio.create_subprocess_exec = _orig_asyncio_exec
+        if _orig_asyncio_shell is not None:
+            asyncio.create_subprocess_shell = _orig_asyncio_shell
+    except Exception:
+        pass
+    _orig_popen = None
+    _orig_os_system = None
+    _orig_asyncio_exec = None
+    _orig_asyncio_shell = None
+
+
 def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
@@ -1046,7 +1278,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib, requests/httpx/aiohttp when installed, and socket.connect / create_connection to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl and browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib, requests/httpx/aiohttp when installed, socket.connect / create_connection, and subprocess curl to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl bodies are not rewritten. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
@@ -1076,6 +1308,7 @@ def install(trace_id: str) -> None:
             _install_httpx()
             _install_aiohttp()
             _install_socket()
+            _install_curl_spawn()
 
 
 def uninstall() -> None:
@@ -1090,5 +1323,6 @@ def uninstall() -> None:
             _uninstall_httpx()
             _uninstall_aiohttp()
             _uninstall_socket()
+            _uninstall_curl_spawn()
             _write_run_log()
             _reset_policy()
