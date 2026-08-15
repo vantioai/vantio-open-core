@@ -85,12 +85,16 @@ On exit, run logs are written locally to `~/.vantio/runs/<trace-id>.json` (mode 
 
 ```bash
 vantio discover --local          # runs on this machine, no dashboard sync
+vantio search openai             # find calls by host, path, action, or free text
+vantio tail                      # latest calls from the most recent run
+vantio tail -n 50 --run=<id>     # last N calls from a specific run
+vantio diff <run-a> <run-b>      # compare two runs (hosts, counts, bytes)
 vantio prove                     # HTML proof from the most recent run
 vantio prove --list              # all local run logs
 vantio prove --format=md         # Markdown for auditors / CI artifacts
 ```
 
-See [prove.md](./prove.md) for the full `vantio prove` reference.
+`search`, `tail`, and `diff` read the same `~/.vantio/runs/` logs as `vantio prove` — no Mission Control required. See [prove.md](./prove.md) for the full proof-export reference.
 
 **Optics MCP (agent hosts / IDEs):** `@vantio/optics-mcp` exposes the same observe surface as MCP tools (`optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_upgrade_path`). Read-only — when agents need enforce, they follow the upgrade path to Gate. See [optics-mcp.md](./optics-mcp.md).
 

@@ -48,6 +48,9 @@ After a run, export a proof artifact or explore local history:
 ```bash
 vantio prove                      # HTML proof artifact (Free, no key needed)
 vantio discover --local           # local run history (Free, no key needed)
+vantio search openai              # search captured calls (Free)
+vantio tail                       # latest calls from the most recent run
+vantio diff <run-a> <run-b>       # compare two local runs
 vantio discover                   # full workspace history (Gate / Phantom Engine)
 ```
 
@@ -59,7 +62,7 @@ Optics ships one named workflow — **Sight Loop**:
 
 1. **Wrap** — `vantio run` / SDK
 2. **Capture** — host · process · bytes · time · trace (no prompts/completions)
-3. **Inspect / export** — `vantio prove`, `vantio discover --local`, or **Optics MCP**
+3. **Inspect / export** — `vantio search` · `vantio tail` · `vantio diff` · `vantio prove` · `vantio discover --local` · **Optics MCP**
 4. **Honest gap** — paths that never hit the interceptor stay unnamed here
 
 Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optics-mcp.md](./docs/optics-mcp.md) · Offline check: `./scripts/sight-loop-prove.sh`

@@ -32,6 +32,9 @@ vantio whoami         # show the stored key (masked) + live connection status
 vantio run <program>  # spawn a program under the Vantio execution context
 vantio discover       # show your Shadow AI attack surface (Pro / Enterprise)
 vantio prove          # generate an auditor-ready proof artifact from a run log (Free)
+vantio search [query] # search local run logs by host, path, action, or free text (Free)
+vantio tail           # show the latest calls from a captured run (Free)
+vantio diff <a> <b>   # compare two local runs — hosts, counts, bytes (Free)
 ```
 
 `login` refuses to save a key the server rejects (HTTP 401). The full key is never printed — `whoami` and login output only ever show a masked form like `vk_liv…a1b2`.
@@ -93,6 +96,20 @@ trace IDs, machine/PID, byte counts, host breakdown, and action labels.
 **Reports contain zero prompts or completions** — safe to share with auditors.
 
 Available on Free — no API key required. Full reference: [`docs/prove.md`](../../docs/prove.md)
+
+---
+
+## vantio search / tail / diff — Inspect without a dashboard (Free)
+
+```bash
+vantio search openai                   # free-text search across local runs
+vantio search --host=api.anthropic.com
+vantio tail                            # latest calls from the most recent run
+vantio tail -n 50 --run=<trace-id>
+vantio diff <run-a> <run-b>            # hosts added/removed, call and byte deltas
+```
+
+Same `~/.vantio/runs/` logs as `vantio prove`. Metadata only — never prompts or completions. No API key required.
 
 ---
 
