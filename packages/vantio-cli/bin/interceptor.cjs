@@ -1,9 +1,9 @@
 // [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
-// request(), and Node http/https.request|get to intercept outbound LLM calls —
-// zero code changes. Raw sockets, curl, undici.stream/pipeline/dispatch, and
-// browser paths stay outside this wrap.
+// request() and dispatch(), undici.stream/pipeline, and Node http/https.request|get
+// to intercept outbound LLM calls — zero code changes. Raw sockets, curl,
+// undici.connect/upgrade, and browser paths stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -215,6 +215,27 @@ if (typeof globalThis.fetch !== "function") {
 }
 
 const _originalFetch = globalThis.fetch;
+
+// Fetch and undici.request wrap above dispatcher.dispatch. Increment while those
+// wrappers run so the dispatch wrap does not Gate the same call twice.
+let undiciWrapDepth = 0;
+function launchUndiciBackend(fn) {
+  undiciWrapDepth++;
+  let result;
+  try {
+    result = fn();
+  } catch (err) {
+    undiciWrapDepth--;
+    throw err;
+  }
+  if (result && typeof result.then === "function") {
+    return Promise.resolve(result).finally(() => {
+      undiciWrapDepth--;
+    });
+  }
+  undiciWrapDepth--;
+  return result;
+}
 
 function log(line) {
   process.stderr.write(line + "\n");
@@ -688,7 +709,7 @@ async function wrapFetch(backend, input, init) {
     hostname = dest.hostname;
     port = dest.port;
   } catch {
-    return backend.call(globalThis, input, init);
+    return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
 
   // In paid mode the in-scope set depends on the cloud policy's
@@ -703,7 +724,7 @@ async function wrapFetch(backend, input, init) {
   // Out of scope (not a known LLM host and not named in policy) — pass straight
   // through, untouched. We never block/redact/meter unrelated traffic.
   if (!inScope(hostname, port)) {
-    return backend.call(globalThis, input, init);
+    return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
 
   // Anonymous, opt-out, once-per-process usage ping (fire-and-forget).
@@ -716,7 +737,7 @@ async function wrapFetch(backend, input, init) {
     const t0 = Date.now();
     let response;
     try {
-      response = await backend.call(globalThis, input, init);
+      response = await launchUndiciBackend(() => backend.call(globalThis, input, init));
     } catch (err) {
       const ts = new Date().toISOString();
       const duration_ms = Date.now() - t0;
@@ -797,14 +818,14 @@ async function wrapFetch(backend, input, init) {
   try {
     plan = await enforceRequest(hostname, input, init);
   } catch {
-    return backend.call(globalThis, input, init);
+    return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
   if (plan.blocked) return plan.response;
 
   // Make the (possibly redacted) call. A rejection here is the agent's own
   // network error and propagates unchanged.
   const t0 = Date.now();
-  const response = await backend.call(globalThis, plan.input, plan.init);
+  const response = await launchUndiciBackend(() => backend.call(globalThis, plan.input, plan.init));
   const duration_ms = Math.max(0, Date.now() - t0);
 
   // Post-call accounting + reporting — guarded so a metering error never
@@ -872,9 +893,9 @@ globalThis.fetch = function vantioFetch(input, init) {
   return wrapFetch(_originalFetch, input, init);
 };
 
-// undici.fetch, undici.request, and Dispatcher.prototype.request (Client / Pool /
-// Agent). Fetch uses dispatcher.dispatch internally, so wrapping .request does
-// not double-count globalThis.fetch. stream / pipeline / dispatch stay residual.
+// undici.fetch, undici.request, Dispatcher.prototype.request, and
+// DispatcherBase.dispatch (covers stream / pipeline / raw Client.dispatch).
+// Fetch and .request wrap above dispatch; undiciWrapDepth skips a second Gate.
 (function patchUndici() {
   const { Readable } = require("node:stream");
 
@@ -1019,14 +1040,14 @@ globalThis.fetch = function vantioFetch(input, init) {
       hostname = dest.hostname;
       port = dest.port;
     } catch {
-      return launch(opts);
+      return launchUndiciBackend(() => launch(opts));
     }
 
     if (!FREE_MODE) {
       await policyReady;
     }
     if (isControlPlaneHref(href) || !inScope(hostname, port)) {
-      return launch(opts);
+      return launchUndiciBackend(() => launch(opts));
     }
 
     sendRunTelemetryOnce(hostname);
@@ -1039,7 +1060,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       const t0 = Date.now();
       let result;
       try {
-        result = await launch(opts);
+        result = await launchUndiciBackend(() => launch(opts));
       } catch (err) {
         const duration_ms = Date.now() - t0;
         _calls.push({
@@ -1070,7 +1091,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     try {
       plan = await enforceRequest(hostname, href, init);
     } catch {
-      return launch(opts);
+      return launchUndiciBackend(() => launch(opts));
     }
     if (plan.blocked) {
       const reason = (plan.response && plan.response.headers && typeof plan.response.headers.get === "function")
@@ -1084,9 +1105,262 @@ globalThis.fetch = function vantioFetch(input, init) {
       method: plan.init && plan.init.method ? plan.init.method : method,
     });
     const t0 = Date.now();
-    const result = await launch(sendOpts);
+    const result = await launchUndiciBackend(() => launch(sendOpts));
     accountUndiciResult(result, plan, hostname, port, href, Math.max(0, Date.now() - t0));
     return result;
+  }
+
+  function isUpgradeOrConnect(opts) {
+    if (!opts) return false;
+    const method = String(opts.method || "").toUpperCase();
+    return method === "CONNECT" || Boolean(opts.upgrade);
+  }
+
+  function redactDispatchBody(body) {
+    if (body == null) return { body, redactions: [], bytes: 0, unscanned: null };
+    if (typeof body === "string") {
+      const r = redactBody(body);
+      return {
+        body: r.redactions.length > 0 ? r.text : body,
+        redactions: r.redactions,
+        bytes: Buffer.byteLength(r.text),
+        unscanned: null,
+      };
+    }
+    if (Buffer.isBuffer(body) || (typeof Uint8Array !== "undefined" && body instanceof Uint8Array)) {
+      const text = Buffer.from(body).toString("utf8");
+      const r = redactBody(text);
+      const buf = Buffer.from(r.text, "utf8");
+      const next = r.redactions.length > 0
+        ? (Buffer.isBuffer(body) ? buf : new Uint8Array(buf))
+        : body;
+      return { body: next, redactions: r.redactions, bytes: buf.length, unscanned: null };
+    }
+    if (typeof ArrayBuffer !== "undefined" && body instanceof ArrayBuffer) {
+      const text = Buffer.from(new Uint8Array(body)).toString("utf8");
+      const r = redactBody(text);
+      const buf = Buffer.from(r.text, "utf8");
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      return {
+        body: r.redactions.length > 0 ? ab : body,
+        redactions: r.redactions,
+        bytes: buf.length,
+        unscanned: null,
+      };
+    }
+    return { body, redactions: [], bytes: 0, unscanned: "stream" };
+  }
+
+  function blockedDispatch(handler, reason) {
+    const payload = Buffer.from(JSON.stringify({ error: "blocked_by_vantio", reason }));
+    const headers = [
+      Buffer.from("content-type"), Buffer.from("application/json"),
+      Buffer.from("x-vantio-blocked"), Buffer.from(String(reason)),
+      Buffer.from("content-length"), Buffer.from(String(payload.length)),
+    ];
+    queueMicrotask(() => {
+      try {
+        if (handler && typeof handler.onConnect === "function") handler.onConnect(() => {});
+        let consume = true;
+        if (handler && typeof handler.onHeaders === "function") {
+          consume = handler.onHeaders(403, headers, () => {}, "Forbidden") !== false;
+        }
+        if (consume && handler && typeof handler.onData === "function") handler.onData(payload);
+        if (handler && typeof handler.onComplete === "function") handler.onComplete([]);
+      } catch (err) {
+        if (handler && typeof handler.onError === "function") handler.onError(err);
+      }
+    });
+    return true;
+  }
+
+  function applyDispatchGate(dispatcher, orig, opts, handler) {
+    const href = hrefFromDispatcher(dispatcher, opts);
+    if (!href) return orig.call(dispatcher, opts, handler);
+    let hostname;
+    let port;
+    try {
+      const dest = destFromHref(href);
+      hostname = dest.hostname;
+      port = dest.port;
+    } catch {
+      return orig.call(dispatcher, opts, handler);
+    }
+    if (isControlPlaneHref(href) || !inScope(hostname, port) || isUpgradeOrConnect(opts)) {
+      return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
+    }
+
+    sendRunTelemetryOnce(hostname);
+    const method = (opts && opts.method) || (opts && opts.body ? "PUT" : "GET");
+    const init = { method, headers: opts && opts.headers, body: opts && opts.body };
+    const reqMeta = extractRequestMeta(href, init);
+    const provider = guessProvider(hostname, port);
+    const baseCall = {
+      hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
+      request_bytes: reqMeta.request_bytes, bytes: 0, status: null, ok: true,
+      content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+      mediation: "undici_dispatch",
+    };
+
+    if (FREE_MODE) {
+      _calls.push(Object.assign({}, baseCall, { action: "OBSERVED" }));
+      report({
+        target_host: hostname, pid: process.pid, action_taken: "OBSERVED",
+        timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
+      });
+      return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
+    }
+
+    if (policy.enforce) {
+      const blocked = hostListed(hostname, policy.blocked_hosts) ||
+        (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts));
+      if (blocked) {
+        if (policy.dry_run) {
+          _calls.push(Object.assign({}, baseCall, { action: "DRY_RUN_BLOCKED_HOST" }));
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
+          });
+          log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK undici.dispatch; dry_run=true passes through`);
+        } else {
+          blockHost(hostname);
+          return blockedDispatch(handler, "host_not_permitted");
+        }
+      }
+    }
+
+    const scanned = redactDispatchBody(opts && opts.body);
+    if (scanned.unscanned && policy.redact_pii) {
+      log(`${c.dim}[ ∅ VANTIO ] ${hostname} — streaming request body not scanned for PII (passed through)${c.reset}`);
+      report({
+        target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
+        gap_type: "unscanned_body", body_type: scanned.unscanned,
+        timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
+      });
+    }
+
+    if (policy.enforce && policy.max_request_bytes > 0 && scanned.bytes > policy.max_request_bytes) {
+      if (policy.dry_run) {
+        _calls.push(Object.assign({}, baseCall, { action: "DRY_RUN_BLOCKED_SIZE" }));
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SIZE",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: scanned.bytes, mediation: "undici_dispatch",
+        });
+      } else {
+        blockSize(hostname, scanned.bytes);
+        return blockedDispatch(handler, "request_too_large");
+      }
+    }
+
+    if (policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
+      if (policy.dry_run) {
+        _calls.push(Object.assign({}, baseCall, { action: "DRY_RUN_BLOCKED_SPEND" }));
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SPEND",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
+        });
+      } else {
+        blockSpend(hostname);
+        return blockedDispatch(handler, "spend_cap_reached");
+      }
+    }
+
+    const sendOpts = scanned.redactions.length > 0
+      ? Object.assign({}, opts, { body: scanned.body })
+      : opts;
+    const action = scanned.redactions.length > 0 ? "REDACTED" : "ALLOWED";
+    _calls.push(Object.assign({}, baseCall, {
+      action,
+      request_bytes: scanned.bytes || reqMeta.request_bytes,
+      redactions: scanned.redactions.length,
+    }));
+    spentUsd += (scanned.bytes || 0) * USD_PER_BYTE;
+    if (scanned.redactions.length > 0) {
+      log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — stripped ${scanned.redactions.length} PII item(s): ${scanned.redactions.join(", ")}`);
+    }
+    report({
+      target_host: hostname, pid: process.pid, action_taken: action,
+      timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
+    });
+    return launchUndiciBackend(() => orig.call(dispatcher, sendOpts, handler));
+  }
+
+  let dispatchPolicySettled = FREE_MODE;
+  if (!FREE_MODE && policyReady && typeof policyReady.then === "function") {
+    policyReady.then(() => { dispatchPolicySettled = true; }).catch(() => { dispatchPolicySettled = true; });
+  }
+
+  function wrapDispatchCall(dispatcher, orig, opts, handler) {
+    if (undiciWrapDepth > 0) return orig.call(dispatcher, opts, handler);
+    try {
+      if (!FREE_MODE && !dispatchPolicySettled) {
+        policyReady.then(() => {
+          dispatchPolicySettled = true;
+          try {
+            applyDispatchGate(dispatcher, orig, opts, handler);
+          } catch (err) {
+            if (handler && typeof handler.onError === "function") handler.onError(err);
+          }
+        }).catch((err) => {
+          dispatchPolicySettled = true;
+          if (handler && typeof handler.onError === "function") handler.onError(err);
+        });
+        return true;
+      }
+      return applyDispatchGate(dispatcher, orig, opts, handler);
+    } catch {
+      return orig.call(dispatcher, opts, handler);
+    }
+  }
+
+  function patchDispatch(mod) {
+    if (!mod) return;
+    let base = null;
+    try {
+      if (mod.Client && mod.Client.prototype) {
+        const proto = Object.getPrototypeOf(mod.Client.prototype);
+        if (proto && typeof proto.dispatch === "function") base = proto;
+      }
+    } catch { /* fall through */ }
+    if (!base && mod.Dispatcher && mod.Dispatcher.prototype && typeof mod.Dispatcher.prototype.dispatch === "function") {
+      base = mod.Dispatcher.prototype;
+    }
+    if (!base || typeof base.dispatch !== "function" || base.dispatch.__vantioDispatchPatched) return;
+    const orig = base.dispatch;
+    base.dispatch = function vantioDispatcherDispatch(opts, handler) {
+      return wrapDispatchCall(this, orig, opts, handler);
+    };
+    base.dispatch.__vantioDispatchPatched = true;
+  }
+
+  function patchDispatcherInstance(dispatcher) {
+    if (!dispatcher || typeof dispatcher.dispatch !== "function") return;
+    if (dispatcher.dispatch.__vantioDispatchPatched) return;
+    const orig = dispatcher.dispatch;
+    dispatcher.dispatch = function vantioInstanceDispatch(opts, handler) {
+      return wrapDispatchCall(this, orig, opts, handler);
+    };
+    dispatcher.dispatch.__vantioDispatchPatched = true;
+  }
+
+  function patchGlobalDispatcher(mod) {
+    try {
+      if (mod && typeof mod.getGlobalDispatcher === "function") {
+        patchDispatcherInstance(mod.getGlobalDispatcher());
+      }
+    } catch { /* fail open */ }
+    try {
+      patchDispatcherInstance(globalThis[Symbol.for("undici.globalDispatcher.1")]);
+    } catch { /* fail open */ }
+    if (mod && typeof mod.setGlobalDispatcher === "function" && !mod.__vantioSetGlobalPatched) {
+      const origSet = mod.setGlobalDispatcher;
+      mod.setGlobalDispatcher = function vantioSetGlobalDispatcher(agent) {
+        const ret = origSet.apply(this, arguments);
+        try { patchDispatcherInstance(agent); } catch { /* fail open */ }
+        return ret;
+      };
+      mod.__vantioSetGlobalPatched = true;
+    }
   }
 
   function patchFetch(mod) {
@@ -1145,6 +1419,8 @@ globalThis.fetch = function vantioFetch(input, init) {
     if (!mod) return;
     try { patchFetch(mod); } catch { /* fail open */ }
     try { patchRequest(mod); } catch { /* fail open */ }
+    try { patchDispatch(mod); } catch { /* fail open */ }
+    try { patchGlobalDispatcher(mod); } catch { /* fail open */ }
   }
 
   try {
@@ -1559,7 +1835,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici.fetch, undici.request, Client/Pool/Agent.request, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, undici.stream/pipeline/dispatch, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici.fetch, undici.request, Client/Pool/Agent.request, undici.stream/pipeline/dispatch, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, undici.connect/upgrade, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
