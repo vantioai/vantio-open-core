@@ -8,10 +8,10 @@ and Vertex patterns and local Ollama on port 11434.
 Wraps urllib.request.urlopen always. If requests, httpx, or aiohttp are
 installed, wraps those too. Also wraps socket.connect / create_connection /
 ssl.SSLSocket.connect to in-scope hosts (host-block and observe only — no TLS
-payload redaction). Also wraps subprocess / os.system / asyncio curl spawns to
-in-scope hosts (host-block and observe; curl bodies are not rewritten). With a
-Gate API key, the same wrap can block, redact PII, or enforce a spend limit on
-HTTP bodies. Browsers stay outside this wrap.
+payload redaction). Also wraps subprocess / os.system / asyncio curl and wget
+spawns to in-scope hosts (host-block and observe; curl/wget bodies are not
+rewritten). With a Gate API key, the same wrap can block, redact PII, or enforce
+a spend limit on HTTP bodies. Browsers stay outside this wrap.
 """
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ _http_owns_tls = threading.local()
 
 
 class GateBlockedError(OSError):
-    """Raised when Gate blocks a raw socket connect or a curl spawn."""
+    """Raised when Gate blocks a raw socket connect or a curl/wget spawn."""
 
     def __init__(self, hostname: str) -> None:
         super().__init__(f"Vantio Gate blocked host: {hostname}")
@@ -1048,11 +1048,12 @@ def _tokenize_shell(s: str) -> list[str]:
         return []
 
 
-def _curl_argv_from_spawn(command: Any, argv: Any) -> Optional[list[str]]:
+def _http_cli_from_spawn(command: Any, argv: Any) -> Optional[tuple[str, list[str]]]:
     args = [str(a) for a in list(argv or [])]
-    if _cmd_base(command) == "curl":
-        return args
-    if _cmd_base(command) not in ("sh", "bash", "dash", "zsh"):
+    base = _cmd_base(command)
+    if base in ("curl", "wget"):
+        return base, args
+    if base not in ("sh", "bash", "dash", "zsh"):
         return None
     try:
         c_idx = args.index("-c")
@@ -1061,29 +1062,34 @@ def _curl_argv_from_spawn(command: Any, argv: Any) -> Optional[list[str]]:
     if c_idx + 1 >= len(args):
         return None
     tokens = _tokenize_shell(args[c_idx + 1])
-    if not tokens or _cmd_base(tokens[0]) != "curl":
+    if not tokens:
         return None
-    return tokens[1:]
+    tool = _cmd_base(tokens[0])
+    if tool not in ("curl", "wget"):
+        return None
+    return tool, tokens[1:]
 
 
-def _curl_argv_from_exec(command: Any) -> Optional[list[str]]:
+def _http_cli_from_exec(command: Any) -> Optional[tuple[str, list[str]]]:
     tokens = _tokenize_shell(str(command or ""))
     if not tokens:
         return None
-    if _cmd_base(tokens[0]) == "curl":
-        return tokens[1:]
-    return _curl_argv_from_spawn(tokens[0], tokens[1:])
+    tool = _cmd_base(tokens[0])
+    if tool in ("curl", "wget"):
+        return tool, tokens[1:]
+    return _http_cli_from_spawn(tokens[0], tokens[1:])
 
 
-def _curl_argv_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[list[str]]:
+def _http_cli_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[tuple[str, list[str]]]:
     shell = bool(kwargs.get("shell"))
     if isinstance(args, bytes):
         args = args.decode("utf-8", "replace")
     if isinstance(args, str):
         if shell:
-            return _curl_argv_from_exec(args)
-        if _cmd_base(args) == "curl":
-            return []
+            return _http_cli_from_exec(args)
+        base = _cmd_base(args)
+        if base in ("curl", "wget"):
+            return base, []
         return None
     try:
         seq = list(args)
@@ -1092,8 +1098,8 @@ def _curl_argv_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[list[st
     if not seq:
         return None
     if shell:
-        return _curl_argv_from_exec(" ".join(str(x) for x in seq))
-    return _curl_argv_from_spawn(seq[0], seq[1:])
+        return _http_cli_from_exec(" ".join(str(x) for x in seq))
+    return _http_cli_from_spawn(seq[0], seq[1:])
 
 
 def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
@@ -1129,34 +1135,67 @@ def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
     return url, data_bytes
 
 
-def _apply_curl_gate(argv: list[str]) -> Optional[GateBlockedError]:
+def _parse_wget_argv(argv: list[str]) -> tuple[Optional[str], int]:
+    url: Optional[str] = None
+    data_bytes = 0
+    args = [str(a) for a in argv]
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("--post-data", "--body-data"):
+            value = args[i + 1] if i + 1 < len(args) else ""
+            data_bytes += len(str(value).encode("utf-8"))
+            i += 2
+            continue
+        if a.startswith("--post-data="):
+            data_bytes += len(a[len("--post-data="):].encode("utf-8"))
+            i += 1
+            continue
+        if a.startswith("--body-data="):
+            data_bytes += len(a[len("--body-data="):].encode("utf-8"))
+            i += 1
+            continue
+        if url is None and (a.startswith("http://") or a.startswith("https://")):
+            url = a
+        i += 1
+    return url, data_bytes
+
+
+def _parse_cli_argv(tool: str, argv: list[str]) -> tuple[Optional[str], int]:
+    if tool == "wget":
+        return _parse_wget_argv(argv)
+    return _parse_curl_argv(argv)
+
+
+def _apply_cli_gate(tool: str, argv: list[str]) -> Optional[GateBlockedError]:
     global _spent_usd
-    url, data_bytes = _parse_curl_argv(argv)
+    url, data_bytes = _parse_cli_argv(tool, argv)
     if not url:
         return None
     hostname, port, path = _host_port_from_url(url)
     decision = _decide(hostname, port, path, data_bytes)
     if decision == "pass":
         return None
+    mediation = "python_wget" if tool == "wget" else "python_curl"
     extra = {"path": path, "bytes_observed": data_bytes}
     if decision == "block":
-        _record(hostname, "BLOCKED_HOST", "python_curl", ok=False, **extra)
+        _record(hostname, "BLOCKED_HOST", mediation, ok=False, **extra)
         return GateBlockedError(hostname or "")
     if decision == "block_size":
-        _record(hostname, "BLOCKED_SIZE", "python_curl", ok=False, **extra)
+        _record(hostname, "BLOCKED_SIZE", mediation, ok=False, **extra)
         return GateBlockedError(hostname or "")
     if decision == "block_spend":
-        _record(hostname, "BLOCKED_SPEND", "python_curl", ok=False, **extra)
+        _record(hostname, "BLOCKED_SPEND", mediation, ok=False, **extra)
         return GateBlockedError(hostname or "")
     if decision == "dry_block":
-        _record(hostname, "DRY_RUN_BLOCKED_HOST", "python_curl", **extra)
+        _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, **extra)
     elif decision == "dry_size":
-        _record(hostname, "DRY_RUN_BLOCKED_SIZE", "python_curl", **extra)
+        _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, **extra)
     elif decision == "dry_spend":
-        _record(hostname, "DRY_RUN_BLOCKED_SPEND", "python_curl", **extra)
+        _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, **extra)
     else:
         action = "ALLOWED" if _cloud_sync else "OBSERVED"
-        _record(hostname, action, "python_curl", **extra)
+        _record(hostname, action, mediation, **extra)
         _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
     return None
 
@@ -1164,9 +1203,9 @@ def _apply_curl_gate(argv: list[str]) -> Optional[GateBlockedError]:
 class _VantioPopen(subprocess.Popen):
     def __init__(self, args: Any, *pargs: Any, **kwargs: Any) -> None:
         try:
-            curl_argv = _curl_argv_from_popen(args, kwargs)
-            if curl_argv is not None:
-                err = _apply_curl_gate(curl_argv)
+            cli = _http_cli_from_popen(args, kwargs)
+            if cli is not None:
+                err = _apply_cli_gate(cli[0], cli[1])
                 if err is not None:
                     raise err
         except GateBlockedError:
@@ -1178,9 +1217,9 @@ class _VantioPopen(subprocess.Popen):
 
 def _observe_os_system(command: Any) -> Any:
     try:
-        curl_argv = _curl_argv_from_exec(command)
-        if curl_argv is not None:
-            err = _apply_curl_gate(curl_argv)
+        cli = _http_cli_from_exec(command)
+        if cli is not None:
+            err = _apply_cli_gate(cli[0], cli[1])
             if err is not None:
                 raise err
     except GateBlockedError:
@@ -1192,9 +1231,9 @@ def _observe_os_system(command: Any) -> Any:
 
 async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
     try:
-        curl_argv = _curl_argv_from_spawn(program, args)
-        if curl_argv is not None:
-            err = _apply_curl_gate(curl_argv)
+        cli = _http_cli_from_spawn(program, args)
+        if cli is not None:
+            err = _apply_cli_gate(cli[0], cli[1])
             if err is not None:
                 raise err
     except GateBlockedError:
@@ -1206,9 +1245,9 @@ async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
 
 async def _observe_asyncio_shell(cmd: Any, **kwargs: Any) -> Any:
     try:
-        curl_argv = _curl_argv_from_exec(cmd)
-        if curl_argv is not None:
-            err = _apply_curl_gate(curl_argv)
+        cli = _http_cli_from_exec(cmd)
+        if cli is not None:
+            err = _apply_cli_gate(cli[0], cli[1])
             if err is not None:
                 raise err
     except GateBlockedError:
@@ -1278,7 +1317,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib, requests/httpx/aiohttp when installed, socket.connect / create_connection, and subprocess curl to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl bodies are not rewritten. Browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib, requests/httpx/aiohttp when installed, socket.connect / create_connection, and subprocess curl/wget to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl and wget bodies are not rewritten. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
