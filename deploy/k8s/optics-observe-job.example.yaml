@@ -1,5 +1,5 @@
 # Example Job: run a Node agent once under Vantio Optics.
-# Replace image/command for your workload. Observe only — not Absolute Control.
+# Replace image/command for your workload. Observe only — not Phantom Engine host protection.
 apiVersion: batch/v1
 kind: Job
 metadata:

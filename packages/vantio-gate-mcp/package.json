@@ -2,7 +2,7 @@
   "name": "@vantio/gate-mcp",
   "version": "0.1.0",
   "mcpName": "io.github.vantioai/vantio-gate",
-  "description": "Vantio Gate MCP — Policy Latch dry-run evaluate. No live enforce. Upgrade path to Phantom Engine.",
+  "description": "Vantio Gate MCP — dry-run evaluate of rules that stick. No live enforce. Upgrade path to Phantom Engine.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
   "homepage": "https://vantio.ai/gate",

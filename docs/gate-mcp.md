@@ -1,20 +1,20 @@
 # Vantio Gate MCP
 
-Part of **Vantio Gate** · **Policy Latch** (dry-run evaluate via Model Context Protocol).
+Part of **Vantio Gate** · **Rules that stick** (dry-run evaluate via Model Context Protocol).
 
 Package: [`@vantio/gate-mcp`](../packages/vantio-gate-mcp/)
 
 ## Fence
 
-> **Commercial/production deferred** until Stripe/banking. This package is a dry-run POC — do not market as production enforce.
+> Dry-run evaluate only. Live enforce is `vantio run` plus Gate policy — not this MCP.
 
-- Evaluates host / size / spend decisions  
-- Fetches Pro policy + residual risk (with API key)  
-- **Never** blocks live traffic from inside the MCP  
-- **Never** pushes unconstrained policy to production  
-- **Never** exposes Absolute Control  
+- Evaluates host / size / spend decisions
+- Fetches Gate policy + residual-risk (with API key)
+- **Never** blocks live traffic from inside the MCP
+- **Never** pushes unconstrained policy to production
+- **Never** claims Phantom Engine host protection
 
-Live latch remains `vantio run` + Pro (when billing is live). Absolute Control remains Phantom Engine.
+Live enforce remains `vantio run` + Gate. Phantom Engine remains a separate Linux-host purchase.
 
 ## Quick start
 

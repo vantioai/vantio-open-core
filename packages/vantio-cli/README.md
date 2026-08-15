@@ -1,6 +1,8 @@
 # @vantio/cli
 
-> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes.
+[![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
+
+> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.2**.
 
 ```bash
 npm install -g @vantio/cli
@@ -44,7 +46,7 @@ vantio run python agent.py
 vantio run tsx agent.ts
 ```
 
-Wrap any process with `vantio run`. The CLI automatically intercepts every outbound call to a known LLM API — OpenAI, Anthropic, Gemini, Cohere, Mistral, and more — and records connection metadata locally (and to Gate when a key is configured).
+Wrap any Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch` and Node `http`/`https`, and records connection metadata locally (and to Gate when a key is configured). Python agents should use `pip install vantio-agent-sdk==3.0.2` and `shield()`.
 
 Your code doesn't change. Your agent runs normally. If you've run `vantio login`, the stored key is injected into the child process; an explicit `VANTIO_API_KEY` in your environment always takes precedence.
 
@@ -133,9 +135,9 @@ Run `vantio discover --help` for full documentation.
 
 ---
 
-## Enforcement (Vantio Pro)
+## Enforcement (Vantio Gate)
 
-With a Pro `VANTIO_API_KEY`, the interceptor fetches policy from the [Vantio Pro](https://github.com/vantioai/vantio-pro) control plane and enforces it locally in your process. A few semantics worth knowing:
+With a Gate `VANTIO_API_KEY`, the interceptor fetches policy from the [Vantio Gate](https://github.com/vantioai/vantio-pro) control plane and enforces it locally in your process. A few semantics worth knowing:
 
 - **Host scope** — policy applies to known LLM hosts plus any host named in `blocked_hosts`/`allowed_hosts`. `blocked_hosts` blocks **any** matching host (LLM or not); a non-empty `allowed_hosts` blocks any in-scope host not on the list. Unrelated traffic (OS, package managers, etc.) is never touched.
 - **Spend cap** — the USD spend cap is **best-effort and per-process**. Bytes are estimated (request + response, including streamed responses counted after the fact), so the cap gates *subsequent* calls once the running total is crossed rather than aborting a call mid-stream, and it does not aggregate across processes.
@@ -161,15 +163,17 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`).
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch` and Node `http`/`https`. Current npm release: **`@vantio/cli` 0.3.2**.
 
-Python, Ruby, and other runtimes are spawned normally without interception — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) for those.
+Python, Ruby, and other runtimes are spawned normally without this interceptor — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.2**, `shield()`) for Python urllib / requests / httpx.
 
 ---
 
 ## Supported LLM providers
 
-`api.openai.com` · `api.anthropic.com` · `generativelanguage.googleapis.com` · `api.cohere.ai` · `api.mistral.ai` · `api.groq.com` · `api.together.xyz` · `api.perplexity.ai` · `inference.ai.azure.com`
+OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
+
+curl, raw sockets, and browser paths stay outside this wrap. Phantom Engine is the Linux-host product when you need protection beneath the app wrap.
 
 ---
 

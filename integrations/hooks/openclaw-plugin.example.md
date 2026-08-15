@@ -25,4 +25,4 @@ export default {
 };
 ```
 
-Fence: observe only. Upgrade to Gate for Policy Latch; Phantom Engine for Absolute Control.
+Fence: observe only. Upgrade to Gate for rules that stick; Phantom Engine for protection on machines you own.

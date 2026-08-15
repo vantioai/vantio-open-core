@@ -65,9 +65,11 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 
 ---
 
-## Policy & redaction (Vantio Pro)
+## Policy & redaction (Vantio Gate)
 
-Enforcement policy is served by the [Vantio Pro](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
+Enforcement policy is served by the [Vantio Gate](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
+
+Node wrap of `fetch` and `http`/`https` lives in **`@vantio/cli` 0.3.2** (`vantio run`). This package (`@vantio/agent-sdk` 0.2.1) is `shield()` for trace correlation.
 
 ### `fetchPolicy(apiKey, opts?)` — load the cloud-managed policy
 

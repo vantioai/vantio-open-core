@@ -1,5 +1,5 @@
 /**
- * Pure Policy Latch evaluate helpers for Gate MCP (dry-run plane).
+ * Pure evaluate helpers for Gate MCP (dry-run plane).
  * Mirrors interceptor normalizePolicy + host/size/spend checks without side effects.
  */
 
@@ -26,11 +26,11 @@ export const UPGRADE_PATH = [
     plane: "Enforce",
     brand: "Vantio Gate",
     sku: "Pro",
-    workflow: "Policy Latch",
+    workflow: "Rules that stick",
     surface: "@vantio/gate-mcp (this MCP — dry-run evaluate only)",
   },
   {
-    plane: "Absolute Control",
+    plane: "Control",
     brand: "Vantio Phantom Engine",
     sku: "Enterprise",
     workflow: "Rogue Reconciliation",
@@ -87,10 +87,10 @@ export function evaluateRequest(policyRaw, req) {
       mode: "evaluate",
       would_block: false,
       primary_action: "OBSERVED",
-      reasons: ["enforce=false — policy latch is open; traffic would only be observed"],
+      reasons: ["enforce=false — policy is open; traffic would only be observed"],
       policy,
       input: { hostname, request_bytes: requestBytes, spent_usd: spentUsd },
-      fence: "This MCP never enforces. Wire dry_run + vantio run / Pro for live Policy Latch.",
+      fence: "This MCP never enforces. Wire dry_run + vantio run / Gate for live enforce.",
     };
   }
 

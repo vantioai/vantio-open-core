@@ -1,14 +1,16 @@
 # vantio-open-core · Vantio Optics
 
 [![CI](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml/badge.svg)](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml)
+[![npm @vantio/cli](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
+[![PyPI vantio-agent-sdk](https://img.shields.io/pypi/v/vantio-agent-sdk.svg)](https://pypi.org/project/vantio-agent-sdk/)
 
-**Vantio Optics** — See LLM egress. Blind by design, not a proxy.  
-The Free · Open Core observe plane: intercept outbound LLM calls without code changes, capture metadata (never prompts), and export proof — **observe only, no enforce**.
+**Vantio Optics** is free visibility into what your agents send. Wrap a process, see outbound LLM calls (host, size, process, time — never prompts), and export a proof. Observe only — Free does not block, redact, or cap spend.
 
-This repo ships **Vantio Optics**. The same client runs in every tier; higher tiers unlock **Vantio Gate** (Pro · enforce) and **Vantio Phantom Engine** (Enterprise · Absolute Control plane) on top of Optics.
+Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics helps you see. Gate applies the rules you set. Phantom Engine protects the machines you own — enforce and control together, one purchase. Phantom Engine Enterprise adds governance when you need proof and process on top.
 
-> **Vantio tiers unlock governance:**  
-> **Vantio Optics** (Free · Open Core) → **Vantio Gate** (Pro) → **Vantio Phantom Engine** (Enterprise)
+> **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
+
+Current published wraps: **`@vantio/cli` 0.3.2** (npm) and **`vantio-agent-sdk` 3.0.2** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -25,7 +27,13 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-Optionally connect a Gate / Enterprise API key (paid features):
+Python agents use `shield()` from `vantio-agent-sdk` 3.0.2 (urllib always; requests and httpx when those libraries are already installed):
+
+```bash
+pip install vantio-agent-sdk==3.0.2
+```
+
+Optionally connect a Gate key (paid features):
 
 ```bash
 vantio login <your-api-key>       # validates + saves the key; no env vars needed
@@ -35,12 +43,12 @@ Free Optics needs no key. Paid keys come from a Gate trial (`hello@vantio.ai` to
 or Stripe Checkout once live — there is no public self-serve key dashboard yet
 (`/dashboard` redirects to docs). See [vantio.ai/pricing](https://vantio.ai/pricing).
 
-After a run, generate an auditor-ready proof artifact or explore local history:
+After a run, export a proof artifact or explore local history:
 
 ```bash
 vantio prove                      # HTML proof artifact (Free, no key needed)
 vantio discover --local           # local run history (Free, no key needed)
-vantio discover                   # full workspace history (Pro/Enterprise)
+vantio discover                   # full workspace history (Gate / Phantom Engine)
 ```
 
 ---
@@ -49,12 +57,12 @@ vantio discover                   # full workspace history (Pro/Enterprise)
 
 Optics ships one named workflow — **Sight Loop**:
 
-1. **Wrap** — `vantio run` / SDK  
-2. **Capture** — host · process · bytes · time · trace (no prompts/completions)  
-3. **Inspect / export** — `vantio prove`, `vantio discover --local`, or **Optics MCP**  
-4. **Honest residual** — ungoverned paths stay silent → upgrade cue  
+1. **Wrap** — `vantio run` / SDK
+2. **Capture** — host · process · bytes · time · trace (no prompts/completions)
+3. **Inspect / export** — `vantio prove`, `vantio discover --local`, or **Optics MCP**
+4. **Honest gap** — paths that never hit the interceptor stay unnamed here
 
-Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optics-mcp.md](./docs/optics-mcp.md) · Offline prove: `./scripts/sight-loop-prove.sh`
+Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optics-mcp.md](./docs/optics-mcp.md) · Offline check: `./scripts/sight-loop-prove.sh`
 
 ---
 
@@ -62,42 +70,43 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Doc | Purpose |
 |-----|---------|
-| [Dogfood Optics](./docs/dogfood-optics.md) | Local loop: `vantio run` → prove → Optics MCP |
-| [Sight Loop](./docs/sight-loop.md) | Optics workflow (wrap → capture → inspect → residual) |
+| [Local Optics loop](./docs/dogfood-optics.md) | `vantio run` → proof → Optics MCP |
+| [Sight Loop](./docs/sight-loop.md) | Optics workflow (wrap → capture → inspect) |
 | [Optics MCP](./docs/optics-mcp.md) | Read-only MCP for agent hosts / IDEs |
-| [Surfaces](./docs/surfaces.md) | Hooks, Action, Docker, webhooks + deeper earmarks |
+| [Surfaces](./docs/surfaces.md) | Hooks, Action, Docker, webhooks |
 | [Observe only — no enforce](./docs/observe-only.md) | Free-tier fence |
 | [Getting started](./docs/getting-started-tier01.md) | 60-second quickstart |
-| [Prove artifacts](./docs/prove.md) | `vantio prove` reference |
+| [Proof artifacts](./docs/prove.md) | `vantio prove` reference |
 | [Framework integrations](./docs/framework-integrations.md) | LangChain, LlamaIndex, CrewAI, AutoGen |
 
 ---
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| [`packages/vantio-cli`](./packages/vantio-cli) | CLI runner (`@vantio/cli`) |
-| [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | Optics MCP (`@vantio/optics-mcp`) — observe only |
-| [`packages/vantio-gate-mcp`](./packages/vantio-gate-mcp) | Gate MCP (`@vantio/gate-mcp`) — dry-run evaluate |
-| [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | Node.js agent SDK (`@vantio/agent-sdk`) |
-| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | Python agent SDK (`vantio-agent-sdk`) |
-| [`extensions/vantio-optics`](./extensions/vantio-optics) | Thin VS Code extension |
-| [`integrations/hooks`](./integrations/hooks) | Cursor / Claude / OpenClaw hooks |
+| Package | Published | Description |
+|---------|-----------|-------------|
+| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.2** | CLI runner — Node fetch + http/https wrap |
+| [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.2** | Python `shield()` — urllib + optional requests/httpx |
+| [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
+| [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
+| [`packages/vantio-gate-mcp`](./packages/vantio-gate-mcp) | `@vantio/gate-mcp` | Gate MCP — dry-run evaluate |
+| [`extensions/vantio-optics`](./extensions/vantio-optics) | | Thin VS Code extension |
+| [`integrations/hooks`](./integrations/hooks) | | Cursor / Claude / OpenClaw hooks |
 
 ---
 
-## Tier model — one platform, unlocked layers
+## Suite — peer products
 
-| Tier | Feature layer | Repo |
-|------|--------------|------|
-| **Free** | **Vantio Optics** · Observe ← you are here | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
-| **Pro** | + **Vantio Gate** · Enforce (block, redact, caps) | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
-| **Enterprise** | + **Vantio Phantom Engine** · Absolute Control | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
+| Product | Job | List | Repo |
+|---------|-----|------|------|
+| **Vantio Optics** | Observe ← you are here | Free | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
+| **Vantio Gate** | Enforce — rules you set, where the agent is wired | $499/month | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
+| **Vantio Phantom Engine** | Protect machines you own — enforce and control together | $799/node | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
+| **Phantom Engine Enterprise** | Governance on that protection (ledger, evidence, process) | Talk to sales → ~$2k/node | same |
 
-Optics is the client at every tier. On Free (no Pro key), it **observes only** — events are labelled `OBSERVED`. With a Pro key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can block, redact, or cap locally. Enterprise adds **Vantio Phantom Engine** beneath the app layer. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
+Optics is the client at every product. On Free (no Gate key), it **observes only** — events are labelled `OBSERVED`. With a Gate key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can refuse a destination, strip sensitive fields, or cap spend on the wrapped path. Phantom Engine is a separate purchase for Linux hosts you enroll — not a leftover after Optics and Gate. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
 
-Full breakdown: [docs/PRODUCT_LINEUP.md](./docs/PRODUCT_LINEUP.md)
+Full breakdown: [docs/PRODUCT_LINEUP.md](./docs/PRODUCT_LINEUP.md) · [vantio.ai/pricing](https://vantio.ai/pricing)
 
 ---
 
@@ -117,10 +126,12 @@ await shield(async () => {
 });
 ```
 
+Node wrap of `fetch` and `http`/`https` is in **`@vantio/cli` 0.3.2** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
+
 ### Python
 
 ```bash
-pip install vantio-agent-sdk
+pip install vantio-agent-sdk==3.0.2
 ```
 
 > On Ubuntu/Debian (23.04+), global `pip install` is blocked by default (PEP 668). Use a virtualenv or `pipx install vantio-agent-sdk` instead.
@@ -133,11 +144,21 @@ async def run_agent():
     await call_openai(prompt)
 ```
 
+While `shield()` is active, Optics records urllib to in-scope hosts. If `requests` or `httpx` are already installed, those are recorded the same way.
+
 ---
 
-## Supported LLM providers
+## Supported wraps
 
-`api.openai.com` · `api.anthropic.com` · `generativelanguage.googleapis.com` · `api.cohere.ai` · `api.mistral.ai` · `api.groq.com` · `api.together.xyz` · `api.perplexity.ai` · `inference.ai.azure.com`
+**Node (`vantio run`):** `fetch` and Node `http` / `https`.
+
+**Python (`shield()`):** `urllib`; `requests` and `httpx` when those libraries are already installed.
+
+**Phantom Engine:** Linux hosts you own.
+
+**Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
+
+curl, raw sockets, and browser paths stay outside this wrap.
 
 ---
 
@@ -152,22 +173,20 @@ async def run_agent():
 
 ---
 
-## Optics: honest about bypassability
+## Optics: honest about what it covers
 
-`vantio run` intercepts LLM calls by patching `globalThis.fetch` in the Node process.
-This covers the vast majority of agents without code changes.
+`vantio run` intercepts LLM calls by wrapping Node `fetch` and Node `http`/`https`.
+That covers most Node agents without code changes.
 
-**It can be bypassed** — by native socket calls, un-instrumented subprocesses, or
-processes not started with `vantio run`. This is intentional. Optics surfaces your
-governance gap; it does not paper over it.
+Native sockets, un-instrumented subprocesses, curl, browser paths, or processes not
+started with `vantio run` / `shield()` never hit Optics — and Optics does not invent
+a record for them.
 
-- **Vantio Gate (Pro)** — Rules that stick: refuse destinations, strip sensitive fields, hard spend ceilings, residual-risk report. App layer.
-- **Vantio Phantom Engine (Enterprise)** — Host runtime control + Rogue Reconciliation when app and host diverge.
+- **Vantio Gate** — when an agent crosses a line you already set on the wrapped path, Gate can stop the request, strip sensitive details before they leave, or put a hard limit on spend.
+- **Vantio Phantom Engine** — protection on Linux machines you own. Enforce and control together, one purchase.
 
 Use `vantio discover --local` to see what Free observes on your machine.
-Use `vantio prove` to generate an auditor-ready proof artifact from any run.
-
----
+Use `vantio prove` to export a proof artifact from any run.
 
 ---
 
@@ -182,4 +201,4 @@ export DO_NOT_TRACK=1
 
 ---
 
-[vantio.ai](https://vantio.ai) · [Dashboard](https://vantio.ai/dashboard) · [Pricing](https://vantio.ai/pricing) · MIT License
+[vantio.ai](https://vantio.ai) · [Optics](https://vantio.ai/optics) · [Pricing](https://vantio.ai/pricing) · MIT License

@@ -108,15 +108,15 @@ Optics is **blind by design, not a proxy** — and **bypassable by design**:
 
 That gap is intentional. It is the honest sell-up:
 
-| Residual | Closes with |
-|----------|-------------|
-| No block / redact / cap | **Vantio Gate** (Pro) — Policy Latch |
-| App-layer bypass (sockets, unenrolled processes) | **Vantio Phantom Engine** (Enterprise) — Rogue Reconciliation |
+| Gap | Next product |
+|-----|--------------|
+| No block / redact / cap | **Vantio Gate** — rules that stick on the wrapped path |
+| App wrap skipped (sockets, curl, unenrolled processes) | **Vantio Phantom Engine** — Linux hosts you own |
 
-Run `vantio discover --local` to see what Optics actually observed on your machine. Compare that to what you *know* your stack calls — the delta is residual risk.
+Run `vantio discover --local` to see what Optics actually observed on your machine. Compare that to what you *know* your stack calls — the delta is the named gap.
 
-> Optics accepts: **no block**, and **ungoverned paths stay silent**.  
-> Pro sells enforce; Enterprise sells proof when enforce was skipped.
+> Optics accepts: **no block**, and **ungoverned paths stay silent**.
+> Gate applies the rules you set. Phantom Engine protects the machines you own.
 
 Full fence: [observe-only.md](./observe-only.md)
 

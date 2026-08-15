@@ -1,8 +1,8 @@
 # Observe only — no enforce
 
-**Vantio Optics** (Free · Open Core) is the **Observe** plane. It sees LLM egress metadata; it never says **no** on its own.
+**Vantio Optics** (Free) is the **Observe** plane. It sees LLM egress metadata; it never says **no** on its own.
 
-This doc is the Free-tier fence: what Optics does, what it explicitly does not do, and where enforcement lives.
+This doc is the Free-tier fence: what Optics does, what it explicitly does not do, and where Gate and Phantom Engine sit.
 
 ---
 
@@ -17,7 +17,7 @@ This doc is the Free-tier fence: what Optics does, what it explicitly does not d
 | Local inspect (`vantio discover --local`) | ✓ |
 | Node + Python SDK paths | ✓ |
 
-**Privacy posture (product truth):**
+**Privacy posture:**
 
 - Does **not** capture prompts or completions by default
 - Does **not** block, redact, or enforce policy alone
@@ -25,59 +25,60 @@ This doc is the Free-tier fence: what Optics does, what it explicitly does not d
 
 ---
 
-## What Optics does not do → Vantio Gate (Pro)
+## What Optics does not do → Vantio Gate ($499)
 
 If it can **change or block** behavior in production, it is **not** Free:
 
-| Out of scope for Optics | Tier |
-|-------------------------|------|
-| Block by hostname | Pro · **Vantio Gate** |
-| PII redaction | Pro |
-| Spend / size caps | Pro |
-| Dry-run → hard enforce | Pro |
-| Policy-as-code publish / rollout | Pro |
-| Shadow AI Discover (fleet-wide) | Pro |
-| Blocking CI gates | Pro |
+| Out of scope for Optics | Product |
+|-------------------------|---------|
+| Block by hostname | **Vantio Gate** |
+| PII redaction | Gate |
+| Spend / size caps | Gate |
+| Dry-run → hard enforce | Gate |
+| Policy-as-code publish / rollout | Gate |
+| Shadow AI Discover (fleet-wide) | Gate |
+| Blocking CI gates | Gate |
 
 **Fence:** if it can say **no** in production → **Vantio Gate**.
 
-Pro workflow: [**Policy Latch**](https://github.com/vantioai/vantio-pro) — author policy, dry-run, latch enforce, ledger.
+Gate workflow: **Rules that stick** — author policy, dry-run, enforce, ledger. Gate applies where the agent is wired; it does not close raw sockets or SDK omission.
 
 ---
 
-## What Optics does not guarantee → Vantio Phantom Engine (Enterprise)
+## What Optics does not cover → Vantio Phantom Engine ($799/node)
 
-If the org must **guarantee** control when engineers route around the interceptor:
+If you need protection on machines you own when a process skips the app wrap:
 
-| Out of scope for Optics (and Pro alone) | Tier |
-|----------------------------------------|------|
-| eBPF TLS observe at Ring-0 | Enterprise · **Vantio Phantom Engine** |
-| Rogue Reconciliation (kernel ∧ ¬ app record) | Enterprise |
-| Fork inheritance proof | Enterprise |
-| CIDR / enrolled-cgroup kernel egress policy | Enterprise |
-| Append-oriented regulator-grade ledger | Enterprise |
+| Out of scope for Optics (and Gate alone) | Product |
+|------------------------------------------|---------|
+| Host TLS observe on enrolled Linux | **Vantio Phantom Engine** |
+| Rogue Reconciliation (host-seen, no app record) | Phantom Engine |
+| Fork inheritance on enrolled hosts | Phantom Engine |
+| CIDR / enrolled-cgroup egress policy | Phantom Engine |
+| Append-oriented audit ledger (Enterprise) | Phantom Engine Enterprise |
 
-**Fence:** if bypass must be **proven closed** → **Vantio Phantom Engine**.
+**Fence:** Phantom Engine protects Linux hosts you enroll — enforce and control together, one purchase. It does not claim coverage for agents that never land on that host.
 
-Enterprise workflow: **Rogue Reconciliation** — correlate app + kernel evidence, surface `BYPASS_INDICATOR`.
+Enterprise workflow: **Rogue Reconciliation** — correlate app + host evidence when they diverge.
 
 ---
 
-## Honest residual (by design)
+## Honest gap (by design)
 
-Optics intercepts via in-process `fetch` patching (Node) or SDK hooks (Python). That covers most real agents — and **can be bypassed**:
+Optics intercepts via Node `fetch` + `http`/`https` (`vantio run`) or Python `shield()` (urllib; requests/httpx when installed). That covers most real agents — and **can be skipped**:
 
-- Native sockets without `fetch`
+- Native sockets / curl
 - Subprocesses not wrapped with `vantio run` / `@shield`
 - Runtimes without instrumentation
+- Browser paths
 
-**This is not a bug.** Silent ungoverned paths are the upgrade cue:
+**This is not a bug.** Ungoverned paths stay silent:
 
 ```
-Vantio Optics (see)  →  Vantio Gate (enforce)  →  Vantio Phantom Engine (prove bypass closed)
+Vantio Optics (see)  →  Vantio Gate (rules you set)  →  Vantio Phantom Engine (machines you own)
 ```
 
-Use `vantio discover --local` to inspect what Optics actually saw. The gap between that and full org coverage is residual risk — documented, not hidden.
+Use `vantio discover --local` to inspect what Optics actually saw. The gap between that and full org coverage is named, not hidden.
 
 ---
 
@@ -89,18 +90,18 @@ vantio run node agent.js
 vantio prove
 vantio discover --local
 
-# Gate — requires Pro key + vantio login (enforcement unlocked)
-vantio login <pro-key>
-vantio run node agent.js    # may BLOCK / REDACT when policy latched
+# Gate — requires a Gate key + vantio login
+vantio login <gate-key>
+vantio run node agent.js    # may BLOCK / REDACT when policy is on
 
-# Phantom Engine — Enterprise deployment (not in this repo)
-# See vantio-phantom-engine for Ring-0 plane
+# Phantom Engine — Linux host install (not in this repo)
+# See vantio-phantom-engine
 ```
 
 ---
 
 ## See also
 
-- [Sight Loop](./sight-loop.md) — the Optics workflow (wrap → capture → inspect → residual)
+- [Sight Loop](./sight-loop.md) — the Optics workflow (wrap → capture → inspect)
 - [Getting started](./getting-started-tier01.md)
-- [Prove artifacts](./prove.md)
+- [Proof artifacts](./prove.md)
