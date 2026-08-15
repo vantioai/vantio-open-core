@@ -23,7 +23,7 @@ function runAgent(env, agentScript) {
     const child = spawn(
       process.execPath,
       ["--require", INTERCEPTOR_PATH, "-e", agentScript],
-      { env: { PATH: process.env.PATH, ...env }, stdio: ["ignore", "pipe", "pipe"] }
+      { env: { PATH: process.env.PATH, ...env }, stdio: ["ignore", "pipe", "pipe"], cwd: join(__dirname, "..") }
     );
     let stdout = "";
     let stderr = "";
@@ -38,6 +38,20 @@ function runAgent(env, agentScript) {
 const FETCH_ONCE_SCRIPT = `
 (async () => {
   const res = await fetch(process.env.TARGET_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "shouldnotleak@example.com", msg: "hi" }),
+  });
+  const text = await res.text();
+  process.stdout.write(JSON.stringify({ status: res.status, body: text }) + "\\n");
+})();
+`;
+
+// Agents that `import { fetch } from "undici"` never hit globalThis.fetch.
+const UNDICI_FETCH_ONCE_SCRIPT = `
+(async () => {
+  const { fetch: undiciFetch } = require("undici");
+  const res = await undiciFetch(process.env.TARGET_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: "shouldnotleak@example.com", msg: "hi" }),
@@ -429,5 +443,35 @@ function one(url) {
     assert.equal(result.b.error, "VANTIO_GATE_BLOCKED");
     const spend = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SPEND");
     assert.equal(spend.length, 1);
+  });
+
+  test("PAID_MODE, undici.fetch redact_pii: email stripped before the call leaves", async () => {
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.redact_pii = true;
+    configPolicy.pii_types = ["email"];
+    const { code } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    assert.equal(requests.target.length, 1);
+    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+  });
+
+  test("PAID_MODE, undici.fetch blocked_hosts: request never reaches the target", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 403);
+    assert.match(result.body, /blocked_by_vantio/);
+    assert.equal(requests.target.length, 0, "undici.fetch must not bypass destination blocking");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
   });
 });

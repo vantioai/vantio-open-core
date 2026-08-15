@@ -1,7 +1,7 @@
 """
 Process-lifetime wrap for `vantio run python …`.
 
-Installs the same urllib / requests / httpx hooks as shield(), then writes the
+Installs the same urllib / requests / httpx / aiohttp hooks as shield(), then writes the
 run log on interpreter exit. Curl, raw sockets, and browser paths stay outside.
 """
 from __future__ import annotations

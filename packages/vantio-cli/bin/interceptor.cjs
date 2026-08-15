@@ -1,8 +1,9 @@
 // [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
-// Patches globalThis.fetch and Node http/https.request|get to intercept
-// outbound LLM calls — zero code changes. Raw sockets, curl, and browser
-// paths stay outside this wrap.
+// Patches globalThis.fetch, undici.fetch (node:undici and the undici package),
+// and Node http/https.request|get to intercept outbound LLM calls — zero code
+// changes. Raw sockets, curl, undici.Client/request, and browser paths stay
+// outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -675,7 +676,7 @@ function destFromHref(href) {
   return { hostname: u.hostname, port };
 }
 
-globalThis.fetch = async function vantioFetch(input, init) {
+async function wrapFetch(backend, input, init) {
   let hostname;
   let port;
   try {
@@ -687,7 +688,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
     hostname = dest.hostname;
     port = dest.port;
   } catch {
-    return _originalFetch.call(this, input, init);
+    return backend.call(globalThis, input, init);
   }
 
   // In paid mode the in-scope set depends on the cloud policy's
@@ -702,7 +703,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
   // Out of scope (not a known LLM host and not named in policy) — pass straight
   // through, untouched. We never block/redact/meter unrelated traffic.
   if (!inScope(hostname, port)) {
-    return _originalFetch.call(this, input, init);
+    return backend.call(globalThis, input, init);
   }
 
   // Anonymous, opt-out, once-per-process usage ping (fire-and-forget).
@@ -715,7 +716,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
     const t0 = Date.now();
     let response;
     try {
-      response = await _originalFetch.call(this, input, init);
+      response = await backend.call(globalThis, input, init);
     } catch (err) {
       const ts = new Date().toISOString();
       const duration_ms = Date.now() - t0;
@@ -796,14 +797,14 @@ globalThis.fetch = async function vantioFetch(input, init) {
   try {
     plan = await enforceRequest(hostname, input, init);
   } catch {
-    return _originalFetch.call(this, input, init);
+    return backend.call(globalThis, input, init);
   }
   if (plan.blocked) return plan.response;
 
   // Make the (possibly redacted) call. A rejection here is the agent's own
   // network error and propagates unchanged.
   const t0 = Date.now();
-  const response = await _originalFetch.call(this, plan.input, plan.init);
+  const response = await backend.call(globalThis, plan.input, plan.init);
   const duration_ms = Math.max(0, Date.now() - t0);
 
   // Post-call accounting + reporting — guarded so a metering error never
@@ -865,7 +866,60 @@ globalThis.fetch = async function vantioFetch(input, init) {
   }
 
   return response;
+}
+
+globalThis.fetch = function vantioFetch(input, init) {
+  return wrapFetch(_originalFetch, input, init);
 };
+
+// OpenAI Node SDK and other agents often `import { fetch } from "undici"`
+// (or pass undici.fetch) instead of globalThis.fetch. Same Gate path.
+// Patch now if the package is already loaded, and again on first require —
+// the agent usually loads undici after this interceptor.
+(function patchUndiciFetch() {
+  function patchMod(mod) {
+    if (!mod || typeof mod.fetch !== "function") return;
+    if (mod.__vantioFetchPatched) return;
+    const orig = mod.fetch;
+    if (orig === globalThis.fetch) {
+      mod.__vantioFetchPatched = true;
+      return;
+    }
+    const backend = typeof orig.bind === "function" ? orig.bind(mod) : orig;
+    // Do not assign globalThis.fetch onto undici.fetch. Node's original
+    // fetch may re-enter the live undici export and recurse.
+    mod.fetch = function vantioUndiciFetch(input, init) {
+      return wrapFetch(backend, input, init);
+    };
+    mod.__vantioFetchPatched = true;
+  }
+
+  try {
+    const Module = require("module");
+    const origLoad = Module._load;
+    Module._load = function vantioLoad(request, parent, isMain) {
+      const exported = origLoad.apply(this, arguments);
+      if (request === "undici" || request === "node:undici") {
+        try {
+          patchMod(exported);
+        } catch {
+          /* fail open */
+        }
+      }
+      return exported;
+    };
+  } catch {
+    /* Module._load unavailable — still try an immediate require below */
+  }
+
+  for (const spec of ["node:undici", "undici"]) {
+    try {
+      patchMod(require(spec));
+    } catch {
+      /* optional — not installed until the agent requires it */
+    }
+  }
+})();
 
 // ── Run summary ─────────────────────────────────────────────────────────────
 
@@ -1252,7 +1306,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch + Node http/https. Host Sight covers host egress observe. curl/raw sockets without Host Sight still dark until PE.",
+        note: "App plane covers fetch, undici.fetch, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, undici.Client/request, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },

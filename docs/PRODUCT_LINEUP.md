@@ -32,7 +32,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 ### Observe · Vantio Optics (Free)
 
 - Free visibility — no paid account required
-- Node `vantio run`: `fetch` + Node `http`/`https`. Python `shield()`: urllib; requests and httpx when already installed
+- Node `vantio run`: `fetch`, `undici.fetch`, and Node `http`/`https`. Python `shield()`: urllib; requests, httpx, and aiohttp when already installed
 - Captures: endpoint, response size, process ID, trace ID — no content, no prompts
 - Does **not** block or redact — **observe only** ([fence](./observe-only.md))
 - Workflow: **Sight Loop**

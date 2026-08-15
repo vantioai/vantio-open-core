@@ -2,8 +2,8 @@
 Vantio Optics Python SDK — Sight Loop observe.
 Provides shield() decorator/context-manager, report_anomaly() for cloud ingest,
 fetch_policy() for policy retrieval, and redact_pii() for local PII scrubbing.
-Zero dependencies beyond the Python standard library. requests and httpx
-are optional: if they are installed, shield() observes them the same way
+Zero dependencies beyond the Python standard library. requests, httpx, and
+aiohttp are optional: if they are installed, shield() observes them the same way
 as urllib.
 """
 from __future__ import annotations
@@ -115,8 +115,8 @@ def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
 
     Generates a VANTIO_TRACE_ID and propagates it via contextvars through
     every async hop in the call tree. While active, shield() observes urllib
-    and, when those libraries are installed, requests and httpx — metadata
-    only. Raw sockets and curl stay outside this wrap.
+    and, when those libraries are installed, requests, httpx, and aiohttp —
+    metadata only. Raw sockets and curl stay outside this wrap.
     """
     if fn is None:
         # Called as shield() or shield(trace_id=...) — return an object that

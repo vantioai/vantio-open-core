@@ -1,6 +1,6 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.3**.
+> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.4**.
 
 ```bash
 pip install vantio-agent-sdk
@@ -8,7 +8,7 @@ pip install vantio-agent-sdk
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics)
 
-`vantio run python agent.py` (CLI 0.3.3+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** to in-scope LLM hosts. If **requests** or **httpx** are already installed, those are recorded the same way. With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit. curl and raw sockets stay outside this wrap.
+`vantio run python agent.py` (CLI 0.3.4+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** to in-scope LLM hosts. If **requests**, **httpx**, or **aiohttp** are already installed, those are recorded the same way. With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit. curl and raw sockets stay outside this wrap.
 
 **Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
@@ -185,6 +185,6 @@ This package does not depend on aiohttp, requests, or httpx.
 
 While the wrap is active (`vantio run python` or `shield()`), Optics records urllib calls to in-scope LLM hosts (OpenAI,
 Anthropic, Bedrock, Vertex AI, Hugging Face Inference, Replicate, Ollama, NVIDIA NIM, and
-the rest of the catalog). If `requests` or `httpx` are already installed in the agent
+the rest of the catalog). If `requests`, `httpx`, or `aiohttp` are already installed in the agent
 environment, those are recorded the same way. They are optional; installing this
 package does not pull them in. curl and raw sockets stay outside this wrap.

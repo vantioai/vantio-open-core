@@ -93,6 +93,32 @@ class RequestsHttpxObserveTests(unittest.IsolatedAsyncioTestCase):
             os.environ.pop("VANTIO_HOME", None)
             os.environ.pop("VANTIO_EXTRA_LLM_HOSTS", None)
 
+    async def test_aiohttp_to_extra_host_writes_run_log(self) -> None:
+        try:
+            import aiohttp
+        except ImportError:
+            self.skipTest("aiohttp is not installed")
+        home = tempfile.mkdtemp()
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        try:
+            with MockServer() as server:
+                server.respond_with(200, {"ok": True})
+                async with shield(trace_id="py-aiohttp-observe"):
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(server.url) as resp:
+                            await resp.read()
+            log = Path(home) / "runs" / "py-aiohttp-observe.json"
+            self.assertTrue(log.is_file())
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["action"], "OBSERVED")
+            self.assertEqual(data["calls"][0]["mediation"], "python_aiohttp")
+            self.assertEqual(data["calls"][0]["hostname"], "127.0.0.1")
+            self.assertNotIn("prompt", data["calls"][0])
+        finally:
+            os.environ.pop("VANTIO_HOME", None)
+            os.environ.pop("VANTIO_EXTRA_LLM_HOSTS", None)
+
     async def test_requests_out_of_scope_does_not_write_run_log(self) -> None:
         try:
             import requests
@@ -215,6 +241,101 @@ class PythonGateWrapTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn(b"shouldnotleak@example.com", targets[0].body)
                 self.assertIn(b"[VANTIO_REDACTED:EMAIL]", targets[0].body)
             log = Path(home) / "runs" / "py-gate-redact.json"
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["action"], "REDACTED")
+        finally:
+            self._clear_env()
+
+    async def test_aiohttp_blocked_host_never_hits_target(self) -> None:
+        try:
+            import aiohttp
+        except ImportError:
+            self.skipTest("aiohttp is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+
+                def handler(req):
+                    if req.path.startswith("/api/v1/config"):
+                        body = {
+                            "tier": "PRO",
+                            "policy": {
+                                "enforce": True,
+                                "blocked_hosts": ["127.0.0.1"],
+                                "allowed_hosts": [],
+                                "redact_pii": False,
+                                "pii_types": [],
+                                "max_request_bytes": 0,
+                                "spend_cap_usd": 0,
+                                "dry_run": False,
+                            },
+                        }
+                        return 200, json.dumps(body).encode("utf-8")
+                    if req.path.startswith("/api/v1/ingest"):
+                        return 200, b'{"status":0}'
+                    return 200, b'{"ok":true}'
+
+                server.respond_with_handler(handler)
+                with self.assertRaises(aiohttp.ClientResponseError) as raised:
+                    async with shield(trace_id="py-aiohttp-block"):
+                        async with aiohttp.ClientSession() as session:
+                            await session.get(server.url + "/v1/target")
+                self.assertEqual(raised.exception.status, 403)
+                target_hits = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(target_hits, [])
+            log = Path(home) / "runs" / "py-aiohttp-block.json"
+            self.assertTrue(log.is_file())
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["calls"][0]["action"], "BLOCKED_HOST")
+        finally:
+            self._clear_env()
+
+    async def test_aiohttp_redacts_pii_before_leave(self) -> None:
+        try:
+            import aiohttp
+        except ImportError:
+            self.skipTest("aiohttp is not installed")
+        home = tempfile.mkdtemp()
+        self._gate_env(home)
+        try:
+            with MockServer() as server:
+                os.environ["VANTIO_INGEST_URL"] = server.url
+
+                def handler(req):
+                    if req.path.startswith("/api/v1/config"):
+                        body = {
+                            "tier": "PRO",
+                            "policy": {
+                                "enforce": False,
+                                "blocked_hosts": [],
+                                "allowed_hosts": ["127.0.0.1"],
+                                "redact_pii": True,
+                                "pii_types": ["email"],
+                                "max_request_bytes": 0,
+                                "spend_cap_usd": 0,
+                                "dry_run": False,
+                            },
+                        }
+                        return 200, json.dumps(body).encode("utf-8")
+                    if req.path.startswith("/api/v1/ingest"):
+                        return 200, b'{"status":0}'
+                    return 200, b'{"ok":true}'
+
+                server.respond_with_handler(handler)
+                async with shield(trace_id="py-aiohttp-redact"):
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            server.url + "/v1/target",
+                            json={"email": "shouldnotleak@example.com"},
+                        ) as resp:
+                            await resp.read()
+                targets = [r for r in server.requests if r.path == "/v1/target"]
+                self.assertEqual(len(targets), 1)
+                self.assertNotIn(b"shouldnotleak@example.com", targets[0].body)
+                self.assertIn(b"[VANTIO_REDACTED:EMAIL]", targets[0].body)
+            log = Path(home) / "runs" / "py-aiohttp-redact.json"
             data = json.loads(log.read_text(encoding="utf-8"))
             self.assertEqual(data["calls"][0]["action"], "REDACTED")
         finally:
