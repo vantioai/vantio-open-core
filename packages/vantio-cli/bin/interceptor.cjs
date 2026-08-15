@@ -21,7 +21,7 @@
 "use strict";
 
 const { randomUUID } = require("node:crypto");
-const { mkdirSync, writeFileSync } = require("node:fs");
+const { mkdirSync, writeFileSync, statSync } = require("node:fs");
 const { homedir, hostname: osHostname } = require("node:os");
 const { join, basename } = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
@@ -2447,8 +2447,9 @@ globalThis.fetch = function vantioFetch(input, init) {
 })();
 
 // Node child_process spawn/exec of curl and wget — host-block and observe
-// before the child starts. Bodies are not rewritten. Residual: browsers,
-// Python subprocess wget.
+// before the child starts. Bodies are not rewritten. File-body size comes
+// from stat (not file contents). Residual: browsers, stdin @-, Python
+// subprocess --post-file.
 (function patchCurlSpawn() {
   let cp;
   try { cp = require("node:child_process"); } catch { try { cp = require("child_process"); } catch { return; } }
@@ -2538,6 +2539,33 @@ globalThis.fetch = function vantioFetch(input, init) {
     return httpCliFromSpawn(tokens[0], tokens.slice(1), null);
   }
 
+  function fileByteLength(rel) {
+    const p = String(rel || "");
+    if (!p || p === "-") return 0;
+    try {
+      const st = statSync(p);
+      return st.isFile() ? Number(st.size) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function bytesFromAtOrLiteral(value, atMeansFile) {
+    const v = String(value ?? "");
+    if (atMeansFile && v.startsWith("@")) return fileByteLength(v.slice(1));
+    return Buffer.byteLength(v);
+  }
+
+  const CURL_DATA_AT_FILE = {
+    "-d": true,
+    "--data": true,
+    "--data-binary": true,
+    "--data-ascii": true,
+    "--data-urlencode": true,
+    "--json": true,
+    "--data-raw": false,
+  };
+
   function parseCurlArgv(argv) {
     let url = null;
     let dataBytes = 0;
@@ -2553,17 +2581,36 @@ globalThis.fetch = function vantioFetch(input, init) {
         url = a.slice("--url=".length);
         continue;
       }
-      if (
-        a === "-d" || a === "--data" || a === "--data-raw" || a === "--data-binary"
-        || a === "--data-ascii" || a === "--data-urlencode" || a === "--json"
-      ) {
+      if (Object.prototype.hasOwnProperty.call(CURL_DATA_AT_FILE, a)) {
         const v = args[i + 1] != null ? String(args[i + 1]) : "";
-        dataBytes += Buffer.byteLength(v);
+        dataBytes += bytesFromAtOrLiteral(v, CURL_DATA_AT_FILE[a]);
         i += 1;
         continue;
       }
+      let eqHandled = false;
+      for (const flag of Object.keys(CURL_DATA_AT_FILE)) {
+        if (flag.startsWith("--") && a.startsWith(flag + "=")) {
+          dataBytes += bytesFromAtOrLiteral(a.slice(flag.length + 1), CURL_DATA_AT_FILE[flag]);
+          eqHandled = true;
+          break;
+        }
+      }
+      if (eqHandled) continue;
       if (a.startsWith("-d") && a.length > 2 && !a.startsWith("--")) {
-        dataBytes += Buffer.byteLength(a.slice(2));
+        dataBytes += bytesFromAtOrLiteral(a.slice(2), true);
+        continue;
+      }
+      if (a === "-T" || a === "--upload-file") {
+        dataBytes += fileByteLength(args[i + 1] != null ? String(args[i + 1]) : "");
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--upload-file=")) {
+        dataBytes += fileByteLength(a.slice("--upload-file=".length));
+        continue;
+      }
+      if (a.startsWith("-T") && a.length > 2 && !a.startsWith("--")) {
+        dataBytes += fileByteLength(a.slice(2));
         continue;
       }
       if (!url && /^https?:\/\//i.test(a)) url = a;
@@ -2589,6 +2636,19 @@ globalThis.fetch = function vantioFetch(input, init) {
       }
       if (a.startsWith("--body-data=")) {
         dataBytes += Buffer.byteLength(a.slice("--body-data=".length));
+        continue;
+      }
+      if (a === "--post-file" || a === "--body-file") {
+        dataBytes += fileByteLength(args[i + 1] != null ? String(args[i + 1]) : "");
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--post-file=")) {
+        dataBytes += fileByteLength(a.slice("--post-file=".length));
+        continue;
+      }
+      if (a.startsWith("--body-file=")) {
+        dataBytes += fileByteLength(a.slice("--body-file=".length));
         continue;
       }
       if (!url && /^https?:\/\//i.test(a)) url = a;
@@ -2941,7 +3001,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl and wget to in-scope hosts. Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl and wget to in-scope hosts (file-body size from stat; contents are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
