@@ -1,6 +1,8 @@
 // [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
-// Patches globalThis.fetch to intercept outbound LLM calls — zero code changes.
+// Patches globalThis.fetch and Node http/https.request|get to intercept
+// outbound LLM calls — zero code changes. Raw sockets, curl, and browser
+// paths stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -19,6 +21,12 @@ const { randomUUID } = require("node:crypto");
 const { mkdirSync, writeFileSync } = require("node:fs");
 const { homedir, hostname: osHostname } = require("node:os");
 const { join } = require("node:path");
+const {
+  LLM_HOSTS: BASE_LLM_HOSTS,
+  hostListed,
+  catalogInScope,
+  guessProvider,
+} = require("./llm-hosts.cjs");
 
 const USE_COLOR = process.stderr.isTTY === true;
 const c = {
@@ -62,39 +70,13 @@ try {
   // package.json not resolvable — report an unknown version rather than crash.
 }
 
-const LLM_HOSTS = new Set([
-  "api.openai.com",
-  "api.anthropic.com",
-  "generativelanguage.googleapis.com",
-  "api.cohere.ai",
-  "api.mistral.ai",
-  "api.groq.com",
-  "api.together.xyz",
-  "api.perplexity.ai",
-  "inference.ai.azure.com",
-]);
-// Local soak / self-hosted LLMs via env only — never hardcode 127.0.0.1
-// (would make every out-of-scope localhost call look like LLM traffic).
+const LLM_HOSTS = new Set(BASE_LLM_HOSTS);
+// Local / extra LLM hosts via env only — never hardcode 127.0.0.1 as a
+// blanket catalog entry (would make every localhost call look like LLM traffic).
+// Ollama on localhost:11434 is matched by catalogInScope, not this set.
 for (const h of String(process.env.VANTIO_EXTRA_LLM_HOSTS || "").split(",")) {
   const t = h.trim();
   if (t) LLM_HOSTS.add(t);
-}
-
-/** Map hostname → coarse provider id for developer dashboards (never content). */
-function guessProvider(hostname) {
-  const h = String(hostname || "").toLowerCase();
-  if (!h) return "unknown";
-  if (h.includes("openai") || h === "api.openai.com") return "openai";
-  if (h.includes("anthropic")) return "anthropic";
-  if (h.includes("googleapis") || h.includes("generativelanguage")) return "google";
-  if (h.includes("cohere")) return "cohere";
-  if (h.includes("mistral")) return "mistral";
-  if (h.includes("groq")) return "groq";
-  if (h.includes("together")) return "together";
-  if (h.includes("perplexity")) return "perplexity";
-  if (h.includes("azure") || h.includes("openai.azure")) return "azure_openai";
-  if (h.includes("localhost") || h.startsWith("127.")) return "local";
-  return "other";
 }
 
 /** Safe URL metadata — path only, never query string (may contain keys). */
@@ -346,7 +328,7 @@ function unscannableBodyLabel(body) {
 // Maximum bytes we will buffer from a ReadableStream to scan for PII.
 // Requests larger than this threshold pass through unscanned rather than being
 // held in memory, preserving back-pressure for true streaming workloads.
-const MAX_STREAM_SCAN_BYTES = 64 * 1024; // 64 KB
+const MAX_STREAM_SCAN_BYTES = 2 * 1024 * 1024; // 2 MB ? max Latch (2026-08-09); was 64 KB
 
 // Redact a concrete request body value, preserving its original type.
 // Returns { value, bytes, redactions, replaced, unscanned }:
@@ -484,11 +466,11 @@ function report(metadata) {
 // in the policy (blocked_hosts ∪ allowed_hosts). Hosts outside this set are
 // passed straight through untouched — we never block, redact, or meter general
 // (OS / package-manager / unrelated) traffic merely because a policy exists.
-function inScope(hostname) {
+function inScope(hostname, port) {
   return (
-    LLM_HOSTS.has(hostname) ||
-    policy.blocked_hosts.includes(hostname) ||
-    policy.allowed_hosts.includes(hostname)
+    catalogInScope(hostname, port, LLM_HOSTS) ||
+    hostListed(hostname, policy.blocked_hosts) ||
+    hostListed(hostname, policy.allowed_hosts)
   );
 }
 
@@ -589,7 +571,7 @@ async function enforceRequest(hostname, input, init) {
   //    non-empty allow-list blocks any in-scope host not on it. (Out-of-scope
   //    hosts never reach here — they pass through before enforcement.)
   if (policy.enforce) {
-    if (policy.blocked_hosts.includes(hostname)) {
+    if (hostListed(hostname, policy.blocked_hosts)) {
       if (policy.dry_run) {
         _calls.push({ hostname, action: "DRY_RUN_BLOCKED_HOST" });
         log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (host_not_permitted); dry_run=true passes through`);
@@ -599,7 +581,7 @@ async function enforceRequest(hostname, input, init) {
       } else {
         return blockHost(hostname);
       }
-    } else if (policy.allowed_hosts.length > 0 && !policy.allowed_hosts.includes(hostname)) {
+    } else if (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts)) {
       if (policy.dry_run) {
         _calls.push({ hostname, action: "DRY_RUN_BLOCKED_HOST" });
         log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (not_in_allowed_hosts); dry_run=true passes through`);
@@ -687,14 +669,23 @@ async function enforceRequest(hostname, input, init) {
   return { blocked: false, input: newInput, init: newInit, reqBytes, redactions };
 }
 
+function destFromHref(href) {
+  const u = new URL(href);
+  const port = u.port || (u.protocol === "https:" ? "443" : "80");
+  return { hostname: u.hostname, port };
+}
+
 globalThis.fetch = async function vantioFetch(input, init) {
   let hostname;
+  let port;
   try {
     const url = typeof input === "string" ? input
       : input instanceof URL ? input.href
       : (typeof Request !== "undefined" && input instanceof Request) ? input.url
       : input.url;
-    hostname = new URL(url).hostname;
+    const dest = destFromHref(url);
+    hostname = dest.hostname;
+    port = dest.port;
   } catch {
     return _originalFetch.call(this, input, init);
   }
@@ -710,7 +701,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
 
   // Out of scope (not a known LLM host and not named in policy) — pass straight
   // through, untouched. We never block/redact/meter unrelated traffic.
-  if (!inScope(hostname)) {
+  if (!inScope(hostname, port)) {
     return _originalFetch.call(this, input, init);
   }
 
@@ -720,7 +711,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
   // ── FREE TIER — observe only ────────────────────────────────────────────────
   if (FREE_MODE) {
     const reqMeta = extractRequestMeta(input, init);
-    const provider = guessProvider(hostname);
+    const provider = guessProvider(hostname, port);
     const t0 = Date.now();
     let response;
     try {
@@ -823,7 +814,7 @@ globalThis.fetch = async function vantioFetch(input, init) {
     const resp = responseMeta(response);
     const callRec = {
       hostname,
-      provider: guessProvider(hostname),
+      provider: guessProvider(hostname, port),
       method: reqMeta.method,
       path: reqMeta.path,
       scheme: reqMeta.scheme,
@@ -877,6 +868,272 @@ globalThis.fetch = async function vantioFetch(input, init) {
 };
 
 // ── Run summary ─────────────────────────────────────────────────────────────
+
+
+// Node http/https — same Sight Loop / Gate rules as fetch, last-known policy
+// (request() is sync; fail-open until policy loads). Out-of-scope hosts and
+// the ingest control plane pass through untouched. Raw sockets / curl / browsers
+// stay residual.
+(function patchNodeHttpHttps() {
+  const { EventEmitter } = require("node:events");
+
+  function isControlPlaneRequest(args) {
+    try {
+      const ingest = new URL(INGEST_URL);
+      const a0 = args && args[0];
+      let u = null;
+      if (typeof a0 === "string" || (typeof URL !== "undefined" && a0 instanceof URL)) {
+        u = new URL(String(a0));
+      } else if (a0 && typeof a0 === "object") {
+        const host = a0.hostname || (a0.host ? String(a0.host).split(":")[0] : "");
+        if (!host) return false;
+        const port = String(a0.port || (a0.protocol === "https:" ? 443 : 80));
+        const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+        const path = String(a0.path || a0.pathname || "");
+        return host.toLowerCase() === ingest.hostname.toLowerCase()
+          && port === String(ingestPort)
+          && path.startsWith("/api/v1/");
+      }
+      if (!u) return false;
+      const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+      const reqPort = u.port || (u.protocol === "https:" ? "443" : "80");
+      return u.hostname.toLowerCase() === ingest.hostname.toLowerCase()
+        && reqPort === ingestPort
+        && u.pathname.startsWith("/api/v1/");
+    } catch {
+      return false;
+    }
+  }
+
+  function destFromArgs(args) {
+    try {
+      if (!args || !args.length) return { hostname: null, port: null };
+      const a0 = args[0];
+      if (typeof a0 === "string" || (typeof URL !== "undefined" && a0 instanceof URL)) {
+        try {
+          return destFromHref(String(a0));
+        } catch { return { hostname: null, port: null }; }
+      }
+      if (a0 && typeof a0 === "object") {
+        let hostname = null;
+        if (typeof a0.hostname === "string") hostname = a0.hostname;
+        else if (typeof a0.host === "string") hostname = a0.host.split(":")[0];
+        else if (typeof a0.href === "string") {
+          try { hostname = new URL(a0.href).hostname; } catch { hostname = null; }
+        }
+        let port = a0.port;
+        if ((port == null || port === "") && a0.host && String(a0.host).includes(":")) {
+          port = String(a0.host).split(":").pop();
+        }
+        if (port == null || port === "") {
+          port = a0.protocol === "https:" ? 443 : 80;
+        }
+        return { hostname, port: String(port) };
+      }
+    } catch { /* ignore */ }
+    return { hostname: null, port: null };
+  }
+
+  function blockedClientRequest(err) {
+    const fake = new EventEmitter();
+    fake.end = () => fake;
+    fake.write = () => true;
+    fake.abort = () => {};
+    fake.destroy = () => {};
+    fake.setTimeout = () => fake;
+    fake.setHeader = () => {};
+    fake.getHeader = () => undefined;
+    fake.removeHeader = () => {};
+    process.nextTick(() => fake.emit("error", err));
+    return fake;
+  }
+
+  let policySettled = FREE_MODE;
+  if (!FREE_MODE && policyReady && typeof policyReady.then === "function") {
+    policyReady.then(() => { policySettled = true; }).catch(() => { policySettled = true; });
+  }
+
+  function decideHttp(hostname, port, args) {
+    if (!hostname || isControlPlaneRequest(args)) return "pass";
+    if (!inScope(hostname, port)) return "pass";
+    if (FREE_MODE) return "observe";
+    if (policy.enforce) {
+      const blocked = hostListed(hostname, policy.blocked_hosts) ||
+        (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts));
+      if (blocked) return policy.dry_run ? "dry_block" : "block";
+    }
+    return "observe";
+  }
+
+  function wrapModule(mod, scheme) {
+    if (!mod || typeof mod.request !== "function") return;
+    if (mod.__vantioPatched) return;
+    const origRequest = mod.request.bind(mod);
+    const origGet = typeof mod.get === "function" ? mod.get.bind(mod) : null;
+
+    function pendingRequest(args, launch) {
+      const pending = new EventEmitter();
+      const buffer = [];
+      pending.write = (c, e, cb) => { buffer.push(["write", c, e, cb]); return true; };
+      pending.end = (c, e, cb) => { buffer.push(["end", c, e, cb]); return pending; };
+      pending.abort = () => {};
+      pending.destroy = () => {};
+      pending.setTimeout = () => pending;
+      pending.setHeader = () => {};
+      pending.getHeader = () => undefined;
+      pending.removeHeader = () => {};
+      policyReady.then(() => {
+        policySettled = true;
+        try {
+          const real = wrapLaunch(args, launch);
+          if (real && typeof real.on === "function") {
+            real.on("error", (err) => pending.emit("error", err));
+            real.on("response", (res) => pending.emit("response", res));
+            real.on("socket", (sock) => pending.emit("socket", sock));
+            real.on("timeout", () => pending.emit("timeout"));
+            real.on("close", () => pending.emit("close"));
+          }
+          for (const [op, c, e, cb] of buffer) {
+            if (op === "write" && real && real.write) real.write(c, e, cb);
+            if (op === "end" && real && real.end) real.end(c, e, cb);
+          }
+        } catch (err) {
+          pending.emit("error", err);
+        }
+      }).catch((err) => pending.emit("error", err));
+      return pending;
+    }
+
+    function wrapLaunch(args, launch) {
+      if (!FREE_MODE && !policySettled) {
+        return pendingRequest(args, launch);
+      }
+      const dest = destFromArgs(args);
+      const hostname = dest.hostname;
+      const port = dest.port;
+      const decision = decideHttp(hostname, port, args);
+      if (decision === "pass") return launch();
+
+      sendRunTelemetryOnce(hostname);
+      const provider = guessProvider(hostname, port);
+      const ts = new Date().toISOString();
+      const baseCall = {
+        hostname, provider, method: "REQUEST", path: null, scheme,
+        request_bytes: null, bytes: 0, status: null, ok: true,
+        content_type: null, duration_ms: 0, ts, optics_plane: "app_http",
+      };
+
+      if (decision === "block") {
+        _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "BLOCKED_HOST",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+          mediation: "node_http", plane: "optics_gate",
+        });
+        log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node ${scheme}.request`);
+        const err = new Error(`Vantio Gate blocked host: ${hostname}`);
+        err.code = "VANTIO_GATE_BLOCKED";
+        return blockedClientRequest(err);
+      }
+
+      if (decision === "dry_block") {
+        _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_HOST" });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+          mediation: "node_http", plane: "optics_gate",
+        });
+        log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK Node ${scheme}.request; dry_run=true passes through`);
+      } else {
+        _calls.push({ ...baseCall, action: FREE_MODE ? "OBSERVED" : "ALLOWED" });
+        report({
+          target_host: hostname, pid: process.pid,
+          action_taken: FREE_MODE ? "OBSERVED" : "ALLOWED",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+          mediation: "node_http", plane: "optics_gate",
+        });
+        if (FREE_MODE) {
+          log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — Node ${scheme}.request`);
+        }
+      }
+
+      const req = launch();
+      if (!req || typeof req.write !== "function") return req;
+      if (FREE_MODE || (!policy.redact_pii && !(policy.enforce && policy.max_request_bytes > 0))) {
+        return req;
+      }
+
+      const origWrite = req.write.bind(req);
+      let written = 0;
+      req.write = function vantioHttpWrite(chunk, encoding, cb) {
+        try {
+          const buf = chunk == null ? Buffer.alloc(0)
+            : Buffer.isBuffer(chunk) ? chunk
+            : Buffer.from(String(chunk), typeof encoding === "string" ? encoding : "utf8");
+          written += buf.length;
+          if (policy.enforce && policy.max_request_bytes > 0 && written > policy.max_request_bytes) {
+            if (policy.dry_run) {
+              report({
+                target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SIZE",
+                timestamp_ns: Date.now() * 1e6, bytes_severed: written,
+                mediation: "node_http",
+              });
+              return origWrite(chunk, encoding, cb);
+            }
+            report({
+              target_host: hostname, pid: process.pid, action_taken: "BLOCKED_SIZE",
+              timestamp_ns: Date.now() * 1e6, bytes_severed: written,
+              mediation: "node_http",
+            });
+            log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node ${scheme} request ${written}B exceeds cap`);
+            const err = new Error("Vantio Gate blocked request: request_too_large");
+            err.code = "VANTIO_GATE_BLOCKED";
+            process.nextTick(() => req.emit("error", err));
+            return false;
+          }
+          if (policy.redact_pii && buf.length) {
+            const r = redactBody(buf.toString("utf8"));
+            if (r.redactions.length) {
+              report({
+                target_host: hostname, pid: process.pid, action_taken: "REDACTED",
+                timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+                mediation: "node_http",
+              });
+              log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — Node ${scheme}.request stripped ${r.redactions.length} PII item(s)`);
+              return origWrite(Buffer.from(r.text, "utf8"), undefined, cb);
+            }
+          }
+        } catch {
+          // Fail open — never break the agent's write.
+        }
+        return origWrite(chunk, encoding, cb);
+      };
+      return req;
+    }
+
+    mod.request = function (...args) {
+      try {
+        return wrapLaunch(args, () => origRequest(...args));
+      } catch {
+        return origRequest(...args);
+      }
+    };
+    if (origGet) {
+      mod.get = function (...args) {
+        try {
+          return wrapLaunch(args, () => origGet(...args));
+        } catch {
+          return origGet(...args);
+        }
+      };
+    }
+    mod.__vantioPatched = true;
+  }
+
+  try { wrapModule(require("node:http"), "http"); } catch { try { wrapModule(require("http"), "http"); } catch { /* ignore */ } }
+  try { wrapModule(require("node:https"), "https"); } catch { try { wrapModule(require("https"), "https"); } catch { /* ignore */ } }
+})();
+
 process.on("exit", () => {
   if (_calls.length === 0) return;
 
@@ -964,7 +1221,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "Paths that never load this interceptor (curl, raw sockets, unwrapped processes) produce no Optics row.",
+        note: "App plane covers fetch + Node http/https. Host Sight covers host egress observe. curl/raw sockets without Host Sight still dark until PE.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },

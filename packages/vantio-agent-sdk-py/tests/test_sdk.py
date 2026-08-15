@@ -1,10 +1,14 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import os
 import re
+import tempfile
 import unittest
+import urllib.request
 import warnings
+from pathlib import Path
 
 from vantio import get_current_trace_id, report_anomaly, shield
 from vantio.sdk import VantioContext, _normalize_policy
@@ -199,6 +203,42 @@ class ReportAnomalyTests(unittest.IsolatedAsyncioTestCase):
                     target_host="x", ingest_url="http://127.0.0.1:1", api_key="vk_test_key"
                 )
         self.assertTrue(any("ingest request failed" in str(w.message) for w in caught))
+
+
+class HttpObserveTests(unittest.IsolatedAsyncioTestCase):
+    async def test_urlopen_to_extra_host_writes_run_log(self) -> None:
+        home = tempfile.mkdtemp()
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        try:
+            with MockServer() as server:
+                server.respond_with(200, {"ok": True})
+                async with shield(trace_id="py-observe-test"):
+                    urllib.request.urlopen(server.url, timeout=2)
+            log = Path(home) / "runs" / "py-observe-test.json"
+            self.assertTrue(log.is_file())
+            data = json.loads(log.read_text(encoding="utf-8"))
+            self.assertEqual(data["vantio_run_log"], "1")
+            self.assertEqual(data["calls"][0]["action"], "OBSERVED")
+            self.assertEqual(data["calls"][0]["hostname"], "127.0.0.1")
+            self.assertNotIn("prompt", data["calls"][0])
+        finally:
+            os.environ.pop("VANTIO_HOME", None)
+            os.environ.pop("VANTIO_EXTRA_LLM_HOSTS", None)
+
+    async def test_urlopen_out_of_scope_does_not_write_run_log(self) -> None:
+        home = tempfile.mkdtemp()
+        os.environ["VANTIO_HOME"] = home
+        os.environ.pop("VANTIO_EXTRA_LLM_HOSTS", None)
+        try:
+            with MockServer() as server:
+                server.respond_with(200, {"ok": True})
+                async with shield(trace_id="py-observe-skip"):
+                    urllib.request.urlopen(server.url, timeout=2)
+            log = Path(home) / "runs" / "py-observe-skip.json"
+            self.assertFalse(log.exists())
+        finally:
+            os.environ.pop("VANTIO_HOME", None)
 
 
 class NormalizePolicyTests(unittest.TestCase):

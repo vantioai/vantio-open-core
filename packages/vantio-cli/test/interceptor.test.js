@@ -294,4 +294,106 @@ describe("interceptor.cjs (integration)", () => {
     );
     assert.equal(sizeEvents.length, 1, "exactly one DRY_RUN_BLOCKED_SIZE event must be reported");
   });
+
+  const HTTP_GET_SCRIPT = `
+const http = require("http");
+function go() {
+  http.get(process.env.TARGET_URL, (res) => {
+    let body = "";
+    res.on("data", (c) => { body += c; });
+    res.on("end", () => {
+      process.stdout.write(JSON.stringify({ status: res.statusCode, body }) + "\\n");
+    });
+  }).on("error", (err) => {
+    process.stdout.write(JSON.stringify({ error: err.code || err.message }) + "\\n");
+  });
+}
+// Paid mode loads policy over fetch (async). request() is sync — wait so
+// last-known policy is the cloud one, same as a live agent after startup.
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  test("FREE_MODE Node http.get to extra LLM host: OBSERVED, target reached, never ingest", async () => {
+    const { code, stdout, stderr } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_EXTRA_LLM_HOSTS: "127.0.0.1" },
+      HTTP_GET_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 200);
+    assert.equal(requests.target.length, 1, "observe must not block http.get");
+    assert.equal(requests.ingest.length, 0, "free mode must never ingest");
+    assert.match(stderr, /OBSERVED/);
+  });
+
+  test("PAID_MODE Node http.get + blocked_hosts: target never reached, BLOCKED_HOST ingest", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      HTTP_GET_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+    assert.equal(requests.target.length, 0, "blocked http.get must never reach the target");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_http");
+  });
+
+  test("PAID_MODE Node http.get out of scope: passes through, never reported", async () => {
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      HTTP_GET_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 200);
+    assert.equal(requests.target.length, 1);
+    assert.equal(requests.ingest.length, 0);
+  });
+
+  test("PAID_MODE dry_run + Node http.get blocked_hosts: call goes through, DRY_RUN reported", async () => {
+    configPolicy.enforce = true;
+    configPolicy.dry_run = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout, stderr } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      HTTP_GET_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 200);
+    assert.equal(requests.target.length, 1);
+    assert.match(stderr, /DRY_RUN/);
+    const dry = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_HOST");
+    assert.equal(dry.length, 1);
+  });
+
+  test("FREE_MODE fetch to 127.0.0.1:11434 is OBSERVED as local Ollama without EXTRA_LLM_HOSTS", async () => {
+    let ollamaServer;
+    try {
+      ollamaServer = http.createServer((req, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ reply: "ok" }));
+      });
+      await new Promise((resolve, reject) => {
+        ollamaServer.once("error", reject);
+        ollamaServer.listen(11434, "127.0.0.1", resolve);
+      });
+    } catch {
+      return; // port busy — catalog unit test still covers the matcher
+    }
+    try {
+      const { code, stderr } = await runAgent(
+        { TARGET_URL: "http://127.0.0.1:11434/v1/target" },
+        FETCH_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      assert.match(stderr, /OBSERVED|Outbound LLM call intercepted/);
+    } finally {
+      await new Promise((resolve) => ollamaServer.close(resolve));
+    }
+  });
 });

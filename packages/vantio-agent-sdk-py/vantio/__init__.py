@@ -1,6 +1,6 @@
 """
 Vantio Optics Python SDK — Sight Loop observe via shield().
-Metadata-only telemetry. Zero dependencies beyond stdlib.
+Zero dependencies beyond stdlib. Optional observe of requests/httpx when installed.
 """
 from .sdk import (
     shield,
@@ -23,4 +23,4 @@ __all__ = [
     "VantioPolicy",
     "RedactionResult",
 ]
-__version__ = "3.0.1"
+__version__ = "3.0.2"

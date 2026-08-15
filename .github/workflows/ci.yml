@@ -22,8 +22,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 11
+        # Do not pin `version:` here — it conflicts with package.json packageManager
+        # (pnpm/action-setup v4 fails the job before tests or publish can run).
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
