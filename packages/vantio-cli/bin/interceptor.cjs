@@ -2,9 +2,11 @@
 // Injected at runtime by `vantio run node agent.js` via Node --require.
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
 // request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
-// http/https.request|get, Node http2.connect / session.request, Node
-// net.Socket.connect / tls.connect, undici.upgrade / CONNECT tunnel writes,
-// and Node child_process spawn/exec of curl and wget to in-scope hosts.
+// http/https.request|get and ClientRequest, Node http2.connect / session.request,
+// Node net.Socket.connect / tls.connect, globalThis.WebSocket / undici.WebSocket
+// (host-block and outbound frame size; payloads are not parsed), undici.upgrade /
+// CONNECT tunnel writes, and Node child_process spawn/exec of curl and wget
+// (including env/timeout/nice prefixes and curl -K url=) to in-scope hosts.
 // Browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
@@ -21,7 +23,7 @@
 "use strict";
 
 const { randomUUID } = require("node:crypto");
-const { mkdirSync, writeFileSync, statSync } = require("node:fs");
+const { mkdirSync, writeFileSync, statSync, readFileSync } = require("node:fs");
 const { homedir, hostname: osHostname } = require("node:os");
 const { join, basename } = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
@@ -1936,11 +1938,254 @@ globalThis.fetch = function vantioFetch(input, init) {
         }
       };
     }
+    const OrigCR = mod.ClientRequest;
+    if (typeof OrigCR === "function" && !OrigCR.__vantioPatched) {
+      function VantioClientRequest(...args) {
+        if (httpWrapOwnsConnect()) {
+          return new OrigCR(...args);
+        }
+        try {
+          return wrapLaunch(args, () => new OrigCR(...args));
+        } catch {
+          return new OrigCR(...args);
+        }
+      }
+      Object.setPrototypeOf(VantioClientRequest, OrigCR);
+      VantioClientRequest.prototype = OrigCR.prototype;
+      VantioClientRequest.__vantioPatched = true;
+      mod.ClientRequest = VantioClientRequest;
+    }
     mod.__vantioPatched = true;
   }
 
   try { wrapModule(require("node:http"), "http"); } catch { try { wrapModule(require("http"), "http"); } catch { /* ignore */ } }
   try { wrapModule(require("node:https"), "https"); } catch { try { wrapModule(require("https"), "https"); } catch { /* ignore */ } }
+})();
+
+// globalThis.WebSocket / undici.WebSocket — host-block before the handshake.
+// Outbound frame size only; conversation bytes are not parsed or redacted.
+// HTTP/undici already marked via AsyncLocalStorage so those sockets are not
+// ingested twice. Residual: browsers / Chromium / CDP.
+(function patchWebSocket() {
+  function destFromWsUrl(url) {
+    try {
+      const u = new URL(String(url));
+      const port = u.port || (u.protocol === "wss:" || u.protocol === "https:" ? "443" : "80");
+      return { hostname: u.hostname, port: String(port), href: u.href };
+    } catch {
+      return { hostname: null, port: null, href: null };
+    }
+  }
+
+  function isControlPlaneWs(url) {
+    try {
+      const ingest = new URL(INGEST_URL);
+      const u = new URL(String(url));
+      const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+      const reqPort = u.port || (u.protocol === "wss:" || u.protocol === "https:" ? "443" : "80");
+      return u.hostname.toLowerCase() === ingest.hostname.toLowerCase()
+        && reqPort === ingestPort
+        && u.pathname.startsWith("/api/v1/");
+    } catch {
+      return false;
+    }
+  }
+
+  function sendByteLength(data) {
+    try {
+      if (data == null) return 0;
+      if (typeof data === "string") return Buffer.byteLength(data);
+      if (Buffer.isBuffer(data)) return data.length;
+      if (typeof ArrayBuffer !== "undefined" && data instanceof ArrayBuffer) return data.byteLength;
+      if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView(data)) return data.byteLength;
+      if (typeof Blob !== "undefined" && data instanceof Blob) return data.size || 0;
+      return Buffer.byteLength(String(data));
+    } catch {
+      return 0;
+    }
+  }
+
+  let policySettled = FREE_MODE;
+  if (!FREE_MODE && policyReady && typeof policyReady.then === "function") {
+    policyReady.then(() => { policySettled = true; }).catch(() => { policySettled = true; });
+  }
+
+  function decideWs(hostname, port, url) {
+    if (!hostname || isControlPlaneWs(url)) return "pass";
+    if (!inScope(hostname, port)) return "pass";
+    if (FREE_MODE) return "observe";
+    if (policy.enforce) {
+      const blocked = hostListed(hostname, policy.blocked_hosts) ||
+        (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts));
+      if (blocked) return policy.dry_run ? "dry_block" : "block";
+    }
+    return "observe";
+  }
+
+  function wrapWsSend(ws, hostname) {
+    if (!ws || typeof ws.send !== "function" || ws.__vantioWsSendPatched) return;
+    ws.__vantioWsSendPatched = true;
+    const origSend = ws.send.bind(ws);
+    let written = 0;
+    let frameReported = false;
+    const provider = guessProvider(hostname, null);
+
+    ws.send = function vantioWsSend(data) {
+      const n = sendByteLength(data);
+      written += n;
+      if (!FREE_MODE && policy.enforce && policy.max_request_bytes > 0 && written > policy.max_request_bytes) {
+        if (policy.dry_run) {
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SIZE",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: written, bytes_observed: written,
+            mediation: "node_ws",
+          });
+          return origSend.apply(this, arguments);
+        }
+        _calls.push({
+          hostname, provider, method: "WS", path: null, scheme: "ws",
+          request_bytes: written, bytes: 0, status: null, ok: false,
+          content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+          action: "BLOCKED_SIZE", mediation: "node_ws",
+        });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "BLOCKED_SIZE",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: written, bytes_observed: written,
+          mediation: "node_ws", plane: "optics_gate",
+        });
+        log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — WebSocket frame ${written}B exceeds cap`);
+        const err = new Error("Vantio Gate blocked request: request_too_large");
+        err.code = "VANTIO_GATE_BLOCKED";
+        try { if (typeof ws.close === "function") ws.close(); } catch { /* ignore */ }
+        throw err;
+      }
+      if (!FREE_MODE && policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
+        if (policy.dry_run) {
+          report({
+            target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SPEND",
+            timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "node_ws",
+          });
+          return origSend.apply(this, arguments);
+        }
+        _calls.push({
+          hostname, provider, method: "WS", path: null, scheme: "ws",
+          request_bytes: written, bytes: 0, status: null, ok: false,
+          content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+          action: "BLOCKED_SPEND", mediation: "node_ws",
+        });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "BLOCKED_SPEND",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "node_ws", plane: "optics_gate",
+        });
+        log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — WebSocket spend cap reached`);
+        const err = new Error("Vantio Gate blocked request: spend_cap_reached");
+        err.code = "VANTIO_GATE_BLOCKED";
+        throw err;
+      }
+      if (n > 0) spentUsd += n * USD_PER_BYTE;
+      if (!frameReported && n > 0) {
+        frameReported = true;
+        const action = FREE_MODE ? "OBSERVED" : "ALLOWED";
+        _calls.push({
+          hostname, provider, method: "WS", path: null, scheme: "ws",
+          request_bytes: n, bytes: 0, status: null, ok: true,
+          content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+          action, mediation: "node_ws",
+        });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: action,
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0, bytes_observed: n,
+          request_bytes: n, mediation: "node_ws", plane: "optics_gate",
+        });
+      }
+      return origSend.apply(this, arguments);
+    };
+  }
+
+  function wrapWsCtor(Orig) {
+    if (typeof Orig !== "function" || Orig.__vantioPatched) return Orig;
+    function VantioWebSocket(url, protocols) {
+      if (httpWrapOwnsConnect()) {
+        return protocols !== undefined ? new Orig(url, protocols) : new Orig(url);
+      }
+      if (!FREE_MODE && !policySettled) {
+        return protocols !== undefined ? new Orig(url, protocols) : new Orig(url);
+      }
+      const dest = destFromWsUrl(url);
+      const hostname = dest.hostname;
+      const port = dest.port;
+      const decision = decideWs(hostname, port, url);
+      if (decision === "pass") {
+        return launchHttpHandled(() => (protocols !== undefined ? new Orig(url, protocols) : new Orig(url)));
+      }
+
+      sendRunTelemetryOnce(hostname);
+      const provider = guessProvider(hostname, port);
+      const ts = new Date().toISOString();
+      const baseCall = {
+        hostname, provider, method: "WS", path: null, scheme: "ws",
+        request_bytes: null, bytes: 0, status: null, ok: true,
+        content_type: null, duration_ms: 0, ts, optics_plane: "app_ws",
+      };
+
+      if (decision === "block") {
+        _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "BLOCKED_HOST",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+          mediation: "node_ws", plane: "optics_gate",
+        });
+        log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — WebSocket handshake`);
+        const err = new Error(`Vantio Gate blocked host: ${hostname}`);
+        err.code = "VANTIO_GATE_BLOCKED";
+        throw err;
+      }
+
+      if (decision === "dry_block") {
+        _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_HOST" });
+        report({
+          target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+          mediation: "node_ws", plane: "optics_gate",
+        });
+        log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK WebSocket; dry_run=true passes through`);
+      } else {
+        _calls.push({ ...baseCall, action: FREE_MODE ? "OBSERVED" : "ALLOWED" });
+        report({
+          target_host: hostname, pid: process.pid,
+          action_taken: FREE_MODE ? "OBSERVED" : "ALLOWED",
+          timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+          mediation: "node_ws", plane: "optics_gate",
+        });
+        if (FREE_MODE) {
+          log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — WebSocket`);
+        }
+      }
+
+      const ws = launchHttpHandled(() => (protocols !== undefined ? new Orig(url, protocols) : new Orig(url)));
+      try { wrapWsSend(ws, hostname); } catch { /* fail open */ }
+      return ws;
+    }
+    Object.setPrototypeOf(VantioWebSocket, Orig);
+    VantioWebSocket.prototype = Orig.prototype;
+    VantioWebSocket.__vantioPatched = true;
+    return VantioWebSocket;
+  }
+
+  try {
+    const origGlobal = typeof globalThis.WebSocket === "function" ? globalThis.WebSocket : null;
+    if (origGlobal) globalThis.WebSocket = wrapWsCtor(origGlobal);
+    try {
+      const undici = require("undici");
+      if (undici && typeof undici.WebSocket === "function") {
+        if (origGlobal && (undici.WebSocket === origGlobal || undici.WebSocket === globalThis.WebSocket)) {
+          undici.WebSocket = globalThis.WebSocket;
+        } else {
+          undici.WebSocket = wrapWsCtor(undici.WebSocket);
+        }
+      }
+    } catch { /* ignore */ }
+  } catch { /* fail open — native WebSocket stays unwrapped */ }
 })();
 
 // Node http2.connect / session.request — same Sight Loop / Gate rules as
@@ -2514,29 +2759,74 @@ globalThis.fetch = function vantioFetch(input, init) {
     return { command, argv, options };
   }
 
+  function stripSpawnPrefixes(tokens) {
+    const list = Array.isArray(tokens) ? tokens.map((t) => String(t)) : [];
+    let i = 0;
+    while (i < list.length) {
+      const base = cmdBase(list[i]);
+      if (base !== "env" && base !== "timeout" && base !== "nice") return list.slice(i);
+      i += 1;
+      if (base === "env") {
+        while (i < list.length) {
+          const t = list[i];
+          if (t.startsWith("-")) {
+            if ((t === "-u" || t === "--unset") && i + 1 < list.length) i += 2;
+            else i += 1;
+            continue;
+          }
+          if (t.includes("=")) {
+            i += 1;
+            continue;
+          }
+          break;
+        }
+        continue;
+      }
+      if (base === "timeout") {
+        while (i < list.length && list[i].startsWith("-")) {
+          if ((list[i] === "-s" || list[i] === "--signal" || list[i] === "-k" || list[i] === "--kill-after")
+              && i + 1 < list.length) i += 2;
+          else i += 1;
+        }
+        if (i < list.length) i += 1;
+        continue;
+      }
+      if (base === "nice") {
+        if (i < list.length && (list[i] === "-n" || list[i] === "--adjustment") && i + 1 < list.length) i += 2;
+        else if (i < list.length && list[i].startsWith("-") && /^-?\d+$/.test(list[i].replace(/^-/, "") || "x")) i += 1;
+      }
+    }
+    return list.slice(i);
+  }
+
+  function cliFromTokens(tokens) {
+    const stripped = stripSpawnPrefixes(tokens);
+    if (!stripped.length) return null;
+    const base = cmdBase(stripped[0]);
+    if (base === "curl" || base === "wget") return { tool: base, argv: stripped.slice(1) };
+    if (base !== "sh" && base !== "bash" && base !== "dash" && base !== "zsh") return null;
+    const args = stripped.slice(1);
+    const cIdx = args.indexOf("-c");
+    if (cIdx < 0 || args[cIdx + 1] == null) return null;
+    const inner = stripSpawnPrefixes(tokenizeShell(args[cIdx + 1]));
+    if (!inner.length) return null;
+    const tool = cmdBase(inner[0]);
+    if (tool !== "curl" && tool !== "wget") return null;
+    return { tool, argv: inner.slice(1) };
+  }
+
   function httpCliFromSpawn(command, argv, options) {
     const args = Array.isArray(argv) ? argv.map((a) => String(a)) : [];
     if (options && options.shell) {
       return httpCliFromExec([String(command || ""), ...args].join(" "));
     }
-    const base = cmdBase(command);
-    if (base === "curl" || base === "wget") return { tool: base, argv: args };
-    if (base !== "sh" && base !== "bash" && base !== "dash" && base !== "zsh") return null;
-    const cIdx = args.indexOf("-c");
-    if (cIdx < 0 || args[cIdx + 1] == null) return null;
-    const tokens = tokenizeShell(args[cIdx + 1]);
-    if (!tokens.length) return null;
-    const tool = cmdBase(tokens[0]);
-    if (tool !== "curl" && tool !== "wget") return null;
-    return { tool, argv: tokens.slice(1) };
+    return cliFromTokens([String(command || ""), ...args]);
   }
 
   function httpCliFromExec(command) {
     const tokens = tokenizeShell(command);
     if (!tokens.length) return null;
-    const tool = cmdBase(tokens[0]);
-    if (tool === "curl" || tool === "wget") return { tool, argv: tokens.slice(1) };
-    return httpCliFromSpawn(tokens[0], tokens.slice(1), null);
+    return cliFromTokens(tokens);
   }
 
   function fileByteLength(rel) {
@@ -2566,9 +2856,26 @@ globalThis.fetch = function vantioFetch(input, init) {
     "--data-raw": false,
   };
 
+  function urlFromCurlConfig(path) {
+    try {
+      const text = readFileSync(String(path || ""), "utf8");
+      for (const line of text.split(/\r?\n/)) {
+        const s = line.trim();
+        if (!s || s.startsWith("#")) continue;
+        if (!s.toLowerCase().startsWith("url")) continue;
+        let rest = s.slice(3).trim();
+        if (rest.startsWith("=")) rest = rest.slice(1).trim();
+        rest = rest.replace(/^["']|["']$/g, "");
+        if (/^https?:\/\//i.test(rest)) return rest;
+      }
+    } catch { /* missing config — pass through */ }
+    return null;
+  }
+
   function parseCurlArgv(argv) {
     let url = null;
     let dataBytes = 0;
+    const configPaths = [];
     const args = Array.isArray(argv) ? argv : [];
     for (let i = 0; i < args.length; i++) {
       const a = String(args[i]);
@@ -2579,6 +2886,15 @@ globalThis.fetch = function vantioFetch(input, init) {
       }
       if (a.startsWith("--url=")) {
         url = a.slice("--url=".length);
+        continue;
+      }
+      if (a === "-K" || a === "--config") {
+        if (args[i + 1] != null) configPaths.push(String(args[i + 1]));
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--config=")) {
+        configPaths.push(a.slice("--config=".length));
         continue;
       }
       if (Object.prototype.hasOwnProperty.call(CURL_DATA_AT_FILE, a)) {
@@ -2614,6 +2930,15 @@ globalThis.fetch = function vantioFetch(input, init) {
         continue;
       }
       if (!url && /^https?:\/\//i.test(a)) url = a;
+    }
+    if (!url) {
+      for (const p of configPaths) {
+        const fromCfg = urlFromCurlConfig(p);
+        if (fromCfg) {
+          url = fromCfg;
+          break;
+        }
+      }
     }
     return { url, dataBytes };
   }

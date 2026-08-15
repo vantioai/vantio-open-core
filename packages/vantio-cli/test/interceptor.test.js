@@ -10,6 +10,7 @@ import http from "node:http";
 import http2 from "node:http2";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -261,7 +262,18 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     server.on("upgrade", (req, socket) => {
       requests.target.push({ method: "UPGRADE", url: req.url, headers: req.headers, body: "" });
       if (req.url && String(req.url).startsWith("/v1/ws")) {
-        socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+        const key = req.headers["sec-websocket-key"];
+        if (key) {
+          const accept = createHash("sha1")
+            .update(String(key) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+            .digest("base64");
+          socket.write(
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "
+            + accept + "\r\n\r\n"
+          );
+        } else {
+          socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+        }
         const idle = setTimeout(() => { try { socket.destroy(); } catch { /* ignore */ } }, 300);
         socket.on("data", (c) => {
           requests.wsFrames.push(Buffer.from(c));
@@ -325,6 +337,11 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
       requests.ingest[0].body.eventPayload.mediation,
       "node_wget",
       "fetch must stay a single ingest event, not a node_wget wrap"
+    );
+    assert.notEqual(
+      requests.ingest[0].body.eventPayload.mediation,
+      "node_ws",
+      "fetch must stay a single ingest event, not a node_ws wrap"
     );
     assert.ok(
       requests.ingest[0].body.eventPayload.bytes_observed != null,
@@ -576,6 +593,49 @@ else go();
     assert.match(stderr, /DRY_RUN/);
     const dry = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_HOST");
     assert.equal(dry.length, 1);
+  });
+
+  const CLIENT_REQUEST_SCRIPT = `
+const http = require("http");
+function go() {
+  const u = new URL(process.env.TARGET_URL);
+  const req = new http.ClientRequest({
+    protocol: u.protocol,
+    hostname: u.hostname,
+    port: u.port,
+    path: u.pathname,
+    method: "GET",
+  });
+  req.on("response", (res) => {
+    let body = "";
+    res.on("data", (c) => { body += c; });
+    res.on("end", () => {
+      process.stdout.write(JSON.stringify({ status: res.statusCode, body }) + "\\n");
+    });
+  });
+  req.on("error", (err) => {
+    process.stdout.write(JSON.stringify({ error: err.code || err.message }) + "\\n");
+  });
+  req.end();
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  test("PAID_MODE Node http.ClientRequest + blocked_hosts: target never reached", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      CLIENT_REQUEST_SCRIPT
+    );
+    assert.equal(code, 0, stdout);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+    assert.equal(requests.target.length, 0, "blocked ClientRequest must never reach the target");
+    assert.equal(requests.ingest.length, 1, "ClientRequest must not also ingest a raw net.connect event");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_http");
   });
 
   test("FREE_MODE fetch to 127.0.0.1:11434 is OBSERVED as local Ollama without EXTRA_LLM_HOSTS", async () => {
@@ -1092,6 +1152,14 @@ else go();
     }
   })();
 
+  const HAS_TIMEOUT = (() => {
+    try {
+      return spawnSync("timeout", ["--version"], { encoding: "utf8", timeout: 3000 }).status === 0;
+    } catch {
+      return false;
+    }
+  })();
+
   const CURL_SPAWN_SCRIPT = `
 const { spawn } = require("child_process");
 function go() {
@@ -1155,6 +1223,54 @@ function go() {
     "-sS", "--max-time", "2", "-X", "POST", "-d", "@" + process.env.POST_FILE,
     process.env.TARGET_URL,
   ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const CURL_TIMEOUT_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("timeout", ["5", "curl", "-sS", "--max-time", "2", process.env.TARGET_URL], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const CURL_K_SCRIPT = `
+const { spawn } = require("child_process");
+const { writeFileSync } = require("fs");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  writeFileSync(process.env.CURL_CONFIG, "url = " + process.env.TARGET_URL + "\\n");
+  const child = spawn("curl", ["-sS", "--max-time", "2", "-K", process.env.CURL_CONFIG], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   child.on("error", (err) => out({
     error: err && err.code ? String(err.code) : "Error",
     body: err && err.message ? String(err.message) : "",
@@ -1268,6 +1384,47 @@ else go();
         assert.ok(sizeEvents.length >= 1);
         assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
         assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-post-file"));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("PAID_MODE, timeout curl blocked_hosts: curl never starts", { skip: !HAS_CURL || !HAS_TIMEOUT, timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        CURL_TIMEOUT_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "timeout curl must not bypass destination blocking");
+      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_curl");
+    });
+
+    test("PAID_MODE, curl -K url= blocked_hosts: curl never starts", { skip: !HAS_CURL, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-curl-k-"));
+      const cfg = join(dir, "curl.conf");
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            CURL_CONFIG: cfg,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          CURL_K_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        const result = JSON.parse(stdout.trim().split("\n").pop());
+        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+        assert.equal(requests.target.length, 0, "curl -K must not bypass destination blocking");
+        assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+        assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_curl");
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1463,6 +1620,111 @@ else go();
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
+    });
+  });
+
+  const HAS_WS = (() => {
+    if (typeof WebSocket === "function") return true;
+    try {
+      return typeof require("undici").WebSocket === "function";
+    } catch {
+      return false;
+    }
+  })();
+
+  const WS_ONCE_SCRIPT = `
+function wsCtor() {
+  if (typeof WebSocket === "function") return WebSocket;
+  try { return require("undici").WebSocket; } catch { return null; }
+}
+function go() {
+  const Ctor = wsCtor();
+  if (!Ctor) {
+    process.stdout.write(JSON.stringify({ error: "NO_WEBSOCKET" }) + "\\n");
+    return;
+  }
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+  };
+  try {
+    const ws = new Ctor(process.env.WS_URL);
+    const timer = setTimeout(() => {
+      try { ws.close(); } catch {}
+      out({ error: "TIMEOUT" });
+    }, 2000);
+    ws.addEventListener("open", () => {
+      try { ws.send("hello-ws"); } catch (err) {
+        clearTimeout(timer);
+        out({
+          error: err && err.code ? String(err.code) : "Error",
+          body: err && err.message ? String(err.message) : "",
+        });
+        try { ws.close(); } catch {}
+        return;
+      }
+      clearTimeout(timer);
+      try { ws.close(); } catch {}
+      setTimeout(() => out({ ok: true }), 150);
+    });
+    ws.addEventListener("error", (ev) => {
+      clearTimeout(timer);
+      const err = (ev && ev.error) || ev;
+      out({
+        error: (err && err.code) ? String(err.code) : "Error",
+        body: (err && err.message) ? String(err.message) : "",
+      });
+    });
+  } catch (err) {
+    out({
+      error: err && err.code ? String(err.code) : "Error",
+      body: err && err.message ? String(err.message) : "",
+    });
+  }
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  describe("Node WebSocket", () => {
+    test("PAID_MODE, WebSocket blocked_hosts: handshake never starts", { skip: !HAS_WS, timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { WS_URL: `ws://127.0.0.1:${new URL(baseUrl).port}/v1/ws`, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WS_ONCE_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "blocked WebSocket must never reach the target");
+      const wsEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_ws");
+      assert.ok(wsEvents.length >= 1);
+      assert.equal(wsEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    });
+
+    test("PAID_MODE, WebSocket send over max_request_bytes: BLOCKED_SIZE", { skip: !HAS_WS, timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.max_request_bytes = 4;
+      const { code, stdout } = await runAgent(
+        { WS_URL: `ws://127.0.0.1:${new URL(baseUrl).port}/v1/ws`, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WS_ONCE_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      const deadline = Date.now() + 1000;
+      let sizeEvents = [];
+      while (Date.now() < deadline) {
+        sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+        if (sizeEvents.length >= 1) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(sizeEvents.length >= 1);
+      assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_ws");
     });
   });
 });

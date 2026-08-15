@@ -5,17 +5,19 @@ Records host, path, status, and size — never prompts or completions.
 In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
-Wraps urllib.request.urlopen always. If requests, httpx, or aiohttp are
-installed, wraps those too. Also wraps socket.connect / create_connection /
-ssl.SSLSocket.connect to in-scope hosts (host-block and observe only — no TLS
-payload redaction). Also wraps subprocess / os.system / asyncio curl and wget
-spawns to in-scope hosts (host-block and observe; curl/wget bodies are not
-rewritten). With a Gate API key, the same wrap can block, redact PII, or enforce
-a spend limit on HTTP bodies. Browsers stay outside this wrap.
+Wraps urllib.request.urlopen and OpenerDirector.open always. If requests,
+httpx, aiohttp, or urllib3 are installed, wraps those too. Also wraps
+socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and
+http.client request/putrequest to in-scope hosts (host-block and observe; TLS
+payloads are not read). Also wraps subprocess / os.system / asyncio curl and
+wget spawns (host-block and observe; file-body size from stat; curl/wget bodies
+are not rewritten). With a Gate API key, the same wrap can block, redact PII,
+or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
 """
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import os
 import shlex
@@ -48,6 +50,11 @@ try:
 except ImportError:
     _aiohttp = None  # type: ignore[assignment]
 
+try:
+    import urllib3 as _urllib3
+except ImportError:
+    _urllib3 = None  # type: ignore[assignment]
+
 # Keep in lockstep with vantio-cli/bin/llm-hosts.cjs
 _LLM_HOSTS = {
     "api.openai.com",
@@ -79,13 +86,18 @@ _LLM_HOSTS = {
 _lock = threading.Lock()
 _depth = 0
 _orig_urlopen = urllib.request.urlopen
+_orig_opener_open: Any = None
 _orig_requests_send: Any = None
 _orig_httpx_sync_send: Any = None
 _orig_httpx_async_send: Any = None
 _orig_aiohttp_request: Any = None
 _orig_socket_connect: Any = None
+_orig_socket_connect_ex: Any = None
 _orig_create_connection: Any = None
 _orig_ssl_connect: Any = None
+_orig_http_request: Any = None
+_orig_http_putrequest: Any = None
+_orig_urllib3_request: Any = None
 _orig_popen: Any = None
 _orig_os_system: Any = None
 _orig_asyncio_exec: Any = None
@@ -115,7 +127,7 @@ _http_owns_tls = threading.local()
 
 
 class GateBlockedError(OSError):
-    """Raised when Gate blocks a raw socket connect or a curl/wget spawn."""
+    """Raised when Gate blocks a raw socket connect, http.client request, or a curl/wget spawn."""
 
     def __init__(self, hostname: str) -> None:
         super().__init__(f"Vantio Gate blocked host: {hostname}")
@@ -535,6 +547,26 @@ def _apply_body(body: Any) -> tuple[Any, list[str], int]:
     return new_text, redactions, len(encoded)
 
 
+def _httpx_set_content(request: Any, payload: Any) -> None:
+    encoded = payload if isinstance(payload, (bytes, bytearray)) else str(payload).encode("utf-8")
+    encoded = bytes(encoded)
+    try:
+        request._content = encoded
+    except Exception:
+        return
+    try:
+        if _httpx is not None:
+            request.stream = _httpx.ByteStream(encoded)
+    except Exception:
+        pass
+    try:
+        headers = getattr(request, "headers", None)
+        if headers is not None:
+            headers["content-length"] = str(len(encoded))
+    except Exception:
+        pass
+
+
 def _dispatch_gate(
     hostname: str,
     port: Optional[str],
@@ -656,6 +688,93 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
         raise
 
 
+def _observe_opener_open(self, fullurl, data=None, timeout=socket._GLOBAL_DEFAULT_TIMEOUT):  # type: ignore[no-untyped-def]
+    if _http_owns():
+        return _orig_opener_open(self, fullurl, data, timeout)
+    hostname, port, path = _host_port_from_url(fullurl)
+    try:
+        raw_url = fullurl
+        if hasattr(fullurl, "full_url"):
+            raw_url = fullurl.full_url
+        url_s = str(raw_url)
+        scheme = "https" if url_s.startswith("https") else "http"
+    except Exception:
+        scheme = "https"
+        url_s = str(fullurl)
+    body = data if data is not None else getattr(fullurl, "data", None)
+    kind, payload, redactions, record_send = _dispatch_gate(
+        hostname, port, path, body, "python_urllib"
+    )
+    if kind == "pass":
+        return _http_orig(_orig_opener_open, self, fullurl, data, timeout)
+    if kind == "block":
+        raise _gate_blocked_urllib(url_s, str(payload))
+    send_data = data
+    if data is None and hasattr(fullurl, "data"):
+        if redactions:
+            try:
+                fullurl.data = (
+                    payload
+                    if isinstance(payload, (bytes, bytearray))
+                    else str(payload).encode("utf-8")
+                )
+            except Exception:
+                send_data = payload
+    else:
+        send_data = payload
+    t0 = time.time()
+    try:
+        resp = _http_orig(_orig_opener_open, self, fullurl, send_data, timeout)
+        _account_response_bytes(getattr(resp, "headers", None))
+        if record_send:
+            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            _record(
+                hostname,
+                action,
+                "python_urllib",
+                method="POST" if (data is not None or body is not None) else "GET",
+                path=path,
+                scheme=scheme,
+                status=getattr(resp, "status", None) or getattr(resp, "code", None),
+                ok=True,
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+        return resp
+    except Exception as exc:
+        _record(
+            hostname,
+            "OBSERVED",
+            "python_urllib",
+            method="POST" if (data is not None or body is not None) else "GET",
+            path=path,
+            scheme=scheme,
+            status=getattr(exc, "code", None),
+            ok=False,
+            duration_ms=int((time.time() - t0) * 1000),
+            error="network_error",
+            error_class=type(exc).__name__,
+        )
+        raise
+
+
+def _install_opener() -> None:
+    global _orig_opener_open
+    if _orig_opener_open is not None:
+        return
+    _orig_opener_open = urllib.request.OpenerDirector.open
+    urllib.request.OpenerDirector.open = _observe_opener_open  # type: ignore[assignment]
+
+
+def _uninstall_opener() -> None:
+    global _orig_opener_open
+    try:
+        if _orig_opener_open is not None:
+            urllib.request.OpenerDirector.open = _orig_opener_open
+    except Exception:
+        pass
+    _orig_opener_open = None
+
+
 def _install_requests() -> None:
     global _orig_requests_send
     if _requests is None:
@@ -741,6 +860,8 @@ def _install_httpx() -> None:
             return _http_orig(_orig_httpx_sync_send, self, request, **kwargs)
         if kind == "block":
             return _gate_blocked_httpx(str(payload))
+        if redactions:
+            _httpx_set_content(request, payload)
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(request.url).startswith("https") else "http"
@@ -786,6 +907,8 @@ def _install_httpx() -> None:
             return await _http_orig_async(_orig_httpx_async_send, self, request, **kwargs)
         if kind == "block":
             return _gate_blocked_httpx(str(payload))
+        if redactions:
+            _httpx_set_content(request, payload)
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(request.url).startswith("https") else "http"
@@ -969,6 +1092,16 @@ def _observe_socket_connect(self: Any, address: Any, *args: Any, **kwargs: Any) 
     return _orig_socket_connect(self, address, *args, **kwargs)
 
 
+def _observe_socket_connect_ex(self: Any, address: Any) -> Any:
+    hostname, port, ipc = _addr_host_port(address)
+    if ipc:
+        return _orig_socket_connect_ex(self, address)
+    decision = _gate_socket_dest(hostname, port)
+    if decision == "block":
+        raise GateBlockedError(hostname or "")
+    return _orig_socket_connect_ex(self, address)
+
+
 def _observe_ssl_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
     hostname, port, ipc = _addr_host_port(address)
     if ipc:
@@ -994,10 +1127,11 @@ def _observe_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
 
 
 def _install_socket() -> None:
-    global _orig_socket_connect, _orig_create_connection, _orig_ssl_connect
+    global _orig_socket_connect, _orig_socket_connect_ex, _orig_create_connection, _orig_ssl_connect
     if _orig_socket_connect is not None:
         return
     _orig_socket_connect = socket.socket.connect
+    _orig_socket_connect_ex = socket.socket.connect_ex
     _orig_create_connection = socket.create_connection
     ssl_own = None
     try:
@@ -1007,6 +1141,7 @@ def _install_socket() -> None:
     except Exception:
         ssl_own = None
     socket.socket.connect = _observe_socket_connect  # type: ignore[method-assign]
+    socket.socket.connect_ex = _observe_socket_connect_ex  # type: ignore[method-assign]
     socket.create_connection = _observe_create_connection  # type: ignore[assignment]
     if ssl_own is not None:
         _orig_ssl_connect = ssl_own
@@ -1016,10 +1151,12 @@ def _install_socket() -> None:
 
 
 def _uninstall_socket() -> None:
-    global _orig_socket_connect, _orig_create_connection, _orig_ssl_connect
+    global _orig_socket_connect, _orig_socket_connect_ex, _orig_create_connection, _orig_ssl_connect
     try:
         if _orig_socket_connect is not None:
             socket.socket.connect = _orig_socket_connect
+        if _orig_socket_connect_ex is not None:
+            socket.socket.connect_ex = _orig_socket_connect_ex
         if _orig_create_connection is not None:
             socket.create_connection = _orig_create_connection
         if _orig_ssl_connect is not None:
@@ -1027,8 +1164,175 @@ def _uninstall_socket() -> None:
     except Exception:
         pass
     _orig_socket_connect = None
+    _orig_socket_connect_ex = None
     _orig_create_connection = None
     _orig_ssl_connect = None
+
+
+def _http_conn_host_port(conn: Any) -> tuple[str, Optional[str]]:
+    host = str(getattr(conn, "host", "") or "")
+    port = getattr(conn, "port", None)
+    return host, (str(port) if port is not None else None)
+
+
+def _observe_http_client_request(
+    self: Any,
+    method: Any,
+    url: Any,
+    body: Any = None,
+    headers: Any = None,
+    encode_chunked: bool = False,
+) -> Any:
+    if _http_owns():
+        return _orig_http_request(self, method, url, body, headers or {}, encode_chunked=encode_chunked)
+    hostname, port = _http_conn_host_port(self)
+    path = str(url or "/").split("?")[0] or "/"
+    kind, payload, redactions, record_send = _dispatch_gate(
+        hostname, port, path, body, "python_http_client"
+    )
+    if kind == "pass":
+        return _http_orig(
+            _orig_http_request, self, method, url, body, headers or {}, encode_chunked=encode_chunked
+        )
+    if kind == "block":
+        raise GateBlockedError(hostname or "")
+    send_body = payload if redactions else body
+    t0 = time.time()
+    method_s = str(method or "GET").upper()
+    try:
+        resp = _http_orig(
+            _orig_http_request, self, method, url, send_body, headers or {}, encode_chunked=encode_chunked
+        )
+        if record_send:
+            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            _record(hostname, action, "python_http_client", method=method_s, path=path, ok=True,
+                    duration_ms=int((time.time() - t0) * 1000))
+        return resp
+    except Exception as exc:
+        if isinstance(exc, GateBlockedError):
+            raise
+        _record(
+            hostname, "OBSERVED", "python_http_client", method=method_s, path=path, ok=False,
+            duration_ms=int((time.time() - t0) * 1000), error="network_error",
+            error_class=type(exc).__name__,
+        )
+        raise
+
+
+def _observe_http_client_putrequest(
+    self: Any,
+    method: Any,
+    url: Any,
+    skip_host: bool = False,
+    skip_accept_encoding: bool = False,
+) -> Any:
+    if _http_owns():
+        return _orig_http_putrequest(self, method, url, skip_host, skip_accept_encoding)
+    hostname, port = _http_conn_host_port(self)
+    path = str(url or "/").split("?")[0] or "/"
+    kind, _payload, _redactions, record_send = _dispatch_gate(
+        hostname, port, path, None, "python_http_client"
+    )
+    if kind == "block":
+        raise GateBlockedError(hostname or "")
+    if kind != "pass" and record_send:
+        action = "ALLOWED" if _cloud_sync else "OBSERVED"
+        _record(hostname, action, "python_http_client", method=str(method or "GET").upper(), path=path)
+    return _http_orig(_orig_http_putrequest, self, method, url, skip_host, skip_accept_encoding)
+
+
+def _install_http_client() -> None:
+    global _orig_http_request, _orig_http_putrequest
+    if _orig_http_request is not None:
+        return
+    _orig_http_request = http.client.HTTPConnection.request
+    _orig_http_putrequest = http.client.HTTPConnection.putrequest
+    http.client.HTTPConnection.request = _observe_http_client_request  # type: ignore[assignment]
+    http.client.HTTPConnection.putrequest = _observe_http_client_putrequest  # type: ignore[assignment]
+
+
+def _uninstall_http_client() -> None:
+    global _orig_http_request, _orig_http_putrequest
+    try:
+        if _orig_http_request is not None:
+            http.client.HTTPConnection.request = _orig_http_request
+        if _orig_http_putrequest is not None:
+            http.client.HTTPConnection.putrequest = _orig_http_putrequest
+    except Exception:
+        pass
+    _orig_http_request = None
+    _orig_http_putrequest = None
+
+
+def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, body: Any = None, headers: Any = None, **kwargs: Any) -> Any:
+    if _http_owns():
+        return _orig_urllib3_request(self, method, url, body=body, headers=headers, **kwargs)
+    hostname, port = _http_conn_host_port(self)
+    path = str(url or "/").split("?")[0] or "/"
+    kind, payload, redactions, record_send = _dispatch_gate(
+        hostname, port, path, body, "python_urllib3"
+    )
+    if kind == "pass":
+        return _http_orig(_orig_urllib3_request, self, method, url, body=body, headers=headers, **kwargs)
+    if kind == "block":
+        raise GateBlockedError(hostname or "")
+    send_body = payload if redactions else body
+    t0 = time.time()
+    method_s = str(method or "GET").upper()
+    try:
+        resp = _http_orig(
+            _orig_urllib3_request, self, method, url, body=send_body, headers=headers, **kwargs
+        )
+        if record_send:
+            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            status = getattr(resp, "status", None)
+            _record(
+                hostname, action, "python_urllib3", method=method_s, path=path, ok=True,
+                status=status, duration_ms=int((time.time() - t0) * 1000),
+            )
+        return resp
+    except Exception as exc:
+        if isinstance(exc, GateBlockedError):
+            raise
+        _record(
+            hostname, "OBSERVED", "python_urllib3", method=method_s, path=path, ok=False,
+            duration_ms=int((time.time() - t0) * 1000), error="network_error",
+            error_class=type(exc).__name__,
+        )
+        raise
+
+
+def _install_urllib3() -> None:
+    global _orig_urllib3_request
+    if _urllib3 is None or _orig_urllib3_request is not None:
+        return
+    pool_mod = getattr(_urllib3, "connectionpool", None)
+    if pool_mod is None:
+        try:
+            from urllib3 import connectionpool as pool_mod
+        except ImportError:
+            return
+    pool_cls = getattr(pool_mod, "HTTPConnectionPool", None) if pool_mod is not None else None
+    if pool_cls is None:
+        return
+    current = getattr(pool_cls, "urlopen", None)
+    if current is None or current is _observe_urllib3_urlopen:
+        return
+    _orig_urllib3_request = current
+    pool_cls.urlopen = _observe_urllib3_urlopen  # type: ignore[assignment]
+
+
+def _uninstall_urllib3() -> None:
+    global _orig_urllib3_request
+    try:
+        if _orig_urllib3_request is not None and _urllib3 is not None:
+            pool_mod = getattr(_urllib3, "connectionpool", None)
+            pool_cls = getattr(pool_mod, "HTTPConnectionPool", None) if pool_mod is not None else None
+            if pool_cls is not None:
+                pool_cls.urlopen = _orig_urllib3_request
+    except Exception:
+        pass
+    _orig_urllib3_request = None
 
 
 def _cmd_base(file: Any) -> str:
@@ -1048,36 +1352,81 @@ def _tokenize_shell(s: str) -> list[str]:
         return []
 
 
-def _http_cli_from_spawn(command: Any, argv: Any) -> Optional[tuple[str, list[str]]]:
-    args = [str(a) for a in list(argv or [])]
-    base = _cmd_base(command)
+def _strip_spawn_prefixes(tokens: list[str]) -> list[str]:
+    i = 0
+    n = len(tokens)
+    while i < n:
+        base = _cmd_base(tokens[i])
+        if base not in ("env", "timeout", "nice"):
+            return tokens[i:]
+        i += 1
+        if base == "env":
+            while i < n:
+                t = tokens[i]
+                if t.startswith("-"):
+                    if t in ("-u", "--unset") and i + 1 < n:
+                        i += 2
+                    else:
+                        i += 1
+                    continue
+                if "=" in t:
+                    i += 1
+                    continue
+                break
+            continue
+        if base == "timeout":
+            while i < n and tokens[i].startswith("-"):
+                if tokens[i] in ("-s", "--signal", "-k", "--kill-after") and i + 1 < n:
+                    i += 2
+                else:
+                    i += 1
+            if i < n:
+                i += 1
+            continue
+        if base == "nice":
+            if i < n and tokens[i] in ("-n", "--adjustment") and i + 1 < n:
+                i += 2
+            elif i < n and tokens[i].startswith("-") and tokens[i][1:].lstrip("-").isdigit():
+                i += 1
+            continue
+    return tokens[i:] if i < n else []
+
+
+def _cli_from_tokens(tokens: list[str]) -> Optional[tuple[str, list[str]]]:
+    stripped = _strip_spawn_prefixes([str(t) for t in tokens])
+    if not stripped:
+        return None
+    base = _cmd_base(stripped[0])
     if base in ("curl", "wget"):
-        return base, args
+        return base, stripped[1:]
     if base not in ("sh", "bash", "dash", "zsh"):
         return None
+    args = stripped[1:]
     try:
         c_idx = args.index("-c")
     except ValueError:
         return None
     if c_idx + 1 >= len(args):
         return None
-    tokens = _tokenize_shell(args[c_idx + 1])
-    if not tokens:
+    inner = _strip_spawn_prefixes(_tokenize_shell(args[c_idx + 1]))
+    if not inner:
         return None
-    tool = _cmd_base(tokens[0])
+    tool = _cmd_base(inner[0])
     if tool not in ("curl", "wget"):
         return None
-    return tool, tokens[1:]
+    return tool, inner[1:]
+
+
+def _http_cli_from_spawn(command: Any, argv: Any) -> Optional[tuple[str, list[str]]]:
+    args = [str(a) for a in list(argv or [])]
+    return _cli_from_tokens([str(command)] + args)
 
 
 def _http_cli_from_exec(command: Any) -> Optional[tuple[str, list[str]]]:
     tokens = _tokenize_shell(str(command or ""))
     if not tokens:
         return None
-    tool = _cmd_base(tokens[0])
-    if tool in ("curl", "wget"):
-        return tool, tokens[1:]
-    return _http_cli_from_spawn(tokens[0], tokens[1:])
+    return _cli_from_tokens(tokens)
 
 
 def _http_cli_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[tuple[str, list[str]]]:
@@ -1087,10 +1436,7 @@ def _http_cli_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[tuple[st
     if isinstance(args, str):
         if shell:
             return _http_cli_from_exec(args)
-        base = _cmd_base(args)
-        if base in ("curl", "wget"):
-            return base, []
-        return None
+        return _cli_from_tokens([args])
     try:
         seq = list(args)
     except TypeError:
@@ -1099,12 +1445,64 @@ def _http_cli_from_popen(args: Any, kwargs: dict[str, Any]) -> Optional[tuple[st
         return None
     if shell:
         return _http_cli_from_exec(" ".join(str(x) for x in seq))
-    return _http_cli_from_spawn(seq[0], seq[1:])
+    return _cli_from_tokens([str(x) for x in seq])
+
+
+def _file_byte_length(rel: Any) -> int:
+    p = str(rel or "")
+    if not p or p == "-":
+        return 0
+    try:
+        if os.path.isfile(p):
+            return int(os.stat(p).st_size) or 0
+    except Exception:
+        return 0
+    return 0
+
+
+def _bytes_from_at_or_literal(value: Any, at_means_file: bool) -> int:
+    v = str(value if value is not None else "")
+    if at_means_file and v.startswith("@"):
+        return _file_byte_length(v[1:])
+    return len(v.encode("utf-8"))
+
+
+_CURL_DATA_AT_FILE = {
+    "-d": True,
+    "--data": True,
+    "--data-binary": True,
+    "--data-ascii": True,
+    "--data-urlencode": True,
+    "--json": True,
+    "--data-raw": False,
+}
+
+
+def _url_from_curl_config(path: str) -> Optional[str]:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                s = line.strip()
+                if not s or s.startswith("#"):
+                    continue
+                lower = s.lower()
+                if not lower.startswith("url"):
+                    continue
+                rest = s[3:].lstrip()
+                if rest.startswith("="):
+                    rest = rest[1:].strip()
+                rest = rest.strip("\"'")
+                if rest.startswith("http://") or rest.startswith("https://"):
+                    return rest
+    except Exception:
+        return None
+    return None
 
 
 def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
     url: Optional[str] = None
     data_bytes = 0
+    config_paths: list[str] = []
     args = [str(a) for a in argv]
     i = 0
     while i < len(args):
@@ -1117,21 +1515,54 @@ def _parse_curl_argv(argv: list[str]) -> tuple[Optional[str], int]:
             url = a[len("--url="):]
             i += 1
             continue
-        if a in (
-            "-d", "--data", "--data-raw", "--data-binary",
-            "--data-ascii", "--data-urlencode", "--json",
-        ):
-            value = args[i + 1] if i + 1 < len(args) else ""
-            data_bytes += len(str(value).encode("utf-8"))
+        if a in ("-K", "--config"):
+            if i + 1 < len(args):
+                config_paths.append(args[i + 1])
             i += 2
             continue
+        if a.startswith("--config="):
+            config_paths.append(a[len("--config="):])
+            i += 1
+            continue
+        if a in _CURL_DATA_AT_FILE:
+            value = args[i + 1] if i + 1 < len(args) else ""
+            data_bytes += _bytes_from_at_or_literal(value, _CURL_DATA_AT_FILE[a])
+            i += 2
+            continue
+        eq_handled = False
+        for flag, at_file in _CURL_DATA_AT_FILE.items():
+            if flag.startswith("--") and a.startswith(flag + "="):
+                data_bytes += _bytes_from_at_or_literal(a[len(flag) + 1:], at_file)
+                eq_handled = True
+                break
+        if eq_handled:
+            i += 1
+            continue
         if a.startswith("-d") and len(a) > 2 and not a.startswith("--"):
-            data_bytes += len(a[2:].encode("utf-8"))
+            data_bytes += _bytes_from_at_or_literal(a[2:], True)
+            i += 1
+            continue
+        if a in ("-T", "--upload-file"):
+            data_bytes += _file_byte_length(args[i + 1] if i + 1 < len(args) else "")
+            i += 2
+            continue
+        if a.startswith("--upload-file="):
+            data_bytes += _file_byte_length(a[len("--upload-file="):])
+            i += 1
+            continue
+        if a.startswith("-T") and len(a) > 2 and not a.startswith("--"):
+            data_bytes += _file_byte_length(a[2:])
             i += 1
             continue
         if url is None and (a.startswith("http://") or a.startswith("https://")):
             url = a
         i += 1
+    if url is None:
+        for path in config_paths:
+            found = _url_from_curl_config(path)
+            if found:
+                url = found
+                break
     return url, data_bytes
 
 
@@ -1153,6 +1584,18 @@ def _parse_wget_argv(argv: list[str]) -> tuple[Optional[str], int]:
             continue
         if a.startswith("--body-data="):
             data_bytes += len(a[len("--body-data="):].encode("utf-8"))
+            i += 1
+            continue
+        if a in ("--post-file", "--body-file"):
+            data_bytes += _file_byte_length(args[i + 1] if i + 1 < len(args) else "")
+            i += 2
+            continue
+        if a.startswith("--post-file="):
+            data_bytes += _file_byte_length(a[len("--post-file="):])
+            i += 1
+            continue
+        if a.startswith("--body-file="):
+            data_bytes += _file_byte_length(a[len("--body-file="):])
             i += 1
             continue
         if url is None and (a.startswith("http://") or a.startswith("https://")):
@@ -1317,7 +1760,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib, requests/httpx/aiohttp when installed, socket.connect / create_connection, and subprocess curl/wget to in-scope LLM hosts. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl and wget bodies are not rewritten. Browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3 when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget to in-scope LLM hosts. File-body size is counted from stat; contents are not read. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl and wget bodies are not rewritten. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
@@ -1343,10 +1786,13 @@ def install(trace_id: str) -> None:
             _trace_id = trace_id
             _load_policy()
             urllib.request.urlopen = _observe_urlopen  # type: ignore[assignment]
+            _install_opener()
             _install_requests()
             _install_httpx()
             _install_aiohttp()
             _install_socket()
+            _install_http_client()
+            _install_urllib3()
             _install_curl_spawn()
 
 
@@ -1358,10 +1804,13 @@ def uninstall() -> None:
         _depth -= 1
         if _depth == 0:
             urllib.request.urlopen = _orig_urlopen  # type: ignore[assignment]
+            _uninstall_opener()
             _uninstall_requests()
             _uninstall_httpx()
             _uninstall_aiohttp()
             _uninstall_socket()
+            _uninstall_urllib3()
+            _uninstall_http_client()
             _uninstall_curl_spawn()
             _write_run_log()
             _reset_policy()
