@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.8** (npm) and **`vantio-agent-sdk` 3.0.4** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.9** (npm) and **`vantio-agent-sdk` 3.0.4** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -85,7 +85,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Package | Published | Description |
 |---------|-----------|-------------|
-| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.8** | CLI runner — Node fetch, undici (fetch/request/stream/pipeline/dispatch/connect/upgrade), http/https, http2 wrap |
+| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.9** | CLI runner — Node fetch, undici, http/https, http2, net/tls wrap |
 | [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.4** | Python `shield()` — urllib + optional requests/httpx/aiohttp |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
@@ -126,7 +126,7 @@ await shield(async () => {
 });
 ```
 
-Node wrap of `fetch`, undici, `http`/`https`, and `http2` is in **`@vantio/cli` 0.3.8** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
+Node wrap of `fetch`, undici, `http`/`https`, `http2`, and `net`/`tls` is in **`@vantio/cli` 0.3.9** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
 
 ### Python
 
@@ -150,7 +150,7 @@ While `shield()` is active, Optics records urllib to in-scope hosts. If `request
 
 ## Supported wraps
 
-**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https`, and Node `http2.connect` / `session.request`.
+**Node (`vantio run`):** `fetch`, `undici.fetch`, `undici.request` (including Client / Pool / Agent), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http` / `https`, Node `http2.connect` / `session.request`, and Node `net` / `tls` connect to in-scope hosts.
 
 **Python (`shield()`):** `urllib`; `requests`, `httpx`, and `aiohttp` when those libraries are already installed.
 
@@ -158,7 +158,7 @@ While `shield()` is active, Optics records urllib to in-scope hosts. If `request
 
 **Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
-curl, raw sockets, and browser paths stay outside this wrap.
+curl, browser paths, and Python sockets stay outside this wrap.
 
 ---
 
