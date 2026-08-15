@@ -10,6 +10,8 @@ import http from "node:http";
 import http2 from "node:http2";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -1139,6 +1141,30 @@ if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
 else go();
 `;
 
+  const CURL_POST_FILE_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("curl", [
+    "-sS", "--max-time", "2", "-X", "POST", "-d", "@" + process.env.POST_FILE,
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
   describe("Node-spawned curl", () => {
     test("PAID_MODE, spawn curl blocked_hosts: curl never starts", { skip: !HAS_CURL, timeout: 15000 }, async () => {
       configPolicy.enforce = true;
@@ -1210,6 +1236,42 @@ else go();
       assert.ok(sizeEvents.length >= 1);
       assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
     });
+
+    test("PAID_MODE, spawn curl -d @file over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_CURL, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-curl-post-file-"));
+      const postFile = join(dir, "body.txt");
+      writeFileSync(postFile, "hello-post-file");
+      configPolicy.enforce = true;
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.max_request_bytes = 4;
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            POST_FILE: postFile,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          CURL_POST_FILE_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        const result = JSON.parse(stdout.trim().split("\n").pop());
+        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+        assert.equal(requests.target.length, 0, "oversized curl @file body must not reach the target");
+        const deadline = Date.now() + 1000;
+        let sizeEvents = [];
+        while (Date.now() < deadline) {
+          sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+          if (sizeEvents.length >= 1) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        assert.ok(sizeEvents.length >= 1);
+        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
+        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-post-file"));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 
   const HAS_WGET = (() => {
@@ -1242,6 +1304,31 @@ function go() {
     body: err && err.message ? String(err.message) : "",
   }));
   child.on("close", (code) => out({ ok: true, code, body }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const WGET_POST_FILE_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("wget", [
+    "-q", "-O", "-", "--timeout=2", "--tries=1",
+    "--post-file=" + process.env.POST_FILE,
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
 else go();
@@ -1340,6 +1427,42 @@ else go();
       }
       assert.ok(sizeEvents.length >= 1);
       assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_wget");
+    });
+
+    test("PAID_MODE, spawn wget --post-file over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-wget-post-file-"));
+      const postFile = join(dir, "body.txt");
+      writeFileSync(postFile, "hello-post-file");
+      configPolicy.enforce = true;
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.max_request_bytes = 4;
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            POST_FILE: postFile,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          WGET_POST_FILE_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        const result = JSON.parse(stdout.trim().split("\n").pop());
+        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+        assert.equal(requests.target.length, 0, "oversized wget --post-file body must not reach the target");
+        const deadline = Date.now() + 1000;
+        let sizeEvents = [];
+        while (Date.now() < deadline) {
+          sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+          if (sizeEvents.length >= 1) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        assert.ok(sizeEvents.length >= 1);
+        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_wget");
+        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-post-file"));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
   });
 });
