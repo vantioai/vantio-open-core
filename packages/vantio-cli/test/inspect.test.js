@@ -170,6 +170,49 @@ describe("vantio inspect — search / tail / diff", () => {
     assert.equal(openai.delta_calls, 1);
   });
 
+  test("tail table keeps columns aligned and prints full action + trace ID", async () => {
+    const home = mkdtempSync(join(tmpdir(), "vantio-inspect-cols-"));
+    try {
+      writeRun(home, "0xccc333inspect03", [
+        {
+          hostname: "api.openai.com",
+          provider: "openai",
+          method: "POST",
+          path: "/v1/chat/completions",
+          action: "DRY_RUN_BLOCKED_SPEND",
+          bytes: 900,
+          ts: null,
+        },
+        {
+          hostname: "api.openai.com",
+          provider: "openai",
+          method: "POST",
+          path: "/v1/chat/completions",
+          action: "OBSERVED",
+          bytes: 900,
+          ts: "2026-08-15T14:00:10.000Z",
+        },
+      ]);
+      const { code, stdout } = await runCli(["tail"], { HOME: home });
+      assert.equal(code, 0);
+      // Full label, not a truncated "DRY_RUN_B…" that reads the same as
+      // DRY_RUN_BLOCKED_SIZE, and a trace ID you can paste into prove/diff.
+      assert.match(stdout, /DRY_RUN_BLOCKED_SPEND/);
+      assert.match(stdout, /0xccc333inspect03/);
+
+      const lines = stdout.split("\n");
+      const header = lines.find((l) => l.startsWith("TIMESTAMP"));
+      const rows = lines.filter((l) => l.includes("api.openai.com"));
+      assert.equal(rows.length, 2);
+      const hostCol = header.indexOf("HOST");
+      for (const row of rows) {
+        assert.equal(row.indexOf("api.openai.com"), hostCol);
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("tail --help and diff --help print without needing runs", async () => {
     const empty = mkdtempSync(join(tmpdir(), "vantio-inspect-empty-"));
     try {

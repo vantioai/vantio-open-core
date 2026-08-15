@@ -1194,6 +1194,10 @@ function callSearchBlob(call, traceId) {
   ].join(" ").toLowerCase();
 }
 
+// Column widths shared by the header and every row so a call with a missing
+// timestamp or a long action label (DRY_RUN_BLOCKED_SPEND) still lines up.
+const CALL_COLS = { ts: 24, host: 28, action: 22, route: 36, bytes: 10 };
+
 function formatCallLine(call, traceId) {
   const host = call.hostname || "—";
   const action = (call.action || "OBSERVED").toUpperCase();
@@ -1202,18 +1206,21 @@ function formatCallLine(call, traceId) {
   const route = [method, path].filter(Boolean).join(" ") || "—";
   const bytes = call.bytes != null ? Number(call.bytes).toLocaleString() : "—";
   const ts = call.ts || "—";
-  const tid = traceId ? `${String(traceId).slice(0, 16)}…` : "";
-  return `${ts}  ${col(host, 28)}  ${col(action, 10)}  ${col(route, 36)}  ${col(bytes, 10)}  ${tid}`;
+  // Trace ID is printed in full: it is what you paste into `vantio prove --run=`
+  // or `vantio diff`, so truncating it would make the row unusable.
+  const tid = traceId ? String(traceId) : "—";
+  return `${col(ts, CALL_COLS.ts)}  ${col(host, CALL_COLS.host)}  ${col(action, CALL_COLS.action)}  ` +
+    `${col(route, CALL_COLS.route)}  ${col(bytes, CALL_COLS.bytes)}  ${tid}`;
 }
 
 function printCallHeader() {
   const hdr =
-    col("TIMESTAMP", 24) + "  " +
-    col("HOST", 28) + "  " +
-    col("ACTION", 10) + "  " +
-    col("METHOD / PATH", 36) + "  " +
-    col("BYTES", 10) + "  TRACE";
-  process.stdout.write(`${hdr}\n${"-".repeat(Math.min(hdr.length, 120))}\n`);
+    col("TIMESTAMP", CALL_COLS.ts) + "  " +
+    col("HOST", CALL_COLS.host) + "  " +
+    col("ACTION", CALL_COLS.action) + "  " +
+    col("METHOD / PATH", CALL_COLS.route) + "  " +
+    col("BYTES", CALL_COLS.bytes) + "  TRACE ID";
+  process.stdout.write(`${hdr}\n${"-".repeat(hdr.length)}\n`);
 }
 
 async function searchCommand(args) {
