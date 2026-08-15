@@ -396,4 +396,38 @@ else go();
       await new Promise((resolve) => ollamaServer.close(resolve));
     }
   });
+
+  test("PAID_MODE Node http.get + spend_cap: second call BLOCKED_SPEND", async () => {
+    configPolicy.enforce = true;
+    configPolicy.allowed_hosts = ["127.0.0.1"];
+    configPolicy.spend_cap_usd = 0.000001;
+    const TWO_HTTP_SCRIPT = `
+const http = require("http");
+function one(url) {
+  return new Promise((resolve) => {
+    http.get(url, (res) => {
+      let body = "";
+      res.on("data", (c) => { body += c; });
+      res.on("end", () => resolve({ status: res.statusCode, body }));
+    }).on("error", (err) => resolve({ error: err.code || err.message }));
+  });
+}
+(async () => {
+  await new Promise((r) => setTimeout(r, 200));
+  const a = await one(process.env.TARGET_URL);
+  const b = await one(process.env.TARGET_URL);
+  process.stdout.write(JSON.stringify({ a, b }) + "\\n");
+})();
+`;
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      TWO_HTTP_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.a.status, 200, "first http.get must succeed");
+    assert.equal(result.b.error, "VANTIO_GATE_BLOCKED");
+    const spend = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SPEND");
+    assert.equal(spend.length, 1);
+  });
 });

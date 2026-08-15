@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.2**.
+> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.3**.
 
 ```bash
 npm install -g @vantio/cli
@@ -46,7 +46,7 @@ vantio run python agent.py
 vantio run tsx agent.ts
 ```
 
-Wrap any Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch` and Node `http`/`https`, and records connection metadata locally (and to Gate when a key is configured). Python agents should use `pip install vantio-agent-sdk==3.0.2` and `shield()`.
+Wrap any Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch` and Node `http`/`https`, and records connection metadata locally (and to Gate when a key is configured). For Python, install `vantio-agent-sdk` and run `vantio run python agent.py` — same wrap, no script edit. `shield()` is optional when you want a trace id inside the process.
 
 Your code doesn't change. Your agent runs normally. If you've run `vantio login`, the stored key is injected into the child process; an explicit `VANTIO_API_KEY` in your environment always takes precedence.
 
