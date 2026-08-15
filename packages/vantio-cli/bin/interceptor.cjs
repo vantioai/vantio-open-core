@@ -1,9 +1,9 @@
 // [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
-// request() and dispatch(), undici.stream/pipeline, and Node http/https.request|get
-// to intercept outbound LLM calls — zero code changes. Raw sockets, curl,
-// undici.connect/upgrade, and browser paths stay outside this wrap.
+// request() and dispatch(), undici.stream/pipeline/connect/upgrade, and Node
+// http/https.request|get to intercept outbound LLM calls — zero code changes.
+// Raw sockets, curl, and browser paths stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -894,7 +894,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 };
 
 // undici.fetch, undici.request, Dispatcher.prototype.request, and
-// DispatcherBase.dispatch (covers stream / pipeline / raw Client.dispatch).
+// DispatcherBase.dispatch (covers stream / pipeline / connect / upgrade / raw Client.dispatch).
 // Fetch and .request wrap above dispatch; undiciWrapDepth skips a second Gate.
 (function patchUndici() {
   const { Readable } = require("node:stream");
@@ -1151,6 +1151,24 @@ globalThis.fetch = function vantioFetch(input, init) {
     return { body, redactions: [], bytes: 0, unscanned: "stream" };
   }
 
+  function blockedTunnel(handler, reason) {
+    const err = new Error(`Vantio Gate blocked request: ${reason}`);
+    err.code = "VANTIO_GATE_BLOCKED";
+    queueMicrotask(() => {
+      try {
+        if (handler && typeof handler.onError === "function") handler.onError(err);
+      } catch {
+        /* handler threw — already refused the tunnel */
+      }
+    });
+    return true;
+  }
+
+  function refuseDispatch(handler, reason, opts) {
+    if (isUpgradeOrConnect(opts)) return blockedTunnel(handler, reason);
+    return blockedDispatch(handler, reason);
+  }
+
   function blockedDispatch(handler, reason) {
     const payload = Buffer.from(JSON.stringify({ error: "blocked_by_vantio", reason }));
     const headers = [
@@ -1186,7 +1204,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     } catch {
       return orig.call(dispatcher, opts, handler);
     }
-    if (isControlPlaneHref(href) || !inScope(hostname, port) || isUpgradeOrConnect(opts)) {
+    if (isControlPlaneHref(href) || !inScope(hostname, port)) {
       return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
     }
 
@@ -1224,7 +1242,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK undici.dispatch; dry_run=true passes through`);
         } else {
           blockHost(hostname);
-          return blockedDispatch(handler, "host_not_permitted");
+          return refuseDispatch(handler, "host_not_permitted", opts);
         }
       }
     }
@@ -1248,7 +1266,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         });
       } else {
         blockSize(hostname, scanned.bytes);
-        return blockedDispatch(handler, "request_too_large");
+        return refuseDispatch(handler, "request_too_large", opts);
       }
     }
 
@@ -1261,7 +1279,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         });
       } else {
         blockSpend(hostname);
-        return blockedDispatch(handler, "spend_cap_reached");
+        return refuseDispatch(handler, "spend_cap_reached", opts);
       }
     }
 
@@ -1835,7 +1853,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici.fetch, undici.request, Client/Pool/Agent.request, undici.stream/pipeline/dispatch, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, undici.connect/upgrade, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici.fetch, undici.request, Client/Pool/Agent.request, undici.stream/pipeline/dispatch/connect/upgrade, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },

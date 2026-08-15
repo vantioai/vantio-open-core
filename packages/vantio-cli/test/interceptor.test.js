@@ -179,6 +179,40 @@ const UNDICI_PIPELINE_ONCE_SCRIPT = `
 })();
 `;
 
+const UNDICI_CONNECT_ONCE_SCRIPT = `
+(async () => {
+  const { connect } = require("undici");
+  try {
+    const data = await connect(process.env.TARGET_URL);
+    if (data && data.socket) data.socket.destroy();
+    process.stdout.write(JSON.stringify({ status: data && data.statusCode, error: null }) + "\\n");
+  } catch (err) {
+    process.stdout.write(JSON.stringify({
+      status: 0,
+      error: err && err.code ? String(err.code) : "Error",
+      body: err && err.message ? String(err.message) : "",
+    }) + "\\n");
+  }
+})();
+`;
+
+const UNDICI_UPGRADE_ONCE_SCRIPT = `
+(async () => {
+  const { upgrade } = require("undici");
+  try {
+    const data = await upgrade(process.env.TARGET_URL, { protocol: "Websocket" });
+    if (data && data.socket) data.socket.destroy();
+    process.stdout.write(JSON.stringify({ status: 101, error: null }) + "\\n");
+  } catch (err) {
+    process.stdout.write(JSON.stringify({
+      status: 0,
+      error: err && err.code ? String(err.code) : "Error",
+      body: err && err.message ? String(err.message) : "",
+    }) + "\\n");
+  }
+})();
+`;
+
 describe("interceptor.cjs (integration)", () => {
   let server, baseUrl, targetUrl, configPolicy, configTier, requests;
 
@@ -214,6 +248,16 @@ describe("interceptor.cjs (integration)", () => {
         }
         res.writeHead(404).end();
       });
+    });
+    server.on("connect", (req, socket) => {
+      requests.target.push({ method: "CONNECT", url: req.url, body: "" });
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+    });
+    server.on("upgrade", (req, socket) => {
+      requests.target.push({ method: "UPGRADE", url: req.url, headers: req.headers, body: "" });
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -710,6 +754,34 @@ function one(url) {
     assert.equal(result.status, 403);
     assert.match(result.body, /blocked_by_vantio/);
     assert.equal(requests.target.length, 0, "Client.pipeline must not bypass destination blocking");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+  });
+
+  test("PAID_MODE, undici.connect blocked_hosts: CONNECT never reaches the target", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_CONNECT_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+    assert.equal(requests.target.length, 0, "undici.connect must not bypass destination blocking");
+    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+  });
+
+  test("PAID_MODE, undici.upgrade blocked_hosts: upgrade never reaches the target", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    const { code, stdout } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+      UNDICI_UPGRADE_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+    assert.equal(requests.target.length, 0, "undici.upgrade must not bypass destination blocking");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
   });
 });
