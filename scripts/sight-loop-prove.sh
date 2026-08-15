@@ -62,4 +62,11 @@ echo "== Step 3: export (vantio prove) =="
 node "$PROVE" prove --run="$TRACE_ID" --format=md
 
 echo
+echo "== Step 3b: inspect (search / tail) =="
+node "$PROVE" search --run="$TRACE_ID" --json | head -c 2000
+echo
+node "$PROVE" tail --run="$TRACE_ID" -n 5 --json | head -c 2000
+echo
+
+echo
 echo "✓ Sight Loop prove path complete (OBSERVED events only — no enforce)"

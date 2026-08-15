@@ -14,11 +14,14 @@ vantio run node agent.js
 
 No API key. Free Observe writes metadata to `~/.vantio/runs/` (never prompts/completions).
 
-## 2. Export — `vantio prove`
+## 2. Export & inspect
 
 ```bash
 vantio prove                  # HTML proof from the latest run
 vantio prove --format md      # Markdown
+vantio search openai          # search local run logs
+vantio tail                   # latest calls from the most recent run
+vantio diff <run-a> <run-b>   # compare two runs
 vantio discover --local       # hosts / history from local logs
 ```
 

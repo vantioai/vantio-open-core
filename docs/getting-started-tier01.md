@@ -63,8 +63,9 @@ vantio run --summary node agent.js
 
 ## Step 4 — Connect Gate / Enterprise (optional)
 
-Free Optics needs **no account and no API key**. Local `vantio prove` and
-`vantio discover --local` work immediately after a run.
+Free Optics needs **no account and no API key**. Local `vantio prove`,
+`vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
+work immediately after a run.
 
 To attach **Vantio Gate** (Pro) or an Enterprise on-prem control plane:
 
@@ -114,6 +115,9 @@ After a run, you have local evidence you can share with an auditor:
 vantio prove              # HTML report for the most recent run
 vantio prove --list       # list all locally stored runs
 vantio prove --format=md  # Markdown instead of HTML
+vantio search openai      # search captured calls
+vantio tail               # latest calls from the most recent run
+vantio diff <a> <b>       # compare two local runs
 ```
 
 The proof artifact includes: trace ID, machine/PID, timestamp, byte counts per

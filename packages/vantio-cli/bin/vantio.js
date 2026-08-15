@@ -4,7 +4,7 @@ import { parseArgs }     from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir, hostname as osHostname } from "node:os";
-import { mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, statSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, statSync, existsSync, watch } from "node:fs";
 import readline          from "node:readline";
 import { randomUUID }    from "node:crypto";
 
@@ -20,6 +20,9 @@ Usage:
   vantio run [flags] <prog>   Spawn <prog> under the Vantio execution context
   vantio discover [options]   Show Shadow AI attack surface (AI calls in your workspace)
   vantio prove [options]      Generate an auditor-ready proof artifact from a run log
+  vantio search [query]       Search local run logs (host, path, action, free text)
+  vantio tail [options]       Show the latest calls from a captured run
+  vantio diff <a> <b>         Compare two local runs (hosts, counts, bytes)
 
 Flags (run):
   --audit,   -a   Enable audit mode (VANTIO_AUDIT_MODE=1).
@@ -39,6 +42,9 @@ Examples:
   vantio prove
   vantio prove --list
   vantio prove --format=md --out=audit.md
+  vantio search openai
+  vantio tail -n 20
+  vantio diff 0xabc 0xdef
 `;
 
 const DISCOVER_HELP = `\
@@ -106,6 +112,78 @@ Examples:
   vantio prove --run=0x1a2b3c4d             → specific run by trace ID
   vantio prove --format=md                   → Markdown to stdout
   vantio prove --format=html --out=proof.html
+`;
+
+const SEARCH_HELP = `\
+vantio search — Search local Optics run logs
+
+Find observed LLM calls across ~/.vantio/runs/ by free text, host, provider,
+path, or action. Metadata only — never prompts or completions. Free, no key.
+
+Usage:
+  vantio search [query] [options]
+
+Options:
+  --host=<hostname>   Filter to a target host (substring match)
+  --provider=<name>   Filter by provider label (substring match)
+  --action=<label>    Filter by action (e.g. OBSERVED, BLOCKED)
+  --run=<trace-id>    Limit to one run (trace ID or prefix)
+  --since=24h|7d|30d  Only runs newer than this window (default: all)
+  --json              Output raw JSON
+  -h, --help          Show this help
+
+Examples:
+  vantio search openai
+  vantio search --host=api.anthropic.com
+  vantio search chat --action=OBSERVED --since=7d
+  vantio search --run=0x1a2b3c4d --json
+`;
+
+const TAIL_HELP = `\
+vantio tail — Latest calls from a captured Optics run
+
+Prints the most recent observed calls from a local run log so you can inspect
+egress without opening Mission Control. Free, no key.
+
+Usage:
+  vantio tail [options]
+
+Options:
+  --run=<trace-id>    Run to read (default: most recent local run)
+  -n, --lines=<n>     Number of calls to show (default: 20)
+  -f, --follow        Keep watching the run log for new calls
+  --json              Output raw JSON
+  -h, --help          Show this help
+
+A run log is written when the wrapped agent exits, so --follow stays quiet
+during a run that is still going and prints the calls once it finishes.
+
+Examples:
+  vantio tail
+  vantio tail -n 50
+  vantio tail --run=0x1a2b3c4d
+  vantio tail -f
+`;
+
+const DIFF_HELP = `\
+vantio diff — Compare two local Optics runs
+
+Shows what changed between two captured runs: hosts added or removed, call
+counts, and byte totals. Metadata only. Free, no key.
+
+Usage:
+  vantio diff <run-a> <run-b> [options]
+
+Arguments:
+  <run-a> <run-b>     Trace IDs or prefixes of two local run logs
+
+Options:
+  --json              Output raw JSON
+  -h, --help          Show this help
+
+Examples:
+  vantio diff 0xabc123 0xdef456
+  vantio diff 0xabc 0xdef --json
 `;
 
 // ── config store (~/.vantio/config.json) ─────────────────────────────────────
@@ -668,23 +746,23 @@ function listRuns(dir) {
   );
 }
 
-function findRunByPrefix(dir, prefix) {
+function findRunByPrefix(dir, prefix, cmd = "prove") {
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch {
-    process.stderr.write("vantio prove: no run logs found in ~/.vantio/runs/\n");
+    process.stderr.write(`vantio ${cmd}: no run logs found in ~/.vantio/runs/\n`);
     process.exit(1);
   }
   const norm = prefix.replace(/[^a-zA-Z0-9_-]/g, "_");
   const matches = files.filter((f) => f.includes(norm));
   if (matches.length === 0) {
     process.stderr.write(
-      `vantio prove: no run found with trace ID containing '${prefix}'\n` +
+      `vantio ${cmd}: no run found with trace ID containing '${prefix}'\n` +
       "  Run `vantio prove --list` to see available runs.\n"
     );
     process.exit(1);
   }
   if (matches.length > 1) {
-    process.stderr.write(`vantio prove: '${prefix}' matches ${matches.length} runs. Use a longer prefix:\n`);
+    process.stderr.write(`vantio ${cmd}: '${prefix}' matches ${matches.length} runs. Use a longer prefix:\n`);
     for (const f of matches) process.stderr.write(`  ${f.replace(/\.json$/, "")}\n`);
     process.exit(1);
   }
@@ -1038,6 +1116,424 @@ async function discoverCommand(args) {
   renderDiscoveryTable(data, values.since);
 }
 
+// ── inspect helpers (search / tail / diff) ────────────────────────────────────
+
+function loadRunLog(path, cmd) {
+  try {
+    const log = JSON.parse(readFileSync(path, "utf8"));
+    if (log?.vantio_run_log !== "1") {
+      process.stderr.write(`vantio ${cmd}: not a Vantio run log: ${path}\n`);
+      process.exit(1);
+    }
+    return log;
+  } catch (err) {
+    process.stderr.write(`vantio ${cmd}: could not read log: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+function tryLoadRunLog(path) {
+  try {
+    const log = JSON.parse(readFileSync(path, "utf8"));
+    if (log?.vantio_run_log !== "1") return null;
+    return log;
+  } catch {
+    return null;
+  }
+}
+
+function resolveRunPath(dir, runPrefix, cmd) {
+  if (runPrefix) return findRunByPrefix(dir, runPrefix, cmd);
+  const newest = findMostRecentRun(dir);
+  if (!newest) {
+    process.stdout.write(
+      "No local run logs found. Wrap an agent first:\n" +
+      "  vantio run node agent.js\n\n" +
+      "Then inspect with:\n" +
+      "  vantio search <query>\n" +
+      "  vantio tail\n" +
+      "  vantio diff <run-a> <run-b>\n"
+    );
+    process.exit(0);
+  }
+  return newest;
+}
+
+function listValidRunEntries(dir, sinceMs = null) {
+  let files = [];
+  try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { return []; }
+  const cutoff = sinceMs != null ? Date.now() - sinceMs : null;
+  const out = [];
+  for (const f of files) {
+    const p = join(dir, f);
+    try {
+      const log = JSON.parse(readFileSync(p, "utf8"));
+      if (log?.vantio_run_log !== "1") continue;
+      if (cutoff != null) {
+        const t = log.generated_at ? new Date(log.generated_at).getTime()
+          : (log.started_at ? new Date(log.started_at).getTime() : 0);
+        if (!t || t < cutoff) continue;
+      }
+      out.push({ path: p, log });
+    } catch { /* skip bad files */ }
+  }
+  return out.sort((a, b) => {
+    const ta = a.log.generated_at ? new Date(a.log.generated_at).getTime() : 0;
+    const tb = b.log.generated_at ? new Date(b.log.generated_at).getTime() : 0;
+    return tb - ta;
+  });
+}
+
+function callSearchBlob(call, traceId) {
+  return [
+    traceId || "",
+    call.hostname || "",
+    call.provider || "",
+    call.method || "",
+    call.path || "",
+    call.action || "",
+    call.error || "",
+    call.error_class || "",
+  ].join(" ").toLowerCase();
+}
+
+// Column widths shared by the header and every row so a call with a missing
+// timestamp or a long action label (DRY_RUN_BLOCKED_SPEND) still lines up.
+const CALL_COLS = { ts: 24, host: 28, action: 22, route: 36, bytes: 10 };
+
+function formatCallLine(call, traceId) {
+  const host = call.hostname || "—";
+  const action = (call.action || "OBSERVED").toUpperCase();
+  const method = call.method || "";
+  const path = call.path || "";
+  const route = [method, path].filter(Boolean).join(" ") || "—";
+  const bytes = call.bytes != null ? Number(call.bytes).toLocaleString() : "—";
+  const ts = call.ts || "—";
+  // Trace ID is printed in full: it is what you paste into `vantio prove --run=`
+  // or `vantio diff`, so truncating it would make the row unusable.
+  const tid = traceId ? String(traceId) : "—";
+  return `${col(ts, CALL_COLS.ts)}  ${col(host, CALL_COLS.host)}  ${col(action, CALL_COLS.action)}  ` +
+    `${col(route, CALL_COLS.route)}  ${col(bytes, CALL_COLS.bytes)}  ${tid}`;
+}
+
+function printCallHeader() {
+  const hdr =
+    col("TIMESTAMP", CALL_COLS.ts) + "  " +
+    col("HOST", CALL_COLS.host) + "  " +
+    col("ACTION", CALL_COLS.action) + "  " +
+    col("METHOD / PATH", CALL_COLS.route) + "  " +
+    col("BYTES", CALL_COLS.bytes) + "  TRACE ID";
+  process.stdout.write(`${hdr}\n${"-".repeat(hdr.length)}\n`);
+}
+
+async function searchCommand(args) {
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      host:     { type: "string" },
+      provider: { type: "string" },
+      action:   { type: "string" },
+      run:      { type: "string" },
+      since:    { type: "string" },
+      json:     { type: "boolean", default: false },
+      help:     { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: true,
+  });
+
+  if (values.help) { process.stdout.write(SEARCH_HELP); return; }
+
+  const query = (positionals[0] || "").trim().toLowerCase();
+  if (!query && !values.host && !values.provider && !values.action && !values.run) {
+    process.stderr.write("vantio search: provide a query or a filter (--host, --provider, --action, --run)\n\n");
+    process.stdout.write(SEARCH_HELP);
+    process.exit(1);
+  }
+
+  if (values.since && !["24h", "7d", "30d"].includes(values.since)) {
+    process.stderr.write("vantio search: invalid --since value. Use 24h, 7d, or 30d.\n");
+    process.exit(1);
+  }
+
+  const dir = runsDir();
+  let entries;
+  if (values.run) {
+    const path = findRunByPrefix(dir, values.run, "search");
+    entries = [{ path, log: loadRunLog(path, "search") }];
+  } else {
+    const sinceMs = values.since ? parseSincePeriod(values.since) : null;
+    entries = listValidRunEntries(dir, sinceMs);
+  }
+
+  if (entries.length === 0) {
+    process.stdout.write(
+      "No local run logs found. Wrap an agent first:\n" +
+      "  vantio run node agent.js\n"
+    );
+    return;
+  }
+
+  const hostF = (values.host || "").toLowerCase();
+  const providerF = (values.provider || "").toLowerCase();
+  const actionF = (values.action || "").toLowerCase();
+  const hits = [];
+
+  for (const { log } of entries) {
+    const calls = Array.isArray(log.calls) ? log.calls : [];
+    for (let i = 0; i < calls.length; i++) {
+      const call = calls[i];
+      if (hostF && !(call.hostname || "").toLowerCase().includes(hostF)) continue;
+      if (providerF && !(call.provider || "").toLowerCase().includes(providerF)) continue;
+      if (actionF && !(call.action || "").toLowerCase().includes(actionF)) continue;
+      if (query && !callSearchBlob(call, log.trace_id).includes(query)) continue;
+      hits.push({
+        trace_id: log.trace_id || null,
+        index: i + 1,
+        hostname: call.hostname || null,
+        provider: call.provider || null,
+        method: call.method || null,
+        path: call.path || null,
+        action: call.action || "OBSERVED",
+        bytes: call.bytes ?? null,
+        ts: call.ts || null,
+        status: call.status ?? null,
+      });
+    }
+  }
+
+  if (values.json) {
+    process.stdout.write(JSON.stringify({ query: query || null, matches: hits.length, calls: hits }, null, 2) + "\n");
+    return;
+  }
+
+  if (hits.length === 0) {
+    process.stdout.write("No matching calls in local run logs.\n");
+    return;
+  }
+
+  process.stdout.write(`\nSearch results — ${hits.length} call(s)\n\n`);
+  printCallHeader();
+  for (const h of hits) {
+    process.stdout.write(formatCallLine(h, h.trace_id) + "\n");
+  }
+  process.stdout.write(`\n${hits.length} match(es). Export a full report with \`vantio prove --run=<trace-id>\`.\n`);
+}
+
+function readCallsFromLog(log) {
+  return Array.isArray(log.calls) ? log.calls : [];
+}
+
+function printTailCalls(log, lines, asJson) {
+  const calls = readCallsFromLog(log);
+  const slice = lines > 0 ? calls.slice(-lines) : calls;
+  if (asJson) {
+    process.stdout.write(JSON.stringify({
+      trace_id: log.trace_id || null,
+      total_calls: calls.length,
+      shown: slice.length,
+      calls: slice,
+    }, null, 2) + "\n");
+    return slice.length;
+  }
+  process.stdout.write(
+    `\nTail — trace ${log.trace_id || "—"} · showing ${slice.length} of ${calls.length} call(s)\n\n`
+  );
+  if (slice.length === 0) {
+    process.stdout.write("No calls recorded in this run log.\n");
+    return 0;
+  }
+  printCallHeader();
+  for (const c of slice) process.stdout.write(formatCallLine(c, log.trace_id) + "\n");
+  process.stdout.write("\n");
+  return slice.length;
+}
+
+async function tailCommand(args) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      run:     { type: "string" },
+      lines:   { type: "string", short: "n", default: "20" },
+      follow:  { type: "boolean", short: "f", default: false },
+      json:    { type: "boolean", default: false },
+      help:    { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: false,
+  });
+
+  if (values.help) { process.stdout.write(TAIL_HELP); return; }
+
+  const n = Number.parseInt(values.lines, 10);
+  if (!Number.isFinite(n) || n < 0) {
+    process.stderr.write("vantio tail: --lines must be a non-negative integer\n");
+    process.exit(1);
+  }
+
+  const dir = runsDir();
+  const logPath = resolveRunPath(dir, values.run, "tail");
+  let log = loadRunLog(logPath, "tail");
+  if (!values.run) {
+    process.stderr.write(`[ ∅ VANTIO ] Tailing most recent run: ${log.trace_id || logPath}\n`);
+  }
+
+  printTailCalls(log, n, values.json);
+
+  if (!values.follow) return;
+
+  if (values.json) {
+    process.stderr.write("vantio tail: --follow writes human lines; omit --json to follow.\n");
+  }
+
+  process.stderr.write("[ ∅ VANTIO ] Following run log (Ctrl+C to stop)…\n");
+  let lastCount = readCallsFromLog(log).length;
+
+  const refresh = () => {
+    const next = tryLoadRunLog(logPath);
+    if (!next) return;
+    const calls = readCallsFromLog(next);
+    if (calls.length > lastCount) {
+      const fresh = calls.slice(lastCount);
+      for (const c of fresh) process.stdout.write(formatCallLine(c, next.trace_id) + "\n");
+      lastCount = calls.length;
+    }
+    log = next;
+  };
+
+  try {
+    const watcher = watch(logPath, { persistent: true }, () => refresh());
+    await new Promise((resolve) => {
+      const stop = () => { try { watcher.close(); } catch { /* */ } resolve(); };
+      process.on("SIGINT", stop);
+      process.on("SIGTERM", stop);
+    });
+  } catch (err) {
+    process.stderr.write(`vantio tail: cannot follow: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+function hostRollup(log) {
+  const by = log.summary?.by_host && typeof log.summary.by_host === "object"
+    ? log.summary.by_host
+    : null;
+  if (by) {
+    const out = {};
+    for (const [host, info] of Object.entries(by)) {
+      out[host] = {
+        calls: Number(info?.calls) || 0,
+        bytes: Number(info?.bytes) || 0,
+      };
+    }
+    return out;
+  }
+  const out = {};
+  for (const call of readCallsFromLog(log)) {
+    const h = call.hostname || "unknown";
+    out[h] = out[h] || { calls: 0, bytes: 0 };
+    out[h].calls += 1;
+    out[h].bytes += call.bytes || 0;
+  }
+  return out;
+}
+
+function runTotals(log) {
+  const calls = readCallsFromLog(log);
+  return {
+    trace_id: log.trace_id || null,
+    started_at: log.started_at || null,
+    generated_at: log.generated_at || null,
+    total_calls: log.summary?.total_calls ?? calls.length,
+    total_bytes: log.summary?.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0),
+    hosts: hostRollup(log),
+  };
+}
+
+async function diffCommand(args) {
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      json: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: true,
+  });
+
+  if (values.help) { process.stdout.write(DIFF_HELP); return; }
+
+  if (positionals.length < 2) {
+    process.stderr.write("vantio diff: need two run IDs — vantio diff <run-a> <run-b>\n\n");
+    process.stdout.write(DIFF_HELP);
+    process.exit(1);
+  }
+
+  const dir = runsDir();
+  const pathA = findRunByPrefix(dir, positionals[0], "diff");
+  const pathB = findRunByPrefix(dir, positionals[1], "diff");
+  const a = runTotals(loadRunLog(pathA, "diff"));
+  const b = runTotals(loadRunLog(pathB, "diff"));
+
+  const hostsA = new Set(Object.keys(a.hosts));
+  const hostsB = new Set(Object.keys(b.hosts));
+  const added = [...hostsB].filter((h) => !hostsA.has(h)).sort();
+  const removed = [...hostsA].filter((h) => !hostsB.has(h)).sort();
+  const shared = [...hostsA].filter((h) => hostsB.has(h)).sort();
+  const changed = shared
+    .map((h) => ({
+      host: h,
+      calls_a: a.hosts[h].calls,
+      calls_b: b.hosts[h].calls,
+      bytes_a: a.hosts[h].bytes,
+      bytes_b: b.hosts[h].bytes,
+      delta_calls: b.hosts[h].calls - a.hosts[h].calls,
+      delta_bytes: b.hosts[h].bytes - a.hosts[h].bytes,
+    }))
+    .filter((row) => row.delta_calls !== 0 || row.delta_bytes !== 0);
+
+  const result = {
+    a: { trace_id: a.trace_id, total_calls: a.total_calls, total_bytes: a.total_bytes, started_at: a.started_at },
+    b: { trace_id: b.trace_id, total_calls: b.total_calls, total_bytes: b.total_bytes, started_at: b.started_at },
+    delta_calls: b.total_calls - a.total_calls,
+    delta_bytes: b.total_bytes - a.total_bytes,
+    hosts_added: added,
+    hosts_removed: removed,
+    hosts_changed: changed,
+  };
+
+  if (values.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    return;
+  }
+
+  process.stdout.write("\nRun diff (Optics · observe only)\n\n");
+  process.stdout.write(`  A  ${a.trace_id || "—"}  ·  ${a.total_calls} call(s)  ·  ${(a.total_bytes || 0).toLocaleString()} bytes\n`);
+  process.stdout.write(`  B  ${b.trace_id || "—"}  ·  ${b.total_calls} call(s)  ·  ${(b.total_bytes || 0).toLocaleString()} bytes\n`);
+  process.stdout.write(`  Δ  calls ${result.delta_calls >= 0 ? "+" : ""}${result.delta_calls}  ·  bytes ${result.delta_bytes >= 0 ? "+" : ""}${result.delta_bytes.toLocaleString()}\n\n`);
+
+  if (added.length) {
+    process.stdout.write(`Hosts only in B (${added.length}):\n`);
+    for (const h of added) process.stdout.write(`  + ${h}  (${b.hosts[h].calls} call(s))\n`);
+    process.stdout.write("\n");
+  }
+  if (removed.length) {
+    process.stdout.write(`Hosts only in A (${removed.length}):\n`);
+    for (const h of removed) process.stdout.write(`  - ${h}  (${a.hosts[h].calls} call(s))\n`);
+    process.stdout.write("\n");
+  }
+  if (changed.length) {
+    process.stdout.write(`Hosts changed (${changed.length}):\n`);
+    for (const row of changed) {
+      process.stdout.write(
+        `  ~ ${row.host}  calls ${row.calls_a}→${row.calls_b} (${row.delta_calls >= 0 ? "+" : ""}${row.delta_calls})` +
+        `  bytes ${row.bytes_a.toLocaleString()}→${row.bytes_b.toLocaleString()}\n`
+      );
+    }
+    process.stdout.write("\n");
+  }
+  if (!added.length && !removed.length && !changed.length) {
+    process.stdout.write("No host-level differences between these two runs.\n\n");
+  }
+}
+
 // ── dispatch ────────────────────────────────────────────────────────────────
 
 const [command, ...rest] = process.argv.slice(2);
@@ -1069,6 +1565,15 @@ switch (command) {
     break;
   case "prove":
     await proveCommand(rest);
+    break;
+  case "search":
+    await searchCommand(rest);
+    break;
+  case "tail":
+    await tailCommand(rest);
+    break;
+  case "diff":
+    await diffCommand(rest);
     break;
   default:
     process.stderr.write(`vantio: unknown command '${command}'\n\n${USAGE}`);
