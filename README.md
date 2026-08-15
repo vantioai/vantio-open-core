@@ -10,7 +10,7 @@ Vantio AI is a Pittsburgh-based cybersecurity startup founded in 2026. Optics he
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
 
-Current published wraps: **`@vantio/cli` 0.3.10** (npm) and **`vantio-agent-sdk` 3.0.5** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
+Current published wraps: **`@vantio/cli` 0.3.11** (npm) and **`vantio-agent-sdk` 3.0.5** (PyPI). The Node SDK `@vantio/agent-sdk` stays 0.2.1 — Node wrap lives in the CLI interceptor.
 
 ---
 
@@ -85,7 +85,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 
 | Package | Published | Description |
 |---------|-----------|-------------|
-| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.10** | CLI runner — Node fetch, undici, http/https, http2, net/tls, upgrade/CONNECT frames |
+| [`packages/vantio-cli`](./packages/vantio-cli) | `@vantio/cli` **0.3.11** | CLI runner — Node fetch, undici, http/https, http2, net/tls, upgrade/CONNECT frames, Node-spawned curl |
 | [`packages/vantio-agent-sdk-py`](./packages/vantio-agent-sdk-py) | `vantio-agent-sdk` **3.0.5** | Python `shield()` — urllib + optional requests/httpx/aiohttp + socket.connect |
 | [`packages/vantio-agent-sdk`](./packages/vantio-agent-sdk) | `@vantio/agent-sdk` **0.2.1** | Node.js `shield()` for trace correlation |
 | [`packages/vantio-optics-mcp`](./packages/vantio-optics-mcp) | `@vantio/optics-mcp` | Optics MCP — observe only |
@@ -126,7 +126,7 @@ await shield(async () => {
 });
 ```
 
-Node wrap of `fetch`, undici, `http`/`https`, `http2`, `net`/`tls`, and `undici.upgrade` / CONNECT tunnel bytes is in **`@vantio/cli` 0.3.10** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
+Node wrap of `fetch`, undici, `http`/`https`, `http2`, `net`/`tls`, `undici.upgrade` / CONNECT tunnel bytes, and Node-spawned `curl` is in **`@vantio/cli` 0.3.11** (`vantio run`). Use `shield()` when you want a trace ID across async hops.
 
 ### Python
 

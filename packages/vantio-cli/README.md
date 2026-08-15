@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.10**.
+> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.11**.
 
 ```bash
 npm install -g @vantio/cli
@@ -163,7 +163,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https`, Node `http2`, and Node `net`/`tls`. Current npm release: **`@vantio/cli` 0.3.10**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https`, Node `http2`, Node `net`/`tls`, and Node-spawned `curl` (including `sh -c 'curl …'`). Current npm release: **`@vantio/cli` 0.3.11**.
 
 Python, Ruby, and other runtimes are spawned normally without this interceptor — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.5**, `shield()`) for Python urllib / requests / httpx / aiohttp / socket.connect.
 
@@ -173,7 +173,7 @@ Python, Ruby, and other runtimes are spawned normally without this interceptor �
 
 OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
-curl and browser paths stay outside this wrap. Phantom Engine is the Linux-host product when you need protection beneath the app wrap.
+Browser paths stay outside this wrap. Phantom Engine is the Linux-host product when you need protection beneath the app wrap.
 
 ---
 
