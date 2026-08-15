@@ -3,8 +3,9 @@
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
 // request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
 // http/https.request|get, Node http2.connect / session.request, Node
-// net.Socket.connect / tls.connect, and undici.upgrade / CONNECT tunnel writes
-// to in-scope hosts. Curl and browsers stay outside this wrap.
+// net.Socket.connect / tls.connect, undici.upgrade / CONNECT tunnel writes,
+// and Node child_process spawn/exec of curl to in-scope hosts.
+// Browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -22,7 +23,7 @@
 const { randomUUID } = require("node:crypto");
 const { mkdirSync, writeFileSync } = require("node:fs");
 const { homedir, hostname: osHostname } = require("node:os");
-const { join } = require("node:path");
+const { join, basename } = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
 const {
   LLM_HOSTS: BASE_LLM_HOSTS,
@@ -1649,8 +1650,8 @@ globalThis.fetch = function vantioFetch(input, init) {
 
 // Node http/https — same Sight Loop / Gate rules as fetch, last-known policy
 // (request() is sync; fail-open until policy loads). Out-of-scope hosts and
-// the ingest control plane pass through untouched. Raw sockets / curl / browsers
-// stay residual.
+// the ingest control plane pass through untouched. Node-spawned curl is
+// wrapped separately. Browsers stay residual.
 (function patchNodeHttpHttps() {
   const { EventEmitter } = require("node:events");
 
@@ -1943,8 +1944,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 })();
 
 // Node http2.connect / session.request — same Sight Loop / Gate rules as
-// Node http. Host block happens before the session opens. Residual: curl,
-// browsers.
+// Node http. Host block happens before the session opens. Residual: browsers.
 (function patchNodeHttp2() {
   let http2;
   try { http2 = require("node:http2"); } catch { try { http2 = require("http2"); } catch { return; } }
@@ -2446,6 +2446,379 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 })();
 
+// Node child_process spawn/exec of curl — host-block and observe before curl
+// starts. Bodies are not rewritten. Residual: browsers, Python subprocess curl.
+(function patchCurlSpawn() {
+  let cp;
+  try { cp = require("node:child_process"); } catch { try { cp = require("child_process"); } catch { return; } }
+  if (!cp || typeof cp.spawn !== "function" || cp.__vantioCurlPatched) return;
+
+  const { EventEmitter } = require("node:events");
+  const { Readable, Writable } = require("node:stream");
+  const origSpawn = cp.spawn.bind(cp);
+  const origSpawnSync = typeof cp.spawnSync === "function" ? cp.spawnSync.bind(cp) : null;
+  const origExecFile = typeof cp.execFile === "function" ? cp.execFile.bind(cp) : null;
+  const origExecFileSync = typeof cp.execFileSync === "function" ? cp.execFileSync.bind(cp) : null;
+  const origExec = typeof cp.exec === "function" ? cp.exec.bind(cp) : null;
+  const origExecSync = typeof cp.execSync === "function" ? cp.execSync.bind(cp) : null;
+
+  function cmdBase(file) {
+    try {
+      return String(basename(String(file || ""))).toLowerCase().replace(/\.exe$/, "");
+    } catch {
+      return "";
+    }
+  }
+
+  function tokenizeShell(s) {
+    const out = [];
+    let cur = "";
+    let quote = "";
+    const str = String(s || "");
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (quote) {
+        if (ch === quote) quote = "";
+        else cur += ch;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        quote = ch;
+        continue;
+      }
+      if (/\s/.test(ch)) {
+        if (cur) {
+          out.push(cur);
+          cur = "";
+        }
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  function splitSpawnArgs(args) {
+    const command = args[0];
+    let argv = [];
+    let options = null;
+    if (Array.isArray(args[1])) {
+      argv = args[1];
+      if (args[2] && typeof args[2] === "object") options = args[2];
+    } else if (args[1] && typeof args[1] === "object") {
+      options = args[1];
+    }
+    return { command, argv, options };
+  }
+
+  function curlArgvFromSpawn(command, argv, options) {
+    const args = Array.isArray(argv) ? argv.map((a) => String(a)) : [];
+    if (options && options.shell) {
+      return curlArgvFromExec([String(command || ""), ...args].join(" "));
+    }
+    if (cmdBase(command) === "curl") return args;
+    const shell = cmdBase(command);
+    if (shell !== "sh" && shell !== "bash" && shell !== "dash" && shell !== "zsh") return null;
+    const cIdx = args.indexOf("-c");
+    if (cIdx < 0 || args[cIdx + 1] == null) return null;
+    const tokens = tokenizeShell(args[cIdx + 1]);
+    if (!tokens.length || cmdBase(tokens[0]) !== "curl") return null;
+    return tokens.slice(1);
+  }
+
+  function curlArgvFromExec(command) {
+    const tokens = tokenizeShell(command);
+    if (!tokens.length) return null;
+    if (cmdBase(tokens[0]) === "curl") return tokens.slice(1);
+    return curlArgvFromSpawn(tokens[0], tokens.slice(1), null);
+  }
+
+  function parseCurlArgv(argv) {
+    let url = null;
+    let dataBytes = 0;
+    const args = Array.isArray(argv) ? argv : [];
+    for (let i = 0; i < args.length; i++) {
+      const a = String(args[i]);
+      if (a === "--url" || a === "-url") {
+        url = args[i + 1] != null ? String(args[i + 1]) : null;
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("--url=")) {
+        url = a.slice("--url=".length);
+        continue;
+      }
+      if (
+        a === "-d" || a === "--data" || a === "--data-raw" || a === "--data-binary"
+        || a === "--data-ascii" || a === "--data-urlencode" || a === "--json"
+      ) {
+        const v = args[i + 1] != null ? String(args[i + 1]) : "";
+        dataBytes += Buffer.byteLength(v);
+        i += 1;
+        continue;
+      }
+      if (a.startsWith("-d") && a.length > 2 && !a.startsWith("--")) {
+        dataBytes += Buffer.byteLength(a.slice(2));
+        continue;
+      }
+      if (!url && /^https?:\/\//i.test(a)) url = a;
+    }
+    return { url, dataBytes };
+  }
+
+  function destFromCurlUrl(url) {
+    try {
+      const u = new URL(String(url));
+      const port = u.port || (u.protocol === "https:" ? "443" : "80");
+      return { hostname: u.hostname, port: String(port) };
+    } catch {
+      return { hostname: null, port: null };
+    }
+  }
+
+  function isControlPlaneCurlUrl(url) {
+    try {
+      const ingest = new URL(INGEST_URL);
+      const u = new URL(String(url));
+      const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+      const reqPort = u.port || (u.protocol === "https:" ? "443" : "80");
+      return u.hostname.toLowerCase() === ingest.hostname.toLowerCase()
+        && reqPort === ingestPort
+        && u.pathname.startsWith("/api/v1/");
+    } catch {
+      return false;
+    }
+  }
+
+  function decideCurl(url, hostname, port, dataBytes) {
+    if (!hostname || isControlPlaneCurlUrl(url)) return "pass";
+    if (!inScope(hostname, port)) return "pass";
+    if (FREE_MODE) return "observe";
+    if (policy.enforce) {
+      const blocked = hostListed(hostname, policy.blocked_hosts)
+        || (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts));
+      if (blocked) return policy.dry_run ? "dry_block" : "block";
+      if (policy.max_request_bytes > 0 && dataBytes > policy.max_request_bytes) {
+        return policy.dry_run ? "dry_size" : "block_size";
+      }
+      if (policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
+        return policy.dry_run ? "dry_spend" : "block_spend";
+      }
+    }
+    return "observe";
+  }
+
+  function gateError(hostname, reason) {
+    const err = new Error(`Vantio Gate blocked host: ${hostname}`);
+    err.code = "VANTIO_GATE_BLOCKED";
+    err.reason = reason;
+    return err;
+  }
+
+  function blockedChild(err) {
+    const child = new EventEmitter();
+    child.stdin = new Writable({ write(_c, _e, cb) { if (cb) cb(); } });
+    child.stdout = new Readable({ read() { this.push(null); } });
+    child.stderr = new Readable({ read() { this.push(null); } });
+    child.stdio = [child.stdin, child.stdout, child.stderr];
+    child.pid = undefined;
+    child.connected = false;
+    child.kill = () => true;
+    child.unref = () => child;
+    child.ref = () => child;
+    child.send = () => false;
+    child.disconnect = () => {};
+    process.nextTick(() => {
+      try { child.emit("error", err); } catch { /* ignore */ }
+      try { child.emit("exit", 1, null); } catch { /* ignore */ }
+      try { child.stdin.destroy(); } catch { /* ignore */ }
+      try { child.stdout.destroy(); } catch { /* ignore */ }
+      try { child.stderr.destroy(); } catch { /* ignore */ }
+      try { child.emit("close", 1, null); } catch { /* ignore */ }
+    });
+    return child;
+  }
+
+  function blockedSync(err) {
+    return {
+      pid: 0,
+      output: [null, Buffer.alloc(0), Buffer.from(err.message)],
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.from(err.message),
+      status: 1,
+      signal: null,
+      error: err,
+    };
+  }
+
+  function recordCurl(hostname, port, action, dataBytes) {
+    sendRunTelemetryOnce(hostname);
+    const provider = guessProvider(hostname, port);
+    _calls.push({
+      hostname, provider, method: "CURL", path: null, scheme: "http",
+      request_bytes: dataBytes, bytes: dataBytes, status: null,
+      ok: !String(action).startsWith("BLOCKED"),
+      content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+      action, mediation: "node_curl", optics_plane: "app_curl",
+    });
+    report({
+      target_host: hostname, pid: process.pid, action_taken: action,
+      timestamp_ns: Date.now() * 1e6,
+      bytes_severed: String(action).startsWith("BLOCKED") ? dataBytes : 0,
+      bytes_observed: dataBytes,
+      request_bytes: dataBytes,
+      mediation: "node_curl", plane: "optics_gate",
+    });
+    if (action === "BLOCKED_HOST") {
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — curl`);
+    } else if (action === "BLOCKED_SIZE") {
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — curl ${dataBytes}B exceeds cap`);
+    } else if (action === "BLOCKED_SPEND") {
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — curl spend cap`);
+    } else if (FREE_MODE) {
+      log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — curl`);
+    }
+  }
+
+  function applyCurlGate(argv) {
+    const parsed = parseCurlArgv(argv);
+    if (!parsed.url) return { decision: "pass" };
+    const dest = destFromCurlUrl(parsed.url);
+    const decision = decideCurl(parsed.url, dest.hostname, dest.port, parsed.dataBytes);
+    if (decision === "pass") return { decision };
+    if (decision === "block") {
+      recordCurl(dest.hostname, dest.port, "BLOCKED_HOST", parsed.dataBytes);
+      return { decision, err: gateError(dest.hostname, "host_not_permitted") };
+    }
+    if (decision === "block_size") {
+      recordCurl(dest.hostname, dest.port, "BLOCKED_SIZE", parsed.dataBytes);
+      return { decision, err: gateError(dest.hostname, "request_too_large") };
+    }
+    if (decision === "block_spend") {
+      recordCurl(dest.hostname, dest.port, "BLOCKED_SPEND", parsed.dataBytes);
+      return { decision, err: gateError(dest.hostname, "spend_cap_reached") };
+    }
+    if (decision === "dry_block") {
+      recordCurl(dest.hostname, dest.port, "DRY_RUN_BLOCKED_HOST", parsed.dataBytes);
+    } else if (decision === "dry_size") {
+      recordCurl(dest.hostname, dest.port, "DRY_RUN_BLOCKED_SIZE", parsed.dataBytes);
+    } else if (decision === "dry_spend") {
+      recordCurl(dest.hostname, dest.port, "DRY_RUN_BLOCKED_SPEND", parsed.dataBytes);
+    } else {
+      recordCurl(dest.hostname, dest.port, FREE_MODE ? "OBSERVED" : "ALLOWED", parsed.dataBytes);
+      spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
+    }
+    return { decision };
+  }
+
+  cp.spawn = function vantioSpawn(...args) {
+    try {
+      const { command, argv, options } = splitSpawnArgs(args);
+      const curlArgv = curlArgvFromSpawn(command, argv, options);
+      if (!curlArgv) return origSpawn(...args);
+      const gated = applyCurlGate(curlArgv);
+      if (gated.err) return blockedChild(gated.err);
+      return origSpawn(...args);
+    } catch {
+      return origSpawn(...args);
+    }
+  };
+
+  if (origSpawnSync) {
+    cp.spawnSync = function vantioSpawnSync(...args) {
+      try {
+        const { command, argv, options } = splitSpawnArgs(args);
+        const curlArgv = curlArgvFromSpawn(command, argv, options);
+        if (!curlArgv) return origSpawnSync(...args);
+        const gated = applyCurlGate(curlArgv);
+        if (gated.err) return blockedSync(gated.err);
+        return origSpawnSync(...args);
+      } catch {
+        return origSpawnSync(...args);
+      }
+    };
+  }
+
+  if (origExecFile) {
+    cp.execFile = function vantioExecFile(...args) {
+      try {
+        const { command: file, argv, options } = splitSpawnArgs(args);
+        const curlArgv = curlArgvFromSpawn(file, argv, options);
+        if (!curlArgv) return origExecFile(...args);
+        const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
+        const gated = applyCurlGate(curlArgv);
+        if (gated.err) {
+          if (cb) process.nextTick(() => cb(gated.err, "", ""));
+          return blockedChild(gated.err);
+        }
+        return origExecFile(...args);
+      } catch {
+        return origExecFile(...args);
+      }
+    };
+  }
+
+  if (origExecFileSync) {
+    cp.execFileSync = function vantioExecFileSync(...args) {
+      try {
+        const { command: file, argv, options } = splitSpawnArgs(args);
+        const curlArgv = curlArgvFromSpawn(file, argv, options);
+        if (curlArgv) {
+          const gated = applyCurlGate(curlArgv);
+          if (gated.err) {
+            gated.err.status = 1;
+            throw gated.err;
+          }
+        }
+      } catch (err) {
+        if (err && err.code === "VANTIO_GATE_BLOCKED") throw err;
+      }
+      return origExecFileSync(...args);
+    };
+  }
+
+  if (origExec) {
+    cp.exec = function vantioExec(...args) {
+      try {
+        const command = args[0];
+        const curlArgv = curlArgvFromExec(command);
+        if (!curlArgv) return origExec(...args);
+        const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
+        const gated = applyCurlGate(curlArgv);
+        if (gated.err) {
+          if (cb) process.nextTick(() => cb(gated.err, "", ""));
+          return blockedChild(gated.err);
+        }
+        return origExec(...args);
+      } catch {
+        return origExec(...args);
+      }
+    };
+  }
+
+  if (origExecSync) {
+    cp.execSync = function vantioExecSync(...args) {
+      try {
+        const command = args[0];
+        const curlArgv = curlArgvFromExec(command);
+        if (curlArgv) {
+          const gated = applyCurlGate(curlArgv);
+          if (gated.err) {
+            gated.err.status = 1;
+            throw gated.err;
+          }
+        }
+      } catch (err) {
+        if (err && err.code === "VANTIO_GATE_BLOCKED") throw err;
+      }
+      return origExecSync(...args);
+    };
+  }
+
+  cp.__vantioCurlPatched = true;
+})();
+
 process.on("exit", () => {
   if (_calls.length === 0) return;
 
@@ -2533,7 +2906,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, and undici.upgrade / CONNECT tunnel bytes to in-scope hosts. Host Sight covers host egress observe. Curl and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl to in-scope hosts. Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
