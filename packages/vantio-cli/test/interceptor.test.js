@@ -1876,6 +1876,217 @@ else go();
     });
   });
 
+  const CURL_INLINE_REDACT_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("curl", [
+    "-sS", "--max-time", "2", "-X", "POST", "-d", "email=shouldnotleak@example.com",
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const WGET_INLINE_REDACT_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("wget", [
+    "-q", "-O", "-", "--timeout=2", "--tries=1",
+    "--post-data=email=shouldnotleak@example.com",
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const CURL_FILE_SKIP_REDACT_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("curl", [
+    "-sS", "--max-time", "2", "-X", "POST", "-d", "@" + process.env.POST_FILE,
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const HTTPIE_RAW_REDACT_SCRIPT = `
+const { spawn } = require("child_process");
+const { writeFileSync, chmodSync } = require("fs");
+const { join } = require("path");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const stub = join(process.env.STUB_DIR, "http");
+  writeFileSync(stub, [
+    "#!/usr/bin/env python3",
+    "import sys, urllib.request",
+    "args = sys.argv[1:]",
+    "raw = ''",
+    "url = ''",
+    "i = 0",
+    "while i < len(args):",
+    "    if args[i] == '--raw' and i + 1 < len(args):",
+    "        raw = args[i+1]; i += 2; continue",
+    "    if args[i].startswith('http://') or args[i].startswith('https://'):",
+    "        url = args[i]",
+    "    i += 1",
+    "urllib.request.urlopen(urllib.request.Request(url, data=raw.encode(), method='POST'), timeout=2)",
+    "",
+  ].join("\\n"));
+  chmodSync(stub, 0o755);
+  const child = spawn("http", ["POST", process.env.TARGET_URL, "--raw", "email=shouldnotleak@example.com"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { PATH: process.env.STUB_DIR + ":" + process.env.PATH },
+  });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  describe("inline argv PII rewrite", () => {
+    test("PAID_MODE, spawn curl -d inline: email stripped before leave", { skip: !HAS_CURL, timeout: 15000 }, async () => {
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.redact_pii = true;
+      configPolicy.pii_types = ["email"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        CURL_INLINE_REDACT_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      assert.equal(requests.target.length, 1);
+      assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+      assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_curl");
+      assert.equal(events.length, 1);
+      assert.equal(events[0].body.eventPayload.action_taken, "REDACTED");
+    });
+
+    test("PAID_MODE, spawn wget --post-data inline: email stripped before leave", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.redact_pii = true;
+      configPolicy.pii_types = ["email"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WGET_INLINE_REDACT_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      assert.equal(requests.target.length, 1);
+      assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+      assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
+      assert.equal(events.length, 1);
+      assert.equal(events[0].body.eventPayload.action_taken, "REDACTED");
+    });
+
+    test("PAID_MODE, spawn curl -d @file: file body not rewritten, contents never ingested", { skip: !HAS_CURL, timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-curl-file-skip-"));
+      const postFile = join(dir, "body.txt");
+      const secret = "shouldnotleak@example.com";
+      writeFileSync(postFile, "email=" + secret);
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.redact_pii = true;
+      configPolicy.pii_types = ["email"];
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            POST_FILE: postFile,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          CURL_FILE_SKIP_REDACT_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        assert.equal(requests.target.length, 1);
+        assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+        assert.equal(
+          JSON.stringify(requests.ingest).includes(secret),
+          false,
+          "curl @file contents must never be ingested"
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("PAID_MODE, spawn httpie --raw inline: email stripped before leave", { timeout: 15000 }, async () => {
+      const dir = mkdtempSync(join(tmpdir(), "vantio-httpie-stub-"));
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.redact_pii = true;
+      configPolicy.pii_types = ["email"];
+      try {
+        const { code, stdout } = await runAgent(
+          {
+            TARGET_URL: targetUrl,
+            STUB_DIR: dir,
+            VANTIO_API_KEY: "vk_test_dummy",
+            VANTIO_INGEST_URL: baseUrl,
+          },
+          HTTPIE_RAW_REDACT_SCRIPT
+        );
+        assert.equal(code, 0, stdout);
+        assert.equal(requests.target.length, 1);
+        assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
+        assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+        const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_httpie");
+        assert.equal(events.length, 1);
+        assert.equal(events[0].body.eventPayload.action_taken, "REDACTED");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   const HAS_WS = (() => {
     if (typeof WebSocket === "function") return true;
     try {

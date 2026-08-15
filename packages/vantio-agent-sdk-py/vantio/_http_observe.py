@@ -6,15 +6,15 @@ In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
 Wraps urllib.request.urlopen and OpenerDirector.open always. If requests,
-httpx, aiohttp, or urllib3 are installed, wraps those too. Also wraps
+httpx, aiohttp, urllib3, or pycurl are installed, wraps those too. Also wraps
 socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and
 http.client request/putrequest to in-scope hosts (host-block and observe; TLS
 payloads are not read). Also wraps subprocess / os.system / asyncio curl, wget,
 httpie, and aria2c spawns to in-scope hosts (host-block and observe; file-body
 and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines;
-curl/wget bodies are not rewritten). With a Gate API key, the same wrap can
-block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay
-outside this wrap.
+inline argv bodies are rewritten for Gate PII; file contents and stdin pipes
+are not read). With a Gate API key, the same wrap can block, redact PII, or
+enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
 """
 from __future__ import annotations
 
@@ -59,6 +59,11 @@ try:
 except ImportError:
     _urllib3 = None  # type: ignore[assignment]
 
+try:
+    import pycurl as _pycurl
+except ImportError:
+    _pycurl = None  # type: ignore[assignment]
+
 # Keep in lockstep with vantio-cli/bin/llm-hosts.cjs
 _LLM_HOSTS = {
     "api.openai.com",
@@ -102,6 +107,7 @@ _orig_ssl_connect: Any = None
 _orig_http_request: Any = None
 _orig_http_putrequest: Any = None
 _orig_urllib3_request: Any = None
+_orig_pycurl_curl: Any = None
 _orig_popen: Any = None
 _orig_os_system: Any = None
 _orig_asyncio_exec: Any = None
@@ -1808,18 +1814,203 @@ def _cli_mediation(tool: str) -> str:
     return "python_curl"
 
 
-def _apply_cli_gate(tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None) -> Optional[GateBlockedError]:
+def _rewrite_httpie_item(token: str, take_redact: Any) -> str:
+    at = token.find("@")
+    if at > 0 and "=" not in token and ":" not in token:
+        return token
+    for sep in (":=", "==", "="):
+        idx = token.find(sep)
+        if idx <= 0:
+            continue
+        rhs = token[idx + len(sep):]
+        if rhs.startswith("@") or rhs.startswith("<"):
+            return token
+        return token[: idx + len(sep)] + take_redact(rhs)
+    return token
+
+
+def _rewrite_curl_form_value(value: str, treat_at_as_file: bool, take_redact: Any) -> str:
+    eq = value.find("=")
+    rhs = value[eq + 1:] if eq >= 0 else value
+    if treat_at_as_file and (rhs.startswith("@") or rhs.startswith("<")):
+        return value
+    nxt = take_redact(rhs)
+    if nxt == rhs:
+        return value
+    return (value[: eq + 1] + nxt) if eq >= 0 else nxt
+
+
+def _rewrite_inline_cli_bodies(tool: str, argv: list[str]) -> tuple[list[str], list[str]]:
+    out = [str(a) for a in argv]
+    redactions: list[str] = []
+
+    def take_redact(v: str) -> str:
+        text, found = _redact_text(str(v))
+        if found:
+            redactions.extend(found)
+            return text
+        return v
+
+    if tool == "aria2c":
+        return out, redactions
+    if tool == "httpie":
+        i = 0
+        while i < len(out):
+            a = out[i]
+            if a == "--raw" and i + 1 < len(out):
+                out[i + 1] = take_redact(out[i + 1])
+                i += 2
+                continue
+            if a.startswith("--raw="):
+                out[i] = "--raw=" + take_redact(a[len("--raw="):])
+                i += 1
+                continue
+            if a.startswith("-") and a != "-":
+                i += 1
+                continue
+            if a.startswith("http://") or a.startswith("https://"):
+                i += 1
+                continue
+            out[i] = _rewrite_httpie_item(a, take_redact)
+            i += 1
+        return out, redactions
+    if tool == "wget":
+        i = 0
+        while i < len(out):
+            a = out[i]
+            if a in ("--post-data", "--body-data"):
+                if i + 1 < len(out):
+                    out[i + 1] = take_redact(out[i + 1])
+                i += 2
+                continue
+            if a.startswith("--post-data="):
+                out[i] = "--post-data=" + take_redact(a[len("--post-data="):])
+                i += 1
+                continue
+            if a.startswith("--body-data="):
+                out[i] = "--body-data=" + take_redact(a[len("--body-data="):])
+                i += 1
+                continue
+            i += 1
+        return out, redactions
+    i = 0
+    while i < len(out):
+        a = out[i]
+        if a in _CURL_DATA_AT_FILE:
+            value = out[i + 1] if i + 1 < len(out) else ""
+            if not (_CURL_DATA_AT_FILE[a] and str(value).startswith("@")):
+                if i + 1 < len(out):
+                    out[i + 1] = take_redact(value)
+            i += 2
+            continue
+        eq_handled = False
+        for flag, at_file in _CURL_DATA_AT_FILE.items():
+            if flag.startswith("--") and a.startswith(flag + "="):
+                value = a[len(flag) + 1:]
+                if not (at_file and value.startswith("@")):
+                    out[i] = flag + "=" + take_redact(value)
+                eq_handled = True
+                break
+        if eq_handled:
+            i += 1
+            continue
+        if a.startswith("-d") and len(a) > 2 and not a.startswith("--"):
+            value = a[2:]
+            if not value.startswith("@"):
+                out[i] = "-d" + take_redact(value)
+            i += 1
+            continue
+        if a in ("-F", "--form"):
+            if i + 1 < len(out):
+                out[i + 1] = _rewrite_curl_form_value(out[i + 1], True, take_redact)
+            i += 2
+            continue
+        if a.startswith("--form="):
+            out[i] = "--form=" + _rewrite_curl_form_value(a[len("--form="):], True, take_redact)
+            i += 1
+            continue
+        if a.startswith("-F") and len(a) > 2 and not a.startswith("--"):
+            out[i] = "-F" + _rewrite_curl_form_value(a[2:], True, take_redact)
+            i += 1
+            continue
+        if a == "--form-string":
+            if i + 1 < len(out):
+                out[i + 1] = _rewrite_curl_form_value(out[i + 1], False, take_redact)
+            i += 2
+            continue
+        if a.startswith("--form-string="):
+            out[i] = "--form-string=" + _rewrite_curl_form_value(
+                a[len("--form-string="):], False, take_redact
+            )
+            i += 1
+            continue
+        i += 1
+    return out, redactions
+
+
+def _splice_cli_tokens(tokens: list[str], rewritten_argv: list[str]) -> list[str]:
+    stripped = _strip_spawn_prefixes(tokens)
+    prefix = tokens[: len(tokens) - len(stripped)] if stripped else tokens[:]
+    if not stripped:
+        return tokens
+    base = _cmd_base(stripped[0])
+    if base in ("sh", "bash", "dash", "zsh"):
+        rest = stripped[1:]
+        try:
+            c_idx = rest.index("-c")
+        except ValueError:
+            c_idx = -1
+        if c_idx >= 0 and c_idx + 1 < len(rest):
+            inner_tokens = _tokenize_shell(rest[c_idx + 1])
+            inner_stripped = _strip_spawn_prefixes(inner_tokens)
+            inner_prefix = (
+                inner_tokens[: len(inner_tokens) - len(inner_stripped)] if inner_stripped else []
+            )
+            new_inner = (
+                inner_prefix + [inner_stripped[0]] + rewritten_argv
+                if inner_stripped
+                else inner_tokens
+            )
+            new_stripped = list(stripped)
+            new_stripped[c_idx + 2] = " ".join(shlex.quote(t) for t in new_inner)
+            return prefix + new_stripped
+    return prefix + [stripped[0]] + rewritten_argv
+
+
+def _rewrite_popen_args(args: Any, kwargs: dict[str, Any], rewritten_argv: list[str]) -> Any:
+    shell = bool(kwargs.get("shell"))
+    if isinstance(args, bytes):
+        args = args.decode("utf-8", "replace")
+    if isinstance(args, str):
+        tokens = _tokenize_shell(args)
+        return " ".join(shlex.quote(t) for t in _splice_cli_tokens(tokens, rewritten_argv))
+    try:
+        seq = [str(x) for x in list(args)]
+    except TypeError:
+        return args
+    if not seq:
+        return args
+    if shell:
+        tokens = _tokenize_shell(" ".join(seq))
+        return " ".join(shlex.quote(t) for t in _splice_cli_tokens(tokens, rewritten_argv))
+    return _splice_cli_tokens(seq, rewritten_argv)
+
+
+def _apply_cli_gate(
+    tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None
+) -> tuple[Optional[GateBlockedError], Optional[list[str]]]:
     global _spent_usd
     urls, data_bytes = _parse_cli_argv(tool, argv, kwargs)
     if not urls:
-        return None
+        return None, None
     rows: list[tuple[Optional[str], Optional[str], str, str]] = []
     for url in urls:
         hostname, port, path = _host_port_from_url(url)
         decision = _decide(hostname, port, path, data_bytes)
         rows.append((hostname, path, decision, url))
     hard = [r for r in rows if r[2] in ("block", "block_size", "block_spend")]
-    to_record = hard if hard else [r for r in rows if r[2] != "pass"]
+    in_scope = [r for r in rows if r[2] != "pass"]
+    to_record = hard if hard else in_scope
     mediation = _cli_mediation(tool)
     err: Optional[GateBlockedError] = None
     for hostname, path, decision, _url in to_record:
@@ -1836,17 +2027,25 @@ def _apply_cli_gate(tool: str, argv: list[str], kwargs: Optional[dict[str, Any]]
             _record(hostname, "BLOCKED_SPEND", mediation, ok=False, **extra)
             if err is None:
                 err = GateBlockedError(hostname or "")
-        elif decision == "dry_block":
+    if err is not None:
+        return err, None
+    new_argv = argv
+    redactions: list[str] = []
+    if _policy.get("redact_pii") and in_scope:
+        new_argv, redactions = _rewrite_inline_cli_bodies(tool, argv)
+    for hostname, path, decision, _url in to_record:
+        extra = {"path": path, "bytes_observed": data_bytes}
+        if decision == "dry_block":
             _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, **extra)
         elif decision == "dry_size":
             _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, **extra)
         elif decision == "dry_spend":
             _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, **extra)
-        else:
-            action = "ALLOWED" if _cloud_sync else "OBSERVED"
+        elif decision not in ("block", "block_size", "block_spend"):
+            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
             _record(hostname, action, mediation, **extra)
             _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
-    return err
+    return None, (new_argv if redactions else None)
 
 
 class _VantioPopen(subprocess.Popen):
@@ -1854,9 +2053,11 @@ class _VantioPopen(subprocess.Popen):
         try:
             cli = _http_cli_from_popen(args, kwargs)
             if cli is not None:
-                err = _apply_cli_gate(cli[0], cli[1], kwargs)
+                err, new_argv = _apply_cli_gate(cli[0], cli[1], kwargs)
                 if err is not None:
                     raise err
+                if new_argv is not None:
+                    args = _rewrite_popen_args(args, kwargs, new_argv)
         except GateBlockedError:
             raise
         except Exception:
@@ -1868,9 +2069,11 @@ def _observe_os_system(command: Any) -> Any:
     try:
         cli = _http_cli_from_exec(command)
         if cli is not None:
-            err = _apply_cli_gate(cli[0], cli[1])
+            err, new_argv = _apply_cli_gate(cli[0], cli[1])
             if err is not None:
                 raise err
+            if new_argv is not None:
+                command = _rewrite_popen_args(command, {"shell": True}, new_argv)
     except GateBlockedError:
         raise
     except Exception:
@@ -1882,9 +2085,14 @@ async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_spawn(program, args)
         if cli is not None:
-            err = _apply_cli_gate(cli[0], cli[1], kwargs)
+            err, new_argv = _apply_cli_gate(cli[0], cli[1], kwargs)
             if err is not None:
                 raise err
+            if new_argv is not None:
+                tokens = _rewrite_popen_args([program, *args], kwargs, new_argv)
+                if isinstance(tokens, list) and tokens:
+                    program = tokens[0]
+                    args = tuple(tokens[1:])
     except GateBlockedError:
         raise
     except Exception:
@@ -1896,9 +2104,11 @@ async def _observe_asyncio_shell(cmd: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_exec(cmd)
         if cli is not None:
-            err = _apply_cli_gate(cli[0], cli[1], kwargs)
+            err, new_argv = _apply_cli_gate(cli[0], cli[1], kwargs)
             if err is not None:
                 raise err
+            if new_argv is not None:
+                cmd = _rewrite_popen_args(cmd, {**kwargs, "shell": True}, new_argv)
     except GateBlockedError:
         raise
     except Exception:
@@ -1939,6 +2149,104 @@ def _uninstall_curl_spawn() -> None:
     _orig_asyncio_shell = None
 
 
+def _pycurl_decode(value: Any) -> str:
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", "replace")
+    return str(value or "")
+
+
+class _VantioCurl:
+    """Python proxy around pycurl.Curl — C type methods are immutable."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        object.__setattr__(self, "_curl", _orig_pycurl_curl(*args, **kwargs))
+        object.__setattr__(self, "_vantio_url", None)
+        object.__setattr__(self, "_vantio_body", None)
+
+    def setopt(self, option: Any, value: Any) -> Any:
+        try:
+            if _pycurl is not None and option == _pycurl.URL:
+                object.__setattr__(self, "_vantio_url", _pycurl_decode(value))
+            elif _pycurl is not None and option == _pycurl.POSTFIELDS:
+                object.__setattr__(self, "_vantio_body", value)
+        except Exception:
+            pass
+        return self._curl.setopt(option, value)
+
+    def perform(self, *args: Any, **kwargs: Any) -> Any:
+        url = self._vantio_url or ""
+        body = self._vantio_body
+        hostname, port, path = _host_port_from_url(url)
+        kind, payload, redactions, record_send = _dispatch_gate(
+            hostname, port, path, body, "python_pycurl"
+        )
+        if kind == "pass":
+            return self._curl.perform(*args, **kwargs)
+        if kind == "block":
+            raise GateBlockedError(hostname or "")
+        if redactions:
+            self._curl.setopt(_pycurl.POSTFIELDS, payload)
+            object.__setattr__(self, "_vantio_body", payload)
+        t0 = time.time()
+        try:
+            result = self._curl.perform(*args, **kwargs)
+            if record_send:
+                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                _record(
+                    hostname,
+                    action,
+                    "python_pycurl",
+                    path=path,
+                    ok=True,
+                    duration_ms=int((time.time() - t0) * 1000),
+                )
+            return result
+        except Exception as exc:
+            if isinstance(exc, GateBlockedError):
+                raise
+            _record(
+                hostname,
+                "OBSERVED",
+                "python_pycurl",
+                path=path,
+                ok=False,
+                duration_ms=int((time.time() - t0) * 1000),
+                error="network_error",
+                error_class=type(exc).__name__,
+            )
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._curl, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in ("_curl", "_vantio_url", "_vantio_body"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._curl, name, value)
+
+
+def _install_pycurl() -> None:
+    global _orig_pycurl_curl
+    if _pycurl is None or _orig_pycurl_curl is not None:
+        return
+    current = getattr(_pycurl, "Curl", None)
+    if current is None or current is _VantioCurl:
+        return
+    _orig_pycurl_curl = current
+    _pycurl.Curl = _VantioCurl  # type: ignore[misc,assignment]
+
+
+def _uninstall_pycurl() -> None:
+    global _orig_pycurl_curl
+    try:
+        if _orig_pycurl_curl is not None and _pycurl is not None:
+            _pycurl.Curl = _orig_pycurl_curl
+    except Exception:
+        pass
+    _orig_pycurl_curl = None
+
+
 def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
@@ -1966,7 +2274,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3 when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget to in-scope LLM hosts. File-body size is counted from stat; contents are not read. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Curl and wget bodies are not rewritten. Browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten for Gate PII. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
@@ -1999,6 +2307,7 @@ def install(trace_id: str) -> None:
             _install_socket()
             _install_http_client()
             _install_urllib3()
+            _install_pycurl()
             _install_curl_spawn()
 
 
@@ -2016,6 +2325,7 @@ def uninstall() -> None:
             _uninstall_aiohttp()
             _uninstall_socket()
             _uninstall_urllib3()
+            _uninstall_pycurl()
             _uninstall_http_client()
             _uninstall_curl_spawn()
             _write_run_log()
