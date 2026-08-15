@@ -319,6 +319,11 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
       "node_curl",
       "fetch must stay a single ingest event, not a node_curl wrap"
     );
+    assert.notEqual(
+      requests.ingest[0].body.eventPayload.mediation,
+      "node_wget",
+      "fetch must stay a single ingest event, not a node_wget wrap"
+    );
     assert.ok(
       requests.ingest[0].body.eventPayload.bytes_observed != null,
       "ingest must set bytes_observed so Mission Control KPIs roll up wrap events"
@@ -1204,6 +1209,137 @@ else go();
       }
       assert.ok(sizeEvents.length >= 1);
       assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
+    });
+  });
+
+  const HAS_WGET = (() => {
+    try {
+      return spawnSync("wget", ["--version"], { encoding: "utf8", timeout: 3000 }).status === 0;
+    } catch {
+      return false;
+    }
+  })();
+
+  const WGET_SPAWN_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const child = spawn("wget", [
+    "-q", "-O", "-", "--timeout=2", "--tries=1",
+    "--post-data=hello-wget",
+    process.env.TARGET_URL,
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+  let body = "";
+  if (child.stdout) child.stdout.on("data", (c) => { body += c; });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+    body: err && err.message ? String(err.message) : "",
+  }));
+  child.on("close", (code) => out({ ok: true, code, body }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const WGET_SH_C_SCRIPT = `
+const { spawn } = require("child_process");
+function go() {
+  let done = false;
+  const out = (obj) => {
+    if (done) return;
+    done = true;
+    process.stdout.write(JSON.stringify(obj) + "\\n");
+    setTimeout(() => process.exit(0), 150);
+  };
+  const url = process.env.TARGET_URL;
+  const child = spawn("sh", ["-c", "wget -q -O - --timeout=2 --tries=1 " + JSON.stringify(url)], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.on("error", (err) => out({
+    error: err && err.code ? String(err.code) : "Error",
+  }));
+  child.on("close", (code) => out({ ok: true, code }));
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  describe("Node-spawned wget", () => {
+    test("PAID_MODE, spawn wget blocked_hosts: wget never starts", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WGET_SPAWN_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "blocked wget must never hit the target");
+      const wgetEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
+      assert.ok(wgetEvents.length >= 1);
+      assert.equal(wgetEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    });
+
+    test("PAID_MODE, spawn wget allowed_hosts: ingest node_wget ALLOWED", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WGET_SPAWN_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.ok, true);
+      assert.equal(requests.target.length, 1);
+      assert.match(requests.target[0].body, /hello-wget/);
+      const wgetEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
+      assert.equal(wgetEvents.length, 1);
+      assert.equal(wgetEvents[0].body.eventPayload.action_taken, "ALLOWED");
+      assert.equal(wgetEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-wget"));
+    });
+
+    test("PAID_MODE, sh -c wget blocked_hosts: wget never starts", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WGET_SH_C_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "sh -c wget must not bypass destination blocking");
+      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_wget");
+    });
+
+    test("PAID_MODE, spawn wget --post-data over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_WGET, timeout: 15000 }, async () => {
+      configPolicy.enforce = true;
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      configPolicy.max_request_bytes = 4;
+      const { code, stdout } = await runAgent(
+        { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        WGET_SPAWN_SCRIPT
+      );
+      assert.equal(code, 0, stdout);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.target.length, 0, "oversized wget body must not reach the target");
+      const deadline = Date.now() + 1000;
+      let sizeEvents = [];
+      while (Date.now() < deadline) {
+        sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+        if (sizeEvents.length >= 1) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.ok(sizeEvents.length >= 1);
+      assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_wget");
     });
   });
 });
