@@ -825,6 +825,7 @@ function one(url) {
       error: err && err.code ? String(err.code) : "Error",
       body: err && err.message ? String(err.message) : "",
     }) + "\\n");
+    await new Promise((r) => setTimeout(r, 150));
     process.exit(0);
   }
 })();
@@ -862,7 +863,13 @@ function one(url) {
     assert.equal(result.error, "VANTIO_GATE_BLOCKED");
     const frames = requests.wsFrames.map((b) => b.toString()).join("");
     assert.equal(frames.includes("hello-ws"), false, "oversized tunnel write must not reach the target");
-    const sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+    const deadline = Date.now() + 1000;
+    let sizeEvents = [];
+    while (Date.now() < deadline) {
+      sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
+      if (sizeEvents.length >= 1) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
     assert.ok(sizeEvents.length >= 1);
     assert.equal(sizeEvents[0].body.eventPayload.mediation, "undici_ws");
   });
