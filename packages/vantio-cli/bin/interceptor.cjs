@@ -2,8 +2,9 @@
 // Injected at runtime by `vantio run node agent.js` via Node --require.
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
 // request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
-// http/https.request|get, and Node http2.connect / session.request.
-// Raw sockets, curl, and browser paths stay outside this wrap.
+// http/https.request|get, Node http2.connect / session.request, and Node
+// net.Socket.connect / tls.connect to in-scope hosts.
+// Curl, browsers, and Python sockets stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
 //   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
@@ -22,6 +23,7 @@ const { randomUUID } = require("node:crypto");
 const { mkdirSync, writeFileSync } = require("node:fs");
 const { homedir, hostname: osHostname } = require("node:os");
 const { join } = require("node:path");
+const { AsyncLocalStorage } = require("node:async_hooks");
 const {
   LLM_HOSTS: BASE_LLM_HOSTS,
   hostListed,
@@ -219,22 +221,33 @@ const _originalFetch = globalThis.fetch;
 // Fetch and undici.request wrap above dispatcher.dispatch. Increment while those
 // wrappers run so the dispatch wrap does not Gate the same call twice.
 let undiciWrapDepth = 0;
+// HTTP/undici/http2 orig calls mark this store so Socket.connect does not
+// ingest a second Gate event for the same request.
+const vantioHttpAls = new AsyncLocalStorage();
+function launchHttpHandled(fn) {
+  return vantioHttpAls.run(true, fn);
+}
+function httpWrapOwnsConnect() {
+  return vantioHttpAls.getStore() === true;
+}
 function launchUndiciBackend(fn) {
-  undiciWrapDepth++;
-  let result;
-  try {
-    result = fn();
-  } catch (err) {
-    undiciWrapDepth--;
-    throw err;
-  }
-  if (result && typeof result.then === "function") {
-    return Promise.resolve(result).finally(() => {
+  return launchHttpHandled(() => {
+    undiciWrapDepth++;
+    let result;
+    try {
+      result = fn();
+    } catch (err) {
       undiciWrapDepth--;
-    });
-  }
-  undiciWrapDepth--;
-  return result;
+      throw err;
+    }
+    if (result && typeof result.then === "function") {
+      return Promise.resolve(result).finally(() => {
+        undiciWrapDepth--;
+      });
+    }
+    undiciWrapDepth--;
+    return result;
+  });
 }
 
 function log(line) {
@@ -1623,7 +1636,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       const hostname = dest.hostname;
       const port = dest.port;
       const decision = decideHttp(hostname, port, args);
-      if (decision === "pass") return launch();
+      if (decision === "pass") return launchHttpHandled(launch);
 
       sendRunTelemetryOnce(hostname);
       const provider = guessProvider(hostname, port);
@@ -1691,7 +1704,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         }
       }
 
-      const req = launch();
+      const req = launchHttpHandled(launch);
       if (req && typeof req.on === "function") {
         req.on("response", (res) => {
           try {
@@ -1778,7 +1791,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 
 // Node http2.connect / session.request — same Sight Loop / Gate rules as
 // Node http. Host block happens before the session opens. Residual: curl,
-// raw sockets, browsers, WebSocket frames after upgrade.
+// browsers, Python sockets, WebSocket frames after upgrade.
 (function patchNodeHttp2() {
   let http2;
   try { http2 = require("node:http2"); } catch { try { http2 = require("http2"); } catch { return; } }
@@ -2020,7 +2033,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK Node http2.connect; dry_run=true passes through`);
     }
 
-    const session = origConnect(authority, options, listener);
+    const session = launchHttpHandled(() => origConnect(authority, options, listener));
     return wrapSession(session, hostname, port);
   }
 
@@ -2113,13 +2126,171 @@ globalThis.fetch = function vantioFetch(input, init) {
         return pendingConnect(authority, options, listener);
       }
       const decision = decideHttp2(hostname, port);
-      if (decision === "pass") return origConnect(authority, options, listener);
+      if (decision === "pass") return launchHttpHandled(() => origConnect(authority, options, listener));
       return launchConnect(authority, options, listener, hostname, port, decision);
     } catch {
-      return origConnect(authority, options, listener);
+      return launchHttpHandled(() => origConnect(authority, options, listener));
     }
   };
   http2.__vantioPatched = true;
+})();
+
+// Node net.Socket.connect / tls.connect — host-block and observe for raw TCP
+// to in-scope hosts. HTTP/undici/http2 already marked via AsyncLocalStorage
+// so those sockets are not ingested twice. No TLS payload redaction.
+(function patchNodeNetTls() {
+  let net;
+  try { net = require("node:net"); } catch { try { net = require("net"); } catch { return; } }
+  if (!net || !net.Socket || !net.Socket.prototype) return;
+
+  function destFromNetArgs(args) {
+    let list = args;
+    // net.Socket.connect sometimes receives Node's normalized tuple as a
+    // single array argument: [options, cb] or [port, host, cb].
+    if (list && list.length === 1 && Array.isArray(list[0])) {
+      list = list[0];
+    }
+    const a0 = list && list[0];
+    if (typeof a0 === "string" && (a0.includes("/") || a0.startsWith("\0"))) {
+      return { ipc: true, hostname: null, port: null };
+    }
+    if (a0 && typeof a0 === "object" && !Array.isArray(a0)) {
+      if (a0.path) return { ipc: true, hostname: null, port: null };
+      const hostname = a0.servername || a0.host || a0.hostname || null;
+      const port = a0.port;
+      return {
+        hostname: hostname ? String(hostname).replace(/^\[/, "").replace(/\]$/, "").split("%")[0] : null,
+        port: port != null && port !== "" ? String(port) : null,
+      };
+    }
+    if (typeof a0 === "number" || (typeof a0 === "string" && /^\d+$/.test(a0))) {
+      const host = typeof list[1] === "string" ? list[1] : "localhost";
+      return { hostname: host, port: String(a0) };
+    }
+    return { hostname: null, port: null };
+  }
+
+  function isControlPlaneHost(hostname, port) {
+    try {
+      const ingest = new URL(INGEST_URL);
+      const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+      return hostname
+        && hostname.toLowerCase() === ingest.hostname.toLowerCase()
+        && String(port || ingestPort) === String(ingestPort);
+    } catch {
+      return false;
+    }
+  }
+
+  function decideNet(hostname, port) {
+    if (!hostname || isControlPlaneHost(hostname, port)) return "pass";
+    if (!inScope(hostname, port)) return "pass";
+    if (FREE_MODE) return "observe";
+    if (policy.enforce) {
+      const blocked = hostListed(hostname, policy.blocked_hosts)
+        || (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts));
+      if (blocked) return policy.dry_run ? "dry_block" : "block";
+    }
+    return "observe";
+  }
+
+  let policySettled = FREE_MODE;
+  if (!FREE_MODE && policyReady && typeof policyReady.then === "function") {
+    policyReady.then(() => { policySettled = true; }).catch(() => { policySettled = true; });
+  }
+
+  function gateConnect(socket, orig, args) {
+    if (httpWrapOwnsConnect()) return orig.apply(socket, args);
+    const dest = destFromNetArgs(args);
+    if (dest.ipc) return orig.apply(socket, args);
+    const hostname = dest.hostname;
+    const port = dest.port;
+    const decision = decideNet(hostname, port);
+    if (decision === "pass") return orig.apply(socket, args);
+
+    sendRunTelemetryOnce(hostname);
+    const provider = guessProvider(hostname, port);
+    const ts = new Date().toISOString();
+    const baseCall = {
+      hostname, provider, method: "CONNECT", path: null, scheme: "tcp",
+      request_bytes: null, bytes: 0, status: null, ok: true,
+      content_type: null, duration_ms: 0, ts, optics_plane: "app_net",
+    };
+
+    if (decision === "block") {
+      _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
+      report({
+        target_host: hostname, pid: process.pid, action_taken: "BLOCKED_HOST",
+        timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+        mediation: "node_net", plane: "optics_gate",
+      });
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node net.connect`);
+      const err = new Error(`Vantio Gate blocked host: ${hostname}`);
+      err.code = "VANTIO_GATE_BLOCKED";
+      process.nextTick(() => {
+        try { socket.emit("error", err); } catch { /* ignore */ }
+      });
+      return socket;
+    }
+
+    if (decision === "dry_block") {
+      _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_HOST" });
+      report({
+        target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
+        timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+        mediation: "node_net", plane: "optics_gate",
+      });
+      log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK Node net.connect; dry_run=true passes through`);
+    } else {
+      _calls.push({ ...baseCall, action: FREE_MODE ? "OBSERVED" : "ALLOWED" });
+      report({
+        target_host: hostname, pid: process.pid,
+        action_taken: FREE_MODE ? "OBSERVED" : "ALLOWED",
+        timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
+        mediation: "node_net", plane: "optics_gate",
+      });
+      if (FREE_MODE) {
+        log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — Node net.connect`);
+      }
+    }
+    return orig.apply(socket, args);
+  }
+
+  function wrapConnectProto(proto) {
+    if (!proto || typeof proto.connect !== "function" || proto.__vantioConnectPatched) return;
+    const orig = proto.connect;
+    proto.connect = function vantioSocketConnect(...args) {
+      try {
+        if (!FREE_MODE && !policySettled) {
+          const self = this;
+          policyReady.then(() => {
+            policySettled = true;
+            try { gateConnect(self, orig, args); } catch (err) {
+              try { self.emit("error", err); } catch { /* ignore */ }
+            }
+          }).catch((err) => {
+            try { self.emit("error", err); } catch { /* ignore */ }
+          });
+          return this;
+        }
+        return gateConnect(this, orig, args);
+      } catch {
+        return orig.apply(this, args);
+      }
+    };
+    proto.__vantioConnectPatched = true;
+  }
+
+  wrapConnectProto(net.Socket.prototype);
+  try {
+    const tls = require("node:tls");
+    if (tls && tls.TLSSocket) wrapConnectProto(tls.TLSSocket.prototype);
+  } catch {
+    try {
+      const tls = require("tls");
+      if (tls && tls.TLSSocket) wrapConnectProto(tls.TLSSocket.prototype);
+    } catch { /* optional */ }
+  }
 })();
 
 process.on("exit", () => {
@@ -2209,7 +2380,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici.fetch, undici.request, Client/Pool/Agent.request, undici.stream/pipeline/dispatch/connect/upgrade, and Node http/https. Host Sight covers host egress observe. curl, raw sockets, and browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        note: "App plane covers fetch, undici, Node http/https, http2, and Node net/tls to in-scope hosts. Host Sight covers host egress observe. curl, browsers, and Python sockets stay outside this wrap until Phantom Engine on enrolled Linux.",
         upgrade_gate: "https://vantio.ai/gate",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },

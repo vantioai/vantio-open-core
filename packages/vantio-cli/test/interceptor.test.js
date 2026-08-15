@@ -8,6 +8,7 @@ import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import http2 from "node:http2";
+import net from "node:net";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -519,6 +520,7 @@ else go();
     const result = JSON.parse(stdout.trim().split("\n").pop());
     assert.equal(result.error, "VANTIO_GATE_BLOCKED");
     assert.equal(requests.target.length, 0, "blocked http.get must never reach the target");
+    assert.equal(requests.ingest.length, 1, "http.get must not also ingest a raw net.connect event");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
     assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_http");
   });
@@ -882,6 +884,109 @@ else go();
       assert.equal(result.error, "VANTIO_GATE_BLOCKED");
       assert.equal(requests.target.length, 0, "http2.connect must not bypass destination blocking");
       assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    });
+  });
+
+  const NET_ONCE_SCRIPT = `
+const net = require("net");
+function go() {
+  const u = new URL(process.env.TCP_URL);
+  const sock = net.connect({ host: u.hostname, port: Number(u.port) }, () => {
+    process.stdout.write(JSON.stringify({ connected: true }) + "\\n");
+    sock.end();
+  });
+  sock.on("error", (err) => {
+    process.stdout.write(JSON.stringify({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }) + "\\n");
+  });
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  const TLS_ONCE_SCRIPT = `
+const tls = require("tls");
+function go() {
+  const u = new URL(process.env.TCP_URL);
+  const sock = tls.connect({
+    host: u.hostname,
+    port: Number(u.port),
+    servername: u.hostname,
+    rejectUnauthorized: false,
+  }, () => {
+    process.stdout.write(JSON.stringify({ connected: true }) + "\\n");
+    sock.end();
+  });
+  sock.on("error", (err) => {
+    process.stdout.write(JSON.stringify({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }) + "\\n");
+  });
+}
+if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
+else go();
+`;
+
+  describe("Node net.connect / tls.connect", () => {
+    let tcpServer;
+    let tcpUrl;
+    let tcpHits;
+
+    beforeEach(async () => {
+      tcpHits = 0;
+      tcpServer = net.createServer((sock) => {
+        tcpHits += 1;
+        sock.end();
+      });
+      await new Promise((resolve) => tcpServer.listen(0, "127.0.0.1", resolve));
+      tcpUrl = `http://127.0.0.1:${tcpServer.address().port}/`;
+    });
+
+    afterEach(async () => {
+      await new Promise((resolve) => tcpServer.close(resolve));
+    });
+
+    test("PAID_MODE, net.connect blocked_hosts: TCP never opens", async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TCP_URL: tcpUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        NET_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(tcpHits, 0, "raw net.connect must not bypass destination blocking");
+      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_net");
+    });
+
+    test("PAID_MODE, tls.connect blocked_hosts: TCP never opens", async () => {
+      configPolicy.enforce = true;
+      configPolicy.blocked_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TCP_URL: tcpUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        TLS_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(tcpHits, 0, "tls.connect must not bypass destination blocking");
+      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_net");
+    });
+
+    test("PAID_MODE, net.connect allowed_hosts: ingest ALLOWED once", async () => {
+      configPolicy.allowed_hosts = ["127.0.0.1"];
+      const { code, stdout } = await runAgent(
+        { TCP_URL: tcpUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
+        NET_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      const result = JSON.parse(stdout.trim().split("\n").pop());
+      assert.equal(result.connected, true);
+      assert.equal(tcpHits, 1);
+      const allowed = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "ALLOWED");
+      assert.ok(allowed.length >= 1);
+      assert.equal(allowed[0].body.eventPayload.mediation, "node_net");
+      assert.ok(allowed[0].body.eventPayload.bytes_observed != null);
     });
   });
 });
