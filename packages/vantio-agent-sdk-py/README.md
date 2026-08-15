@@ -173,8 +173,14 @@ export DO_NOT_TRACK=1
 
 ---
 
-## Zero dependencies
+## Zero required dependencies
 
 Core tracing requires only the Python standard library (`contextvars`, `asyncio`, `hashlib`,
 `hmac`, `re`). Cloud ingest and anonymous telemetry use `urllib.request` and `threading`.
-No aiohttp, no httpx, no requests.
+This package does not depend on aiohttp, requests, or httpx.
+
+While `shield()` is active, Optics records urllib calls to in-scope LLM hosts (OpenAI,
+Anthropic, Bedrock, Vertex AI, Hugging Face Inference, Replicate, Ollama, NVIDIA NIM, and
+the rest of the catalog). If `requests` or `httpx` are already installed in the agent
+environment, `shield()` records those the same way. They are optional; installing this
+package does not pull them in. curl and raw sockets stay outside this wrap.

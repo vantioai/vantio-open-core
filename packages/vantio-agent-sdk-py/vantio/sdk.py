@@ -2,7 +2,9 @@
 Vantio Optics Python SDK — Sight Loop observe.
 Provides shield() decorator/context-manager, report_anomaly() for cloud ingest,
 fetch_policy() for policy retrieval, and redact_pii() for local PII scrubbing.
-Zero dependencies beyond the Python standard library.
+Zero dependencies beyond the Python standard library. requests and httpx
+are optional: if they are installed, shield() observes them the same way
+as urllib.
 """
 from __future__ import annotations
 
@@ -21,6 +23,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Callable, List, Optional, TypeVar
 
+from ._http_observe import install as install_http_observe
+from ._http_observe import uninstall as uninstall_http_observe
 from ._telemetry import send_run_telemetry_once
 
 T = TypeVar("T")
@@ -53,9 +57,11 @@ def _decorate(fn: Callable, trace_id: Optional[str]) -> Callable:
         token = _trace_id_var.set(tid)
         # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
         send_run_telemetry_once(_sdk_version())
+        install_http_observe(tid)
         try:
             return await fn(*args, **kwargs)
         finally:
+            uninstall_http_observe()
             _trace_id_var.reset(token)
 
     return wrapper
@@ -78,9 +84,11 @@ class _ShieldContextManager:
         self._token = _trace_id_var.set(self._trace_id)
         # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
         send_run_telemetry_once(_sdk_version())
+        install_http_observe(self._trace_id)
         return VantioContext(trace_id=self._trace_id)
 
     async def __aexit__(self, *_: Any) -> None:
+        uninstall_http_observe()
         if self._token is not None:
             _trace_id_var.reset(self._token)
 
@@ -106,7 +114,9 @@ def shield(fn: Optional[Callable] = None, *, trace_id: Optional[str] = None):
             await run_agent()
 
     Generates a VANTIO_TRACE_ID and propagates it via contextvars through
-    every async hop in the call tree. Zero monkey-patching. Zero globals.
+    every async hop in the call tree. While active, shield() observes urllib
+    and, when those libraries are installed, requests and httpx — metadata
+    only. Raw sockets and curl stay outside this wrap.
     """
     if fn is None:
         # Called as shield() or shield(trace_id=...) — return an object that

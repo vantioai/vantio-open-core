@@ -1,6 +1,6 @@
 # @vantio/cli
 
-> Run any AI agent with full observability. Zero code changes.
+> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes.
 
 ```bash
 npm install -g @vantio/cli
