@@ -1,8 +1,8 @@
 // [ ∅ VANTIO ] Open Core Interceptor — Observe Plane
 // Injected at runtime by `vantio run node agent.js` via Node --require.
 // Patches globalThis.fetch, undici.fetch, undici.request, Client/Pool/Agent
-// request() and dispatch(), undici.stream/pipeline/connect/upgrade, and Node
-// http/https.request|get to intercept outbound LLM calls — zero code changes.
+// request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
+// http/https.request|get, and Node http2.connect / session.request.
 // Raw sockets, curl, and browser paths stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
@@ -460,9 +460,19 @@ function blockedResponse(reason) {
 function report(metadata) {
   if (FREE_MODE || !INGEST_URL || !cloudSyncActive) return;
   // Additive Optics Sight Loop fields — Gate stores opaque JSON; PE joins on traceId.
+  // Mission Control KPIs read bytes_observed; wrap paths historically sent
+  // bytes_severed / request_bytes only — alias so counts and spend roll up.
   const host = metadata && metadata.target_host;
+  const bytesObserved = metadata.bytes_observed != null
+    ? metadata.bytes_observed
+    : metadata.bytes_severed != null
+      ? metadata.bytes_severed
+      : metadata.request_bytes != null
+        ? metadata.request_bytes
+        : 0;
   const eventPayload = {
     ...metadata,
+    bytes_observed: bytesObserved,
     provider: metadata.provider || (host ? guessProvider(host) : undefined),
     mediation: metadata.mediation || "sight_loop",
     plane: metadata.plane || "optics_gate",
@@ -1764,6 +1774,352 @@ globalThis.fetch = function vantioFetch(input, init) {
 
   try { wrapModule(require("node:http"), "http"); } catch { try { wrapModule(require("http"), "http"); } catch { /* ignore */ } }
   try { wrapModule(require("node:https"), "https"); } catch { try { wrapModule(require("https"), "https"); } catch { /* ignore */ } }
+})();
+
+// Node http2.connect / session.request — same Sight Loop / Gate rules as
+// Node http. Host block happens before the session opens. Residual: curl,
+// raw sockets, browsers, WebSocket frames after upgrade.
+(function patchNodeHttp2() {
+  let http2;
+  try { http2 = require("node:http2"); } catch { try { http2 = require("http2"); } catch { return; } }
+  if (!http2 || typeof http2.connect !== "function" || http2.__vantioPatched) return;
+
+  const { EventEmitter } = require("node:events");
+  const origConnect = http2.connect.bind(http2);
+
+  function destFromAuthority(authority, options) {
+    try {
+      if (authority && typeof authority === "object") {
+        if (typeof authority.href === "string") return destFromHref(authority.href);
+        if (typeof authority.hostname === "string") {
+          const proto = authority.protocol || (options && options.protocol) || "https:";
+          const port = authority.port || (options && options.port)
+            || (String(proto).includes("https") ? 443 : 80);
+          return { hostname: authority.hostname, port: String(port) };
+        }
+      }
+      const s = String(authority || "");
+      if (s.includes("://")) return destFromHref(s);
+      const proto = (options && options.protocol) || "http:";
+      return destFromHref(`${proto}//${s}`);
+    } catch {
+      const hostname = options && (options.hostname || options.host);
+      const port = options && options.port;
+      return { hostname: hostname || null, port: port != null ? String(port) : "443" };
+    }
+  }
+
+  function isControlPlaneHost(hostname, port) {
+    try {
+      const ingest = new URL(INGEST_URL);
+      const ingestPort = ingest.port || (ingest.protocol === "https:" ? "443" : "80");
+      return hostname
+        && hostname.toLowerCase() === ingest.hostname.toLowerCase()
+        && String(port) === String(ingestPort);
+    } catch {
+      return false;
+    }
+  }
+
+  function decideHttp2(hostname, port) {
+    if (!hostname || isControlPlaneHost(hostname, port)) return "pass";
+    if (!inScope(hostname, port)) return "pass";
+    if (FREE_MODE) return "observe";
+    if (policy.enforce) {
+      const blocked = hostListed(hostname, policy.blocked_hosts)
+        || (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts));
+      if (blocked) return policy.dry_run ? "dry_block" : "block";
+    }
+    return "observe";
+  }
+
+  function blockedErr(hostname, reason) {
+    const err = new Error(reason || `Vantio Gate blocked host: ${hostname}`);
+    err.code = "VANTIO_GATE_BLOCKED";
+    return err;
+  }
+
+  function stubStream(err) {
+    const stream = new EventEmitter();
+    stream.end = () => stream;
+    stream.write = () => true;
+    stream.close = () => {};
+    stream.destroy = () => {};
+    stream.setEncoding = () => stream;
+    stream.setTimeout = () => stream;
+    stream.priority = () => {};
+    stream.rstWithCancel = () => {};
+    process.nextTick(() => stream.emit("error", err));
+    return stream;
+  }
+
+  function stubSession(err) {
+    const fake = new EventEmitter();
+    fake.request = () => stubStream(err);
+    fake.close = () => {};
+    fake.destroy = () => {};
+    fake.setTimeout = () => fake;
+    fake.ref = () => fake;
+    fake.unref = () => fake;
+    fake.ping = (_payload, cb) => {
+      const done = typeof _payload === "function" ? _payload : cb;
+      if (typeof done === "function") process.nextTick(() => done(err));
+    };
+    process.nextTick(() => fake.emit("error", err));
+    return fake;
+  }
+
+  function reportH2(hostname, action, extra) {
+    report({
+      target_host: hostname,
+      pid: process.pid,
+      action_taken: action,
+      timestamp_ns: Date.now() * 1e6,
+      bytes_severed: (extra && extra.bytes) || 0,
+      mediation: "node_http2",
+      plane: "optics_gate",
+      ...(extra || {}),
+    });
+  }
+
+  function wrapH2Write(stream, hostname) {
+    if (!stream || typeof stream.write !== "function") return stream;
+    if (FREE_MODE || (!policy.redact_pii && !(policy.enforce && policy.max_request_bytes > 0))) {
+      return stream;
+    }
+    const origWrite = stream.write.bind(stream);
+    const origEnd = typeof stream.end === "function" ? stream.end.bind(stream) : null;
+    let written = 0;
+
+    function gateChunk(chunk, encoding) {
+      const buf = chunk == null ? Buffer.alloc(0)
+        : Buffer.isBuffer(chunk) ? chunk
+        : Buffer.from(String(chunk), typeof encoding === "string" ? encoding : "utf8");
+      written += buf.length;
+      if (policy.enforce && policy.max_request_bytes > 0 && written > policy.max_request_bytes) {
+        if (policy.dry_run) {
+          reportH2(hostname, "DRY_RUN_BLOCKED_SIZE", { bytes: written });
+          return { chunk, encoding, blocked: false };
+        }
+        reportH2(hostname, "BLOCKED_SIZE", { bytes: written });
+        log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node http2 request ${written}B exceeds cap`);
+        process.nextTick(() => stream.emit("error", blockedErr(hostname, "Vantio Gate blocked request: request_too_large")));
+        return { blocked: true };
+      }
+      if (policy.redact_pii && buf.length) {
+        const r = redactBody(buf.toString("utf8"));
+        if (r.redactions.length) {
+          reportH2(hostname, "REDACTED", { bytes: 0 });
+          log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — Node http2.request stripped ${r.redactions.length} PII item(s)`);
+          return { chunk: Buffer.from(r.text, "utf8"), encoding: undefined, blocked: false };
+        }
+      }
+      return { chunk, encoding, blocked: false };
+    }
+
+    stream.write = function vantioH2Write(chunk, encoding, cb) {
+      try {
+        const gated = gateChunk(chunk, encoding);
+        if (gated.blocked) return false;
+        return origWrite(gated.chunk, gated.encoding, cb);
+      } catch {
+        return origWrite(chunk, encoding, cb);
+      }
+    };
+    if (origEnd) {
+      stream.end = function vantioH2End(chunk, encoding, cb) {
+        try {
+          if (typeof chunk === "function") return origEnd(chunk);
+          if (chunk == null) return origEnd(chunk, encoding, cb);
+          if (typeof encoding === "function") {
+            cb = encoding;
+            encoding = undefined;
+          }
+          const gated = gateChunk(chunk, encoding);
+          if (gated.blocked) return stream;
+          return origEnd(gated.chunk, gated.encoding, cb);
+        } catch {
+          return origEnd(chunk, encoding, cb);
+        }
+      };
+    }
+    return stream;
+  }
+
+  function wrapSession(session, hostname, port) {
+    if (!session || typeof session.request !== "function" || session.__vantioPatched) return session;
+    const origRequest = session.request.bind(session);
+    session.request = function vantioH2Request(headers, options) {
+      const ts = new Date().toISOString();
+      const provider = guessProvider(hostname, port);
+      const baseCall = {
+        hostname, provider, method: "REQUEST", path: null, scheme: "http2",
+        request_bytes: null, bytes: 0, status: null, ok: true,
+        content_type: null, duration_ms: 0, ts, optics_plane: "app_http2",
+      };
+
+      if (!FREE_MODE && policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
+        if (policy.dry_run) {
+          _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_SPEND" });
+          reportH2(hostname, "DRY_RUN_BLOCKED_SPEND");
+          log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK Node http2 spend cap $${policy.spend_cap_usd}; dry_run=true passes through`);
+        } else {
+          _calls.push({ ...baseCall, action: "BLOCKED_SPEND", ok: false });
+          reportH2(hostname, "BLOCKED_SPEND");
+          log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node http2 spend cap $${policy.spend_cap_usd} reached`);
+          return stubStream(blockedErr(hostname, "Vantio Gate blocked request: spend_cap_reached"));
+        }
+      }
+
+      _calls.push({ ...baseCall, action: FREE_MODE ? "OBSERVED" : "ALLOWED" });
+      reportH2(hostname, FREE_MODE ? "OBSERVED" : "ALLOWED");
+      if (FREE_MODE) {
+        log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — Node http2.request`);
+      }
+
+      const stream = origRequest(headers, options);
+      if (stream && typeof stream.on === "function") {
+        stream.on("response", (hdrs) => {
+          try {
+            const cl = parseInt(hdrs && (hdrs["content-length"] || hdrs["Content-Length"]), 10);
+            if (Number.isFinite(cl) && cl > 0) spentUsd += cl * USD_PER_BYTE;
+          } catch { /* ignore */ }
+        });
+      }
+      return wrapH2Write(stream, hostname);
+    };
+    session.__vantioPatched = true;
+    return session;
+  }
+
+  let policySettled = FREE_MODE;
+  if (!FREE_MODE && policyReady && typeof policyReady.then === "function") {
+    policyReady.then(() => { policySettled = true; }).catch(() => { policySettled = true; });
+  }
+
+  function launchConnect(authority, options, listener, hostname, port, decision) {
+    sendRunTelemetryOnce(hostname);
+    const provider = guessProvider(hostname, port);
+    const ts = new Date().toISOString();
+    const baseCall = {
+      hostname, provider, method: "CONNECT", path: null, scheme: "http2",
+      request_bytes: null, bytes: 0, status: null, ok: true,
+      content_type: null, duration_ms: 0, ts, optics_plane: "app_http2",
+    };
+
+    if (decision === "block") {
+      _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
+      reportH2(hostname, "BLOCKED_HOST");
+      log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${hostname} — Node http2.connect`);
+      return stubSession(blockedErr(hostname));
+    }
+
+    if (decision === "dry_block") {
+      _calls.push({ ...baseCall, action: "DRY_RUN_BLOCKED_HOST" });
+      reportH2(hostname, "DRY_RUN_BLOCKED_HOST");
+      log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK Node http2.connect; dry_run=true passes through`);
+    }
+
+    const session = origConnect(authority, options, listener);
+    return wrapSession(session, hostname, port);
+  }
+
+  function pendingConnect(authority, options, listener) {
+    const pending = new EventEmitter();
+    const queued = [];
+    let real = null;
+    let dead = null;
+
+    pending.request = function (...reqArgs) {
+      if (dead) return stubStream(dead);
+      if (real) return real.request(...reqArgs);
+      const placeholder = new EventEmitter();
+      const writes = [];
+      placeholder.write = (c, e, cb) => { writes.push(["write", c, e, cb]); return true; };
+      placeholder.end = (c, e, cb) => { writes.push(["end", c, e, cb]); return placeholder; };
+      placeholder.close = () => {};
+      placeholder.destroy = () => {};
+      placeholder.setEncoding = () => placeholder;
+      placeholder.setTimeout = () => placeholder;
+      placeholder.priority = () => {};
+      queued.push({ reqArgs, placeholder, writes });
+      return placeholder;
+    };
+    pending.close = () => { if (real && real.close) real.close(); };
+    pending.destroy = () => { if (real && real.destroy) real.destroy(); };
+    pending.ref = () => pending;
+    pending.unref = () => pending;
+    pending.setTimeout = () => pending;
+    pending.ping = (...a) => { if (real && real.ping) return real.ping(...a); };
+
+    policyReady.then(() => {
+      policySettled = true;
+      try {
+        const dest = destFromAuthority(authority, options);
+        const decision = decideHttp2(dest.hostname, dest.port);
+        if (decision === "block") {
+          const err = blockedErr(dest.hostname);
+          dead = err;
+          sendRunTelemetryOnce(dest.hostname);
+          _calls.push({
+            hostname: dest.hostname, provider: guessProvider(dest.hostname, dest.port),
+            method: "CONNECT", path: null, scheme: "http2", request_bytes: null,
+            bytes: 0, status: null, ok: false, content_type: null, duration_ms: 0,
+            ts: new Date().toISOString(), optics_plane: "app_http2", action: "BLOCKED_HOST",
+          });
+          reportH2(dest.hostname, "BLOCKED_HOST");
+          log(`${c.red}[ ∅ VANTIO ] BLOCKED${c.reset} ${dest.hostname} — Node http2.connect`);
+          process.nextTick(() => pending.emit("error", err));
+          for (const q of queued) process.nextTick(() => q.placeholder.emit("error", err));
+          return;
+        }
+        real = launchConnect(authority, options, undefined, dest.hostname, dest.port, decision);
+        real.on("error", (e) => pending.emit("error", e));
+        real.on("connect", () => {
+          pending.emit("connect", pending);
+          if (typeof listener === "function") listener(pending);
+        });
+        real.on("close", () => pending.emit("close"));
+        for (const q of queued) {
+          const rs = real.request(...q.reqArgs);
+          rs.on("error", (e) => q.placeholder.emit("error", e));
+          rs.on("response", (h, f) => q.placeholder.emit("response", h, f));
+          rs.on("data", (c) => q.placeholder.emit("data", c));
+          rs.on("end", () => q.placeholder.emit("end"));
+          rs.on("close", () => q.placeholder.emit("close"));
+          for (const [op, c, e, cb] of q.writes) {
+            if (op === "write" && rs.write) rs.write(c, e, cb);
+            if (op === "end" && rs.end) rs.end(c, e, cb);
+          }
+        }
+      } catch (err) {
+        pending.emit("error", err);
+      }
+    }).catch((err) => pending.emit("error", err));
+
+    return pending;
+  }
+
+  http2.connect = function vantioH2Connect(authority, options, listener) {
+    try {
+      if (typeof options === "function") {
+        listener = options;
+        options = undefined;
+      }
+      const dest = destFromAuthority(authority, options);
+      const hostname = dest.hostname;
+      const port = dest.port;
+      if (!FREE_MODE && !policySettled) {
+        return pendingConnect(authority, options, listener);
+      }
+      const decision = decideHttp2(hostname, port);
+      if (decision === "pass") return origConnect(authority, options, listener);
+      return launchConnect(authority, options, listener, hostname, port, decision);
+    } catch {
+      return origConnect(authority, options, listener);
+    }
+  };
+  http2.__vantioPatched = true;
 })();
 
 process.on("exit", () => {
