@@ -1,6 +1,6 @@
 {
   "name": "@vantio/agent-sdk",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Vantio Optics Node SDK — shield() for Sight Loop observe. Metadata only; no prompts. Upgrade path to Gate and Phantom Engine.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",

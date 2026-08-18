@@ -1,10 +1,12 @@
 # @vantio/agent-sdk
 
-> See what your AI agents are doing. Two lines of code.
+> Host-level security and governance for autonomous AI agents.
 
 ```bash
 npm install @vantio/agent-sdk
 ```
+
+Standard prompt wrappers and gateways fail when agents run direct terminal commands or raw sockets. To safely deploy autonomous agents, security must run locally at the host level. Vantio moves security from fragile prompt engineering directly into the host operating system, removing the burden of defensive prompt engineering and physically blocking unauthorized actions.
 
 ---
 
@@ -65,11 +67,9 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 
 ---
 
-## Policy & redaction (Vantio Gate)
+## Policy & redaction (Vantio Pro)
 
-Enforcement policy is served by the [Vantio Gate](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
-
-Node wrap of `fetch` and `http`/`https` lives in **`@vantio/cli` 0.3.2** (`vantio run`). This package (`@vantio/agent-sdk` 0.2.1) is `shield()` for trace correlation.
+Enforcement policy is served by the [Vantio Pro](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
 
 ### `fetchPolicy(apiKey, opts?)` — load the cloud-managed policy
 

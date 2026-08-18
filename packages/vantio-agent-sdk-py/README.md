@@ -1,16 +1,14 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-> Vantio Optics open-core SDK for Sight Loop observe — `shield()` telemetry for Python agents. Metadata only; no prompts. Current PyPI release: **3.0.10**.
+> Host-level security and governance for autonomous AI agents.
 
 ```bash
 pip install vantio-agent-sdk
 ```
 
+Standard prompt wrappers and gateways fail when agents run direct terminal commands or raw sockets. To safely deploy autonomous agents, security must run locally at the host level. Vantio moves security from fragile prompt engineering directly into the host operating system, removing the burden of defensive prompt engineering and physically blocking unauthorized actions.
+
 Optics: [vantio.ai/optics](https://vantio.ai/optics)
-
-`vantio run python agent.py` (CLI 0.3.4+) loads this wrap for the whole interpreter. You can also use `shield()` when you want a trace id inside the process. Optics records **urllib** (urlopen and custom openers) and **http.client** to in-scope LLM hosts. If **requests**, **httpx**, **aiohttp**, **urllib3**, or **pycurl** are already installed, those are recorded the same way. `socket.connect` / `connect_ex` / `create_connection` to in-scope hosts share host-block and observe. `subprocess` / `os.system` / `asyncio` curl and wget spawns to in-scope hosts share host-block, observe, file-body and curl `-F` size from stat, stdin size when stdin is a file, `wget -i` URL lines, and Gate PII rewrite of inline argv bodies (file contents and stdin pipes are not read). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. With a Gate key, the same wrap can block a destination, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
-
-**Providers:** OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
 ## v3.0.x — Breaking change from v2.x
 
@@ -177,16 +175,8 @@ export DO_NOT_TRACK=1
 
 ---
 
-## Zero required dependencies
+## Zero dependencies
 
 Core tracing requires only the Python standard library (`contextvars`, `asyncio`, `hashlib`,
 `hmac`, `re`). Cloud ingest and anonymous telemetry use `urllib.request` and `threading`.
-This package does not depend on aiohttp, requests, or httpx.
-
-While the wrap is active (`vantio run python` or `shield()`), Optics records urllib calls to in-scope LLM hosts (OpenAI,
-Anthropic, Bedrock, Vertex AI, Hugging Face Inference, Replicate, Ollama, NVIDIA NIM, and
-the rest of the catalog). If `requests`, `httpx`, or `aiohttp` are already installed in the agent
-environment, those are recorded the same way. They are optional; installing this
-package does not pull them in. `socket.connect` / `create_connection` to in-scope hosts
-share host-block and observe. `subprocess` curl to in-scope hosts shares host-block and
-observe; curl bodies are not rewritten. Browsers stay outside this wrap.
+No aiohttp, no httpx, no requests.
