@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml/badge.svg)](https://github.com/vantioai/vantio-open-core/actions/workflows/ci.yml)
 
-**Vantio Optics** is free visibility into what your agents send. Wrap a process with `vantio run`, see outbound LLM calls (host, size, process, time — never prompts), and export a proof. Observe only — Free does not block, redact, or cap spend.
+Standard prompt wrappers and application-layer gateways fail when agents run direct terminal commands or raw sockets. To safely deploy autonomous agents, security must run locally at the host level on the machines you own.
 
-The same client runs with every product. **Vantio Gate** ($499) adds rules that stick on the agent path. **Vantio Phantom Engine** ($799 per node) protects Linux machines you own — enforce and control together, one purchase. Do not stack Gate cloud on a Phantom Engine quote.
+**Vantio Optics** is free host-level visibility into what your agents send. Wrap a process with `vantio run` or use our SDKs, see outbound LLM calls (host, size, process, time — never prompts), and export a proof. Observe only — Free does not block, redact, or cap spend.
+
+The same client runs with every product. **Vantio Gate** ($499) adds rules that stick on the agent path. **Vantio Phantom Engine** ($799 per node) protects Linux machines you own — putting security directly into the operating system to remove the burden of defensive prompt engineering and physically block unauthorized actions.
 
 > **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales)
 

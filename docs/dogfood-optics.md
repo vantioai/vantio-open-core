@@ -3,7 +3,7 @@
 Short loop to prove **Vantio Optics** on your machine — observe only, no Gate/billing required.
 
 **Live product page:** https://vantio.ai/optics  
-**Phantom Box forever soak / suite status:** sandbox [`docs/BUILD_STATUS.md`](../../docs/BUILD_STATUS.md) · [`docs/MULTI_TIER_SOAK.md`](../../docs/MULTI_TIER_SOAK.md)
+**Phantom-Box production posture:** [`docs/BUILD_STATUS.md`](../../docs/BUILD_STATUS.md) · [`docs/PRODUCTION_CASE_STUDY.md`](../../docs/PRODUCTION_CASE_STUDY.md) (soak stays paused on this host — do not treat MULTI_TIER_SOAK as live narrative)
 
 ## 1. Wrap — `vantio run`
 

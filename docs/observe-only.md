@@ -94,7 +94,7 @@ vantio login <pro-key>
 vantio run node agent.js    # may BLOCK / REDACT when policy is enforced
 
 # Phantom Engine — Enterprise deployment (not in this repo)
-# See vantio-phantom-engine for host Absolute Control
+# See vantio-phantom-engine for host Control
 ```
 
 ---

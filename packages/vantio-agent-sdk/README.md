@@ -1,10 +1,12 @@
 # @vantio/agent-sdk
 
-> See what your AI agents are doing. Two lines of code.
+> Host-level security and governance for autonomous AI agents.
 
 ```bash
 npm install @vantio/agent-sdk
 ```
+
+Standard prompt wrappers and gateways fail when agents run direct terminal commands or raw sockets. To safely deploy autonomous agents, security must run locally at the host level. Vantio moves security from fragile prompt engineering directly into the host operating system, removing the burden of defensive prompt engineering and physically blocking unauthorized actions.
 
 ---
 

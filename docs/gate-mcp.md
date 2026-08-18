@@ -12,9 +12,9 @@ Package: [`@vantio/gate-mcp`](../packages/vantio-gate-mcp/)
 - Fetches Pro policy + residual risk (with API key)  
 - **Never** blocks live traffic from inside the MCP  
 - **Never** pushes unconstrained policy to production  
-- **Never** exposes Absolute Control  
+- **Never** exposes Control  
 
-Live latch remains `vantio run` + Pro (when billing is live). Absolute Control remains Phantom Engine.
+Live latch remains `vantio run` + Pro (when billing is live). Control remains Phantom Engine.
 
 ## Quick start
 
