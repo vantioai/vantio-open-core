@@ -1,14 +1,22 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-> Host-level security and governance for autonomous AI agents.
+**Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions.
+
+Optics does not block on its own. [Gate](https://github.com/vantioai/vantio-pro) enforces rules on the wrapped path. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) is runtime protection on enrolled Linux.
 
 ```bash
 pip install vantio-agent-sdk
 ```
 
-Standard prompt wrappers and gateways fail when agents run direct terminal commands or raw sockets. To safely deploy autonomous agents, security must run locally at the host level. Vantio moves security from fragile prompt engineering directly into the host operating system, removing the burden of defensive prompt engineering and physically blocking unauthorized actions.
+Prefixing `vantio run python` does **not** intercept Python by itself. Install this SDK on that interpreter, then:
 
-Optics: [vantio.ai/optics](https://vantio.ai/optics)
+```bash
+vantio run python agent.py
+```
+
+That injects the wrap (`sitecustomize`) so you do not have to edit the script. `shield()` below is the in-process alternative when you want a trace ID inside the process.
+
+Optics: [vantio.ai/optics](https://vantio.ai/optics) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 
 ## v3.0.x — Breaking change from v2.x
 
@@ -152,7 +160,7 @@ async with shield():
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard) |
+| `VANTIO_API_KEY` | Gate API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing — `report_anomaly()` is a no-op without this |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
@@ -175,8 +183,21 @@ export DO_NOT_TRACK=1
 
 ---
 
+## What gets captured
+
+- Which LLM endpoint was called
+- Response size in bytes
+- Process ID and timestamp
+- A trace ID linking calls in the same `shield()` / `vantio run python` wrap
+
+**What never gets captured:** prompts, completions, or any content from your requests.
+
+---
+
 ## Zero dependencies
 
 Core tracing requires only the Python standard library (`contextvars`, `asyncio`, `hashlib`,
 `hmac`, `re`). Cloud ingest and anonymous telemetry use `urllib.request` and `threading`.
 No aiohttp, no httpx, no requests.
+
+MIT License · [vantio.ai/optics](https://vantio.ai/optics) · [vantio.ai/docs](https://vantio.ai/docs)

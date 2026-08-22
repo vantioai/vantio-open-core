@@ -1,14 +1,12 @@
 # @vantio/agent-sdk
 
-> Host-level security and governance for autonomous AI agents.
+**Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Node: a trace ID around your agent. It does not wrap `fetch` by itself — Node wrap lives in [`@vantio/cli`](https://www.npmjs.com/package/@vantio/cli) (`vantio run`).
+
+Optics does not block on its own. [Gate](https://github.com/vantioai/vantio-pro) enforces rules on the wrapped path. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) is runtime protection on enrolled Linux.
 
 ```bash
 npm install @vantio/agent-sdk
 ```
-
-Standard prompt wrappers and gateways fail when agents run direct terminal commands or raw sockets. To safely deploy autonomous agents, security must run locally at the host level. Vantio moves security from fragile prompt engineering directly into the host operating system, removing the burden of defensive prompt engineering and physically blocking unauthorized actions.
-
----
 
 ## Quick start
 
@@ -20,13 +18,13 @@ await shield(async () => {
 });
 ```
 
-Wrap your agent in `shield()`. Vantio generates a trace ID, propagates it through every async hop in your agent's call tree, and streams metadata to your dashboard — without ever reading your prompts.
+Wrap your agent in `shield()`. Vantio generates a trace ID and propagates it through async hops — without reading your prompts. Node LLM wrap (fetch, undici, http/https, …) is `vantio run` from `@vantio/cli`, not this package.
 
 ---
 
 ## API
 
-### `shield(callback, options?)` — canonical interceptor
+### `shield(callback, options?)` — trace context
 
 ```ts
 import { shield } from "@vantio/agent-sdk";
@@ -45,7 +43,7 @@ await shield(async () => { ... }, {
 
 ---
 
-### `reportAnomaly(event, opts?)` — send metadata to your dashboard
+### `reportAnomaly(event, opts?)` — send metadata to Gate ingest
 
 ```ts
 import { shield, reportAnomaly } from "@vantio/agent-sdk";
@@ -67,7 +65,7 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 
 ---
 
-## Policy & redaction (Vantio Pro)
+## Policy & redaction (Vantio Gate)
 
 Enforcement policy is served by the [Vantio Pro](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
 
@@ -118,20 +116,22 @@ getCurrentTraceId(); // undefined — outside shield() frame
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard) |
+| `VANTIO_API_KEY` | Gate API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
 
 ---
 
-## Zero-line alternative
+## Zero-line Node wrap
 
-No code changes at all — use the CLI:
+No code changes for Node — use the CLI:
 
 ```bash
 npx @vantio/cli run node agent.js
 ```
+
+Python needs [`vantio-agent-sdk`](https://pypi.org/project/vantio-agent-sdk) on that interpreter. Prefixing `vantio run python` does not intercept by itself.
 
 ---
 

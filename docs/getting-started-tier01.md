@@ -18,7 +18,7 @@ That's the only install step. Works on macOS, Linux, and Windows (WSL).
 
 ## Step 2 — Run your agent
 
-Instead of running your agent directly, prefix it with `vantio run`:
+Instead of running your Node agent directly, prefix it with `vantio run`:
 
 ```bash
 # Before
@@ -28,7 +28,7 @@ node agent.js
 vantio run node agent.js
 ```
 
-Nothing else changes. Your agent runs exactly the same way.
+Python: install `vantio-agent-sdk` first, then `vantio run python agent.py`. Prefixing `vantio run python` does not intercept by itself.
 
 ---
 
@@ -164,7 +164,7 @@ Works with any framework that makes HTTP calls:
 
 LangChain · AutoGen · CrewAI · OpenAI SDK · Anthropic SDK · AWS Bedrock · Google Vertex · Cohere · Groq · Together AI · Perplexity · any `fetch`-based agent
 
-**Python agents:** `pip install vantio-agent-sdk` — see [vantio.ai/optics](https://vantio.ai/optics)
+**Python agents:** `pip install vantio-agent-sdk`, then `vantio run python agent.py` or `@shield` — prefixing `vantio run python` does not intercept by itself. See [vantio.ai/optics](https://vantio.ai/optics).
 
 ---
 
@@ -194,9 +194,9 @@ any code changes.
 
 | Tier | What's bypassable |
 |------|-------------------|
-| **Free · Vantio Optics (this tier)** | Any process not started with `vantio run`; native socket calls |
+| **Free · Vantio Optics (this tier)** | Any process not started with `vantio run` / `shield()`; Python without `vantio-agent-sdk`; native socket calls Gate does not mediate |
 | **Pro · Vantio Gate** | Raw sockets and unenrolled processes at the app layer |
-| **Enterprise · Vantio Phantom Engine** | Ring-0 closes kernel-level bypass — Rogue Reconciliation when layers diverge |
+| **Enterprise · Vantio Phantom Engine** | Runtime protection on enrolled Linux — Rogue Reconciliation when host and app records diverge |
 
 Run `vantio discover --local` to see what Optics can observe on your machine. Residual risk closes with **Vantio Gate**, then **Vantio Phantom Engine** — see [observe-only.md](./observe-only.md).
 
@@ -209,10 +209,10 @@ Run `vantio discover --local` to see what Optics can observe on your machine. Re
 ## Common questions
 
 **My agent uses Python, not Node.js.**
-Use `pip install vantio-agent-sdk` and the `@shield` decorator. See the [Optics page](https://vantio.ai/optics) for examples. `vantio run` itself only instruments Node.js/TypeScript runtimes (`node`, `npx`, `tsx`, `ts-node`) via `NODE_OPTIONS`; other runtimes run normally without interception.
+Install `vantio-agent-sdk` on that interpreter, then `vantio run python agent.py` or use the `@shield` decorator. Prefixing `vantio run python` does not intercept by itself — the SDK has to be installed. `vantio run` only injects the Node interceptor (`NODE_OPTIONS --require`) for `node` / `npx` / `tsx` / `ts-node`.
 
 **Nothing is appearing in my terminal.**
-Make sure you're using `node`, `npx`, `tsx`, or `ts-node` as the runtime — `vantio run python agent.py` runs your script normally but prints a one-line notice instead of intercepting, since Tier 1 Node interception uses a Node-specific mechanism. Use the Python SDK's `@shield` for Python agents.
+For Node, use `node`, `npx`, `tsx`, or `ts-node` under `vantio run`. For Python, install `vantio-agent-sdk` first, then `vantio run python agent.py` or `@shield`. Without the SDK, `vantio run python` prints a one-line notice and does not intercept.
 
 **I ran `vantio login` but nothing shows up in my dashboard.**
 Run `vantio whoami` and check the plan shown next to "Status: connected". If it says

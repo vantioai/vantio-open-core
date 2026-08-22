@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap any AI agent with **Vantio Optics** — free visibility into what it sends. Zero code changes. Current npm release: **0.3.16**.
+> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current npm release: **0.3.17**. Python needs `vantio-agent-sdk` on that interpreter; prefixing `vantio run python` does not intercept by itself.
 
 ```bash
 npm install -g @vantio/cli
@@ -45,11 +45,19 @@ vantio diff <a> <b>   # compare two local runs — hosts, counts, bytes (Free)
 
 ```bash
 vantio run node agent.js
-vantio run python agent.py
 vantio run tsx agent.ts
 ```
 
-Wrap any Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch`, `undici.fetch`, `undici.request` (including `Client` / `Pool` / `Agent` `.request()`), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2.connect` / `session.request`, Node `net`/`tls` connect to in-scope hosts, and outbound bytes after `undici.upgrade` / CONNECT, and records connection metadata locally (and to Gate when a key is configured). For Python, install `vantio-agent-sdk` and run `vantio run python agent.py` — same wrap, no script edit. `shield()` is optional when you want a trace id inside the process.
+Wrap a Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch`, `undici.fetch`, `undici.request` (including `Client` / `Pool` / `Agent` `.request()`), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2.connect` / `session.request`, Node `net`/`tls` connect to in-scope hosts, and outbound bytes after `undici.upgrade` / CONNECT, and records connection metadata locally (and to Gate when a key is configured).
+
+Python is not wrapped by this interceptor. Install [`vantio-agent-sdk`](https://pypi.org/project/vantio-agent-sdk) on that interpreter first, then:
+
+```bash
+pip install vantio-agent-sdk
+vantio run python agent.py
+```
+
+With the SDK installed, `vantio run python` injects the wrap (`sitecustomize` on `PYTHONPATH`) so you do not have to edit the script. Without the SDK, the prefix does not intercept. `shield()` is the in-process alternative when you want a trace id inside the process.
 
 Your code doesn't change. Your agent runs normally. If you've run `vantio login`, the stored key is injected into the child process; an explicit `VANTIO_API_KEY` in your environment always takes precedence.
 
@@ -165,7 +173,7 @@ With a Gate `VANTIO_API_KEY`, the interceptor fetches policy from the [Vantio Ga
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Your API key from [vantio.ai/dashboard](https://vantio.ai/dashboard) |
+| `VANTIO_API_KEY` | Gate API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_TELEMETRY_DISABLED` | Set to `1` to opt out of anonymous usage telemetry |
 | `DO_NOT_TRACK` | Set to `1` to opt out of anonymous usage telemetry |
@@ -180,9 +188,9 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and Gate PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.16**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and Gate PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.17**.
 
-Python, Ruby, and other runtimes are spawned normally without this interceptor — use the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.10**, `shield()`) for Python urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
+Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.11**) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 
 ---
 
@@ -190,7 +198,7 @@ Python, Ruby, and other runtimes are spawned normally without this interceptor �
 
 OpenAI (including regional), Anthropic, Google Gemini, Azure OpenAI, Azure AI, Cohere, Mistral, Groq, Together AI, Perplexity, xAI, DeepSeek, Fireworks, OpenRouter, Cerebras, Voyage AI, SambaNova, DeepInfra, Amazon Bedrock, Google Vertex AI, Hugging Face Inference, Replicate, Ollama, hosted NVIDIA NIM.
 
-Browser paths stay outside this wrap. Phantom Engine is the Linux-host product when you need protection beneath the app wrap.
+Browser paths stay outside this wrap. Phantom Engine is runtime protection on enrolled Linux when you need control beneath the app wrap.
 
 ---
 
