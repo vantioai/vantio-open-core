@@ -1,6 +1,6 @@
 {
   "name": "@vantio/optics-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "mcpName": "io.github.vantioai/vantio-optics",
   "description": "Vantio Optics MCP — read-only observe/explain for AI agents. Sight Loop via Model Context Protocol. Upgrade path to Gate and Phantom Engine.",
   "license": "MIT",
