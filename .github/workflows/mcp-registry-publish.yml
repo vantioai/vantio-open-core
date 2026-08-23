@@ -40,15 +40,44 @@ jobs:
         working-directory: packages/${{ matrix.package }}
         run: mcp-publisher validate
 
+      # MCP Registry refuses a version until that exact npm tarball exists.
+      # "Publish to npm" runs in parallel and has to finish tests first, so a
+      # version bump otherwise 404s here ~15–60s before npm has the release.
+      - name: Wait for npm package version
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          IDENT=$(node -p "require('./server.json').packages[0].identifier")
+          VER=$(node -p "require('./server.json').packages[0].version")
+          echo "Waiting for $IDENT@$VER on npm before MCP registry publish."
+          for i in $(seq 1 18); do
+            if npm view "$IDENT@$VER" version >/dev/null 2>&1; then
+              echo "Found $IDENT@$VER"
+              exit 0
+            fi
+            echo "Attempt $i/18: $IDENT@$VER not on npm yet; sleeping 10s"
+            sleep 10
+          done
+          echo "::error::$IDENT@$VER was not found on npm after waiting. Publish the npm package first."
+          exit 1
+
       - name: Publish to MCP Registry
         working-directory: packages/${{ matrix.package }}
         run: |
           set -o pipefail
-          OUTPUT=$(mcp-publisher publish 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE 'duplicate version|cannot publish duplicate'; then
-            echo "Version already published — expected on re-runs."
-            exit 0
-          fi
-          echo "::error::MCP registry publish failed for ${{ matrix.package }}"
+          for attempt in 1 2 3 4 5 6; do
+            OUTPUT=$(mcp-publisher publish 2>&1) && { echo "$OUTPUT"; exit 0; }
+            echo "$OUTPUT"
+            if echo "$OUTPUT" | grep -qiE 'duplicate version|cannot publish duplicate'; then
+              echo "Version already published — expected on re-runs."
+              exit 0
+            fi
+            if echo "$OUTPUT" | grep -qiE 'was not found \(status: 404\)|newly published release can take a moment'; then
+              echo "MCP registry still does not see the npm version (attempt $attempt/6). Retrying in 15s."
+              sleep 15
+              continue
+            fi
+            echo "::error::MCP registry publish failed for ${{ matrix.package }}"
+            exit 1
+          done
+          echo "::error::MCP registry publish failed for ${{ matrix.package }} after waiting for npm"
           exit 1
