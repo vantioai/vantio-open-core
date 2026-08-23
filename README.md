@@ -6,9 +6,9 @@
 
 **Vantio** is the infrastructure control layer for autonomous AI. **Vantio Optics** is free Observe: wrap a process, see outbound LLM calls (host, size, process, time — never prompts), and export a proof. Optics does not block, redact, or cap spend.
 
-Optics helps you see. [Gate](https://github.com/vantioai/vantio-pro) applies the rules you set where the agent is wired. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) is runtime protection on enrolled Linux — enforce and control together, one purchase. Phantom Engine Enterprise adds governance when you need proof and process on top.
+Optics helps you see. [Gate](https://github.com/vantioai/vantio-pro) applies the rules you set where the agent is wired. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) is runtime protection on enrolled Linux — enforce and control together, one purchase. Enterprise adds governance when you need proof and process on top.
 
-> **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
+> **Optics** (Free) · **Gate** ($499) · **Phantom Engine** ($799/node) · **Enterprise** (talk to sales)
 
 Current published wraps: **`@vantio/cli` 0.3.18** (npm) and **`vantio-agent-sdk` 3.0.12** (PyPI). The Node SDK `@vantio/agent-sdk` **0.2.4** is for trace IDs — Node wrap lives in the CLI interceptor.
 
@@ -111,7 +111,7 @@ Full walkthrough: [docs/sight-loop.md](./docs/sight-loop.md) · MCP: [docs/optic
 | **Vantio Optics** | Observe ← you are here | Free | [`vantioai/vantio-open-core`](https://github.com/vantioai/vantio-open-core) |
 | **Vantio Gate** | Enforce — rules you set, where the agent is wired | $499/month | [`vantioai/vantio-pro`](https://github.com/vantioai/vantio-pro) |
 | **Vantio Phantom Engine** | Runtime protection on enrolled Linux — enforce and control together | $799/node | [`vantioai/vantio-phantom-engine`](https://github.com/vantioai/vantio-phantom-engine) |
-| **Phantom Engine Enterprise** | Governance on that protection (ledger, evidence, process) | Talk to sales → ~$2k/node | same |
+| **Vantio Enterprise** | Governance on that protection (ledger, evidence, process) | Talk to sales | same |
 
 Optics is the client at every product. On Free (no Gate key), it **observes only** — events are labelled `OBSERVED`. With a Gate key, the same client fetches policy from [Vantio Gate](https://github.com/vantioai/vantio-pro) and can refuse a destination, strip sensitive fields, or cap spend on the wrapped path. Phantom Engine is a separate purchase for Linux hosts you enroll. See [observe-only.md](./docs/observe-only.md) for the Free-tier fence.
 

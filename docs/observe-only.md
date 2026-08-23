@@ -55,7 +55,7 @@ If you need protection on machines you own when a process skips the app wrap:
 | Rogue Reconciliation (host-seen, no app record) | Phantom Engine |
 | Fork inheritance on enrolled hosts | Phantom Engine |
 | CIDR / enrolled-cgroup egress policy | Phantom Engine |
-| Append-oriented audit ledger (Enterprise) | Phantom Engine Enterprise |
+| Append-oriented audit ledger (Enterprise) | Vantio Enterprise |
 
 **Fence:** Phantom Engine protects Linux hosts you enroll — enforce and control together, one purchase. It does not claim coverage for agents that never land on that host.
 

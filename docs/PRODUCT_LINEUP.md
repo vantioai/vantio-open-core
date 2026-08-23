@@ -2,9 +2,9 @@
 
 > Architecture first, then SKU. Peer products — not nested dolls that each close every gap below them.
 
-**Vantio Optics** (Free) · **Vantio Gate** ($499) · **Vantio Phantom Engine** ($799/node) · **Phantom Engine Enterprise** (talk to sales → ~$2k/node)
+**Vantio Optics** (Free) · **Vantio Gate** ($499) · **Vantio Phantom Engine** ($799/node) · **Vantio Enterprise** (talk to sales)
 
-Talk-track: Optics helps you see. Gate applies the rules you set. Phantom Engine protects the machines you own — enforce and control together, one purchase. Phantom Engine Enterprise adds governance when you need proof and process on top.
+Talk-track: Optics helps you see. Gate applies the rules you set. Phantom Engine protects the machines you own — enforce and control together, one purchase. Enterprise adds governance when you need proof and process on top.
 
 Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. Site: [vantio.ai/pricing](https://vantio.ai/pricing).
 
@@ -17,7 +17,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 | **Optics** (Free) | **Observe** · Sight Loop | No block; traffic that never hits the interceptor is never recorded |
 | **Gate** ($499) | **Enforce** · rules that stick where the agent is wired | SDK omission, raw sockets, fork escape; oversized streams may pass unscanned |
 | **Phantom Engine** ($799/node) | **Control** on Linux hosts you enroll | Privileged disable of loader; pod-network caveats; only on enrolled hosts |
-| **Phantom Engine Enterprise** | Governance on that protection | Same host scope |
+| **Enterprise** | Governance on that protection | Same host scope |
 
 | Product | What you see in data |
 |---------|----------------------|
@@ -51,7 +51,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 - Protection on **Linux machines you own** — enforce and control together, one purchase
 - Do not stack Gate cloud $499 on this quote; the enforce plane ships with the node
 - Rogue Reconciliation when the host sees a transmission with no app-layer record
-- Phantom Engine Enterprise adds ledger, evidence, and dual-control depth — talk to sales
+- Enterprise adds ledger, evidence, and dual-control depth — talk to sales
 - This repo does not ship Phantom Engine. See `vantio-phantom-engine`.
 
 ---
