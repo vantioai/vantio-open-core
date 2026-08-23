@@ -7,7 +7,7 @@ packages = ["vantio"]
 
 [project]
 name = "vantio-agent-sdk"
-version = "3.0.12"
+version = "3.0.13"
 description = "Vantio Optics Python SDK — shield() for Sight Loop observe. Metadata only; no prompts."
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,6 +40,9 @@ classifiers = [
 [project.urls]
 Homepage = "https://vantio.ai"
 Optics = "https://vantio.ai/optics"
+Gate = "https://vantio.ai/gate"
+"Phantom Engine" = "https://vantio.ai/phantom"
+Enterprise = "https://vantio.ai/enterprise"
 Pricing = "https://vantio.ai/pricing"
 Repository = "https://github.com/vantioai/vantio-open-core"
 Issues = "https://github.com/vantioai/vantio-open-core/issues"

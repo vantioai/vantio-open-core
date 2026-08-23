@@ -1,8 +1,10 @@
 # vantio-agent-sdk · Vantio Optics (Python)
 
-**Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions.
+**Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions. Optics is free. Optics does not block, redact, or cap spend on its own.
 
-Optics does not block on its own. [Gate](https://github.com/vantioai/vantio-pro) enforces rules on the wrapped path. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) is runtime protection on enrolled Linux.
+Optics helps you see. [Gate](https://vantio.ai/gate) applies the rules you set where the agent is wired ($499/month). [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Control at $799/node, enforce and control together in that purchase, including Gate capability on that protected host. [Enterprise](https://vantio.ai/enterprise) adds governance when you need proof and process on top — talk to sales. Continuous Assurance is how the suite stays true after install; it is not a fifth product.
+
+> **Optics** (Free) · **Gate** ($499/month) · **Phantom Engine** ($799/node) · **Enterprise** (talk to sales)
 
 ```bash
 pip install vantio-agent-sdk
@@ -16,7 +18,11 @@ vantio run python agent.py
 
 That injects the wrap (`sitecustomize`) so you do not have to edit the script. `shield()` below is the in-process alternative when you want a trace ID inside the process.
 
-Optics: [vantio.ai/optics](https://vantio.ai/optics) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
+Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
+
+## 3.0.13 — packaging metadata only
+
+This patch publishes Present product-ladder copy on PyPI. SDK behavior is unchanged from 3.0.12.
 
 ## v3.0.x — Breaking change from v2.x
 
@@ -200,4 +206,4 @@ Core tracing requires only the Python standard library (`contextvars`, `asyncio`
 `hmac`, `re`). Cloud ingest and anonymous telemetry use `urllib.request` and `threading`.
 No aiohttp, no httpx, no requests.
 
-MIT License · [vantio.ai/optics](https://vantio.ai/optics) · [vantio.ai/docs](https://vantio.ai/docs)
+MIT License · [vantio.ai/optics](https://vantio.ai/optics) · [vantio.ai/gate](https://vantio.ai/gate) · [vantio.ai/phantom](https://vantio.ai/phantom) · [vantio.ai/enterprise](https://vantio.ai/enterprise) · [vantio.ai/pricing](https://vantio.ai/pricing) · [vantio.ai/docs](https://vantio.ai/docs)
