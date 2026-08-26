@@ -49,6 +49,8 @@ A summary prints automatically when your agent finishes. You can also request it
 
 ```bash
 vantio run --summary node agent.js
+vantio coverage --local
+vantio doctor
 ```
 
 ```

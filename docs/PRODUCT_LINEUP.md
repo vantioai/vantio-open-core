@@ -17,7 +17,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 | **Optics** (Free) | **Observe** · Sight Loop | No block; traffic that never hits the interceptor is never recorded |
 | **Gate** ($499) | **Enforce** · rules that stick where the agent is wired | SDK omission, raw sockets, fork escape; oversized streams may pass unscanned |
 | **Phantom Engine** ($799/node) | **Control** on Linux hosts you enroll | Privileged disable of loader; pod-network caveats; only on enrolled hosts |
-| **Enterprise** | Governance on that protection | Same host scope |
+| **Enterprise** (talk to sales) | Governance on that protection | Same host scope; certifications not held |
 
 | Product | What you see in data |
 |---------|----------------------|
@@ -58,15 +58,16 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 
 ## Capability matrix
 
-| Capability | Optics | Gate | Phantom Engine |
-|------------|:------:|:----:|:--------------:|
-| Observe wrapped LLM/agent calls | ✓ | ✓ | ✓ |
-| Block by hostname (wrapped path) | — | ✓ | ✓ |
-| PII redaction (wrapped path) | — | ✓ | ✓ |
-| Spend / size caps (wrapped path) | — | ✓ | ✓ |
-| Host enforcement on enrolled Linux | — | — | ✓ |
-| Fork inheritance on enrolled hosts | — | — | ✓ |
-| CIDR / k8s network policy (enrolled) | — | — | ✓ |
+| Capability | Optics | Gate | Phantom Engine | Enterprise |
+|------------|:------:|:----:|:--------------:|:----------:|
+| Observe wrapped LLM/agent calls | ✓ | ✓ | ✓ | ✓ |
+| Block by hostname (wrapped path) | — | ✓ | ✓ | ✓ |
+| PII redaction (wrapped path) | — | ✓ | ✓ | ✓ |
+| Spend / size caps (wrapped path) | — | ✓ | ✓ | ✓ |
+| Host enforcement on enrolled Linux | — | — | ✓ | ✓ |
+| Fork inheritance on enrolled hosts | — | — | ✓ | ✓ |
+| CIDR / k8s network policy (enrolled) | — | — | ✓ | ✓ |
+| Durable ledger / dual-control | — | — | partial | ✓ |
 
 ---
 

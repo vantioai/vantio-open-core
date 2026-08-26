@@ -29,14 +29,12 @@ No-install path:
 npx @vantio/cli run node agent.js
 ```
 
-**Python** — install the SDK on that interpreter first. Prefixing `vantio run python` does not intercept Python by itself.
+**Python** — Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ```bash
 pip install vantio-agent-sdk
 vantio run python agent.py
 ```
-
-With the SDK installed, `vantio run python` injects the same wrap (`sitecustomize` on `PYTHONPATH`) so you do not have to edit the script. `shield()` is the in-process alternative when you want a trace ID inside the process.
 
 Optionally connect a Gate key (paid enforce on the wrapped path):
 
@@ -65,7 +63,7 @@ vantio discover                   # workspace history (Gate / Phantom Engine)
 
 Optics ships one named workflow — **Sight Loop**:
 
-1. **Wrap** — `vantio run` (Node) / `vantio-agent-sdk` then `vantio run python` or `shield()` (Python)
+1. **Wrap** — `vantio run` (Node) / `vantio-agent-sdk` then the current Python SDK example (`vantio run python` or `shield()`)
 2. **Capture** — host · process · bytes · time · trace (no prompts/completions)
 3. **Inspect / export** — `vantio search` · `vantio tail` · `vantio diff` · `vantio prove` · `vantio discover --local` · **Optics MCP**
 4. **Honest gap** — paths that never hit the interceptor stay unnamed here

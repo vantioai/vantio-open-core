@@ -2,13 +2,13 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current npm release: **0.3.18**. Python needs `vantio-agent-sdk` on that interpreter; prefixing `vantio run python` does not intercept by itself.
+> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current npm release: **0.3.19**. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ```bash
 npm install -g @vantio/cli
-# or:
-curl -fsSL https://vantio.ai/install.sh | sh
 ```
+
+There is no curl installer at `https://vantio.ai/install.sh`. [vantio.ai/install](https://vantio.ai/install) goes to the install docs. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ---
 
@@ -30,7 +30,10 @@ vantio login [key]    # save & validate your API key (prompts if omitted; input 
 vantio logout         # remove the stored key
 vantio whoami         # show the stored key (masked) + live connection status
 vantio run <program>  # spawn a program under the Vantio execution context
-vantio discover       # show your Shadow AI attack surface (Pro / Enterprise)
+vantio coverage       # this-machine Observe report (never fleet)
+vantio doctor         # first-event checks — no fake traffic
+vantio leave          # uninstall help; local metadata is not prompts
+vantio discover       # local wrap history (--local) or paid control-plane discover
 vantio prove          # generate an auditor-ready proof artifact from a run log (Free)
 vantio search [query] # search local run logs by host, path, action, or free text (Free)
 vantio tail           # show the latest calls from a captured run (Free)
@@ -121,29 +124,16 @@ Same `~/.vantio/runs/` logs as `vantio prove`. Metadata only — never prompts o
 
 ---
 
-## vantio discover — Shadow AI Attack Surface
+## vantio discover — local wrap history on this machine
 
 ```bash
-vantio discover [--since=24h|7d|30d] [--host=<hostname>] [--json]
-vantio discover --local                # Free-tier: local run logs only, no key needed
+vantio discover --local
+vantio discover --local --since=7d --json
 ```
 
-Shows every AI agent call recorded in your Vantio workspace, grouped by target host. Answers the question: **"What AI agents are running in my environment, and are they all governed?"**
+`--local` reads `~/.vantio/runs` on this machine. That is only processes started with `vantio run` (Node) or `vantio run python` after `pip install vantio-agent-sdk`. It is this machine only — not a fleet inventory and not a scan of every process. curl, browsers, skipped wraps, and forks stay outside this list; `vantio coverage --local` names those misses.
 
-- **Free (--local)** — reads local run logs from `~/.vantio/runs/`. No API key needed. Covers only processes started with `vantio run` on this machine.
-- **Pro users** — see all SDK-monitored LLM calls with governance status (`OBSERVED` / `ALLOWED` / `REDACTED` / `BLOCKED`).
-- **Enterprise users (Phantom Engine)** — additionally surfaces processes that called LLM endpoints without a Vantio `trace_id` — the **Shadow AI** agents that have no governance coverage.
-
-```
-Shadow AI Attack Surface — last 7d
-------------------------------------------------------------------------
-TARGET HOST                       CALLS    ALLOWED   REDACTED  BLOCKED   OBSERVED  SHADOW?   LAST SEEN
-------------------------------------------------------------------------
-api.openai.com                    142      138       3         0         1         ⚠ YES     2026-06-17 09:12:04 UTC
-api.anthropic.com                 57       57        0         0         0         no        2026-06-17 14:33:21 UTC
-------------------------------------------------------------------------
-2 host(s) shown  |  ⚠  1 Shadow AI indicator(s) detected
-```
+Without `--local` the CLI asks a paid control-plane discover API. If that API is missing, the CLI says so. Optics does not claim it found every agent on the host.
 
 **Options:**
 
@@ -152,11 +142,9 @@ api.anthropic.com                 57       57        0         0         0      
 | `--since=<period>` | Look back `24h`, `7d`, or `30d` (default: `24h`) |
 | `--host=<hostname>` | Filter to a specific target host |
 | `--json` | Output raw JSON instead of a formatted table |
-| `--local` | Local run logs only — no API key required (Free tier) |
+| `--local` | Local wrap logs only — no API key required |
 
-Run `vantio discover --help` for full documentation.
-
-> **Full discovery** requires a Pro or Enterprise account. `--local` works on Free without any key.
+Run `vantio discover --help` for the same bounds.
 
 ---
 
@@ -188,7 +176,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and Gate PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.18**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and Gate PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.19**.
 
 Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.13**) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 

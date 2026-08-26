@@ -14,7 +14,9 @@ This doc is the Free-tier fence: what Optics does, what it explicitly does not d
 | Capture endpoint, response size, PID, trace ID, timestamp | ✓ |
 | Terminal visibility + local run logs (`~/.vantio/runs/`) | ✓ |
 | Proof export (`vantio prove`) | ✓ |
-| Local inspect (`vantio discover --local`) | ✓ |
+| Local inspect (`vantio discover --local`, `vantio coverage --local`) | ✓ |
+| Named unsupported-path inventory on this machine | ✓ |
+| Privacy non-retention prove (prompt marker must not land in `~/.vantio/runs`) | ✓ |
 | Node + Python SDK paths | ✓ |
 
 **Privacy posture:**

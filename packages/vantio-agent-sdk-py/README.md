@@ -10,13 +10,12 @@ Optics helps you see. [Gate](https://vantio.ai/gate) applies the rules you set w
 pip install vantio-agent-sdk
 ```
 
-Prefixing `vantio run python` does **not** intercept Python by itself. Install this SDK on that interpreter, then:
+Prefixing `vantio run python` without this SDK does not intercept. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ```bash
+pip install vantio-agent-sdk
 vantio run python agent.py
 ```
-
-That injects the wrap (`sitecustomize`) so you do not have to edit the script. `shield()` below is the in-process alternative when you want a trace ID inside the process.
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 
