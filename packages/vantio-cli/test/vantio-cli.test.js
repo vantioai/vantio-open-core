@@ -7,11 +7,18 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, statSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = join(__dirname, "..", "bin", "vantio.js");
+
+function scratchRoot() {
+  for (const d of [process.env.TMPDIR, tmpdir(), "/tmp"]) {
+    if (d && existsSync(d)) return d;
+  }
+  return "/tmp";
+}
 
 function runCli(args, env = {}, input = null) {
   return new Promise((resolve) => {
@@ -73,11 +80,12 @@ describe("vantio CLI — basic dispatch", () => {
   test("discover --help prints help without requiring a key", async () => {
     const { code, stdout } = await runCli(["discover", "--help"]);
     assert.equal(code, 0);
-    assert.match(stdout, /Shadow AI Attack Surface Discovery/);
+    assert.match(stdout, /local wrap history, or paid control-plane discover/);
+    assert.match(stdout, /not a fleet inventory/);
   });
 
   test("discover with no stored key tells the user to log in first", async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), "vantio-test-"));
+    const homeDir = mkdtempSync(join(scratchRoot(), "vantio-test-"));
     try {
       const { code, stdout } = await runCli(["discover"], { HOME: homeDir });
       assert.equal(code, 1);
@@ -111,7 +119,7 @@ describe("vantio CLI — login / whoami / logout (against a mock control plane)"
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     baseUrl = `http://127.0.0.1:${server.address().port}`;
-    homeDir = mkdtempSync(join(tmpdir(), "vantio-test-"));
+    homeDir = mkdtempSync(join(scratchRoot(), "vantio-test-"));
   });
 
   afterEach(async () => {
@@ -208,5 +216,133 @@ describe("vantio run python wrap", () => {
     }
     assert.equal(code, 0);
     assert.match(stdout, /WRAP_OK/);
+  });
+});
+
+describe("vantio coverage / doctor / leave (Optics P0)", () => {
+  test("coverage --help and top-level usage list the new commands", async () => {
+    const help = await runCli(["coverage", "--help"]);
+    assert.equal(help.code, 0);
+    assert.match(help.stdout, /this machine/i);
+    assert.match(help.stdout, /never fleet/i);
+    const usage = await runCli([]);
+    assert.equal(usage.code, 0);
+    assert.match(usage.stdout, /vantio coverage/);
+    assert.match(usage.stdout, /vantio doctor/);
+    assert.match(usage.stdout, /vantio leave/);
+  });
+
+  test("coverage --json on an empty home is idle, not 100% covered", async () => {
+    const home = mkdtempSync(join(scratchRoot(), "vantio-coverage-idle-"));
+    try {
+      const { code, stdout } = await runCli(["coverage", "--json"], { HOME: home, VANTIO_HOME: join(home, ".vantio") });
+      assert.equal(code, 0);
+      const body = JSON.parse(stdout);
+      assert.equal(body.coverage_state, "idle");
+      assert.equal(body.this_machine_only, true);
+      assert.equal(body.not_fleet, true);
+      assert.equal(body.not_universal_discovery, true);
+      assert.ok(Array.isArray(body.unsupported_paths));
+      assert.ok(body.unsupported_paths.length >= 4);
+      assert.doesNotMatch(stdout, /100%/);
+      assert.match(JSON.stringify(body.unsupported_paths), /sdk_skip|curl|browser/i);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("coverage --json names attached after a local wrap log exists", async () => {
+    const home = mkdtempSync(join(scratchRoot(), "vantio-coverage-live-"));
+    try {
+      const vantioHome = join(home, ".vantio");
+      const runs = join(vantioHome, "runs");
+      mkdirSync(runs, { recursive: true, mode: 0o700 });
+      writeFileSync(join(runs, "0xopticsp0cover01.json"), JSON.stringify({
+        vantio_run_log: "1",
+        schema_version: 2,
+        trace_id: "0xopticsp0cover01",
+        generated_at: new Date().toISOString(),
+        calls: [{ hostname: "api.openai.com", action: "OBSERVED", bytes: 12 }],
+        summary: { total_calls: 1, degraded: false },
+      }, null, 2));
+      const { code, stdout } = await runCli(["coverage", "--json"], { HOME: home, VANTIO_HOME: vantioHome });
+      assert.equal(code, 0);
+      const body = JSON.parse(stdout);
+      assert.equal(body.coverage_state, "attached");
+      assert.ok(body.hosts.includes("api.openai.com"));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("coverage --json names degraded when a wrap log is incomplete", async () => {
+    const home = mkdtempSync(join(scratchRoot(), "vantio-coverage-degraded-"));
+    try {
+      const vantioHome = join(home, ".vantio");
+      const runs = join(vantioHome, "runs");
+      mkdirSync(runs, { recursive: true, mode: 0o700 });
+      writeFileSync(join(runs, "0xopticsp0degraded.json"), JSON.stringify({
+        vantio_run_log: "1",
+        schema_version: 2,
+        trace_id: "0xopticsp0degraded",
+        generated_at: new Date().toISOString(),
+        calls: [{ hostname: "api.openai.com", action: "ENFORCEMENT_GAP", gap_type: "unscanned_body", observation_incomplete: "unscanned_body" }],
+        summary: { total_calls: 1, degraded: true },
+      }, null, 2));
+      const { code, stdout } = await runCli(["coverage", "--json"], { HOME: home, VANTIO_HOME: vantioHome });
+      assert.equal(code, 0);
+      const body = JSON.parse(stdout);
+      assert.equal(body.coverage_state, "degraded");
+      assert.equal(body.degraded, true);
+      assert.ok(Array.isArray(body.unsupported_paths) && body.unsupported_paths.length >= 4);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("doctor --json does not invent OBSERVED and names the Python SDK miss", async () => {
+    const home = mkdtempSync(join(scratchRoot(), "vantio-doctor-"));
+    try {
+      const { code, stdout } = await runCli(["doctor", "--json"], { HOME: home, VANTIO_HOME: join(home, ".vantio") });
+      assert.equal(code, 0);
+      const body = JSON.parse(stdout);
+      assert.equal(body.interceptor_present, true);
+      assert.equal(body.note.includes("does not emit OBSERVED") || body.note.includes("does not start a generator"), true);
+      assert.ok(["importable", "missing"].includes(body.python_sdk));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("leave refuses delete without --yes and deletes metadata with --yes", async () => {
+    const home = mkdtempSync(join(scratchRoot(), "vantio-leave-"));
+    try {
+      const vantioHome = join(home, ".vantio");
+      const runs = join(vantioHome, "runs");
+      mkdirSync(runs, { recursive: true });
+      writeFileSync(join(runs, "keep.json"), "{\"vantio_run_log\":\"1\",\"calls\":[]}\n");
+      const refused = await runCli(["leave", "--delete-local-metadata"], { HOME: home, VANTIO_HOME: vantioHome });
+      assert.equal(refused.code, 1);
+      assert.match(refused.stderr, /--yes/);
+      const ok = await runCli(["leave", "--delete-local-metadata", "--yes"], { HOME: home, VANTIO_HOME: vantioHome });
+      assert.equal(ok.code, 0);
+      assert.match(ok.stdout, /not a prompt warehouse|Prompts were not stored/i);
+      assert.equal(existsSync(runs), false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("discover --local empty copy does not claim fleet coverage", async () => {
+    const home = mkdtempSync(join(scratchRoot(), "vantio-discover-local-"));
+    try {
+      const { code, stdout } = await runCli(["discover", "--local"], { HOME: home, VANTIO_HOME: join(home, ".vantio") });
+      assert.equal(code, 0);
+      assert.match(stdout, /this machine/i);
+      assert.doesNotMatch(stdout, /kernel-level shadow AI/i);
+      assert.doesNotMatch(stdout, /eBPF/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

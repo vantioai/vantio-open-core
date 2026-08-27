@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn }         from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { parseArgs }     from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -18,7 +18,10 @@ Usage:
   vantio logout               Remove the stored key
   vantio whoami               Show the stored key (masked) + connection status
   vantio run [flags] <prog>   Spawn <prog> under the Vantio execution context
-  vantio discover [options]   Show Shadow AI attack surface (AI calls in your workspace)
+  vantio coverage [--local]   This-machine Observe report (never fleet)
+  vantio doctor               First-event checks — no fake traffic
+  vantio leave                Uninstall help; local metadata is not prompts
+  vantio discover [options]   Local wrap history (--local) or paid control-plane discover
   vantio prove [options]      Generate an auditor-ready proof artifact from a run log
   vantio search [query]       Search local run logs (host, path, action, free text)
   vantio tail [options]       Show the latest calls from a captured run
@@ -39,6 +42,9 @@ Examples:
   vantio run --audit tsx agent.ts
   vantio discover --since=7d
   vantio discover --local
+  vantio coverage --local
+  vantio doctor
+  vantio leave
   vantio prove
   vantio prove --list
   vantio prove --format=md --out=audit.md
@@ -48,23 +54,20 @@ Examples:
 `;
 
 const DISCOVER_HELP = `\
-vantio discover — Shadow AI Attack Surface Discovery
+vantio discover — local wrap history, or paid control-plane discover
 
-Shows every AI agent call recorded in your Vantio workspace. Pro users see
-SDK-monitored calls. Enterprise users (with the Phantom Engine) also see
-unenrolled processes — your Shadow AI attack surface.
+Free Optics: \`vantio discover --local\` reads ~/.vantio/runs on this machine.
+That is only processes started with \`vantio run\` (Node) or the Python SDK wrap.
+It is not a fleet inventory and not a scan of every process.
+
+Without --local the CLI asks a control-plane discover API. That API is a paid
+path. If it is missing, the CLI says so — it does not pretend Free has a fleet.
 
 Calls are grouped by target host and annotated with governance status:
   ALLOWED   — call was permitted by policy
   REDACTED  — call was allowed but PII was scrubbed
   BLOCKED   — call was denied by policy
-  OBSERVED  — call was seen with no Vantio trace_id (Shadow AI indicator)
-
-Free-tier local scan (--local):
-  Reads run logs written to ~/.vantio/runs/ by \`vantio run\` on this machine.
-  No API key required. Covers only processes started with \`vantio run\`.
-  Pro adds dashboard sync and cross-machine history.
-  Enterprise (Phantom Engine) adds detection of unenrolled processes.
+  OBSERVED  — wrap saw the destination (Optics Free)
 
 Usage:
   vantio discover [options]
@@ -77,12 +80,10 @@ Options:
   -h, --help          Show this help
 
 Examples:
-  vantio discover
-  vantio discover --since=7d
-  vantio discover --host=api.openai.com
-  vantio discover --since=30d --json
   vantio discover --local
   vantio discover --local --since=7d
+  vantio discover --since=7d
+  vantio discover --host=api.openai.com --json
 `;
 
 const PROVE_HELP = `\
@@ -186,9 +187,55 @@ Examples:
   vantio diff 0xabc 0xdef --json
 `;
 
+const COVERAGE_HELP = `\
+vantio coverage — local Optics coverage report
+
+Shows what this machine wrapped, the named unsupported paths, and whether
+observation is attached, idle, or degraded. Always this machine. Never fleet.
+Does not scan every process. Idle with no wrap is valid. Optics will not invent
+OBSERVED rows.
+
+Usage:
+  vantio coverage [--local] [--json]
+
+--local is the only Optics mode. It is accepted and is the default.
+`;
+
+const DOCTOR_HELP = `\
+vantio doctor — first-event checks for Optics
+
+Confirms the wrap files are present, whether Python's SDK is importable, and
+whether ~/.vantio/runs can be written. It does not start a generator and does
+not emit a fake OBSERVED row.
+
+Usage:
+  vantio doctor [--json]
+`;
+
+const LEAVE_HELP = `\
+vantio leave — uninstall Optics without a leftover prompt warehouse
+
+Prints how to stop the wrap and remove the CLI or SDK. Local ~/.vantio/runs is
+metadata you own (hosts, sizes, trace ids). Prompts were not stored there.
+Pass --delete-local-metadata --yes only if you want that metadata gone.
+
+Usage:
+  vantio leave
+  vantio leave --delete-local-metadata --yes
+`;
+
 // ── config store (~/.vantio/config.json) ─────────────────────────────────────
 
-function configDir()  { return join(homedir(), ".vantio"); }
+function configDir()  {
+  const override = (process.env.VANTIO_HOME || process.env.VANTIO_HOME || "").trim();
+  if (override) return override;
+  return join(homedir(), ".vantio");
+}
+
+function isRunLog(log) {
+  if (!log || typeof log !== "object") return false;
+  return log.vantio_run_log === "1" || log.vantio_run_log === "1";
+}
 function configPath() { return join(configDir(), "config.json"); }
 
 function readConfig() {
@@ -698,7 +745,7 @@ function listRuns(dir) {
       .map((f) => {
         try {
           const log = JSON.parse(readFileSync(join(dir, f), "utf8"));
-          if (log?.vantio_run_log !== "1") return null;
+          if (!isRunLog(log)) return null;
           return { f, log };
         } catch { return null; }
       })
@@ -879,7 +926,7 @@ async function discoverLocalCommand(since) {
       const s = statSync(p);
       if (s.mtimeMs < cutoff) continue;
       const log = JSON.parse(readFileSync(p, "utf8"));
-      if (log?.vantio_run_log !== "1" || !Array.isArray(log.calls)) continue;
+      if (!isRunLog(log) || !Array.isArray(log.calls)) continue;
       scannedRuns++;
       const ts = log.generated_at ? new Date(log.generated_at).getTime() : 0;
       for (const call of log.calls) {
@@ -937,10 +984,10 @@ async function discoverLocalCommand(since) {
   }
 
   process.stdout.write(
-    `\n  Free (this output)  — local run history, this machine, only processes started with \`vantio run\`\n` +
-    `  Pro                 — remote dashboard sync, cross-machine discovery, governance enforcement\n` +
-    `  Enterprise          — kernel-level shadow AI detection (catches unenrolled processes via eBPF)\n` +
-    `  Upgrade at vantio.ai/pricing\n\n`
+    `\n  This output is this machine only — processes started with \`vantio run\` (Node)\n` +
+    `  or \`vantio run python\` after vantio-agent-sdk. It is not a fleet inventory.\n` +
+    `  Optics does not scan every process. Named misses: curl, browser, skip-wrap, fork.\n` +
+    `  See \`vantio coverage --local\`. Control-plane discover is a paid path, not Free Optics.\n\n`
   );
 }
 
@@ -1121,7 +1168,7 @@ async function discoverCommand(args) {
 function loadRunLog(path, cmd) {
   try {
     const log = JSON.parse(readFileSync(path, "utf8"));
-    if (log?.vantio_run_log !== "1") {
+    if (!isRunLog(log)) {
       process.stderr.write(`vantio ${cmd}: not a Vantio run log: ${path}\n`);
       process.exit(1);
     }
@@ -1135,7 +1182,7 @@ function loadRunLog(path, cmd) {
 function tryLoadRunLog(path) {
   try {
     const log = JSON.parse(readFileSync(path, "utf8"));
-    if (log?.vantio_run_log !== "1") return null;
+    if (!isRunLog(log)) return null;
     return log;
   } catch {
     return null;
@@ -1168,7 +1215,7 @@ function listValidRunEntries(dir, sinceMs = null) {
     const p = join(dir, f);
     try {
       const log = JSON.parse(readFileSync(p, "utf8"));
-      if (log?.vantio_run_log !== "1") continue;
+      if (!isRunLog(log)) continue;
       if (cutoff != null) {
         const t = log.generated_at ? new Date(log.generated_at).getTime()
           : (log.started_at ? new Date(log.started_at).getTime() : 0);
@@ -1534,6 +1581,230 @@ async function diffCommand(args) {
   }
 }
 
+// ── coverage / doctor / leave (Optics P0, this machine only) ─────────────────
+
+function coverageInventoryPath() {
+  return join(dirname(fileURLToPath(import.meta.url)), "optics-coverage.json");
+}
+
+function loadCoverageInventory() {
+  try {
+    return JSON.parse(readFileSync(coverageInventoryPath(), "utf8"));
+  } catch {
+    return {
+      claim: "This report is this machine only.",
+      privacy: "Optics does not store prompts or completions.",
+      compatibility: [],
+      unsupported_paths: [],
+      first_event: [],
+      leave: [],
+    };
+  }
+}
+
+function runLogLooksDegraded(log) {
+  if (!log || typeof log !== "object") return false;
+  if (log.summary && log.summary.degraded) return true;
+  const calls = Array.isArray(log.calls) ? log.calls : [];
+  return calls.some((c) => {
+    const action = String(c?.action || "").toUpperCase();
+    return action === "ENFORCEMENT_GAP" || c?.observation_incomplete || c?.gap_type;
+  });
+}
+
+function localCoverageSnapshot() {
+  const dir = runsDir();
+  const entries = listValidRunEntries(dir);
+  const hosts = new Set();
+  let observed = 0;
+  let degraded = false;
+  for (const { log } of entries) {
+    if (runLogLooksDegraded(log)) degraded = true;
+    for (const call of log.calls || []) {
+      if (call?.hostname) hosts.add(call.hostname);
+      const action = String(call?.action || "").toUpperCase();
+      if (["OBSERVED", "ALLOWED", "REDACTED", "BLOCKED_HOST", "BLOCKED_SIZE", "BLOCKED_SPEND"].includes(action)) {
+        observed += 1;
+      }
+      if (action === "ENFORCEMENT_GAP" || call?.observation_incomplete || call?.gap_type) {
+        degraded = true;
+      }
+    }
+  }
+  let writable = true;
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const probe = join(dir, ".optics_write_probe");
+    writeFileSync(probe, "ok\n", { mode: 0o600 });
+    rmSync(probe, { force: true });
+  } catch {
+    writable = false;
+    degraded = true;
+  }
+  let state = "idle";
+  if (!writable) state = "degraded";
+  else if (degraded && entries.length) state = "degraded";
+  else if (entries.length) state = "attached";
+  return {
+    this_machine_only: true,
+    not_fleet: true,
+    not_universal_discovery: true,
+    coverage_state: state,
+    runs_dir: dir,
+    writable,
+    run_count: entries.length,
+    observed_calls: observed,
+    hosts: [...hosts],
+    degraded,
+  };
+}
+
+function coverageCommand(args) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      local: { type: "boolean", default: true },
+      json: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: false,
+  });
+  if (values.help) {
+    process.stdout.write(COVERAGE_HELP);
+    return;
+  }
+  const inventory = loadCoverageInventory();
+  const snap = localCoverageSnapshot();
+  const report = {
+    ...snap,
+    claim: inventory.claim,
+    privacy: inventory.privacy,
+    compatibility: inventory.compatibility,
+    unsupported_paths: inventory.unsupported_paths,
+    first_event: inventory.first_event,
+    leave: inventory.leave,
+    note:
+      "Active work outside the wrap is named by attach-health on a Vantio install. " +
+      "This CLI does not scan every process.",
+  };
+  if (values.json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    return;
+  }
+  process.stdout.write("\nOptics coverage (this machine only — not fleet, not every process)\n\n");
+  process.stdout.write(`  State:     ${snap.coverage_state}\n`);
+  process.stdout.write(`  Runs:      ${snap.run_count} local wrap log(s) in ${snap.runs_dir}\n`);
+  process.stdout.write(`  Observed:  ${snap.observed_calls} metadata call(s)\n`);
+  process.stdout.write(`  Hosts:     ${snap.hosts.length ? snap.hosts.join(", ") : "—"}\n`);
+  process.stdout.write(`  Writable:  ${snap.writable ? "yes" : "no — observation is incomplete"}\n`);
+  process.stdout.write(`  Privacy:   ${inventory.privacy}\n\n`);
+  if (snap.coverage_state === "idle") {
+    process.stdout.write("  Idle is valid. Optics will not invent an OBSERVED row.\n");
+    process.stdout.write("  First event (no paid key):\n");
+    for (const step of inventory.first_event || []) process.stdout.write(`    • ${step}\n`);
+    process.stdout.write("\n");
+  }
+  if (snap.coverage_state === "degraded") {
+    process.stdout.write("  Degraded: a wrap record could not be finished. That is not full coverage.\n\n");
+  }
+  process.stdout.write("  Compatibility\n");
+  for (const row of inventory.compatibility || []) {
+    process.stdout.write(`    [${row.status}] ${row.runtime} — ${row.wrap}\n`);
+  }
+  process.stdout.write("\n  Named unsupported paths (always listed, even when wraps are healthy)\n");
+  for (const row of inventory.unsupported_paths || []) {
+    process.stdout.write(`    ${row.id}: ${row.name} — ${row.detail}\n`);
+  }
+  process.stdout.write(`\n  ${inventory.claim}\n\n`);
+}
+
+function doctorCommand(args) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      json: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: false,
+  });
+  if (values.help) {
+    process.stdout.write(DOCTOR_HELP);
+    return;
+  }
+  const here = dirname(fileURLToPath(import.meta.url));
+  const interceptor = join(here, "interceptor.cjs");
+  const pythonWrap = join(here, "python-wrap", "sitecustomize.py");
+  const inventory = loadCoverageInventory();
+  const snap = localCoverageSnapshot();
+  let pythonSdk = "missing";
+  try {
+    const py = spawnSync("python3", ["-c", "import vantio; print('ok')"], {
+      encoding: "utf8",
+      timeout: 8000,
+    });
+    pythonSdk = py.status === 0 && /ok/.test(py.stdout || "") ? "importable" : "missing";
+  } catch {
+    pythonSdk = "missing";
+  }
+  const report = {
+    interceptor_present: existsSync(interceptor),
+    python_wrap_present: existsSync(pythonWrap),
+    python_sdk: pythonSdk,
+    runs_writable: snap.writable,
+    coverage_state: snap.coverage_state,
+    first_event: inventory.first_event,
+    note: "Doctor does not start a generator and does not emit OBSERVED.",
+  };
+  if (values.json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    return;
+  }
+  process.stdout.write("\nOptics doctor (no fake traffic)\n\n");
+  process.stdout.write(`  Interceptor:    ${report.interceptor_present ? "present" : "MISSING"}\n`);
+  process.stdout.write(`  Python wrap:    ${report.python_wrap_present ? "present" : "MISSING"}\n`);
+  process.stdout.write(`  Python SDK:     ${pythonSdk}${pythonSdk === "missing" ? " — pip install vantio-agent-sdk" : ""}\n`);
+  process.stdout.write(`  ~/.vantio/runs: ${snap.writable ? "writable" : "NOT writable — degraded"}\n`);
+  process.stdout.write(`  Coverage:       ${snap.coverage_state}\n\n`);
+  process.stdout.write("  First OBSERVED (no paid key):\n");
+  for (const step of inventory.first_event || []) process.stdout.write(`    • ${step}\n`);
+  process.stdout.write("\n");
+}
+
+function leaveCommand(args) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      "delete-local-metadata": { type: "boolean", default: false },
+      yes: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: false,
+  });
+  if (values.help) {
+    process.stdout.write(LEAVE_HELP);
+    return;
+  }
+  const inventory = loadCoverageInventory();
+  process.stdout.write("\nOptics leave\n\n");
+  for (const step of inventory.leave || []) process.stdout.write(`  • ${step}\n`);
+  process.stdout.write("\n  There is no Vantio-hosted prompt warehouse to delete.\n");
+  process.stdout.write("  Local metadata stays until you remove it.\n\n");
+  if (values["delete-local-metadata"]) {
+    if (!values.yes) {
+      process.stderr.write("vantio leave: refusing to delete without --yes\n");
+      process.exit(1);
+    }
+    const dir = runsDir();
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      process.stdout.write(`  Deleted local Optics metadata at ${dir}. Prompts were not stored there.\n\n`);
+    } catch (err) {
+      process.stderr.write(`vantio leave: could not delete ${dir}: ${err.message}\n`);
+      process.exit(1);
+    }
+  }
+}
+
 // ── dispatch ────────────────────────────────────────────────────────────────
 
 const [command, ...rest] = process.argv.slice(2);
@@ -1562,6 +1833,15 @@ switch (command) {
     break;
   case "discover":
     await discoverCommand(rest);
+    break;
+  case "coverage":
+    coverageCommand(rest);
+    break;
+  case "doctor":
+    doctorCommand(rest);
+    break;
+  case "leave":
+    leaveCommand(rest);
     break;
   case "prove":
     await proveCommand(rest);

@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "plane": "optics",
+  "claim": "This report is this machine only. It is not a fleet inventory and not universal discovery.",
+  "privacy": "Optics stores destination and size metadata. It does not store prompts or completions.",
+  "compatibility": [
+    {
+      "runtime": "Node.js (fetch, undici, http/https, http2, net/tls, spawned curl/wget)",
+      "status": "supported",
+      "proof": "internally_proven",
+      "wrap": "vantio run node agent.js"
+    },
+    {
+      "runtime": "Python with vantio-agent-sdk (urllib, requests/httpx/aiohttp when installed)",
+      "status": "supported",
+      "proof": "internally_proven",
+      "wrap": "pip install vantio-agent-sdk && vantio run python agent.py"
+    },
+    {
+      "runtime": "Python without vantio-agent-sdk",
+      "status": "unsupported",
+      "proof": "named_miss",
+      "wrap": "The vantio run python prefix does not intercept by itself."
+    },
+    {
+      "runtime": "Other languages (Go, Java, Ruby, …)",
+      "status": "unsupported",
+      "proof": "not_wrapped",
+      "wrap": "Not a supported Optics wrap in P0."
+    },
+    {
+      "runtime": "Browser / Chromium / CDP",
+      "status": "unsupported",
+      "proof": "outside_wrap",
+      "wrap": "Browser paths stay outside this wrap."
+    },
+    {
+      "runtime": "Windows / macOS Observe wrap",
+      "status": "supported",
+      "proof": "internally_proven",
+      "wrap": "Observe wrap only. Phantom Engine Control is Linux you enroll — not offered on Windows or macOS."
+    }
+  ],
+  "unsupported_paths": [
+    {
+      "id": "sdk_skip",
+      "name": "Skip the wrap",
+      "detail": "A process started without vantio run (Node) or without vantio-agent-sdk (Python) produces no Optics record."
+    },
+    {
+      "id": "raw_sockets",
+      "name": "curl, raw sockets, browser",
+      "detail": "curl, raw sockets, and browser/CDP paths the wrap does not mediate produce no Optics line."
+    },
+    {
+      "id": "fork_escape",
+      "name": "Fork away from the interceptor",
+      "detail": "A child that leaves the wrap can egress with no local run record."
+    },
+    {
+      "id": "unscanned_body",
+      "name": "Oversized or streaming body",
+      "detail": "Opaque streams can finish as incomplete observation (degraded), not as a full record."
+    },
+    {
+      "id": "python_without_sdk",
+      "name": "Python prefix only",
+      "detail": "vantio run python without vantio-agent-sdk on that interpreter does not intercept."
+    }
+  ],
+  "first_event": [
+    "npm i -g @vantio/cli   (or run the CLI from this checkout)",
+    "vantio run --summary node agent.js",
+    "Python: pip install vantio-agent-sdk, then vantio run python agent.py",
+    "vantio coverage --local",
+    "No account and no paid key. If nothing was wrapped, idle is the honest result — Optics will not invent an OBSERVED row."
+  ],
+  "leave": [
+    "Stop wrapping: run the agent the way you did before vantio run.",
+    "npm uninstall -g @vantio/cli",
+    "pip uninstall vantio-agent-sdk",
+    "~/.vantio/runs is metadata you own (hosts, sizes, trace ids). It is not a prompt warehouse.",
+    "vantio leave --delete-local-metadata --yes   only if you want that metadata gone."
+  ]
+}
