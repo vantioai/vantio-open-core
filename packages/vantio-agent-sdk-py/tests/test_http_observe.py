@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 from vantio import shield
@@ -80,6 +81,37 @@ class RequestsHttpxObserveTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(data["calls"]), 1)
             self.assertEqual(data["calls"][0]["hostname"], "127.0.0.1")
             self.assertNotIn("prompt", data["calls"][0])
+        finally:
+            os.environ.pop("VANTIO_HOME", None)
+            os.environ.pop("VANTIO_EXTRA_LLM_HOSTS", None)
+
+    async def test_unique_prompt_marker_is_not_written_to_run_log(self) -> None:
+        try:
+            import requests
+        except ImportError:
+            self.skipTest("requests is not installed")
+        home = tempfile.mkdtemp()
+        os.environ["VANTIO_HOME"] = home
+        os.environ["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+        marker = "OPTICS_P0_PY_" + uuid.uuid4().hex
+        try:
+            with MockServer() as server:
+                server.respond_with(200, {"ok": True})
+                async with shield(trace_id="py-privacy-marker"):
+                    requests.post(
+                        server.url,
+                        json={"prompt": marker, "messages": [{"role": "user", "content": marker}]},
+                        timeout=2,
+                    )
+            log = Path(home) / "runs" / "py-privacy-marker.json"
+            self.assertTrue(log.is_file())
+            blob = log.read_text(encoding="utf-8")
+            self.assertNotIn(marker, blob)
+            data = json.loads(blob)
+            self.assertNotIn("prompt", data["calls"][0])
+            self.assertNotIn("messages", data["calls"][0])
+            self.assertNotIn("body", data["calls"][0])
+            self.assertEqual(data["calls"][0]["action"], "OBSERVED")
         finally:
             os.environ.pop("VANTIO_HOME", None)
             os.environ.pop("VANTIO_EXTRA_LLM_HOSTS", None)

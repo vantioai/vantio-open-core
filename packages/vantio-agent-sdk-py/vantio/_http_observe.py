@@ -505,6 +505,35 @@ def _host_port_from_url(url: Any) -> tuple[str, Optional[str], str]:
         return "", None, "/"
 
 
+_FORBIDDEN_CALL_KEYS = frozenset(
+    {
+        "prompt",
+        "prompts",
+        "completion",
+        "completions",
+        "body",
+        "messages",
+        "choices",
+        "delta",
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "api_key",
+        "apikey",
+        "secret",
+        "password",
+        "input",
+        "output",
+        "text",
+        "content",
+    }
+)
+
+
+def _sanitize_call(rec: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in rec.items() if str(k).lower() not in _FORBIDDEN_CALL_KEYS}
+
+
 def _append(rec: dict[str, Any]) -> None:
     with _lock:
         _calls.append(rec)
@@ -2251,7 +2280,7 @@ def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
     try:
-        home = os.environ.get("VANTIO_HOME") or os.path.join(os.path.expanduser("~"), ".vantio")
+        home = os.environ.get("VANTIO_HOME") or os.environ.get("VANTIO_HOME") or os.path.join(os.path.expanduser("~"), ".vantio")
         runs = os.path.join(home, "runs")
         os.makedirs(runs, mode=0o700, exist_ok=True)
         now = datetime.now(timezone.utc)
@@ -2268,10 +2297,16 @@ def _write_run_log() -> None:
             "mediation": ",".join(mediations),
             "started_at": datetime.fromtimestamp(_started_ms, timezone.utc).isoformat() if _started_ms else now.isoformat(),
             "generated_at": now.isoformat(),
-            "calls": list(_calls),
+            "calls": [_sanitize_call(c) for c in _calls],
             "summary": {
                 "total_calls": len(_calls),
                 "hosts": hosts,
+                "degraded": any(
+                    str(c.get("action") or "").upper() == "ENFORCEMENT_GAP"
+                    or c.get("observation_incomplete")
+                    or c.get("gap_type")
+                    for c in _calls
+                ),
             },
             "residual": {
                 "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten for Gate PII. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",
@@ -2287,6 +2322,12 @@ def _write_run_log() -> None:
         except OSError:
             pass
     except Exception:
+        try:
+            sys.stderr.write(
+                "[ ∅ VANTIO ] Optics could not write ~/.vantio/runs — observation is incomplete. Prompts were not stored.\n"
+            )
+        except Exception:
+            pass
         return
 
 
