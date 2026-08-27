@@ -82,7 +82,7 @@ const LLM_HOSTS = new Set(BASE_LLM_HOSTS);
 // Local / extra LLM hosts via env only — never hardcode 127.0.0.1 as a
 // blanket catalog entry (would make every localhost call look like LLM traffic).
 // Ollama on localhost:11434 is matched by catalogInScope, not this set.
-for (const h of String(process.env.VANTIO_EXTRA_LLM_HOSTS || "").split(",")) {
+for (const h of String(process.env.VANTIO_EXTRA_LLM_HOSTS || process.env.VANTIO_EXTRA_LLM_HOSTS || "").split(",")) {
   const t = h.trim();
   if (t) LLM_HOSTS.add(t);
 }
@@ -125,6 +125,28 @@ function extractRequestMeta(input, init) {
     scheme,
     request_bytes,
   };
+}
+
+function requestHasBody(init) {
+  return !!(init && init.body != null && init.body !== "");
+}
+
+function observationGapFields(init, requestBytes) {
+  if (requestHasBody(init) && requestBytes == null) {
+    return { observation_incomplete: "unscanned_body", gap_type: "unscanned_body" };
+  }
+  return {};
+}
+
+function noteUnscannedBody(hostname, extra) {
+  _calls.push({
+    hostname,
+    action: "ENFORCEMENT_GAP",
+    gap_type: "unscanned_body",
+    observation_incomplete: "unscanned_body",
+    ts: new Date().toISOString(),
+    ...(extra && typeof extra === "object" ? extra : {}),
+  });
 }
 
 function responseMeta(response) {
@@ -661,6 +683,7 @@ async function enforceRequest(hostname, input, init) {
         report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
                  gap_type: "unscanned_body", body_type: r.unscanned,
                  timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+        noteUnscannedBody(hostname, { body_type: r.unscanned });
       }
     } else if (r.replaced) {
       newInit = { ...init, body: r.value };
@@ -688,6 +711,7 @@ async function enforceRequest(hostname, input, init) {
         report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
                  gap_type: "unscanned_body", body_type: "ReadableStream",
                  timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
+        noteUnscannedBody(hostname, { body_type: "ReadableStream" });
       }
     }
   }
@@ -785,6 +809,7 @@ async function wrapFetch(backend, input, init) {
         action: "OBSERVED",
         error_class: err && err.name ? String(err.name) : "Error",
         error: "network_error",
+        ...observationGapFields(init, reqMeta.request_bytes),
       });
       log([
         "",
@@ -816,6 +841,7 @@ async function wrapFetch(backend, input, init) {
       duration_ms,
       ts,
       action: "OBSERVED",
+      ...observationGapFields(init, reqMeta.request_bytes),
     });
     log([
       "",
@@ -1436,6 +1462,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         gap_type: "unscanned_body", body_type: scanned.unscanned,
         timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
       });
+      noteUnscannedBody(hostname, { body_type: scanned.unscanned, mediation: "undici_dispatch" });
     }
 
     if (policy.enforce && policy.max_request_bytes > 0 && scanned.bytes > policy.max_request_bytes) {
@@ -3657,7 +3684,7 @@ process.on("exit", () => {
   // Always written when LLM calls were observed, regardless of tier or SUMMARY
   // flag. Non-fatal — run log write must never crash the agent exit.
   try {
-    const vantioHome = process.env.VANTIO_HOME || join(homedir(), ".vantio");
+    const vantioHome = process.env.VANTIO_HOME || process.env.VANTIO_HOME || join(homedir(), ".vantio");
     const runsDir = join(vantioHome, "runs");
     mkdirSync(runsDir, { recursive: true, mode: 0o700 });
     const machineHost = (() => { try { return osHostname(); } catch { return "unknown"; } })();
@@ -3712,6 +3739,8 @@ process.on("exit", () => {
         redactions:    call.redactions || 0,
         error:         call.error || null,
         error_class:   call.error_class || null,
+        gap_type:      call.gap_type || null,
+        observation_incomplete: call.observation_incomplete || null,
       })),
       summary: {
         total_calls:   _calls.length,
@@ -3724,6 +3753,7 @@ process.on("exit", () => {
         redacted:      redacted,
         blocked:       blocked,
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
+        degraded:      _calls.some((c) => c.action === "ENFORCEMENT_GAP" || c.observation_incomplete || c.gap_type),
       },
       residual: {
         note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; inline argv bodies are rewritten for Gate PII; file contents are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
@@ -3736,6 +3766,11 @@ process.on("exit", () => {
     writeFileSync(logPath, JSON.stringify(log, null, 2) + "\n", { mode: 0o600 });
   } catch {
     // Non-fatal — never let log writing affect the exiting agent.
+    try {
+      process.stderr.write(
+        "[ ∅ VANTIO ] Optics could not write ~/.vantio/runs — observation is incomplete. Prompts were not stored.\n"
+      );
+    } catch { /* ignore */ }
   }
 
   if (!SUMMARY && !FREE_MODE) return;
