@@ -14,12 +14,71 @@ There is no curl installer at `https://vantio.ai/install.sh`. [vantio.ai/install
 
 ## Quick start
 
+### Step 1 — Install
+
 ```bash
-vantio run node agent.js        # Free Observe — no key needed
-vantio login <your-api-key>     # optional — Gate / paid features
+npm install -g @vantio/cli
 ```
 
-`vantio login` validates your key against `https://vantio.ai/api/v1/config` and, on success, stores it at `~/.vantio/config.json` (chmod `600`). After that, `vantio run` injects it automatically — no `VANTIO_API_KEY` juggling. Free Optics needs no key. Paid Gate keys come from a trial (`hello@vantio.ai`) or Stripe once live — there is no public self-serve key dashboard yet (`/dashboard` redirects).
+That's the only install step. Works on macOS, Linux, and Windows (WSL).
+
+### Step 2 — Run your agent
+
+Instead of running your Node agent directly, prefix it with `vantio run`:
+
+```bash
+# Before
+node agent.js
+
+# After
+vantio run node agent.js
+```
+
+Python: install `vantio-agent-sdk` first, then `vantio run python agent.py`. Prefixing `vantio run python` does not intercept by itself.
+
+### Step 4 — Connect Gate / Enterprise (optional)
+
+Free Optics needs **no account and no API key**. Local `vantio prove`,
+`vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
+work immediately after a run.
+
+To attach **Vantio Gate** (Pro) or an Enterprise on-prem control plane:
+
+1. Request a trial via [hello@vantio.ai](mailto:hello@vantio.ai) (or complete Stripe
+   Checkout once self-serve billing is live — eng-shipped, keys not yet public).
+2. You receive an API key (email / SE handoff). There is **no public self-serve
+   key dashboard** today — [vantio.ai/dashboard](https://vantio.ai/dashboard)
+   redirects to docs.
+3. Save the key:
+
+```bash
+vantio login
+```
+
+Paste your key when prompted (or pass it directly: `vantio login vk_live_xxx`). Vantio
+validates it and saves it to `~/.vantio/config.json` (chmod 600) — **no environment
+variables to manage.** Every `vantio run` after this automatically picks up the saved
+key:
+
+```bash
+vantio run node agent.js
+```
+
+Check your connection status anytime:
+
+```bash
+vantio whoami
+# Key:    vk_live…a3f2
+# Server: <your Gate control-plane URL>
+# Status: connected — PRO plan
+```
+
+To disconnect: `vantio logout`.
+
+> **Honesty note:** Remote dashboard sync and fleet `vantio discover` (without
+> `--local`) require a Pro or Enterprise key pointed at a live control plane.
+> Free Optics stays fully useful offline. Upgrade path:
+> [vantio.ai/pricing](https://vantio.ai/pricing).
 
 ---
 
