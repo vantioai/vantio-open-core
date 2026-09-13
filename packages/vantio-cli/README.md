@@ -36,13 +36,13 @@ vantio run node agent.js
 
 Python: install `vantio-agent-sdk` first, then `vantio run python agent.py`. Prefixing `vantio run python` does not intercept by itself.
 
-### Step 4 — Connect Gate / Enterprise (optional)
+### Step 4 — Connect Phantom Engine / Enterprise (optional)
 
 Free Optics needs **no account and no API key**. Local `vantio prove`,
 `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
 work immediately after a run.
 
-To attach **Vantio Gate** (Pro) or an Enterprise on-prem control plane:
+To attach **Phantom Engine** enforcement or an Enterprise on-prem control plane (Gate is not a separate current SKU):
 
 1. Request a trial via [hello@vantio.ai](mailto:hello@vantio.ai) (or complete Stripe
    Checkout once self-serve billing is live — eng-shipped, keys not yet public).
@@ -69,16 +69,17 @@ Check your connection status anytime:
 ```bash
 vantio whoami
 # Key:    vk_live…a3f2
-# Server: <your Gate control-plane URL>
-# Status: connected — PRO plan
+# Server: <your Phantom Engine enforce-plane URL>
+# Status: connected
 ```
 
 To disconnect: `vantio logout`.
 
 > **Honesty note:** Remote dashboard sync and fleet `vantio discover` (without
-> `--local`) require a Pro or Enterprise key pointed at a live control plane.
+> `--local`) require a Phantom Engine or Enterprise key pointed at a live control plane.
 > Free Optics stays fully useful offline. Upgrade path:
 > [vantio.ai/pricing](https://vantio.ai/pricing).
+> The CLI may still print a technical `pro` tier from the enforce-plane API; that is not a current SKU.
 
 ---
 
@@ -89,9 +90,6 @@ vantio login [key]    # save & validate your API key (prompts if omitted; input 
 vantio logout         # remove the stored key
 vantio whoami         # show the stored key (masked) + live connection status
 vantio run <program>  # spawn a program under the Vantio execution context
-vantio coverage       # this-machine Observe report (never fleet)
-vantio doctor         # first-event checks — no fake traffic
-vantio leave          # uninstall help; local metadata is not prompts
 vantio discover       # local wrap history (--local) or paid control-plane discover
 vantio prove          # generate an auditor-ready proof artifact from a run log (Free)
 vantio search [query] # search local run logs by host, path, action, or free text (Free)
@@ -110,7 +108,7 @@ vantio run node agent.js
 vantio run tsx agent.ts
 ```
 
-Wrap a Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch`, `undici.fetch`, `undici.request` (including `Client` / `Pool` / `Agent` `.request()`), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2.connect` / `session.request`, Node `net`/`tls` connect to in-scope hosts, and outbound bytes after `undici.upgrade` / CONNECT, and records connection metadata locally (and to Gate when a key is configured).
+Wrap a Node process with `vantio run`. The CLI intercepts outbound calls to known LLM APIs via Node `fetch`, `undici.fetch`, `undici.request` (including `Client` / `Pool` / `Agent` `.request()`), `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade`, Node `http`/`https`, Node `http2.connect` / `session.request`, Node `net`/`tls` connect to in-scope hosts, and outbound bytes after `undici.upgrade` / CONNECT, and records connection metadata locally (and to the Phantom Engine enforce plane when a key is configured).
 
 Python is not wrapped by this interceptor. Install [`vantio-agent-sdk`](https://pypi.org/project/vantio-agent-sdk) on that interpreter first, then:
 
@@ -190,7 +188,7 @@ vantio discover --local
 vantio discover --local --since=7d --json
 ```
 
-`--local` reads `~/.vantio/runs` on this machine. That is only processes started with `vantio run` (Node) or `vantio run python` after `pip install vantio-agent-sdk`. It is this machine only — not a fleet inventory and not a scan of every process. curl, browsers, skipped wraps, and forks stay outside this list; `vantio coverage --local` names those misses.
+`--local` reads `~/.vantio/runs` on this machine. That is only processes started with `vantio run` (Node) or `vantio run python` after `pip install vantio-agent-sdk`. It is this machine only — not a fleet inventory and not a scan of every process. curl, browsers, skipped wraps, and forks stay outside this list.
 
 Without `--local` the CLI asks a paid control-plane discover API. If that API is missing, the CLI says so. Optics does not claim it found every agent on the host.
 
@@ -207,9 +205,9 @@ Run `vantio discover --help` for the same bounds.
 
 ---
 
-## Enforcement (Vantio Gate)
+## Enforcement (Phantom Engine)
 
-With a Gate `VANTIO_API_KEY`, the interceptor fetches policy from the [Vantio Gate](https://github.com/vantioai/vantio-pro) control plane and enforces it locally in your process. A few semantics worth knowing:
+With a Phantom Engine `VANTIO_API_KEY`, the interceptor fetches policy from the enforce-plane control plane ([`vantio-pro`](https://github.com/vantioai/vantio-pro); Gate is not a separate current SKU) and enforces it locally in your process. A few semantics worth knowing:
 
 - **Host scope** — policy applies to known LLM hosts plus any host named in `blocked_hosts`/`allowed_hosts`. `blocked_hosts` blocks **any** matching host (LLM or not); a non-empty `allowed_hosts` blocks any in-scope host not on the list. Unrelated traffic (OS, package managers, etc.) is never touched.
 - **Spend cap** — the USD spend cap is **best-effort and per-process**. Bytes are estimated (request + response, including streamed responses counted after the fact), so the cap gates *subsequent* calls once the running total is crossed rather than aborting a call mid-stream, and it does not aggregate across processes.
@@ -220,7 +218,7 @@ With a Gate `VANTIO_API_KEY`, the interceptor fetches policy from the [Vantio Ga
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Gate API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
+| `VANTIO_API_KEY` | Enforce-plane API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_TELEMETRY_DISABLED` | Set to `1` to opt out of anonymous usage telemetry |
 | `DO_NOT_TRACK` | Set to `1` to opt out of anonymous usage telemetry |
@@ -235,7 +233,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and Gate PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.19**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.19**.
 
 Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.13**) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 
