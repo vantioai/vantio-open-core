@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current npm release: **0.3.19**. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
+> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current npm release: **0.3.20**. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ```bash
 npm install -g @vantio/cli
@@ -233,7 +233,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.19**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.20**.
 
 Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.13**) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 
