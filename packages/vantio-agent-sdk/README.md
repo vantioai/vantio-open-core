@@ -2,7 +2,7 @@
 
 **Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Node: a trace ID around your agent. It does not wrap `fetch` by itself — Node wrap lives in [`@vantio/cli`](https://www.npmjs.com/package/@vantio/cli) (`vantio run`).
 
-Optics does not block on its own. [Gate](https://github.com/vantioai/vantio-pro) enforces rules on the wrapped path. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) is runtime protection on enrolled Linux.
+Optics does not block on its own. [Phantom Engine](https://github.com/vantioai/vantio-phantom-engine) enforces rules on the wrapped path and provides runtime protection on enrolled Linux — Observe, Enforce, and Control in one purchase.
 
 ```bash
 npm install @vantio/agent-sdk
@@ -43,7 +43,7 @@ await shield(async () => { ... }, {
 
 ---
 
-### `reportAnomaly(event, opts?)` — send metadata to Gate ingest
+### `reportAnomaly(event, opts?)` — send metadata to Phantom Engine ingest
 
 ```ts
 import { shield, reportAnomaly } from "@vantio/agent-sdk";
@@ -65,9 +65,9 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 
 ---
 
-## Policy & redaction (Vantio Gate)
+## Policy & redaction (Vantio Phantom Engine)
 
-Enforcement policy is served by the [Vantio Pro](https://github.com/vantioai/vantio-pro) control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
+Enforcement policy is served by the Phantom Engine control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
 
 ### `fetchPolicy(apiKey, opts?)` — load the cloud-managed policy
 
@@ -116,7 +116,7 @@ getCurrentTraceId(); // undefined — outside shield() frame
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Gate API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
+| `VANTIO_API_KEY` | Phantom Engine API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |

@@ -1,8 +1,10 @@
 # Vantio integration surfaces
 
-> **Gate commercial/production:** deferred until Stripe/banking. Gate MCP dry-run may exist as POC; do not market as production enforce.
+> **Gate MCP** (`@vantio/gate-mcp`) is a legacy/compat dry-run evaluation tool. Gate is the internal
+> Enforce function inside Phantom Engine — not a current standalone public SKU. Do not market as
+> a separate purchasable product.
 
-How Optics / Gate show up where agents already run — and what is earmarked for later.
+How Optics shows up where agents already run — and what is earmarked for later.
 
 ## High leverage (shipping)
 

@@ -14,4 +14,4 @@ export VANTIO_HOOKS=1
 npm install -g @vantio/cli
 ```
 
-Fence: observe only. Pair with `@vantio/optics-mcp` / `@vantio/gate-mcp` in the IDE.
+Fence: observe only. Pair with `@vantio/optics-mcp` in the IDE (or `@vantio/gate-mcp` for legacy dry-run evaluation).

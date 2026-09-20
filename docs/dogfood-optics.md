@@ -1,6 +1,6 @@
 # Dogfood Optics (local)
 
-Short loop to prove **Vantio Optics** on your machine — observe only, no Gate/billing required.
+Short loop to prove **Vantio Optics** on your machine — observe only, no API key or billing required.
 
 **Live product page:** https://vantio.ai/optics  
 **Phantom Box forever soak / suite status:** sandbox [`docs/BUILD_STATUS.md`](../../docs/BUILD_STATUS.md) · [`docs/MULTI_TIER_SOAK.md`](../../docs/MULTI_TIER_SOAK.md)
@@ -50,4 +50,4 @@ Details: [optics-mcp.md](./optics-mcp.md) · full workflow: [sight-loop.md](./si
 ## Fence
 
 Optics **observes**. It does not block, redact, or latch policy.  
-**Gate commercial/production** (Stripe/banking) is deferred — see [surfaces.md](./surfaces.md).
+Enforce and Control belong to **Phantom Engine** — see [surfaces.md](./surfaces.md) and [observe-only.md](./observe-only.md).

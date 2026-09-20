@@ -8,7 +8,7 @@ Open-core packages (this repo is **Vantio Optics**):
 - `packages/vantio-agent-sdk-py` — Python agent SDK (`vantio-agent-sdk`, currently **3.0.2**)
 - `packages/vantio-agent-sdk` — Node.js agent SDK (`@vantio/agent-sdk`)
 - `packages/vantio-optics-mcp` — Optics MCP (`@vantio/optics-mcp`) — observe only
-- `packages/vantio-gate-mcp` — Gate MCP (`@vantio/gate-mcp`) — dry-run evaluate only
+- `packages/vantio-gate-mcp` — Gate MCP (`@vantio/gate-mcp`) — dry-run evaluate only (legacy/compat; Gate is the internal Enforce function inside Phantom Engine, not a standalone SKU)
 
 Phantom Engine (Linux host protection) lives in a separate repository. Do not add it here.
 

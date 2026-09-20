@@ -12,9 +12,8 @@ destination, process, size, and timing — never prompts or completions.
 
 Python: `pip install vantio-agent-sdk`, then wrap your agent with `@shield`.
 
-Optics is Tier 1 of Vantio's architecture — Observe. [Gate](https://vantio.ai/gate) (Enforce)
-and [Phantom Engine](https://vantio.ai/phantom-engine) (Control) extend this to policy
-enforcement and host-level runtime protection on enrolled Linux systems. Full docs:
+Optics is the free Observe tier. [Phantom Engine](https://vantio.ai/phantom-engine) (Enforce + Control)
+extends this to policy enforcement and host-level runtime protection on enrolled Linux systems. Full docs:
 vantio.ai/docs.
 
 ---
@@ -80,12 +79,11 @@ export DO_NOT_TRACK=1
 
 ---
 
-## Upgrade path to Gate and Phantom Engine
+## Upgrade path to Phantom Engine and Enterprise
 
 Free Optics needs **no account and no API key**. `vantio login` is optional and later, for dashboard sync only, never a required step before running.
 
-Optics is Tier 1 of Vantio's architecture — Observe. [Gate](https://vantio.ai/gate) (Enforce)
-and [Phantom Engine](https://vantio.ai/phantom-engine) (Control) extend this to policy
-enforcement and host-level runtime protection on enrolled Linux systems.
+Optics is the free Observe tier. [Phantom Engine](https://vantio.ai/phantom-engine) (Enforce + Control)
+extends this to policy enforcement and host-level runtime protection on enrolled Linux systems.
 
-Residual risk closes with **Vantio Gate**, then **Vantio Phantom Engine** — see [vantio.ai/pricing](https://vantio.ai/pricing).
+Residual risk closes with **Vantio Phantom Engine** ($799/node/mo) — see [vantio.ai/pricing](https://vantio.ai/pricing). Enterprise governance is available on top — talk to sales.

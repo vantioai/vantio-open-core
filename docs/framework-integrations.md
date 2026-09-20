@@ -78,7 +78,7 @@ import asyncio
 asyncio.run(run_chain())
 ```
 
-**With policy-driven PII redaction (Pro/Enterprise):**
+**With policy-driven PII redaction (Phantom Engine/Enterprise):**
 
 ```python
 import os
@@ -100,7 +100,7 @@ async def run_chain(user_input: str):
 ```
 
 > **Free note:** `@shield` provides trace context and enables `report_anomaly()` for
-> cloud ingest (Pro/Enterprise). On Free, it's a no-op wrapper that's safe to leave
+> cloud ingest (Phantom Engine/Enterprise). On Free, it's a no-op wrapper that's safe to leave
 > in place — it never blocks and never captures content.
 
 ---

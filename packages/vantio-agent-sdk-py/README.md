@@ -2,9 +2,9 @@
 
 **Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions. Optics is free. Optics does not block, redact, or cap spend on its own.
 
-Optics helps you see. [Gate](https://vantio.ai/gate) applies the rules you set where the agent is wired ($499/month). [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Control at $799/node, enforce and control together in that purchase, including Gate capability on that protected host. [Enterprise](https://vantio.ai/enterprise) adds governance when you need proof and process on top — talk to sales. Continuous Assurance is how the suite stays true after install; it is not a fifth product.
+Optics helps you see. [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Observe, Enforce, and Control in one purchase, at $799/node/mo. [Enterprise](https://vantio.ai/enterprise) adds governance when you need proof and process on top — talk to sales. Continuous Assurance is how the suite stays true after install; it is not a separate product.
 
-> **Optics** (Free) · **Gate** ($499/month) · **Phantom Engine** ($799/node) · **Enterprise** (talk to sales)
+> **Optics** (Free) · **Phantom Engine** ($799/node/mo) · **Enterprise** (talk to sales)
 
 ```bash
 pip install vantio-agent-sdk
@@ -165,7 +165,7 @@ async with shield():
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Gate API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
+| `VANTIO_API_KEY` | Phantom Engine API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing — `report_anomaly()` is a no-op without this |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
@@ -205,4 +205,4 @@ Core tracing requires only the Python standard library (`contextvars`, `asyncio`
 `hmac`, `re`). Cloud ingest and anonymous telemetry use `urllib.request` and `threading`.
 No aiohttp, no httpx, no requests.
 
-MIT License · [vantio.ai/optics](https://vantio.ai/optics) · [vantio.ai/gate](https://vantio.ai/gate) · [vantio.ai/phantom](https://vantio.ai/phantom) · [vantio.ai/enterprise](https://vantio.ai/enterprise) · [vantio.ai/pricing](https://vantio.ai/pricing) · [vantio.ai/docs](https://vantio.ai/docs)
+MIT License · [vantio.ai/optics](https://vantio.ai/optics) · [vantio.ai/phantom](https://vantio.ai/phantom) · [vantio.ai/enterprise](https://vantio.ai/enterprise) · [vantio.ai/pricing](https://vantio.ai/pricing) · [vantio.ai/docs](https://vantio.ai/docs)

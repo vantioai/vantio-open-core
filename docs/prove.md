@@ -130,7 +130,7 @@ Run logs are stored at `~/.vantio/runs/<trace-id>.json` (mode `0600`):
 }
 ```
 
-`est_spend_usd` is `null` on Free (no API key) and a float estimate on Pro/Enterprise.
+`est_spend_usd` is `null` on Free (no API key) and a float estimate on Phantom Engine/Enterprise.
 
 ---
 
@@ -151,7 +151,7 @@ Share `vantio prove` output with:
 - **Security auditors** — shows byte counts and action labels that confirm governance
   controls (blocks, redactions) fired correctly.
 - **Incident response** — a trace ID links the run log to any Vantio dashboard events
-  (Pro/Enterprise), providing a full governance chain-of-custody.
+  (Phantom Engine/Enterprise), providing a full governance chain-of-custody.
 
 > **Pro tip:** run with `vantio run --audit node agent.js` to flag all events from
 > this run as audit-mode. Audit-mode events are labelled separately in the dashboard
