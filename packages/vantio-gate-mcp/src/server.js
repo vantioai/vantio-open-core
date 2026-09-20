@@ -1,6 +1,7 @@
 /**
- * Vantio Gate MCP — rules-that-stick dry-run / evaluate only.
- * Does not block traffic, mutate production policy, or expose Phantom Engine.
+ * Phantom Engine gate-mcp compatibility layer — application-path enforce dry-run / evaluate only.
+ * Does not block traffic, mutate production policy, or expose Phantom Engine internals.
+ * @vantio/gate-mcp is a legacy package name; Gate is not a separate Vantio product.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -43,7 +44,7 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_evaluate",
-    "Dry-run evaluate a hostname/bytes/spend against a Gate policy. Never blocks network I/O. Pass policy JSON or omit to use defaults / last fetched shape.",
+    "Dry-run evaluate a hostname/bytes/spend against a Phantom Engine enforce policy. Never blocks network I/O. Pass policy JSON or omit to use defaults / last fetched shape.",
     {
       hostname: z.string().describe("Destination hostname, e.g. api.openai.com"),
       request_bytes: z.number().optional().describe("Request body size in bytes"),
@@ -63,7 +64,7 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_get_policy",
-    "Fetch current tenant policy from the Vantio Gate control plane. Requires VANTIO_API_KEY. Read-only.",
+    "Fetch current tenant policy from the Phantom Engine control plane. Requires VANTIO_API_KEY. Read-only.",
     {
       api_key: z.string().optional().describe("Override VANTIO_API_KEY"),
       api_base: z.string().optional().describe("Override VANTIO_API_BASE"),
@@ -76,7 +77,7 @@ export function createGateMcpServer() {
       if (!result.ok) return err(JSON.stringify(result, null, 2));
       return text({
         plane: "Enforce",
-        brand: "Vantio Gate",
+        brand: "Phantom Engine",
         tier: result.tier,
         policy: result.policy,
         note: "Use gate_evaluate to dry-run decisions. Live latch is via vantio run — not this MCP.",
@@ -99,7 +100,7 @@ export function createGateMcpServer() {
       if (!result.ok) return err(JSON.stringify(result, null, 2));
       return text({
         plane: "Enforce",
-        brand: "Vantio Gate",
+        brand: "Phantom Engine",
         ...result,
         upgrade: "Paths that never reach the app wrap need Vantio Phantom Engine on Linux hosts you enroll.",
       });
@@ -108,14 +109,14 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_normalize_policy",
-    "Normalize and validate a policy object to Gate's canonical schema (coerce bad fields to safe defaults).",
+    "Normalize and validate a policy object to Phantom Engine's enforce policy schema (coerce bad fields to safe defaults).",
     {
       policy: z.record(z.unknown()).describe("Raw policy JSON"),
     },
     async ({ policy }) => {
       return text({
         plane: "Enforce",
-        brand: "Vantio Gate",
+        brand: "Phantom Engine",
         policy: normalizePolicy(policy),
       });
     },
@@ -123,17 +124,18 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_explain",
-    "Explain Vantio Gate (rules that stick), dry-run fence, and what this MCP will never do.",
+    "Explain Phantom Engine application-path enforcement dry-run (rules that stick), fence, and what this MCP will never do.",
     {},
     async () =>
       text({
-        brand: "Vantio Gate",
+        brand: "Phantom Engine",
+        compat_package: "@vantio/gate-mcp (legacy package name — Gate is not a separate Vantio product or subscription)",
         workflow: "Rules that stick",
         sku: "Included in Phantom Engine ($799/node/mo — Observe + Enforce + Control)",
         does: [
           "Evaluate host allow/block, size caps, spend caps, PII redact flags",
           "Dry-run decisions without blocking (this MCP)",
-          "Live enforce when wired through vantio run + Gate policy",
+          "Live enforce when wired through vantio run + Phantom Engine policy",
         ],
         does_not: [
           "Block or redact traffic from inside this MCP",
@@ -142,15 +144,15 @@ export function createGateMcpServer() {
           "Capture prompts or completions",
         ],
         enable_live:
-          "Set policy.dry_run=true on Gate, run agents under vantio run, review DRY_RUN_* events, then set enforce=true.",
+          "Set policy.dry_run=true, run agents under vantio run + Phantom Engine policy, review DRY_RUN_* events, then set enforce=true.",
         pricing: "https://vantio.ai/pricing",
-        gate: "https://vantio.ai/gate",
+        phantom: "https://vantio.ai/phantom",
       }),
   );
 
   server.tool(
     "gate_upgrade_path",
-    "Return Optics → Gate → Phantom Engine ladder. Use when residual bypass must close.",
+    "Return Optics → Phantom Engine → Enterprise upgrade ladder. Use when residual bypass must close.",
     {},
     async () =>
       text({

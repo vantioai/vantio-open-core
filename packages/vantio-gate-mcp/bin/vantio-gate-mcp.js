@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * stdio entry for Vantio Gate MCP (dry-run / evaluate).
+ * stdio entry for the @vantio/gate-mcp compatibility layer (Phantom Engine dry-run / evaluate).
  * stdout is reserved for MCP framing — log only to stderr.
+ * Gate is not a separate Vantio product or subscription; this is a legacy package name.
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createGateMcpServer } from "../src/server.js";
@@ -11,7 +12,8 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    "[vantio-gate-mcp] Vantio Gate MCP listening on stdio (dry-run evaluate only)",
+    "[vantio-gate-mcp] Phantom Engine compatibility — application-path enforce dry-run. " +
+    "(@vantio/gate-mcp is a legacy package name; Gate is not a separate Vantio product.)",
   );
 }
 
