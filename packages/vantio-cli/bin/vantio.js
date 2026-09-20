@@ -50,8 +50,8 @@ Examples:
 const DISCOVER_HELP = `\
 vantio discover — Shadow AI Attack Surface Discovery
 
-Shows every AI agent call recorded in your Vantio workspace. Pro users see
-SDK-monitored calls. Enterprise users (with the Phantom Engine) also see
+Shows every AI agent call recorded in your Vantio workspace. Phantom Engine users see
+SDK-monitored calls. Phantom Engine users also see
 unenrolled processes — your Shadow AI attack surface.
 
 Calls are grouped by target host and annotated with governance status:
@@ -63,8 +63,7 @@ Calls are grouped by target host and annotated with governance status:
 Free-tier local scan (--local):
   Reads run logs written to ~/.vantio/runs/ by \`vantio run\` on this machine.
   No API key required. Covers only processes started with \`vantio run\`.
-  Pro adds dashboard sync and cross-machine history.
-  Enterprise (Phantom Engine) adds detection of unenrolled processes.
+  Phantom Engine adds dashboard sync, cross-machine history, and detection of unenrolled processes.
 
 Usage:
   vantio discover [options]
@@ -336,7 +335,7 @@ async function loginCommand(args) {
     process.stdout.write(
       "\nYou're on the Free plan — `vantio run` will keep observing calls locally in your\n" +
       "terminal, but dashboard sync, `vantio discover`, and policy enforcement require\n" +
-      "Pro or Enterprise. Upgrade at vantio.ai/pricing.\n"
+      "Phantom Engine or Enterprise. Upgrade at vantio.ai/pricing.\n"
     );
   }
 }
@@ -363,7 +362,7 @@ async function whoamiCommand() {
       const plan = result.tier ? ` — ${isPaidTier(result.tier) ? result.tier : "FREE"} plan` : "";
       process.stdout.write(`Status: connected${plan}${result.policyActive ? ", policy active" : ""}\n`);
       if (!isPaidTier(result.tier)) {
-        process.stdout.write("  Dashboard sync and `vantio discover` require Pro or Enterprise — vantio.ai/pricing\n");
+        process.stdout.write("  Dashboard sync and `vantio discover` require Phantom Engine or Enterprise — vantio.ai/pricing\n");
       }
     } else {
       process.stdout.write(`Status: unexpected response (HTTP ${result.status}).\n`);
@@ -938,8 +937,8 @@ async function discoverLocalCommand(since) {
 
   process.stdout.write(
     `\n  Free (this output)  — local run history, this machine, only processes started with \`vantio run\`\n` +
-    `  Pro                 — remote dashboard sync, cross-machine discovery, governance enforcement\n` +
-    `  Enterprise          — kernel-level shadow AI detection (catches unenrolled processes via eBPF)\n` +
+    `  Phantom Engine ($799/node/mo) — remote dashboard sync, cross-machine discovery, enforce + control, Rogue Reconciliation\n` +
+    `  Enterprise (talk to sales)   — governance + proof at scale\n` +
     `  Upgrade at vantio.ai/pricing\n\n`
   );
 }
@@ -1080,7 +1079,7 @@ async function discoverCommand(args) {
 
   if (res.status === 403) {
     process.stdout.write(
-      '[ ∅ VANTIO ] Discovery requires a Pro or Enterprise plan.\n' +
+      '[ ∅ VANTIO ] Discovery requires a Phantom Engine or Enterprise plan.\n' +
       '  Upgrade at vantio.ai/pricing\n' +
       '  Tip: `vantio discover --local` shows local run history on your Free plan.\n'
     );
@@ -1089,7 +1088,7 @@ async function discoverCommand(args) {
 
   if (res.status === 404) {
     process.stdout.write(
-      "Discovery is available for Pro and Enterprise accounts. " +
+      "Discovery is available for Phantom Engine and Enterprise accounts. " +
       "Upgrade at vantio.ai/pricing to unlock full access.\n"
     );
     return;

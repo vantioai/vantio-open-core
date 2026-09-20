@@ -21,14 +21,14 @@
       "environmentVariables": [
         {
           "name": "VANTIO_API_KEY",
-          "description": "Optional Pro API key for gate_get_policy / gate_residual_risk against your control plane",
+          "description": "Optional Phantom Engine API key for gate_get_policy / gate_residual_risk against your control plane",
           "isRequired": false,
           "format": "string",
           "isSecret": true
         },
         {
           "name": "VANTIO_API_BASE",
-          "description": "Optional Pro API base URL (default https://api.vantio.ai)",
+          "description": "Optional Phantom Engine API base URL (default https://api.vantio.ai)",
           "isRequired": false,
           "format": "string",
           "isSecret": false

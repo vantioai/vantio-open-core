@@ -2,7 +2,7 @@
 
 **Vantio Optics** (Free) is the **Observe** plane. It sees LLM egress metadata; it never says **no** on its own.
 
-This doc is the Free-tier fence: what Optics does, what it explicitly does not do, and where Gate and Phantom Engine sit.
+This doc is the Free-tier fence: what Optics does, what it explicitly does not do, and where Phantom Engine and Enterprise sit.
 
 ---
 
@@ -27,39 +27,43 @@ This doc is the Free-tier fence: what Optics does, what it explicitly does not d
 
 ---
 
-## What Optics does not do → Vantio Gate ($499)
+## What Optics does not do → Phantom Engine Enforce
 
 If it can **change or block** behavior in production, it is **not** Free:
 
 | Out of scope for Optics | Product |
 |-------------------------|---------|
-| Block by hostname | **Vantio Gate** |
-| PII redaction | Gate |
-| Spend / size caps | Gate |
-| Dry-run → hard enforce | Gate |
-| Policy-as-code publish / rollout | Gate |
-| Shadow AI Discover (fleet-wide) | Gate |
-| Blocking CI gates | Gate |
+| Block by hostname | **Vantio Phantom Engine** (Enforce) |
+| PII redaction | Phantom Engine (Enforce) |
+| Spend / size caps | Phantom Engine (Enforce) |
+| Dry-run → hard enforce | Phantom Engine (Enforce) |
+| Policy-as-code publish / rollout | Phantom Engine (Enforce) |
+| Shadow AI Discover (fleet-wide) | Phantom Engine |
+| Blocking CI gates | Phantom Engine |
 
-**Fence:** if it can say **no** in production → **Vantio Gate**.
+**Fence:** if it can say **no** in production → **Vantio Phantom Engine**.
 
-Gate workflow: **Rules that stick** — author policy, dry-run, enforce, ledger. Gate applies where the agent is wired; it does not close raw sockets or SDK omission.
+Phantom Engine Enforce workflow: **Rules that stick** — author policy, dry-run, enforce, ledger. Applies where the agent is wired; does not close raw sockets or SDK omission on its own.
+
+> **Note on Gate:** Gate is the internal name for the Enforce function set inside Phantom Engine. The
+> `@vantio/gate-mcp` package provides a legacy/compat dry-run evaluation tool. Gate is not a
+> current standalone public SKU.
 
 ---
 
-## What Optics does not cover → Vantio Phantom Engine ($799/node)
+## What Optics does not cover → Vantio Phantom Engine ($799/node/mo)
 
 If you need protection on machines you own when a process skips the app wrap:
 
-| Out of scope for Optics (and Gate alone) | Product |
-|------------------------------------------|---------|
+| Out of scope for Optics alone | Product |
+|-------------------------------|---------|
 | Host TLS observe on enrolled Linux | **Vantio Phantom Engine** |
 | Rogue Reconciliation (host-seen, no app record) | Phantom Engine |
 | Fork inheritance on enrolled hosts | Phantom Engine |
 | CIDR / enrolled-cgroup egress policy | Phantom Engine |
 | Append-oriented audit ledger (Enterprise) | Vantio Enterprise |
 
-**Fence:** Phantom Engine protects Linux hosts you enroll — enforce and control together, one purchase. It does not claim coverage for agents that never land on that host.
+**Fence:** Phantom Engine protects Linux hosts you enroll — Observe, Enforce, and Control together, one purchase. It does not claim coverage for agents that never land on that host.
 
 Enterprise workflow: **Rogue Reconciliation** — correlate app + host evidence when they diverge.
 
@@ -77,7 +81,7 @@ Optics intercepts via Node `fetch`, `undici.fetch`, `undici.request`, `undici.st
 **This is not a bug.** Ungoverned paths stay silent:
 
 ```
-Vantio Optics (see)  →  Vantio Gate (rules you set)  →  Vantio Phantom Engine (machines you own)
+Vantio Optics (see)  →  Vantio Phantom Engine (rules you set + machines you own)
 ```
 
 Use `vantio discover --local` to inspect what Optics actually saw. The gap between that and full org coverage is named, not hidden.
@@ -92,8 +96,8 @@ vantio run node agent.js
 vantio prove
 vantio discover --local
 
-# Gate — requires a Gate key + vantio login
-vantio login <gate-key>
+# Phantom Engine — requires a Phantom Engine key + vantio login
+vantio login <phantom-engine-key>
 vantio run node agent.js    # may BLOCK / REDACT when policy is on
 
 # Phantom Engine — Linux host install (not in this repo)

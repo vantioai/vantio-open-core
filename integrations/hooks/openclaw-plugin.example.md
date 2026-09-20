@@ -25,4 +25,4 @@ export default {
 };
 ```
 
-Fence: observe only. Upgrade to Gate for rules that stick; Phantom Engine for protection on machines you own.
+Fence: observe only. Upgrade to Phantom Engine for rules that stick and protection on machines you own.

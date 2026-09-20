@@ -42,7 +42,7 @@ The first time you run it, you'll see every outbound AI call intercepted in real
   pid:     12345
   bytes:   237
   time:    2026-05-28T22:30:00.000Z
-  → Optics observes only. Upgrade to Vantio Gate (Pro) to enforce policy.
+  → Optics observes only. Upgrade to Vantio Phantom Engine to enforce policy.
 ```
 
 A summary prints automatically when your agent finishes. You can also request it explicitly:
@@ -61,13 +61,13 @@ vantio run --summary node agent.js
 
 ---
 
-## Step 4 — Connect Gate / Enterprise (optional)
+## Step 4 — Connect Phantom Engine / Enterprise (optional)
 
 Free Optics needs **no account and no API key**. Local `vantio prove`,
 `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
 work immediately after a run.
 
-To attach **Vantio Gate** (Pro) or an Enterprise on-prem control plane:
+To attach **Vantio Phantom Engine** or an Enterprise on-prem control plane:
 
 1. Request a trial via [hello@vantio.ai](mailto:hello@vantio.ai) (or complete Stripe
    Checkout once self-serve billing is live — eng-shipped, keys not yet public).
@@ -94,14 +94,14 @@ Check your connection status anytime:
 ```bash
 vantio whoami
 # Key:    vk_live…a3f2
-# Server: <your Gate control-plane URL>
-# Status: connected — PRO plan
+# Server: <your Phantom Engine enforce-plane URL>
+# Status: connected
 ```
 
 To disconnect: `vantio logout`.
 
 > **Honesty note:** Remote dashboard sync and fleet `vantio discover` (without
-> `--local`) require a Pro or Enterprise key pointed at a live control plane.
+> `--local`) require a Phantom Engine or Enterprise key pointed at a live control plane.
 > Free Optics stays fully useful offline. Upgrade path:
 > [vantio.ai/pricing](https://vantio.ai/pricing).
 
@@ -131,7 +131,7 @@ with auditors, security teams, or compliance reviewers.
 
 ---
 
-## Step 5 — Find your Shadow AI attack surface (Pro / Enterprise)
+## Step 5 — Find your Shadow AI attack surface (Phantom Engine / Enterprise)
 
 Once connected on a paid plan, `vantio discover` shows every AI call Vantio has seen
 across your workspace — grouped by host, with a governance breakdown per host:
@@ -194,11 +194,11 @@ any code changes.
 
 | Tier | What's bypassable |
 |------|-------------------|
-| **Free · Vantio Optics (this tier)** | Any process not started with `vantio run` / `shield()`; Python without `vantio-agent-sdk`; native socket calls Gate does not mediate |
-| **Pro · Vantio Gate** | Raw sockets and unenrolled processes at the app layer |
-| **Enterprise · Vantio Phantom Engine** | Runtime protection on enrolled Linux — Rogue Reconciliation when host and app records diverge |
+| **Free · Vantio Optics (this tier)** | Any process not started with `vantio run` / `shield()`; Python without `vantio-agent-sdk`; native socket calls the interceptor does not mediate |
+| **Vantio Phantom Engine** ($799/node/mo) | Raw sockets and unenrolled processes not on an enrolled Linux host |
+| **Vantio Enterprise** | Same host scope; adds ledger, dual-control, and certifications |
 
-Run `vantio discover --local` to see what Optics can observe on your machine. Residual risk closes with **Vantio Gate**, then **Vantio Phantom Engine** — see [observe-only.md](./observe-only.md).
+Run `vantio discover --local` to see what Optics can observe on your machine. Residual risk closes with **Vantio Phantom Engine** — see [observe-only.md](./observe-only.md).
 
 > **Why honesty sells:** an audit team asking "can your agent bypass this?" gets a
 > straight answer from Free: yes, intentionally, and here is the upgrade path that
@@ -216,7 +216,7 @@ For Node, use `node`, `npx`, `tsx`, or `ts-node` under `vantio run`. For Python,
 
 **I ran `vantio login` but nothing shows up in my dashboard.**
 Run `vantio whoami` and check the plan shown next to "Status: connected". If it says
-FREE, that's expected — dashboard sync and `vantio discover` are Pro/Enterprise
+FREE, that's expected — dashboard sync and `vantio discover` are Phantom Engine/Enterprise
 features. Your agent's calls are still being observed locally in your terminal either
 way. Upgrade at [vantio.ai/pricing](https://vantio.ai/pricing) to unlock sync.
 

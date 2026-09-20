@@ -1,20 +1,24 @@
 # Vantio Gate MCP
 
-Part of **Vantio Gate** · **Rules that stick** (dry-run evaluate via Model Context Protocol).
+> **Legacy/compat note:** Gate is the internal name for the Enforce function set inside
+> **Vantio Phantom Engine**. This MCP package is provided for dry-run evaluation and compat use;
+> Gate is not a current standalone public SKU. See [PRODUCT_LINEUP.md](./PRODUCT_LINEUP.md).
+
+Part of the open-core repo · **Rules that stick** (dry-run evaluate via Model Context Protocol).
 
 Package: [`@vantio/gate-mcp`](../packages/vantio-gate-mcp/)
 
 ## Fence
 
-> Dry-run evaluate only. Live enforce is `vantio run` plus Gate policy — not this MCP.
+> Dry-run evaluate only. Live enforce is `vantio run` plus Phantom Engine policy — not this MCP.
 
 - Evaluates host / size / spend decisions
-- Fetches Gate policy + residual-risk (with API key)
+- Fetches policy + residual-risk (with API key)
 - **Never** blocks live traffic from inside the MCP
 - **Never** pushes unconstrained policy to production
 - **Never** claims Phantom Engine host protection
 
-Live enforce remains `vantio run` + Gate. Phantom Engine remains a separate Linux-host purchase.
+Live enforce: `vantio run` + Phantom Engine policy. Phantom Engine is the Linux-host purchase.
 
 ## Quick start
 

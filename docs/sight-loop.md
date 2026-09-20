@@ -59,7 +59,7 @@ Optics exists to give you a useful egress dataset — not to police the agent. E
 
 **Never captured:** prompts, completions, request/response bodies, Authorization headers, or query strings.
 
-Free-tier action label: **`OBSERVED`**. Optics does not block, redact, or cap — those belong to **Vantio Gate** (Pro).
+Free-tier action label: **`OBSERVED`**. Optics does not block, redact, or cap — those belong to **Vantio Phantom Engine** (Enforce).
 
 Terminal output on each call:
 
@@ -96,7 +96,7 @@ vantio prove --format=md         # Markdown for auditors / CI artifacts
 
 `search`, `tail`, and `diff` read the same `~/.vantio/runs/` logs as `vantio prove` — no Mission Control required. See [prove.md](./prove.md) for the full proof-export reference.
 
-**Optics MCP (agent hosts / IDEs):** `@vantio/optics-mcp` exposes the same observe surface as MCP tools (`optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_upgrade_path`). Read-only — when agents need enforce, they follow the upgrade path to Gate. See [optics-mcp.md](./optics-mcp.md).
+**Optics MCP (agent hosts / IDEs):** `@vantio/optics-mcp` exposes the same observe surface as MCP tools (`optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_upgrade_path`). Read-only — when agents need enforce, they follow the upgrade path to Phantom Engine. See [optics-mcp.md](./optics-mcp.md).
 
 **Explain what happened:** proof artifacts include trace ID, machine, PID, per-host byte counts, and action badges — enough to answer “which LLM endpoints did this agent hit, when, and from which process?” without exposing content.
 
@@ -114,13 +114,13 @@ That gap is intentional. It is the honest sell-up:
 
 | Gap | Next product |
 |-----|--------------|
-| No block / redact / cap | **Vantio Gate** — rules that stick on the wrapped path |
-| App wrap skipped (sockets, curl, unenrolled processes) | **Vantio Phantom Engine** — Linux hosts you own |
+| No block / redact / cap | **Vantio Phantom Engine** (Enforce) — rules that stick on the wrapped path |
+| App wrap skipped (sockets, curl, unenrolled processes) | **Vantio Phantom Engine** (Control) — Linux hosts you own |
 
 Run `vantio discover --local` to see what Optics actually observed on your machine. Compare that to what you *know* your stack calls — the delta is the named gap.
 
 > Optics accepts: **no block**, and **ungoverned paths stay silent**.
-> Gate applies the rules you set. Phantom Engine protects the machines you own.
+> Phantom Engine applies the rules you set and protects the machines you own — Enforce and Control, one purchase.
 
 Full fence: [observe-only.md](./observe-only.md)
 

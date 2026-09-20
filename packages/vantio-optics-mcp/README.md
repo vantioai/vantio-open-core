@@ -2,7 +2,7 @@
 
 **Vantio Optics** MCP server — read-only **Observe** / **Sight Loop** for AI agents and IDEs.
 
-This MCP lets hosts list local run logs, inspect traffic metadata, export proofs, and discover hosts. It **cannot** enforce policy. When agents need to block, redact, or cap spend on the wrapped path, upgrade to **Vantio Gate**. When you need protection on Linux machines you own, upgrade to **Vantio Phantom Engine**.
+This MCP lets hosts list local run logs, inspect traffic metadata, export proofs, and discover hosts. It **cannot** enforce policy. When agents need to block, redact, or cap spend on the wrapped path, upgrade to **Vantio Phantom Engine**. When you need protection on Linux machines you own, Phantom Engine covers both Enforce and Control.
 
 > Blind by design: no prompts or completions. Fence: observe only.
 
@@ -60,13 +60,13 @@ Local checkout:
 | `optics_prove` | Markdown Sight Loop proof |
 | `optics_discover_local` | Aggregate hosts from local logs |
 | `optics_explain` | Optics privacy + fence |
-| `optics_upgrade_path` | Ladder → Gate → Phantom Engine |
+| `optics_upgrade_path` | Ladder → Phantom Engine → Enterprise |
 
 ## Upgrade path
 
-1. **Optics** (this MCP) — see
-2. **Gate** — rules that stick / enforce
-3. **Phantom Engine** — protect machines you own  
+1. **Optics** (free, this MCP) — observe only
+2. **Phantom Engine** ($799/node/mo) — Observe, Enforce, and Control in one purchase
+3. **Enterprise** — governance add-on; talk to sales
 
 https://vantio.ai/pricing
 

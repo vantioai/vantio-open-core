@@ -11,15 +11,15 @@ A **read-only** MCP server so IDEs and agent hosts can:
 - List and inspect local Optics run logs (`~/.vantio/runs`)
 - Export Markdown proofs (no prompts/completions)
 - Discover LLM hosts from local logs
-- Explain Optics and the upgrade ladder to Gate / Phantom Engine
+- Explain Optics and the upgrade ladder to Phantom Engine / Enterprise
 
 ## What it is not
 
-- Not Vantio Gate — cannot block, redact, or turn policy on
-- Not Phantom Engine — no host protection tools
+- Not Vantio Phantom Engine Enforce — cannot block, redact, or turn policy on
+- Not Phantom Engine host protection — no kernel-level tools
 - Not a content store — blind by design
 
-Agents that outgrow observe call `optics_upgrade_path` and move to Gate or Phantom Engine.
+Agents that outgrow observe call `optics_upgrade_path` and move to Phantom Engine or Enterprise.
 
 ## Quick start
 
@@ -57,6 +57,6 @@ Local checkout — point `command` at `node` and `args` at
 | `optics_prove` | Markdown Sight Loop proof |
 | `optics_discover_local` | Hosts from local logs |
 | `optics_explain` | Optics privacy + fence |
-| `optics_upgrade_path` | Ladder → Gate → Phantom Engine |
+| `optics_upgrade_path` | Ladder → Phantom Engine → Enterprise |
 
 Full package notes: [packages/vantio-optics-mcp/README.md](../packages/vantio-optics-mcp/README.md).

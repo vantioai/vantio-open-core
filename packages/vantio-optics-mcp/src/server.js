@@ -130,7 +130,7 @@ export function createOpticsMcpServer() {
         since_days: days,
         host_count: hosts.length,
         hosts,
-        note: "Fleet-wide Shadow AI Discover with enforce status requires Vantio Gate (Pro).",
+        note: "Fleet-wide Shadow AI Discover with enforce status requires Vantio Phantom Engine.",
         upgrade: UPGRADE_PATH.next[0],
       });
     },

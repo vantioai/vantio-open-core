@@ -50,7 +50,7 @@ test("list/load/prove/discover from fixture runs dir", () => {
 
   const hosts = discoverLocal(30 * 24 * 60 * 60 * 1000, dir);
   assert.equal(hosts.length, 2);
-  assert.equal(UPGRADE_PATH.next[0].brand, "Vantio Gate");
+  assert.equal(UPGRADE_PATH.next[0].brand, "Vantio Phantom Engine");
   assert.match(UPGRADE_PATH.fence, /read-only/i);
 
   rmSync(root, { recursive: true, force: true });
