@@ -19,9 +19,9 @@ vantio run python agent.py
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 
-## 3.0.13 — packaging metadata only
+## 3.0.14 — packaging metadata only
 
-This patch publishes Present product-ladder copy on PyPI. SDK behavior is unchanged from 3.0.12.
+This patch corrects PyPI project URLs and long-description product model: Optics (free), Phantom Engine ($799/node/mo — Observe, Enforce, and Control), Enterprise (talk to sales). Does not market any other standalone public SKU. SDK behavior is unchanged from 3.0.13.
 
 ## v3.0.x — Breaking change from v2.x
 
