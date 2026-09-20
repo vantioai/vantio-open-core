@@ -1,14 +1,10 @@
 # @vantio/gate-mcp
 
-**Vantio Gate MCP** — dry-run / evaluate **rules that stick** for IDEs and agent hosts.
-
-> **Legacy/compat note:** Gate is the internal name for the Enforce function set inside
-> **Vantio Phantom Engine**. This MCP package is provided for dry-run evaluation and compat
-> use; Gate is not a current standalone public SKU.
-
-This MCP can fetch policy, normalize it, and evaluate "would this call be blocked?" decisions. It **cannot** block live traffic, push unconstrained policy, or claim Phantom Engine host protection.
+**@vantio/gate-mcp** is a legacy compatibility package for Phantom Engine's supported application-path enforcement functions. Gate is not a separate Vantio product or subscription.
 
 > Dry-run evaluate only. Live enforce = `vantio run` + Phantom Engine policy.
+
+This MCP can fetch policy, normalize it, and evaluate "would this call be blocked?" decisions. It **cannot** block live traffic, push unconstrained policy, or claim Phantom Engine host protection.
 
 ## Install
 
@@ -32,6 +28,8 @@ Cursor / Claude Desktop:
 }
 ```
 
+> The `vantio-gate` host key is the legacy MCP registry identifier and is preserved for compatibility.
+
 ## Tools
 
 | Tool | Purpose |
@@ -49,7 +47,7 @@ Cursor / Claude Desktop:
 2. **Phantom Engine** ($799/node/mo) — Observe, Enforce, and Control in one purchase
 3. **Enterprise** — governance add-on; talk to sales
 
-https://vantio.ai/pricing
+https://vantio.ai/phantom · https://vantio.ai/pricing
 
 ## License
 
