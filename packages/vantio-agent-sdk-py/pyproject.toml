@@ -40,7 +40,6 @@ classifiers = [
 [project.urls]
 Homepage = "https://vantio.ai"
 Optics = "https://vantio.ai/optics"
-Gate = "https://vantio.ai/gate"
 "Phantom Engine" = "https://vantio.ai/phantom"
 Enterprise = "https://vantio.ai/enterprise"
 Pricing = "https://vantio.ai/pricing"

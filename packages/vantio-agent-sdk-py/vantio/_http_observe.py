@@ -12,8 +12,8 @@ http.client request/putrequest to in-scope hosts (host-block and observe; TLS
 payloads are not read). Also wraps subprocess / os.system / asyncio curl, wget,
 httpie, and aria2c spawns to in-scope hosts (host-block and observe; file-body
 and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines;
-inline argv bodies are rewritten for Gate PII; file contents and stdin pipes
-are not read). With a Gate API key, the same wrap can block, redact PII, or
+inline argv bodies are rewritten by the Phantom Engine enforcement component; file contents and stdin pipes
+are not read). With a Phantom Engine API key, the same wrap can block, redact PII, or
 enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
 """
 from __future__ import annotations
@@ -2274,7 +2274,7 @@ def _write_run_log() -> None:
                 "hosts": hosts,
             },
             "residual": {
-                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten for Gate PII. With a Gate key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read). With a Phantom Engine API key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]

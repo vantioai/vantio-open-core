@@ -8,7 +8,7 @@
 // CONNECT tunnel writes, and Node child_process spawn/exec of curl, wget,
 // httpie, and aria2c (including env/timeout/nice prefixes, curl -K url=,
 // curl -F stat size, wget -i URL lists, stdin size when stdin is a file,
-// and Gate PII rewrite of inline argv bodies — not file contents or stdin pipes)
+// and Phantom Engine enforcement component PII rewrite of inline argv bodies — not file contents or stdin pipes)
 // to in-scope hosts. Browsers stay outside this wrap.
 //
 // Layer identity in the Vantio suite:
@@ -3726,8 +3726,9 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; inline argv bodies are rewritten for Gate PII; file contents are not read). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
-        upgrade_gate: "https://vantio.ai/gate",
+        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read)). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
+        // Key name retained for legacy compatibility — Gate is not a current standalone SKU; destination is Phantom Engine.
+        upgrade_gate: "https://vantio.ai/phantom",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
     };
