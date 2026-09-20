@@ -130,7 +130,7 @@ export function evaluateRequest(policyRaw, req) {
     would.push({
       action: "REDACTED",
       reason: `pii_types=${policy.pii_types.join(",")}`,
-      note: "Redaction applies at runtime in Gate interceptor; evaluate does not scan bodies here.",
+      note: "Redaction applies at runtime in the Phantom Engine interceptor; evaluate does not scan bodies here.",
     });
   }
 
