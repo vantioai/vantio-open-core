@@ -63,7 +63,7 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_get_policy",
-    "Fetch current tenant policy from the Vantio Gate control plane (Pro). Requires VANTIO_API_KEY. Read-only.",
+    "Fetch current tenant policy from the Vantio Gate control plane. Requires VANTIO_API_KEY. Read-only.",
     {
       api_key: z.string().optional().describe("Override VANTIO_API_KEY"),
       api_base: z.string().optional().describe("Override VANTIO_API_BASE"),
@@ -79,14 +79,14 @@ export function createGateMcpServer() {
         brand: "Vantio Gate",
         tier: result.tier,
         policy: result.policy,
-        note: "Use gate_evaluate to dry-run decisions. Live latch is via vantio run + Pro — not this MCP.",
+        note: "Use gate_evaluate to dry-run decisions. Live latch is via vantio run — not this MCP.",
       });
     },
   );
 
   server.tool(
     "gate_residual_risk",
-    "Fetch residual-risk / dry-run / enforcement-gap ledger from Pro. Requires VANTIO_API_KEY. Read-only.",
+    "Fetch residual-risk / dry-run / enforcement-gap ledger. Requires VANTIO_API_KEY. Read-only.",
     {
       api_key: z.string().optional(),
       api_base: z.string().optional(),
@@ -129,7 +129,7 @@ export function createGateMcpServer() {
       text({
         brand: "Vantio Gate",
         workflow: "Rules that stick",
-        sku: "Pro (includes Optics)",
+        sku: "Included in Phantom Engine ($799/node/mo — Observe + Enforce + Control)",
         does: [
           "Evaluate host allow/block, size caps, spend caps, PII redact flags",
           "Dry-run decisions without blocking (this MCP)",

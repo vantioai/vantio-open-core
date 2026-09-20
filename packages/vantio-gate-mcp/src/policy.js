@@ -23,18 +23,19 @@ export const UPGRADE_PATH = [
     surface: "@vantio/optics-mcp",
   },
   {
-    plane: "Enforce",
-    brand: "Vantio Gate",
-    sku: "Pro",
-    workflow: "Rules that stick",
-    surface: "@vantio/gate-mcp (this MCP — dry-run evaluate only)",
+    plane: "Observe + Enforce + Control",
+    brand: "Vantio Phantom Engine",
+    sku: "$799 / enrolled Linux node / month",
+    workflow: "Rogue Reconciliation",
+    note: "Runtime protection on enrolled Linux hosts — Observe, Enforce, and Control in one purchase.",
+    url: "https://vantio.ai/phantom",
   },
   {
-    plane: "Control",
-    brand: "Vantio Phantom Engine",
-    sku: "Enterprise",
-    workflow: "Rogue Reconciliation",
-    note: "Not exposed as free-form agent tools",
+    plane: "Enterprise",
+    brand: "Enterprise",
+    sku: "Talk to sales",
+    workflow: "Governance + proof at scale",
+    url: "https://vantio.ai/enterprise",
   },
 ];
 
@@ -156,7 +157,7 @@ export async function fetchCloudConfig({
     return {
       ok: false,
       error: "missing_api_key",
-      hint: "Set VANTIO_API_KEY or pass api_key. Free Optics needs no key; Gate cloud config requires Pro.",
+      hint: "Set VANTIO_API_KEY or pass api_key. Free Optics needs no key; Gate control-plane config requires a key.",
       policy: DEFAULT_POLICY,
     };
   }
@@ -193,7 +194,7 @@ export async function fetchResidualRisk({
     return {
       ok: false,
       error: "missing_api_key",
-      hint: "Residual-risk ledger requires Pro (VANTIO_API_KEY).",
+      hint: "Residual-risk ledger requires VANTIO_API_KEY.",
     };
   }
   const base = apiBase.replace(/\/$/, "");
