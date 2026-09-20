@@ -1,6 +1,6 @@
 /**
  * Vantio Optics MCP — observe / explain only.
- * No Gate enforcement tools. Upgrade path is explicit in tool copy + optics_upgrade_path.
+ * No enforcement tools in this MCP. Upgrade path is explicit in tool copy + optics_upgrade_path.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -46,7 +46,7 @@ export function createOpticsMcpServer() {
         note: runs.length
           ? "Use optics_get_run or optics_prove with a trace_id."
           : "No runs yet. Instrument an agent: vantio run <command>",
-        upgrade: "Enforcement is Vantio Gate — see optics_upgrade_path.",
+        upgrade: "Enforcement requires Vantio Phantom Engine — see optics_upgrade_path.",
       });
     },
   );
@@ -159,7 +159,7 @@ export function createOpticsMcpServer() {
         ],
         does_not: [
           "Capture prompts or completions (blind by design)",
-          "Block, redact, or cap spend (that is Vantio Gate)",
+          "Block, redact, or cap spend (that is Vantio Phantom Engine)",
           "Provide host protection / Rogue Reconciliation (that is Phantom Engine)",
         ],
         fence: UPGRADE_PATH.fence,
@@ -181,7 +181,7 @@ export function createOpticsMcpServer() {
 
   server.tool(
     "optics_upgrade_path",
-    "Return the Vantio ladder from Optics (this MCP) → Gate (enforce) → Phantom Engine (protect machines you own). Use when the user needs policy or host protection.",
+    "Return the Vantio ladder from Optics (this MCP) → Phantom Engine (Observe, Enforce, and Control) → Vantio Enterprise (governance). Use when the user needs policy or host protection.",
     {},
     async () => text(UPGRADE_PATH),
   );
