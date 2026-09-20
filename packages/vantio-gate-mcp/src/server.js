@@ -147,6 +147,9 @@ export function createGateMcpServer() {
           "Set policy.dry_run=true, run agents under vantio run + Phantom Engine policy, review DRY_RUN_* events, then set enforce=true.",
         pricing: "https://vantio.ai/pricing",
         phantom: "https://vantio.ai/phantom",
+        // Legacy compatibility alias: same Phantom Engine destination as `phantom`.
+        // Not a product SKU; retained for private MCP consumers that read response.gate.
+        gate: "https://vantio.ai/phantom",
       }),
   );
 
