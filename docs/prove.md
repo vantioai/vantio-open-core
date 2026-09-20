@@ -96,9 +96,9 @@ The HTML report is a single self-contained file (no external dependencies) with:
 
 Action badges are colour-coded:
 - `OBSERVED` — grey (**Vantio Optics** · Free · observe only — no enforce)
-- `ALLOWED` — green (Vantio Gate / Enterprise · permitted by policy)
-- `REDACTED` — amber (Vantio Gate / Enterprise · PII scrubbed)
-- `BLOCKED` — red (Vantio Gate / Enterprise · denied by policy)
+- `ALLOWED` — green (Vantio Phantom Engine Enforce · permitted by policy)
+- `REDACTED` — amber (Vantio Phantom Engine Enforce · PII scrubbed)
+- `BLOCKED` — red (Vantio Phantom Engine Enforce · denied by policy)
 
 ---
 

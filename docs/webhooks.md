@@ -16,7 +16,7 @@ expanding the data plane.
 
 ## Pattern (today)
 
-1. Agent runs under `vantio run` (Optics) or Gate.
+1. Agent runs under `vantio run` (Optics) or with a Phantom Engine key.
 2. Events land in Pro via `POST /api/v1/ingest` (existing).
 3. A small worker polls `GET /api/v1/residual-risk` (or tails NDJSON) and POSTs to your webhook URL.
 

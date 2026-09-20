@@ -830,7 +830,7 @@ async function wrapFetch(backend, input, init) {
       `  time:     ${ts}`,
       LOCAL_GATE
         ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
-        : `  ${c.dim}→ Optics data log (your machine). See docs/sight-loop.md · Gate enforces on this path.${c.reset}`,
+        : `  ${c.dim}→ Optics data log (your machine). See docs/sight-loop.md · Phantom Engine enforces on this path.${c.reset}`,
     ].join("\n"));
     return response;
   }
@@ -3766,7 +3766,7 @@ process.on("exit", () => {
     lines.push(
       LOCAL_GATE
         ? `  ${c.dim}→ Local Gate control plane detected — set VANTIO_API_KEY=soak-pro for enforce on this box.${c.reset}`
-        : `  ${c.dim}→ Optics observes only — upgrade to Vantio Gate (Pro) to enforce policy.${c.reset}`
+        : `  ${c.dim}→ Optics observes only. Upgrade to Vantio Phantom Engine to enforce policy — vantio.ai/pricing.${c.reset}`
     );
     if (!telemetryDisabled()) {
       lines.push(`  ${c.dim}Anonymous usage telemetry helps improve Vantio. Opt out with VANTIO_TELEMETRY_DISABLED=1.${c.reset}`);

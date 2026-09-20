@@ -315,6 +315,19 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.equal(requests.ingest.length, 0);
   });
 
+  test("FREE_MODE exit banner names Phantom Engine, not Gate, as the enforcement upgrade — claim-scrub regression", async () => {
+    // The exit summary fires when _calls.length > 0. Trigger one observed call
+    // against the mock target via EXTRA_LLM_HOSTS so the FREE_MODE banner fires.
+    const { code, stderr } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_EXTRA_LLM_HOSTS: "127.0.0.1", VANTIO_TELEMETRY_DISABLED: "1" },
+      FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    assert.doesNotMatch(stderr, /Vantio Gate \(Pro\)/i, "exit banner must not present Gate (Pro) as upgrade SKU");
+    assert.doesNotMatch(stderr, /upgrade to Vantio Gate/i, "exit banner must not direct user to upgrade to Gate");
+    assert.match(stderr, /Phantom Engine/, "exit banner must name Phantom Engine as the enforcement upgrade");
+  });
+
   test("PAID_MODE, enforce=false: call allowed through, ingest records action ALLOWED", async () => {
     configPolicy.allowed_hosts = ["127.0.0.1"];
     const { code, stdout } = await runAgent(
@@ -664,6 +677,35 @@ else go();
       );
       assert.equal(code, 0);
       assert.match(stderr, /OBSERVED|Outbound LLM call intercepted/);
+    } finally {
+      await new Promise((resolve) => ollamaServer.close(resolve));
+    }
+  });
+
+  test("FREE_MODE per-call observe banner names Phantom Engine, not Gate, for enforcement — claim-scrub regression", async () => {
+    // The per-call stderr line shown on each OBSERVED intercept must not
+    // attribute enforcement to Gate as a product. Guarded by port availability.
+    let ollamaServer;
+    try {
+      ollamaServer = http.createServer((req, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ reply: "ok" }));
+      });
+      await new Promise((resolve, reject) => {
+        ollamaServer.once("error", reject);
+        ollamaServer.listen(11434, "127.0.0.1", resolve);
+      });
+    } catch {
+      return; // port busy — catalog unit test still covers the observe path
+    }
+    try {
+      const { code, stderr } = await runAgent(
+        { TARGET_URL: "http://127.0.0.1:11434/v1/target", VANTIO_TELEMETRY_DISABLED: "1" },
+        FETCH_ONCE_SCRIPT
+      );
+      assert.equal(code, 0);
+      assert.doesNotMatch(stderr, /Gate enforces on this path/i, "per-call observe banner must not attribute enforcement to Gate");
+      assert.match(stderr, /Phantom Engine/, "per-call observe banner must name Phantom Engine for enforcement");
     } finally {
       await new Promise((resolve) => ollamaServer.close(resolve));
     }
