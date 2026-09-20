@@ -54,3 +54,12 @@ https://vantio.ai/phantom · https://vantio.ai/pricing
 ## License
 
 MIT · Vantio AI, Inc.
+
+## Changelog
+
+### 0.1.1
+- Metadata/branding correction: `gate_explain` response, `package.json`, `server.json` description all consistently frame this as a Phantom Engine compatibility layer, not a standalone Gate SKU.
+- Restored `gate_explain.gate` as a **legacy compatibility alias** — `gate: "https://vantio.ai/phantom"` is retained alongside `phantom: "https://vantio.ai/phantom"` for private MCP consumers that read `response.gate`. Gate is not a product SKU.
+
+### 0.1.0
+- Initial release: dry-run evaluate, policy fetch, normalize, and explain tools for Phantom Engine application-path enforcement.
