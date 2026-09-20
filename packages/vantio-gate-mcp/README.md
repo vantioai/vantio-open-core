@@ -41,6 +41,8 @@ Cursor / Claude Desktop:
 | `gate_explain` | Fence + rules that stick |
 | `gate_upgrade_path` | Optics → Phantom Engine → Enterprise |
 
+> `gate_explain` JSON: `phantom` is the current product URL field (`https://vantio.ai/phantom`). The `gate` key is a **legacy compatibility alias** for that same URL — not a product SKU.
+
 ## Upgrade path
 
 1. **Optics** (free) — observe only (`@vantio/optics-mcp`)
