@@ -1,64 +1,173 @@
 # MCP registry update is separately gated from ordinary merges.
 # Ordinary main merges must NOT publish. Publication requires an explicit
-# workflow_dispatch; a separate npm publication must have already landed.
+# workflow_dispatch; corresponding npm publication must already have landed.
+# This workflow must NOT be triggered by the npm-publish workflow — they are
+# separately authorized, separately dispatched.
 name: Publish to MCP Registry
 
 on:
   workflow_dispatch:
     inputs:
       package:
-        description: "MCP package to publish (exactly one)"
+        description: "MCP package to publish (exactly one). Anything outside this enum is rejected."
         required: true
         type: choice
         options:
           - vantio-optics-mcp
           - vantio-gate-mcp
       version:
-        description: "Version to publish — must match server.json packages[0].version"
+        description: "Version — must exactly match server.json packages[0].version"
         required: true
         type: string
       git_sha:
-        description: "Commit SHA being published — must equal the checked-out commit SHA"
+        description: "Full 40-char commit SHA — workflow checks out this exact ref and verifies HEAD matches"
         required: true
         type: string
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
-  publish:
-    name: Publish MCP registry metadata (${{ inputs.package }})
+  # ─────────────────────────────────────────────────────────────────────────
+  # VALIDATE: all guards must pass before the publish environment gate opens.
+  #
+  # Negative tests enforced (fail closed):
+  #   NT-1  git_sha input ≠ git rev-parse HEAD           → abort
+  #   NT-2  package not in hard allowlist                → abort
+  #   NT-3  allowlisted directory absent in checkout     → abort
+  #   NT-4  server.json npm identifier ≠ expected value  → abort
+  #   NT-5  server.json version ≠ inputs.version         → abort
+  #   NT-6  mcp-publisher validate reports errors        → abort
+  # ─────────────────────────────────────────────────────────────────────────
+  validate:
+    name: Validate ${{ inputs.package }}@${{ inputs.version }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      pkg_dir: ${{ steps.allowlist.outputs.pkg_dir }}
+      npm_ident: ${{ steps.allowlist.outputs.npm_ident }}
 
     steps:
-      - name: Checkout
+      # NT-1 (part 1): pin checkout to the exact commit the operator named.
+      - name: Checkout at inputs.git_sha
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha }}
 
-      # -----------------------------------------------------------------------
-      # Fail-closed pre-flight before any registry call.
-      # -----------------------------------------------------------------------
-
-      - name: Validate git_sha matches checked-out commit
+      # NT-1 (part 2): verify the runner actually checked out that commit.
+      - name: Assert HEAD equals inputs.git_sha
+        env:
+          EXPECTED_SHA: ${{ inputs.git_sha }}
         run: |
-          ACTUAL_SHA="${{ github.sha }}"
-          INPUT_SHA="${{ inputs.git_sha }}"
-          if [ "$INPUT_SHA" != "$ACTUAL_SHA" ]; then
-            echo "::error::git_sha input ('$INPUT_SHA') does not match the checked-out commit ('$ACTUAL_SHA'). Aborting."
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "$EXPECTED_SHA" ]; then
+            echo "::error::HEAD ($ACTUAL) ≠ inputs.git_sha ($EXPECTED_SHA). Aborting."
             exit 1
           fi
-          echo "git_sha OK: $ACTUAL_SHA"
+          echo "HEAD verified: $ACTUAL"
 
-      - name: Validate version matches server.json
-        working-directory: packages/${{ inputs.package }}
+      # NT-2 / NT-3: map inputs.package to a hardcoded {pkg_dir, npm_ident} pair.
+      # Raw input is used ONLY as a pattern in the case match. PKG_DIR and
+      # NPM_IDENT are hardcoded literals — the raw input value is never
+      # interpolated into a path or shell command.
+      - name: Resolve package allowlist
+        id: allowlist
+        env:
+          PKG_INPUT: ${{ inputs.package }}
         run: |
-          SERVER_VER=$(node -p "require('./server.json').packages[0].version")
-          INPUT_VER="${{ inputs.version }}"
-          if [ "$INPUT_VER" != "$SERVER_VER" ]; then
-            echo "::error::version input ('$INPUT_VER') does not match server.json version ('$SERVER_VER'). Aborting."
+          case "$PKG_INPUT" in
+            vantio-optics-mcp)
+              PKG_DIR="packages/vantio-optics-mcp"
+              NPM_IDENT="@vantio/optics-mcp"
+              ;;
+            vantio-gate-mcp)
+              PKG_DIR="packages/vantio-gate-mcp"
+              NPM_IDENT="@vantio/gate-mcp"
+              ;;
+            *)
+              echo "::error::Package '$PKG_INPUT' is not in the MCP publish allowlist. Aborting."
+              exit 1
+              ;;
+          esac
+          # NT-3: directory must physically exist.
+          if [ ! -d "$PKG_DIR" ]; then
+            echo "::error::Allowlisted directory '$PKG_DIR' not found in checkout. Aborting."
             exit 1
           fi
-          echo "version OK: $SERVER_VER"
+          echo "pkg_dir=$PKG_DIR"   >> "$GITHUB_OUTPUT"
+          echo "npm_ident=$NPM_IDENT" >> "$GITHUB_OUTPUT"
+          echo "Resolved: $PKG_INPUT → $PKG_DIR ($NPM_IDENT)"
+
+      # NT-4 / NT-5: read from the allowlisted path — never from the raw input.
+      - name: Assert server.json identifier and version
+        env:
+          INPUT_VER: ${{ inputs.version }}
+        run: |
+          PKG_DIR="${{ steps.allowlist.outputs.pkg_dir }}"
+          EXPECTED_IDENT="${{ steps.allowlist.outputs.npm_ident }}"
+          ACTUAL_IDENT=$(node -p "require('./$PKG_DIR/server.json').packages[0].identifier")
+          ACTUAL_VER=$(node -p "require('./$PKG_DIR/server.json').packages[0].version")
+          # NT-4
+          if [ "$ACTUAL_IDENT" != "$EXPECTED_IDENT" ]; then
+            echo "::error::server.json identifier ('$ACTUAL_IDENT') ≠ allowlist expected ('$EXPECTED_IDENT'). Aborting."
+            exit 1
+          fi
+          # NT-5
+          if [ "$ACTUAL_VER" != "$INPUT_VER" ]; then
+            echo "::error::server.json version ('$ACTUAL_VER') ≠ inputs.version ('$INPUT_VER'). Aborting."
+            exit 1
+          fi
+          echo "server.json identity OK: $ACTUAL_IDENT@$ACTUAL_VER"
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          sudo mv mcp-publisher /usr/local/bin/
+
+      # NT-6: mcp-publisher validate must pass before the approval gate opens.
+      - name: Validate server.json (mcp-publisher)
+        working-directory: ${{ steps.allowlist.outputs.pkg_dir }}
+        run: mcp-publisher validate
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PUBLISH: runs only after validate exits 0 and the environment gate approves.
+  #
+  # Gated by the `mcp-registry-publish` GitHub environment. Zach must create
+  # this environment in GitHub Settings → Environments with required-reviewer
+  # protection before this workflow is used for any real publication.
+  #
+  # RELEASE_ENVIRONMENT_PROTECTION_UNAVAILABLE: the mcp-registry-publish
+  # environment cannot be created programmatically from within this workflow.
+  # It must be created manually. The `environment:` key below ensures the job
+  # references the correct name once Zach configures it.
+  #
+  # NT-1 is re-verified here after the environment approval gate.
+  # ─────────────────────────────────────────────────────────────────────────
+  publish:
+    name: Publish ${{ inputs.package }}@${{ inputs.version }} to MCP Registry
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: mcp-registry-publish
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # Re-pin checkout — do not trust default branch HEAD.
+      - name: Checkout at inputs.git_sha
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha }}
+
+      # NT-1 re-verified after the environment approval gate.
+      - name: Assert HEAD equals inputs.git_sha
+        env:
+          EXPECTED_SHA: ${{ inputs.git_sha }}
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "$EXPECTED_SHA" ]; then
+            echo "::error::HEAD ($ACTUAL) ≠ inputs.git_sha ($EXPECTED_SHA) in publish job. Aborting."
+            exit 1
+          fi
 
       - name: Install mcp-publisher
         run: |
@@ -69,18 +178,13 @@ jobs:
       - name: Authenticate (GitHub OIDC)
         run: mcp-publisher login github-oidc
 
-      - name: Validate server.json
-        working-directory: packages/${{ inputs.package }}
-        run: mcp-publisher validate
-
       # MCP Registry refuses a version until that exact npm tarball exists.
-      # The corresponding npm publish must have been dispatched and completed
+      # The npm-publish workflow must be dispatched and completed separately
       # before dispatching this workflow.
       - name: Wait for npm package version
-        working-directory: packages/${{ inputs.package }}
         run: |
-          IDENT=$(node -p "require('./server.json').packages[0].identifier")
-          VER=$(node -p "require('./server.json').packages[0].version")
+          IDENT="${{ needs.validate.outputs.npm_ident }}"
+          VER="${{ inputs.version }}"
           echo "Waiting for $IDENT@$VER on npm before MCP registry publish."
           for i in $(seq 1 18); do
             if npm view "$IDENT@$VER" version >/dev/null 2>&1; then
@@ -90,11 +194,11 @@ jobs:
             echo "Attempt $i/18: $IDENT@$VER not on npm yet; sleeping 10s"
             sleep 10
           done
-          echo "::error::$IDENT@$VER was not found on npm after waiting. Publish the npm package first."
+          echo "::error::$IDENT@$VER was not found on npm after waiting. Publish the npm package first, then re-dispatch this workflow."
           exit 1
 
       - name: Publish to MCP Registry
-        working-directory: packages/${{ inputs.package }}
+        working-directory: ${{ needs.validate.outputs.pkg_dir }}
         run: |
           set -o pipefail
           for attempt in 1 2 3 4 5 6; do
@@ -112,5 +216,5 @@ jobs:
             echo "::error::MCP registry publish failed for ${{ inputs.package }}"
             exit 1
           done
-          echo "::error::MCP registry publish failed for ${{ inputs.package }} after waiting for npm"
+          echo "::error::MCP registry publish failed for ${{ inputs.package }} after all retries"
           exit 1

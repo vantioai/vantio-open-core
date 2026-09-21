@@ -1,6 +1,6 @@
 # Ordinary main merges must NOT publish. Publication requires an explicit
 # workflow_dispatch with CEO authorization and all validation inputs satisfied.
-# Automated publish on push is intentionally removed.
+# No automated publish on push to any branch, ever.
 name: Publish to npm
 
 on:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Package to publish (exactly one)"
+        description: "Package to publish (exactly one). Anything outside this enum is rejected at runtime."
         required: true
         type: choice
         options:
@@ -20,75 +20,346 @@ on:
           - "@vantio/cli"
           - "@vantio/agent-sdk"
       version:
-        description: "Version to publish — must match package.json version of the selected package"
+        description: "Version — must exactly match package.json version of the selected package"
         required: true
         type: string
       git_sha:
-        description: "Commit SHA being published — must equal the checked-out commit SHA"
+        description: "Full 40-char commit SHA — workflow checks out this exact ref and verifies HEAD matches"
         required: true
         type: string
       artifact_sha256:
-        description: "Optional: sha256 of the packed tarball; if provided the job fails on mismatch"
-        required: false
+        description: >
+          sha256 hex digest of the packed tarball (no 0x prefix). REQUIRED.
+          Compute locally before dispatch: sha256sum <tarball.tgz> | awk '{print $1}'
+          CI packs independently and fails if the digests differ.
+        required: true
         type: string
 
 jobs:
-  # Runs on pull_request to keep quality gates fast without requiring a merge.
-  # Does NOT run on workflow_dispatch — publish job below enforces its own
-  # pre-flight instead so the two jobs stay clearly separated.
-  test:
-    name: Lint, typecheck, and test
+  # ─────────────────────────────────────────────────────────────────────────
+  # PR GATE: lint, typecheck, and test all packages on every pull_request.
+  # Never runs on workflow_dispatch; publish path has its own per-package gate.
+  # ─────────────────────────────────────────────────────────────────────────
+  lint-and-test:
+    name: Lint, typecheck, and test (PR)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        # Do not pin version: here — conflicts with package.json packageManager.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint @vantio/cli
+        run: pnpm --filter @vantio/cli run lint
+      - name: Lint @vantio/optics-mcp
+        run: pnpm --filter @vantio/optics-mcp run lint
+      - name: Lint @vantio/gate-mcp
+        run: pnpm --filter @vantio/gate-mcp run lint
+      - name: Typecheck @vantio/agent-sdk
+        run: pnpm --filter @vantio/agent-sdk run typecheck && pnpm --filter @vantio/agent-sdk run typecheck:test
+      - name: Test @vantio/cli
+        run: pnpm --filter @vantio/cli run test
+      - name: Test @vantio/agent-sdk
+        run: pnpm --filter @vantio/agent-sdk run test
+      - name: Test @vantio/optics-mcp
+        run: pnpm --filter @vantio/optics-mcp run test
+      - name: Test @vantio/gate-mcp
+        run: pnpm --filter @vantio/gate-mcp run test
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # VALIDATE: every guard must pass before the publish environment gate opens.
+  # Runs only on workflow_dispatch. The publish job cannot start until this
+  # job has exited 0.
+  #
+  # Negative tests enforced (fail closed on any mismatch — no silent swallow):
+  #   NT-1  artifact_sha256 input is empty            → abort
+  #   NT-2  git_sha input ≠ git rev-parse HEAD        → abort
+  #   NT-3  package not in hard allowlist             → abort
+  #   NT-4  allowlisted directory absent in checkout  → abort
+  #   NT-5  package.json name ≠ allowlist expectedName → abort
+  #   NT-6  package.json version ≠ inputs.version     → abort
+  #   NT-7  version already exists on npm             → abort (no re-publishing)
+  #   NT-8  lint or typecheck failure                 → abort
+  #   NT-9  test failure                              → abort
+  #   NT-10 CI-packed tarball sha256 ≠ inputs.artifact_sha256 → abort
+  #   NT-11 secret pattern detected in tarball        → abort
+  # ─────────────────────────────────────────────────────────────────────────
+  validate:
+    name: Validate and pack ${{ inputs.package }}@${{ inputs.version }}
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name: ${{ steps.allowlist.outputs.artifact_name }}
+      tarball_name: ${{ steps.pack.outputs.tarball_name }}
+      tarball_sha256: ${{ steps.pack.outputs.tarball_sha256 }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # NT-1: required: true handles the UI; also enforce at runtime because
+      # the GitHub API allows dispatching with an empty string despite required: true.
+      - name: Assert artifact_sha256 is not empty
+        env:
+          INPUT_DIGEST: ${{ inputs.artifact_sha256 }}
+        run: |
+          if [ -z "$INPUT_DIGEST" ]; then
+            echo "::error::artifact_sha256 is required. Compute with: sha256sum <tarball.tgz> | awk '{print \$1}'"
+            exit 1
+          fi
 
+      # NT-2 (part 1): pin the checkout to the exact commit the operator named.
+      # This ensures tests, pack, and publish all run against the same tree.
+      - name: Checkout at inputs.git_sha
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha }}
+
+      # NT-2 (part 2): verify the runner actually checked out that commit.
+      # Protects against checkout action behaving unexpectedly.
+      - name: Assert HEAD equals inputs.git_sha
+        env:
+          EXPECTED_SHA: ${{ inputs.git_sha }}
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "$EXPECTED_SHA" ]; then
+            echo "::error::HEAD ($ACTUAL) ≠ inputs.git_sha ($EXPECTED_SHA). Aborting."
+            exit 1
+          fi
+          echo "HEAD verified: $ACTUAL"
+
+      # NT-3 / NT-4: map inputs.package to a hardcoded {dir, expectedName} pair.
+      # Raw input is used ONLY as a pattern in the case match. DIR and
+      # EXPECTED_NAME are hardcoded literals in the case arms — the raw input
+      # value is never interpolated into a path or shell command.
+      - name: Resolve package allowlist
+        id: allowlist
+        env:
+          PKG_INPUT: ${{ inputs.package }}
+        run: |
+          case "$PKG_INPUT" in
+            "@vantio/gate-mcp")
+              DIR="packages/vantio-gate-mcp"
+              EXPECTED_NAME="@vantio/gate-mcp"
+              ARTIFACT_NAME="npm-tarball-vantio-gate-mcp"
+              ;;
+            "@vantio/optics-mcp")
+              DIR="packages/vantio-optics-mcp"
+              EXPECTED_NAME="@vantio/optics-mcp"
+              ARTIFACT_NAME="npm-tarball-vantio-optics-mcp"
+              ;;
+            "@vantio/cli")
+              DIR="packages/vantio-cli"
+              EXPECTED_NAME="@vantio/cli"
+              ARTIFACT_NAME="npm-tarball-vantio-cli"
+              ;;
+            "@vantio/agent-sdk")
+              DIR="packages/vantio-agent-sdk"
+              EXPECTED_NAME="@vantio/agent-sdk"
+              ARTIFACT_NAME="npm-tarball-vantio-agent-sdk"
+              ;;
+            *)
+              echo "::error::Package '$PKG_INPUT' is not in the publish allowlist. Aborting."
+              exit 1
+              ;;
+          esac
+          # NT-4: the allowlisted directory must physically exist in this checkout.
+          if [ ! -d "$DIR" ]; then
+            echo "::error::Allowlisted directory '$DIR' not found in checkout. Aborting."
+            exit 1
+          fi
+          echo "dir=$DIR"               >> "$GITHUB_OUTPUT"
+          echo "expected_name=$EXPECTED_NAME" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+          echo "Resolved: $PKG_INPUT → $DIR ($EXPECTED_NAME)"
+
+      # Needs node for `node -p` and `npm view`; set up early so all checks
+      # run with the pinned Node.js version rather than the runner default.
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
+      # NT-5 / NT-6: read from the allowlisted path — never from the raw input.
+      - name: Assert package.json name and version
+        env:
+          INPUT_VER: ${{ inputs.version }}
+        run: |
+          PKG_DIR="${{ steps.allowlist.outputs.dir }}"
+          EXPECTED_NAME="${{ steps.allowlist.outputs.expected_name }}"
+          ACTUAL_NAME=$(node -p "require('./$PKG_DIR/package.json').name")
+          ACTUAL_VER=$(node -p "require('./$PKG_DIR/package.json').version")
+          if [ "$ACTUAL_NAME" != "$EXPECTED_NAME" ]; then
+            echo "::error::package.json name ('$ACTUAL_NAME') ≠ allowlist expectedName ('$EXPECTED_NAME'). Aborting."
+            exit 1
+          fi
+          if [ "$ACTUAL_VER" != "$INPUT_VER" ]; then
+            echo "::error::package.json version ('$ACTUAL_VER') ≠ inputs.version ('$INPUT_VER'). Aborting."
+            exit 1
+          fi
+          echo "package.json identity OK: $ACTUAL_NAME@$ACTUAL_VER"
+
+      # NT-7: refuse to publish over a version that already exists on npm.
+      # This check requires network; it runs before the expensive pnpm install.
+      - name: Assert version not already on npm
+        run: |
+          PKG="${{ steps.allowlist.outputs.expected_name }}"
+          VER="${{ inputs.version }}"
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "::error::$PKG@$VER is already published on npm. Re-publishing an existing version is not permitted. Aborting."
+            exit 1
+          fi
+          echo "$PKG@$VER is not yet on npm."
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        # Do not pin `version:` here — it conflicts with package.json packageManager.
+        # Do not pin version: here — conflicts with package.json packageManager.
 
-      - name: Install dependencies
+      - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Lint @vantio/cli
-        run: pnpm --filter @vantio/cli run lint
+      # Build is a prerequisite for lint, typecheck, test, and pack for agent-sdk.
+      - name: Build @vantio/agent-sdk
+        if: inputs.package == '@vantio/agent-sdk'
+        run: pnpm --filter @vantio/agent-sdk run build
 
-      - name: Lint @vantio/optics-mcp
-        run: pnpm --filter @vantio/optics-mcp run lint
+      # NT-8: run the selected package's lint/typecheck only.
+      - name: Lint / typecheck selected package
+        env:
+          PKG_INPUT: ${{ inputs.package }}
+        run: |
+          case "$PKG_INPUT" in
+            "@vantio/agent-sdk")
+              pnpm --filter @vantio/agent-sdk run typecheck
+              pnpm --filter @vantio/agent-sdk run typecheck:test
+              ;;
+            "@vantio/cli")        pnpm --filter @vantio/cli run lint ;;
+            "@vantio/optics-mcp") pnpm --filter @vantio/optics-mcp run lint ;;
+            "@vantio/gate-mcp")   pnpm --filter @vantio/gate-mcp run lint ;;
+          esac
 
-      - name: Lint @vantio/gate-mcp
-        run: pnpm --filter @vantio/gate-mcp run lint
+      # NT-9: run the selected package's tests only.
+      - name: Test selected package
+        env:
+          PKG_INPUT: ${{ inputs.package }}
+        run: |
+          case "$PKG_INPUT" in
+            "@vantio/agent-sdk")  pnpm --filter @vantio/agent-sdk run test ;;
+            "@vantio/cli")        pnpm --filter @vantio/cli run test ;;
+            "@vantio/optics-mcp") pnpm --filter @vantio/optics-mcp run test ;;
+            "@vantio/gate-mcp")   pnpm --filter @vantio/gate-mcp run test ;;
+          esac
 
-      - name: Typecheck @vantio/agent-sdk
-        run: pnpm --filter @vantio/agent-sdk run typecheck && pnpm --filter @vantio/agent-sdk run typecheck:test
+      # Pack into the package directory; find the tarball by glob to avoid
+      # parsing pnpm's ANSI-colored output.
+      - name: Pack tarball
+        id: pack
+        run: |
+          PKG_DIR="${{ steps.allowlist.outputs.dir }}"
+          rm -f "$PKG_DIR"/*.tgz
+          pushd "$PKG_DIR"
+          pnpm pack
+          popd
+          TARBALL_PATH=$(ls "$PKG_DIR"/*.tgz 2>/dev/null | head -1)
+          if [ -z "$TARBALL_PATH" ] || [ ! -f "$TARBALL_PATH" ]; then
+            echo "::error::pnpm pack produced no tarball in $PKG_DIR"
+            exit 1
+          fi
+          TARBALL_NAME=$(basename "$TARBALL_PATH")
+          SHA256=$(sha256sum "$TARBALL_PATH" | awk '{print $1}')
+          echo "tarball_name=$TARBALL_NAME" >> "$GITHUB_OUTPUT"
+          echo "tarball_sha256=$SHA256"     >> "$GITHUB_OUTPUT"
+          echo "Packed: $TARBALL_PATH  sha256=$SHA256"
 
-      - name: Test @vantio/cli
-        run: pnpm --filter @vantio/cli run test
+      # NT-10: the CI-built tarball must match the digest the operator pre-approved.
+      - name: Assert CI tarball sha256 matches inputs.artifact_sha256
+        env:
+          EXPECTED_DIGEST: ${{ inputs.artifact_sha256 }}
+        run: |
+          ACTUAL="${{ steps.pack.outputs.tarball_sha256 }}"
+          if [ "$ACTUAL" != "$EXPECTED_DIGEST" ]; then
+            echo "::error::Tarball sha256 mismatch. CI computed='$ACTUAL', inputs.artifact_sha256='$EXPECTED_DIGEST'. The tarball built from this commit does not match the pre-approved digest. Aborting."
+            exit 1
+          fi
+          echo "artifact_sha256 verified: $ACTUAL"
 
-      - name: Test @vantio/agent-sdk
-        run: pnpm --filter @vantio/agent-sdk run test
+      # NT-11: cheap scan for files and patterns that must never ship.
+      - name: Secret scan tarball contents
+        run: |
+          PKG_DIR="${{ steps.allowlist.outputs.dir }}"
+          TARBALL_NAME="${{ steps.pack.outputs.tarball_name }}"
+          SCAN_TMP=$(mktemp -d)
+          tar xzf "$PKG_DIR/$TARBALL_NAME" -C "$SCAN_TMP"
+          SUSPICIOUS=$(find "$SCAN_TMP" \( \
+            -name ".env" -o -name ".env.*" -o \
+            -name "*.pem" -o -name "*.key" -o \
+            -name "*.p12" -o -name "*.pfx" \
+          \) 2>/dev/null || true)
+          PATTERNS=$(grep -rl \
+            -e "BEGIN.*PRIVATE KEY" \
+            -e "AKIA[A-Z0-9]\{16\}" \
+            -e "sk-[a-zA-Z0-9]\{20,\}" \
+            "$SCAN_TMP" 2>/dev/null || true)
+          rm -rf "$SCAN_TMP"
+          if [ -n "$SUSPICIOUS" ] || [ -n "$PATTERNS" ]; then
+            echo "::error::Potential secrets detected in tarball. Review before publishing."
+            [ -n "$SUSPICIOUS" ] && echo "Suspicious files: $SUSPICIOUS"
+            [ -n "$PATTERNS"   ] && echo "Secret-pattern matches: $PATTERNS"
+            exit 1
+          fi
+          echo "Secret scan passed."
 
-      - name: Test @vantio/optics-mcp
-        run: pnpm --filter @vantio/optics-mcp run test
+      # Upload the exact tarball that passed all checks. The publish job
+      # downloads this artifact and publishes it without a second build.
+      - name: Upload validated tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.allowlist.outputs.artifact_name }}
+          path: ${{ steps.allowlist.outputs.dir }}/${{ steps.pack.outputs.tarball_name }}
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Test @vantio/gate-mcp
-        run: pnpm --filter @vantio/gate-mcp run test
-
+  # ─────────────────────────────────────────────────────────────────────────
+  # PUBLISH: downloads the exact validated tarball and ships it to npm.
+  # Cannot start unless validate exited 0.
+  #
+  # Gated by the `npm-publish` GitHub environment. Zach must create this
+  # environment in GitHub Settings → Environments and attach required-reviewer
+  # protection before this workflow is used for any real publication.
+  #
+  # RELEASE_ENVIRONMENT_PROTECTION_UNAVAILABLE: the npm-publish environment
+  # cannot be created programmatically from within this workflow. It must be
+  # created manually. Until that is done, the `environment:` key below ensures
+  # the job references the correct environment name once Zach configures it.
+  #
+  # NT-2 and NT-10 are re-verified here after the environment approval gate,
+  # so a reviewer cannot be tricked by a race between validate and publish.
+  # ─────────────────────────────────────────────────────────────────────────
   publish:
-    name: Validate inputs and publish one package
+    name: Publish ${{ inputs.package }}@${{ inputs.version }} to npm
     if: github.event_name == 'workflow_dispatch'
+    needs: validate
     runs-on: ubuntu-latest
+    environment: npm-publish
 
     steps:
-      - name: Checkout
+      # Re-pin checkout to the same SHA — do not trust the default branch HEAD.
+      - name: Checkout at inputs.git_sha
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha }}
+
+      # NT-2 re-verified: confirm HEAD after the environment approval gate.
+      - name: Assert HEAD equals inputs.git_sha
+        env:
+          EXPECTED_SHA: ${{ inputs.git_sha }}
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "$EXPECTED_SHA" ]; then
+            echo "::error::HEAD ($ACTUAL) ≠ inputs.git_sha ($EXPECTED_SHA) in publish job. Aborting."
+            exit 1
+          fi
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -96,94 +367,44 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        # Do not pin `version:` here — it conflicts with package.json packageManager.
+      - name: Download validated tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.validate.outputs.artifact_name }}
+          path: /tmp/npm-publish-artifact
 
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      # -----------------------------------------------------------------------
-      # Fail-closed pre-flight: every guard must pass before a single byte
-      # reaches npm. Any mismatch aborts with a clear error; nothing is printed
-      # that would expose the NPM_TOKEN.
-      # -----------------------------------------------------------------------
-
-      - name: Validate git_sha matches checked-out commit
+      # NT-10 re-verified: digest check after the environment approval gate
+      # ensures the artifact was not tampered with between validate and publish.
+      - name: Re-verify tarball sha256
+        env:
+          EXPECTED_DIGEST: ${{ inputs.artifact_sha256 }}
         run: |
-          ACTUAL_SHA="${{ github.sha }}"
-          INPUT_SHA="${{ inputs.git_sha }}"
-          if [ "$INPUT_SHA" != "$ACTUAL_SHA" ]; then
-            echo "::error::git_sha input ('$INPUT_SHA') does not match the checked-out commit ('$ACTUAL_SHA'). Aborting."
+          TARBALL=$(find /tmp/npm-publish-artifact -name "*.tgz" | head -1)
+          if [ -z "$TARBALL" ]; then
+            echo "::error::No tarball found in downloaded artifact."
             exit 1
           fi
-          echo "git_sha OK: $ACTUAL_SHA"
-
-      - name: Resolve package directory and package.json name
-        id: resolve
-        run: |
-          case "${{ inputs.package }}" in
-            "@vantio/gate-mcp")    DIR="packages/vantio-gate-mcp" ;;
-            "@vantio/optics-mcp")  DIR="packages/vantio-optics-mcp" ;;
-            "@vantio/cli")         DIR="packages/vantio-cli" ;;
-            "@vantio/agent-sdk")   DIR="packages/vantio-agent-sdk" ;;
-            *)
-              echo "::error::Unknown package selection '${{ inputs.package }}'. Aborting."
-              exit 1
-              ;;
-          esac
-          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
-          echo "Package directory: $DIR"
-
-      - name: Validate version matches package.json
-        run: |
-          PKG_DIR="${{ steps.resolve.outputs.dir }}"
-          PKG_VER=$(node -p "require('./$PKG_DIR/package.json').version")
-          INPUT_VER="${{ inputs.version }}"
-          if [ "$INPUT_VER" != "$PKG_VER" ]; then
-            echo "::error::version input ('$INPUT_VER') does not match $PKG_DIR/package.json version ('$PKG_VER'). Aborting."
+          ACTUAL=$(sha256sum "$TARBALL" | awk '{print $1}')
+          if [ "$ACTUAL" != "$EXPECTED_DIGEST" ]; then
+            echo "::error::Tarball sha256 mismatch in publish job. Expected='$EXPECTED_DIGEST', got='$ACTUAL'. Aborting."
             exit 1
           fi
-          echo "version OK: $PKG_VER"
+          echo "sha256 re-verified: $ACTUAL"
+          echo "TARBALL_PATH=$TARBALL" >> "$GITHUB_ENV"
 
-      - name: Build @vantio/agent-sdk (required before pack or publish)
-        if: inputs.package == '@vantio/agent-sdk'
-        run: pnpm --filter @vantio/agent-sdk run build
-
-      - name: Validate artifact sha256 (optional)
-        if: inputs.artifact_sha256 != ''
-        run: |
-          PKG_DIR="${{ steps.resolve.outputs.dir }}"
-          TARBALL=$(cd "$PKG_DIR" && pnpm pack --no-publish-warning 2>/dev/null | tail -1)
-          ACTUAL_SHA256=$(sha256sum "$PKG_DIR/$TARBALL" | awk '{print $1}')
-          INPUT_SHA256="${{ inputs.artifact_sha256 }}"
-          if [ "$INPUT_SHA256" != "$ACTUAL_SHA256" ]; then
-            echo "::error::artifact_sha256 mismatch. Expected '$INPUT_SHA256', got '$ACTUAL_SHA256'. Aborting."
-            exit 1
-          fi
-          echo "artifact_sha256 OK: $ACTUAL_SHA256"
-          # Remove the pack artifact so publish creates a fresh one.
-          rm -f "$PKG_DIR/$TARBALL"
-
-      # -----------------------------------------------------------------------
-      # Publish exactly the one selected package. Matrix / loop publishing of
-      # multiple packages is intentionally absent — a second package requires a
-      # second, separately authorized workflow_dispatch invocation.
-      # -----------------------------------------------------------------------
-
-      - name: Publish ${{ inputs.package }}
-        working-directory: ${{ steps.resolve.outputs.dir }}
+      # Publishes the exact tarball that passed validate; no second rebuild.
+      # NODE_AUTH_TOKEN is consumed by the .npmrc written by setup-node and
+      # is never echoed by this step. `set -o pipefail` is active; any npm
+      # error fails the step immediately.
+      - name: Publish exact validated tarball
         run: |
           set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
+          OUTPUT=$(npm publish "$TARBALL_PATH" --access public 2>&1) && { echo "$OUTPUT"; exit 0; }
           echo "$OUTPUT"
-          # Only tolerate the specific "version already published" case.
-          # Any other failure (auth, network, etc.) must fail the job loudly.
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::${{ inputs.package }} publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
+          # No "already published" tolerance here — validate confirmed it was
+          # absent before the approval gate. If it exists now, something went
+          # wrong and the operator must investigate before retrying.
+          echo "::error::npm publish failed. Investigate output above before retrying."
           exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
