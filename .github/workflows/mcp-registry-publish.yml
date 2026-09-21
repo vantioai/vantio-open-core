@@ -1,13 +1,26 @@
+# MCP registry update is separately gated from ordinary merges.
+# Ordinary main merges must NOT publish. Publication requires an explicit
+# workflow_dispatch; a separate npm publication must have already landed.
 name: Publish to MCP Registry
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/vantio-optics-mcp/**"
-      - "packages/vantio-gate-mcp/**"
-      - ".github/workflows/mcp-registry-publish.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "MCP package to publish (exactly one)"
+        required: true
+        type: choice
+        options:
+          - vantio-optics-mcp
+          - vantio-gate-mcp
+      version:
+        description: "Version to publish — must match server.json packages[0].version"
+        required: true
+        type: string
+      git_sha:
+        description: "Commit SHA being published — must equal the checked-out commit SHA"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,17 +28,37 @@ permissions:
 
 jobs:
   publish:
-    name: Publish MCP registry metadata
+    name: Publish MCP registry metadata (${{ inputs.package }})
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - vantio-optics-mcp
-          - vantio-gate-mcp
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Fail-closed pre-flight before any registry call.
+      # -----------------------------------------------------------------------
+
+      - name: Validate git_sha matches checked-out commit
+        run: |
+          ACTUAL_SHA="${{ github.sha }}"
+          INPUT_SHA="${{ inputs.git_sha }}"
+          if [ "$INPUT_SHA" != "$ACTUAL_SHA" ]; then
+            echo "::error::git_sha input ('$INPUT_SHA') does not match the checked-out commit ('$ACTUAL_SHA'). Aborting."
+            exit 1
+          fi
+          echo "git_sha OK: $ACTUAL_SHA"
+
+      - name: Validate version matches server.json
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          SERVER_VER=$(node -p "require('./server.json').packages[0].version")
+          INPUT_VER="${{ inputs.version }}"
+          if [ "$INPUT_VER" != "$SERVER_VER" ]; then
+            echo "::error::version input ('$INPUT_VER') does not match server.json version ('$SERVER_VER'). Aborting."
+            exit 1
+          fi
+          echo "version OK: $SERVER_VER"
 
       - name: Install mcp-publisher
         run: |
@@ -37,14 +70,14 @@ jobs:
         run: mcp-publisher login github-oidc
 
       - name: Validate server.json
-        working-directory: packages/${{ matrix.package }}
+        working-directory: packages/${{ inputs.package }}
         run: mcp-publisher validate
 
       # MCP Registry refuses a version until that exact npm tarball exists.
-      # "Publish to npm" runs in parallel and has to finish tests first, so a
-      # version bump otherwise 404s here ~15–60s before npm has the release.
+      # The corresponding npm publish must have been dispatched and completed
+      # before dispatching this workflow.
       - name: Wait for npm package version
-        working-directory: packages/${{ matrix.package }}
+        working-directory: packages/${{ inputs.package }}
         run: |
           IDENT=$(node -p "require('./server.json').packages[0].identifier")
           VER=$(node -p "require('./server.json').packages[0].version")
@@ -61,7 +94,7 @@ jobs:
           exit 1
 
       - name: Publish to MCP Registry
-        working-directory: packages/${{ matrix.package }}
+        working-directory: packages/${{ inputs.package }}
         run: |
           set -o pipefail
           for attempt in 1 2 3 4 5 6; do
@@ -76,8 +109,8 @@ jobs:
               sleep 15
               continue
             fi
-            echo "::error::MCP registry publish failed for ${{ matrix.package }}"
+            echo "::error::MCP registry publish failed for ${{ inputs.package }}"
             exit 1
           done
-          echo "::error::MCP registry publish failed for ${{ matrix.package }} after waiting for npm"
+          echo "::error::MCP registry publish failed for ${{ inputs.package }} after waiting for npm"
           exit 1

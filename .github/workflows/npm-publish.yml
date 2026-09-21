@@ -1,17 +1,44 @@
+# Ordinary main merges must NOT publish. Publication requires an explicit
+# workflow_dispatch with CEO authorization and all validation inputs satisfied.
+# Automated publish on push is intentionally removed.
 name: Publish to npm
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {}   # allows manual re-run from the Actions tab without a dummy commit
+  pull_request:
+    paths:
+      - "packages/**"
+      - ".github/workflows/npm-publish.yml"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish (exactly one)"
+        required: true
+        type: choice
+        options:
+          - "@vantio/gate-mcp"
+          - "@vantio/optics-mcp"
+          - "@vantio/cli"
+          - "@vantio/agent-sdk"
+      version:
+        description: "Version to publish — must match package.json version of the selected package"
+        required: true
+        type: string
+      git_sha:
+        description: "Commit SHA being published — must equal the checked-out commit SHA"
+        required: true
+        type: string
+      artifact_sha256:
+        description: "Optional: sha256 of the packed tarball; if provided the job fails on mismatch"
+        required: false
+        type: string
 
 jobs:
-  # Gates publish below via `needs:`. This is what actually enforces "no
-  # broken build reaches npm" — before this job existed, publish ran
-  # immediately after `pnpm install` with zero lint/typecheck/test gate, so a
-  # syntax error or a broken interceptor could ship straight to real users.
+  # Runs on pull_request to keep quality gates fast without requiring a merge.
+  # Does NOT run on workflow_dispatch — publish job below enforces its own
+  # pre-flight instead so the two jobs stay clearly separated.
   test:
     name: Lint, typecheck, and test
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
@@ -55,8 +82,8 @@ jobs:
         run: pnpm --filter @vantio/gate-mcp run test
 
   publish:
-    name: Build & Publish
-    needs: test
+    name: Validate inputs and publish one package
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -76,81 +103,87 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Build @vantio/agent-sdk
+      # -----------------------------------------------------------------------
+      # Fail-closed pre-flight: every guard must pass before a single byte
+      # reaches npm. Any mismatch aborts with a clear error; nothing is printed
+      # that would expose the NPM_TOKEN.
+      # -----------------------------------------------------------------------
+
+      - name: Validate git_sha matches checked-out commit
+        run: |
+          ACTUAL_SHA="${{ github.sha }}"
+          INPUT_SHA="${{ inputs.git_sha }}"
+          if [ "$INPUT_SHA" != "$ACTUAL_SHA" ]; then
+            echo "::error::git_sha input ('$INPUT_SHA') does not match the checked-out commit ('$ACTUAL_SHA'). Aborting."
+            exit 1
+          fi
+          echo "git_sha OK: $ACTUAL_SHA"
+
+      - name: Resolve package directory and package.json name
+        id: resolve
+        run: |
+          case "${{ inputs.package }}" in
+            "@vantio/gate-mcp")    DIR="packages/vantio-gate-mcp" ;;
+            "@vantio/optics-mcp")  DIR="packages/vantio-optics-mcp" ;;
+            "@vantio/cli")         DIR="packages/vantio-cli" ;;
+            "@vantio/agent-sdk")   DIR="packages/vantio-agent-sdk" ;;
+            *)
+              echo "::error::Unknown package selection '${{ inputs.package }}'. Aborting."
+              exit 1
+              ;;
+          esac
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Package directory: $DIR"
+
+      - name: Validate version matches package.json
+        run: |
+          PKG_DIR="${{ steps.resolve.outputs.dir }}"
+          PKG_VER=$(node -p "require('./$PKG_DIR/package.json').version")
+          INPUT_VER="${{ inputs.version }}"
+          if [ "$INPUT_VER" != "$PKG_VER" ]; then
+            echo "::error::version input ('$INPUT_VER') does not match $PKG_DIR/package.json version ('$PKG_VER'). Aborting."
+            exit 1
+          fi
+          echo "version OK: $PKG_VER"
+
+      - name: Build @vantio/agent-sdk (required before pack or publish)
+        if: inputs.package == '@vantio/agent-sdk'
         run: pnpm --filter @vantio/agent-sdk run build
 
-      - name: Publish @vantio/agent-sdk
-        working-directory: packages/vantio-agent-sdk
+      - name: Validate artifact sha256 (optional)
+        if: inputs.artifact_sha256 != ''
+        run: |
+          PKG_DIR="${{ steps.resolve.outputs.dir }}"
+          TARBALL=$(cd "$PKG_DIR" && pnpm pack --no-publish-warning 2>/dev/null | tail -1)
+          ACTUAL_SHA256=$(sha256sum "$PKG_DIR/$TARBALL" | awk '{print $1}')
+          INPUT_SHA256="${{ inputs.artifact_sha256 }}"
+          if [ "$INPUT_SHA256" != "$ACTUAL_SHA256" ]; then
+            echo "::error::artifact_sha256 mismatch. Expected '$INPUT_SHA256', got '$ACTUAL_SHA256'. Aborting."
+            exit 1
+          fi
+          echo "artifact_sha256 OK: $ACTUAL_SHA256"
+          # Remove the pack artifact so publish creates a fresh one.
+          rm -f "$PKG_DIR/$TARBALL"
+
+      # -----------------------------------------------------------------------
+      # Publish exactly the one selected package. Matrix / loop publishing of
+      # multiple packages is intentionally absent — a second package requires a
+      # second, separately authorized workflow_dispatch invocation.
+      # -----------------------------------------------------------------------
+
+      - name: Publish ${{ inputs.package }}
+        working-directory: ${{ steps.resolve.outputs.dir }}
         run: |
           set -o pipefail
           OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
           echo "$OUTPUT"
           # Only tolerate the specific "version already published" case.
-          # Any other failure (auth, network, etc.) must fail the job loudly —
-          # do not silently swallow errors here again.
+          # Any other failure (auth, network, etc.) must fail the job loudly.
           if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
             echo "Version already published — this is expected, not an error."
             exit 0
           fi
-          echo "::error::@vantio/agent-sdk publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
+          echo "::error::${{ inputs.package }} publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
           exit 1
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @vantio/cli
-        working-directory: packages/vantio-cli
-        run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/cli publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @vantio/optics-mcp
-        working-directory: packages/vantio-optics-mcp
-        run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/optics-mcp publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @vantio/gate-mcp
-        working-directory: packages/vantio-gate-mcp
-        run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/gate-mcp publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # NOTE: a separate post-publish `npm view` verification step lived here
-      # briefly and was removed. It failed on every run in this CI environment
-      # for a reason not yet root-caused without raw log access (admin rights
-      # required to download job logs even on a public repo) -- ruled out both
-      # registry propagation delay and missing NODE_AUTH_TOKEN as the cause,
-      # neither fixed it. The actual publish steps above are the proven,
-      # working fix (verified via direct `npm view` against the real registry
-      # from outside CI, twice, both packages, both correct): they already
-      # fail loudly on any real error and only tolerate the specific
-      # "already published" condition -- that is the fix for the original
-      # silent-swallow bug. Re-add a verification step only with real log
-      # access to diagnose it properly, not by guessing further.
