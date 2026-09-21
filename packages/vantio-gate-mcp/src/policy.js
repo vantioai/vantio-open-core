@@ -1,5 +1,5 @@
 /**
- * Pure evaluate helpers for Gate MCP (dry-run plane).
+ * Pure evaluate helpers for the gate-mcp compatibility layer (Phantom Engine dry-run plane).
  * Mirrors interceptor normalizePolicy + host/size/spend checks without side effects.
  */
 
@@ -84,14 +84,14 @@ export function evaluateRequest(policyRaw, req) {
   if (!policy.enforce) {
     return {
       plane: "Enforce",
-      brand: "Vantio Gate",
+      brand: "Phantom Engine",
       mode: "evaluate",
       would_block: false,
       primary_action: "OBSERVED",
       reasons: ["enforce=false — policy is open; traffic would only be observed"],
       policy,
       input: { hostname, request_bytes: requestBytes, spent_usd: spentUsd },
-      fence: "This MCP never enforces. Wire dry_run + vantio run / Gate for live enforce.",
+      fence: "This MCP never enforces. Wire dry_run + vantio run + Phantom Engine policy for live enforce.",
     };
   }
 
@@ -130,13 +130,13 @@ export function evaluateRequest(policyRaw, req) {
     would.push({
       action: "REDACTED",
       reason: `pii_types=${policy.pii_types.join(",")}`,
-      note: "Redaction applies at runtime in Gate interceptor; evaluate does not scan bodies here.",
+      note: "Redaction applies at runtime in the Phantom Engine interceptor; evaluate does not scan bodies here.",
     });
   }
 
   return {
     plane: "Enforce",
-    brand: "Vantio Gate",
+    brand: "Phantom Engine",
     mode: "evaluate",
     would_block,
     primary_action: would_block ? primary_action : "ALLOWED",
@@ -144,7 +144,7 @@ export function evaluateRequest(policyRaw, req) {
     policy,
     input: { hostname, request_bytes: requestBytes, spent_usd: spentUsd },
     fence:
-      "Dry-run evaluate only. No network call was blocked. Enable Gate with dry_run=true in production to validate, then latch enforce.",
+      "Dry-run evaluate only. No network call was blocked. Run under vantio run + Phantom Engine policy with dry_run=true to validate, then latch enforce.",
   };
 }
 
@@ -157,7 +157,7 @@ export async function fetchCloudConfig({
     return {
       ok: false,
       error: "missing_api_key",
-      hint: "Set VANTIO_API_KEY or pass api_key. Free Optics needs no key; Gate control-plane config requires a key.",
+      hint: "Set VANTIO_API_KEY or pass api_key. Free Optics needs no key; Phantom Engine control-plane config requires a key.",
       policy: DEFAULT_POLICY,
     };
   }

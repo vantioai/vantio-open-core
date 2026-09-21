@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.vantioai/vantio-gate",
-  "title": "Vantio Gate",
-  "description": "Vantio Gate — dry-run evaluate of rules that stick. No live enforce from MCP.",
-  "websiteUrl": "https://vantio.ai/gate",
+  "title": "Phantom Engine — legacy gate-mcp",
+  "description": "Dry-run evaluate for Phantom Engine enforce functions. @vantio/gate-mcp is a legacy compatibility package; Gate is not a separate Vantio product or subscription.",
+  "websiteUrl": "https://vantio.ai/phantom",
   "repository": {
     "url": "https://github.com/vantioai/vantio-open-core",
     "source": "github",
