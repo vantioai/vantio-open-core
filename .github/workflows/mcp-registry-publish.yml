@@ -64,6 +64,33 @@ jobs:
           fi
           echo "HEAD verified: $ACTUAL"
 
+      # Version format guard — reject empty, whitespace, newlines, shell
+      # metacharacters, and non-semver-shaped strings before any shell usage.
+      - name: Assert version format (semver-safe)
+        env:
+          INPUT_VER: ${{ inputs.version }}
+        run: |
+          if [ -z "$INPUT_VER" ]; then
+            echo "::error::inputs.version is empty. Aborting."
+            exit 1
+          fi
+          # Reject embedded newlines or carriage returns.
+          if printf '%s' "$INPUT_VER" | grep -qP '[\r\n]'; then
+            echo "::error::inputs.version contains newline characters. Aborting."
+            exit 1
+          fi
+          # Reject shell metacharacters: ; & | $ ( ) < > \ ` space tab
+          if printf '%s' "$INPUT_VER" | grep -qE '[;&|$()<>\\` 	]'; then
+            echo "::error::inputs.version contains shell metacharacters. Aborting."
+            exit 1
+          fi
+          # Require semver-like: MAJOR.MINOR.PATCH with optional pre-release/build suffix.
+          if ! printf '%s' "$INPUT_VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'; then
+            echo "::error::inputs.version '$INPUT_VER' is not a valid semver-like string (expected X.Y.Z or X.Y.Z-pre / X.Y.Z.build). Aborting."
+            exit 1
+          fi
+          echo "Version format OK: $INPUT_VER"
+
       # NT-2 / NT-3: map inputs.package to a hardcoded {pkg_dir, npm_ident} pair.
       # Raw input is used ONLY as a pattern in the case match. PKG_DIR and
       # NPM_IDENT are hardcoded literals — the raw input value is never
@@ -117,11 +144,72 @@ jobs:
           fi
           echo "server.json identity OK: $ACTUAL_IDENT@$ACTUAL_VER"
 
-      - name: Install mcp-publisher
+      # Run lint and tests for the selected MCP package before the publish
+      # environment gate opens. This catches regressions on the pinned commit.
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # Do not pin version: here — conflicts with package.json packageManager.
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint selected MCP package
+        env:
+          PKG_INPUT: ${{ inputs.package }}
         run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
-            | tar xz mcp-publisher
+          case "$PKG_INPUT" in
+            vantio-optics-mcp) pnpm --filter @vantio/optics-mcp run lint ;;
+            vantio-gate-mcp)   pnpm --filter @vantio/gate-mcp run lint ;;
+            *) echo "::error::Unrecognised package '$PKG_INPUT' in lint step (should have been caught by allowlist)."; exit 1 ;;
+          esac
+
+      - name: Test selected MCP package
+        env:
+          PKG_INPUT: ${{ inputs.package }}
+        run: |
+          case "$PKG_INPUT" in
+            vantio-optics-mcp) pnpm --filter @vantio/optics-mcp run test ;;
+            vantio-gate-mcp)   pnpm --filter @vantio/gate-mcp run test ;;
+            *) echo "::error::Unrecognised package '$PKG_INPUT' in test step (should have been caught by allowlist)."; exit 1 ;;
+          esac
+
+      # mcp-publisher pinned to v1.8.1. SHA256 digests sourced from the
+      # official release checksums file:
+      # https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/registry_1.8.1_checksums.txt
+      # (verified at pin time 2026-09-21)
+      - name: Install mcp-publisher (pinned v1.8.1, SHA256-verified)
+        env:
+          MCP_PUBLISHER_VERSION: "v1.8.1"
+          SHA256_LINUX_AMD64: "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc"
+          SHA256_LINUX_ARM64: "8dd75a6cf6845688b5d4e46df58d3ca26d5c8d233bb0626606e1db82c5e883e4"
+        run: |
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          ASSET="mcp-publisher_${OS}_${ARCH}.tar.gz"
+          URL="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${ASSET}"
+          curl -fsSL "$URL" -o /tmp/mcp-publisher.tar.gz
+          ACTUAL=$(sha256sum /tmp/mcp-publisher.tar.gz | awk '{print $1}')
+          case "${OS}_${ARCH}" in
+            linux_amd64) EXPECTED="$SHA256_LINUX_AMD64" ;;
+            linux_arm64) EXPECTED="$SHA256_LINUX_ARM64" ;;
+            *)
+              echo "::error::MCP_PUBLISHER_INTEGRITY_BLOCKED: No pinned SHA256 for ${OS}_${ARCH}. Add it to the workflow before enabling this runner architecture."
+              exit 1
+              ;;
+          esac
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::MCP_PUBLISHER_INTEGRITY_BLOCKED: SHA256 mismatch for $ASSET. Expected=$EXPECTED Got=$ACTUAL. Possible tampering or unreviewed update. Aborting."
+            exit 1
+          fi
+          echo "mcp-publisher integrity verified: $ACTUAL"
+          tar xzf /tmp/mcp-publisher.tar.gz mcp-publisher
           sudo mv mcp-publisher /usr/local/bin/
+          rm -f /tmp/mcp-publisher.tar.gz
 
       # NT-6: mcp-publisher validate must pass before the approval gate opens.
       - name: Validate server.json (mcp-publisher)
@@ -169,11 +257,35 @@ jobs:
             exit 1
           fi
 
-      - name: Install mcp-publisher
+      # Same pinned version as validate job — must stay in sync.
+      - name: Install mcp-publisher (pinned v1.8.1, SHA256-verified)
+        env:
+          MCP_PUBLISHER_VERSION: "v1.8.1"
+          SHA256_LINUX_AMD64: "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc"
+          SHA256_LINUX_ARM64: "8dd75a6cf6845688b5d4e46df58d3ca26d5c8d233bb0626606e1db82c5e883e4"
         run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
-            | tar xz mcp-publisher
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          ASSET="mcp-publisher_${OS}_${ARCH}.tar.gz"
+          URL="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${ASSET}"
+          curl -fsSL "$URL" -o /tmp/mcp-publisher.tar.gz
+          ACTUAL=$(sha256sum /tmp/mcp-publisher.tar.gz | awk '{print $1}')
+          case "${OS}_${ARCH}" in
+            linux_amd64) EXPECTED="$SHA256_LINUX_AMD64" ;;
+            linux_arm64) EXPECTED="$SHA256_LINUX_ARM64" ;;
+            *)
+              echo "::error::MCP_PUBLISHER_INTEGRITY_BLOCKED: No pinned SHA256 for ${OS}_${ARCH}. Add it to the workflow before enabling this runner architecture."
+              exit 1
+              ;;
+          esac
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::MCP_PUBLISHER_INTEGRITY_BLOCKED: SHA256 mismatch for $ASSET. Expected=$EXPECTED Got=$ACTUAL. Possible tampering or unreviewed update. Aborting."
+            exit 1
+          fi
+          echo "mcp-publisher integrity verified: $ACTUAL"
+          tar xzf /tmp/mcp-publisher.tar.gz mcp-publisher
           sudo mv mcp-publisher /usr/local/bin/
+          rm -f /tmp/mcp-publisher.tar.gz
 
       - name: Authenticate (GitHub OIDC)
         run: mcp-publisher login github-oidc
@@ -182,39 +294,45 @@ jobs:
       # The npm-publish workflow must be dispatched and completed separately
       # before dispatching this workflow.
       - name: Wait for npm package version
+        env:
+          INPUT_VER: ${{ inputs.version }}
+          IDENT: ${{ needs.validate.outputs.npm_ident }}
         run: |
-          IDENT="${{ needs.validate.outputs.npm_ident }}"
-          VER="${{ inputs.version }}"
-          echo "Waiting for $IDENT@$VER on npm before MCP registry publish."
+          echo "Waiting for $IDENT@$INPUT_VER on npm before MCP registry publish."
           for i in $(seq 1 18); do
-            if npm view "$IDENT@$VER" version >/dev/null 2>&1; then
-              echo "Found $IDENT@$VER"
+            if npm view "$IDENT@$INPUT_VER" version >/dev/null 2>&1; then
+              echo "Found $IDENT@$INPUT_VER"
               exit 0
             fi
-            echo "Attempt $i/18: $IDENT@$VER not on npm yet; sleeping 10s"
+            echo "Attempt $i/18: $IDENT@$INPUT_VER not on npm yet; sleeping 10s"
             sleep 10
           done
-          echo "::error::$IDENT@$VER was not found on npm after waiting. Publish the npm package first, then re-dispatch this workflow."
+          echo "::error::$IDENT@$INPUT_VER was not found on npm after waiting. Publish the npm package first, then re-dispatch this workflow."
           exit 1
 
+      # MCP_DUPLICATE_REFUSED: if the registry reports the version already exists,
+      # we refuse (exit 1) rather than silently succeeding. Idempotent replay
+      # cannot be guaranteed safe; the operator must investigate.
       - name: Publish to MCP Registry
         working-directory: ${{ needs.validate.outputs.pkg_dir }}
+        env:
+          PKG_DISPLAY: ${{ inputs.package }}
         run: |
           set -o pipefail
           for attempt in 1 2 3 4 5 6; do
             OUTPUT=$(mcp-publisher publish 2>&1) && { echo "$OUTPUT"; exit 0; }
             echo "$OUTPUT"
             if echo "$OUTPUT" | grep -qiE 'duplicate version|cannot publish duplicate'; then
-              echo "Version already published — expected on re-runs."
-              exit 0
+              echo "::error::MCP_DUPLICATE_REFUSED: $PKG_DISPLAY version is already published in the MCP registry. Re-publishing an existing version is not idempotent-safe. Investigate before retrying with a new version."
+              exit 1
             fi
             if echo "$OUTPUT" | grep -qiE 'was not found \(status: 404\)|newly published release can take a moment'; then
               echo "MCP registry still does not see the npm version (attempt $attempt/6). Retrying in 15s."
               sleep 15
               continue
             fi
-            echo "::error::MCP registry publish failed for ${{ inputs.package }}"
+            echo "::error::MCP registry publish failed for $PKG_DISPLAY"
             exit 1
           done
-          echo "::error::MCP registry publish failed for ${{ inputs.package }} after all retries"
+          echo "::error::MCP registry publish failed for $PKG_DISPLAY after all retries"
           exit 1

@@ -109,6 +109,33 @@ jobs:
             exit 1
           fi
 
+      # Version format guard — reject empty, whitespace, newlines, shell
+      # metacharacters, and non-semver-shaped strings before any shell usage.
+      - name: Assert version format (semver-safe)
+        env:
+          INPUT_VER: ${{ inputs.version }}
+        run: |
+          if [ -z "$INPUT_VER" ]; then
+            echo "::error::inputs.version is empty. Aborting."
+            exit 1
+          fi
+          # Reject embedded newlines or carriage returns.
+          if printf '%s' "$INPUT_VER" | grep -qP '[\r\n]'; then
+            echo "::error::inputs.version contains newline characters. Aborting."
+            exit 1
+          fi
+          # Reject shell metacharacters: ; & | $ ( ) < > \ ` space tab
+          if printf '%s' "$INPUT_VER" | grep -qE '[;&|$()<>\\` 	]'; then
+            echo "::error::inputs.version contains shell metacharacters. Aborting."
+            exit 1
+          fi
+          # Require semver-like: MAJOR.MINOR.PATCH with optional pre-release/build suffix.
+          if ! printf '%s' "$INPUT_VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$'; then
+            echo "::error::inputs.version '$INPUT_VER' is not a valid semver-like string (expected X.Y.Z or X.Y.Z-pre / X.Y.Z.build). Aborting."
+            exit 1
+          fi
+          echo "Version format OK: $INPUT_VER"
+
       # NT-2 (part 1): pin the checkout to the exact commit the operator named.
       # This ensures tests, pack, and publish all run against the same tree.
       - name: Checkout at inputs.git_sha
@@ -203,14 +230,15 @@ jobs:
       # NT-7: refuse to publish over a version that already exists on npm.
       # This check requires network; it runs before the expensive pnpm install.
       - name: Assert version not already on npm
+        env:
+          INPUT_VER: ${{ inputs.version }}
+          PKG: ${{ steps.allowlist.outputs.expected_name }}
         run: |
-          PKG="${{ steps.allowlist.outputs.expected_name }}"
-          VER="${{ inputs.version }}"
-          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
-            echo "::error::$PKG@$VER is already published on npm. Re-publishing an existing version is not permitted. Aborting."
+          if npm view "$PKG@$INPUT_VER" version >/dev/null 2>&1; then
+            echo "::error::$PKG@$INPUT_VER is already published on npm. Re-publishing an existing version is not permitted. Aborting."
             exit 1
           fi
-          echo "$PKG@$VER is not yet on npm."
+          echo "$PKG@$INPUT_VER is not yet on npm."
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
