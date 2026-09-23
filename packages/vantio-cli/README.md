@@ -86,15 +86,20 @@ To disconnect: `vantio logout`.
 ## Commands
 
 ```bash
-vantio login [key]    # save & validate your API key (prompts if omitted; input masked on a TTY)
-vantio logout         # remove the stored key
-vantio whoami         # show the stored key (masked) + live connection status
 vantio run <program>  # spawn a program under the Vantio execution context
 vantio discover       # local wrap history (--local) or paid control-plane discover
 vantio prove          # generate an auditor-ready proof artifact from a run log (Free)
 vantio search [query] # search local run logs by host, path, action, or free text (Free)
 vantio tail           # show the latest calls from a captured run (Free)
 vantio diff <a> <b>   # compare two local runs — hosts, counts, bytes (Free)
+```
+
+**Account management (requires a trial key — see Step 3 above):**
+
+```bash
+vantio login [key]    # save & validate your API key (prompts if omitted; input masked on a TTY)
+vantio logout         # remove the stored key
+vantio whoami         # show the stored key (masked) + live connection status
 ```
 
 `login` refuses to save a key the server rejects (HTTP 401). The full key is never printed — `whoami` and login output only ever show a masked form like `vk_liv…a1b2`.
@@ -126,11 +131,8 @@ Your code doesn't change. Your agent runs normally. If you've run `vantio login`
 ## Flags
 
 ```bash
-vantio run --audit node agent.js     # flag events as VANTIO_AUDIT_MODE=1
 vantio run --summary node agent.js   # print a run summary on exit
 ```
-
-**`--audit`** — sets `VANTIO_AUDIT_MODE=1` in the child environment, which marks events as audit mode in the enforce-plane ingest payload. Has no observable local effect in Optics-only (free) mode; the flag is passed through to the interceptor for paid enforce-plane correlation.
 
 **`--summary`** — prints a summary when the process exits:
 
@@ -140,7 +142,7 @@ vantio run --summary node agent.js   # print a run summary on exit
   Hosts:        api.openai.com, api.anthropic.com
   Total bytes:  94,201
   Duration:     12.4s
-  → Run `vantio login` to enforce policy and persist events.
+  → Run `vantio prove` to export an auditor-ready artifact from this run.
 ```
 
 In free mode (no API key), intercepted calls print to the terminal in real time.

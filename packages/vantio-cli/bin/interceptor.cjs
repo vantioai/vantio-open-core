@@ -477,9 +477,13 @@ function blockedResponse(reason) {
 
 function report(metadata) {
   if (FREE_MODE || !INGEST_URL || !cloudSyncActive) return;
-  // Additive Optics Sight Loop fields — Gate stores opaque JSON; PE joins on traceId.
+  // Additive Optics ingest fields — Gate stores opaque JSON; PE joins on traceId.
   // Mission Control KPIs read bytes_observed; wrap paths historically sent
   // bytes_severed / request_bytes only — alias so counts and spend roll up.
+  // mediation default: "optics_enforcement" for policy-action events that do not
+  // carry a transport-layer mediation value (BLOCKED_*, DRY_RUN_*, ENFORCEMENT_GAP).
+  // Legacy ingest records may carry the retired "sight_loop" value; the server
+  // must accept both — this client no longer emits "sight_loop" as a default.
   const host = metadata && metadata.target_host;
   const bytesObserved = metadata.bytes_observed != null
     ? metadata.bytes_observed
@@ -492,7 +496,7 @@ function report(metadata) {
     ...metadata,
     bytes_observed: bytesObserved,
     provider: metadata.provider || (host ? guessProvider(host) : undefined),
-    mediation: metadata.mediation || "sight_loop",
+    mediation: metadata.mediation || "optics_enforcement",
     plane: metadata.plane || "optics_gate",
   };
   void _originalFetch.call(globalThis, `${INGEST_URL}/api/v1/ingest`, {

@@ -397,6 +397,16 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
 
     assert.equal(requests.target.length, 0, "the blocked host must never receive the request");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(
+      requests.ingest[0].body.eventPayload.mediation,
+      "sight_loop",
+      "retired 'sight_loop' must never be emitted as mediation default (regression: EXTERNAL_PROTOCOL_VALUE fix)"
+    );
+    assert.equal(
+      requests.ingest[0].body.eventPayload.mediation,
+      "optics_enforcement",
+      "enforcement events without a transport-layer mediation must use 'optics_enforcement'"
+    );
   });
 
   test("authenticated but FREE tier: never calls ingest even though a policy is present (regression guard)", async () => {

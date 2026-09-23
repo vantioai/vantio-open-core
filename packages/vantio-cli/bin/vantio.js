@@ -16,9 +16,6 @@ Vantio Optics | Free Observability for AI Agents
 Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 
 Usage:
-  vantio login [key]          Save & validate your API key (required for dashboard sync)
-  vantio logout               Remove the stored key
-  vantio whoami               Show the stored key (masked) + connection status
   vantio run [flags] <prog>   Spawn <prog> under the Vantio execution context
   vantio discover [options]   Show AI-agent call history (--local; no key required)
   vantio prove [options]      Generate a proof artifact from a local run log (no key required)
@@ -27,13 +24,9 @@ Usage:
   vantio diff <a> <b>         Compare two local runs (hosts, counts, bytes)
 
 Flags (run):
-  --audit,   -a   Set VANTIO_AUDIT_MODE=1 in the child environment (marks events on the enforce plane).
   --summary, -s   Print a run summary on exit.
 
 Local Optics (vantio prove, search, tail, diff, discover --local) requires no login.
-After 'vantio login', plain 'vantio run node agent.js' just works — the key is
-loaded from ~/.vantio/config.json and injected into the child process. An
-explicit VANTIO_API_KEY in your environment always takes precedence.
 
 Examples:
   vantio run node agent.js
@@ -43,11 +36,10 @@ Examples:
   vantio discover --since=7d
   vantio prove
   vantio prove --list
-  vantio prove --format=md --out=audit.md
+  vantio prove --format=md --out=report.md
   vantio search openai
   vantio tail -n 20
   vantio diff 0xabc 0xdef
-  vantio login vk_live_xxx
 `;
 
 const DISCOVER_HELP = `\
@@ -309,7 +301,7 @@ function runCommand(rest) {
 
   if (progArgs.length === 0) {
     process.stderr.write(
-      "vantio run: no program specified\n\nUsage: vantio run [--audit] [--summary] <program> [...args]\n",
+      "vantio run: no program specified\n\nUsage: vantio run [--summary] <program> [...args]\n",
     );
     process.exit(1);
   }

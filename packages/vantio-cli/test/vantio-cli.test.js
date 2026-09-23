@@ -34,8 +34,20 @@ describe("vantio CLI — basic dispatch", () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
     assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
-    assert.match(stdout, /vantio login/);
+    assert.doesNotMatch(stdout, /vantio login/, "login must not appear in primary help (AUTH_DEPLOYMENT_UNVERIFIED)");
     assert.match(stdout, /vantio discover/);
+  });
+
+  test("--audit flag is not advertised in primary help (METADATA_ONLY)", async () => {
+    const { code, stdout } = await runCli([]);
+    assert.equal(code, 0);
+    assert.doesNotMatch(stdout, /--audit/, "--audit must not appear in public help text");
+  });
+
+  test("--audit flag is not advertised in run --help error (METADATA_ONLY)", async () => {
+    const { code, stderr } = await runCli(["run"]);
+    assert.equal(code, 1);
+    assert.doesNotMatch(stderr, /--audit/, "--audit must not appear in run usage error");
   });
 
   test("--version prints the version from package.json", async () => {
