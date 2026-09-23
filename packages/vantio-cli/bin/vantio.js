@@ -334,10 +334,12 @@ function generateHtmlReport(log) {
   const rows = calls.map((c, i) => {
     const act = (c.action || "OBSERVED").toUpperCase();
     const cls = act.startsWith("BLOCKED") ? "blocked" : act.toLowerCase();
+    const status = c.status != null ? String(c.status) : "—";
     return `        <tr>
           <td class="num">${i + 1}</td>
           <td class="mono">${escHtml(c.hostname || "—")}</td>
           <td><span class="badge badge-${cls}">${escHtml(act)}</span></td>
+          <td class="num">${escHtml(status)}</td>
           <td class="num">${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"}</td>
           <td class="mono">${escHtml(c.ts || "—")}</td>
         </tr>`;
@@ -417,7 +419,7 @@ function generateHtmlReport(log) {
       : `<table>
       <thead><tr>
         <th class=\"num\">#</th><th>Host</th><th>Action</th>
-        <th class=\"num\">Bytes</th><th>Timestamp</th>
+        <th class=\"num\">Status</th><th class=\"num\">Bytes</th><th>Timestamp</th>
       </tr></thead>
       <tbody>
 ${rows}
@@ -444,7 +446,7 @@ function generateMarkdownReport(log) {
   const blocked    = summary.blocked  ?? 0;
 
   const rows = calls.map((c, i) =>
-    `| ${i + 1} | \`${c.hostname || "—"}\` | \`${(c.action || "OBSERVED").toUpperCase()}\` | ${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"} | \`${c.ts || "—"}\` |`
+    `| ${i + 1} | \`${c.hostname || "—"}\` | \`${(c.action || "OBSERVED").toUpperCase()}\` | ${c.status != null ? c.status : "—"} | ${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"} | \`${c.ts || "—"}\` |`
   ).join("\n");
 
   return `# Vantio Optics | Free Observability for AI Agents
@@ -486,8 +488,8 @@ Hosts: ${hosts.map((h) => `\`${h}\``).join(", ") || "—"}
 
 ## Call log (${totalCalls} call${totalCalls === 1 ? "" : "s"})
 
-| # | Host | Action | Bytes | Timestamp |
-|---|------|--------|-------|-----------|
+| # | Host | Action | Status | Bytes | Timestamp |
+|---|------|--------|--------|-------|-----------|
 ${rows || "| — | — | — | — | — |"}
 
 ---

@@ -27,7 +27,7 @@
   "bin": {
     "vantio": "bin/vantio.js"
   },
-  "files": ["bin"],
+  "files": ["bin/*.js", "bin/*.cjs", "bin/python-wrap/*.py"],
   "scripts": {
     "lint": "node --check bin/vantio.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs",
     "test": "node --test"

@@ -339,4 +339,28 @@ describe("local proof still works with no config", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  test("proof shows recorded HTTP status for a non-2xx call", async () => {
+    const home = mkdtempSync(join(tmpdir(), "vantio-status-"));
+    const logPath = join(home, "run.json");
+    writeFileSync(logPath, JSON.stringify({
+      vantio_run_log: "1",
+      trace_id: "0xstatus",
+      cli_version: "0.3.21",
+      calls: [{ hostname: "api.openai.com", action: "OBSERVED", status: 503, bytes: 12, ts: "2026-09-23T00:00:00.000Z" }],
+      summary: { total_calls: 1, total_bytes: 12, hosts: ["api.openai.com"] },
+    }));
+    try {
+      const html = await runCli(["prove", "--from", logPath, "--format=html", "--out", join(home, "p.html")], { HOME: home });
+      assert.equal(html.code, 0);
+      const body = readFileSync(join(home, "p.html"), "utf8");
+      assert.match(body, />503</);
+      assert.match(body, /OBSERVED/);
+      const md = await runCli(["prove", "--from", logPath, "--format=md"], { HOME: home });
+      assert.equal(md.code, 0);
+      assert.match(md.stdout, /503/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
