@@ -7,7 +7,7 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +33,7 @@ describe("vantio CLI — basic dispatch", () => {
   test("no command prints usage and exits 0", async () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
-    assert.match(stdout, /Vantio AI — process supervisor/);
+    assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
     assert.match(stdout, /vantio login/);
     assert.match(stdout, /vantio discover/);
   });
@@ -49,7 +49,7 @@ describe("vantio CLI — basic dispatch", () => {
     const { code, stderr } = await runCli(["frobnicate"]);
     assert.equal(code, 1);
     assert.match(stderr, /unknown command 'frobnicate'/);
-    assert.match(stderr, /Vantio AI — process supervisor/);
+    assert.match(stderr, /Vantio Optics \| Free Observability for AI Agents/);
   });
 
   test("run with no program exits 1", async () => {
@@ -64,6 +64,26 @@ describe("vantio CLI — basic dispatch", () => {
     assert.match(stdout, /hello-from-child/);
   });
 
+  test("run writes a run log even when the child makes zero LLM calls", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "vantio-test-zero-"));
+    try {
+      const { code } = await runCli(
+        ["run", "node", "-e", "process.exit(0)"],
+        { HOME: homeDir },
+      );
+      assert.equal(code, 0);
+      const runsDir = join(homeDir, ".vantio", "runs");
+      const logs = readdirSync(runsDir).filter((f) => f.endsWith(".json"));
+      assert.equal(logs.length, 1, "expected exactly one run log for a zero-call run");
+      const log = JSON.parse(readFileSync(join(runsDir, logs[0]), "utf8"));
+      assert.equal(log.vantio_run_log, "1");
+      assert.equal(log.summary.total_calls, 0);
+      assert.ok(Array.isArray(log.calls) && log.calls.length === 0);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
   test("discover rejects an invalid --since value", async () => {
     const { code, stderr } = await runCli(["discover", "--since=3w"]);
     assert.equal(code, 1);
@@ -73,7 +93,7 @@ describe("vantio CLI — basic dispatch", () => {
   test("discover --help prints help without requiring a key", async () => {
     const { code, stdout } = await runCli(["discover", "--help"]);
     assert.equal(code, 0);
-    assert.match(stdout, /Shadow AI Attack Surface Discovery/);
+    assert.match(stdout, /vantio discover.*AI-agent call history/s);
   });
 
   test("discover with no stored key tells the user to log in first", async () => {
