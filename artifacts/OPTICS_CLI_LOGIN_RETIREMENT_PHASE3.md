@@ -400,4 +400,37 @@ Review C overall: **PASS**. No FAIL. No BLOCKED.
 
 ## Final-HEAD confirmation
 
-Pending the documentation commit. The section below is filled by the confirmation commit after `pnpm --filter @vantio/cli run test` and a fresh `npm pack` run on that commit.
+Report commit `c8a41a12aa7f02384e4e4a55b498ea5d50dd0fec` is the first documentation commit. It does not change `packages/vantio-cli`. The suite and the pack below were executed on that commit.
+
+Command, from `/workspace`, at `c8a41a12aa7f02384e4e4a55b498ea5d50dd0fec`:
+
+```bash
+pnpm --filter @vantio/cli run test
+```
+
+Exit code `0`.
+
+| TAP field | Value |
+|---|---|
+| tests | 106 |
+| suites | 18 |
+| pass | 106 |
+| fail | 0 |
+| cancelled | 0 |
+| skipped | 0 |
+| todo | 0 |
+| duration_ms | 16460.205521 |
+
+Log: `/tmp/cli-test-c8a41a1.txt` (not committed).
+
+Repack at the same commit, after deleting `/tmp/vantio-cli-*.tgz`:
+
+```bash
+cd packages/vantio-cli && npm pack --pack-destination /tmp
+```
+
+Exit code `0`. Filename `vantio-cli-0.3.21.tgz`. Size 49624 bytes. SHA-256 `db6a786b0bb9a0e86aa765f3453038c441a6bd3384fe38947dc5ddeb2c7a307b`. npm shasum (SHA-1) `a4b8cf50b26a2beaeb6608d03e50eb3028220466`. Seven packaged files, listed above. The checksum matches the pack from product HEAD `3525c6a6be3a24fef4cce6f58766d741687b428c`.
+
+Diff `3e1c024f4079e1c51d1d028bfc6d22e02f00e76a..c8a41a12aa7f02384e4e4a55b498ea5d50dd0fec`: 13 files changed, 1006 insertions(+), 721 deletions(-).
+
+The commit that adds this section is documentation-only. A repeat of the same test command and the same `npm pack` is run after that commit. Pass, fail, and skip counts, and the tarball SHA-256, are the final-HEAD result when they match this table. That repeat is recorded in the PR body.
