@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current npm release: **0.3.20**. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
+> Wrap a Node agent with **Vantio Optics** — free visibility into what it sends. Current local candidate: **0.3.21** (remediation branch; not yet published). Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ```bash
 npm install -g @vantio/cli
@@ -36,7 +36,7 @@ vantio run node agent.js
 
 Python: install `vantio-agent-sdk` first, then `vantio run python agent.py`. Prefixing `vantio run python` does not intercept by itself.
 
-### Step 4 — Connect Phantom Engine / Enterprise (optional)
+### Step 3 — Connect Phantom Engine / Enterprise (optional)
 
 Free Optics needs **no account and no API key**. Local `vantio prove`,
 `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
@@ -130,7 +130,7 @@ vantio run --audit node agent.js     # flag events as VANTIO_AUDIT_MODE=1
 vantio run --summary node agent.js   # print a run summary on exit
 ```
 
-**`--audit`** — marks all events from this run as audit mode. Useful when running agents in observation-only mode before enforcing policies.
+**`--audit`** — sets `VANTIO_AUDIT_MODE=1` in the child environment, which marks events as audit mode in the enforce-plane ingest payload. Has no observable local effect in Optics-only (free) mode; the flag is passed through to the interceptor for paid enforce-plane correlation.
 
 **`--summary`** — prints a summary when the process exits:
 
@@ -195,7 +195,7 @@ Without `--local` the CLI asks a paid control-plane discover API. If that API is
 **Options:**
 
 | Flag | Description |
-|---|---|
+|---|—|
 | `--since=<period>` | Look back `24h`, `7d`, or `30d` (default: `24h`) |
 | `--host=<hostname>` | Filter to a specific target host |
 | `--json` | Output raw JSON instead of a formatted table |
@@ -217,17 +217,55 @@ With a Phantom Engine `VANTIO_API_KEY`, the interceptor fetches policy from the 
 ## Environment variables
 
 | Variable | Description |
-|---|---|
+|---|—|
 | `VANTIO_API_KEY` | Enforce-plane API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
-| `VANTIO_TELEMETRY_DISABLED` | Set to `1` to opt out of anonymous usage telemetry |
-| `DO_NOT_TRACK` | Set to `1` to opt out of anonymous usage telemetry |
+| `VANTIO_TELEMETRY` | Set to `1` to opt **in** to usage telemetry (disabled by default) |
+| `VANTIO_TELEMETRY_DISABLED` | Set to `1` to explicitly disable telemetry (overrides `VANTIO_TELEMETRY=1`) |
+| `DO_NOT_TRACK` | Set to `1` to disable telemetry (overrides `VANTIO_TELEMETRY=1`) |
 
 ---
 
-## Anonymous telemetry
+## Usage telemetry
 
-Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS, LLM hostnames, and counts) to help prioritize providers and runtimes. It never includes prompts, completions, API keys, or PII, and never blocks your agent. Opt out with `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`.
+**Disabled by default.** Vantio does not transmit any usage data unless you explicitly opt in.
+
+To opt in:
+
+```bash
+VANTIO_TELEMETRY=1 vantio run node agent.js
+```
+
+To opt back out (overrides a system-wide opt-in):
+
+```bash
+VANTIO_TELEMETRY_DISABLED=1 vantio run node agent.js
+# or
+DO_NOT_TRACK=1 vantio run node agent.js
+```
+
+**What is sent (only when opted in):**
+
+| Field | Value |
+|---|—|
+| `anonymousId` | Random UUID stored locally at `~/.vantio/telemetry-id` (0600). Persists across runs. |
+| `event` | `"run"` (fired on the first intercepted LLM call in a run) |
+| `hosts` | LLM hostnames contacted (e.g. `["api.openai.com"]`) — at most 50 |
+| `callCount` | Number of intercepted calls at the time of the ping |
+| `runtime` | `"node"` |
+| `runtimeVersion` | Node.js version string |
+| `os` | `process.platform` (e.g. `"linux"`) |
+| `cliVersion` | `@vantio/cli` version |
+
+**Destination:** `POST https://vantio.ai/api/v1/telemetry`
+
+**Trigger:** First intercepted LLM call in a `vantio run` session (not on install, help, version, zero-call runs, or login failures).
+
+**Never sent:** prompts, completions, request/response bodies, API keys, environment variables, source code, internal paths, user content, or any PII.
+
+**Retention:** Unknown. Contact [hello@vantio.ai](mailto:hello@vantio.ai) for the data retention policy.
+
+**Note:** The `anonymousId` field name in the wire format is retained for server compatibility. The local identifier file is `~/.vantio/telemetry-id`.
 
 ---
 
@@ -235,7 +273,7 @@ Vantio sends a small **anonymous, opt-out** usage ping (a random id, runtime/OS,
 
 Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` (host-block and outbound frame size), and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, file-body size from `--post-file` / `@file`, and PII rewrite of inline argv bodies). Spawned httpie shares host-block and inline `--raw` / field redaction; aria2c shares host-block from argv URLs. Current npm release: **`@vantio/cli` 0.3.20**.
 
-Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk` **3.0.13**) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
+Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk`) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 
 ---
 
