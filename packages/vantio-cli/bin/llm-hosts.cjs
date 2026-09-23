@@ -1,5 +1,4 @@
-// Shared Optics/Gate wrap catalog — destinations the Node interceptor may
-// observe or enforce. Keep in lockstep with
+// Destinations the Node interceptor may record. Keep in lockstep with
 // vantio-open-core/packages/vantio-agent-sdk-py/vantio/_http_observe.py
 //
 // Exact DNS names plus regional patterns verified against provider docs

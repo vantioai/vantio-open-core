@@ -11,22 +11,17 @@
 // and Phantom Engine enforcement component PII rewrite of inline argv bodies — not file contents or stdin pipes)
 // to in-scope hosts. Browsers stay outside this wrap.
 //
-// Layer identity in the Vantio suite:
-//   Open Core (this file) = OBSERVE PLANE — sees everything, no blocks on its own.
-//   Pro control plane     = ENFORCE PLANE — policy (block/redact/cap) is fetched
-//                           from the Pro server and applied locally by this interceptor.
-//   Phantom Engine        = KERNEL PLANE  — eBPF enforcement beneath the app layer.
-//   Enterprise suite      = all three running simultaneously.
-//
-//   Standalone (no API key):  observe + print to terminal only
-//   With Pro API key:         fetch policy from Pro, then enforce locally (redact / cap / block / report)
-//   Enterprise deployment:    this interceptor + Pro + Phantom Engine all active at once
+// Optics 0.3.21 records supported outbound calls locally.
+// The public host is not an account or ingest service. A key does not fetch
+// configuration from that host. An explicit VANTIO_INGEST_URL pointing at a
+// different control plane, together with VANTIO_API_KEY, still loads policy
+// from that plane and applies it in this process.
 
 "use strict";
 
 const { randomUUID } = require("node:crypto");
 const { mkdirSync, writeFileSync, statSync, fstatSync, readFileSync, openSync, readSync, closeSync } = require("node:fs");
-const { homedir, hostname: osHostname } = require("node:os");
+const { homedir } = require("node:os");
 const { join, basename } = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
 const {
@@ -48,7 +43,18 @@ const c = {
 };
 
 const INGEST_URL = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
-const API_KEY    = process.env.VANTIO_API_KEY;
+// Optics 0.3.21: do not fetch account configuration or paid ingest from the
+// public host. Another VANTIO_INGEST_URL keeps the control-plane client.
+function isPublicCloudHost(raw) {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === "vantio.ai" || host === "www.vantio.ai";
+  } catch {
+    return true;
+  }
+}
+const PUBLIC_CLOUD_HOST = isPublicCloudHost(INGEST_URL);
+const API_KEY    = PUBLIC_CLOUD_HOST ? undefined : process.env.VANTIO_API_KEY;
 const AUDIT_MODE = process.env.VANTIO_AUDIT_MODE === "1";
 const SUMMARY    = process.env.VANTIO_SUMMARY    === "1";
 const FREE_MODE  = !API_KEY;
@@ -157,15 +163,8 @@ const DEFAULT_POLICY = {
 
 let policy = { ...DEFAULT_POLICY };
 
-// Whether this key actually unlocks cloud sync. /api/v1/config fails open
-// with a permissive policy for EVERY valid key (paid or free) so free users
-// are never blocked — but /api/v1/ingest and /api/v1/discover correctly
-// 403 for non-PRO/ENTERPRISE tenants. Without tracking tier separately, a
-// free-tier user who has merely run `vantio login` looks identical to a paid
-// one right up until their events start silently 403ing (report() swallows
-// all errors by design, so that failure is otherwise invisible). Checked
-// before every report() call and before claiming "routed to your dashboard"
-// in the run summary.
+// Set only after a non-public control plane returns a tier that may sync.
+// report() stays quiet otherwise. The public host never reaches this path.
 let cloudSyncActive = false;
 function isPaidTier(tier) {
   return tier === "PRO" || tier === "ENTERPRISE";
@@ -276,14 +275,8 @@ const policyReady = (async () => {
         policy = normalizePolicy({ ...policy, ...data.policy });
         cloudSyncActive = isPaidTier(data.tier) || SOAK_LOCAL;
         log(`${c.dim}[ ∅ VANTIO ]${c.reset} Policy loaded — enforce=${policy.enforce}, redact=${policy.redact_pii}`);
-        if (!cloudSyncActive) {
-          log(
-            LOCAL_GATE
-              ? `${c.dim}[ ∅ VANTIO ] Local control plane — events sync to the on-box control plane (${INGEST_URL}).${c.reset}`
-              : `${c.dim}[ ∅ VANTIO ] Free plan — calls observed locally only. Dashboard sync requires Pro or Enterprise (vantio.ai/pricing).${c.reset}`
-          );
-        } else if (SOAK_LOCAL) {
-          log(`${c.dim}[ ∅ VANTIO ] Local control plane — syncing events to ${INGEST_URL}${c.reset}`);
+        if (LOCAL_GATE || SOAK_LOCAL) {
+          log(`${c.dim}[ ∅ VANTIO ] Local control plane — ${INGEST_URL}${c.reset}`);
         }
       }
     }
@@ -300,9 +293,7 @@ function redactString(text) {
   let out = text;
   const redactions = [];
   for (const type of policy.pii_types) {
-    // Cloud policies may store pii_types in any case (the dashboard persists
-    // UPPERCASE, e.g. "EMAIL"); normalize before looking up the lowercase
-    // pattern keys so redaction fires regardless of stored case.
+    // Policies may store pii_types in any case. Normalize before lookup.
     const key = typeof type === "string" ? type.trim().toLowerCase() : type;
     const p = PII_PATTERNS[key];
     if (!p) continue;
@@ -477,9 +468,8 @@ function blockedResponse(reason) {
 
 function report(metadata) {
   if (FREE_MODE || !INGEST_URL || !cloudSyncActive) return;
-  // Additive Optics ingest fields — Gate stores opaque JSON; PE joins on traceId.
-  // Mission Control KPIs read bytes_observed; wrap paths historically sent
-  // bytes_severed / request_bytes only — alias so counts and spend roll up.
+  // Extra fields on a control-plane event. bytes_observed aliases the
+  // historical byte counters so counts stay consistent.
   // mediation default: "optics_enforcement" for policy-action events that do not
   // carry a transport-layer mediation value (BLOCKED_*, DRY_RUN_*, ENFORCEMENT_GAP).
   // Legacy ingest records may carry the retired "sight_loop" value; the server
@@ -659,8 +649,7 @@ async function enforceRequest(hostname, input, init) {
     redactions = r.redactions;
     if (r.unscanned) {
       log(`${c.dim}[ ∅ VANTIO ] ${hostname} — ${r.unscanned} request body not scanned for PII (passed through)${c.reset}`);
-      // Emit enforcement gap: Pro cannot redact streaming/opaque bodies.
-      // These events feed /api/v1/residual-risk and surface the Enterprise upgrade path.
+      // Opaque bodies are not scanned. Record the gap when redaction is on.
       if (policy.redact_pii) {
         report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
                  gap_type: "unscanned_body", body_type: r.unscanned,
@@ -832,9 +821,7 @@ async function wrapFetch(backend, input, init) {
       `  bytes:    ${resp.bytes != null ? resp.bytes.toLocaleString() : "unknown"}`,
       `  pid:      ${process.pid}`,
       `  time:     ${ts}`,
-      LOCAL_GATE
-        ? `  ${c.dim}→ Local control plane attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
-        : `  ${c.dim}→ Optics data log (your machine). See vantio.ai/optics · Phantom Engine enforces on this path.${c.reset}`,
+      `  ${c.dim}→ Observed locally. Prompts and completions are never stored.${c.reset}`,
     ].join("\n"));
     return response;
   }
@@ -3662,7 +3649,6 @@ process.on("exit", () => {
     const vantioHome = process.env.VANTIO_HOME || join(homedir(), ".vantio");
     const runsDir = join(vantioHome, "runs");
     mkdirSync(runsDir, { recursive: true, mode: 0o700 });
-    const machineHost = (() => { try { return osHostname(); } catch { return "unknown"; } })();
     const providers = [...new Set(_calls.map((x) => x.provider).filter(Boolean))];
     const errors = _calls.filter((x) => x.error || x.ok === false).length;
     const by_host = {};
@@ -3689,8 +3675,6 @@ process.on("exit", () => {
       node_version: process.version,
       platform:    process.platform,
       arch:        process.arch,
-      cwd:         (() => { try { return process.cwd(); } catch { return null; } })(),
-      machine:     machineHost,
       started_at:  new Date(_startMs).toISOString(),
       generated_at: new Date(now).toISOString(),
       duration_ms: now - _startMs,
@@ -3727,9 +3711,7 @@ process.on("exit", () => {
         est_spend_usd: FREE_MODE ? null : Number(spentUsd.toFixed(6)),
       },
       residual: {
-        note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read)). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
-        upgrade_optics: "https://vantio.ai/phantom",
-        upgrade_enterprise: "https://vantio.ai/enterprise",
+        note: "Metadata only. Supported Node outbound calls to in-scope hosts are recorded locally. Prompts and completions are never stored. Browsers stay outside this wrap.",
       },
     };
     const safeid   = RUN_TRACE_ID.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
@@ -3757,20 +3739,8 @@ process.on("exit", () => {
     lines.push(`  Redacted:     ${redacted > 0 ? c.green : ""}${redacted}${c.reset}`);
     lines.push(`  Blocked:      ${blocked > 0 ? c.red : ""}${blocked}${c.reset}`);
     lines.push(`  Est. spend:   $${spentUsd.toFixed(4)}`);
-    lines.push(
-      cloudSyncActive
-        ? `  ${c.dim}→ Events routed to your Vantio dashboard.${c.reset}`
-        : (LOCAL_GATE
-            ? `  ${c.dim}→ Local control plane — events stay on this control plane (${INGEST_URL}).${c.reset}`
-            : `  ${c.dim}→ Free plan — observed locally only. Upgrade at vantio.ai/pricing to sync your dashboard.${c.reset}`)
-    );
   } else {
     lines.push(`  ${c.dim}→ Run \`vantio prove\` to export an auditor-ready artifact from this run.${c.reset}`);
-    lines.push(
-      LOCAL_GATE
-        ? `  ${c.dim}→ Local control plane detected — set VANTIO_API_KEY for enforce on this box.${c.reset}`
-        : `  ${c.dim}→ Optics observes only. Upgrade to Vantio Phantom Engine to enforce policy — vantio.ai/pricing.${c.reset}`
-    );
   }
   lines.push("");
   process.stderr.write(lines.join("\n"));

@@ -1,13 +1,12 @@
 // Black-box tests for bin/vantio.js — spawns the real CLI entrypoint exactly
 // as a user would invoke it, with HOME redirected to a throwaway temp dir so
-// `vantio login`/`logout`/`whoami` never touch a real ~/.vantio.
+// HOME is redirected to a throwaway temp dir so tests never touch a real ~/.vantio.
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,7 +33,7 @@ describe("vantio CLI — basic dispatch", () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
     assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
-    assert.doesNotMatch(stdout, /vantio login/, "login must not appear in primary help (AUTH_DEPLOYMENT_UNVERIFIED)");
+    assert.doesNotMatch(stdout, /login|whoami|logout/i);
     assert.match(stdout, /vantio discover/);
   });
 
@@ -108,122 +107,16 @@ describe("vantio CLI — basic dispatch", () => {
     assert.match(stdout, /vantio discover.*AI-agent call history/s);
   });
 
-  test("discover with no stored key tells the user to log in first", async () => {
+  test("discover with no config stays local and does not ask for a login", async () => {
     const homeDir = mkdtempSync(join(tmpdir(), "vantio-test-"));
     try {
-      const { code, stdout } = await runCli(["discover"], { HOME: homeDir });
-      assert.equal(code, 1);
-      assert.match(stdout, /Run `vantio login` first/);
+      const { code, stdout, stderr } = await runCli(["discover"], { HOME: homeDir });
+      assert.equal(code, 0);
+      assert.match(stdout, /local run history/);
+      assert.doesNotMatch(`${stdout}\n${stderr}`, /login|whoami|dashboard|pricing/i);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
     }
-  });
-});
-
-describe("vantio CLI — login / whoami / logout (against a mock control plane)", () => {
-  let server, baseUrl, homeDir, tenantTier, configPolicy;
-
-  beforeEach(async () => {
-    tenantTier = "ENTERPRISE";
-    configPolicy = { enforce: false, redact_pii: false, pii_types: [], allowed_hosts: [], blocked_hosts: [], max_request_bytes: 0, spend_cap_usd: 0 };
-    server = http.createServer((req, res) => {
-      if (req.url.startsWith("/api/v1/config")) {
-        const identity = req.headers["x-vantio-identity"];
-        if (identity === "vk_bad_key") {
-          res.writeHead(401, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "Invalid API key." }));
-          return;
-        }
-        const payload = JSON.stringify({ policy: configPolicy, tier: tenantTier });
-        res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
-        res.end(payload);
-        return;
-      }
-      res.writeHead(404).end();
-    });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    baseUrl = `http://127.0.0.1:${server.address().port}`;
-    homeDir = mkdtempSync(join(tmpdir(), "vantio-test-"));
-  });
-
-  afterEach(async () => {
-    await new Promise((resolve) => server.close(resolve));
-    rmSync(homeDir, { recursive: true, force: true });
-  });
-
-  test("login with a valid paid key saves config with 0600 permissions and no upgrade nudge", async () => {
-    const { code, stdout } = await runCli(
-      ["login", "vk_good_key"],
-      { HOME: homeDir, VANTIO_INGEST_URL: baseUrl }
-    );
-    assert.equal(code, 0);
-    assert.match(stdout, /Connected to Vantio/);
-    assert.doesNotMatch(stdout, /Free plan/);
-
-    const cfgPath = join(homeDir, ".vantio", "config.json");
-    const saved = JSON.parse(readFileSync(cfgPath, "utf8"));
-    assert.equal(saved.apiKey, "vk_good_key");
-    assert.equal(saved.ingestUrl, baseUrl);
-
-    const mode = statSync(cfgPath).mode & 0o777;
-    assert.equal(mode, 0o600);
-  });
-
-  test("login with a free-tier key succeeds but honestly warns about dashboard sync", async () => {
-    tenantTier = "FREE";
-    const { code, stdout } = await runCli(
-      ["login", "vk_free_key"],
-      { HOME: homeDir, VANTIO_INGEST_URL: baseUrl }
-    );
-    assert.equal(code, 0);
-    assert.match(stdout, /Connected to Vantio/);
-    assert.match(stdout, /Free plan/);
-    assert.match(stdout, /vantio\.ai\/pricing/);
-  });
-
-  test("login with an invalid key exits 1 and does not save anything", async () => {
-    const { code, stderr } = await runCli(
-      ["login", "vk_bad_key"],
-      { HOME: homeDir, VANTIO_INGEST_URL: baseUrl }
-    );
-    assert.equal(code, 1);
-    assert.match(stderr, /rejected/);
-    assert.throws(() => readFileSync(join(homeDir, ".vantio", "config.json")));
-  });
-
-  test("login with no key and no TTY input exits 1", async () => {
-    const { code, stderr } = await runCli(["login"], { HOME: homeDir, VANTIO_INGEST_URL: baseUrl });
-    assert.equal(code, 1);
-    assert.match(stderr, /no API key provided/);
-  });
-
-  test("whoami reflects the saved key's tier and masks the key", async () => {
-    await runCli(["login", "vk_paid_1234567890"], { HOME: homeDir, VANTIO_INGEST_URL: baseUrl });
-    const { code, stdout } = await runCli(["whoami"], { HOME: homeDir });
-    assert.equal(code, 0);
-    assert.match(stdout, /connected/);
-    assert.doesNotMatch(stdout, /vk_paid_1234567890/);
-    assert.match(stdout, /vk_pai…7890/);
-  });
-
-  test("whoami with no stored key says so", async () => {
-    const { code, stdout } = await runCli(["whoami"], { HOME: homeDir });
-    assert.equal(code, 0);
-    assert.match(stdout, /Not logged in/);
-  });
-
-  test("logout removes the stored key", async () => {
-    await runCli(["login", "vk_good_key"], { HOME: homeDir, VANTIO_INGEST_URL: baseUrl });
-    const { code, stdout } = await runCli(["logout"], { HOME: homeDir });
-    assert.equal(code, 0);
-    assert.match(stdout, /Logged out/);
-    assert.throws(() => readFileSync(join(homeDir, ".vantio", "config.json")));
-  });
-
-  test("logout with nothing stored says so instead of erroring", async () => {
-    const { code, stdout } = await runCli(["logout"], { HOME: homeDir });
-    assert.equal(code, 0);
-    assert.match(stdout, /No stored credentials/);
   });
 });
 

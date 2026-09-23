@@ -1,8 +1,8 @@
 # FOUNDER COPY CHANGE REQUEST
 **Date:** 2026-09-23  
 **Raised by:** Cloud Agent (Optics CLI closure run)  
-**Status:** AWAITING FOUNDER REVIEW — no change to public-facing copy without approval  
-**Blocking:** PR #45 final verdict cannot be upgraded to PASS until auth surface copy is resolved
+**Status:** SUPERSEDED for Optics 0.3.21 by the Founder decision `RELEASE_PATH_2_LOGIN_RETIREMENT` (section at the end). The proposal below was not adopted.  
+**Historical blocking note:** PR #45 was BLOCKED_AUTH before that decision.
 
 ---
 
@@ -83,3 +83,32 @@ Account (Phantom Engine / Enterprise trial key required):
 
 *This file will be superseded by the Founder's decision and should be removed or archived
 once the auth copy question is resolved.*
+
+---
+
+## LOGIN RETIREMENT — 2026-09-23
+
+Founder path: `RELEASE_PATH_2_LOGIN_RETIREMENT`.
+
+Recorded facts:
+
+- Production `GET /api/v1/config` on `https://vantio.ai` is source-only. The live host returns the marketing HTML 404. Classification remains `AUTH_ENDPOINT_SOURCE_ONLY`. This task did not deploy, repair, recreate, redirect, or replace that route.
+- The Founder selected login retirement for Optics 0.3.21. Optics 0.3.21 is free, local-first, and account-free.
+- Unsupported public copy for accounts, trial keys, dashboard sync, remote paid-tier synchronization, self-service billing, and Stripe Checkout was removed from the CLI help, usage errors, README, and package description.
+- No "temporarily unavailable", "coming soon", outage, or return-date copy was added.
+- This is a release-scope decision for Optics 0.3.21. It is not a plan for future authentication.
+
+Compatibility, internal only:
+
+- `vantio login` and `vantio whoami` are not dispatched. They print the unknown-command usage, which does not list them.
+- `vantio logout` remains a hidden local file deletion of `~/.vantio/config.json`. It does not read or print the file and it does not use the network. Its stdout is only the approved identity and description.
+- `vantio run`, `discover`, `prove`, `search`, `tail`, and `diff` do not read stored account config.
+- A key in the environment does not fetch configuration or ingest from `vantio.ai` or `www.vantio.ai`.
+- An explicit `VANTIO_INGEST_URL` on another host, with `VANTIO_API_KEY`, still loads policy from that control plane. That path is not documented as Optics 0.3.21 functionality.
+- Telemetry stays off unless `VANTIO_TELEMETRY=1`. Opt-in posts to `/api/v1/telemetry` and does not call config or ingest.
+
+Exact remaining package wording that is not the approved identity or description:
+
+- README telemetry retention line, unchanged: `Retention: Unknown. Contact hello@vantio.ai for the data retention policy.` This is not an account-setup instruction. No new sentence was written for it.
+
+No other public sentence is waiting on Founder copy for this retirement.
