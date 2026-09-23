@@ -57,7 +57,7 @@ const RUN_TRACE_ID = process.env.VANTIO_TRACE_ID || randomUUID();
 // Explicit phantom-box soak only — do NOT infer from localhost (breaks unit tests
 // that spin up ephemeral mock control planes on 127.0.0.1).
 const SOAK_LOCAL = process.env.VANTIO_SOAK_LOCAL === "1";
-// Local Gate control plane (Phantom-Box / dogfood) — never upsell Optics-only.
+// Local control plane (Phantom-Box / dogfood) — never upsell Optics-only.
 const LOCAL_GATE = SOAK_LOCAL || /:5001\/?$/.test(String(INGEST_URL || ""));
 
 // ── Lane 1 anonymous telemetry (optional, fire-and-forget) ───────────────────
@@ -279,11 +279,11 @@ const policyReady = (async () => {
         if (!cloudSyncActive) {
           log(
             LOCAL_GATE
-              ? `${c.dim}[ ∅ VANTIO ] Local Gate — events sync to the on-box control plane (${INGEST_URL}).${c.reset}`
+              ? `${c.dim}[ ∅ VANTIO ] Local control plane — events sync to the on-box control plane (${INGEST_URL}).${c.reset}`
               : `${c.dim}[ ∅ VANTIO ] Free plan — calls observed locally only. Dashboard sync requires Pro or Enterprise (vantio.ai/pricing).${c.reset}`
           );
         } else if (SOAK_LOCAL) {
-          log(`${c.dim}[ ∅ VANTIO ] Local Gate mode — syncing events to ${INGEST_URL}${c.reset}`);
+          log(`${c.dim}[ ∅ VANTIO ] Local control plane — syncing events to ${INGEST_URL}${c.reset}`);
         }
       }
     }
@@ -829,8 +829,8 @@ async function wrapFetch(backend, input, init) {
       `  pid:      ${process.pid}`,
       `  time:     ${ts}`,
       LOCAL_GATE
-        ? `  ${c.dim}→ Local Gate attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
-        : `  ${c.dim}→ Optics data log (your machine). See docs/sight-loop.md · Phantom Engine enforces on this path.${c.reset}`,
+        ? `  ${c.dim}→ Local control plane attached — observe now; run with VANTIO_API_KEY for Policy Latch enforce.${c.reset}`
+        : `  ${c.dim}→ Optics data log (your machine). See vantio.ai/optics · Phantom Engine enforces on this path.${c.reset}`,
     ].join("\n"));
     return response;
   }
@@ -3640,8 +3640,6 @@ globalThis.fetch = function vantioFetch(input, init) {
 })();
 
 process.on("exit", () => {
-  if (_calls.length === 0) return;
-
   const hosts      = [...new Set(_calls.map((x) => x.hostname))];
   const redacted   = _calls.filter((x) => x.action === "REDACTED").length;
   const blocked    = _calls.filter((x) => String(x.action).startsWith("BLOCKED")).length;
@@ -3654,8 +3652,8 @@ process.on("exit", () => {
   // sendRunTelemetryOnce() instead. This handler only prints the local summary.
 
   // ── Write a local run log for `vantio prove` / `vantio discover --local` ──
-  // Always written when LLM calls were observed, regardless of tier or SUMMARY
-  // flag. Non-fatal — run log write must never crash the agent exit.
+  // Always written on every vantio run, regardless of call count, tier, or
+  // SUMMARY flag. Non-fatal — run log write must never crash the agent exit.
   try {
     const vantioHome = process.env.VANTIO_HOME || join(homedir(), ".vantio");
     const runsDir = join(vantioHome, "runs");
@@ -3680,7 +3678,6 @@ process.on("exit", () => {
       vantio_run_log: "1",
       schema_version: 2,
       plane: "optics",
-      workflow: "sight_loop",
       data_note: "Developer egress data log — metadata only; never prompts or completions.",
       trace_id:    RUN_TRACE_ID,
       pid:         process.pid,
@@ -3727,8 +3724,7 @@ process.on("exit", () => {
       },
       residual: {
         note: "App plane covers fetch, undici, Node http/https, http2, Node net/tls, undici.upgrade / CONNECT tunnel bytes, and Node-spawned curl, wget, httpie, and aria2c to in-scope hosts (file-body and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines; inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read)). Host Sight covers host egress observe. Browsers stay outside this wrap until Phantom Engine on enrolled Linux.",
-        // Key name retained for legacy compatibility — Gate is not a current standalone SKU; destination is Phantom Engine.
-        upgrade_gate: "https://vantio.ai/phantom",
+        upgrade_optics: "https://vantio.ai/phantom",
         upgrade_enterprise: "https://vantio.ai/enterprise",
       },
     };
@@ -3738,6 +3734,8 @@ process.on("exit", () => {
   } catch {
     // Non-fatal — never let log writing affect the exiting agent.
   }
+
+  if (_calls.length === 0) return;
 
   if (!SUMMARY && !FREE_MODE) return;
 
@@ -3759,19 +3757,16 @@ process.on("exit", () => {
       cloudSyncActive
         ? `  ${c.dim}→ Events routed to your Vantio dashboard.${c.reset}`
         : (LOCAL_GATE
-            ? `  ${c.dim}→ Local Gate — events stay on this control plane (${INGEST_URL}).${c.reset}`
+            ? `  ${c.dim}→ Local control plane — events stay on this control plane (${INGEST_URL}).${c.reset}`
             : `  ${c.dim}→ Free plan — observed locally only. Upgrade at vantio.ai/pricing to sync your dashboard.${c.reset}`)
     );
   } else {
     lines.push(`  ${c.dim}→ Run \`vantio prove\` to export an auditor-ready artifact from this run.${c.reset}`);
     lines.push(
       LOCAL_GATE
-        ? `  ${c.dim}→ Local Gate control plane detected — set VANTIO_API_KEY=soak-pro for enforce on this box.${c.reset}`
+        ? `  ${c.dim}→ Local control plane detected — set VANTIO_API_KEY for enforce on this box.${c.reset}`
         : `  ${c.dim}→ Optics observes only. Upgrade to Vantio Phantom Engine to enforce policy — vantio.ai/pricing.${c.reset}`
     );
-    if (!telemetryDisabled()) {
-      lines.push(`  ${c.dim}Anonymous usage telemetry helps improve Vantio. Opt out with VANTIO_TELEMETRY_DISABLED=1.${c.reset}`);
-    }
   }
   lines.push("");
   process.stderr.write(lines.join("\n"));
