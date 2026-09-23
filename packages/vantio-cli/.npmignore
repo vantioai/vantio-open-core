@@ -1,3 +1,6 @@
 test
 **/__pycache__/**
 **/*.pyc
+**/*.pyo
+**/*.pyd
+bin/python-wrap/__pycache__/

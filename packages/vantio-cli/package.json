@@ -1,7 +1,7 @@
 {
   "name": "@vantio/cli",
-  "version": "0.3.20",
-  "description": "Vantio Optics CLI — wrap any AI agent and observe LLM egress. Blind by design, not a proxy. Sight Loop: wrap → capture → inspect.",
+  "version": "0.3.21",
+  "description": "Vantio Optics | Free Observability for AI Agents — wrap any AI agent and observe LLM egress. Prompts and completions are never stored.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
   "homepage": "https://vantio.ai/optics",
@@ -15,12 +15,10 @@
     "vantio",
     "vantio-optics",
     "optics",
-    "sight-loop",
     "ai",
     "agent",
     "cli",
     "observability",
-    "governance",
     "openai",
     "anthropic",
     "mcp"
