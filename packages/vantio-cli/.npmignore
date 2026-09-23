@@ -1,6 +1,7 @@
 test
-**/__pycache__/**
-**/*.pyc
-**/*.pyo
-**/*.pyd
+bin/python-wrap/__pycache__
 bin/python-wrap/__pycache__/
+__pycache__
+*.pyc
+*.pyo
+*.pyd
