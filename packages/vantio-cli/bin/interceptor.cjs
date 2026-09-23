@@ -1656,7 +1656,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 // ── Run summary ─────────────────────────────────────────────────────────────
 
 
-// Node http/https — same Sight Loop / Gate rules as fetch, last-known policy
+// Node http/https — same Optics wrap rules as fetch, last-known policy
 // (request() is sync; fail-open until policy loads). Out-of-scope hosts and
 // the ingest control plane pass through untouched. Node-spawned curl is
 // wrapped separately. Browsers stay residual.
@@ -2194,7 +2194,7 @@ globalThis.fetch = function vantioFetch(input, init) {
   } catch { /* fail open — native WebSocket stays unwrapped */ }
 })();
 
-// Node http2.connect / session.request — same Sight Loop / Gate rules as
+// Node http2.connect / session.request — same Optics wrap rules as
 // Node http. Host block happens before the session opens. Residual: browsers.
 (function patchNodeHttp2() {
   let http2;
