@@ -9,9 +9,12 @@ from vantio._telemetry import is_telemetry_disabled, send_run_telemetry_once, se
 from .mock_server import MockServer
 
 
+_TELEMETRY_ENV = ("VANTIO_TELEMETRY", "VANTIO_TELEMETRY_DISABLED", "DO_NOT_TRACK")
+
+
 class TelemetryDisabledTests(unittest.TestCase):
     def setUp(self) -> None:
-        self._saved = {k: os.environ.get(k) for k in ("VANTIO_TELEMETRY_DISABLED", "DO_NOT_TRACK")}
+        self._saved = {k: os.environ.get(k) for k in _TELEMETRY_ENV}
         for k in self._saved:
             os.environ.pop(k, None)
 
@@ -22,7 +25,11 @@ class TelemetryDisabledTests(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def test_false_by_default(self) -> None:
+    def test_disabled_by_default(self) -> None:
+        self.assertTrue(is_telemetry_disabled())
+
+    def test_enabled_only_when_opted_in(self) -> None:
+        os.environ["VANTIO_TELEMETRY"] = "1"
         self.assertFalse(is_telemetry_disabled())
 
     def test_true_when_vantio_telemetry_disabled(self) -> None:
@@ -33,17 +40,27 @@ class TelemetryDisabledTests(unittest.TestCase):
         os.environ["DO_NOT_TRACK"] = "1"
         self.assertTrue(is_telemetry_disabled())
 
+    def test_disabled_overrides_opt_in(self) -> None:
+        os.environ["VANTIO_TELEMETRY"] = "1"
+        os.environ["VANTIO_TELEMETRY_DISABLED"] = "1"
+        self.assertTrue(is_telemetry_disabled())
+
+    def test_do_not_track_overrides_opt_in(self) -> None:
+        os.environ["VANTIO_TELEMETRY"] = "1"
+        os.environ["DO_NOT_TRACK"] = "1"
+        self.assertTrue(is_telemetry_disabled())
+
 
 class SendTelemetryTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self._saved = {
             k: os.environ.get(k)
-            for k in ("HOME", "VANTIO_INGEST_URL", "VANTIO_TELEMETRY_DISABLED", "DO_NOT_TRACK")
+            for k in ("HOME", "VANTIO_INGEST_URL", *_TELEMETRY_ENV)
         }
         os.environ["HOME"] = self._tmpdir.name
-        os.environ.pop("VANTIO_TELEMETRY_DISABLED", None)
-        os.environ.pop("DO_NOT_TRACK", None)
+        for k in _TELEMETRY_ENV:
+            os.environ.pop(k, None)
 
     def tearDown(self) -> None:
         for k, v in self._saved.items():
@@ -53,10 +70,18 @@ class SendTelemetryTests(unittest.TestCase):
                 os.environ[k] = v
         self._tmpdir.cleanup()
 
+    def test_does_not_send_unless_opted_in(self) -> None:
+        with MockServer() as server:
+            os.environ["VANTIO_INGEST_URL"] = server.url
+            send_telemetry(event="run", hosts=["api.openai.com"], call_count=1)
+            time.sleep(0.3)
+            self.assertEqual(len(server.requests), 0)
+
     def test_posts_only_the_allowlisted_fields(self) -> None:
         with MockServer() as server:
             server.respond_with(202, {"ok": True})
             os.environ["VANTIO_INGEST_URL"] = server.url
+            os.environ["VANTIO_TELEMETRY"] = "1"
 
             send_telemetry(
                 event="run",
@@ -83,12 +108,23 @@ class SendTelemetryTests(unittest.TestCase):
     def test_never_sends_anything_when_disabled(self) -> None:
         with MockServer() as server:
             os.environ["VANTIO_INGEST_URL"] = server.url
+            os.environ["VANTIO_TELEMETRY"] = "1"
             os.environ["VANTIO_TELEMETRY_DISABLED"] = "1"
             send_telemetry(event="run")
             time.sleep(0.3)
             self.assertEqual(len(server.requests), 0)
 
+    def test_do_not_track_overrides_opt_in_on_the_wire(self) -> None:
+        with MockServer() as server:
+            os.environ["VANTIO_INGEST_URL"] = server.url
+            os.environ["VANTIO_TELEMETRY"] = "1"
+            os.environ["DO_NOT_TRACK"] = "1"
+            send_telemetry(event="run")
+            time.sleep(0.3)
+            self.assertEqual(len(server.requests), 0)
+
     def test_never_raises_when_the_endpoint_is_unreachable(self) -> None:
+        os.environ["VANTIO_TELEMETRY"] = "1"
         os.environ["VANTIO_INGEST_URL"] = "http://127.0.0.1:1"
         try:
             send_telemetry(event="run")
@@ -99,6 +135,7 @@ class SendTelemetryTests(unittest.TestCase):
         with MockServer() as server:
             server.respond_with(202, {"ok": True})
             os.environ["VANTIO_INGEST_URL"] = server.url
+            os.environ["VANTIO_TELEMETRY"] = "1"
             send_telemetry(event="run")
             time.sleep(0.3)
             send_telemetry(event="summary")
@@ -112,9 +149,10 @@ class SendTelemetryTests(unittest.TestCase):
 class SendRunTelemetryOnceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        self._saved = {k: os.environ.get(k) for k in ("HOME", "VANTIO_INGEST_URL", "VANTIO_TELEMETRY_DISABLED")}
+        self._saved = {k: os.environ.get(k) for k in ("HOME", "VANTIO_INGEST_URL", *_TELEMETRY_ENV)}
         os.environ["HOME"] = self._tmpdir.name
-        os.environ.pop("VANTIO_TELEMETRY_DISABLED", None)
+        for k in _TELEMETRY_ENV:
+            os.environ.pop(k, None)
         # This module-level flag is process-global by design (one ping per
         # process) — reset it directly so each test starts from a clean slate.
         _telemetry._sent_once = False
@@ -132,6 +170,7 @@ class SendRunTelemetryOnceTests(unittest.TestCase):
         with MockServer() as server:
             server.respond_with(202, {"ok": True})
             os.environ["VANTIO_INGEST_URL"] = server.url
+            os.environ["VANTIO_TELEMETRY"] = "1"
 
             send_run_telemetry_once()
             send_run_telemetry_once()

@@ -181,10 +181,7 @@ Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a sep
 
 ## Telemetry
 
-```bash
-export VANTIO_TELEMETRY_DISABLED=1   # or
-export DO_NOT_TRACK=1
-```
+Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
 
 ---
 
