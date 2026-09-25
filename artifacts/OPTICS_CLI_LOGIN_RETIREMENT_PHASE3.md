@@ -770,3 +770,111 @@ On 2026-09-25 the full local discover run failed once at `test_create_connection
 ### Hard stops
 
 No merge, npm publish, PyPI publish, tag, release, force-push, production change, real credential, Phantom Engine behavior change, or pricing change. PR #45 stays draft.
+
+## Python opt-in alignment + docs scrub — 2026-09-25
+
+**Verdict:** `PASS_TELEMETRY_ALIGNED`  
+**Product commit:** `fa3291926029bedaafd18514a6a0a99b1197b792`  
+PR #45 stays DRAFT `[DO NOT MERGE]`.
+
+### Python telemetry gate
+
+Before (`is_telemetry_disabled`):
+
+```python
+def is_telemetry_disabled() -> bool:
+    """True when the user has opted out via VANTIO_TELEMETRY_DISABLED or DO_NOT_TRACK."""
+    return (
+        os.environ.get("VANTIO_TELEMETRY_DISABLED") == "1"
+        or os.environ.get("DO_NOT_TRACK") == "1"
+    )
+```
+
+After:
+
+```python
+def is_telemetry_disabled() -> bool:
+    if os.environ.get("VANTIO_TELEMETRY_DISABLED") == "1":
+        return True
+    if os.environ.get("DO_NOT_TRACK") == "1":
+        return True
+    if os.environ.get("VANTIO_TELEMETRY") != "1":
+        return True
+    return False
+```
+
+Call sites of the gate were not given new arguments: `send_telemetry` and `send_run_telemetry_once` in `vantio/_telemetry.py`, and `shield` in `vantio/sdk.py` (decorator and context manager). Payload keys, the `hosts` field, and `send_run_telemetry_once(sdk_version)` are unchanged. Comments that said opt-out in `_telemetry.py` and `sdk.py` now say opt-in.
+
+### Tests updated
+
+- `test_false_by_default` became `test_disabled_by_default` (unset env asserts disabled).
+- Added `test_enabled_only_when_opted_in`, `test_disabled_overrides_opt_in`, `test_do_not_track_overrides_opt_in`.
+- Added `test_does_not_send_unless_opted_in` and `test_do_not_track_overrides_opt_in_on_the_wire`.
+- `test_posts_only_the_allowlisted_fields`, `test_anonymous_id_persists_across_calls`, `test_only_sends_once_per_process`, and `test_never_raises_when_the_endpoint_is_unreachable` now set `VANTIO_TELEMETRY=1` so they still exercise a send.
+- `test_never_sends_anything_when_disabled` now sets opt-in and `VANTIO_TELEMETRY_DISABLED=1` together, so the override is what stops the send.
+- Each setUp also saves and clears `VANTIO_TELEMETRY`.
+
+### Node SDK
+
+`@vantio/agent-sdk` has no usage-telemetry sender. The only hit is a comment in `src/index.ts` that `reportAnomaly` must not crash the agent. This is not a third opt-out default.
+
+### Root README claim
+
+"Telemetry is disabled by default" is true for the CLI (`telemetry.cjs` sends only when `VANTIO_TELEMETRY=1`, with the same two overrides) and for the Python SDK after this gate. The Node SDK does not send usage telemetry, so the sentence is not false there.
+
+### Behavioral proof (strace `-f -e trace=network`, local sink)
+
+| Case | Sink hits | Connect peers |
+|---|---|---|
+| (a) no telemetry env | 0 | none |
+| (b) `VANTIO_TELEMETRY=1` plus local `VANTIO_INGEST_URL` | 1 (`POST /api/v1/telemetry`) | `127.0.0.1` only |
+| (c) opt-in plus `VANTIO_TELEMETRY_DISABLED=1` | 0 | none |
+| (d) opt-in plus `DO_NOT_TRACK=1` | 0 | none |
+
+No non-loopback peer appeared.
+
+### Docs scrub
+
+`docs/observe-only.md` quick reference: removed the current instructional stanza `# Phantom Engine — requires a Phantom Engine key + vantio login`, `vantio login <phantom-engine-key>`, and the following `vantio run` line that was the second step of that login procedure. Optics commands and the Linux host-install comment remain.
+
+`docs/distribution-audit-2026-07-01.md` lines 15, 19, and 30 quote the 2026-07-01 quickstart and the commit that added login. Left as history.
+
+### CLI tarball
+
+SHA-256 `6c23ebc4a7d3a15960606a87e28f05098950aec1e7bf49de878ab2fc92a3e147`, 49605 bytes, 7 files. Unchanged.
+
+### Tests and CI
+
+Local: CLI 106 pass / 0 fail. Lint exit 0. Node SDK 43 pass / 0 fail.
+
+Local Python discover: 3.10 OK (77 tests, 9 skipped). 3.12 OK (77 tests, 6 skipped). 3.11 failed once on the socket test below, then a rerun was OK (77 tests, 9 skipped).
+
+CI on `fa32919` (`https://github.com/vantioai/vantio-open-core/actions/runs/36081599011`): CLI + Node SDK success, Python 3.10 success, Python 3.11 success, Python 3.12 failure. The 3.12 failure is only `test_create_connection_allowed_records_python_socket` at `sink.hits == 0`. Telemetry tests on that job passed. This authorization does not allow editing that test.
+
+### Socket test reclassification
+
+Full `python3 -m unittest discover -s tests -t .`, original order, 20 separate processes.
+
+Failure rate: **6/20** (runs 1, 4, 7, 11, 15, 16).
+
+Every failure was the only failure in that run: `AssertionError: 0 not greater than or equal to 1` at `tests/test_http_observe.py:500`. The traceback starts at line 500, so the preceding assertions (one `ALLOWED` `python_socket` record) had passed, and `socket.create_connection` had returned. The run took about 2.51s, which is the test's 2 second wait. Fourteen runs of the same order passed.
+
+Classification: `TRUE_FLAKE`.
+
+The order does not determine the result. Each run is a new process, so a previous suite run did not leave the socket. The miss is `_TcpSink.hits` after an allowed, completed connect. The sink's accept thread returns on any `OSError` while the listen socket can still complete a handshake, which leaves `hits` at 0 for the whole wait. That is harness nondeterminism, not a policy block. Not `ORDER_DEPENDENT`, `SHARED_STATE_POLLUTION`, `REAL_ENFORCEMENT_GAP`, or `UNKNOWN`.
+
+Under the stated rule, `TRUE_FLAKE` is not marked Founder-blocking for a Python SDK release. The 6/20 rate and the red Python 3.12 CI job are reported so a release decision can use them. It does not gate the CLI candidate. The test and its source were not modified.
+
+### Grep survivors
+
+- `docs/distribution-audit-2026-07-01.md:15,19,30` — 2026-07-01 historical audit. Left.
+- `docs/sight-loop.md:87` — "no dashboard sync" on local discover. Not in this authorization.
+- `packages/vantio-cli/bin/interceptor.cjs:557,561,751` — internal comments still say opt-out. `bin/` carve-out. The CLI gate itself is opt-in.
+- `packages/vantio-cli/test/account-retirement.test.js:18` — regex fixture. Carve-out.
+- `packages/vantio-agent-sdk-py/README.md:177-178` — env-table rows "Set to 1 to opt out" for the two override variables. Those overrides still force telemetry off.
+- `artifacts/*` — historical quotes. Not rewritten.
+- `docs/specs/WRAP_*.md`, `architecture_state.md:663`, `pyproject.toml` author email, and `Questions? security@vantio.ai` — carve-outs, untouched.
+
+### Hard stops
+
+No merge, npm publish, PyPI publish, tag, release, force-push, production endpoint change, real credential, Phantom Engine change, or pricing change. PR #45 stays draft.
