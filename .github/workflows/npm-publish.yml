@@ -1,156 +1,155 @@
 name: Publish to npm
 
+# Manual release gate for one allowlisted npm package.
+# Ordinary pushes and pull-request merges do not run this workflow.
+# This job does not pack, rebuild, or call npm publish. The enrolled runtime
+# promotes the sealed tarball only after this gate succeeds.
+# A green gate is not an SLSA verification.
+
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {}   # allows manual re-run from the Actions tab without a dummy commit
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to gate
+        required: true
+        type: choice
+        options:
+          - "@vantio/cli"
+          - "@vantio/agent-sdk"
+          - "@vantio/optics-mcp"
+          - "@vantio/gate-mcp"
+      version:
+        description: Exact version
+        required: true
+        type: string
+      source_commit:
+        description: Full source commit SHA
+        required: true
+        type: string
+      artifact_sha256:
+        description: SHA-256 of the sealed tarball
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  # Gates publish below via `needs:`. This is what actually enforces "no
-  # broken build reaches npm" — before this job existed, publish ran
-  # immediately after `pnpm install` with zero lint/typecheck/test gate, so a
-  # syntax error or a broken interceptor could ship straight to real users.
-  test:
-    name: Lint, typecheck, and test
+  validate:
+    name: Validate release coordinates
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        # Do not pin `version:` here — it conflicts with package.json packageManager.
+      - name: Gate sealed request
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          INPUT_SHA256: ${{ inputs.artifact_sha256 }}
+          CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          node scripts/release/promote_npm.mjs --gate \
+            --package "$INPUT_PACKAGE" \
+            --version "$INPUT_VERSION" \
+            --source-commit "$INPUT_COMMIT" \
+            --checkout-sha "$CHECKOUT_SHA" \
+            --expected-sha256 "$INPUT_SHA256" \
+            --repo-root "$GITHUB_WORKSPACE"
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint @vantio/cli
-        run: pnpm --filter @vantio/cli run lint
-
-      - name: Lint @vantio/optics-mcp
-        run: pnpm --filter @vantio/optics-mcp run lint
-
-      - name: Lint @vantio/gate-mcp
-        run: pnpm --filter @vantio/gate-mcp run lint
-
-      - name: Typecheck @vantio/agent-sdk
-        run: pnpm --filter @vantio/agent-sdk run typecheck && pnpm --filter @vantio/agent-sdk run typecheck:test
-
-      - name: Test @vantio/cli
-        run: pnpm --filter @vantio/cli run test
-
-      - name: Test @vantio/agent-sdk
-        run: pnpm --filter @vantio/agent-sdk run test
-
-      - name: Test @vantio/optics-mcp
-        run: pnpm --filter @vantio/optics-mcp run test
-
-      - name: Test @vantio/gate-mcp
-        run: pnpm --filter @vantio/gate-mcp run test
-
-  publish:
-    name: Build & Publish
-    needs: test
+  record-approval:
+    name: Record founder approval
+    needs: validate
     runs-on: ubuntu-latest
-
+    environment: npm-publish
+    permissions:
+      contents: read
+      actions: write
     steps:
-      - name: Checkout
+      - name: Checkout source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        # Do not pin `version:` here — it conflicts with package.json packageManager.
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Build @vantio/agent-sdk
-        run: pnpm --filter @vantio/agent-sdk run build
-
-      - name: Publish @vantio/agent-sdk
-        working-directory: packages/vantio-agent-sdk
-        run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          # Only tolerate the specific "version already published" case.
-          # Any other failure (auth, network, etc.) must fail the job loudly —
-          # do not silently swallow errors here again.
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/agent-sdk publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
+      - name: Re-check coordinates after approval
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish @vantio/cli
-        working-directory: packages/vantio-cli
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          INPUT_SHA256: ${{ inputs.artifact_sha256 }}
+          CHECKOUT_SHA: ${{ github.sha }}
         run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/cli publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          set -eu
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          node scripts/release/promote_npm.mjs --gate \
+            --package "$INPUT_PACKAGE" \
+            --version "$INPUT_VERSION" \
+            --source-commit "$INPUT_COMMIT" \
+            --checkout-sha "$CHECKOUT_SHA" \
+            --expected-sha256 "$INPUT_SHA256" \
+            --repo-root "$GITHUB_WORKSPACE"
 
-      - name: Publish @vantio/optics-mcp
-        working-directory: packages/vantio-optics-mcp
+      - name: Write approval record
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          INPUT_SHA256: ${{ inputs.artifact_sha256 }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_ENVIRONMENT: npm-publish
         run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/optics-mcp publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path("release-approval.json").write_text(json.dumps({
+              "approved": True,
+              "package": os.environ["INPUT_PACKAGE"],
+              "version": os.environ["INPUT_VERSION"],
+              "source_commit": os.environ["INPUT_COMMIT"],
+              "artifact_sha256": os.environ["INPUT_SHA256"],
+              "environment": os.environ["RELEASE_ENVIRONMENT"],
+              "actor": os.environ["RELEASE_ACTOR"],
+          }, indent=2) + "\n", encoding="utf-8")
+          PY
 
-      - name: Publish @vantio/gate-mcp
-        working-directory: packages/vantio-gate-mcp
+      - name: Upload approval record
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-approval
+          path: release-approval.json
+          if-no-files-found: error
+
+      - name: Write release summary
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          INPUT_SHA256: ${{ inputs.artifact_sha256 }}
+          RELEASE_ACTOR: ${{ github.actor }}
         run: |
-          set -o pipefail
-          OUTPUT=$(pnpm publish --access public --no-git-checks 2>&1) && { echo "$OUTPUT"; exit 0; }
-          echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -qiE "cannot publish over|EPUBLISHCONFLICT|You cannot publish over"; then
-            echo "Version already published — this is expected, not an error."
-            exit 0
-          fi
-          echo "::error::@vantio/gate-mcp publish failed for a reason other than 'already published'. Check NPM_TOKEN validity."
-          exit 1
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # NOTE: a separate post-publish `npm view` verification step lived here
-      # briefly and was removed. It failed on every run in this CI environment
-      # for a reason not yet root-caused without raw log access (admin rights
-      # required to download job logs even on a public repo) -- ruled out both
-      # registry propagation delay and missing NODE_AUTH_TOKEN as the cause,
-      # neither fixed it. The actual publish steps above are the proven,
-      # working fix (verified via direct `npm view` against the real registry
-      # from outside CI, twice, both packages, both correct): they already
-      # fail loudly on any real error and only tolerate the specific
-      # "already published" condition -- that is the fix for the original
-      # silent-swallow bug. Re-add a verification step only with real log
-      # access to diagnose it properly, not by guessing further.
+          {
+            echo "source_commit=$INPUT_COMMIT"
+            echo "package=$INPUT_PACKAGE"
+            echo "version=$INPUT_VERSION"
+            echo "artifact_sha256=$INPUT_SHA256"
+            echo "environment=npm-publish"
+            echo "actor=$RELEASE_ACTOR"
+            echo "registry_write=not_performed_by_this_workflow"
+          } >> "$GITHUB_STEP_SUMMARY"

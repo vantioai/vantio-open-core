@@ -1,13 +1,19 @@
 name: Publish to MCP Registry
 
+# Manual dispatch for one allowlisted MCP package.
+# Ordinary pushes and pull-request merges do not run this workflow.
+# A duplicate registry version is VERSION_ALREADY_EXISTS, not a success.
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/vantio-optics-mcp/**"
-      - "packages/vantio-gate-mcp/**"
-      - ".github/workflows/mcp-registry-publish.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      package:
+        description: MCP package directory
+        required: true
+        type: choice
+        options:
+          - vantio-optics-mcp
+          - vantio-gate-mcp
 
 permissions:
   contents: read
@@ -17,15 +23,23 @@ jobs:
   publish:
     name: Publish MCP registry metadata
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - vantio-optics-mcp
-          - vantio-gate-mcp
+    environment: mcp-registry-publish
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Reject unknown package
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+        run: |
+          set -eu
+          case "$INPUT_PACKAGE" in
+            vantio-optics-mcp|vantio-gate-mcp) ;;
+            *) echo "vantio-release: package is not on the MCP allowlist" >&2; exit 1 ;;
+          esac
+          test -f "packages/$INPUT_PACKAGE/server.json"
 
       - name: Install mcp-publisher
         run: |
@@ -37,15 +51,17 @@ jobs:
         run: mcp-publisher login github-oidc
 
       - name: Validate server.json
-        working-directory: packages/${{ matrix.package }}
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+        working-directory: packages/${{ inputs.package }}
         run: mcp-publisher validate
 
-      # MCP Registry refuses a version until that exact npm tarball exists.
-      # "Publish to npm" runs in parallel and has to finish tests first, so a
-      # version bump otherwise 404s here ~15–60s before npm has the release.
       - name: Wait for npm package version
-        working-directory: packages/${{ matrix.package }}
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+        working-directory: packages/${{ inputs.package }}
         run: |
+          set -eu
           IDENT=$(node -p "require('./server.json').packages[0].identifier")
           VER=$(node -p "require('./server.json').packages[0].version")
           echo "Waiting for $IDENT@$VER on npm before MCP registry publish."
@@ -61,23 +77,30 @@ jobs:
           exit 1
 
       - name: Publish to MCP Registry
-        working-directory: packages/${{ matrix.package }}
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+        working-directory: packages/${{ inputs.package }}
         run: |
+          set -eu
           set -o pipefail
           for attempt in 1 2 3 4 5 6; do
-            OUTPUT=$(mcp-publisher publish 2>&1) && { echo "$OUTPUT"; exit 0; }
+            if OUTPUT=$(mcp-publisher publish 2>&1); then
+              echo "$OUTPUT"
+              exit 0
+            fi
             echo "$OUTPUT"
             if echo "$OUTPUT" | grep -qiE 'duplicate version|cannot publish duplicate'; then
-              echo "Version already published — expected on re-runs."
-              exit 0
+              echo "VERSION_ALREADY_EXISTS"
+              echo "::error::MCP registry already has this version. Not a successful publication."
+              exit 2
             fi
             if echo "$OUTPUT" | grep -qiE 'was not found \(status: 404\)|newly published release can take a moment'; then
               echo "MCP registry still does not see the npm version (attempt $attempt/6). Retrying in 15s."
               sleep 15
               continue
             fi
-            echo "::error::MCP registry publish failed for ${{ matrix.package }}"
+            echo "::error::MCP registry publish failed for $INPUT_PACKAGE"
             exit 1
           done
-          echo "::error::MCP registry publish failed for ${{ matrix.package }} after waiting for npm"
+          echo "::error::MCP registry publish failed for $INPUT_PACKAGE after waiting for npm"
           exit 1
