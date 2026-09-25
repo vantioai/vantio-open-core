@@ -434,3 +434,174 @@ Exit code `0`. Filename `vantio-cli-0.3.21.tgz`. Size 49624 bytes. SHA-256 `db6a
 Diff `3e1c024f4079e1c51d1d028bfc6d22e02f00e76a..c8a41a12aa7f02384e4e4a55b498ea5d50dd0fec`: 13 files changed, 1006 insertions(+), 721 deletions(-).
 
 The commit that adds this section is documentation-only. A repeat of the same test command and the same `npm pack` is run after that commit. Pass, fail, and skip counts, and the tarball SHA-256, are the final-HEAD result when they match this table. That repeat is recorded in the PR body.
+
+---
+
+## Copy fix — 2026-09-25
+
+**Council:** `PROCEED_COPY_FIX_ONLY`  
+**Verdict:** `PASS_COPY_FIX_READY`  
+**Starting tip for this pass:** `ffa9ed12595e0f6700fea715ead18744f16cdb33`  
+**Copy-fix commit:** `9e429ce7e17fdec5b330e2a193e9b7a78133c87f`
+
+This section is appended. The record above is unchanged.
+
+A full stranger walk was not re-run. This pass is a README sentence deletion plus an internal scope file. Identity checks below cover `version`, `help`, `login`, `whoami`, and `logout` only.
+
+### Phase 1 — retention sentence locations
+
+Exact sentence `Retention: Unknown. Contact hello@vantio.ai for the data retention policy.` before the edit:
+
+| Path | Line | Action |
+|---|---|---|
+| `packages/vantio-cli/README.md` | 204 | Deleted in this pass. The live line was a mailto link with the same words. |
+| `artifacts/FOUNDER_COPY_CHANGE_REQUEST.md` | 112 | Historical quote. Left in place. |
+| `artifacts/OPTICS_CLI_LOGIN_RETIREMENT_PHASE3.md` | 128, 393 | Historical record. Left in place. |
+
+The sentence was not in `bin/`, `package.json`, help text, usage errors, or completion metadata. The package ships no completion script.
+
+Other `hello@` hits are not that sentence. They were not edited:
+
+| Path | Line | What it is |
+|---|---|---|
+| `artifacts/OPTICS_CLI_LOGIN_RETIREMENT_PHASE3.md` | 108, 126, 308, 343, 357 | Prior report mentions of the same contact |
+| `artifacts/OPTICS_CLI_LOGIN_RETIREMENT_PHASE1.md` | 17 | Phase 1 inventory of the old README |
+| `artifacts/FOUNDER_COPY_CHANGE_REQUEST.md` | 52, 65 | Historical proposed trial-key copy |
+| `artifacts/OPTICS_CLI_AUTH_ENDPOINT_READONLY_2026-09-23.md` | 232, 243 | Historical auth report |
+| `packages/vantio-agent-sdk/README.md` | 119 | SDK trial-key row |
+| `packages/vantio-agent-sdk-py/README.md` | 168 | Python SDK trial-key row |
+| `packages/vantio-agent-sdk-py/pyproject.toml` | 14 | Package author email |
+| `docs/getting-started-tier01.md` | 72 | Tier 1 trial-request step |
+
+`vantio.ai/contact` had no hits.
+
+The locked identity strings were not the retention sentence. They remain in README lines 5 and 7, `package.json` description, and `bin/vantio.js` help:
+
+- `Vantio Optics | Free Observability for AI Agents`
+- `Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.`
+
+Removing the README retention line leaves `## Usage telemetry` with its opt-in examples, field table, destination, trigger, "Never sent" paragraph, and the `anonymousId` note. No heading, list item, or sentence was left broken. The authorized opt-in sentence was placed in that slot because the Founder specified it as the only replacement where a telemetry statement was required. No retention period, payload claim, email, or date was added.
+
+### Phase 1.2 — telemetry payload fields in `bin/telemetry.cjs`
+
+`sendTelemetry` builds `body` with these keys on every send:
+
+- `anonymousId`
+- `runtime`
+- `runtimeVersion`
+- `os`
+- `event`
+- `hosts`
+- `callCount`
+
+These keys are added only when the corresponding input is present:
+
+- `sdkVersion`
+- `cliVersion`
+- `redactedCount`
+- `blockedCount`
+- `framework`
+
+The only product call, `sendRunTelemetryOnce` in `bin/interceptor.cjs`, passes `event`, `hosts`, `callCount`, and `cliVersion`. No replacement sentence about payload contents was written.
+
+### Files changed in the copy-fix commit
+
+- `packages/vantio-cli/README.md`
+- `artifacts/OPTICS_0321_SCOPE_BOUNDARIES.md`
+
+`bin/` was not modified. Command dispatch, network behavior, and telemetry defaults were not modified.
+
+`artifacts/OPTICS_0321_SCOPE_BOUNDARIES.md` records: the control-plane client is out of scope for Optics 0.3.21 and fires only for an explicit caller-supplied `VANTIO_INGEST_URL` plus `VANTIO_API_KEY` on a caller-chosen host; hidden `vantio logout` stays in 0.3.21 as the local deletion path for `~/.vantio/config.json`; no account or cloud-sync product is scheduled.
+
+### Tests, lint, CI at `9e429ce7e17fdec5b330e2a193e9b7a78133c87f`
+
+```bash
+pnpm --filter @vantio/cli run test
+```
+
+Exit code `0`. tests 106, suites 18, pass 106, fail 0, cancelled 0, skipped 0, todo 0, `duration_ms` 16248.095118.
+
+```bash
+pnpm --filter @vantio/cli run lint
+```
+
+Exit code `0`.
+
+GitHub Actions run https://github.com/vantioai/vantio-open-core/actions/runs/36078382119 completed success:
+
+- Lint, typecheck, and test (CLI + Node SDK)
+- Test Python SDK (py3.10)
+- Test Python SDK (py3.11)
+- Test Python SDK (py3.12)
+
+### Grep
+
+Shipped tarball: zero hits for `hello@`, `Retention:`, `retention policy`, and `vantio.ai/contact`.
+
+`packages/vantio-cli/README.md`: zero hits for those four strings.
+
+Repository hits that remain are the historical artifact quotes and the out-of-scope SDK, author-email, and Tier 1 lines listed above. They were reported and not edited.
+
+### Tarball
+
+```bash
+cd packages/vantio-cli && npm pack --pack-destination /tmp
+```
+
+Exit code `0` at `9e429ce7e17fdec5b330e2a193e9b7a78133c87f`.
+
+| Item | Value |
+|---|---|
+| Filename | `vantio-cli-0.3.21.tgz` |
+| Size | 49605 bytes |
+| SHA-256 | `6c23ebc4a7d3a15960606a87e28f05098950aec1e7bf49de878ab2fc92a3e147` |
+| npm shasum | `fdaa90ba5b1334c9f79b960431397578afc083b1` |
+
+SHA-256 `db6a786b0bb9a0e86aa765f3453038c441a6bd3384fe38947dc5ddeb2c7a307b` is **SUPERSEDED**.
+
+Pack file list, still these 7 files:
+
+- `package/bin/interceptor.cjs`
+- `package/bin/llm-hosts.cjs`
+- `package/bin/telemetry.cjs`
+- `package/bin/vantio.js`
+- `package/package.json`
+- `package/README.md`
+- `package/bin/python-wrap/sitecustomize.py`
+
+`artifacts/OPTICS_0321_SCOPE_BOUNDARIES.md` is outside `packages/vantio-cli` and is not in the pack.
+
+### Identity checks
+
+Run from `packages/vantio-cli/bin/vantio.js` with a clean `HOME` and `strace -e trace=connect`. A full stranger walk was not re-run.
+
+| Command | Exit | Connects | Result |
+|---|---|---|---|
+| `--version` | 0 | 0 | `0.3.21` |
+| `--help` | 0 | 0 | Both approved identity strings present |
+| `login` | 1 | 0 | `vantio: unknown command 'login'` |
+| `whoami` | 1 | 0 | `vantio: unknown command 'whoami'` |
+| `logout` | 0 | 0 | Synthetic `~/.vantio/config.json` removed. stdout is the two approved sentences. The synthetic key was not printed. |
+
+### npm page 403
+
+Classification: `VERIFIED_CLIENT_ISSUE`.
+
+`https://www.npmjs.com/package/@vantio/cli` returned HTTP 403 with `server: cloudflare` and `cf-mitigated: challenge`. The body title is `Just a moment...`. The same 403 occurred for curl, a browser User-Agent, and an npm User-Agent.
+
+`https://registry.npmjs.org/@vantio/cli` returned HTTP 200. `dist-tags.latest` is `0.3.20`. Version `0.3.20` is present. Version `0.3.21` is absent. `npm view @vantio/cli version` printed `0.3.20`. No publish, login, or authenticated registry action was attempted.
+
+### Hard stops
+
+- PR #45 was not merged.
+- `0.3.21` was not published.
+- No tag and no GitHub release were created.
+- No force-push.
+- No production endpoint was changed.
+- No real credential was used.
+- Phantom Engine behavior was not changed.
+- Public pricing was not changed.
+
+### Founder flags, not decided here
+
+The `hello@vantio.ai` strings in `packages/vantio-agent-sdk/README.md`, `packages/vantio-agent-sdk-py/README.md`, `packages/vantio-agent-sdk-py/pyproject.toml`, and `docs/getting-started-tier01.md` are outside this pass. They are not the CLI telemetry retention sentence.
