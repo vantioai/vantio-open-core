@@ -2,8 +2,9 @@
 [ ∅ VANTIO ] Lane 1 — anonymous, opt-in usage telemetry (Python parity).
 
 Mirrors the Node CLI telemetry hook. Sends ONLY anonymous, aggregate metadata:
-a random anonymous id, the runtime/os strings, an event name, the set of LLM
-hostnames contacted, and a few counts. It NEVER sends prompts, completions, API
+a random anonymous id, the runtime/os strings, an event name, hosts, and
+callCount. shield() sends the automatic run ping before any HTTP observation,
+so that ping has callCount 0 and an empty hosts list. It NEVER sends prompts, completions, API
 keys, emails, or any content/PII — that is the entire privacy contract.
 
 Fire-and-forget on a short-timeout daemon thread so it can never block, slow,
