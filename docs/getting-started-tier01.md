@@ -93,10 +93,9 @@ with auditors, security teams, or compliance reviewers.
 
 ---
 
-## Step 5 — Find your Shadow AI attack surface (Phantom Engine / Enterprise)
+## Step 5 — Phantom Engine / Enterprise connected discover
 
-Once connected on a paid plan, `vantio discover` shows every AI call Vantio has seen
-across your workspace — grouped by host, with a governance breakdown per host:
+Connected `vantio discover` is a Phantom Engine / Enterprise capability. It is not part of free Optics 0.3.21. Free Optics stays on this machine (`vantio discover --local`). The commands below are that upgrade path:
 
 ```bash
 vantio discover
@@ -115,8 +114,7 @@ api.openai.com                       42         38          4        0         0
 1 host(s) shown  |  No Shadow AI indicators detected.
 ```
 
-`OBSERVED` calls with no policy trace are your Shadow AI indicator — unenrolled
-processes calling LLM endpoints outside Vantio's governance.
+That reading belongs to Phantom Engine / Enterprise connected discover. It is not a free Optics 0.3.21 workspace.
 
 ---
 

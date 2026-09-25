@@ -45,6 +45,8 @@ await shield(async () => { ... }, {
 
 ### `reportAnomaly(event, opts?)` — send metadata to Phantom Engine ingest
 
+Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
+
 ```ts
 import { shield, reportAnomaly } from "@vantio/agent-sdk";
 
@@ -70,6 +72,8 @@ Requires `VANTIO_CLOUD_INGEST=true` and `VANTIO_API_KEY` to be set. Non-fatal �
 Enforcement policy is served by the Phantom Engine control plane; the SDK applies it **locally** — Vantio is not a network proxy. The SDK ships two building blocks so you can fetch and enforce that policy yourself.
 
 ### `fetchPolicy(apiKey, opts?)` — load the cloud-managed policy
+
+Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
 
 ```ts
 import { fetchPolicy, type VantioPolicy } from "@vantio/agent-sdk";
@@ -113,6 +117,8 @@ getCurrentTraceId(); // undefined — outside shield() frame
 ---
 
 ## Environment variables
+
+Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
 
 | Variable | Description |
 |---|---|

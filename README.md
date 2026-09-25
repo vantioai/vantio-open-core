@@ -70,18 +70,13 @@ Without the SDK, `vantio run python` does not intercept. Browser paths, or proce
 
 MIT License.
 
-Anonymous, opt-out usage analytics. No prompts, completions, API keys, or emails. Opt out at any time:
-
-```
-export VANTIO_TELEMETRY_DISABLED=1   # or
-export DO_NOT_TRACK=1
-```
+Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
 
 ---
 
 ## Upgrade path to Phantom Engine and Enterprise
 
-Free Optics needs **no account and no API key**. `vantio login` is optional and later, for dashboard sync only, never a required step before running.
+Free Optics needs **no account and no API key**.
 
 Optics is the free Observe tier. [Phantom Engine](https://vantio.ai/phantom-engine) (Enforce + Control)
 extends this to policy enforcement and host-level runtime protection on enrolled Linux systems.
