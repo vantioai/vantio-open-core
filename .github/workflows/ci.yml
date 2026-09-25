@@ -65,3 +65,69 @@ jobs:
       - name: Run tests (stdlib unittest — zero test dependencies, matching the SDK itself)
         working-directory: packages/vantio-agent-sdk-py
         run: python -m unittest discover -s tests -t . -v
+
+  release-governance:
+    name: Release governance contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test release gates
+        run: |
+          node --test scripts/release/governance.test.mjs
+          python3 scripts/release/test_promote_pypi.py -v
+
+  candidate-artifacts:
+    name: Build release candidates (no registry write)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Pack @vantio/cli candidate
+        working-directory: packages/vantio-cli
+        run: |
+          mkdir -p "$RUNNER_TEMP/candidates"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/candidates"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Python sdist and wheel candidate
+        run: |
+          mkdir -p "$RUNNER_TEMP/candidates-py"
+          python3 -m pip install --disable-pip-version-check build
+          python3 -m build --outdir "$RUNNER_TEMP/candidates-py" packages/vantio-agent-sdk-py
+
+      - name: Upload candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidates
+          path: |
+            ${{ runner.temp }}/candidates
+            ${{ runner.temp }}/candidates-py
+          if-no-files-found: error
