@@ -108,7 +108,9 @@ jobs:
 
       - name: Pack @vantio/cli candidate
         working-directory: packages/vantio-cli
-        run: npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/candidates"
+        run: |
+          mkdir -p "$RUNNER_TEMP/candidates"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/candidates"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -117,6 +119,7 @@ jobs:
 
       - name: Build Python sdist and wheel candidate
         run: |
+          mkdir -p "$RUNNER_TEMP/candidates-py"
           python3 -m pip install --disable-pip-version-check build
           python3 -m build --outdir "$RUNNER_TEMP/candidates-py" packages/vantio-agent-sdk-py
 
