@@ -605,3 +605,76 @@ Classification: `VERIFIED_CLIENT_ISSUE`.
 ### Founder flags, not decided here
 
 The `hello@vantio.ai` strings in `packages/vantio-agent-sdk/README.md`, `packages/vantio-agent-sdk-py/README.md`, `packages/vantio-agent-sdk-py/pyproject.toml`, and `docs/getting-started-tier01.md` are outside this pass. They are not the CLI telemetry retention sentence.
+
+---
+
+## Hello@ surface scrub — 2026-09-25
+
+**Verdict:** `PASS_SCRUB_READY`  
+**Starting tip:** `774355ca7b0ca8004479bef817170fd6999ba587`  
+**Scrub commit:** `87de54e005c7cc78c1957f7c86c0b6d7d61a5901`
+
+This section is appended. Earlier records are unchanged. Historical quotes in older artifacts were left as history.
+
+### Classification
+
+All three known locations are bucket A (account, trial key, Stripe, or dashboard setup). None of those sentences is the locked Optics identity copy.
+
+`packages/vantio-agent-sdk/README.md` environment table, the `VANTIO_API_KEY` row:
+
+`Phantom Engine API key from a trial (hello@vantio.ai) or Stripe once live — /dashboard redirects to docs`
+
+`packages/vantio-agent-sdk-py/README.md` environment table, the same row.
+
+`docs/getting-started-tier01.md` Step 4 item 1:
+
+`Request a trial via hello@vantio.ai (or complete Stripe Checkout once self-serve billing is live — eng-shipped, keys not yet public).`
+
+The rest of that Step 4 procedure (API-key handoff, `vantio login`, `vantio whoami`, `vantio logout`, and the dashboard-sync note) and the two Common questions about login and logout were the same account procedure. Removing only the email sentence would have left a numbered list with no first step and a heading that still promised a connect flow. Structural repair: the `VANTIO_API_KEY` rows were removed from both SDK tables; Step 4 was retitled `Step 4 — Local commands` and kept the account-free local command sentences; the two login FAQ entries were removed. No replacement email, URL, or support channel was added.
+
+`packages/vantio-agent-sdk-py/pyproject.toml:14` is the author email. It was not edited.
+
+`docs/getting-started-tier01.md` ends with `Questions? security@vantio.ai`. That is a plain questions line with no account, key, or billing instruction. It was left in place. Bucket B.
+
+### Files changed
+
+- `packages/vantio-agent-sdk/README.md`
+- `packages/vantio-agent-sdk-py/README.md`
+- `docs/getting-started-tier01.md`
+
+`bin/` and the CLI README were not modified.
+
+### Verification at `87de54e005c7cc78c1957f7c86c0b6d7d61a5901`
+
+`pnpm --filter @vantio/cli run test` exit 0. tests 106, pass 106, fail 0, skipped 0, `duration_ms` 16246.946255.
+
+`pnpm --filter @vantio/cli run lint` exit 0.
+
+`pnpm --filter @vantio/agent-sdk run test` exit 0. tests 43, pass 43, fail 0.
+
+Local `python3 -m unittest discover` on Python 3.12.3: 72 tests, 1 failure (`test_create_connection_allowed_records_python_socket`), 6 skipped. This pass did not change Python code. GitHub Actions on the scrub commit passed Python 3.10, 3.11, and 3.12, and the CLI + Node SDK job: https://github.com/vantioai/vantio-open-core/actions/runs/36079401197
+
+`npm pack` SHA-256 `6c23ebc4a7d3a15960606a87e28f05098950aec1e7bf49de878ab2fc92a3e147`, 49605 bytes, same 7 files. `artifacts/OPTICS_0321_SCOPE_BOUNDARIES.md` is not in the pack.
+
+### Grep survivors
+
+Shipped SDK READMEs and `docs/getting-started-tier01.md` no longer contain `hello@`.
+
+Surviving `hello@` / trial / Stripe / Checkout hits that were not edited:
+
+- `packages/vantio-agent-sdk-py/pyproject.toml:14` — author email, carve-out.
+- Historical quotes in `artifacts/OPTICS_CLI_LOGIN_RETIREMENT_PHASE3.md`, `artifacts/OPTICS_CLI_LOGIN_RETIREMENT_PHASE1.md`, `artifacts/FOUNDER_COPY_CHANGE_REQUEST.md`, `artifacts/OPTICS_CLI_AUTH_ENDPOINT_READONLY_2026-09-23.md`, and `artifacts/OPTICS_CLI_PHASE1_REPORT.md`.
+- `packages/vantio-cli/test/account-retirement.test.js:18` — test regex, not user copy.
+- `docs/specs/WRAP_*.md` — engineering notes that Stripe checkout stays parked. Not a user billing instruction.
+- Workflow step names `Checkout`.
+
+### Founder flags, not edited
+
+- `README.md:84` still says `vantio login` is optional and later, for dashboard sync.
+- `docs/getting-started-tier01.md` Step 5 still describes Shadow AI discover on a paid plan, and the bypass table still lists Phantom Engine and Enterprise prices.
+- `packages/vantio-agent-sdk-py/README.md` still states a telemetry payload (anonymous id, Python version, OS, event name) and does not name `hosts`. No new payload sentence was written.
+- SDK READMEs still document `fetchPolicy` / `VANTIO_API_KEY` in code samples outside the removed table row.
+
+### Hard stops
+
+No merge, npm publish, PyPI publish, tag, release, force-push, production change, real credential, Phantom Engine change, or pricing change. PR #45 stays draft.
