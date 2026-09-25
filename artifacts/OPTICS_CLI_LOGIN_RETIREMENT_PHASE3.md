@@ -678,3 +678,95 @@ Surviving `hello@` / trial / Stripe / Checkout hits that were not edited:
 ### Hard stops
 
 No merge, npm publish, PyPI publish, tag, release, force-push, production change, real credential, Phantom Engine change, or pricing change. PR #45 stays draft.
+
+---
+
+## Founder flags 1-4 — 2026-09-25
+
+**Verdict:** `PASS_FLAGS_CLOSED`  
+**Starting tip:** `864f375966616757cce26b075b394cf8e441a271`  
+**Copy commit:** `6cbe91a9b2292783d382e5d085f609af943455ff`
+
+Decisions executed: Flag 1 `SCRUB_LOGIN_AND_TELEMETRY`, Flag 2 `REFRAME`, Flag 3 `DELETE_PAYLOAD_SENTENCE`, Flag 4 `SCOPE_LABEL`. None of the edited blocks was the locked Optics identity copy. The `$799/node/mo` line was left unchanged.
+
+### Flag 1 — root `README.md`
+
+Before: `Free Optics needs **no account and no API key**. vantio login is optional and later, for dashboard sync only, never a required step before running.`
+
+After: `Free Optics needs **no account and no API key**.`
+
+Before: `Anonymous, opt-out usage analytics. No prompts, completions, API keys, or emails. Opt out at any time:` plus the disable exports.
+
+After: `Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.`
+
+### Flag 2 — `docs/getting-started-tier01.md` Step 5
+
+Before heading: `Step 5 — Find your Shadow AI attack surface (Phantom Engine / Enterprise)` and `Once connected on a paid plan, vantio discover shows every AI call Vantio has seen across your workspace`.
+
+After heading: `Step 5 — Phantom Engine / Enterprise connected discover`. The body now says connected discover is a Phantom Engine / Enterprise capability and is not part of free Optics 0.3.21. The bypass table and its prices were not changed. Step 4 was not changed.
+
+### Flag 3 — Python SDK telemetry copy
+
+The payload sentence (random anonymous id, Python version, OS string, event name) was deleted. The section now contains only:
+
+```bash
+export VANTIO_TELEMETRY_DISABLED=1   # or
+export DO_NOT_TRACK=1
+```
+
+It does not say "disabled by default."
+
+### Python telemetry source
+
+`packages/vantio-agent-sdk-py/vantio/_telemetry.py` `send_telemetry` always sets:
+
+`anonymousId`, `runtime`, `runtimeVersion`, `os`, `event`, `hosts`, `callCount`
+
+It adds `sdkVersion`, `redactedCount`, `blockedCount`, and `framework` only when those arguments are present.
+
+`hosts` is present. `send_run_telemetry_once` calls `send_telemetry(event="run", sdk_version=sdk_version)` and does not pass `hosts`, so that ping sends `hosts: []`.
+
+Default is **OPT-OUT**. `is_telemetry_disabled()` returns true only when `VANTIO_TELEMETRY_DISABLED == "1"` or `DO_NOT_TRACK == "1"` (`_telemetry.py` lines 32–37). Otherwise `send_telemetry` sends. The CLI sends only when `VANTIO_TELEMETRY=1`. **Founder decision: the defaults diverge. This pass did not change either default.**
+
+### Flag 4
+
+The scope sentence was added above `reportAnomaly`, `fetchPolicy`, and the Node env table, and above `fetch_policy`, `report_anomaly`, and the Python env table. Samples and tables were kept. No hello@, Stripe, trial-key, or dashboard-sync language was added.
+
+### Files changed
+
+- `README.md`
+- `docs/getting-started-tier01.md`
+- `packages/vantio-agent-sdk/README.md`
+- `packages/vantio-agent-sdk-py/README.md`
+
+### Verification at `6cbe91a9b2292783d382e5d085f609af943455ff`
+
+`pnpm --filter @vantio/cli run test` exit 0. tests 106, pass 106, fail 0, `duration_ms` 16195.264583.
+
+`pnpm --filter @vantio/cli run lint` exit 0.
+
+`pnpm --filter @vantio/agent-sdk run test` exit 0. tests 43, pass 43, fail 0.
+
+`npm pack` SHA-256 `6c23ebc4a7d3a15960606a87e28f05098950aec1e7bf49de878ab2fc92a3e147`, 49605 bytes, same 7 files. `artifacts/OPTICS_0321_SCOPE_BOUNDARIES.md` is not in the pack.
+
+### Grep survivors, not edited
+
+- `artifacts/*` historical quotes, including the previous note that root `README.md:84` mentioned login. That sentence is gone; the artifact quote remains.
+- `packages/vantio-cli/test/account-retirement.test.js:18` — regex fixture.
+- `packages/vantio-agent-sdk-py/pyproject.toml:14` — author email.
+- `docs/specs/WRAP_*.md` — Stripe checkout parked as an engineering boundary.
+- `docs/distribution-audit-2026-07-01.md:15,19,30` and `docs/observe-only.md:99-100` — older login instructions. Reported, not edited.
+- `docs/sight-loop.md:87` — local discover comment "no dashboard sync".
+- `packages/vantio-cli/bin/interceptor.cjs:557,561,751` and `packages/vantio-agent-sdk-py/vantio/_telemetry.py:2` and `sdk.py:58,85` — internal comments that say opt-out. `bin/` was not modified. The Python comments match the Python default. The CLI comments do not match the CLI opt-in default.
+- `architecture_state.md:663` — internal Stripe webhook note.
+- Getting-started still ends with `Questions? security@vantio.ai`.
+
+### Python socket test
+
+Classification: `FLAKY`.
+
+On 2026-09-25 the full local discover run failed once at `test_create_connection_allowed_records_python_socket` line 500 (`sink.hits` was 0). The failure is after the run log was already required to contain one `ALLOWED` `python_socket` call, so the wrap had recorded an allow rather than a block. Two isolated reruns passed. `python3 -m unittest tests.test_http_observe` passed. A second full `unittest discover` passed: 72 tests, 6 skipped, 0 failures. CI on Python 3.10–3.12 was green before this pass. This does not gate the CLI candidate. It is not classified `REAL_ENFORCEMENT_GAP` or `UNKNOWN`.
+
+### Hard stops
+
+No merge, npm publish, PyPI publish, tag, release, force-push, production change, real credential, Phantom Engine behavior change, or pricing change. PR #45 stays draft.
