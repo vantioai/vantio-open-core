@@ -66,9 +66,9 @@ Examples:
 `;
 
 const PROVE_HELP = `\
-vantio prove — Auditor-Ready Proof Artifacts
+vantio prove — local proof artifacts
 
-Generates an auditor-ready proof artifact (HTML or Markdown report) from a
+Generates a local proof artifact (HTML or Markdown report) from a
 vantio run log. Reports include: trace ID, PID, byte counts, host
 breakdown, and summary counts. Prompts and completions are never stored.
 
@@ -92,6 +92,8 @@ Examples:
   vantio prove --run=0x1a2b3c4d             → specific run by trace ID
   vantio prove --format=md                   → Markdown to stdout
   vantio prove --format=html --out=proof.html
+
+Exit status: 0 finished, 1 missing or invalid arguments, or the named log could not be read.
 `;
 
 const SEARCH_HELP = `\
@@ -143,6 +145,8 @@ Examples:
   vantio tail -n 50
   vantio tail --run=0x1a2b3c4d
   vantio tail -f
+
+Exit status: 0 finished, 1 missing or invalid arguments, or the named log could not be read.
 `;
 
 const DIFF_HELP = `\
@@ -187,6 +191,17 @@ function getVersion() {
 }
 
 // ── commands ──────────────────────────────────────────────────────────────────────────────
+
+function parseArgsSafe(command, config) {
+  try {
+    return parseArgs(config);
+  } catch (err) {
+    const detail = err && err.message ? String(err.message).split("\n")[0] : "invalid arguments";
+    process.stderr.write(`vantio ${command}: ${detail}\n`);
+    process.exit(1);
+  }
+}
+
 function runCommand(rest) {
   // Split at the first non-flag argument (the program name) so flags meant for
   // the child (e.g. node -e) are never consumed by vantio's own parser.
@@ -194,7 +209,7 @@ function runCommand(rest) {
   const ourArgs  = splitAt === -1 ? rest : rest.slice(0, splitAt);
   const progArgs = splitAt === -1 ? []   : rest.slice(splitAt);
 
-  const { values } = parseArgs({
+  const { values } = parseArgsSafe("run", {
     args: ourArgs,
     options: {
       audit:   { type: "boolean", short: "a", default: false },
@@ -602,7 +617,7 @@ function findMostRecentRun(dir) {
 }
 
 async function proveCommand(args) {
-  const { values } = parseArgs({
+  const { values } = parseArgsSafe("prove", {
     args,
     options: {
       list:   { type: "boolean", default: false },
@@ -757,7 +772,7 @@ function discoverLocalCommand(since, hostFilter, asJson) {
 }
 
 async function discoverCommand(args) {
-  const { values } = parseArgs({
+  const { values } = parseArgsSafe("discover", {
     args,
     options: {
       since: { type: "string",  default: "24h" },
@@ -894,7 +909,7 @@ function printCallHeader() {
 }
 
 async function searchCommand(args) {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseArgsSafe("search", {
     args,
     options: {
       host:     { type: "string" },
@@ -1016,7 +1031,7 @@ function printTailCalls(log, lines, asJson) {
 }
 
 async function tailCommand(args) {
-  const { values } = parseArgs({
+  const { values } = parseArgsSafe("tail", {
     args,
     options: {
       run:     { type: "string" },
@@ -1116,7 +1131,7 @@ function runTotals(log) {
 }
 
 async function diffCommand(args) {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseArgsSafe("diff", {
     args,
     options: {
       json: { type: "boolean", default: false },

@@ -1,6 +1,6 @@
 {
   "name": "@vantio/cli",
-  "version": "0.3.21",
+  "version": "0.3.22",
   "description": "Vantio Optics | Free Observability for AI Agents. Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",

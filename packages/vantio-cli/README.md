@@ -6,7 +6,7 @@
 >
 > Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 >
-> Current local candidate: **0.3.21** (remediation branch; not yet published). Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
+> The running version is `vantio --version`. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
 ```bash
 npm install -g @vantio/cli
@@ -93,7 +93,7 @@ vantio run --summary node agent.js   # print a run summary on exit
   Hosts:        api.openai.com, api.anthropic.com
   Total bytes:  94,201
   Duration:     12.4s
-  → Run `vantio prove` to export an auditor-ready artifact from this run.
+  → Run `vantio prove` to export a local proof artifact from this run.
 ```
 
 Intercepted calls print to the terminal in real time.
@@ -189,7 +189,7 @@ DO_NOT_TRACK=1 vantio run node agent.js
 | `anonymousId` | Random UUID stored locally at `~/.vantio/telemetry-id` (0600). Persists across runs. |
 | `event` | `"run"` (fired on the first intercepted LLM call in a run) |
 | `hosts` | LLM hostnames contacted (e.g. `["api.openai.com"]`) — at most 50 |
-| `callCount` | Number of intercepted calls at the time of the ping |
+| `callCount` | Completed in-scope calls recorded in this process when the once-per-process ping is sent. The first completed call reports 1. |
 | `runtime` | `"node"` |
 | `runtimeVersion` | Node.js version string |
 | `os` | `process.platform` (e.g. `"linux"`) |
@@ -209,7 +209,7 @@ Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEM
 
 ## Supported runtimes
 
-Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` outbound frame size, and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, and file-body size from `--post-file` / `@file`). Spawned httpie and aria2c argv URLs are included in the same local record. Current npm release: **`@vantio/cli` 0.3.20**.
+Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` outbound frame size, and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, and file-body size from `--post-file` / `@file`). Spawned httpie and aria2c argv URLs are included in the same local record. The running version is `vantio --version`.
 
 Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk`) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 

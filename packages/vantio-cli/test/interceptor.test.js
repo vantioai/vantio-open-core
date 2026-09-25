@@ -324,6 +324,8 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     );
     assert.equal(code, 0);
     assert.match(stderr, /vantio prove/);
+    assert.match(stderr, /local proof artifact/);
+    assert.doesNotMatch(stderr, /auditor-ready/i);
     assert.doesNotMatch(stderr, /Gate|Phantom Engine|pricing|dashboard|Free plan|Enterprise/i);
   });
 
@@ -2242,5 +2244,128 @@ else go();
       assert.ok(sizeEvents.length >= 1);
       assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_ws");
     });
+  });
+});
+
+describe("callCount is completed in-scope calls", { timeout: 20000 }, () => {
+  let server;
+  let origin;
+  const telemetry = [];
+  const targets = [];
+
+  beforeEach(async () => {
+    telemetry.length = 0;
+    targets.length = 0;
+    server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        if (req.url === "/api/v1/telemetry" && req.method === "POST") {
+          telemetry.push(body);
+          res.writeHead(204).end();
+          return;
+        }
+        if (req.url === "/v1/target") {
+          targets.push(body);
+          const payload = JSON.stringify({ reply: "ok" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(payload) });
+          res.end(payload);
+          return;
+        }
+        res.writeHead(404).end();
+      });
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    origin = `http://127.0.0.1:${server.address().port}`;
+  });
+
+  afterEach(async () => {
+    if (typeof server.closeAllConnections === "function") server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  function env(extra) {
+    const home = mkdtempSync(join("/tmp", "vantio-tel-"));
+    return {
+      home,
+      env: {
+        HOME: home,
+        TARGET_URL: `${origin}/v1/target`,
+        VANTIO_INGEST_URL: origin,
+        VANTIO_EXTRA_LLM_HOSTS: "127.0.0.1",
+        ...extra,
+      },
+    };
+  }
+
+  test("opt-in sends one run event with callCount 1 and no content", async () => {
+    const { home, env: childEnv } = env({ VANTIO_TELEMETRY: "1" });
+    try {
+      const { code } = await runAgent(childEnv, FETCH_ONCE_SCRIPT);
+      assert.equal(code, 0);
+      assert.equal(targets.length, 1);
+      assert.equal(telemetry.length, 1);
+      const body = JSON.parse(telemetry[0]);
+      assert.equal(body.event, "run");
+      assert.equal(body.callCount, 1);
+      assert.deepEqual(body.hosts, ["127.0.0.1"]);
+      assert.doesNotMatch(telemetry[0], /shouldnotleak|sk-|prompt|completion/i);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("a second completed call does not send another ping", async () => {
+    const twice = `
+(async () => {
+  for (let i = 0; i < 2; i++) {
+    const res = await fetch(process.env.TARGET_URL, { method: "POST", body: "x" });
+    await res.text();
+  }
+})();
+`;
+    const { home, env: childEnv } = env({ VANTIO_TELEMETRY: "1" });
+    try {
+      const { code } = await runAgent(childEnv, twice);
+      assert.equal(code, 0);
+      assert.equal(targets.length, 2);
+      assert.equal(telemetry.length, 1);
+      assert.equal(JSON.parse(telemetry[0]).callCount, 1);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("no telemetry env sends zero requests", async () => {
+    const { home, env: childEnv } = env({});
+    try {
+      const { code } = await runAgent(childEnv, FETCH_ONCE_SCRIPT);
+      assert.equal(code, 0);
+      assert.equal(telemetry.length, 0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("DISABLED overrides an explicit opt-in", async () => {
+    const { home, env: childEnv } = env({ VANTIO_TELEMETRY: "1", VANTIO_TELEMETRY_DISABLED: "1" });
+    try {
+      const { code } = await runAgent(childEnv, FETCH_ONCE_SCRIPT);
+      assert.equal(code, 0);
+      assert.equal(telemetry.length, 0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("DO_NOT_TRACK overrides an explicit opt-in", async () => {
+    const { home, env: childEnv } = env({ VANTIO_TELEMETRY: "1", DO_NOT_TRACK: "1" });
+    try {
+      const { code } = await runAgent(childEnv, FETCH_ONCE_SCRIPT);
+      assert.equal(code, 0);
+      assert.equal(telemetry.length, 0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
