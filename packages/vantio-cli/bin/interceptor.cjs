@@ -214,6 +214,18 @@ const USD_PER_BYTE = (5 / 1_000_000) / 4;
 
 let spentUsd = 0;
 const _calls = [];
+const _pushCall = _calls.push.bind(_calls);
+_calls.push = function vantioRecordCall(...items) {
+  const result = _pushCall(...items);
+  try {
+    const last = items.length ? items[items.length - 1] : null;
+    const host = last && typeof last === "object" ? last.hostname : undefined;
+    sendRunTelemetryOnce(host);
+  } catch {
+    // Telemetry must never affect the agent.
+  }
+  return result;
+};
 const _startMs = Date.now();
 
 if (typeof globalThis.fetch !== "function") {
@@ -554,11 +566,12 @@ function trackStreamBytes(response, onDone) {
   })();
 }
 
-// ── Lane 1 run telemetry (anonymous, opt-out, once-per-process) ─────────────────
+// ── Lane 1 run telemetry (anonymous, explicit opt-in, once-per-process) ────────
 // fetch scheduled inside a process "exit" handler never actually flushes, so the
 // summary ping was effectively dead. Instead we fire a single anonymous "run"
-// ping on the first intercepted in-scope call (mirroring the Python SDK's
-// send_run_telemetry_once). Fire-and-forget, non-blocking, opt-out honored.
+// ping after the first completed in-scope call is recorded. Fire-and-forget,
+// non-blocking. Disabled unless VANTIO_TELEMETRY=1. VANTIO_TELEMETRY_DISABLED=1
+// and DO_NOT_TRACK=1 override that opt-in.
 let _runTelemetrySent = false;
 function sendRunTelemetryOnce(hostname) {
   if (_runTelemetrySent) return;
@@ -567,7 +580,9 @@ function sendRunTelemetryOnce(hostname) {
     sendTelemetry({
       event: "run",
       hosts: hostname ? [hostname] : [],
-      callCount: 0,
+      // Completed in-scope call records in this process at send time.
+      // The first completed call reports 1. Later calls do not send again.
+      callCount: _calls.length,
       cliVersion: CLI_VERSION,
     });
   } catch {
@@ -748,8 +763,6 @@ async function wrapFetch(backend, input, init) {
     return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
 
-  // Anonymous, opt-out, once-per-process usage ping (fire-and-forget).
-  sendRunTelemetryOnce(hostname);
 
   // ── FREE TIER — observe only ────────────────────────────────────────────────
   if (FREE_MODE) {
@@ -1069,7 +1082,6 @@ globalThis.fetch = function vantioFetch(input, init) {
       return launchUndiciBackend(() => launch(opts));
     }
 
-    sendRunTelemetryOnce(hostname);
     const method = (opts && opts.method) || (opts && opts.body ? "PUT" : "GET");
     const init = { method, headers: opts && opts.headers, body: opts && opts.body };
 
@@ -1380,7 +1392,6 @@ globalThis.fetch = function vantioFetch(input, init) {
       return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
     }
 
-    sendRunTelemetryOnce(hostname);
     const method = (opts && opts.method) || (opts && opts.body ? "PUT" : "GET");
     const init = { method, headers: opts && opts.headers, body: opts && opts.body };
     const reqMeta = extractRequestMeta(href, init);
@@ -1787,7 +1798,6 @@ globalThis.fetch = function vantioFetch(input, init) {
       const decision = decideHttp(hostname, port, args);
       if (decision === "pass") return launchHttpHandled(launch);
 
-      sendRunTelemetryOnce(hostname);
       const provider = guessProvider(hostname, port);
       const ts = new Date().toISOString();
       const baseCall = {
@@ -2112,7 +2122,6 @@ globalThis.fetch = function vantioFetch(input, init) {
         return launchHttpHandled(() => (protocols !== undefined ? new Orig(url, protocols) : new Orig(url)));
       }
 
-      sendRunTelemetryOnce(hostname);
       const provider = guessProvider(hostname, port);
       const ts = new Date().toISOString();
       const baseCall = {
@@ -2402,7 +2411,6 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 
   function launchConnect(authority, options, listener, hostname, port, decision) {
-    sendRunTelemetryOnce(hostname);
     const provider = guessProvider(hostname, port);
     const ts = new Date().toISOString();
     const baseCall = {
@@ -2464,7 +2472,6 @@ globalThis.fetch = function vantioFetch(input, init) {
         if (decision === "block") {
           const err = blockedErr(dest.hostname);
           dead = err;
-          sendRunTelemetryOnce(dest.hostname);
           _calls.push({
             hostname: dest.hostname, provider: guessProvider(dest.hostname, dest.port),
             method: "CONNECT", path: null, scheme: "http2", request_bytes: null,
@@ -2599,7 +2606,6 @@ globalThis.fetch = function vantioFetch(input, init) {
     const decision = decideNet(hostname, port);
     if (decision === "pass") return orig.apply(socket, args);
 
-    sendRunTelemetryOnce(hostname);
     const provider = guessProvider(hostname, port);
     const ts = new Date().toISOString();
     const baseCall = {
@@ -3422,7 +3428,6 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 
   function recordCli(tool, hostname, port, action, dataBytes, redactions) {
-    sendRunTelemetryOnce(hostname);
     const provider = guessProvider(hostname, port);
     const meta = cliMeta(tool);
     const nRedact = Array.isArray(redactions) ? redactions.length : 0;
@@ -3639,8 +3644,8 @@ process.on("exit", () => {
 
   // NOTE: anonymous Lane 1 usage telemetry is NOT sent here. A fetch scheduled
   // inside a process "exit" handler never flushes (the event loop is already
-  // draining), so the ping is emitted once on the first intercepted call via
-  // sendRunTelemetryOnce() instead. This handler only prints the local summary.
+  // draining), so the ping is emitted once after the first completed in-scope
+  // call is recorded. This handler only prints the local summary.
 
   // ── Write a local run log for `vantio prove` / `vantio discover --local` ──
   // Always written on every vantio run, regardless of call count, tier, or
@@ -3740,7 +3745,7 @@ process.on("exit", () => {
     lines.push(`  Blocked:      ${blocked > 0 ? c.red : ""}${blocked}${c.reset}`);
     lines.push(`  Est. spend:   $${spentUsd.toFixed(4)}`);
   } else {
-    lines.push(`  ${c.dim}→ Run \`vantio prove\` to export an auditor-ready artifact from this run.${c.reset}`);
+    lines.push(`  ${c.dim}→ Run \`vantio prove\` to export a local proof artifact from this run.${c.reset}`);
   }
   lines.push("");
   process.stderr.write(lines.join("\n"));

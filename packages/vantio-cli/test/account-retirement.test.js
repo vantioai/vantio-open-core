@@ -97,7 +97,7 @@ describe("Optics 0.3.21 public surfaces do not advertise accounts", () => {
   test("README and package metadata do not promise accounts, billing, or the missing config route", () => {
     const readme = readFileSync(README_PATH, "utf8");
     const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8"));
-    assert.equal(pkg.version, "0.3.21");
+    assert.equal(pkg.version, "0.3.22");
     assert.match(pkg.description, /Vantio Optics \| Free Observability for AI Agents/);
     assert.match(pkg.description, /Free, local-first observability for supported AI-agent traffic\. Prompts and completions are never stored\./);
     assert.doesNotMatch(readme, ACCOUNT_PROMISE);

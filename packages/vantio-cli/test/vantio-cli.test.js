@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -133,5 +133,95 @@ describe("vantio run python wrap", () => {
     }
     assert.equal(code, 0);
     assert.match(stdout, /WRAP_OK/);
+  });
+});
+
+describe("vantio prove and tail usage errors", () => {
+  test("prove rejects an unknown option without a Node stack", async () => {
+    const { code, stdout, stderr } = await runCli(["prove", "--bogus"]);
+    assert.equal(code, 1);
+    assert.equal(stdout, "");
+    assert.match(stderr, /^vantio prove: /);
+    assert.doesNotMatch(stderr, /node:util|ERR_PARSE_ARGS|\n    at /);
+  });
+
+  test("prove rejects a missing format value without a Node stack", async () => {
+    const { code, stdout, stderr } = await runCli(["prove", "--format"]);
+    assert.equal(code, 1);
+    assert.equal(stdout, "");
+    assert.match(stderr, /^vantio prove: /);
+    assert.doesNotMatch(stderr, /node:util|ERR_PARSE_ARGS|\n    at /);
+  });
+
+  test("tail rejects an unknown option without a Node stack", async () => {
+    const { code, stdout, stderr } = await runCli(["tail", "--bogus"]);
+    assert.equal(code, 1);
+    assert.equal(stdout, "");
+    assert.match(stderr, /^vantio tail: /);
+    assert.doesNotMatch(stderr, /node:util|ERR_PARSE_ARGS|\n    at /);
+  });
+
+  test("tail rejects a non-numeric line count", async () => {
+    const home = mkdtempSync(join("/tmp", "vantio-tail-lines-"));
+    try {
+      const { code, stdout, stderr } = await runCli(["tail", "--lines=nope"], { HOME: home });
+      assert.equal(code, 1);
+      assert.equal(stdout, "");
+      assert.match(stderr, /--lines must be a non-negative integer/);
+      assert.doesNotMatch(stderr, /node:util|ERR_PARSE_ARGS|\n    at /);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("prove reads a log path that contains a space", async () => {
+    const home = mkdtempSync(join("/tmp", "vantio-prove-space-"));
+    const dir = join(home, "logs with space");
+    mkdirSync(dir);
+    const logPath = join(dir, "run.json");
+    writeFileSync(logPath, JSON.stringify({
+      vantio_run_log: "1",
+      trace_id: "space-trace",
+      calls: [],
+      summary: { total_calls: 0, total_bytes: 0 },
+    }));
+    try {
+      const { code, stdout, stderr } = await runCli(
+        ["prove", `--from=${logPath}`, "--format=md"],
+        { HOME: home },
+      );
+      assert.equal(code, 0, stderr);
+      assert.match(stdout, /space-trace/);
+      assert.doesNotMatch(`${stdout}\n${stderr}`, /auditor-ready/i);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("prove reports a read-only destination without a Node stack", async () => {
+    const home = mkdtempSync(join("/tmp", "vantio-prove-ro-"));
+    const locked = join(home, "locked");
+    mkdirSync(locked);
+    chmodSync(locked, 0o555);
+    const logPath = join(home, "run.json");
+    writeFileSync(logPath, JSON.stringify({
+      vantio_run_log: "1",
+      trace_id: "ro-trace",
+      calls: [],
+      summary: { total_calls: 0, total_bytes: 0 },
+    }));
+    try {
+      const { code, stdout, stderr } = await runCli(
+        ["prove", `--from=${logPath}`, "--format=md", `--out=${join(locked, "proof.md")}`],
+        { HOME: home },
+      );
+      assert.equal(code, 1);
+      assert.equal(stdout, "");
+      assert.match(stderr, /^vantio prove: could not write /);
+      assert.doesNotMatch(stderr, /node:util|\n    at /);
+    } finally {
+      chmodSync(locked, 0o755);
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
