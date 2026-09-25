@@ -315,7 +315,7 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.equal(requests.ingest.length, 0);
   });
 
-  test("FREE_MODE exit banner names Phantom Engine, not Gate, as the enforcement upgrade — claim-scrub regression", async () => {
+  test("FREE_MODE exit banner stays local and does not advertise an account or upgrade", async () => {
     // The exit summary fires when _calls.length > 0. Trigger one observed call
     // against the mock target via EXTRA_LLM_HOSTS so the FREE_MODE banner fires.
     const { code, stderr } = await runAgent(
@@ -323,9 +323,8 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
       FETCH_ONCE_SCRIPT
     );
     assert.equal(code, 0);
-    assert.doesNotMatch(stderr, /Vantio Gate \(Pro\)/i, "exit banner must not present Gate (Pro) as upgrade SKU");
-    assert.doesNotMatch(stderr, /upgrade to Vantio Gate/i, "exit banner must not direct user to upgrade to Gate");
-    assert.match(stderr, /Phantom Engine/, "exit banner must name Phantom Engine as the enforcement upgrade");
+    assert.match(stderr, /vantio prove/);
+    assert.doesNotMatch(stderr, /Gate|Phantom Engine|pricing|dashboard|Free plan|Enterprise/i);
   });
 
   test("PAID_MODE, enforce=false: call allowed through, ingest records action ALLOWED", async () => {
@@ -397,6 +396,16 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
 
     assert.equal(requests.target.length, 0, "the blocked host must never receive the request");
     assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(
+      requests.ingest[0].body.eventPayload.mediation,
+      "sight_loop",
+      "retired 'sight_loop' must never be emitted as mediation default (regression: EXTERNAL_PROTOCOL_VALUE fix)"
+    );
+    assert.equal(
+      requests.ingest[0].body.eventPayload.mediation,
+      "optics_enforcement",
+      "enforcement events without a transport-layer mediation must use 'optics_enforcement'"
+    );
   });
 
   test("authenticated but FREE tier: never calls ingest even though a policy is present (regression guard)", async () => {
@@ -413,7 +422,7 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
 
     assert.equal(requests.target.length, 1, "the call itself must still go through");
     assert.equal(requests.ingest.length, 0, "a free-tier key must never reach /api/v1/ingest");
-    assert.match(stderr, /Free plan.*observed locally only/);
+    assert.doesNotMatch(stderr, /Free plan|Pro or Enterprise|vantio\.ai\/pricing|dashboard/i);
     assert.doesNotMatch(stderr, /Events routed to your Vantio dashboard/);
   });
 
@@ -682,9 +691,9 @@ else go();
     }
   });
 
-  test("FREE_MODE per-call observe banner names Phantom Engine, not Gate, for enforcement — claim-scrub regression", async () => {
-    // The per-call stderr line shown on each OBSERVED intercept must not
-    // attribute enforcement to Gate as a product. Guarded by port availability.
+  test("FREE_MODE per-call observe banner stays local and does not advertise enforcement", async () => {
+    // The per-call stderr line shown on each OBSERVED intercept must stay
+    // local. Guarded by port availability.
     let ollamaServer;
     try {
       ollamaServer = http.createServer((req, res) => {
@@ -704,8 +713,9 @@ else go();
         FETCH_ONCE_SCRIPT
       );
       assert.equal(code, 0);
-      assert.doesNotMatch(stderr, /Gate enforces on this path/i, "per-call observe banner must not attribute enforcement to Gate");
-      assert.match(stderr, /Phantom Engine/, "per-call observe banner must name Phantom Engine for enforcement");
+      assert.match(stderr, /Observed locally/);
+      assert.match(stderr, /Prompts and completions are never stored/);
+      assert.doesNotMatch(stderr, /Gate|Phantom Engine|pricing|dashboard|enforce/i);
     } finally {
       await new Promise((resolve) => ollamaServer.close(resolve));
     }

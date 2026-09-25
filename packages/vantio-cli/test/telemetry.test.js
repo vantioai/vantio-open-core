@@ -13,27 +13,40 @@ const { sendTelemetry, telemetryDisabled } = await import("../bin/telemetry.cjs"
 describe("telemetry.cjs — telemetryDisabled()", () => {
   const savedDisabled = process.env.VANTIO_TELEMETRY_DISABLED;
   const savedDnt = process.env.DO_NOT_TRACK;
+  const savedEnabled = process.env.VANTIO_TELEMETRY;
 
   afterEach(() => {
     if (savedDisabled === undefined) delete process.env.VANTIO_TELEMETRY_DISABLED;
     else process.env.VANTIO_TELEMETRY_DISABLED = savedDisabled;
     if (savedDnt === undefined) delete process.env.DO_NOT_TRACK;
     else process.env.DO_NOT_TRACK = savedDnt;
+    if (savedEnabled === undefined) delete process.env.VANTIO_TELEMETRY;
+    else process.env.VANTIO_TELEMETRY = savedEnabled;
   });
 
-  test("false by default", () => {
+  test("true by default (opt-in required)", () => {
     delete process.env.VANTIO_TELEMETRY_DISABLED;
     delete process.env.DO_NOT_TRACK;
+    delete process.env.VANTIO_TELEMETRY;
+    assert.equal(telemetryDisabled(), true);
+  });
+
+  test("false when explicitly opted in with VANTIO_TELEMETRY=1", () => {
+    delete process.env.VANTIO_TELEMETRY_DISABLED;
+    delete process.env.DO_NOT_TRACK;
+    process.env.VANTIO_TELEMETRY = "1";
     assert.equal(telemetryDisabled(), false);
   });
 
-  test("true when VANTIO_TELEMETRY_DISABLED=1", () => {
+  test("true when VANTIO_TELEMETRY_DISABLED=1 overrides opt-in", () => {
+    process.env.VANTIO_TELEMETRY = "1";
     process.env.VANTIO_TELEMETRY_DISABLED = "1";
     delete process.env.DO_NOT_TRACK;
     assert.equal(telemetryDisabled(), true);
   });
 
-  test("true when DO_NOT_TRACK=1", () => {
+  test("true when DO_NOT_TRACK=1 overrides opt-in", () => {
+    process.env.VANTIO_TELEMETRY = "1";
     delete process.env.VANTIO_TELEMETRY_DISABLED;
     process.env.DO_NOT_TRACK = "1";
     assert.equal(telemetryDisabled(), true);
@@ -41,7 +54,7 @@ describe("telemetry.cjs — telemetryDisabled()", () => {
 });
 
 describe("telemetry.cjs — sendTelemetry()", () => {
-  let server, baseUrl, received, homeDir, savedHome, savedIngest, savedDisabled;
+  let server, baseUrl, received, homeDir, savedHome, savedIngest, savedDisabled, savedEnabled;
 
   beforeEach(async () => {
     received = [];
@@ -61,9 +74,12 @@ describe("telemetry.cjs — sendTelemetry()", () => {
     savedHome = process.env.HOME;
     savedIngest = process.env.VANTIO_INGEST_URL;
     savedDisabled = process.env.VANTIO_TELEMETRY_DISABLED;
+    savedEnabled = process.env.VANTIO_TELEMETRY;
     process.env.HOME = homeDir;
     process.env.VANTIO_INGEST_URL = baseUrl;
     delete process.env.VANTIO_TELEMETRY_DISABLED;
+    // Default for send tests: opt in so sends are observable.
+    process.env.VANTIO_TELEMETRY = "1";
   });
 
   afterEach(async () => {
@@ -75,9 +91,11 @@ describe("telemetry.cjs — sendTelemetry()", () => {
     else process.env.VANTIO_INGEST_URL = savedIngest;
     if (savedDisabled === undefined) delete process.env.VANTIO_TELEMETRY_DISABLED;
     else process.env.VANTIO_TELEMETRY_DISABLED = savedDisabled;
+    if (savedEnabled === undefined) delete process.env.VANTIO_TELEMETRY;
+    else process.env.VANTIO_TELEMETRY = savedEnabled;
   });
 
-  test("posts only the allowlisted fields to /api/v1/telemetry", async () => {
+  test("posts only the allowlisted fields to /api/v1/telemetry when opted in", async () => {
     sendTelemetry({
       event: "run",
       hosts: ["api.openai.com"],
@@ -105,7 +123,14 @@ describe("telemetry.cjs — sendTelemetry()", () => {
     assert.equal(body.prompt, undefined);
   });
 
-  test("never sends anything when telemetry is disabled", async () => {
+  test("never sends anything by default (opt-in required)", async () => {
+    delete process.env.VANTIO_TELEMETRY;
+    sendTelemetry({ event: "run", hosts: ["api.openai.com"] });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(received.length, 0);
+  });
+
+  test("never sends anything when VANTIO_TELEMETRY_DISABLED=1 overrides opt-in", async () => {
     process.env.VANTIO_TELEMETRY_DISABLED = "1";
     sendTelemetry({ event: "run", hosts: ["api.openai.com"] });
     await new Promise((resolve) => setTimeout(resolve, 200));

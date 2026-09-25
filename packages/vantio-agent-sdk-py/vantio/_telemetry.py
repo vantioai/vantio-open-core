@@ -1,5 +1,5 @@
 """
-[ ∅ VANTIO ] Lane 1 — anonymous, opt-out usage telemetry (Python parity).
+[ ∅ VANTIO ] Lane 1 — anonymous, opt-in usage telemetry (Python parity).
 
 Mirrors the Node CLI telemetry hook. Sends ONLY anonymous, aggregate metadata:
 a random anonymous id, the runtime/os strings, an event name, the set of LLM
@@ -9,7 +9,8 @@ keys, emails, or any content/PII — that is the entire privacy contract.
 Fire-and-forget on a short-timeout daemon thread so it can never block, slow,
 or crash the agent. Standard library only — no third-party dependencies.
 
-Opt out: VANTIO_TELEMETRY_DISABLED=1  or  DO_NOT_TRACK=1
+Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in.
+VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
 """
 from __future__ import annotations
 
@@ -30,11 +31,19 @@ _once_lock = threading.Lock()
 
 
 def is_telemetry_disabled() -> bool:
-    """True when the user has opted out via VANTIO_TELEMETRY_DISABLED or DO_NOT_TRACK."""
-    return (
-        os.environ.get("VANTIO_TELEMETRY_DISABLED") == "1"
-        or os.environ.get("DO_NOT_TRACK") == "1"
-    )
+    """True unless the caller opted in, or an override forces telemetry off.
+
+    Precedence matches the CLI: VANTIO_TELEMETRY_DISABLED=1 and DO_NOT_TRACK=1
+    force-disable even when VANTIO_TELEMETRY=1. Otherwise telemetry sends only
+    when VANTIO_TELEMETRY == "1".
+    """
+    if os.environ.get("VANTIO_TELEMETRY_DISABLED") == "1":
+        return True
+    if os.environ.get("DO_NOT_TRACK") == "1":
+        return True
+    if os.environ.get("VANTIO_TELEMETRY") != "1":
+        return True
+    return False
 
 
 def _anonymous_id() -> str:

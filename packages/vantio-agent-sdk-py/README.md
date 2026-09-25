@@ -77,6 +77,8 @@ get_current_trace_id()  # None — outside shield() frame
 
 ## fetch_policy() — policy retrieval
 
+Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
+
 Fetches your tenant's governance policy from `GET /api/v1/config`. Fails open — if the
 control plane is unreachable, a permissive default policy is returned so your agent never
 stalls waiting for governance.
@@ -145,6 +147,8 @@ Built-in categories: `ssn`, `email`, `credit_card`, `phone`.
 
 ## report_anomaly() — cloud ingest
 
+Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
+
 ```python
 async with shield():
     await run_agent()
@@ -163,9 +167,10 @@ async with shield():
 
 ## Environment variables
 
+Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
+
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Phantom Engine API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing — `report_anomaly()` is a no-op without this |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
@@ -174,17 +179,9 @@ async with shield():
 
 ---
 
-## Anonymous telemetry (opt-out)
+## Telemetry
 
-The SDK sends a single **anonymous** usage ping per process the first time `shield()` runs.
-It contains only aggregate, non-identifying metadata — a random anonymous id, the Python
-version, the OS string, and an event name. It **never** sends prompts, completions, API
-keys, emails, or any content/PII. Fire-and-forget on a daemon thread; never blocks.
-
-```bash
-export VANTIO_TELEMETRY_DISABLED=1   # or
-export DO_NOT_TRACK=1
-```
+Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
 
 ---
 

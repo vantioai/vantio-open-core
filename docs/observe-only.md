@@ -96,10 +96,6 @@ vantio run node agent.js
 vantio prove
 vantio discover --local
 
-# Phantom Engine — requires a Phantom Engine key + vantio login
-vantio login <phantom-engine-key>
-vantio run node agent.js    # may BLOCK / REDACT when policy is on
-
 # Phantom Engine — Linux host install (not in this repo)
 # See vantio-phantom-engine
 ```

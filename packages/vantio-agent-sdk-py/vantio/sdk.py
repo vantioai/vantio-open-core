@@ -55,7 +55,7 @@ def _decorate(fn: Callable, trace_id: Optional[str]) -> Callable:
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         tid = trace_id or str(uuid.uuid4())
         token = _trace_id_var.set(tid)
-        # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
+        # Lane 1: anonymous, opt-in, once-per-process usage ping. Never blocks.
         send_run_telemetry_once(_sdk_version())
         install_http_observe(tid)
         try:
@@ -82,7 +82,7 @@ class _ShieldContextManager:
 
     async def __aenter__(self) -> VantioContext:
         self._token = _trace_id_var.set(self._trace_id)
-        # Lane 1: anonymous, opt-out, once-per-process usage ping. Never blocks.
+        # Lane 1: anonymous, opt-in, once-per-process usage ping. Never blocks.
         send_run_telemetry_once(_sdk_version())
         install_http_observe(self._trace_id)
         return VantioContext(trace_id=self._trace_id)

@@ -1,12 +1,14 @@
-// [ ∅ VANTIO ] Lane 1 — anonymous, opt-out usage telemetry.
+// [ ∅ VANTIO ] Lane 1 — opt-in usage telemetry.
 //
-// Sends ONLY anonymous, aggregate metadata: a random anonymous id, the
-// runtime/os strings, an event name, the set of LLM hostnames contacted, and
-// a few counts. It NEVER sends prompts, completions, API keys, emails, or any
+// Disabled by default. Opt in by setting VANTIO_TELEMETRY=1.
+// Sends ONLY aggregate metadata: a random persistent id, the runtime/os
+// strings, an event name, the set of LLM hostnames contacted, and a few
+// counts. It NEVER sends prompts, completions, API keys, emails, or any
 // content/PII — that is the entire privacy contract. Fire-and-forget with a
 // hard timeout so it can never block, slow, or crash the agent.
 //
-// Opt out: VANTIO_TELEMETRY_DISABLED=1  or  DO_NOT_TRACK=1
+// Opt in:  VANTIO_TELEMETRY=1
+// Opt out (when opted in): VANTIO_TELEMETRY_DISABLED=1  or  DO_NOT_TRACK=1
 
 "use strict";
 
@@ -35,16 +37,23 @@ const _fetch = typeof globalThis.fetch === "function" ? globalThis.fetch : undef
 
 // Fields explicitly allowed onto the wire. Anything not in this whitelist is
 // never transmitted — a deliberate guard against accidentally leaking content.
+//
+// Telemetry is disabled by default. Only enabled when VANTIO_TELEMETRY=1 is
+// explicitly set. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 always
+// override the opt-in (useful when opt-in is set system-wide and a user wants
+// to override it for a specific invocation).
 function telemetryDisabled() {
-  return (
-    process.env.VANTIO_TELEMETRY_DISABLED === "1" ||
-    process.env.DO_NOT_TRACK === "1"
-  );
+  if (process.env.VANTIO_TELEMETRY_DISABLED === "1") return true;
+  if (process.env.DO_NOT_TRACK === "1") return true;
+  // Not opted in → disabled.
+  if (process.env.VANTIO_TELEMETRY !== "1") return true;
+  return false;
 }
 
-// Read (or lazily create) a persistent random anonymous id. On any FS failure
-// we fall back to an ephemeral per-run id — this function never throws.
-function getAnonymousId() {
+// Read (or lazily create) a persistent random telemetry id stored at
+// ~/.vantio/telemetry-id (mode 0600). On any FS failure we fall back to an
+// ephemeral per-run id — this function never throws.
+function getTelemetryId() {
   try {
     const dir = path.join(os.homedir(), ".vantio");
     const idFile = path.join(dir, "telemetry-id");
@@ -75,7 +84,7 @@ function sendTelemetry(payload = {}) {
     if (typeof _fetch !== "function") return; // Node < 18 — nothing to send with.
 
     const body = {
-      anonymousId: getAnonymousId(),
+      anonymousId: getTelemetryId(),
       runtime: "node",
       runtimeVersion: process.version,
       os: process.platform,
@@ -86,7 +95,7 @@ function sendTelemetry(payload = {}) {
       callCount: Number.isFinite(payload.callCount) ? payload.callCount : 0,
     };
 
-    // Optional, still anonymous fields — added only when present.
+    // Optional fields — added only when present.
     if (payload.sdkVersion != null) body.sdkVersion = String(payload.sdkVersion);
     if (payload.cliVersion != null) body.cliVersion = String(payload.cliVersion);
     if (Number.isFinite(payload.redactedCount)) body.redactedCount = payload.redactedCount;

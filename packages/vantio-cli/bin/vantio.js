@@ -3,67 +3,49 @@ import { spawn }         from "node:child_process";
 import { parseArgs }     from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { homedir, hostname as osHostname } from "node:os";
-import { mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, statSync, existsSync, watch } from "node:fs";
-import readline          from "node:readline";
+import { homedir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, existsSync, watch } from "node:fs";
 import { randomUUID }    from "node:crypto";
 
-const DEFAULT_BASE = "https://vantio.ai";
-
 const USAGE = `\
-Vantio AI — process supervisor
+Vantio Optics | Free Observability for AI Agents
+
+Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 
 Usage:
-  vantio login [key]          Save & validate your API key (no env vars after this)
-  vantio logout               Remove the stored key
-  vantio whoami               Show the stored key (masked) + connection status
   vantio run [flags] <prog>   Spawn <prog> under the Vantio execution context
-  vantio discover [options]   Show Shadow AI attack surface (AI calls in your workspace)
-  vantio prove [options]      Generate an auditor-ready proof artifact from a run log
+  vantio discover [options]   Show AI-agent call history (--local; no key required)
+  vantio prove [options]      Generate a proof artifact from a local run log (no key required)
   vantio search [query]       Search local run logs (host, path, action, free text)
   vantio tail [options]       Show the latest calls from a captured run
   vantio diff <a> <b>         Compare two local runs (hosts, counts, bytes)
 
 Flags (run):
-  --audit,   -a   Enable audit mode (VANTIO_AUDIT_MODE=1).
   --summary, -s   Print a run summary on exit.
 
-After 'vantio login', plain 'vantio run node agent.js' just works — the key is
-loaded from ~/.vantio/config.json and injected into the child process. An
-explicit VANTIO_API_KEY in your environment always takes precedence.
-
 Examples:
-  vantio login vk_live_xxx
   vantio run node agent.js
   vantio run python agent.py
-  vantio run --audit tsx agent.ts
-  vantio discover --since=7d
+  vantio run --summary tsx agent.ts
   vantio discover --local
+  vantio discover --since=7d
   vantio prove
   vantio prove --list
-  vantio prove --format=md --out=audit.md
+  vantio prove --format=md --out=report.md
   vantio search openai
   vantio tail -n 20
   vantio diff 0xabc 0xdef
 `;
 
 const DISCOVER_HELP = `\
-vantio discover — Shadow AI Attack Surface Discovery
+vantio discover — local AI-agent call history
 
-Shows every AI agent call recorded in your Vantio workspace. Phantom Engine users see
-SDK-monitored calls. Phantom Engine users also see
-unenrolled processes — your Shadow AI attack surface.
+Reads run logs on this machine. Covers only processes started with
+\`vantio run\` (Node) or \`vantio run python\` after
+\`pip install vantio-agent-sdk\`. This machine only — not a fleet inventory.
 
-Calls are grouped by target host and annotated with governance status:
-  ALLOWED   — call was permitted by policy
-  REDACTED  — call was allowed but PII was scrubbed
-  BLOCKED   — call was denied by policy
-  OBSERVED  — call was seen with no Vantio trace_id (Shadow AI indicator)
-
-Free-tier local scan (--local):
-  Reads run logs written to ~/.vantio/runs/ by \`vantio run\` on this machine.
-  No API key required. Covers only processes started with \`vantio run\`.
-  Phantom Engine adds dashboard sync, cross-machine history, and detection of unenrolled processes.
+Calls are grouped by target host. The action label recorded for a local
+Optics run is OBSERVED.
 
 Usage:
   vantio discover [options]
@@ -72,24 +54,23 @@ Options:
   --since=<period>    Look back 24h, 7d, or 30d  (default: 24h)
   --host=<hostname>   Filter to a specific target host
   --json              Output raw JSON instead of a formatted table
-  --local             Show local run logs only — no API key required (Free tier)
+  --local             Same local history (accepted; this command is always local)
   -h, --help          Show this help
 
 Examples:
   vantio discover
-  vantio discover --since=7d
-  vantio discover --host=api.openai.com
-  vantio discover --since=30d --json
   vantio discover --local
   vantio discover --local --since=7d
+  vantio discover --since=7d
+  vantio discover --host=api.openai.com
 `;
 
 const PROVE_HELP = `\
 vantio prove — Auditor-Ready Proof Artifacts
 
 Generates an auditor-ready proof artifact (HTML or Markdown report) from a
-vantio run log. Reports include: trace ID, machine, PID, byte counts, host
-breakdown, and summary counts. Reports contain NO prompts or completions.
+vantio run log. Reports include: trace ID, PID, byte counts, host
+breakdown, and summary counts. Prompts and completions are never stored.
 
 Run logs are written automatically to ~/.vantio/runs/ when LLM calls are
 intercepted by \`vantio run\`.
@@ -117,7 +98,7 @@ const SEARCH_HELP = `\
 vantio search — Search local Optics run logs
 
 Find observed LLM calls across ~/.vantio/runs/ by free text, host, provider,
-path, or action. Metadata only — never prompts or completions. Free, no key.
+path, or action. Metadata only — prompts and completions are never stored.
 
 Usage:
   vantio search [query] [options]
@@ -141,8 +122,8 @@ Examples:
 const TAIL_HELP = `\
 vantio tail — Latest calls from a captured Optics run
 
-Prints the most recent observed calls from a local run log so you can inspect
-egress without opening Mission Control. Free, no key.
+Prints the most recent observed calls from a local run log. Metadata only —
+prompts and completions are never stored.
 
 Usage:
   vantio tail [options]
@@ -168,7 +149,7 @@ const DIFF_HELP = `\
 vantio diff — Compare two local Optics runs
 
 Shows what changed between two captured runs: hosts added or removed, call
-counts, and byte totals. Metadata only. Free, no key.
+counts, and byte totals. Metadata only. Prompts and completions are never stored.
 
 Usage:
   vantio diff <run-a> <run-b> [options]
@@ -185,32 +166,15 @@ Examples:
   vantio diff 0xabc 0xdef --json
 `;
 
-// ── config store (~/.vantio/config.json) ─────────────────────────────────────
-
+// ── config store (~/.vantio/config.json) ───────────────────────────────────────────────────
 function configDir()  { return join(homedir(), ".vantio"); }
 function configPath() { return join(configDir(), "config.json"); }
 
-function readConfig() {
-  try {
-    return JSON.parse(readFileSync(configPath(), "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function writeConfig(data) {
-  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
-  writeFileSync(configPath(), JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
-  // mode on writeFileSync is ignored if the file already existed — enforce it.
-  try { chmodSync(configPath(), 0o600); } catch { /* non-POSIX filesystem */ }
-}
-
+// Optics 0.3.21 compatibility: ~/.vantio/config.json is not read by run,
+// discover, prove, search, tail, or diff. A previously saved apiKey is never
+// injected, printed, or sent. `vantio logout` only deletes that local file.
 function clearConfig() {
   try { rmSync(configPath()); return true; } catch { return false; }
-}
-
-function baseUrl() {
-  return (process.env.VANTIO_INGEST_URL || DEFAULT_BASE).replace(/\/+$/, "");
 }
 
 function getVersion() {
@@ -222,156 +186,7 @@ function getVersion() {
   }
 }
 
-// Never print the full key. Show a recognizable prefix + suffix only.
-function maskKey(key) {
-  if (typeof key !== "string" || key.length === 0) return "(none)";
-  if (key.length <= 10) return key.slice(0, 2) + "****";
-  return `${key.slice(0, 6)}…${key.slice(-4)}`;
-}
-
-// Validate a key against GET /api/v1/config. Returns { ok, status, policyActive, tier };
-// throws on a network failure so the caller can refuse to save.
-//
-// `tier` distinguishes an authenticated-but-free key from a paid one. This
-// matters because /api/v1/ingest and /api/v1/discover 403 for non-PRO/
-// ENTERPRISE tenants (by design — dashboard sync is a paid feature), while
-// /api/v1/config fails open with a permissive policy for everyone. Without
-// checking tier explicitly, a free-tier user who logs in looks identical to a
-// paid one until their events start silently 403ing.
-function isPaidTier(tier) {
-  return tier === "PRO" || tier === "ENTERPRISE";
-}
-
-async function validateKey(base, key) {
-  const res = await fetch(`${base}/api/v1/config`, {
-    method: "GET",
-    headers: { "x-vantio-identity": key },
-    signal: AbortSignal.timeout(8000),
-  });
-  let policyActive = false;
-  let tier = null;
-  if (res.ok) {
-    try {
-      const data = await res.json();
-      const p = data && data.policy;
-      tier = typeof data?.tier === "string" ? data.tier : null;
-      policyActive = !!(
-        p && (p.enforce || p.redact_pii ||
-          (Array.isArray(p.blocked_hosts) && p.blocked_hosts.length) ||
-          (Array.isArray(p.allowed_hosts) && p.allowed_hosts.length) ||
-          Number(p.spend_cap_usd) > 0 || Number(p.max_request_bytes) > 0)
-      );
-    } catch { /* body not JSON — still a valid 200 */ }
-  }
-  return { ok: res.ok, status: res.status, policyActive, tier };
-}
-
-// Masked-input prompt. Masks typed characters with '*' on a TTY; falls back to a
-// plain prompt elsewhere (never throws).
-function promptForKey() {
-  const query = "Paste your Vantio API key: ";
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    const canMask = process.stdin.isTTY === true;
-    if (canMask) {
-      rl._writeToOutput = function (str) {
-        if (str.includes(query) || str === "\n" || str === "\r\n") rl.output.write(str);
-        else rl.output.write("*");
-      };
-    }
-    rl.question(query, (answer) => {
-      rl.close();
-      if (canMask) process.stdout.write("\n");
-      resolve(answer.trim());
-    });
-  });
-}
-
-// ── commands ──────────────────────────────────────────────────────────────────
-
-async function loginCommand(args) {
-  const base = baseUrl();
-  let key = (args[0] || "").trim();
-  if (!key) {
-    if (!process.stdin.isTTY) {
-      process.stderr.write("vantio login: no API key provided.\nUsage: vantio login <key>\n");
-      process.exit(1);
-    }
-    key = await promptForKey();
-  }
-  if (!key) {
-    process.stderr.write("vantio login: no API key entered.\n");
-    process.exit(1);
-  }
-
-  process.stdout.write(`Validating key against ${base} …\n`);
-  let result;
-  try {
-    result = await validateKey(base, key);
-  } catch (err) {
-    process.stderr.write(`vantio login: could not reach Vantio at ${base} (${err.message}). Key not saved.\n`);
-    process.exit(1);
-  }
-
-  if (result.status === 401) {
-    process.stderr.write(
-      `vantio login: that API key was rejected (401). Key not saved.\n` +
-      `  Get your key at vantio.ai/dashboard\n`
-    );
-    process.exit(1);
-  }
-  if (!result.ok) {
-    process.stderr.write(`vantio login: unexpected response (HTTP ${result.status}). Key not saved.\n`);
-    process.exit(1);
-  }
-
-  writeConfig({ apiKey: key, ingestUrl: base, savedAt: new Date().toISOString() });
-  process.stdout.write(
-    `\n✓ Connected to Vantio  (${maskKey(key)})${result.policyActive ? "  — policy active" : ""}\n` +
-    `  Saved to ${configPath()} (chmod 600)\n\n` +
-    `Next — run your agent with no env vars:\n  vantio run node agent.js\n`
-  );
-  if (!isPaidTier(result.tier)) {
-    process.stdout.write(
-      "\nYou're on the Free plan — `vantio run` will keep observing calls locally in your\n" +
-      "terminal, but dashboard sync, `vantio discover`, and policy enforcement require\n" +
-      "Phantom Engine or Enterprise. Upgrade at vantio.ai/pricing.\n"
-    );
-  }
-}
-
-function logoutCommand() {
-  const existed = readConfig() != null;
-  clearConfig();
-  process.stdout.write(existed ? "✓ Logged out — stored key removed.\n" : "No stored credentials to remove.\n");
-}
-
-async function whoamiCommand() {
-  const cfg = readConfig();
-  if (!cfg || !cfg.apiKey) {
-    process.stdout.write("Not logged in. Run: vantio login <key>\n");
-    return;
-  }
-  const base = (cfg.ingestUrl || baseUrl()).replace(/\/+$/, "");
-  process.stdout.write(`Key:    ${maskKey(cfg.apiKey)}\nServer: ${base}\n`);
-  try {
-    const result = await validateKey(base, cfg.apiKey);
-    if (result.status === 401) {
-      process.stdout.write("Status: key rejected (401) — run `vantio login` again.\n");
-    } else if (result.ok) {
-      const plan = result.tier ? ` — ${isPaidTier(result.tier) ? result.tier : "FREE"} plan` : "";
-      process.stdout.write(`Status: connected${plan}${result.policyActive ? ", policy active" : ""}\n`);
-      if (!isPaidTier(result.tier)) {
-        process.stdout.write("  Dashboard sync and `vantio discover` require Phantom Engine or Enterprise — vantio.ai/pricing\n");
-      }
-    } else {
-      process.stdout.write(`Status: unexpected response (HTTP ${result.status}).\n`);
-    }
-  } catch {
-    process.stdout.write("Status: could not reach Vantio (offline?). Key remains stored.\n");
-  }
-}
-
+// ── commands ──────────────────────────────────────────────────────────────────────────────
 function runCommand(rest) {
   // Split at the first non-flag argument (the program name) so flags meant for
   // the child (e.g. node -e) are never consumed by vantio's own parser.
@@ -390,14 +205,14 @@ function runCommand(rest) {
 
   if (progArgs.length === 0) {
     process.stderr.write(
-      "vantio run: no program specified\n\nUsage: vantio run [--audit] [--summary] <program> [...args]\n",
+      "vantio run: no program specified\n\nUsage: vantio run [--summary] <program> [...args]\n",
     );
     process.exit(1);
   }
 
   const [program, ...programArgs] = progArgs;
 
-  // ── Node.js runtime detection ──────────────────────────────────────────────
+  // ── Node.js runtime detection ──────────────────────────────────────────────────────────
   const NODE_RUNTIMES = new Set(["node", "node.exe", "npx", "npx.cmd", "tsx", "ts-node"]);
   const isNodeRuntime = (prog) => {
     const base = prog.split(/[\\/]/).pop().replace(/\.exe$/, "");
@@ -421,28 +236,16 @@ function runCommand(rest) {
     extraPythonPath = join(dirname(fileURLToPath(import.meta.url)), "python-wrap");
   }
 
-  // Auto-load the saved key/server if the environment doesn't already set them,
-  // so `vantio run …` just works after `vantio login`. An explicit env var wins.
-  let injectedKey  = null;
-  let injectedBase = null;
-  if (!process.env.VANTIO_API_KEY) {
-    const cfg = readConfig();
-    if (cfg && cfg.apiKey) {
-      injectedKey = cfg.apiKey;
-      if (!process.env.VANTIO_INGEST_URL && cfg.ingestUrl && cfg.ingestUrl !== DEFAULT_BASE) {
-        injectedBase = cfg.ingestUrl;
-      }
-    }
-  }
-
+  // Stored ~/.vantio/config.json is ignored. Optics 0.3.21 does not inject a
+  // saved key or ingest URL. An explicit environment variable already present
+  // on the parent is inherited with the rest of process.env.
   const mergedNodeOptions = [process.env.NODE_OPTIONS, extraNodeOptions].filter(Boolean).join(" ");
   const delim = process.platform === "win32" ? ";" : ":";
   const mergedPythonPath = extraPythonPath
     ? [extraPythonPath, process.env.PYTHONPATH].filter(Boolean).join(delim)
     : "";
 
-  // One stable trace id for this `vantio run` — shared with interceptor ingest
-  // and (on Enterprise) Phantom Engine --inject for Tier 1↔3 correlation.
+  // One stable trace id for this `vantio run`.
   const runTraceId = process.env.VANTIO_TRACE_ID || `0x${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 
   const childEnv = Object.assign(Object.create(null), process.env, {
@@ -451,8 +254,6 @@ function runCommand(rest) {
     ...(values.summary   ? { VANTIO_SUMMARY:    "1" } : {}),
     ...(extraNodeOptions ? { NODE_OPTIONS: mergedNodeOptions } : {}),
     ...(mergedPythonPath ? { PYTHONPATH: mergedPythonPath } : {}),
-    ...(injectedKey      ? { VANTIO_API_KEY: injectedKey } : {}),
-    ...(injectedBase     ? { VANTIO_INGEST_URL: injectedBase } : {}),
   });
 
   process.stderr.write(`[ ∅ VANTIO ] run trace_id=${runTraceId}\n`);
@@ -470,7 +271,18 @@ function runCommand(rest) {
   });
 }
 
-// ── shared formatting helpers ────────────────────────────────────────────────
+// Hidden local compatibility. Not listed in help, README, or usage errors.
+// Deletes ~/.vantio/config.json only. Does not read or print the file and
+// does not contact the network.
+function logoutCommand() {
+  clearConfig();
+  process.stdout.write(
+    "Vantio Optics | Free Observability for AI Agents\n" +
+    "Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.\n",
+  );
+}
+
+// ── shared formatting helpers ─────────────────────────────────────────────────────────────────────────
 
 // Pad a string to a fixed width, truncating with '…' if needed.
 function col(str, width) {
@@ -479,8 +291,7 @@ function col(str, width) {
   return s.padEnd(width);
 }
 
-// ── prove helpers ─────────────────────────────────────────────────────────────
-
+// ── prove helpers ─────────────────────────────────────────────────────────────────────────────
 function runsDir() { return join(configDir(), "runs"); }
 
 function parseSincePeriod(since) {
@@ -515,7 +326,6 @@ function generateHtmlReport(log) {
   const blocked    = summary.blocked  ?? 0;
   const traceId    = escHtml(log.trace_id    || "—");
   const pid        = escHtml(log.pid         || "—");
-  const machine    = escHtml(log.machine     || "—");
   const startedAt  = escHtml(log.started_at  || "—");
   const genAt      = escHtml(log.generated_at || new Date().toISOString());
   const durationMs = log.duration_ms != null ? `${Number(log.duration_ms).toLocaleString()} ms` : "—";
@@ -524,10 +334,12 @@ function generateHtmlReport(log) {
   const rows = calls.map((c, i) => {
     const act = (c.action || "OBSERVED").toUpperCase();
     const cls = act.startsWith("BLOCKED") ? "blocked" : act.toLowerCase();
+    const status = c.status != null ? String(c.status) : "—";
     return `        <tr>
           <td class="num">${i + 1}</td>
           <td class="mono">${escHtml(c.hostname || "—")}</td>
           <td><span class="badge badge-${cls}">${escHtml(act)}</span></td>
+          <td class="num">${escHtml(status)}</td>
           <td class="num">${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"}</td>
           <td class="mono">${escHtml(c.ts || "—")}</td>
         </tr>`;
@@ -574,12 +386,12 @@ function generateHtmlReport(log) {
 </head>
 <body>
   <div class="page">
-    <h1>[ ∅ VANTIO ] Run Proof Artifact</h1>
-    <p class="subtitle">Auditor-ready AI governance evidence · @vantio/cli v${cliVer}</p>
+    <h1>Vantio Optics | Free Observability for AI Agents</h1>
+    <p class="subtitle">Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.</p>
 
     <div class="privacy-banner">
-      ✓ <strong>No prompts or completions captured.</strong>
-      This report contains only governance metadata: hostnames, byte counts, process IDs, trace IDs, and action labels.
+      ✓ <strong>Prompts and completions are never stored.</strong>
+      This report contains hostnames, byte counts, process IDs, trace IDs, and action labels. CLI v${cliVer}.
     </div>
 
     <h2>Run identity</h2>
@@ -589,7 +401,6 @@ function generateHtmlReport(log) {
       <dt>Generated</dt>    <dd>${genAt}</dd>
       <dt>Duration</dt>     <dd>${durationMs}</dd>
       <dt>Process ID</dt>   <dd>${pid}</dd>
-      <dt>Machine</dt>      <dd>${machine}</dd>
       <dt>CLI version</dt>  <dd>@vantio/cli v${cliVer}</dd>
     </dl>
 
@@ -607,8 +418,8 @@ function generateHtmlReport(log) {
       ? "<p style=\"color:#888;font-size:.875rem\">No calls recorded in this run log.</p>"
       : `<table>
       <thead><tr>
-        <th class="num">#</th><th>Host</th><th>Action</th>
-        <th class="num">Bytes</th><th>Timestamp</th>
+        <th class=\"num\">#</th><th>Host</th><th>Action</th>
+        <th class=\"num\">Status</th><th class=\"num\">Bytes</th><th>Timestamp</th>
       </tr></thead>
       <tbody>
 ${rows}
@@ -635,16 +446,16 @@ function generateMarkdownReport(log) {
   const blocked    = summary.blocked  ?? 0;
 
   const rows = calls.map((c, i) =>
-    `| ${i + 1} | \`${c.hostname || "—"}\` | \`${(c.action || "OBSERVED").toUpperCase()}\` | ${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"} | \`${c.ts || "—"}\` |`
+    `| ${i + 1} | \`${c.hostname || "—"}\` | \`${(c.action || "OBSERVED").toUpperCase()}\` | ${c.status != null ? c.status : "—"} | ${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"} | \`${c.ts || "—"}\` |`
   ).join("\n");
 
-  return `# [ ∅ VANTIO ] Run Proof Artifact
+  return `# Vantio Optics | Free Observability for AI Agents
 
-> Auditor-ready AI governance evidence · @vantio/cli v${log.cli_version || "—"}
+> Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 
-**Privacy notice:** This report contains only governance metadata — hostnames,
-byte counts, process IDs, trace IDs, and action labels. No prompt content,
-completions, API keys, or PII is present.
+**Privacy notice:** This report contains hostnames, byte counts, process IDs,
+trace IDs, and action labels. Prompts and completions are never stored.
+CLI v${log.cli_version || "—"}.
 
 ---
 
@@ -657,7 +468,6 @@ completions, API keys, or PII is present.
 | Generated | \`${log.generated_at || new Date().toISOString()}\` |
 | Duration | \`${log.duration_ms != null ? `${Number(log.duration_ms).toLocaleString()} ms` : "—"}\` |
 | Process ID | \`${log.pid || "—"}\` |
-| Machine | \`${log.machine || "—"}\` |
 | CLI version | \`@vantio/cli v${log.cli_version || "—"}\` |
 
 ---
@@ -678,8 +488,8 @@ Hosts: ${hosts.map((h) => `\`${h}\``).join(", ") || "—"}
 
 ## Call log (${totalCalls} call${totalCalls === 1 ? "" : "s"})
 
-| # | Host | Action | Bytes | Timestamp |
-|---|------|--------|-------|-----------|
+| # | Host | Action | Status | Bytes | Timestamp |
+|---|------|--------|--------|-------|-----------|
 ${rows || "| — | — | — | — | — |"}
 
 ---
@@ -718,7 +528,7 @@ function listRuns(dir) {
     return;
   }
 
-  process.stdout.write(`\nLocal run logs (stored in ${dir}):\n\n`);
+  process.stdout.write(`\nLocal run logs (~/.vantio/runs):\n\n`);
   const W = { trace: 38, calls: 7, bytes: 14, date: 24 };
   const hdr = col("TRACE ID", W.trace) + "  " + col("CALLS", W.calls) + "  " + col("TOTAL BYTES", W.bytes) + "  " + col("DATE", W.date);
   const div = "-".repeat(hdr.length);
@@ -775,8 +585,18 @@ function findMostRecentRun(dir) {
   let newest = null, newestTime = 0;
   for (const f of files) {
     const p = join(dir, f);
-    try { const s = statSync(p); if (s.mtimeMs > newestTime) { newestTime = s.mtimeMs; newest = p; } }
-    catch { /* skip */ }
+    try {
+      // Prefer the JSON's generated_at timestamp for stable ordering (mtime can
+      // be the same when fixtures are written in quick succession in tests).
+      let t = 0;
+      try {
+        const log = JSON.parse(readFileSync(p, "utf8"));
+        if (log?.generated_at) t = new Date(log.generated_at).getTime();
+        else if (log?.started_at) t = new Date(log.started_at).getTime();
+      } catch { /* fall through to mtime */ }
+      if (!t) t = statSync(p).mtimeMs;
+      if (t > newestTime) { newestTime = t; newest = p; }
+    } catch { /* skip */ }
   }
   return newest;
 }
@@ -821,7 +641,7 @@ async function proveCommand(args) {
       );
       return;
     }
-    process.stderr.write(`[ ∅ VANTIO ] Using most recent run log: ${logPath}\n`);
+    process.stderr.write(`[ ∅ VANTIO ] Using most recent run log: ~/.vantio/runs/${logPath.split(/[\\/]/).pop()}\n`);
   }
 
   let log;
@@ -852,37 +672,31 @@ async function proveCommand(args) {
   }
 }
 
-// ── discover --local (Free-tier local scan) ───────────────────────────────────
+// ── discover (local run history) ─────────────────────────────────────────────
+// Optics 0.3.21 discover reads ~/.vantio/runs only. It does not contact the
+// network and it does not read stored account config or environment secrets.
 
-// Known LLM provider credential env vars — presence suggests active AI usage.
-const LLM_KEY_ENVS = [
-  "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
-  "COHERE_API_KEY", "GROQ_API_KEY", "TOGETHER_API_KEY", "MISTRAL_API_KEY",
-  "PERPLEXITY_API_KEY", "AZURE_OPENAI_KEY", "AZURE_OPENAI_API_KEY",
-  "OPENROUTER_API_KEY", "BEDROCK_ACCESS_KEY",
-];
-
-async function discoverLocalCommand(since) {
-  const dir    = runsDir();
+function discoverLocalCommand(since, hostFilter, asJson) {
   const cutoff = Date.now() - parseSincePeriod(since);
 
   let files = [];
-  try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch { /* dir missing */ }
+  try { files = readdirSync(runsDir()).filter((f) => f.endsWith(".json")); } catch { /* dir missing */ }
 
-  // Aggregate call data by host from local run logs
   const hostMap = new Map();
   let scannedRuns = 0;
+  const hostNeedle = hostFilter ? String(hostFilter).toLowerCase() : "";
   for (const f of files) {
-    const p = join(dir, f);
+    const filePath = join(runsDir(), f);
     try {
-      const s = statSync(p);
+      const s = statSync(filePath);
       if (s.mtimeMs < cutoff) continue;
-      const log = JSON.parse(readFileSync(p, "utf8"));
+      const log = JSON.parse(readFileSync(filePath, "utf8"));
       if (log?.vantio_run_log !== "1" || !Array.isArray(log.calls)) continue;
       scannedRuns++;
       const ts = log.generated_at ? new Date(log.generated_at).getTime() : 0;
       for (const call of log.calls) {
         const h = call.hostname || "unknown";
+        if (hostNeedle && !h.toLowerCase().includes(hostNeedle)) continue;
         const rec = hostMap.get(h) || { host: h, total: 0, bytes: 0, last_seen: null };
         rec.total++;
         rec.bytes += call.bytes || 0;
@@ -892,125 +706,54 @@ async function discoverLocalCommand(since) {
     } catch { /* skip corrupt files */ }
   }
 
-  // Scan current environment for LLM credentials
-  const foundKeys = LLM_KEY_ENVS.filter((k) => process.env[k]);
-
-  process.stdout.write(`\nVantio Observe — local run history (last ${since})\n`);
-  process.stdout.write(`  Scanned ${scannedRuns} run log(s) from ${dir}\n`);
-
-  if (foundKeys.length > 0) {
-    process.stdout.write(`\nLLM credential(s) found in current environment:\n`);
-    for (const k of foundKeys) {
-      const val = process.env[k] || "";
-      const masked = val.length > 8 ? val.slice(0, 4) + "…" + val.slice(-4) : "****";
-      process.stdout.write(`  ${k}=${masked}\n`);
-    }
-    process.stdout.write(`  → These suggest active AI usage. Run \`vantio run\` to bring calls under governance.\n`);
-  }
-
-  if (hostMap.size === 0) {
-    process.stdout.write(`\nNo local run logs found for the last ${since}.\n`);
-    process.stdout.write(`  Run an agent:  vantio run node agent.js\n`);
-    process.stdout.write(`  Then re-run:   vantio discover --local\n`);
-  } else {
-    const W = { host: 32, calls: 7, bytes: 14, last: 24 };
-    const hdr = col("TARGET HOST", W.host) + "  " + col("CALLS", W.calls) + "  " + col("TOTAL BYTES", W.bytes) + "  " + col("LAST RUN", W.last);
-    const div = "-".repeat(hdr.length);
-    const hosts = [...hostMap.values()].sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
-
-    process.stdout.write(`\n${div}\n${hdr}\n${div}\n`);
-    for (const h of hosts) {
-      const lastRun = h.last_seen
-        ? new Date(h.last_seen).toISOString().replace("T", " ").slice(0, 19) + " UTC"
-        : "—";
-      process.stdout.write(
-        col(h.host, W.host) + "  " +
-        col(h.total, W.calls) + "  " +
-        col(h.bytes > 0 ? h.bytes.toLocaleString() : "—", W.bytes) + "  " +
-        col(lastRun, W.last) + "\n"
-      );
-    }
-    process.stdout.write(`${div}\n`);
-    const totalCalls = hosts.reduce((a, h) => a + h.total, 0);
-    process.stdout.write(`${hosts.length} host(s)  |  ${totalCalls} total call(s) observed locally\n`);
-  }
-
-  process.stdout.write(
-    `\n  Free (this output)  — local run history, this machine, only processes started with \`vantio run\`\n` +
-    `  Phantom Engine ($799/node/mo) — remote dashboard sync, cross-machine discovery, enforce + control, Rogue Reconciliation\n` +
-    `  Enterprise (talk to sales)   — governance + proof at scale\n` +
-    `  Upgrade at vantio.ai/pricing\n\n`
-  );
-}
-
-// ── discover ─────────────────────────────────────────────────────────────────
-
-// Render a human-readable discovery table from the /api/v1/discover response.
-// Actual shape (see apps' /api/v1/discover route — the source of truth this
-// must match field-for-field):
-//   { since, generated_at, summary: { total_calls, governed_calls,
-//     shadow_ai_calls, blocked_calls, redacted_calls },
-//     hosts: [{ host, total, allowed, redacted, blocked, observed,
-//       first_seen, last_seen }] }
-function renderDiscoveryTable(data, since) {
-  const hosts = Array.isArray(data?.hosts) ? data.hosts : null;
-
-  if (!hosts || hosts.length === 0) {
-    process.stdout.write(`No AI agent calls recorded in the last ${since}.\n`);
+  const hosts = [...hostMap.values()].sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
+  if (asJson) {
+    process.stdout.write(JSON.stringify({
+      since,
+      scanned_runs: scannedRuns,
+      hosts: hosts.map((h) => ({
+        host: h.host,
+        total: h.total,
+        bytes: h.bytes,
+        last_seen: h.last_seen ? new Date(h.last_seen).toISOString() : null,
+      })),
+    }, null, 2) + "\n");
     return;
   }
 
-  const W = { host: 32, calls: 7, allowed: 9, redacted: 9, blocked: 9, observed: 9, shadow: 8, last: 20 };
+  process.stdout.write(`\nVantio Optics — local run history (last ${since})\n`);
+  process.stdout.write(`  Scanned ${scannedRuns} run log(s) from ~/.vantio/runs\n`);
 
-  const header =
-    col("TARGET HOST", W.host) + "  " +
-    col("CALLS", W.calls) + "  " +
-    col("ALLOWED", W.allowed) + "  " +
-    col("REDACTED", W.redacted) + "  " +
-    col("BLOCKED", W.blocked) + "  " +
-    col("OBSERVED", W.observed) + "  " +
-    col("SHADOW?", W.shadow) + "  " +
-    col("LAST SEEN", W.last);
+  if (hosts.length === 0) {
+    if (scannedRuns === 0) {
+      process.stdout.write(`\nNo run logs found for the last ${since}.\n`);
+      process.stdout.write(`  Run an agent:  vantio run node agent.js\n`);
+      process.stdout.write(`  Then re-run:   vantio discover\n`);
+    } else {
+      process.stdout.write(`\nNo LLM calls recorded in the last ${since} (${scannedRuns} run log(s) scanned, zero calls).\n`);
+      process.stdout.write(`  Check that your agent is actually making LLM API calls.\n`);
+    }
+    return;
+  }
 
-  const divider = "-".repeat(header.length);
-
-  process.stdout.write(`\nShadow AI Attack Surface — last ${since}\n`);
-  process.stdout.write(`${divider}\n${header}\n${divider}\n`);
-
+  const W = { host: 32, calls: 7, bytes: 14, last: 24 };
+  const hdr = col("TARGET HOST", W.host) + "  " + col("CALLS", W.calls) + "  " + col("TOTAL BYTES", W.bytes) + "  " + col("LAST RUN", W.last);
+  const div = "-".repeat(hdr.length);
+  process.stdout.write(`\n${div}\n${hdr}\n${div}\n`);
   for (const h of hosts) {
-    // A host is a Shadow AI indicator when it has any OBSERVED calls — traffic
-    // seen by the network interceptor with no SDK-side policy trace attached.
-    const isShadow = Number(h.observed) > 0;
-
-    const lastSeen = h.last_seen
+    const lastRun = h.last_seen
       ? new Date(h.last_seen).toISOString().replace("T", " ").slice(0, 19) + " UTC"
       : "—";
-
-    const row =
-      col(h.host ?? "unknown", W.host) + "  " +
-      col(h.total ?? "—", W.calls) + "  " +
-      col(h.allowed  ?? "—", W.allowed)  + "  " +
-      col(h.redacted ?? "—", W.redacted) + "  " +
-      col(h.blocked  ?? "—", W.blocked)  + "  " +
-      col(h.observed ?? "—", W.observed) + "  " +
-      col(isShadow ? "⚠ YES" : "no", W.shadow)  + "  " +
-      col(lastSeen, W.last);
-
-    process.stdout.write(`${row}\n`);
-  }
-
-  process.stdout.write(`${divider}\n`);
-  process.stdout.write(`${hosts.length} host(s) shown`);
-
-  const shadowCount = Number(data?.summary?.shadow_ai_calls) || 0;
-  if (shadowCount > 0) {
     process.stdout.write(
-      `  |  ⚠  ${shadowCount} Shadow AI call(s) detected — unenrolled processes calling LLM endpoints.\n` +
-      `   Visit vantio.ai/dashboard to investigate and enroll them under governance.\n`
+      col(h.host, W.host) + "  " +
+      col(h.total, W.calls) + "  " +
+      col(h.bytes > 0 ? h.bytes.toLocaleString() : "—", W.bytes) + "  " +
+      col(lastRun, W.last) + "\n"
     );
-  } else {
-    process.stdout.write("  |  No Shadow AI indicators detected.\n");
   }
+  process.stdout.write(`${div}\n`);
+  const totalCalls = hosts.reduce((a, h) => a + h.total, 0);
+  process.stdout.write(`${hosts.length} host(s)  |  ${totalCalls} total call(s) observed locally\n\n`);
 }
 
 async function discoverCommand(args) {
@@ -1037,85 +780,10 @@ async function discoverCommand(args) {
     process.exit(1);
   }
 
-  // --local: read local run logs only — no API key required.
-  if (values.local) {
-    await discoverLocalCommand(values.since);
-    return;
-  }
-
-  const cfg    = readConfig();
-  const apiKey = process.env.VANTIO_API_KEY || cfg?.apiKey;
-  if (!apiKey) {
-    process.stdout.write("Run `vantio login` first to connect your workspace.\n");
-    process.stdout.write("  Tip: `vantio discover --local` shows local run history without a key.\n");
-    process.exit(1);
-  }
-
-  const base   = (cfg?.ingestUrl || baseUrl()).replace(/\/+$/, "");
-  const params = new URLSearchParams({ since: values.since });
-  if (values.host) params.set("host", values.host);
-
-  let res;
-  try {
-    res = await fetch(`${base}/api/v1/discover?${params}`, {
-      method:  "GET",
-      headers: { "x-vantio-identity": apiKey },
-      signal:  AbortSignal.timeout(10000),
-    });
-  } catch (err) {
-    process.stdout.write(
-      `Discovery: could not reach the Vantio API (${err.message}).\n` +
-      `  Check your connection or run \`vantio whoami\` to verify credentials.\n`
-    );
-    process.exit(1);
-  }
-
-  if (res.status === 401) {
-    process.stdout.write(
-      "[ ∅ VANTIO ] Invalid or expired API key. Run `vantio login` to reconnect.\n"
-    );
-    process.exit(1);
-  }
-
-  if (res.status === 403) {
-    process.stdout.write(
-      '[ ∅ VANTIO ] Discovery requires a Phantom Engine or Enterprise plan.\n' +
-      '  Upgrade at vantio.ai/pricing\n' +
-      '  Tip: `vantio discover --local` shows local run history on your Free plan.\n'
-    );
-    process.exit(1);
-  }
-
-  if (res.status === 404) {
-    process.stdout.write(
-      "Discovery is available for Phantom Engine and Enterprise accounts. " +
-      "Upgrade at vantio.ai/pricing to unlock full access.\n"
-    );
-    return;
-  }
-
-  if (!res.ok) {
-    process.stdout.write(`Discovery: unexpected response (HTTP ${res.status}).\n`);
-    process.exit(1);
-  }
-
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    process.stdout.write("Discovery: response was not valid JSON.\n");
-    process.exit(1);
-  }
-
-  if (values.json) {
-    process.stdout.write(JSON.stringify(data, null, 2) + "\n");
-    return;
-  }
-
-  renderDiscoveryTable(data, values.since);
+  discoverLocalCommand(values.since, values.host, values.json);
 }
 
-// ── inspect helpers (search / tail / diff) ────────────────────────────────────
+// ── inspect helpers (search / tail / diff) ───────────────────────────────────────────────────
 
 function loadRunLog(path, cmd) {
   try {
@@ -1372,7 +1040,7 @@ async function tailCommand(args) {
   const logPath = resolveRunPath(dir, values.run, "tail");
   let log = loadRunLog(logPath, "tail");
   if (!values.run) {
-    process.stderr.write(`[ ∅ VANTIO ] Tailing most recent run: ${log.trace_id || logPath}\n`);
+    process.stderr.write(`[ ∅ VANTIO ] Tailing most recent run: ${log.trace_id || "local run"}\n`);
   }
 
   printTailCalls(log, n, values.json);
@@ -1533,7 +1201,7 @@ async function diffCommand(args) {
   }
 }
 
-// ── dispatch ────────────────────────────────────────────────────────────────
+// ── dispatch ────────────────────────────────────────────────────────────────────────────
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -1550,14 +1218,8 @@ switch (command) {
   case "run":
     runCommand(rest);
     break;
-  case "login":
-    await loginCommand(rest);
-    break;
   case "logout":
     logoutCommand();
-    break;
-  case "whoami":
-    await whoamiCommand();
     break;
   case "discover":
     await discoverCommand(rest);
