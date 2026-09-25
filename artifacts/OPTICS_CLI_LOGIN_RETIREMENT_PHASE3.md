@@ -851,6 +851,8 @@ Local Python discover: 3.10 OK (77 tests, 9 skipped). 3.12 OK (77 tests, 6 skipp
 
 CI on `fa32919` (`https://github.com/vantioai/vantio-open-core/actions/runs/36081599011`): CLI + Node SDK success, Python 3.10 success, Python 3.11 success, Python 3.12 failure. The 3.12 failure is only `test_create_connection_allowed_records_python_socket` at `sink.hits == 0`. Telemetry tests on that job passed. This authorization does not allow editing that test.
 
+CI on the record tip `24b90f5` (`https://github.com/vantioai/vantio-open-core/actions/runs/36082636155`): success on CLI + Node SDK, Python 3.10, Python 3.11, and Python 3.12. The socket assertion did not fail on that run.
+
 ### Socket test reclassification
 
 Full `python3 -m unittest discover -s tests -t .`, original order, 20 separate processes.
