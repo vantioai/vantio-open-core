@@ -1,80 +1,151 @@
 name: Publish to PyPI
 
-# NOTE: before this workflow can succeed, the repo owner must complete a
-# one-time manual step on PyPI's side — see the "REQUIRED SETUP" comment
-# below. Until then, the publish step will fail with an authentication
-# error. This is the correct, safe failure mode for a workflow with zero
-# secrets configured (as opposed to the npm workflow's now-fixed silent
-# no-op, which is exactly the failure class this design avoids).
+# Manual promotion of one sealed wheel and one sealed sdist.
+# Ordinary pushes and pull-request merges do not run this workflow.
+# The promote job uploads the named files. It does not run a build.
+# skip-existing is false. An existing version is VERSION_ALREADY_EXISTS.
+# This workflow does not verify SLSA provenance.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/vantio-agent-sdk-py/**"
-      - ".github/workflows/pypi-publish.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact vantio-agent-sdk version
+        required: true
+        type: string
+      source_commit:
+        description: Full source commit SHA
+        required: true
+        type: string
+      wheel_sha256:
+        description: SHA-256 of the sealed wheel
+        required: true
+        type: string
+      sdist_sha256:
+        description: SHA-256 of the sealed sdist
+        required: true
+        type: string
+      wheel_name:
+        description: Sealed wheel filename
+        required: true
+        type: string
+      sdist_name:
+        description: Sealed sdist filename
+        required: true
+        type: string
+      custody_tag:
+        description: Draft custody tag holding the sealed files
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Test (py${{ matrix.python-version }})
+  validate:
+    name: Validate Python release coordinates
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - name: Checkout
+      - name: Checkout source commit
         uses: actions/checkout@v4
-
-      - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Run tests
-        working-directory: packages/vantio-agent-sdk-py
-        run: python -m unittest discover -s tests -t . -v
-
-  build-and-publish:
-    name: Build & Publish
-    needs: test
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      # Required for PyPI's Trusted Publishing (OIDC) — no API token secret
-      # needed or stored in this repo.
-      id-token: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install build tooling
-        run: python -m pip install --upgrade build
+      - name: Gate version absence
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          python3 scripts/release/promote_pypi.py \
+            --version "$INPUT_VERSION" \
+            --source-commit "$INPUT_COMMIT" \
+            --checkout-sha "$CHECKOUT_SHA" \
+            --repo-root "$GITHUB_WORKSPACE"
 
-      - name: Build sdist + wheel
-        working-directory: packages/vantio-agent-sdk-py
-        run: python -m build
-
-      # REQUIRED SETUP (one-time, done on pypi.org — not in this repo):
-      #   1. Go to https://pypi.org/manage/project/vantio-agent-sdk/settings/publishing/
-      #   2. Add a new trusted publisher:
-      #        Owner:      vantioai
-      #        Repository: vantio-open-core
-      #        Workflow:   pypi-publish.yml
-      #        Environment: pypi
-      #   3. That's it — no token to generate, copy, or rotate. PyPI trusts
-      #      GitHub Actions' OIDC assertion directly for this exact
-      #      repo+workflow+environment combination.
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+  promote:
+    name: Promote sealed wheel and sdist
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout source commit
+        uses: actions/checkout@v4
         with:
-          packages-dir: packages/vantio-agent-sdk-py/dist
-          # Mirrors the npm workflow's "already published" tolerance, but via
-          # a supported flag instead of string-matching error output.
-          skip-existing: true
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download sealed artifacts
+        env:
+          CUSTODY_TAG: ${{ inputs.custody_tag }}
+          WHEEL_NAME: ${{ inputs.wheel_name }}
+          SDIST_NAME: ${{ inputs.sdist_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          python3 scripts/release/fetch_custody_release.py \
+            --tag "$CUSTODY_TAG" \
+            --version "$INPUT_VERSION" \
+            --wheel-name "$WHEEL_NAME" \
+            --sdist-name "$SDIST_NAME" \
+            --dest "$RUNNER_TEMP/sealed"
+
+      - name: Install twine
+        run: python3 -m pip install --disable-pip-version-check twine
+
+      - name: Publish sealed files and verify registry hashes
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          CHECKOUT_SHA: ${{ github.sha }}
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+          WHEEL_NAME: ${{ inputs.wheel_name }}
+          SDIST_NAME: ${{ inputs.sdist_name }}
+        run: |
+          set -eu
+          echo "upload_policy=skip-existing is false"
+          python3 scripts/release/promote_pypi.py --publish \
+            --version "$INPUT_VERSION" \
+            --source-commit "$INPUT_COMMIT" \
+            --checkout-sha "$CHECKOUT_SHA" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --wheel "$RUNNER_TEMP/sealed/$WHEEL_NAME" \
+            --sdist "$RUNNER_TEMP/sealed/$SDIST_NAME" \
+            --wheel-sha256 "$WHEEL_SHA256" \
+            --sdist-sha256 "$SDIST_SHA256"
+
+      - name: Write release summary
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
+          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
+          RELEASE_ACTOR: ${{ github.actor }}
+        run: |
+          {
+            echo "source_commit=$INPUT_COMMIT"
+            echo "package=vantio-agent-sdk"
+            echo "version=$INPUT_VERSION"
+            echo "wheel_sha256=$WHEEL_SHA256"
+            echo "sdist_sha256=$SDIST_SHA256"
+            echo "environment=pypi"
+            echo "actor=$RELEASE_ACTOR"
+            echo "verification=registry_hash_equality_required"
+          } >> "$GITHUB_STEP_SUMMARY"
