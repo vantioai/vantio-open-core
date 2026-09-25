@@ -674,14 +674,22 @@ async function proveCommand(args) {
 
   const report = format === "html" ? generateHtmlReport(log) : generateMarkdownReport(log);
 
+  function writeProof(outPath) {
+    try {
+      writeFileSync(outPath, report, "utf8");
+    } catch (err) {
+      const detail = err && err.message ? String(err.message).split("\n")[0] : "could not write the proof";
+      process.stderr.write(`vantio prove: could not write ${outPath}: ${detail}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`✓ Proof artifact written to: ${outPath}\n`);
+  }
+
   if (values.out) {
-    writeFileSync(values.out, report, "utf8");
-    process.stdout.write(`✓ Proof artifact written to: ${values.out}\n`);
+    writeProof(values.out);
   } else if (format === "html") {
     const safeid = (log.trace_id || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-    const outPath = `vantio-proof-${safeid}.html`;
-    writeFileSync(outPath, report, "utf8");
-    process.stdout.write(`✓ Proof artifact written to: ${outPath}\n`);
+    writeProof(`vantio-proof-${safeid}.html`);
   } else {
     process.stdout.write(report);
   }
