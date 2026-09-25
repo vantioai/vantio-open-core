@@ -178,7 +178,11 @@ class SendRunTelemetryOnceTests(unittest.TestCase):
             time.sleep(0.3)
 
             self.assertEqual(len(server.requests), 1)
-            self.assertEqual(server.requests[0].json["event"], "run")
+            body = server.requests[0].json
+            self.assertEqual(body["event"], "run")
+            # shield() sends this ping before HTTP observations exist.
+            self.assertEqual(body["callCount"], 0)
+            self.assertEqual(body["hosts"], [])
 
 
 if __name__ == "__main__":
