@@ -201,7 +201,7 @@ DO_NOT_TRACK=1 vantio run node agent.js
 
 **Never sent:** prompts, completions, request/response bodies, API keys, environment variables, source code, internal paths, user content, or any PII.
 
-**Retention:** Unknown. Contact [hello@vantio.ai](mailto:hello@vantio.ai) for the data retention policy.
+Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
 
 **Note:** The `anonymousId` field name in the wire format is retained for server compatibility. The local identifier file is `~/.vantio/telemetry-id`.
 
