@@ -61,49 +61,11 @@ vantio run --summary node agent.js
 
 ---
 
-## Step 4 — Connect Phantom Engine / Enterprise (optional)
+## Step 4 — Local commands
 
 Free Optics needs **no account and no API key**. Local `vantio prove`,
 `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
 work immediately after a run.
-
-To attach **Vantio Phantom Engine** or an Enterprise on-prem control plane:
-
-1. Request a trial via [hello@vantio.ai](mailto:hello@vantio.ai) (or complete Stripe
-   Checkout once self-serve billing is live — eng-shipped, keys not yet public).
-2. You receive an API key (email / SE handoff). There is **no public self-serve
-   key dashboard** today — [vantio.ai/dashboard](https://vantio.ai/dashboard)
-   redirects to docs.
-3. Save the key:
-
-```bash
-vantio login
-```
-
-Paste your key when prompted (or pass it directly: `vantio login vk_live_xxx`). Vantio
-validates it and saves it to `~/.vantio/config.json` (chmod 600) — **no environment
-variables to manage.** Every `vantio run` after this automatically picks up the saved
-key:
-
-```bash
-vantio run node agent.js
-```
-
-Check your connection status anytime:
-
-```bash
-vantio whoami
-# Key:    vk_live…a3f2
-# Server: <your Phantom Engine enforce-plane URL>
-# Status: connected
-```
-
-To disconnect: `vantio logout`.
-
-> **Honesty note:** Remote dashboard sync and fleet `vantio discover` (without
-> `--local`) require a Phantom Engine or Enterprise key pointed at a live control plane.
-> Free Optics stays fully useful offline. Upgrade path:
-> [vantio.ai/pricing](https://vantio.ai/pricing).
 
 ---
 
@@ -213,17 +175,6 @@ Install `vantio-agent-sdk` on that interpreter, then `vantio run python agent.py
 
 **Nothing is appearing in my terminal.**
 For Node, use `node`, `npx`, `tsx`, or `ts-node` under `vantio run`. For Python, install `vantio-agent-sdk` first, then `vantio run python agent.py` or `@shield`. Without the SDK, `vantio run python` prints a one-line notice and does not intercept.
-
-**I ran `vantio login` but nothing shows up in my dashboard.**
-Run `vantio whoami` and check the plan shown next to "Status: connected". If it says
-FREE, that's expected — dashboard sync and `vantio discover` are Phantom Engine/Enterprise
-features. Your agent's calls are still being observed locally in your terminal either
-way. Upgrade at [vantio.ai/pricing](https://vantio.ai/pricing) to unlock sync.
-
-**How do I log out / remove my saved key?**
-`vantio logout` removes `~/.vantio/config.json`. You can also always override the
-saved key for a single run with an explicit `VANTIO_API_KEY` environment variable,
-which takes precedence over the saved config.
 
 ---
 

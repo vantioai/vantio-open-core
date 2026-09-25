@@ -165,7 +165,6 @@ async with shield():
 
 | Variable | Description |
 |---|---|
-| `VANTIO_API_KEY` | Phantom Engine API key from a trial (`hello@vantio.ai`) or Stripe once live — `/dashboard` redirects to docs |
 | `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
 | `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing — `report_anomaly()` is a no-op without this |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
