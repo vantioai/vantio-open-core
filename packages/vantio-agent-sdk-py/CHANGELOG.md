@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.15
+
+Documentation correction for anonymous telemetry. The payload schema and send behavior are unchanged.
+
+- Telemetry stays off unless `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` still override that opt-in.
+- The automatic once-per-process run ping is sent when `shield()` starts, before HTTP observations are recorded, so `callCount` on that ping is 0 and `hosts` is empty.
+- Free Optics still needs no account and no API key. Control-plane variables stay labeled as Phantom Engine / Enterprise.
+- `vantio.__version__` matches the package version, 3.0.15.
+
 ## 3.0.14
 
 Packaging metadata correction only. No SDK behavior change.

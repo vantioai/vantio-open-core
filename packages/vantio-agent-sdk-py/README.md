@@ -19,6 +19,10 @@ vantio run python agent.py
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 
+## 3.0.15 — telemetry wording
+
+Anonymous usage telemetry stays off unless you set `VANTIO_TELEMETRY=1`. The wire payload is unchanged from 3.0.14. Free Optics still needs no account and no API key.
+
 ## 3.0.14 — packaging metadata only
 
 This patch corrects PyPI project URLs and long-description product model: Optics (free), Phantom Engine ($799/node/mo — Observe, Enforce, and Control), Enterprise (talk to sales). Does not market any other standalone public SKU. SDK behavior is unchanged from 3.0.13.
@@ -167,32 +171,46 @@ async with shield():
 
 ## Environment variables
 
-Scope: this API is part of Vantio Phantom Engine / Enterprise and requires a separately provisioned control-plane key. It is not part of free Vantio Optics, which runs local-first with no account and no API key.
+Free Optics runs on this machine with no account and no API key. These three variables only control the optional anonymous ping:
 
 | Variable | Description |
 |---|---|
-| `VANTIO_INGEST_URL` | Ingest endpoint (default: `https://vantio.ai`) |
-| `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing — `report_anomaly()` is a no-op without this |
+| `VANTIO_TELEMETRY` | Set to `1` to send one anonymous usage ping per process. The ping stays off unless this is set. |
+| `VANTIO_TELEMETRY_DISABLED` | Set to `1` to keep the ping off even when `VANTIO_TELEMETRY=1`. |
+| `DO_NOT_TRACK` | Set to `1` to keep the ping off even when `VANTIO_TELEMETRY=1`. |
+
+The variables below are for a separately provisioned Phantom Engine or Enterprise control plane. They are not required for free Optics.
+
+| Variable | Description |
+|---|---|
+| `VANTIO_INGEST_URL` | Control-plane base URL (default: `https://vantio.ai`) |
+| `VANTIO_CLOUD_INGEST` | Set to `true` to enable cloud routing. `report_anomaly()` does nothing without this. |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode |
-| `VANTIO_TELEMETRY_DISABLED` | Set to `1` to opt out of anonymous usage telemetry |
-| `DO_NOT_TRACK` | Set to `1` to opt out of anonymous usage telemetry |
 
 ---
 
 ## Telemetry
 
-Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
+Telemetry is disabled by default. Set `VANTIO_TELEMETRY=1` to opt in. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` override that opt-in.
+
+The automatic ping runs once per process, on the first `shield()` entry, before HTTP observations are recorded. On that ping, `callCount` is 0 and `hosts` is empty. Calling `shield()` again in the same process does not send a second ping.
+
+When a ping is sent, the body contains `anonymousId`, `runtime`, `runtimeVersion`, `os`, `event`, `hosts`, and `callCount`. `hosts` is a list of LLM hostnames, at most 50. Optional fields, only when a caller sets them, are `sdkVersion`, `redactedCount`, `blockedCount`, and `framework`. The ping does not include prompts, completions, API keys, or email.
 
 ---
 
 ## What gets captured
+
+The local Optics record stores:
 
 - Which LLM endpoint was called
 - Response size in bytes
 - Process ID and timestamp
 - A trace ID linking calls in the same `shield()` / `vantio run python` wrap
 
-**What never gets captured:** prompts, completions, or any content from your requests.
+That local record is not the telemetry ping. The ping's fields are listed in the telemetry section above.
+
+Prompts, completions, and request content are never stored.
 
 ---
 
