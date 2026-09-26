@@ -6,7 +6,7 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -101,9 +101,10 @@ describe("public surfaces do not advertise accounts", () => {
     assert.equal(pkg.license, "MIT");
     assert.ok(pkg.files.includes("README.md"));
     assert.ok(pkg.files.includes("LICENSE"));
-    const rootLicense = readFileSync(join(__dirname, "..", "..", "..", "LICENSE"));
+    const approvedLicense = readFileSync(join(__dirname, "..", "..", "..", "extensions", "vantio-optics", "LICENSE.txt"));
     const packedLicense = readFileSync(join(__dirname, "..", "LICENSE"));
-    assert.deepEqual(packedLicense, rootLicense);
+    assert.equal(existsSync(join(__dirname, "..", "..", "..", "LICENSE")), false);
+    assert.deepEqual(packedLicense, approvedLicense);
     assert.equal(packedLicense.includes("Copyright (c) 2026 Vantio AI, Inc."), true);
     assert.match(pkg.description, /Vantio Optics \| Free Observability for AI Agents/);
     assert.match(pkg.description, /Free, local-first observability for supported AI-agent traffic\. Prompts and completions are never stored\./);
