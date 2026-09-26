@@ -19,6 +19,21 @@ vantio run python agent.py
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 
+## 3.1.0 — HTTP outcome and two statuses
+
+A stored HTTP call sets `ok` from the status code. `ok` is true for 200–399 and false for 400–599. A 4xx or 5xx response is an application outcome. It is not stored as `network_error`. A refused connection or a timeout still uses `network_error`, and it has no HTTP status.
+
+Each recorded call separates two fields:
+
+| Field | Human label | Meaning |
+|---|---|---|
+| `opticsStatus` | Optics status | Optics completed the observation. A recorded call is `SUCCESS`. |
+| `applicationStatus` | Application outcome | What the HTTP call did: `SUCCESS` for 200–399, `APPLICATION_ERROR` for 400–599, or `UNAVAILABLE` when no HTTP status was stored. |
+
+The run log names those headings in `status_labels`. The run summary uses the same tokens. Mixed application outcomes in one run are `PARTIAL`.
+
+Telemetry is unchanged: it stays off unless `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` still override that opt-in. Phantom Engine and Enterprise APIs stay separately provisioned. Free Optics still needs no account and no API key.
+
 ## 3.0.15 — telemetry wording
 
 Anonymous usage telemetry stays off unless you set `VANTIO_TELEMETRY=1`. The wire payload is unchanged from 3.0.14. Free Optics still needs no account and no API key.

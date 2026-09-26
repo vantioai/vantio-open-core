@@ -2,6 +2,9 @@
 Sight Loop observe for Python HTTP clients while shield() is active.
 
 Records host, path, status, and size — never prompts or completions.
+HTTP 200–399 is stored ok=true. HTTP 400–599 is stored ok=false and is an
+application outcome, not network_error. Each record separates opticsStatus
+(Optics status) from applicationStatus (Application outcome).
 In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
@@ -510,6 +513,144 @@ def _append(rec: dict[str, Any]) -> None:
         _calls.append(rec)
 
 
+# Same tokens and human words as the CLI Optics display. Headings stay
+# "Optics status" and "Application outcome"; these values are the tokens.
+_STATUS_HUMAN = {
+    "OBSERVED": "Observed",
+    "NOT_OBSERVED": "Not observed",
+    "UNSUPPORTED": "Unsupported",
+    "UNAVAILABLE": "Unavailable",
+    "APPLICATION_ERROR": "Application error",
+    "OPTICS_ERROR": "Optics error",
+    "PARTIAL": "Partial",
+    "SUCCESS": "Successful",
+}
+
+
+def _human_status(token: str) -> str:
+    return _STATUS_HUMAN.get(token, "Unavailable")
+
+
+def _normalize_http_status(status: Any) -> Optional[int]:
+    """Integer HTTP status, or None when the value is not an integer code."""
+    if isinstance(status, bool) or status is None or status == "":
+        return None
+    if isinstance(status, int):
+        return status
+    if isinstance(status, float):
+        return int(status) if status.is_integer() else None
+    try:
+        return int(str(status).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _application_status(status: Any) -> str:
+    """Application outcome from the raw HTTP status. 200–399 success, 400–599 error."""
+    n = _normalize_http_status(status)
+    if n is None:
+        return "UNAVAILABLE"
+    if 200 <= n < 400:
+        return "SUCCESS"
+    if 400 <= n <= 599:
+        return "APPLICATION_ERROR"
+    return "UNAVAILABLE"
+
+
+def _ok_for_http_status(status: Any) -> bool:
+    """True only for HTTP 200–399. 4xx and 5xx are not ok."""
+    n = _normalize_http_status(status)
+    return n is not None and 200 <= n < 400
+
+
+def _http_status_from_exception(exc: BaseException) -> Optional[int]:
+    """HTTP status carried by an HTTP-error exception, else None.
+
+    urllib raises HTTPError for 4xx/5xx. requests, httpx, and aiohttp raise
+    status errors only when the caller asks. A timeout or refused connection
+    has no HTTP status.
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        return _normalize_http_status(getattr(exc, "code", None))
+    response = getattr(exc, "response", None)
+    if response is not None:
+        for attr in ("status_code", "status", "code"):
+            n = _normalize_http_status(getattr(response, attr, None))
+            if n is not None and 100 <= n <= 599:
+                return n
+    if type(exc).__name__ == "ClientResponseError":
+        n = _normalize_http_status(getattr(exc, "status", None))
+        if n is not None and 100 <= n <= 599:
+            return n
+    return None
+
+
+def _duration_ms(t0: float) -> int:
+    return max(0, int((time.time() - t0) * 1000))
+
+
+def _record_http_response(
+    hostname: str,
+    action: str,
+    mediation: str,
+    status: Any,
+    t0: float,
+    **extra: Any,
+) -> None:
+    _record(
+        hostname,
+        action,
+        mediation,
+        status=_normalize_http_status(status),
+        ok=_ok_for_http_status(status),
+        duration_ms=_duration_ms(t0),
+        **extra,
+    )
+
+
+def _record_http_exception(
+    hostname: str,
+    mediation: str,
+    exc: BaseException,
+    t0: float,
+    *,
+    record_send: bool,
+    action: str,
+    **extra: Any,
+) -> None:
+    """Store an HTTP error as an application outcome. Network failures stay network_error."""
+    status = _http_status_from_exception(exc)
+    if status is not None:
+        if record_send:
+            _record_http_response(
+                hostname,
+                action,
+                mediation,
+                status,
+                t0,
+                **extra,
+            )
+        return
+    _record(
+        hostname,
+        "OBSERVED",
+        mediation,
+        ok=False,
+        duration_ms=_duration_ms(t0),
+        error="network_error",
+        error_class=type(exc).__name__,
+        **extra,
+    )
+
+
+def _rollup_status(calls: list[dict[str, Any]]) -> tuple[str, str]:
+    if not calls:
+        return "NOT_OBSERVED", "NOT_OBSERVED"
+    apps = {_application_status(call.get("status")) for call in calls}
+    application = next(iter(apps)) if len(apps) == 1 else "PARTIAL"
+    return "SUCCESS", application
+
+
 def _record(
     hostname: str,
     action: str,
@@ -524,6 +665,12 @@ def _record(
         "ts": datetime.now(timezone.utc).isoformat(),
         **extra,
     }
+    optics = "SUCCESS"
+    application = _application_status(rec.get("status"))
+    rec["opticsStatus"] = optics
+    rec["applicationStatus"] = application
+    rec["opticsLabel"] = _human_status(optics)
+    rec["applicationLabel"] = _human_status(application)
     _append(rec)
     ingest_map = {
         "OBSERVED": None,
@@ -669,31 +816,28 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
         _account_response_bytes(getattr(resp, "headers", None))
         if record_send:
             action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-            _record(
+            _record_http_response(
                 hostname,
                 action,
                 "python_urllib",
+                getattr(resp, "status", None) or getattr(resp, "code", None),
+                t0,
                 method="POST" if data is not None else "GET",
                 path=path,
                 scheme=scheme,
-                status=getattr(resp, "status", None) or getattr(resp, "code", None),
-                ok=True,
-                duration_ms=int((time.time() - t0) * 1000),
             )
         return resp
     except Exception as exc:
-        _record(
+        _record_http_exception(
             hostname,
-            "OBSERVED",
             "python_urllib",
+            exc,
+            t0,
+            record_send=record_send,
+            action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
             method="POST" if data is not None else "GET",
             path=path,
             scheme=scheme,
-            status=getattr(exc, "code", None),
-            ok=False,
-            duration_ms=int((time.time() - t0) * 1000),
-            error="network_error",
-            error_class=type(exc).__name__,
         )
         raise
 
@@ -738,31 +882,28 @@ def _observe_opener_open(self, fullurl, data=None, timeout=socket._GLOBAL_DEFAUL
         _account_response_bytes(getattr(resp, "headers", None))
         if record_send:
             action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-            _record(
+            _record_http_response(
                 hostname,
                 action,
                 "python_urllib",
+                getattr(resp, "status", None) or getattr(resp, "code", None),
+                t0,
                 method="POST" if (data is not None or body is not None) else "GET",
                 path=path,
                 scheme=scheme,
-                status=getattr(resp, "status", None) or getattr(resp, "code", None),
-                ok=True,
-                duration_ms=int((time.time() - t0) * 1000),
             )
         return resp
     except Exception as exc:
-        _record(
+        _record_http_exception(
             hostname,
-            "OBSERVED",
             "python_urllib",
+            exc,
+            t0,
+            record_send=record_send,
+            action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
             method="POST" if (data is not None or body is not None) else "GET",
             path=path,
             scheme=scheme,
-            status=getattr(exc, "code", None),
-            ok=False,
-            duration_ms=int((time.time() - t0) * 1000),
-            error="network_error",
-            error_class=type(exc).__name__,
         )
         raise
 
@@ -811,30 +952,28 @@ def _install_requests() -> None:
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-                _record(
+                _record_http_response(
                     hostname,
                     action,
                     "python_requests",
+                    getattr(resp, "status_code", None),
+                    t0,
                     method=method,
                     path=path,
                     scheme=scheme,
-                    status=getattr(resp, "status_code", None),
-                    ok=True,
-                    duration_ms=int((time.time() - t0) * 1000),
                 )
             return resp
         except Exception as exc:
-            _record(
+            _record_http_exception(
                 hostname,
-                "OBSERVED",
                 "python_requests",
+                exc,
+                t0,
+                record_send=record_send,
+                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
                 method=method,
                 path=path,
                 scheme=scheme,
-                ok=False,
-                duration_ms=int((time.time() - t0) * 1000),
-                error="network_error",
-                error_class=type(exc).__name__,
             )
             raise
 
@@ -880,30 +1019,28 @@ def _install_httpx() -> None:
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-                _record(
+                _record_http_response(
                     hostname,
                     action,
                     "python_httpx",
+                    getattr(resp, "status_code", None),
+                    t0,
                     method=method,
                     path=path,
                     scheme=scheme,
-                    status=getattr(resp, "status_code", None),
-                    ok=True,
-                    duration_ms=int((time.time() - t0) * 1000),
                 )
             return resp
         except Exception as exc:
-            _record(
+            _record_http_exception(
                 hostname,
-                "OBSERVED",
                 "python_httpx",
+                exc,
+                t0,
+                record_send=record_send,
+                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
                 method=method,
                 path=path,
                 scheme=scheme,
-                ok=False,
-                duration_ms=int((time.time() - t0) * 1000),
-                error="network_error",
-                error_class=type(exc).__name__,
             )
             raise
 
@@ -927,30 +1064,28 @@ def _install_httpx() -> None:
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-                _record(
+                _record_http_response(
                     hostname,
                     action,
                     "python_httpx",
+                    getattr(resp, "status_code", None),
+                    t0,
                     method=method,
                     path=path,
                     scheme=scheme,
-                    status=getattr(resp, "status_code", None),
-                    ok=True,
-                    duration_ms=int((time.time() - t0) * 1000),
                 )
             return resp
         except Exception as exc:
-            _record(
+            _record_http_exception(
                 hostname,
-                "OBSERVED",
                 "python_httpx",
+                exc,
+                t0,
+                record_send=record_send,
+                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
                 method=method,
                 path=path,
                 scheme=scheme,
-                ok=False,
-                duration_ms=int((time.time() - t0) * 1000),
-                error="network_error",
-                error_class=type(exc).__name__,
             )
             raise
 
@@ -1012,30 +1147,28 @@ def _install_aiohttp() -> None:
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
                 action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-                _record(
+                _record_http_response(
                     hostname,
                     action,
                     "python_aiohttp",
+                    getattr(resp, "status", None),
+                    t0,
                     method=method_s,
                     path=path,
                     scheme=scheme,
-                    status=getattr(resp, "status", None),
-                    ok=True,
-                    duration_ms=int((time.time() - t0) * 1000),
                 )
             return resp
         except Exception as exc:
-            _record(
+            _record_http_exception(
                 hostname,
-                "OBSERVED",
                 "python_aiohttp",
+                exc,
+                t0,
+                record_send=record_send,
+                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
                 method=method_s,
                 path=path,
                 scheme=scheme,
-                ok=False,
-                duration_ms=int((time.time() - t0) * 1000),
-                error="network_error",
-                error_class=type(exc).__name__,
             )
             raise
 
@@ -1075,41 +1208,82 @@ def _addr_host_port(address: Any) -> tuple[Optional[str], Optional[str], bool]:
     return None, None, False
 
 
-def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> str:
-    """pass | connect | block. Records observe/dry-run when needed."""
+def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> tuple[str, bool]:
+    """Return (decision, record_after).
+
+    decision is pass, block, or connect. record_after is true when the caller
+    should time the real connect and store that duration. Dry-run decisions are
+    already stored by the gate and are not timed again.
+    """
     if not hostname or _http_owns() or _is_control_plane_dest(hostname, port):
-        return "pass"
+        return "pass", False
     kind, _payload, _redactions, record_send = _dispatch_gate(
         hostname, port, "/", None, "python_socket"
     )
     if kind == "pass":
-        return "pass"
+        return "pass", False
     if kind == "block":
-        return "block"
-    if record_send:
-        action = "ALLOWED" if _cloud_sync else "OBSERVED"
-        _record(hostname, action, "python_socket")
-    return "connect"
+        return "block", False
+    return "connect", bool(record_send)
+
+
+def _record_socket_timing(
+    hostname: str,
+    t0: float,
+    *,
+    ok: bool,
+    error_class: Optional[str] = None,
+) -> None:
+    action = "ALLOWED" if _cloud_sync else "OBSERVED"
+    extra: dict[str, Any] = {
+        "ok": ok,
+        "duration_ms": max(0, int((time.perf_counter() - t0) * 1000)),
+    }
+    if not ok:
+        extra["error"] = "network_error"
+        extra["error_class"] = error_class or "OSError"
+    _record(hostname, action, "python_socket", **extra)
 
 
 def _observe_socket_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
     hostname, port, ipc = _addr_host_port(address)
     if ipc:
         return _orig_socket_connect(self, address, *args, **kwargs)
-    decision = _gate_socket_dest(hostname, port)
+    decision, record_after = _gate_socket_dest(hostname, port)
     if decision == "block":
         raise GateBlockedError(hostname or "")
-    return _orig_socket_connect(self, address, *args, **kwargs)
+    if decision != "connect" or not record_after:
+        return _orig_socket_connect(self, address, *args, **kwargs)
+    t0 = time.perf_counter()
+    try:
+        result = _orig_socket_connect(self, address, *args, **kwargs)
+    except Exception as exc:
+        _record_socket_timing(hostname or "", t0, ok=False, error_class=type(exc).__name__)
+        raise
+    _record_socket_timing(hostname or "", t0, ok=True)
+    return result
 
 
 def _observe_socket_connect_ex(self: Any, address: Any) -> Any:
     hostname, port, ipc = _addr_host_port(address)
     if ipc:
         return _orig_socket_connect_ex(self, address)
-    decision = _gate_socket_dest(hostname, port)
+    decision, record_after = _gate_socket_dest(hostname, port)
     if decision == "block":
         raise GateBlockedError(hostname or "")
-    return _orig_socket_connect_ex(self, address)
+    if decision != "connect" or not record_after:
+        return _orig_socket_connect_ex(self, address)
+    t0 = time.perf_counter()
+    try:
+        rc = _orig_socket_connect_ex(self, address)
+    except Exception as exc:
+        _record_socket_timing(hostname or "", t0, ok=False, error_class=type(exc).__name__)
+        raise
+    if rc:
+        _record_socket_timing(hostname or "", t0, ok=False, error_class="connect_ex")
+    else:
+        _record_socket_timing(hostname or "", t0, ok=True)
+    return rc
 
 
 def _observe_ssl_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1117,11 +1291,21 @@ def _observe_ssl_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> 
     if ipc:
         with _http_handled():
             return _orig_ssl_connect(self, address, *args, **kwargs)
-    decision = _gate_socket_dest(hostname, port)
+    decision, record_after = _gate_socket_dest(hostname, port)
     if decision == "block":
         raise GateBlockedError(hostname or "")
-    with _http_handled():
-        return _orig_ssl_connect(self, address, *args, **kwargs)
+    if decision != "connect" or not record_after or _orig_ssl_connect is None:
+        with _http_handled():
+            return _orig_ssl_connect(self, address, *args, **kwargs)
+    t0 = time.perf_counter()
+    try:
+        with _http_handled():
+            result = _orig_ssl_connect(self, address, *args, **kwargs)
+    except Exception as exc:
+        _record_socket_timing(hostname or "", t0, ok=False, error_class=type(exc).__name__)
+        raise
+    _record_socket_timing(hostname or "", t0, ok=True)
+    return result
 
 
 def _observe_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1129,11 +1313,21 @@ def _observe_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
     if ipc:
         with _http_handled():
             return _orig_create_connection(address, *args, **kwargs)
-    decision = _gate_socket_dest(hostname, port)
+    decision, record_after = _gate_socket_dest(hostname, port)
     if decision == "block":
         raise GateBlockedError(hostname or "")
-    with _http_handled():
-        return _orig_create_connection(address, *args, **kwargs)
+    if decision != "connect" or not record_after:
+        with _http_handled():
+            return _orig_create_connection(address, *args, **kwargs)
+    t0 = time.perf_counter()
+    try:
+        with _http_handled():
+            result = _orig_create_connection(address, *args, **kwargs)
+    except Exception as exc:
+        _record_socket_timing(hostname or "", t0, ok=False, error_class=type(exc).__name__)
+        raise
+    _record_socket_timing(hostname or "", t0, ok=True)
+    return result
 
 
 def _install_socket() -> None:
@@ -1221,10 +1415,15 @@ def _observe_http_client_request(
     except Exception as exc:
         if isinstance(exc, GateBlockedError):
             raise
-        _record(
-            hostname, "OBSERVED", "python_http_client", method=method_s, path=path, ok=False,
-            duration_ms=int((time.time() - t0) * 1000), error="network_error",
-            error_class=type(exc).__name__,
+        _record_http_exception(
+            hostname,
+            "python_http_client",
+            exc,
+            t0,
+            record_send=True,
+            action="OBSERVED",
+            method=method_s,
+            path=path,
         )
         raise
 
@@ -1295,19 +1494,28 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, body: Any = None,
         )
         if record_send:
             action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-            status = getattr(resp, "status", None)
-            _record(
-                hostname, action, "python_urllib3", method=method_s, path=path, ok=True,
-                status=status, duration_ms=int((time.time() - t0) * 1000),
+            _record_http_response(
+                hostname,
+                action,
+                "python_urllib3",
+                getattr(resp, "status", None),
+                t0,
+                method=method_s,
+                path=path,
             )
         return resp
     except Exception as exc:
         if isinstance(exc, GateBlockedError):
             raise
-        _record(
-            hostname, "OBSERVED", "python_urllib3", method=method_s, path=path, ok=False,
-            duration_ms=int((time.time() - t0) * 1000), error="network_error",
-            error_class=type(exc).__name__,
+        _record_http_exception(
+            hostname,
+            "python_urllib3",
+            exc,
+            t0,
+            record_send=record_send,
+            action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+            method=method_s,
+            path=path,
         )
         raise
 
@@ -2204,15 +2412,14 @@ class _VantioCurl:
         except Exception as exc:
             if isinstance(exc, GateBlockedError):
                 raise
-            _record(
+            _record_http_exception(
                 hostname,
-                "OBSERVED",
                 "python_pycurl",
+                exc,
+                t0,
+                record_send=True,
+                action="OBSERVED",
                 path=path,
-                ok=False,
-                duration_ms=int((time.time() - t0) * 1000),
-                error="network_error",
-                error_class=type(exc).__name__,
             )
             raise
 
@@ -2257,12 +2464,17 @@ def _write_run_log() -> None:
         now = datetime.now(timezone.utc)
         hosts = sorted({c.get("hostname") or "unknown" for c in _calls})
         mediations = sorted({c.get("mediation") or "python_urllib" for c in _calls})
+        optics_status, application_status = _rollup_status(_calls)
         payload = {
             "vantio_run_log": "1",
             "schema_version": 2,
             "plane": "optics",
             "workflow": "sight_loop",
             "data_note": "Developer egress data log — metadata only; never prompts or completions.",
+            "status_labels": {
+                "opticsStatus": "Optics status",
+                "applicationStatus": "Application outcome",
+            },
             "trace_id": _trace_id,
             "runtime": "python",
             "mediation": ",".join(mediations),
@@ -2272,6 +2484,10 @@ def _write_run_log() -> None:
             "summary": {
                 "total_calls": len(_calls),
                 "hosts": hosts,
+                "opticsStatus": optics_status,
+                "applicationStatus": application_status,
+                "opticsLabel": _human_status(optics_status),
+                "applicationLabel": _human_status(application_status),
             },
             "residual": {
                 "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read). With a Phantom Engine API key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",

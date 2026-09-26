@@ -148,6 +148,10 @@ async def report_anomaly(
 ) -> None:
     """
     Send an anomaly event to the Vantio ingest endpoint.
+
+    Scope: Phantom Engine and Enterprise, separately provisioned. This is not
+    part of free Optics, which runs local-first with no account and no API key.
+
     Must be called within a shield() context. Non-fatal — never crashes the agent.
     Activated only when VANTIO_CLOUD_INGEST=true (or '1').
     """
@@ -278,6 +282,9 @@ def fetch_policy(
 ) -> VantioPolicy:
     """
     Fetch the cloud-managed policy from GET /api/v1/config.
+
+    Scope: Phantom Engine and Enterprise, separately provisioned. This is not
+    part of free Optics, which runs local-first with no account and no API key.
 
     Fails open: on any network failure, non-2xx status, malformed body, or
     timeout, a permissive default :class:`VantioPolicy` is returned so an

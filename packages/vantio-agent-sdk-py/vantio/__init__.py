@@ -23,4 +23,4 @@ __all__ = [
     "VantioPolicy",
     "RedactionResult",
 ]
-__version__ = "3.0.15"
+__version__ = "3.1.0"

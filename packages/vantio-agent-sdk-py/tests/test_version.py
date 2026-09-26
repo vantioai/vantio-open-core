@@ -10,8 +10,8 @@ class VersionTests(unittest.TestCase):
     def test_runtime_version_matches_pyproject(self) -> None:
         project = pathlib.Path(__file__).resolve().parents[1] / "pyproject.toml"
         text = project.read_text(encoding="utf-8")
-        self.assertIn('version = "3.0.15"', text)
-        self.assertEqual(vantio.__version__, "3.0.15")
+        self.assertIn('version = "3.1.0"', text)
+        self.assertEqual(vantio.__version__, "3.1.0")
         self.assertIn('license = "MIT"', text)
         self.assertIn('license-files = ["LICENSE"]', text)
         package = project.parent

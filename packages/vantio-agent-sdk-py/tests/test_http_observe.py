@@ -402,7 +402,9 @@ class _TcpSink:
                 except (_socket.timeout, TimeoutError):
                     continue
                 except OSError:
-                    return
+                    if not self._alive:
+                        return
+                    continue
 
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
@@ -488,16 +490,21 @@ class PythonSocketWrapTests(unittest.IsolatedAsyncioTestCase):
                 server.respond_with_handler(self._config_handler(blocked=False))
                 async with shield(trace_id="py-socket-allow"):
                     sock = socket.create_connection(("127.0.0.1", sink.port), timeout=2)
+                    peer = sock.getpeername()
                     sock.close()
+                self.assertEqual(peer[0], "127.0.0.1")
+                self.assertEqual(int(peer[1]), sink.port)
+                deadline = time.time() + 2
+                while sink.hits < 1 and time.time() < deadline:
+                    time.sleep(0.05)
+                self.assertGreaterEqual(sink.hits, 1)
             log = Path(home) / "runs" / "py-socket-allow.json"
             data = json.loads(log.read_text(encoding="utf-8"))
             socket_calls = [c for c in data["calls"] if c.get("mediation") == "python_socket"]
             self.assertEqual(len(socket_calls), 1)
             self.assertEqual(socket_calls[0]["action"], "ALLOWED")
-            deadline = time.time() + 2
-            while sink.hits < 1 and time.time() < deadline:
-                time.sleep(0.05)
-            self.assertGreaterEqual(sink.hits, 1)
+            self.assertIsInstance(socket_calls[0]["duration_ms"], int)
+            self.assertGreaterEqual(socket_calls[0]["duration_ms"], 0)
         finally:
             self._clear_env()
 
