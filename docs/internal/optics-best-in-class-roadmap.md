@@ -4,6 +4,8 @@ Internal planning capture only. This document does not authorize implementation,
 
 Out of scope for this capture: `packages/vantio-cli` (frozen at 0.3.24, LIVE_AND_CLIENT_PROVED) and the in-progress Python 3.1.0 diagnostic model work (PR #53).
 
+**Planning sequence (no dates):** Foundational → Operational maturity → Product experience → Later strategic decisions. This order is planning language only. It does not promise delivery.
+
 ## Section 1 — Data architecture
 
 **FOUNDATIONAL.** Highest priority. Sequence this section before other roadmap items.
@@ -60,3 +62,175 @@ Schedule with real priority. Not implemented in this capture.
 16. Documented flag/schema deprecation policy once JSON schema exits unstable-pre-1.0.
 17. Generated single reference (e.g. `vantio help --all`) so `--help` and public docs cannot drift.
 18. Runnable multi-agent example repository for prospective customers.
+
+Sections 8–22 are roadmap and design only. None of these items is claimed to exist.
+
+## Section 8 — Cardinality and resource governance
+
+- Indexed-field allowlist
+- Cardinality budgets
+- Maximum local write rate and queue size
+- Database-size limits
+- Explicit overflow and dropped-record evidence
+- Query-cost limits
+- No silent evidence loss
+
+## Section 9 — Database integrity and migrations
+
+- Versioned transactional schema migrations
+- Pre-migration backup
+- Migration dry run
+- Integrity checks
+- Interrupted-migration recovery
+- Newer-schema refusal or bounded read-only fallback
+- No silent empty-database recreation
+- Rollback compatibility tests
+
+## Section 10 — Proof and operational-store separation
+
+- SQLite is the searchable operational index
+- JSON proof remains portable, hashable, scoped, and independently verifiable
+- No claim of tamper-proofing or notarization without external proof
+- Retention and compaction must not alter previously exported proof artifacts
+
+## Section 11 — Trace, session, and process correlation
+
+Design fields for:
+
+- run_id
+- trace_id
+- span_id
+- parent_span_id
+- session_id
+- process_id
+- parent_process_id
+
+Require concurrency, async, thread, child-process, retry, and context-conflict tests before implementation is considered complete.
+
+## Section 12 — Sampling and overload
+
+- Define unsampled default behavior
+- Define queue-full and burst behavior
+- If sampling is ever introduced, record policy and coverage explicitly
+- Preserve error, slow-call, and proof-critical evidence under a future policy
+- Never display sampled evidence as complete
+
+## Section 13 — Clock and event ordering
+
+- UTC canonical timestamps
+- Monotonic duration measurement
+- Customer-selected display timezone later
+- Clock-rollback and DST tests
+- No negative durations
+- Stable tied-timestamp ordering
+- No causal claims based only on timestamp proximity
+
+## Section 14 — Optics self-observability
+
+Diagnostic metrics:
+
+- hooks installed
+- events received
+- events persisted
+- events rejected/dropped
+- write/query latency
+- database size
+- last successful write
+- integrity state
+- formatter failures
+- migration state
+- redaction failures
+- schema version
+
+Hard rule: Optics internal diagnostics must not recursively appear as customer AI activity.
+
+## Section 15 — Bounded query contract
+
+- One query model shared by CLI, local UI, and structured output
+- Filters for provider, destination, status, fault domain, coverage, time, duration, process, session, trace, freshness, and HTTP status
+- No arbitrary SQL exposure
+- Saved views store queries, not duplicate evidence
+
+## Section 16 — Alerting architecture decision
+
+- Do not silently add a daemon
+- Evaluate run-time, post-run, external-scheduler, and explicit-service options
+- Define trigger evidence, window, freshness, deduplication, recovery, severity, and safe remediation
+- Privacy invariant and evidence-write failures are highest-severity candidates
+
+## Section 17 — Local indicators, not invented SLOs
+
+Potential indicators:
+
+- observed-call success
+- latency percentiles
+- provider-error rate
+- evidence-write success
+- evidence freshness
+- partial/unknown/unavailable rate
+
+Do not label any objective as an SLO until the customer configures one.
+
+## Section 18 — Local UI truth contract
+
+Require explicit UI states for:
+
+- first run
+- healthy
+- honest idle
+- not attached
+- partial coverage
+- stale evidence
+- sampled evidence
+- migration required
+- database corruption
+- privacy failure
+- unsupported client
+- mixed outcomes
+- no results
+- historical-only data
+
+Every material view must show status, scope, time range, freshness, evidence source, version, limitation, and completeness.
+
+Require keyboard navigation, contrast, reduced motion, color-independent status, responsive layouts, copyable local deep links, UTC-preserving timezone display, localhost-only binding, and read-only first release.
+
+## Section 19 — Portability and provenance
+
+Design future export/import/backup/restore behavior:
+
+- imported evidence cannot masquerade as locally observed
+- duplicate handling
+- schema compatibility
+- source-machine provenance
+- no secrets
+- no silent overwrite
+- config inclusion separately controlled
+
+## Section 20 — Evidence origin
+
+Add design values:
+
+- LOCAL_OBSERVATION
+- SIMULATED_DEMO
+- IMPORTED
+- TEST_FIXTURE
+
+Demo and fixture evidence must be excluded from operational trends by default.
+
+## Section 21 — Release and upgrade posture
+
+- No background auto-update
+- Explicit version and integrity inspection
+- Release-channel visibility
+- Schema compatibility
+- rollback compatibility
+- security-update visibility
+- registry check only when explicitly requested
+
+## Section 22 — Customer annotations
+
+- Customer may name or annotate runs
+- Annotation is stored separately
+- Annotation never mutates original observation evidence
+- UI must visibly distinguish observed evidence from customer-entered context
+
