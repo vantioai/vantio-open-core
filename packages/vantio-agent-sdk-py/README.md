@@ -19,6 +19,31 @@ vantio run python agent.py
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 
+## 3.1.0 — HTTP outcome and customer lines
+
+A stored HTTP call sets `ok` from the status code. `ok` is true for 200–399 and false for 400–599. A 4xx or 5xx response is the provider's outcome. It is not stored as `network_error`. DNS, a refused or unreachable connection, TLS, and a timeout still use `network_error`, and they have no HTTP status. A wrapped application exception is stored as the exception class name only, with no HTTP status and without `network_error`.
+
+Those transport cases are recognized on urllib, requests, httpx (sync and async), aiohttp, and urllib3. Classification walks a bounded exception chain: `__cause__`, `__context__`, a `.reason` that is itself an exception, and exception `args`. It does not walk arbitrary object attributes, and it does not reclassify an exception from words in its message. The depth and visit caps are an internal safety limit, not a compatibility promise. A final HTTP status on an attempt wins over a transport error nested on that same attempt. A retry that the client handles inside one call is recorded as the final response. A call Optics observes on its own stays its own record.
+
+Each recorded call keeps two machine fields and three customer lines:
+
+| Field | Human line | Meaning |
+|---|---|---|
+| `opticsStatus` | Optics status | Optics completed the observation. A recorded call is `SUCCESS`. |
+| `applicationStatus` | Observed outcome | Machine token: `SUCCESS` for 200–399, `APPLICATION_ERROR` for 400–599, or `UNAVAILABLE` when no HTTP status was stored. |
+| `applicationOutcomeLabel` | Observed outcome | The specific result, such as `Provider authentication failed` for HTTP 401 or `Provider rate-limited the request` for HTTP 429. |
+| `providerResponse` | Provider response | The concrete result, such as `HTTP 401 Unauthorized`. An unknown host uses the heading Upstream response. |
+
+`APPLICATION_ERROR` stays the machine category for an unsuccessful provider response. The customer line is the observed outcome for that status, not a generic error label. The run log names the headings in `status_labels` and sets `schema_status` to `unstable-pre-1.0`. Mixed machine outcomes in one run are `PARTIAL`. The summary line for that run is `Partial`.
+
+When the hostname is in the supported provider catalog, the record names that provider and the destination, and transport lines say Provider. Any other host, including an extra host, is an upstream service: the response heading is Upstream response, and transport lines say Upstream service (for example `Upstream service could not be resolved`, `Connection to upstream service failed`, `Secure connection to upstream service failed`, `Upstream request timed out`). HTTP status lines still name the observed result, such as `Provider authentication failed` for HTTP 401. Optics does not block, reject, or enforce the provider result.
+
+`http.client` and `pycurl` still do not store an HTTP status on the success path. That outcome stays `UNAVAILABLE`, with the line `Provider outcome unavailable` and the response `No HTTP response`.
+
+A trace with no supported call does not write a run log. The empty view is Optics status `Not observed` and observed outcome `No supported AI call observed`.
+
+Telemetry is unchanged: it stays off unless `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` still override that opt-in. Phantom Engine and Enterprise APIs stay separately provisioned. Free Optics still needs no account and no API key.
+
 ## 3.0.15 — telemetry wording
 
 Anonymous usage telemetry stays off unless you set `VANTIO_TELEMETRY=1`. The wire payload is unchanged from 3.0.14. Free Optics still needs no account and no API key.

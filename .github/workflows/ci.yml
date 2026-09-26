@@ -65,7 +65,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Run tests (stdlib unittest — zero test dependencies, matching the SDK itself)
+      - name: Install optional HTTP clients the observe tests exercise
+        run: python -m pip install --disable-pip-version-check requests httpx aiohttp urllib3
+
+      - name: Run tests (stdlib unittest — the SDK itself has no install dependencies)
         working-directory: packages/vantio-agent-sdk-py
         run: python -m unittest discover -s tests -t . -v
 
