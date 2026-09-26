@@ -21,10 +21,12 @@
   "evidence_tier_note": "No requirement is assigned UNIT_PROVED, INTEGRATION_PROVED, STRANGER_HOST_PROVED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED.",
   "requirement_count": 52,
   "status_counts": {
-    "ARCHITECTURE_DEFINED": 29,
+    "ARCHITECTURE_DEFINED": 25,
     "TARGET_DESIGN": 20,
-    "NEEDS_FOUNDER_DECISION": 3
+    "NEEDS_FOUNDER_DECISION": 3,
+    "ARCHITECTURE_BLOCKED": 4
   },
+  "council_status_note": "A7 council bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2 moved OF-27, OF-33, OF-34, and OF-43 to ARCHITECTURE_BLOCKED on 2026-09-26. No row is IMPLEMENTED, SHIPPED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED.",
   "inventory": {
     "stage": "A0",
     "classification": "OPTICS_FOUNDATION_A0_INVENTORY_COMPLETE",
@@ -578,7 +580,7 @@
       "id": "OF-27",
       "section": "Section 23 item 9",
       "title": "Data-quality dimensions",
-      "status": "ARCHITECTURE_DEFINED",
+      "status": "ARCHITECTURE_BLOCKED",
       "architecture_refs": [
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
@@ -587,7 +589,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Coverage, freshness UNKNOWN until a window exists, lifecycle completeness, integrity, correlation, privacy. No aggregate percentage."
+      "notes": "Coverage, freshness UNKNOWN until a window exists, lifecycle completeness, integrity, correlation, privacy. No aggregate percentage. Council A7: ARCHITECTURE_BLOCKED. Those dimensions are named separately and are not fields of one read answer, so a page can look complete while capture is partial."
     },
     {
       "id": "OF-28",
@@ -668,7 +670,7 @@
       "id": "OF-33",
       "section": "Section 23 item 15",
       "title": "Graceful degradation",
-      "status": "ARCHITECTURE_DEFINED",
+      "status": "ARCHITECTURE_BLOCKED",
       "architecture_refs": [
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
@@ -677,13 +679,13 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Application continues. Drops are explicit. No recursive drop notices."
+      "notes": "Application continues. Drops are explicit. No recursive drop notices. Council A7: ARCHITECTURE_BLOCKED. Continuation is specified. The default read does not have to show the drop, so loss can still look complete."
     },
     {
       "id": "OF-34",
       "section": "Section 23 item 16",
       "title": "Crash consistency",
-      "status": "ARCHITECTURE_DEFINED",
+      "status": "ARCHITECTURE_BLOCKED",
       "architecture_refs": [
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
@@ -692,7 +694,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Lifecycle states specified. Silent empty replacement forbidden."
+      "notes": "Lifecycle states specified. Silent empty replacement forbidden. Council A7: ARCHITECTURE_BLOCKED. A3 stops on a corrupt file. T10 also allows bounded read-only. Disclosure is a health row inside the store that failed."
     },
     {
       "id": "OF-35",
@@ -818,7 +820,7 @@
       "id": "OF-43",
       "section": "Section 23 item 25",
       "title": "Export formats",
-      "status": "ARCHITECTURE_DEFINED",
+      "status": "ARCHITECTURE_BLOCKED",
       "architecture_refs": [
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
@@ -827,7 +829,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Canonical JSON proof plus renderings. JSONL is an export candidate. OTLP not authorized."
+      "notes": "Canonical JSON proof plus renderings. JSONL is an export candidate. OTLP not authorized. Council A7: ARCHITECTURE_BLOCKED. Pretty-printed and compact JSON are both allowed, and no canonical byte profile is defined for the SHA-256."
     },
     {
       "id": "OF-44",

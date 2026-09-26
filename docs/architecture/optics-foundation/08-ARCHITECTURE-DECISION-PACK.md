@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Council verdict: `PENDING_SEPARATE_COUNCIL`
+Council verdict: `NEEDS_REVISION`
 
 This pack records producer decisions for A0–A6. It does not implement them. Unresolved items stay unresolved.
 
@@ -158,8 +158,34 @@ Gates 1–7 are the documents in this directory. Gate 8 is a separate Founder im
 12. OTLP or SIEM export. Not authorized.
 13. Local UI charter (OF-06) and accessibility (OF-37). Prerequisites are recorded. The UI is not designed here as a build.
 
-## 36. Council and non-authorization
+Council disposition of this list, 2026-09-26: unchanged. No item was ratified. No item was added. The blocking defects in the council report are specification conflicts for the producer to revise. They are not additional founder decisions.
 
-Council verdict: `PENDING_SEPARATE_COUNCIL`. Seat identities: `PENDING`. This pack does not authorize implementation, a release, a tag, a seal, a publish, a store file, a migration, a UI, a daemon, OTLP, alerting, or A8.
+## 36. Council verdict
 
-Producer terminal classification, which is not a Force verdict: `OPTICS_FOUNDATION_A6_READY_FOR_COUNCIL`.
+Independent council: Cursor cloud agent `bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2`, model Grok 4.7, reviewing producer tip `8aef23cd6886139d3b8f7de52cfb28c0972628cd`. This agent did not produce A0–A6.
+
+Council verdict: `NEEDS_REVISION`
+
+Force classification: `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`
+
+Full seat table, challenge answers, and blocking text: `10-INDEPENDENT-COUNCIL-REPORT.md`.
+
+Gates reopened for revision: 2, 3, 4, 5, 6, and 7. Gate 1 stays accepted with one nonblocking inventory note in that report. Gate 8 stays closed. A8 is not started.
+
+Producer terminal classification, which is not a Force verdict and not a council pass: `OPTICS_FOUNDATION_A6_READY_FOR_COUNCIL`.
+
+This pack does not authorize implementation, a release, a tag, a seal, a publish, a store file, a migration, a UI, a daemon, OTLP, alerting, or A8.
+
+## 37. Council nonblocking notes
+
+- Option C remains the recommendation, still unratified. The revision must label A3’s SQLite `user_version` and `BEGIN IMMEDIATE` mechanics as conditional on that ratification. The A2 scorecard gives C credit for application policies the file options can also enforce.
+- Inventory finding 1.3 understates missing response size. The Node exit mapper stores `call.bytes || 0`. The target catalog already forbids inventing that zero. `01-CURRENT-STATE-INVENTORY.md` was not edited.
+- Annotation’s seventh origin stays open. The allowlist cell that names `DERIVED_DIAGNOSTIC` is repaired in the revision and is not closed by inventing an origin.
+- Default exclusion of `LEGACY_UNMARKED` from trends remains founder decision 6.
+- Windows ACL, the Node binding, encryption, every `NFR-*` number, the freshness window, alerting, OTLP, and the UI charter stay unresolved.
+- OF-36 records UI security prerequisites. OF-06 stays `TARGET_DESIGN`.
+- Co-located block, redact, and cap branches are outside Optics fail-open. The observation-path invariant stands.
+
+## 38. Required founder decisions after council
+
+The thirteen decisions in section 35 remain the required founder decisions. The council resolved none of them. See `10-INDEPENDENT-COUNCIL-REPORT.md` for the same list.
