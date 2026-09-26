@@ -25,6 +25,10 @@ function sha1(buf) {
   return createHash("sha1").update(buf).digest("hex");
 }
 
+function integrity(buf) {
+  return `sha512-${createHash("sha512").update(buf).digest("base64")}`;
+}
+
 function writeExecutable(path, body) {
   writeFileSync(path, body);
   chmodSync(path, 0o755);
@@ -80,26 +84,41 @@ if [ "$1" = "view" ]; then
   n=$((n+1))
   echo "$n" > "${count}"
   if [ "${mode}" = "exists" ]; then
-    printf '%s\\n' '{"version":"0.3.22","dist":{"tarball":"https://registry.npmjs.org/@vantio/cli/-/cli-0.3.22.tgz","shasum":"abc"}}'
+    printf '%s\\n' '{"version":"0.3.22","dist":{"tarball":"https://registry.npmjs.org/@vantio/cli/-/cli-0.3.22.tgz","shasum":"abc","integrity":"sha512-abc"}}'
     exit 0
   fi
-  if [ "${mode}" = "conflict" ] || [ "${mode}" = "publish" ] || [ "${mode}" = "mismatch" ]; then
+  if [ "${mode}" = "timeout" ]; then
+    echo "npm error code E404" >&2
+    exit 1
+  fi
+  if [ "${mode}" = "conflict" ] || [ "${mode}" = "publish" ] || [ "${mode}" = "mismatch" ] || [ "${mode}" = "delay" ] || [ "${mode}" = "http202" ]; then
+    lag="\${VANTIO_MOCK_LAG:-0}"
     if [ "$n" = "1" ]; then
       echo "npm error code E404" >&2
       exit 1
     fi
-    printf '%s\\n' '{"version":"0.3.22","dist":{"tarball":"https://registry.npmjs.org/@vantio/cli/-/cli-0.3.22.tgz","shasum":"'"$MOCK_SHA1"'"}}'
+    seen=$((n-1))
+    if [ "$seen" -le "$lag" ]; then
+      echo "npm error code E404" >&2
+      exit 1
+    fi
+    printf '%s\\n' '{"version":"0.3.22","dist":{"tarball":"https://registry.npmjs.org/@vantio/cli/-/cli-0.3.22.tgz","shasum":"'"$MOCK_SHA1"'","integrity":"'"$MOCK_INTEGRITY"'"}}'
     exit 0
   fi
   echo "npm error code E404" >&2
   exit 1
 fi
 if [ "$1" = "publish" ]; then
-  echo "$2" > "${published}"
+  echo "$2" >> "${published}"
   if [ "${mode}" = "conflict" ]; then
     echo "EPUBLISHCONFLICT You cannot publish over the previously published versions" >&2
     echo "${CANARY}" >&2
     exit 1
+  fi
+  if [ "${mode}" = "http202" ]; then
+    echo "npm notice Your package is being processed and may take a few minutes to become available."
+    echo "http fetch PUT 202 https://registry.npmjs.org/@vantio%2fcli"
+    exit 0
   fi
   echo "${CANARY}"
   exit 0
@@ -298,9 +317,9 @@ test("approved publish promotes only the sealed tarball and rejects a registry m
       "--curl-bin", join(dir, "curl"),
       "--allow-local-approval",
       "--approval-file", approval,
-    ], { MOCK_SHA1: sha1(bytes) });
+    ], { MOCK_SHA1: sha1(bytes), MOCK_INTEGRITY: integrity(bytes) });
     assert.equal(mismatch.code, 1);
-    assert.match(mismatch.stdout, /REGISTRY_HASH_MISMATCH/);
+    assert.match(mismatch.stdout, /HASH_MISMATCH/);
     assert.equal(readFileSync(published, "utf8").trim(), artifact);
     const calls = readFileSync(log, "utf8");
     assert.equal(calls.split("\n").filter((line) => line.startsWith("publish ")).length, 1);
@@ -332,12 +351,131 @@ test("approved publish records registry hash equality", async () => {
       "--curl-bin", join(dir, "curl"),
       "--allow-local-approval",
       "--approval-file", approval,
-    ], { MOCK_SHA1: sha1(bytes) });
+    ], { MOCK_SHA1: sha1(bytes), MOCK_INTEGRITY: integrity(bytes) });
     assert.equal(result.code, 0, result.stderr + result.stdout);
-    assert.match(result.stdout, /"status":"PUBLISHED"/);
+    assert.match(result.stdout, /"status":"PUBLISHED_VERIFIED"/);
     assert.match(result.stdout, new RegExp(digest));
     assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(CANARY));
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+async function publishCase(mode, { lag = 0, attempts = 6, interval = 0, testSwitch = true } = {}) {
+  const dir = tempDir("vantio-npm-poll-");
+  const repo = fixtureRepo();
+  const artifact = makeTarball(dir);
+  const bytes = readFileSync(artifact);
+  const digest = sha256(bytes);
+  writeFileSync(join(dir, "download-body.bin"), bytes);
+  const { published, log } = mockBins(dir, mode);
+  const approval = join(dir, "approval.json");
+  writeFileSync(approval, JSON.stringify({
+    approved: true, package: "@vantio/cli", version: "0.3.22",
+    source_commit: COMMIT, artifact_sha256: digest,
+  }));
+  const env = {
+    MOCK_SHA1: sha1(bytes),
+    MOCK_INTEGRITY: integrity(bytes),
+    VANTIO_MOCK_LAG: String(lag),
+  };
+  if (testSwitch) {
+    env.VANTIO_RELEASE_TEST = "1";
+    env.VANTIO_REGISTRY_POLL_INTERVAL_MS = String(interval);
+    env.VANTIO_REGISTRY_POLL_MAX_ATTEMPTS = String(attempts);
+  }
+  const result = await runNode([
+    "--publish", ...baseArgs(repo, artifact, digest),
+    "--npm-bin", join(dir, "npm"),
+    "--curl-bin", join(dir, "curl"),
+    "--allow-local-approval",
+    "--approval-file", approval,
+  ], env);
+  return { dir, repo, result, published, log, bytes };
+}
+
+function publishCount(log) {
+  return readFileSync(log, "utf8").split("\n").filter((line) => line.startsWith("publish ")).length;
+}
+
+test("delayed registry visibility resolves to the sealed hash without a second upload", async () => {
+  const { dir, repo, result, log } = await publishCase("delay", { lag: 2, attempts: 6, interval: 0 });
+  try {
+    assert.equal(result.code, 0, result.stderr + result.stdout);
+    assert.match(result.stdout, /PUBLISHED_VERIFIED/);
+    assert.match(result.stderr, /REGISTRY_PROCESSING/);
+    assert.equal(publishCount(log), 1);
+    assert.match(result.stdout, /"upload_repeated":false/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("HTTP 202 followed by eventual visibility verifies once and does not publish again", async () => {
+  const { dir, repo, result, log } = await publishCase("http202", { lag: 2, attempts: 6, interval: 0 });
+  try {
+    assert.equal(result.code, 0, result.stderr + result.stdout);
+    assert.match(result.stdout, /PUBLISHED_VERIFIED/);
+    assert.match(result.stderr, /REGISTRY_PROCESSING/);
+    assert.equal(publishCount(log), 1);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(CANARY));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("registry processing timeout stops without a second upload", async () => {
+  const { dir, repo, result, log } = await publishCase("timeout", { attempts: 3, interval: 0 });
+  try {
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stdout, /REGISTRY_TIMEOUT/);
+    assert.doesNotMatch(result.stdout, /PUBLISHED_VERIFIED/);
+    assert.equal(publishCount(log), 1);
+    assert.match(result.stdout, /"upload_repeated":false/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("documented production poll bounds ignore a shortened override", async () => {
+  const source = readFileSync(PROMOTE, "utf8");
+  assert.match(source, /REGISTRY_POLL_INTERVAL_MS = 5000/);
+  assert.match(source, /REGISTRY_POLL_MAX_ATTEMPTS = 60/);
+  const dir = tempDir("vantio-npm-bound-");
+  const repo = fixtureRepo();
+  const artifact = makeTarball(dir);
+  const bytes = readFileSync(artifact);
+  const digest = sha256(bytes);
+  writeFileSync(join(dir, "download-body.bin"), bytes);
+  mockBins(dir, "timeout");
+  const approval = join(dir, "approval.json");
+  writeFileSync(approval, JSON.stringify({
+    approved: true, package: "@vantio/cli", version: "0.3.22",
+    source_commit: COMMIT, artifact_sha256: digest,
+  }));
+  const child = spawn(process.execPath, [PROMOTE, "--publish", ...baseArgs(repo, artifact, digest),
+    "--npm-bin", join(dir, "npm"), "--curl-bin", join(dir, "curl"),
+    "--allow-local-approval", "--approval-file", approval], {
+    stdio: "ignore",
+    env: {
+      ...process.env,
+      MOCK_SHA1: sha1(bytes),
+      MOCK_INTEGRITY: integrity(bytes),
+      VANTIO_REGISTRY_POLL_INTERVAL_MS: "0",
+      VANTIO_REGISTRY_POLL_MAX_ATTEMPTS: "1",
+    },
+  });
+  let finished = false;
+  child.on("close", () => { finished = true; });
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  try {
+    assert.equal(finished, false);
+  } finally {
+    child.kill("SIGKILL");
     rmSync(dir, { recursive: true, force: true });
     rmSync(repo, { recursive: true, force: true });
   }
@@ -448,6 +586,7 @@ test("github gate approval is required and must match the sealed hash", async ()
       "--github-run-id", "77",
     ], {
       MOCK_SHA1: sha1(bytes),
+      MOCK_INTEGRITY: integrity(bytes),
       VANTIO_RELEASE_TEST: "1",
       VANTIO_RELEASE_GITHUB_API: `http://127.0.0.1:${server.address().port}`,
       GH_TOKEN: CANARY,

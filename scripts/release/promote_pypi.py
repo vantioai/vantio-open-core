@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -27,6 +28,12 @@ VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$")
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 HEX64_RE = re.compile(r"^[a-f0-9]{64}$")
 SECRET_KEYS = ("TWINE_PASSWORD", "TWINE_API_KEY", "PYPI_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")
+
+# PyPI metadata can lag a successful upload. Poll the version JSON only.
+# Production bound: 60 attempts, 5 seconds apart (300 seconds). Do not upload again.
+# A timeout is REGISTRY_TIMEOUT and stops for Founder review.
+POLL_INTERVAL_SECONDS = 5.0
+POLL_MAX_ATTEMPTS = 60
 
 
 def redact(text: str) -> str:
@@ -115,7 +122,7 @@ def metadata_name(text: str) -> str | None:
     return None
 
 
-def fetch_json(url: str) -> tuple[int, dict | None]:
+def fetch_json(url: str, *, strict: bool = True) -> tuple[int, dict | None]:
     request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "vantio-release-promote"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -124,10 +131,26 @@ def fetch_json(url: str) -> tuple[int, dict | None]:
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return 404, None
+        if not strict:
+            return exc.code, None
         fail("REGISTRY_LOOKUP_FAILED", f"PyPI lookup failed ({exc.code})")
     except urllib.error.URLError:
+        if not strict:
+            return 0, None
         fail("REGISTRY_LOOKUP_FAILED", "PyPI lookup could not connect")
     return 0, None
+
+
+def poll_bounds() -> tuple[float, int]:
+    if os.environ.get("VANTIO_RELEASE_TEST") == "1":
+        try:
+            interval = float(os.environ.get("VANTIO_REGISTRY_POLL_INTERVAL_SECONDS", POLL_INTERVAL_SECONDS))
+            attempts = int(os.environ.get("VANTIO_REGISTRY_POLL_MAX_ATTEMPTS", POLL_MAX_ATTEMPTS))
+        except ValueError:
+            return POLL_INTERVAL_SECONDS, POLL_MAX_ATTEMPTS
+        if 0 <= interval <= 60 and 1 <= attempts <= 100:
+            return interval, attempts
+    return POLL_INTERVAL_SECONDS, POLL_MAX_ATTEMPTS
 
 
 def project_version(pyproject: Path) -> str:
@@ -148,10 +171,14 @@ def runtime_map(sources: dict[str, bytes]) -> dict[str, str]:
 
 def classify_twine(stdout: str, stderr: str, code: int) -> str | None:
     text = f"{stdout}\n{stderr}"
-    if code == 0:
-        return None
     if re.search(r"File already exists|409 Conflict|already been (uploaded|published)", text, re.I):
         return "VERSION_ALREADY_EXISTS"
+    if code == 0:
+        return None
+    # A 202 from the warehouse means the upload was accepted and metadata may lag.
+    # That is not a second upload.
+    if re.search(r"\b202\b", text) and re.search(r"Accepted|processing|queued", text, re.I):
+        return None
     return "PUBLISH_FAILED"
 
 
@@ -159,7 +186,7 @@ def download(url: str, dest: Path) -> None:
     if not url.startswith("https://files.pythonhosted.org/") and not (
         os.environ.get("VANTIO_RELEASE_TEST") == "1" and url.startswith("http://127.0.0.1")
     ):
-        fail("REGISTRY_HASH_MISMATCH", "registry file URL is not the public PyPI file host")
+        fail("HASH_MISMATCH", "registry file URL is not the public PyPI file host")
     request = urllib.request.Request(url, headers={"User-Agent": "vantio-release-promote"})
     with urllib.request.urlopen(request, timeout=60) as response:
         dest.write_bytes(response.read())
@@ -252,37 +279,60 @@ def main() -> None:
         detail = redact((twine.stderr or twine.stdout or "twine upload failed").strip().splitlines()[-1:])
         fail("PUBLISH_FAILED", detail[0] if detail else "twine upload failed")
 
-    status, payload = fetch_json(f"{index_base}/{args.version}/json")
+    interval, attempts = poll_bounds()
+    status = 0
+    payload = None
+    polls = 0
+    for attempt in range(1, attempts + 1):
+        polls = attempt
+        status, payload = fetch_json(f"{index_base}/{args.version}/json", strict=False)
+        if status == 200 and payload:
+            break
+        payload = None
+        if attempt < attempts:
+            sys.stderr.write(f"vantio-release: REGISTRY_PROCESSING {attempt}/{attempts}\n")
+            if interval:
+                time.sleep(interval)
     if status != 200 or not payload:
-        fail("REGISTRY_HASH_MISMATCH", "PyPI did not return the version after upload")
+        fail(
+            "REGISTRY_TIMEOUT",
+            "PyPI metadata was still not visible after the bounded poll",
+            attempts=attempts,
+            interval_seconds=interval,
+            upload_repeated=False,
+        )
     urls = {item.get("packagetype"): item for item in payload.get("urls") or []}
     for kind, sealed, digest in (("bdist_wheel", wheel, wheel_sha), ("sdist", sdist, sdist_sha)):
         item = urls.get(kind)
         if not item:
-            fail("REGISTRY_HASH_MISMATCH", f"PyPI response is missing {kind}")
+            fail("HASH_MISMATCH", f"PyPI response is missing {kind}", upload_repeated=False)
         reported = ((item.get("digests") or {}).get("sha256"))
         if reported != digest:
             fail(
-                "REGISTRY_HASH_MISMATCH",
+                "HASH_MISMATCH",
                 f"PyPI sha256 for {kind} does not match the sealed file",
                 package=PACKAGE,
                 version=args.version,
                 sealed_sha256=digest,
                 registry_sha256=reported,
+                upload_repeated=False,
             )
         with tempfile.TemporaryDirectory(prefix="vantio-pypi-verify-") as tmp:
             dest = Path(tmp) / Path(str(item["filename"])).name
             download(str(item["url"]), dest)
             remote = sha256_file(dest)
             if remote != digest or dest.stat().st_size != sealed.stat().st_size:
-                fail("REGISTRY_HASH_MISMATCH", f"downloaded {kind} does not match the sealed file")
+                fail("HASH_MISMATCH", f"downloaded {kind} does not match the sealed file", upload_repeated=False)
     emit(
-        "PUBLISHED",
+        "PUBLISHED_VERIFIED",
         package=PACKAGE,
         version=args.version,
         source_commit=args.source_commit,
         wheel_sha256=wheel_sha,
         sdist_sha256=sdist_sha,
+        polls=polls,
+        interval_seconds=interval,
+        upload_repeated=False,
     )
 
 

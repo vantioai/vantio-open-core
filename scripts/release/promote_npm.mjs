@@ -81,6 +81,30 @@ function integrity(buf) {
   return `sha512-${createHash("sha512").update(buf).digest("base64")}`;
 }
 
+// npm can accept an upload with HTTP 202 while version metadata is still
+// processing. Poll only the version-specific metadata. Do not upload again.
+// Production bound: 60 attempts, 5000 ms apart (300 seconds). A timeout is
+// REGISTRY_TIMEOUT and stops for Founder review.
+const REGISTRY_POLL_INTERVAL_MS = 5000;
+const REGISTRY_POLL_MAX_ATTEMPTS = 60;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function pollBounds() {
+  if (process.env.VANTIO_RELEASE_TEST === "1") {
+    const interval = Number(process.env.VANTIO_REGISTRY_POLL_INTERVAL_MS);
+    const attempts = Number(process.env.VANTIO_REGISTRY_POLL_MAX_ATTEMPTS);
+    const intervalMs = Number.isFinite(interval) ? interval : REGISTRY_POLL_INTERVAL_MS;
+    const maxAttempts = Number.isFinite(attempts) ? attempts : REGISTRY_POLL_MAX_ATTEMPTS;
+    if (intervalMs >= 0 && intervalMs <= 60000 && Number.isInteger(maxAttempts) && maxAttempts >= 1 && maxAttempts <= 100) {
+      return { intervalMs, maxAttempts };
+    }
+  }
+  return { intervalMs: REGISTRY_POLL_INTERVAL_MS, maxAttempts: REGISTRY_POLL_MAX_ATTEMPTS };
+}
+
 function run(bin, args, opts = {}) {
   const result = spawnSync(bin, args, {
     encoding: "utf8",
@@ -144,29 +168,40 @@ function packageJsonFromTarball(tarBin, artifact) {
 }
 
 function lookupRegistry(npmBin, spec) {
-  const result = run(npmBin, ["view", spec, "version", "dist", "--json"]);
+  const result = run(npmBin, ["view", spec, "version", "dist", "--json", "--prefer-online"]);
   const text = `${result.stdout}\n${result.stderr}`;
   if (result.status === 0 && result.stdout.trim()) {
     try {
-      return { exists: true, body: JSON.parse(result.stdout) };
+      return { exists: true, body: JSON.parse(result.stdout), error: false };
     } catch {
-      fail("REGISTRY_LOOKUP_FAILED", "npm view returned unreadable JSON", 1);
+      return { exists: false, body: null, error: true };
     }
   }
   if (/E404|404 Not Found|not in this registry|No match found/i.test(text)) {
-    return { exists: false, body: null };
+    return { exists: false, body: null, error: false };
   }
-  fail("REGISTRY_LOOKUP_FAILED", "npm view failed for a reason other than version absence", 1);
-  return { exists: false, body: null };
+  return { exists: false, body: null, error: true };
 }
 
 function classifyPublish(result) {
   const text = `${result.stdout}\n${result.stderr}`;
-  if (result.status === 0) return { ok: true };
   if (/EPUBLISHCONFLICT|cannot publish over|You cannot publish over|previously published versions/i.test(text)) {
     return { ok: false, status: "VERSION_ALREADY_EXISTS", code: 2 };
   }
+  const http202 = /http fetch PUT 202\b|HTTP\/1\.[01] 202\b|\b202 Accepted\b|package is being processed/i.test(text);
+  if (result.status === 0 || http202) return { ok: true, processing: http202 };
   return { ok: false, status: "PUBLISH_FAILED", code: 1 };
+}
+
+function archiveNames(tarBin, file) {
+  const listed = run(tarBin, ["-tzf", file]);
+  if (listed.status !== 0) return null;
+  return listed.stdout.split("\n").map((line) => line.trim()).filter(Boolean).sort();
+}
+
+function sameNames(left, right) {
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((name, index) => name === right[index]);
 }
 
 async function loadGithubApproval(runId, expected) {
@@ -246,6 +281,7 @@ async function main() {
       fail("HASH_REJECTED", "expected SHA-256 is missing or malformed", 1);
     }
     const lookup = lookupRegistry(npmBin, `${packageName}@${version}`);
+    if (lookup.error) fail("REGISTRY_LOOKUP_FAILED", "npm view failed for a reason other than version absence", 1);
     if (lookup.exists) {
       fail("VERSION_ALREADY_EXISTS", `${packageName}@${version} is already on the registry`, 2, {
         package: packageName,
@@ -299,6 +335,7 @@ async function main() {
   }
 
   const lookup = lookupRegistry(npmBin, `${packageName}@${version}`);
+  if (lookup.error) fail("REGISTRY_LOOKUP_FAILED", "npm view failed before publish", 1, expected);
   if (lookup.exists) {
     fail("VERSION_ALREADY_EXISTS", `${packageName}@${version} is already on the registry`, 2, expected);
   }
@@ -315,38 +352,74 @@ async function main() {
     fail(classified.status, "npm publish did not accept the sealed tarball", classified.code, expected);
   }
 
-  const after = lookupRegistry(npmBin, `${packageName}@${version}`);
-  if (!after.exists) fail("REGISTRY_HASH_MISMATCH", "registry did not return the version after publish", 1, expected);
+  const bounds = pollBounds();
+  let after = null;
+  let polls = 0;
+  for (let attempt = 1; attempt <= bounds.maxAttempts; attempt += 1) {
+    polls = attempt;
+    const looked = lookupRegistry(npmBin, `${packageName}@${version}`);
+    if (looked.exists) {
+      after = looked;
+      break;
+    }
+    if (attempt < bounds.maxAttempts) {
+      process.stderr.write(`vantio-release: REGISTRY_PROCESSING ${attempt}/${bounds.maxAttempts}\n`);
+      await sleep(bounds.intervalMs);
+    }
+  }
+  if (!after) {
+    fail("REGISTRY_TIMEOUT", "registry metadata was still not visible after the bounded poll", 1, {
+      ...expected,
+      attempts: bounds.maxAttempts,
+      interval_ms: bounds.intervalMs,
+      upload_repeated: false,
+    });
+  }
   const dist = after.body && after.body.dist ? after.body.dist : after.body;
+  const seenVersion = after.body && after.body.version;
+  if (seenVersion && seenVersion !== version) {
+    fail("HASH_MISMATCH", "registry returned a version other than the sealed target", 1, expected);
+  }
   const tarballUrl = dist && (dist.tarball || dist["dist.tarball"]);
   if (!tarballUrl || !String(tarballUrl).startsWith("https://registry.npmjs.org/")) {
-    fail("REGISTRY_HASH_MISMATCH", "registry tarball URL is missing or not the public npm registry", 1, expected);
+    fail("HASH_MISMATCH", "registry tarball URL is missing or not the public npm registry", 1, expected);
   }
   const downloadDir = scratchDir("vantio-npm-verify-");
   const downloaded = join(downloadDir, basename(String(tarballUrl)));
   try {
     const curled = run(curlBin, ["-fsSL", String(tarballUrl), "-o", downloaded]);
-    if (curled.status !== 0) fail("REGISTRY_HASH_MISMATCH", "registry tarball download failed", 1, expected);
+    if (curled.status !== 0) fail("HASH_MISMATCH", "registry tarball download failed", 1, expected);
     const remote = readFileSync(downloaded);
     const remoteSha = sha256(remote);
-    if (remoteSha !== actualSha || remote.length !== bytes.length) {
-      fail("REGISTRY_HASH_MISMATCH", "downloaded registry bytes do not match the sealed artifact", 1, {
+    const remoteSha1 = sha1(remote);
+    const remoteIntegrity = integrity(remote);
+    const reportedSha1 = dist.shasum || dist["dist.shasum"];
+    const reportedIntegrity = dist.integrity || dist["dist.integrity"];
+    const names = archiveNames(tarBin, downloaded);
+    const sealedNames = archiveNames(tarBin, artifact);
+    const hashOk = remoteSha === actualSha
+      && remote.length === bytes.length
+      && reportedSha1 === remoteSha1
+      && reportedIntegrity === remoteIntegrity
+      && sameNames(names, sealedNames);
+    if (!hashOk) {
+      fail("HASH_MISMATCH", "registry bytes, shasum, integrity, size, or file list do not match the sealed artifact", 1, {
         ...expected,
         sealed_sha256: actualSha,
         registry_sha256: remoteSha,
+        upload_repeated: false,
       });
     }
-    const remoteSha1 = sha1(remote);
-    const reportedSha1 = dist.shasum || dist["dist.shasum"];
-    if (reportedSha1 && reportedSha1 !== remoteSha1) {
-      fail("REGISTRY_HASH_MISMATCH", "registry shasum does not match the downloaded artifact", 1, expected);
-    }
-    emit("PUBLISHED", {
+    emit("PUBLISHED_VERIFIED", {
       ...expected,
       registry_sha256: remoteSha,
       dist_shasum: remoteSha1,
-      integrity: integrity(remote),
+      integrity: remoteIntegrity,
       size: remote.length,
+      file_count: names.length,
+      polls,
+      interval_ms: bounds.intervalMs,
+      upload_repeated: false,
       tarball: String(tarballUrl),
     });
   } finally {
