@@ -1,0 +1,2158 @@
+{
+  "schema_status": "unstable-pre-1.0",
+  "schema_version": 0,
+  "bases": {
+    "observation": {
+      "record_type": "observation_event",
+      "schema_status": "unstable-pre-1.0",
+      "schema_version": 0,
+      "producer": "node_interceptor",
+      "cli_or_sdk_version": "0.3.24",
+      "evidence_origin": "LOCAL_OBSERVATION",
+      "producer_id": "prod_clean_1",
+      "producer_sequence": 0,
+      "sequence": 0,
+      "event_id": "e.12.prod_clean_1.0",
+      "run_id": "run_clean_1",
+      "destination_host": "api.example.com",
+      "destination_port": 443,
+      "scheme": "https",
+      "path": "/v1/models",
+      "method": "POST",
+      "http_status": 200,
+      "action": "OBSERVED",
+      "started_at": "2026-07-01T00:00:00.000Z",
+      "sampling": "UNSAMPLED",
+      "identity_conflict": "NONE",
+      "application_status": "SUCCESS",
+      "optics_status": "SUCCESS",
+      "issue_location": "NONE"
+    }
+  },
+  "cases": [
+    {
+      "id": "clean-observation",
+      "base": "observation",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "evidence_origin": "LOCAL_OBSERVATION",
+          "event_id": "e.12.prod_clean_1.0",
+          "destination_host": "api.example.com",
+          "http_status": 200,
+          "application_status": "SUCCESS"
+        }
+      }
+    },
+    {
+      "id": "dns-lowercase",
+      "base": "observation",
+      "patch": {
+        "destination_host": "API.Example.COM"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "destination_host": "api.example.com"
+        }
+      }
+    },
+    {
+      "id": "header-bearer",
+      "base": "observation",
+      "patch": {
+        "headers": {
+          "Authorization": "Bearer sk-CANARYHDR0001"
+        }
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "path": "/v1/models"
+        },
+        "record_absent": [
+          "headers"
+        ],
+        "stripped": [
+          "headers"
+        ],
+        "forbidden": [
+          "sk-CANARYHDR0001",
+          "Bearer"
+        ]
+      }
+    },
+    {
+      "id": "header-basic",
+      "base": "observation",
+      "patch": {
+        "headers": {
+          "Authorization": "Basic Q0FOQVJZQkFTSUM="
+        }
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "headers"
+        ],
+        "forbidden": [
+          "Q0FOQVJZQkFTSUM",
+          "Basic"
+        ]
+      }
+    },
+    {
+      "id": "header-cookie",
+      "base": "observation",
+      "patch": {
+        "headers": {
+          "Cookie": "sid=CANARYCOOKIE0001"
+        }
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "headers"
+        ],
+        "forbidden": [
+          "CANARYCOOKIE0001"
+        ]
+      }
+    },
+    {
+      "id": "path-bearer",
+      "base": "observation",
+      "patch": {
+        "path": "/v1/Bearer sk-CANARYPATH0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "rejected": [
+          "path"
+        ],
+        "forbidden": [
+          "sk-CANARYPATH0001"
+        ]
+      }
+    },
+    {
+      "id": "path-basic",
+      "base": "observation",
+      "patch": {
+        "path": "/v1/Basic CANARYBASIC0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "CANARYBASIC0001"
+        ]
+      }
+    },
+    {
+      "id": "path-cookie",
+      "base": "observation",
+      "patch": {
+        "path": "/v1/cookie=CANARYCOOKIE0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "CANARYCOOKIE0001"
+        ]
+      }
+    },
+    {
+      "id": "path-openai",
+      "base": "observation",
+      "patch": {
+        "path": "/v1/sk-CANARYOPENAI0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "sk-CANARYOPENAI0001"
+        ]
+      }
+    },
+    {
+      "id": "path-cloud",
+      "base": "observation",
+      "patch": {
+        "path": "/k/AKIAIOSFODNN7EXAMPLE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "AKIAIOSFODNN7EXAMPLE"
+        ]
+      }
+    },
+    {
+      "id": "path-pem",
+      "base": "observation",
+      "patch": {
+        "path": "/k/-----BEGIN PRIVATE KEY-----"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "BEGIN PRIVATE KEY"
+        ]
+      }
+    },
+    {
+      "id": "path-email",
+      "base": "observation",
+      "patch": {
+        "path": "/users/canary.person@example.com/x"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "canary.person@example.com"
+        ]
+      }
+    },
+    {
+      "id": "path-card",
+      "base": "observation",
+      "patch": {
+        "path": "/pay/4111-1111-1111-1111"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111-1111-1111-1111"
+        ]
+      }
+    },
+    {
+      "id": "path-ssn",
+      "base": "observation",
+      "patch": {
+        "path": "/id/123-45-6789"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "123-45-6789"
+        ]
+      }
+    },
+    {
+      "id": "path-phone",
+      "base": "observation",
+      "patch": {
+        "path": "/tel/415-555-0199"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "415-555-0199"
+        ]
+      }
+    },
+    {
+      "id": "path-mrn",
+      "base": "observation",
+      "patch": {
+        "path": "/case/MRN:ABC123"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "MRN:ABC123"
+        ]
+      }
+    },
+    {
+      "id": "path-lookalike",
+      "base": "observation",
+      "patch": {
+        "path": "/v1/ѕk-CANARYLOOK0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "CANARYLOOK0001",
+          "sk-CANARYLOOK0001",
+          "ѕk-"
+        ]
+      }
+    },
+    {
+      "id": "path-percent",
+      "base": "observation",
+      "patch": {
+        "path": "/v1/%73%6B%2DCANARYPCT0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "%73%6B%2DCANARYPCT0001",
+          "sk-CANARYPCT0001"
+        ]
+      }
+    },
+    {
+      "id": "path-base64",
+      "base": "observation",
+      "patch": {
+        "path": "/c2stQ0FOQVJZQjY0MDAwMQ=="
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "c2stQ0FOQVJZQjY0MDAwMQ",
+          "sk-CANARYB640001"
+        ]
+      }
+    },
+    {
+      "id": "query-api-key",
+      "base": "observation",
+      "omit": [
+        "destination_host",
+        "destination_port",
+        "scheme",
+        "path"
+      ],
+      "patch": {
+        "requested_url": "https://API.Example.com:8443/v1/models?api_key=sk-CANARYQUERY0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "destination_host": "api.example.com",
+          "destination_port": 8443,
+          "scheme": "https",
+          "path": "/v1/models"
+        },
+        "forbidden": [
+          "sk-CANARYQUERY0001",
+          "api_key"
+        ]
+      }
+    },
+    {
+      "id": "url-userinfo",
+      "base": "observation",
+      "omit": [
+        "destination_host",
+        "destination_port",
+        "scheme",
+        "path"
+      ],
+      "patch": {
+        "requested_url": "https://user:sk-CANARYUSER0001@api.example.com/v1/models"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "destination_host": "api.example.com",
+          "path": "/v1/models",
+          "scheme": "https"
+        },
+        "forbidden": [
+          "sk-CANARYUSER0001",
+          "user:"
+        ]
+      }
+    },
+    {
+      "id": "db-url",
+      "base": "observation",
+      "omit": [
+        "destination_host",
+        "destination_port",
+        "scheme",
+        "path"
+      ],
+      "patch": {
+        "requested_url": "postgres://user:sk-CANARYDB000001@db.example.com/app"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "destination_host",
+          "destination_port",
+          "scheme",
+          "path"
+        ],
+        "forbidden": [
+          "postgres",
+          "sk-CANARYDB000001",
+          "db.example.com"
+        ]
+      }
+    },
+    {
+      "id": "nested-secret",
+      "base": "observation",
+      "patch": {
+        "customer_note": {
+          "token": "sk-CANARYNEST0001"
+        }
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "customer_note"
+        ],
+        "forbidden": [
+          "sk-CANARYNEST0001"
+        ]
+      }
+    },
+    {
+      "id": "nested-clean",
+      "base": "observation",
+      "patch": {
+        "customer_note": {
+          "ok": true
+        }
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_OMITTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "customer_note"
+        ],
+        "record": {
+          "path": "/v1/models"
+        }
+      }
+    },
+    {
+      "id": "exception-canary",
+      "base": "observation",
+      "patch": {
+        "error_class": "TimeoutError",
+        "error": "failed sk-CANARYEXC00001",
+        "stack": "at main sk-CANARYEXC00001",
+        "args": [
+          "sk-CANARYEXC00001"
+        ]
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "error_class": "TimeoutError"
+        },
+        "stripped": [
+          "args",
+          "error",
+          "stack"
+        ],
+        "forbidden": [
+          "sk-CANARYEXC00001"
+        ]
+      }
+    },
+    {
+      "id": "baggage-clean",
+      "base": "observation",
+      "patch": {
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "APPLICATION_SUPPLIED",
+        "baggage": "vendor=1"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "STRIP",
+        "reason_code": "BAGGAGE_OMITTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "APPLICATION_SUPPLIED"
+        },
+        "stripped": [
+          "baggage"
+        ]
+      }
+    },
+    {
+      "id": "baggage-secret",
+      "base": "observation",
+      "patch": {
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "APPLICATION_SUPPLIED",
+        "baggage": "sk-CANARYBAG000001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef"
+        },
+        "forbidden": [
+          "sk-CANARYBAG000001"
+        ]
+      }
+    },
+    {
+      "id": "annotation-canary",
+      "input": {
+        "record_type": "annotation",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "annotation_role": "CUSTOMER_ANNOTATION",
+        "annotation_id": "ann_1",
+        "subject_run_id": "run_clean_1",
+        "text": "note sk-CANARYANN000001",
+        "created_at": "2026-07-01T00:00:00.000Z"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "annotation_role": "CUSTOMER_ANNOTATION",
+          "annotation_id": "ann_1"
+        },
+        "record_absent": [
+          "text"
+        ],
+        "forbidden": [
+          "sk-CANARYANN000001"
+        ]
+      }
+    },
+    {
+      "id": "import-canary",
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "source_label": "batch-a",
+        "note": "sk-CANARYIMP000001",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "evidence_origin": "IMPORTED",
+          "original_evidence_origin": "LOCAL_OBSERVATION",
+          "source_label": "batch-a"
+        },
+        "forbidden": [
+          "sk-CANARYIMP000001"
+        ]
+      }
+    },
+    {
+      "id": "session-secret",
+      "base": "observation",
+      "patch": {
+        "session_id": "sk-CANARYSESS00001",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP",
+          "SESSION_ID_REJECTED"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "session_id",
+          "session_id_basis"
+        ],
+        "health_impact": {
+          "events_rejected": 0,
+          "redaction_failures": 1,
+          "rejected_context": 0,
+          "session_id_rejected": 1
+        },
+        "forbidden": [
+          "sk-CANARYSESS00001"
+        ]
+      }
+    },
+    {
+      "id": "session-overlong",
+      "base": "observation",
+      "patch": {
+        "session_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_SESSION_ID",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "SESSION_ID_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "SESSION_REJECTED",
+        "completeness_impact": [
+          "SESSION_ID_REJECTED"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "session_id",
+          "session_id_basis"
+        ]
+      }
+    },
+    {
+      "id": "session-slash",
+      "base": "observation",
+      "patch": {
+        "session_id": "abc/def",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_SESSION_ID",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "SESSION_ID_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "SESSION_REJECTED",
+        "completeness_impact": [
+          "SESSION_ID_REJECTED"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "session_id",
+          "session_id_basis"
+        ]
+      }
+    },
+    {
+      "id": "session-nfc",
+      "base": "observation",
+      "patch": {
+        "session_id": "é",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_SESSION_ID",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "SESSION_ID_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "SESSION_REJECTED",
+        "completeness_impact": [
+          "SESSION_ID_REJECTED"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "session_id",
+          "session_id_basis"
+        ]
+      }
+    },
+    {
+      "id": "session-missing-basis",
+      "base": "observation",
+      "patch": {
+        "session_id": "sess_missing_basis"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_SESSION_ID",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "SESSION_ID_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "SESSION_REJECTED",
+        "completeness_impact": [
+          "SESSION_ID_REJECTED"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "session_id",
+          "session_id_basis"
+        ]
+      }
+    },
+    {
+      "id": "session-valid",
+      "base": "observation",
+      "patch": {
+        "session_id": "sess_ok_1",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "session_id": "sess_ok_1",
+          "session_id_basis": "APPLICATION_SUPPLIED"
+        }
+      }
+    },
+    {
+      "id": "path-oversize",
+      "base": "observation",
+      "patch": {
+        "path": "/!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_DESTINATION_SHAPE",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "PATH_OVERSIZE",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "rejected": [
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "username-path",
+      "base": "observation",
+      "patch": {
+        "path": "/home/alice/work"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "/home/alice"
+        ]
+      }
+    },
+    {
+      "id": "prompt-canary",
+      "base": "observation",
+      "patch": {
+        "prompt": "hello sk-CANARYPROMPT0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROMPT_COMPLETION_EXCLUDED",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "forbidden": [
+          "sk-CANARYPROMPT0001"
+        ]
+      }
+    },
+    {
+      "id": "messages-canary",
+      "base": "observation",
+      "patch": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "sk-CANARYMSG000001"
+          }
+        ]
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROMPT_COMPLETION_EXCLUDED",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "forbidden": [
+          "sk-CANARYMSG000001"
+        ]
+      }
+    },
+    {
+      "id": "unknown-field",
+      "base": "observation",
+      "patch": {
+        "customer_note": "hello"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_OMITTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "customer_note"
+        ],
+        "forbidden": [
+          "hello"
+        ]
+      }
+    },
+    {
+      "id": "destination-conflict",
+      "base": "observation",
+      "patch": {
+        "requested_url": "https://other.example.com/v1/models"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_DESTINATION_SHAPE",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DESTINATION_CONFLICT",
+        "issue_location": "CONFIGURATION",
+        "issue_location_label": "Configuration",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "destination_host",
+          "path",
+          "scheme"
+        ],
+        "record": {
+          "run_id": "run_clean_1"
+        }
+      }
+    },
+    {
+      "id": "malformed-trace",
+      "base": "observation",
+      "patch": {
+        "trace_id": "zzzz",
+        "trace_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "CONTEXT_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "CONTEXT_REJECTED",
+        "completeness_impact": [
+          "CONTEXT_REJECTED"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": null,
+          "trace_id_basis": null,
+          "run_id": "run_clean_1"
+        },
+        "forbidden": [
+          "zzzz"
+        ]
+      }
+    },
+    {
+      "id": "inherited-trace",
+      "base": "observation",
+      "omit": [
+        "producer",
+        "cli_or_sdk_version"
+      ],
+      "patch": {
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "vantio_trace_id": "0123456789abcdef0123456789abcdef"
+      },
+      "expect": {
+        "remediation_code": "ORIGIN_UNMARKED",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "PROVENANCE_INSUFFICIENT",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "ASSERTED_CONTEXT",
+          "run_id": "run_clean_1"
+        },
+        "record_absent": [
+          "evidence_origin"
+        ],
+        "diagnostics": {
+          "trace_basis_meaning": "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+        }
+      }
+    },
+    {
+      "id": "demo-host",
+      "base": "observation",
+      "patch": {
+        "destination_host": "optics-demo.invalid",
+        "destination_port": null
+      },
+      "expect": {
+        "remediation_code": "DEMO_NOT_OPERATIONAL",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "SIMULATED_DEMO",
+        "issue_location": "NONE",
+        "reader_origin_label": "SIMULATED_DEMO",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "evidence_origin": "SIMULATED_DEMO",
+          "destination_host": "optics-demo.invalid"
+        }
+      }
+    },
+    {
+      "id": "missing-origin",
+      "base": "observation",
+      "omit": [
+        "evidence_origin",
+        "producer",
+        "cli_or_sdk_version"
+      ],
+      "expect": {
+        "remediation_code": "ORIGIN_UNMARKED",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "LEGACY_UNMARKED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "evidence_origin"
+        ]
+      }
+    },
+    {
+      "id": "schema-corrected",
+      "base": "observation",
+      "patch": {
+        "schema_status": "stable"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "SCHEMA_STATUS_CORRECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "schema_status": "unstable-pre-1.0",
+          "schema_version": 0
+        }
+      }
+    },
+    {
+      "id": "enforcement-action",
+      "base": "observation",
+      "patch": {
+        "action": "BLOCK"
+      },
+      "expect": {
+        "remediation_code": "ENFORCEMENT_NOT_OPTICS",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "ENFORCEMENT_ACTION_EXCLUDED",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false,
+        "forbidden": [
+          "BLOCK"
+        ]
+      }
+    },
+    {
+      "id": "legacy-call-zero-bytes",
+      "input": {
+        "hostname": "api.example.com",
+        "method": "POST",
+        "path": "/v1/models",
+        "scheme": "https",
+        "status": 200,
+        "bytes": 0,
+        "action": "OBSERVED",
+        "ts": "2026-07-01T00:00:00.000Z"
+      },
+      "expect": {
+        "remediation_code": "ORIGIN_UNMARKED",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "LEGACY_UNMARKED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "response_bytes": null,
+          "destination_host": "api.example.com",
+          "application_status": "SUCCESS"
+        }
+      }
+    },
+    {
+      "id": "explicit-zero-bytes",
+      "base": "observation",
+      "patch": {
+        "response_bytes": 0
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "response_bytes": 0
+        }
+      }
+    },
+    {
+      "id": "http-401",
+      "base": "observation",
+      "patch": {
+        "http_status": 401,
+        "application_status": "APPLICATION_ERROR",
+        "issue_location": "PROVIDER_INTERACTION"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "PROVIDER_INTERACTION",
+        "issue_location_label": "Provider interaction",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "application_status": "APPLICATION_ERROR",
+          "http_status": 401
+        }
+      }
+    },
+    {
+      "id": "http-500",
+      "base": "observation",
+      "patch": {
+        "http_status": 500,
+        "application_status": "APPLICATION_ERROR",
+        "issue_location": "PROVIDER_INTERACTION"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "PROVIDER_INTERACTION",
+        "issue_location_label": "Provider interaction",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "application_status": "APPLICATION_ERROR"
+        }
+      }
+    },
+    {
+      "id": "http-302",
+      "base": "observation",
+      "patch": {
+        "http_status": 302
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "application_status": "SUCCESS",
+          "http_status": 302
+        }
+      }
+    },
+    {
+      "id": "dns-failure",
+      "base": "observation",
+      "omit": [
+        "http_status"
+      ],
+      "patch": {
+        "failure_kind": "dns",
+        "application_status": "UNAVAILABLE",
+        "issue_location": "NETWORK"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NETWORK",
+        "issue_location_label": "Local network path",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "application_status": "UNAVAILABLE",
+          "failure_kind": "dns"
+        },
+        "record_absent": [
+          "http_status"
+        ]
+      }
+    },
+    {
+      "id": "customer-wrapped",
+      "base": "observation",
+      "omit": [
+        "http_status"
+      ],
+      "patch": {
+        "failure_kind": "wrapped",
+        "error_class": "AppError",
+        "application_status": "UNAVAILABLE",
+        "issue_location": "CUSTOMER_APPLICATION"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "CUSTOMER_APPLICATION",
+        "issue_location_label": "Customer application",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "error_class": "AppError",
+          "application_status": "UNAVAILABLE"
+        }
+      }
+    },
+    {
+      "id": "optics-internal",
+      "base": "observation",
+      "patch": {
+        "optics_internal_failure": true
+      },
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "OPTICS_WRITE_FAILURE",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false
+      }
+    },
+    {
+      "id": "coverage-evidenced",
+      "base": "observation",
+      "patch": {
+        "coverage_gap": "EVIDENCED"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_OMITTED",
+        "issue_location": "COVERAGE",
+        "issue_location_label": "Observation coverage",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "application_status": "SUCCESS"
+        }
+      }
+    },
+    {
+      "id": "coverage-unevidenced",
+      "base": "observation",
+      "patch": {
+        "coverage_gap": "GAP"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_OMITTED",
+        "issue_location": "UNKNOWN",
+        "issue_location_label": "Unknown",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true
+      }
+    },
+    {
+      "id": "provider-fault-label",
+      "base": "observation",
+      "patch": {
+        "issue_location": "Provider fault"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "NORMALIZE",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "issue_location_label": "None",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "record": {
+          "issue_location": "NONE"
+        },
+        "forbidden": [
+          "Provider fault"
+        ]
+      }
+    },
+    {
+      "id": "trace-disagreement",
+      "base": "observation",
+      "patch": {
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "APPLICATION_SUPPLIED",
+        "vantio_trace_id": "fedcba9876543210fedcba9876543210"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "CONTEXT_REJECTED",
+        "issue_location": "CONFIGURATION",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "CONTEXT_REJECTED",
+        "completeness_impact": [
+          "CONTEXT_REJECTED"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": null,
+          "trace_id_basis": null,
+          "run_id": "run_clean_1"
+        },
+        "forbidden": [
+          "fedcba9876543210fedcba9876543210",
+          "0123456789abcdef0123456789abcdef"
+        ]
+      }
+    },
+    {
+      "id": "usage-and-cost",
+      "base": "observation",
+      "patch": {
+        "usage": {
+          "total_tokens": 3
+        },
+        "est_spend_usd": 1.5
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_OMITTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "est_spend_usd",
+          "usage"
+        ],
+        "forbidden": [
+          "1.5",
+          "total_tokens"
+        ]
+      }
+    },
+    {
+      "id": "machine-hostname",
+      "base": "observation",
+      "patch": {
+        "hostname_machine": "laptop.local"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "hostname_machine"
+        ],
+        "forbidden": [
+          "laptop.local"
+        ]
+      }
+    },
+    {
+      "id": "sampling-forced",
+      "base": "observation",
+      "patch": {
+        "sampling": "HEAD"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "sampling": "UNSAMPLED"
+        },
+        "forbidden": [
+          "HEAD"
+        ]
+      }
+    },
+    {
+      "id": "ollama-downgrade",
+      "base": "observation",
+      "patch": {
+        "provider_id": "ollama",
+        "provider_confidence": "LOCAL_OLLAMA"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "provider_id": "unknown",
+          "provider_confidence": "NONE"
+        }
+      }
+    },
+    {
+      "id": "ollama-local",
+      "base": "observation",
+      "patch": {
+        "destination_host": "127.0.0.1",
+        "destination_port": 11434,
+        "scheme": "http",
+        "provider_id": "ollama",
+        "provider_confidence": "LOCAL_OLLAMA"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "provider_id": "ollama",
+          "provider_confidence": "LOCAL_OLLAMA",
+          "destination_host": "127.0.0.1",
+          "destination_port": 11434
+        }
+      }
+    },
+    {
+      "id": "product-health",
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "events_rejected",
+        "value": 2,
+        "observed_at": "2026-07-01T00:00:00.000Z"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "evidence_origin": "PRODUCT_HEALTH",
+          "name": "events_rejected",
+          "value": 2
+        }
+      }
+    },
+    {
+      "id": "derived-diagnostic",
+      "input": {
+        "record_type": "derived_diagnostic",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "DERIVED_DIAGNOSTIC",
+        "subject_run_id": "run_clean_1",
+        "application_outcome_label": "Successful",
+        "provider_response_phrase": "HTTP 2xx",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "DERIVED_DIAGNOSTIC",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "evidence_origin": "DERIVED_DIAGNOSTIC",
+          "provider_response_phrase": "HTTP 2xx"
+        }
+      }
+    },
+    {
+      "id": "derived-free-phrase",
+      "input": {
+        "record_type": "derived_diagnostic",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "DERIVED_DIAGNOSTIC",
+        "provider_response_phrase": "Provider fault happened",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "DERIVED_DIAGNOSTIC",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "provider_response_phrase"
+        ],
+        "forbidden": [
+          "Provider fault",
+          "happened"
+        ]
+      }
+    },
+    {
+      "id": "annotation-origin-refused",
+      "input": {
+        "record_type": "annotation",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "annotation_role": "CUSTOMER_ANNOTATION",
+        "annotation_id": "ann_1",
+        "text": "plain note",
+        "created_at": "2026-07-01T00:00:00.000Z"
+      },
+      "expect": {
+        "remediation_code": "ORIGIN_UNMARKED",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "ANNOTATION_ORIGIN_REFUSED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "annotation_role": "CUSTOMER_ANNOTATION",
+          "text": "plain note"
+        },
+        "record_absent": [
+          "evidence_origin"
+        ]
+      }
+    },
+    {
+      "id": "content-type-params",
+      "base": "observation",
+      "patch": {
+        "content_type": "Application/JSON; charset=utf-8"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "content_type": "application/json"
+        },
+        "forbidden": [
+          "charset"
+        ]
+      }
+    },
+    {
+      "id": "ipv6-brackets",
+      "base": "observation",
+      "patch": {
+        "destination_host": "[::1]",
+        "destination_port": 11434,
+        "scheme": "http"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "destination_host": "::1",
+          "destination_port": 11434
+        },
+        "diagnostics": {
+          "destination_ip_class": "ipv6"
+        }
+      }
+    },
+    {
+      "id": "timestamp-offset",
+      "base": "observation",
+      "patch": {
+        "started_at": "2026-07-01T00:00:00.1+00:00"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "started_at": "2026-07-01T00:00:00.100Z"
+        }
+      }
+    },
+    {
+      "id": "query-clean",
+      "base": "observation",
+      "omit": [
+        "destination_host",
+        "destination_port",
+        "scheme",
+        "path"
+      ],
+      "patch": {
+        "requested_url": "https://api.example.com/v1/models?q=hello"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_DESTINATION_SHAPE",
+        "disposition": "STRIP",
+        "reason_code": "QUERY_STRIPPED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "destination_host": "api.example.com",
+          "scheme": "https",
+          "path": "/v1/models"
+        },
+        "record_absent": [
+          "destination_port"
+        ],
+        "forbidden": [
+          "q=hello"
+        ]
+      }
+    },
+    {
+      "id": "uppercase-trace",
+      "base": "observation",
+      "patch": {
+        "trace_id": "0123456789ABCDEF0123456789ABCDEF",
+        "trace_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "NORMALIZED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "APPLICATION_SUPPLIED"
+        }
+      }
+    },
+    {
+      "id": "node-run-log",
+      "input": {
+        "vantio_run_log": "1",
+        "schema_version": 2,
+        "trace_id": "0xabc123abc123abcd",
+        "pid": 100,
+        "ppid": 1,
+        "node_version": "v22.14.0",
+        "platform": "linux",
+        "arch": "x64",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "generated_at": "2026-07-01T00:00:01.000Z",
+        "duration_ms": 10,
+        "cli_version": "0.3.24",
+        "free_mode": false,
+        "plane": "data",
+        "data_note": "local",
+        "summary": {
+          "est_spend_usd": 1.5
+        },
+        "residual": null,
+        "calls": [
+          {
+            "hostname": "api.example.com",
+            "provider": "openai",
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "scheme": "https",
+            "request_bytes": 12,
+            "bytes": 0,
+            "status": 200,
+            "ok": true,
+            "content_type": "application/json; charset=utf-8",
+            "duration_ms": 10,
+            "action": "OBSERVED",
+            "ts": "2026-07-01T00:00:00.000Z"
+          }
+        ]
+      },
+      "expect": {
+        "remediation_code": "ORIGIN_UNMARKED",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "LEGACY_UNMARKED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "run_id": "0xabc123abc123abcd",
+          "runtime": "node",
+          "schema_version": 0,
+          "schema_status": "unstable-pre-1.0"
+        },
+        "record_absent": [
+          "trace_id"
+        ],
+        "compatibility": {
+          "legacy_marker": true,
+          "legacy_schema_version": 2,
+          "live_writer_modified": false,
+          "source_shape": "node_run_log"
+        },
+        "event0": {
+          "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+          "reason_code": "LEGACY_UNMARKED",
+          "reader_origin_label": "LEGACY_UNMARKED",
+          "record": {
+            "response_bytes": null,
+            "provider_id": "unknown",
+            "provider_confidence": "NONE",
+            "content_type": "application/json",
+            "destination_host": "api.example.com"
+          }
+        },
+        "forbidden": [
+          "1.5",
+          "est_spend",
+          "openai",
+          "charset"
+        ]
+      }
+    },
+    {
+      "id": "python-run-log",
+      "input": {
+        "vantio_run_log": "1",
+        "schema_version": 2,
+        "schema_status": "unstable-pre-1.0",
+        "workflow": "sight_loop",
+        "runtime": "python",
+        "trace_id": "0xabc123abc123abcd",
+        "platform": "linux",
+        "arch": "x64",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "generated_at": "2026-07-01T00:00:01.000Z",
+        "cli_version": "3.1.0",
+        "status_labels": [
+          "Observed"
+        ],
+        "calls": [
+          {
+            "hostname": "api.example.com",
+            "provider": "other",
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "scheme": "https",
+            "status": 200,
+            "ok": true,
+            "duration_ms": 4,
+            "action": "OBSERVED",
+            "ts": "2026-07-01T00:00:00.000Z",
+            "mediation": "python_urllib",
+            "bytes": 0
+          }
+        ]
+      },
+      "expect": {
+        "remediation_code": "ORIGIN_UNMARKED",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "LEGACY_UNMARKED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "run_id": "0xabc123abc123abcd",
+          "runtime": "python",
+          "schema_status": "unstable-pre-1.0",
+          "schema_version": 0
+        },
+        "compatibility": {
+          "legacy_marker": true,
+          "legacy_schema_version": 2,
+          "live_writer_modified": false,
+          "source_shape": "python_run_log"
+        },
+        "event0": {
+          "record": {
+            "response_bytes": null,
+            "mediation": "python_urllib",
+            "provider_id": "unknown"
+          },
+          "reader_origin_label": "LEGACY_UNMARKED"
+        },
+        "forbidden": [
+          "sight_loop",
+          "other",
+          "Observed"
+        ]
+      }
+    }
+  ]
+}
