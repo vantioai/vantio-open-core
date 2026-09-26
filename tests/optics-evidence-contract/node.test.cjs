@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -9,6 +10,8 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..", "..");
 const CONTRACT = path.join(ROOT, "packages", "optics-evidence-contract");
 const { validateEvidence, validateBytes, canonicalJson } = require(path.join(CONTRACT, "src", "validate.cjs"));
+const privacy = require(path.join(CONTRACT, "src", "privacy.cjs"));
+const unicodeProfile = require(path.join(CONTRACT, "src", "unicode_profile.cjs"));
 const corpus = JSON.parse(fs.readFileSync(path.join(__dirname, "corpus.json"), "utf8"));
 const REMEDIATION = new Set([
   "NONE",
@@ -97,6 +100,9 @@ function runCase(item) {
   if (item.harness === "nonreturning") {
     return workerResult(process.execPath, [path.join(__dirname, "hostile_worker.cjs"), "validate"]);
   }
+  if (item.harness === "binary-buffer") return validateEvidence(Buffer.from([9, 8, 7]));
+  if (item.harness === "binary-uint8array") return validateEvidence(new Uint8Array([9, 8, 7]));
+  if (item.harness === "binary-memoryview") return validateEvidence(new Uint8Array([9, 8, 7]).subarray(1, 3));
   return validateEvidence(materialize(item));
 }
 
@@ -146,6 +152,11 @@ function assertResult(item, result) {
       assert.deepEqual(result.diagnostics[key], value, item.id + " " + key);
     }
   }
+  if (expect.completeness_inputs) {
+    for (const [key, value] of Object.entries(expect.completeness_inputs)) {
+      assert.deepEqual(result.completeness_inputs[key], value, item.id + " " + key);
+    }
+  }
   if (expect.record_emitted) {
     for (const [key, value] of Object.entries(expect.record || {})) {
       assert.deepEqual(result.record[key], value, item.id + " " + key);
@@ -185,7 +196,7 @@ if (process.argv.includes("--dump")) {
 }
 
 test("shared corpus dispositions and canary absence", () => {
-  assert.equal(corpus.cases.length >= 110, true);
+  assert.equal(corpus.cases.length, 220);
   for (const item of corpus.cases) assertResult(item, runCase(item));
   const banned = ["CANARY", "sk-", "AKIA", "ghp_", "AIza", "BEGIN PRIVATE", "canary.person", "sk-CANARYKEYNAME0001"];
   const dumped = dumpCanonical();
@@ -319,22 +330,27 @@ test("isolated nonreturning getter terminates", () => {
 });
 
 test("validator sources do not open network clients", () => {
-  const files = ["validate.cjs", "privacy.cjs", "walk.cjs", "canonical.cjs"].map((name) =>
-    fs.readFileSync(path.join(CONTRACT, "src", name), "utf8"));
-  const py = ["validate.py", "privacy.py", "walk.py", "canonical.py"].map((name) =>
-    fs.readFileSync(path.join(CONTRACT, "src", name), "utf8"));
-  const joined = files.concat(py).join("\n");
+  const names = [
+    "validate.cjs", "privacy.cjs", "walk.cjs", "canonical.cjs", "unicode_profile.cjs",
+    "validate.py", "privacy.py", "walk.py", "canonical.py", "unicode_profile.py",
+  ];
+  const joined = names.map((name) => fs.readFileSync(path.join(CONTRACT, "src", name), "utf8")).join("\n");
   assert.equal(joined.includes("require(\"http\")"), false);
   assert.equal(joined.includes("require(\"net\")"), false);
   assert.equal(joined.includes("import urllib"), false);
   assert.equal(joined.includes("import socket"), false);
   assert.equal(joined.includes("import requests"), false);
-  const detectors = [
-    fs.readFileSync(path.join(CONTRACT, "src", "privacy.cjs"), "utf8"),
-    fs.readFileSync(path.join(CONTRACT, "src", "privacy.py"), "utf8"),
-  ].join("\n");
-  for (const token of ["isalpha", "isalnum", "casefold", "toLowerCase", "toUpperCase", ".lower(", ".upper(", "toLocale"]) {
+  const detectors = ["privacy.cjs", "privacy.py", "unicode_profile.cjs", "unicode_profile.py"].map((name) =>
+    fs.readFileSync(path.join(CONTRACT, "src", name), "utf8")).join("\n");
+  for (const token of [
+    "isalpha", "isalnum", "casefold", "toLowerCase", "toUpperCase", ".lower(", ".upper(", "toLocale",
+    ".normalize(", "unicodedata", "\\p{L}", "\\p{N}", "Intl.",
+  ]) {
     assert.equal(detectors.includes(token), false, token);
+  }
+  const generator = fs.readFileSync(path.join(CONTRACT, "tools", "generate_unicode_profile.py"), "utf8");
+  for (const token of ["urllib", "import socket", "requests", "import unicodedata", "unicodedata."]) {
+    assert.equal(generator.includes(token), false, token);
   }
   const classes = JSON.parse(fs.readFileSync(path.join(CONTRACT, "contract", "detector-classes.json"), "utf8"));
   const bounds = JSON.parse(fs.readFileSync(path.join(CONTRACT, "contract", "normalization.json"), "utf8"));
@@ -394,4 +410,130 @@ test("compatibility with the frozen display helper", () => {
   }
   const outcome = fs.readFileSync(path.join(ROOT, "packages", "vantio-agent-sdk-py", "vantio", "_outcome.py"), "utf8");
   assert.match(outcome, /SCHEMA_STATUS = "unstable-pre-1.0"/);
+});
+
+function sha256File(file) {
+  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
+
+function observationWith(pathValue) {
+  const input = materialize(corpus.cases.find((item) => item.id === "clean-observation"));
+  input.path = pathValue;
+  return input;
+}
+
+test("pinned unicode tables match metadata and both languages", () => {
+  const contractDir = path.join(CONTRACT, "contract");
+  const meta = JSON.parse(fs.readFileSync(path.join(contractDir, "unicode-profile-metadata.json"), "utf8"));
+  assert.equal(meta.profile_id, "PKG01-UCD-16.0.0");
+  assert.equal(meta.profile_version, "16.0.0");
+  assert.equal(unicodeProfile.profileId(), meta.profile_id);
+  assert.equal(unicodeProfile.profileVersion(), meta.profile_version);
+  const hashes = {};
+  for (const item of meta.outputs) {
+    const file = path.join(contractDir, item.name);
+    const data = fs.readFileSync(file);
+    assert.ok(data.length > 0 && data.length <= meta.max_file_bytes, item.name);
+    hashes[item.name] = sha256File(file);
+    assert.equal(hashes[item.name], item.sha256, item.name);
+  }
+  for (const item of meta.sources) {
+    const file = path.join(contractDir, "unicode-source", item.name);
+    const data = fs.readFileSync(file);
+    assert.ok(data.length > 0 && data.length <= meta.max_file_bytes, item.name);
+    assert.equal(sha256File(file), item.sha256, item.name);
+  }
+  const profile = JSON.parse(fs.readFileSync(path.join(contractDir, "unicode-profile.json"), "utf8"));
+  const nodeVectors = profile.verification_vectors.map((vector) => {
+    const normalized = unicodeProfile.normalizeCodes(vector.input, vector.form);
+    assert.equal(normalized.ok, true, vector.form);
+    assert.deepEqual(normalized.codes, vector.output);
+    const category = vector.input.length === 1 ? unicodeProfile.categoryOf(vector.input[0]) : null;
+    if (vector.input.length === 1 && vector.category) assert.equal(category, vector.category);
+    return { codes: normalized.codes, category };
+  });
+  const flipped = Buffer.from(fs.readFileSync(path.join(contractDir, "unicode-profile.json")));
+  flipped[0] ^= 0xff;
+  const corrupt = crypto.createHash("sha256").update(flipped).digest("hex");
+  assert.notEqual(corrupt, hashes["unicode-profile.json"]);
+  const py = spawnSync("python3", ["-c", [
+    "import json, sys",
+    "sys.path.insert(0, " + JSON.stringify(path.join(CONTRACT, "src")) + ")",
+    "import unicode_profile",
+    "profile = json.load(open(" + JSON.stringify(path.join(contractDir, "unicode-profile.json")) + ", encoding='utf-8'))",
+    "out = []",
+    "for vector in profile['verification_vectors']:",
+    "    normalized = unicode_profile.normalize_codes(vector['input'], vector['form'])",
+    "    category = unicode_profile.category_of(vector['input'][0]) if len(vector['input']) == 1 else None",
+    "    out.append({'ok': normalized['ok'], 'codes': normalized.get('codes'), 'category': category})",
+    "print(json.dumps(out))",
+  ].join("\n")], { encoding: "utf8" });
+  assert.equal(py.status, 0, py.stderr);
+  const pythonVectors = JSON.parse(py.stdout);
+  assert.equal(pythonVectors.length, nodeVectors.length);
+  for (let index = 0; index < nodeVectors.length; index += 1) {
+    assert.equal(pythonVectors[index].ok, true);
+    assert.deepEqual(pythonVectors[index].codes, nodeVectors[index].codes);
+    assert.equal(pythonVectors[index].category, nodeVectors[index].category);
+  }
+  const generated = spawnSync("python3", [path.join(CONTRACT, "tools", "generate_unicode_profile.py")], { encoding: "utf8" });
+  assert.equal(generated.status, 0, generated.stderr);
+  for (const item of meta.outputs) assert.equal(sha256File(path.join(contractDir, item.name)), item.sha256, item.name);
+});
+
+test("unavailable unicode profile fails closed", () => {
+  privacy.setProfileUnavailableForTest(true);
+  try {
+    const result = validateEvidence(observationWith("/pay/4111111111111111"));
+    assert.equal(result.disposition, "REJECT_RECORD");
+    assert.equal(result.reason_code, "VALIDATOR_FAULT");
+    assert.equal(result.issue_location, "CONFIGURATION");
+    assert.equal(result.record, null);
+    assert.equal(result.diagnostics.scan_state, "UNAVAILABLE");
+    assert.equal(result.diagnostics.privacy_event, null);
+    assert.equal(result.diagnostics.unicode_profile_id, null);
+    assert.equal(result.diagnostics.unicode_profile_version, null);
+    assert.equal(result.completeness_inputs.privacy_invariant, "UNKNOWN");
+    assert.equal(canonicalJson(result).includes("4111111111111111"), false);
+  } finally {
+    privacy.setProfileUnavailableForTest(false);
+  }
+  assert.equal(privacy.profileReady(), true);
+});
+
+test("independent probes outside the corpus", () => {
+  const pan = validateEvidence(observationWith("/pay/4111\u200e111111111111"));
+  assert.equal(pan.disposition, "REJECT_FIELD");
+  assert.equal(pan.reason_code, "REDACTION_DROP");
+  assert.equal(pan.diagnostics.privacy_event, "DESTINATION_COMPONENT_REDACTED");
+  assert.equal(pan.diagnostics.scan_state, "FULL");
+  assert.equal(Object.prototype.hasOwnProperty.call(pan.record, "path"), false);
+  assert.equal(canonicalJson(pan).includes("4111111111111111"), false);
+  assert.equal(canonicalJson(pan).includes("\u200e"), false);
+  const secret = validateEvidence({
+    record_type: "import_quarantine",
+    schema_status: "unstable-pre-1.0",
+    schema_version: 0,
+    evidence_origin: "IMPORTED",
+    original_evidence_origin: "LOCAL_OBSERVATION",
+    accepted: false,
+    imported_at: "2026-07-01T00:00:00.000Z",
+    source_label: "s\u200b\u200bk-abcdefgh",
+  });
+  assert.equal(secret.disposition, "REJECT_FIELD");
+  assert.equal(secret.reason_code, "DETECTOR_MATCH");
+  assert.equal(secret.diagnostics.privacy_event, "DETECTOR_MATCH");
+  assert.equal(Object.prototype.hasOwnProperty.call(secret.record, "source_label"), false);
+  assert.equal(canonicalJson(secret).includes("sk-"), false);
+  const unknown = validateEvidence(observationWith("/a\u0379@b.co"));
+  assert.equal(unknown.disposition, "REJECT_FIELD");
+  assert.equal(unknown.reason_code, "REDACTION_DROP");
+  assert.equal(unknown.diagnostics.privacy_event, "DESTINATION_COMPONENT_REDACTED");
+  assert.equal(Object.prototype.hasOwnProperty.call(unknown.record, "path"), false);
+  assert.equal(canonicalJson(unknown).includes("\u0379"), false);
+  const nested = validateEvidence({ record_type: "observation_event", payload: Buffer.from([9, 8, 7]) });
+  assert.equal(nested.disposition, "REJECT_FIELD");
+  assert.equal(nested.reason_code, "UNSUPPORTED_COMPLEX_VALUE");
+  assert.equal(nested.record, null);
+  assert.equal(canonicalJson(nested).includes("Buffer"), false);
 });

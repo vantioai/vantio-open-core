@@ -107,7 +107,61 @@ function createState() {
     failureIdentified: false,
     readerOrigin: null,
     interrupted: false,
+    scanState: "FULL",
   };
+}
+
+const SCAN_RANK = { FULL: 0, SIZE_ONLY: 1, BOUNDARY: 2, MATCHED_IN_PREFIX: 3, UNAVAILABLE: 4 };
+
+function noteScan(state, kind) {
+  if ((SCAN_RANK[kind] || 0) > (SCAN_RANK[state.scanState] || 0)) state.scanState = kind;
+}
+
+function boundFacts(value) {
+  if (!isBound(value)) return null;
+  if (value.__optics_bound === OVERSIZE) {
+    const matched = value.matched === true;
+    return {
+      oversize: true,
+      walk: true,
+      malformed: false,
+      matched,
+      boundary: value.boundary === true && !matched,
+      prohibited: matched,
+    };
+  }
+  return {
+    oversize: false,
+    walk: false,
+    malformed: value.__optics_bound === MALFORMED_TEXT,
+    matched: false,
+    boundary: false,
+    prohibited: true,
+  };
+}
+
+function noteBoundScan(state, facts) {
+  if (!facts || facts.walk !== true) return;
+  if (facts.matched) noteScan(state, "MATCHED_IN_PREFIX");
+  else if (facts.boundary) {
+    noteScan(state, "BOUNDARY");
+    state.completeness.add("SCAN_INCOMPLETE");
+  } else noteScan(state, "SIZE_ONLY");
+}
+
+function observeBounds(state, value, seen) {
+  if (isBound(value)) {
+    noteBoundScan(state, boundFacts(value));
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) observeBounds(state, item, seen);
+    return;
+  }
+  for (const key of Object.keys(value)) observeBounds(state, value[key], seen);
 }
 
 function addDisposition(state, disposition) {
@@ -197,6 +251,14 @@ function dropRecord(state, reason) {
 }
 
 function put(state, record, name, value, kind) {
+  const facts = boundFacts(value);
+  if (facts) {
+    rejectField(state, name);
+    if (facts.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+    noteBoundScan(state, facts);
+    if (facts.prohibited) markPrivacy(state);
+    return;
+  }
   record[name] = value;
   if (kind === "accepted") {
     state.normalized.delete(name);
@@ -432,7 +494,10 @@ function isIpv6(text) {
 }
 
 function normalizeHost(value) {
-  if (typeof value !== "string" || isBound(value)) return { ok: false, prohibited: isBound(value) };
+  if (typeof value !== "string" || isBound(value)) {
+    const facts = boundFacts(value) || { prohibited: false, oversize: false, boundary: false, matched: false };
+    return { ok: false, prohibited: facts.prohibited, oversize: facts.oversize, boundary: facts.boundary, matched: facts.matched };
+  }
   if (utf8Bytes(value) < 1 || utf8Bytes(value) > bounds.host_max_chars) {
     return { ok: false, oversize: utf8Bytes(value) > bounds.host_max_chars, prohibited: privacy.containsProhibited(value) };
   }
@@ -465,7 +530,15 @@ function normalizeHost(value) {
 
 function normalizePath(value) {
   if (typeof value !== "string" || isBound(value)) {
-    return { ok: false, oversize: isBound(value) && value.__optics_bound === OVERSIZE, prohibited: true };
+    const facts = boundFacts(value) || { prohibited: false, oversize: false, boundary: false, matched: false };
+    return {
+      ok: false,
+      oversize: facts.oversize,
+      walk: facts.walk,
+      prohibited: facts.prohibited,
+      boundary: facts.boundary,
+      matched: facts.matched,
+    };
   }
   if (utf8Bytes(value) > bounds.path_max_chars) {
     return { ok: false, oversize: true, prohibited: privacy.sensitivePath(value) };
@@ -488,7 +561,10 @@ function normalizePath(value) {
 }
 
 function contentType(value) {
-  if (typeof value !== "string" || isBound(value)) return { ok: false, prohibited: true };
+  if (typeof value !== "string" || isBound(value)) {
+    const facts = boundFacts(value) || { prohibited: true, oversize: false, boundary: false, matched: false };
+    return { ok: false, prohibited: facts.prohibited, oversize: facts.oversize, boundary: facts.boundary, matched: facts.matched };
+  }
   const base = privacy.asciiFold(value.split(";")[0].trim());
   if (utf8Bytes(base) < 3 || utf8Bytes(base) > bounds.content_type_max_chars) {
     return { ok: false, oversize: utf8Bytes(base) > bounds.content_type_max_chars, prohibited: privacy.containsProhibited(value) };
@@ -551,7 +627,9 @@ function parseAuthority(authority) {
 
 function parseDestination(raw, state) {
   if (typeof raw !== "string" || isBound(raw)) {
-    return { ok: false, failClosed: true, privacy: true };
+    const facts = boundFacts(raw) || { prohibited: false, oversize: false, boundary: false, matched: false };
+    if (facts.oversize) noteBoundScan(state, facts);
+    return { ok: false, failClosed: true, privacy: facts.prohibited, oversize: facts.oversize, boundary: facts.boundary };
   }
   if (utf8Bytes(raw) > bounds.destination_raw_max_chars || hasControl(raw)) {
     return {
@@ -619,25 +697,47 @@ function parseDestination(raw, state) {
 }
 
 function stringSecret(value) {
-  if (isBound(value)) return true;
+  const facts = boundFacts(value);
+  if (facts) return facts.prohibited;
   return typeof value === "string" && privacy.containsProhibited(value);
 }
 
 function consumeStringField(value) {
-  if (isBound(value)) return { prohibited: true, malformed: value.__optics_bound === MALFORMED_TEXT };
+  const facts = boundFacts(value);
+  if (facts) {
+    return {
+      prohibited: facts.prohibited,
+      malformed: facts.malformed,
+      oversize: facts.oversize,
+      walk: facts.walk,
+      boundary: facts.boundary,
+      matched: facts.matched,
+    };
+  }
   if (typeof value !== "string") return { bad: true };
   if (privacy.containsProhibited(value)) return { prohibited: true };
   return { value };
 }
 
 function checkSession(value, basis, producerOk) {
-  if (isBound(value)) {
-    return { omit: true, session: true, privacy: value.__optics_bound !== MALFORMED_TEXT, malformed: value.__optics_bound === MALFORMED_TEXT };
+  const facts = boundFacts(value);
+  if (facts) {
+    return {
+      omit: true,
+      session: true,
+      privacy: facts.prohibited && !facts.malformed,
+      malformed: facts.malformed,
+      oversize: facts.oversize,
+      walk: facts.walk,
+      boundary: facts.boundary,
+      matched: facts.matched,
+    };
   }
   if (typeof value !== "string" || typeof basis !== "string") return { omit: true, session: true };
   if (!SESSION_BASIS.has(basis)) return { omit: true, session: true };
   if (basis === "OPTICS_GENERATED" && !producerOk) return { omit: true, session: true };
-  if (value.normalize("NFC") !== value) return { omit: true, session: true };
+  const nfc = privacy.contractNfc(value);
+  if (nfc == null || nfc !== value) return { omit: true, session: true };
   if (utf8Bytes(value) > bounds.session_id_max_bytes) return { omit: true, session: true, privacy: privacy.containsProhibited(value) };
   if (value.startsWith(" ") || value.endsWith(" ")) return { omit: true, session: true };
   if (value.includes("/") || value.includes("\\") || value.includes("@")) return { omit: true, session: true, privacy: privacy.containsProhibited(value) };
@@ -935,6 +1035,7 @@ function collectDestination(input, seen, state) {
     if (!pathValue.ok) {
       rejectField(state, "path");
       if (pathValue.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+      noteBoundScan(state, pathValue);
       if (pathValue.prohibited) markDestinationComponent(state);
     } else if (chosen.path && chosen.path !== pathValue.value) {
       state.configurationFault = true;
@@ -955,6 +1056,7 @@ function noteOrphanPath(state, explicitPath) {
   if (pathValue.ok) return;
   rejectField(state, "path");
   if (pathValue.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+  noteBoundScan(state, pathValue);
   if (pathValue.prohibited) markDestinationComponent(state);
 }
 
@@ -1272,6 +1374,13 @@ function applySession(input, seen, state, record, producerOk) {
   }
   const checked = checkSession(id.value, basis.value, producerOk);
   if (!checked.ok) {
+    if (checked.oversize) {
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      rejectField(state, "session_id");
+      noteBoundScan(state, checked);
+      if (checked.privacy) markPrivacy(state);
+      return;
+    }
     markSession(state);
     if (checked.privacy) markPrivacy(state);
     return;
@@ -1593,6 +1702,7 @@ function applyObservationFields(input, seen, state, record) {
 
 function buildObservation(input, inherited) {
   const state = inherited || createState();
+  observeBounds(state, input, new Set());
   const seen = new Set();
   const record = Object.create(null);
   const legacyVersion = applySchema(state, record, input, seen, "observation_event");
@@ -1622,6 +1732,7 @@ function buildObservation(input, inherited) {
 
 function buildEnvelope(input) {
   const state = createState();
+  observeBounds(state, input, new Set());
   const seen = new Set();
   const record = Object.create(null);
   const legacyVersion = applySchema(state, record, input, seen, "run_envelope");
@@ -1674,6 +1785,7 @@ function buildEnvelope(input) {
 
 function buildDerived(input) {
   const state = createState();
+  observeBounds(state, input, new Set());
   const seen = new Set();
   const record = Object.create(null);
   applySchema(state, record, input, seen, "derived_diagnostic");
@@ -1724,6 +1836,7 @@ function buildDerived(input) {
 
 function buildAnnotation(input) {
   const state = createState();
+  observeBounds(state, input, new Set());
   const seen = new Set();
   const record = Object.create(null);
   applySchema(state, record, input, seen, "annotation");
@@ -1759,9 +1872,10 @@ function buildAnnotation(input) {
   if (text.present) {
     const scanned = consumeStringField(text.value);
     const tooLong = typeof text.value === "string" && utf8Bytes(text.value) > bounds.annotation_text_max_chars;
-    if (tooLong) {
+    if (scanned.oversize || tooLong) {
       rejectField(state, "text");
       addReason(state, "MAX_SIZE_EXCEEDED");
+      noteBoundScan(state, scanned);
       if (scanned.prohibited) markPrivacy(state);
     } else if (scanned.prohibited || scanned.bad) {
       rejectField(state, "text");
@@ -1777,6 +1891,7 @@ function buildAnnotation(input) {
 
 function buildHealth(input) {
   const state = createState();
+  observeBounds(state, input, new Set());
   const seen = new Set();
   const record = Object.create(null);
   applySchema(state, record, input, seen, "product_health");
@@ -1840,6 +1955,7 @@ function valueEnum(name, value) {
 
 function buildQuarantine(input) {
   const state = createState();
+  observeBounds(state, input, new Set());
   const seen = new Set();
   const record = Object.create(null);
   applySchema(state, record, input, seen, "import_quarantine");
@@ -2031,8 +2147,11 @@ function finalize(state, record, events, applicationResult, compatibility) {
       privacy_event: state.privacy ? (state.privacyCategory || "REDACTION_DROP") : null,
       provenance: state.provenance,
       provenance_conflict: state.traceConflict,
+      scan_state: state.scanState || "FULL",
       scope_complete: false,
       trace_basis_meaning: state.traceMeaning,
+      unicode_profile_id: privacy.profileReady() ? privacy.profileId() : null,
+      unicode_profile_version: privacy.profileReady() ? privacy.profileVersion() : null,
     },
     completeness_inputs: {
       accept_reject: emitted ? "ACCEPT" : "REJECT",
@@ -2040,7 +2159,9 @@ function finalize(state, record, events, applicationResult, compatibility) {
       evidence_origin_label: state.readerOrigin,
       integrity_state: "UNKNOWN",
       interrupted: state.interrupted,
-      privacy_invariant: state.privacy ? "VIOLATED" : "HELD",
+      privacy_invariant: state.privacy
+        ? "VIOLATED"
+        : (state.scanState === "BOUNDARY" || state.scanState === "SIZE_ONLY" || state.scanState === "UNAVAILABLE" ? "UNKNOWN" : "HELD"),
       sampling: "UNSAMPLED",
       scope_complete: false,
       stripped_fields: sorted(state.stripped),
@@ -2174,6 +2295,7 @@ function mergeState(parent, child) {
     parent.privacy = true;
     if (!parent.privacyCategory) parent.privacyCategory = child.privacyCategory || "REDACTION_DROP";
   }
+  noteScan(parent, child.scanState);
   if (!parent.readerOrigin && child.readerOrigin) parent.readerOrigin = child.readerOrigin;
   if (child.readerOrigin === "SIMULATED_DEMO" && parent.readerOrigin === "LEGACY_UNMARKED") {
     // The envelope stays unmarked unless every destination is demo. Per-event labels live on events.
@@ -2224,6 +2346,18 @@ function validateEvidence(input, options) {
   try {
     if (options && options.injectFault === true) {
       throw new Error("injected");
+    }
+    if (!privacy.profileReady()) {
+      const state = createState();
+      state.scanState = "UNAVAILABLE";
+      state.configurationFault = true;
+      state.dropRecord = true;
+      state.completeness.add("EVENT_DROPPED");
+      state.health.events_rejected = 1;
+      addReason(state, "VALIDATOR_FAULT");
+      addDisposition(state, "REJECT_RECORD");
+      state.provenance = "NOT_APPLICABLE";
+      return finishResult(finalize(state, null, [], applicationResult, emptyCompatibility("configuration", false, null)), detached);
     }
     if (typeof input === "string") {
       if (utf8Bytes(input) > bounds.max_input_chars) {

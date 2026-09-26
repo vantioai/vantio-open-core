@@ -1,8 +1,9 @@
 """Value checks. Detection text is never returned to callers."""
 
 import json
-import unicodedata
 from pathlib import Path
+
+import unicode_profile
 
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract"
 policy = json.loads((_CONTRACT / "prohibited-fields.json").read_text(encoding="utf-8"))
@@ -65,7 +66,6 @@ _BASIC_EXTRA = set(detector_spec["tails"]["basic"]["extra"])
 _JWT_EXTRA = set(detector_spec["tails"]["jwt_extra"])
 _PAN_SEPARATORS = set(detector_spec["pan"]["separators"])
 _BASE64_EXTRA = set(detector_spec["base64_standard_extra"])
-_EMAIL_CATEGORIES = tuple(detector_spec["email_unicode_category_prefixes"])
 
 
 def _unit_code(ch):
@@ -100,6 +100,72 @@ def ascii_fold(text):
 
 def ascii_fold_upper(text):
     return _ascii_map(text, detector_spec["ascii_case_fold"]["upper"])
+
+
+def _contract_form(text, form):
+    normalized = unicode_profile.normalize_text(text, form)
+    if not normalized["ok"]:
+        return None
+    return normalized["text"]
+
+
+def contract_nfc(text):
+    return _contract_form(text, "NFC")
+
+
+def _strip_format(text):
+    parts = []
+    changed = False
+    for ch in text:
+        if unicode_profile.is_format(ord(ch)):
+            changed = True
+            continue
+        parts.append(ch)
+    if not changed:
+        return text
+    return "".join(parts)
+
+
+def _match_prefix_at(text, prefix, index, case_sensitive):
+    cursor = index
+    skipped = 0
+    part = 0
+    while part < len(prefix):
+        if cursor >= len(text):
+            return -1
+        got = text[cursor]
+        want = prefix[part]
+        same = got == want if case_sensitive else ascii_fold(got) == ascii_fold(want)
+        if same:
+            cursor += 1
+            part += 1
+            continue
+        if part > 0 and skipped < 1 and _non_ascii(got):
+            skipped += 1
+            cursor += 1
+            continue
+        return -1
+    return cursor
+
+
+def _utf8_prefix(text, max_bytes):
+    total = 0
+    count = 0
+    for ch in text:
+        code = ord(ch)
+        if code <= 0x7F:
+            width = 1
+        elif code <= 0x7FF:
+            width = 2
+        elif code <= 0xFFFF:
+            width = 3
+        else:
+            width = 4
+        if total + width > max_bytes:
+            break
+        total += width
+        count += 1
+    return text[:count]
 
 
 def _scan_tail(text, start, allowed):
@@ -152,10 +218,14 @@ def _name_control(code):
 def _comparison_form(name):
     if not isinstance(name, str):
         return ""
-    text = unicodedata.normalize("NFC", name)
+    text = _contract_form(name, "NFC")
+    if text is None:
+        return ""
     decoded = _percent_decode_once(text)
     if decoded["changed"] and not decoded["prohibited"] and decoded["text"]:
-        text = unicodedata.normalize("NFC", decoded["text"])
+        text = _contract_form(decoded["text"], "NFC")
+        if text is None:
+            return ""
     out = []
     for ch in text:
         code = ord(ch)
@@ -210,7 +280,7 @@ def classify_field_name(name):
         not control
         and not detector
         and not oversized
-        and unicodedata.normalize("NFC", name) == name
+        and _contract_form(name, "NFC") == name
         and _safe_grammar(name)
     )
     locator_kind = "safe" if safe_grammar else "redacted"
@@ -264,42 +334,42 @@ def _starts(text, prefix, index):
 
 
 def _has_bearer(text):
-    folded = ascii_fold(text)
-    start = 0
-    while start < len(folded):
-        at = folded.find("bearer", start)
-        if at < 0:
-            return False
-        i = at + 6
-        if i >= len(text) or text[i] not in " \t":
-            start = at + 6
+    index = 0
+    while index < len(text):
+        end = _match_prefix_at(text, "Bearer", index, False)
+        if end < 0:
+            index += 1
             continue
-        while i < len(text) and text[i] in " \t":
-            i += 1
-        scanned = _scan_tail(text, i, lambda code: code in _ASCII_ALNUM or code in _BEARER_EXTRA)
+        cursor = end
+        if cursor >= len(text) or text[cursor] not in " \t":
+            index += 1
+            continue
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        scanned = _scan_tail(text, cursor, lambda code: code in _ASCII_ALNUM or code in _BEARER_EXTRA)
         if _tail_hit(scanned, detector_spec["tails"]["bearer"]["minimum"]):
             return True
-        start = at + 6
+        index += 1
     return False
 
 
 def _has_basic(text):
-    folded = ascii_fold(text)
-    start = 0
-    while start < len(folded):
-        at = folded.find("basic", start)
-        if at < 0:
-            return False
-        i = at + 5
-        if i >= len(text) or text[i] not in " \t":
-            start = at + 5
+    index = 0
+    while index < len(text):
+        end = _match_prefix_at(text, "Basic", index, False)
+        if end < 0:
+            index += 1
             continue
-        while i < len(text) and text[i] in " \t":
-            i += 1
-        scanned = _scan_tail(text, i, lambda code: code in _ASCII_ALNUM or code in _BASIC_EXTRA)
+        cursor = end
+        if cursor >= len(text) or text[cursor] not in " \t":
+            index += 1
+            continue
+        while cursor < len(text) and text[cursor] in " \t":
+            cursor += 1
+        scanned = _scan_tail(text, cursor, lambda code: code in _ASCII_ALNUM or code in _BASIC_EXTRA)
         if _tail_hit(scanned, detector_spec["tails"]["basic"]["minimum"]):
             return True
-        start = at + 5
+        index += 1
     return False
 
 
@@ -309,27 +379,35 @@ def _has_cookie(text):
 
 
 def _has_openai(text):
-    for i in range(len(text)):
+    for index in range(len(text)):
         for prefix in policy["openai_prefixes"]:
-            if not _starts(text, prefix, i):
+            end = _match_prefix_at(text, prefix, index, False)
+            if end < 0:
                 continue
-            scanned = _scan_tail(text, i + len(prefix), lambda code: code in _ASCII_ALNUM)
+            scanned = _scan_tail(text, end, lambda code: code in _ASCII_ALNUM)
             if _tail_hit(scanned, policy["openai_tail_min"]):
                 return True
     return False
 
 
-def _has_cloud(text):
-    folded = ascii_fold(text)
-    for i in range(0, max(0, len(folded) - 3)):
-        head = folded[i:i + 4]
-        if head not in ("akia", "asia"):
-            continue
-        scanned = _scan_tail(text, i + 4, lambda code: code in _ASCII_ALNUM)
-        if _tail_hit(scanned, policy["cloud_akia_tail"]):
+def _has_marker(text, marker, case_sensitive):
+    for index in range(len(text)):
+        if _match_prefix_at(text, marker, index, case_sensitive) >= 0:
             return True
+    return False
+
+
+def _has_cloud(text):
+    for index in range(len(text)):
+        for head in detector_spec["akia_prefixes"]:
+            end = _match_prefix_at(text, head, index, False)
+            if end < 0:
+                continue
+            scanned = _scan_tail(text, end, lambda code: code in _ASCII_ALNUM)
+            if _tail_hit(scanned, policy["cloud_akia_tail"]):
+                return True
     for marker in detector_spec["presence_markers_ascii_case_insensitive"]:
-        if ascii_fold(marker) in folded:
+        if _has_marker(text, marker, False):
             return True
     return False
 
@@ -340,20 +418,20 @@ def _has_pem(text):
 
 
 def _has_jwt(text):
-    folded = ascii_fold(text)
-    start = 0
-    while start < len(folded):
-        at = folded.find("eyj", start)
-        if at < 0:
-            return False
-        first = _scan_tail(text, at + 3, lambda code: code in _ASCII_ALNUM or code in _JWT_EXTRA)
+    index = 0
+    while index < len(text):
+        end = _match_prefix_at(text, "eyJ", index, False)
+        if end < 0:
+            index += 1
+            continue
+        first = _scan_tail(text, end, lambda code: code in _ASCII_ALNUM or code in _JWT_EXTRA)
         if first["ascii"] < detector_spec["tails"]["jwt_first_minimum"] or text[first["end"]:first["end"] + 1] != ".":
-            start = at + 3
+            index += 1
             continue
         second = _scan_tail(text, first["end"] + 1, lambda code: code in _ASCII_ALNUM or code in _JWT_EXTRA)
         if _tail_hit(second, detector_spec["tails"]["jwt_second_minimum"]):
             return True
-        start = at + 3
+        index += 1
     return False
 
 
@@ -390,33 +468,60 @@ def has_sensitive_query(text):
     return False
 
 
-def _unicode_alnum(ch):
+def _email_class(ch):
     code = ord(ch)
     if code in _ASCII_ALNUM:
-        return True
+        return "ALNUM"
     if code < 128:
-        return False
-    return unicodedata.category(ch)[0] in _EMAIL_CATEGORIES
+        return "OTHER"
+    category = unicode_profile.category_of(code)
+    if category == "UNKNOWN_TO_PROFILE":
+        return "UNKNOWN"
+    if category in ("LETTER", "NUMBER"):
+        return "ALNUM"
+    return "OTHER"
 
 
 def _has_email(text):
     if not isinstance(text, str) or text == "":
         return False
-    chars = list(unicodedata.normalize("NFC", text))
+    nfc = _contract_form(text, "NFC")
+    if nfc is None:
+        return True
+    chars = list(nfc)
     for i, ch in enumerate(chars):
         if ch != "@":
             continue
         left = i - 1
-        while left >= 0 and (_unicode_alnum(chars[left]) or chars[left] in "._%+-"):
-            left -= 1
-        if i - left - 1 < 1:
+        unknown = False
+        while left >= 0:
+            kind = _email_class(chars[left])
+            if kind == "ALNUM" or chars[left] in "._%+-":
+                left -= 1
+                continue
+            if kind == "UNKNOWN":
+                unknown = True
+                left -= 1
+                continue
+            break
+        if i - left - 1 < 1 and not unknown:
             continue
         right = i + 1
         dot = -1
-        while right < len(chars) and (_unicode_alnum(chars[right]) or chars[right] in ".-"):
-            if chars[right] == ".":
-                dot = right
-            right += 1
+        while right < len(chars):
+            kind = _email_class(chars[right])
+            if kind == "ALNUM" or chars[right] in ".-":
+                if chars[right] == ".":
+                    dot = right
+                right += 1
+                continue
+            if kind == "UNKNOWN":
+                unknown = True
+                right += 1
+                continue
+            break
+        if unknown and (dot != -1 or i - left - 1 >= 1):
+            return True
         if dot > i + 1 and right - dot - 1 >= 2:
             return True
     return False
@@ -515,15 +620,16 @@ def _has_card(text):
 
 def _has_mrn(text):
     prefix = detector_spec["prefixes_intentionally_case_sensitive"][0]
-    start = 0
-    while start < len(text):
-        at = text.find(prefix, start)
-        if at < 0:
-            return False
-        scanned = _scan_tail(text, at + len(prefix), lambda code: code in _ASCII_ALNUM)
+    index = 0
+    while index < len(text):
+        end = _match_prefix_at(text, prefix, index, True)
+        if end < 0:
+            index += 1
+            continue
+        scanned = _scan_tail(text, end, lambda code: code in _ASCII_ALNUM)
         if _tail_hit(scanned, detector_spec["tails"]["mrn_minimum"]):
             return True
-        start = at + len(prefix)
+        index += 1
     return False
 
 
@@ -531,7 +637,7 @@ def has_username_path(text):
     return any(marker in text for marker in policy["username_path_markers"])
 
 
-def scan_direct(text):
+def _scan_direct_raw(text):
     if not text:
         return False
     return (
@@ -540,6 +646,15 @@ def scan_direct(text):
         or _has_userinfo(text) or has_sensitive_query(text) or _has_email(text)
         or _has_ssn(text) or _has_phone(text) or _has_card(text) or _has_mrn(text)
     )
+
+
+def scan_direct(text):
+    if not text:
+        return False
+    if _scan_direct_raw(text):
+        return True
+    view = _strip_format(text)
+    return view != text and _scan_direct_raw(view)
 
 
 def _percent_decode_once(text):
@@ -568,7 +683,9 @@ def _percent_decode_once(text):
 
 
 def _fold(text):
-    nfkc = unicodedata.normalize("NFKC", text)
+    nfkc = _contract_form(text, "NFKC")
+    if nfkc is None:
+        return None
     return "".join(_CONFUSABLE.get(ch, ch) for ch in nfkc)
 
 
@@ -645,34 +762,100 @@ def _scan_base64(text):
     return False
 
 
-def contains_prohibited(value):
-    if not isinstance(value, str) or value == "":
-        return False
-    if utf8_bytes(value) > detector_spec["max_scan_bytes"]:
+def _scan_all(text):
+    if scan_direct(text):
         return True
-    if scan_direct(value):
-        return True
-    decoded = _percent_decode_once(value)
+    decoded = _percent_decode_once(text)
     if decoded["prohibited"]:
         return True
-    if decoded["changed"] and scan_direct(decoded["text"]):
+    if decoded["changed"] and decoded["text"] and scan_direct(decoded["text"]):
         return True
-    if _scan_base64(value):
+    if _scan_base64(text):
         return True
-    folded = _fold(value)
-    if folded != value and scan_direct(folded):
+    folded = _fold(text)
+    if folded is None:
         return True
-    if decoded["changed"]:
+    if folded != text and scan_direct(folded):
+        return True
+    if decoded["changed"] and decoded["text"]:
         folded_decoded = _fold(decoded["text"])
+        if folded_decoded is None:
+            return True
         if folded_decoded != decoded["text"] and scan_direct(folded_decoded):
             return True
     return False
 
 
+def contains_prohibited(value):
+    if not isinstance(value, str) or value == "":
+        return False
+    if not unicode_profile.profile_ready():
+        return True
+    size = utf8_bytes(value)
+    text = _utf8_prefix(value, detector_spec["max_scan_bytes"]) if size > detector_spec["max_scan_bytes"] else value
+    return _scan_all(text)
+
+
+def _boundary_candidate(prefix):
+    view = _strip_format(prefix)
+    if not view:
+        return False
+    index = len(view) - 1
+    digits = 0
+    while index >= 0 and _digit(view[index]):
+        digits += 1
+        index -= 1
+    if 0 < digits < detector_spec["pan"]["min_digits"]:
+        before = view[index] if index >= 0 else ""
+        if not _in_class(before, _ASCII_ALPHA):
+            return True
+    window_start = max(0, len(view) - 80)
+    heads = list(detector_spec["akia_prefixes"]) + list(policy["openai_prefixes"])
+    for start in range(window_start, len(view)):
+        for head in heads:
+            end = _match_prefix_at(view, head, start, False)
+            if end < 0:
+                continue
+            if end >= len(view):
+                return True
+            scanned = _scan_tail(view, end, lambda code: code in _ASCII_ALNUM)
+            minimum = policy["cloud_akia_tail"] if head in detector_spec["akia_prefixes"] else policy["openai_tail_min"]
+            if scanned["end"] == len(view) and scanned["ascii"] < minimum:
+                return True
+    at = view.rfind("@")
+    if window_start <= at < len(view) - 1:
+        domain = True
+        for cursor in range(at + 1, len(view)):
+            kind = _email_class(view[cursor])
+            if not (kind in ("ALNUM", "UNKNOWN") or view[cursor] in ".-"):
+                domain = False
+                break
+        if domain:
+            dot = view.rfind(".")
+            if dot < at or len(view) - dot - 1 < 2:
+                return True
+    return False
+
+
+def scan_bounded_prefix(text):
+    if not isinstance(text, str) or text == "":
+        return {"matched": False, "boundary": False}
+    if not unicode_profile.profile_ready():
+        return {"matched": True, "boundary": False}
+    prefix = _utf8_prefix(text, detector_spec["max_scan_bytes"])
+    matched = contains_prohibited(prefix)
+    cut = utf8_bytes(text) > utf8_bytes(prefix)
+    return {"matched": matched, "boundary": cut and not matched and _boundary_candidate(prefix)}
+
+
 def sensitive_path(text):
     if not isinstance(text, str) or text == "":
         return False
-    nfc = unicodedata.normalize("NFC", text)
+    if not unicode_profile.profile_ready():
+        return True
+    nfc = _contract_form(text, "NFC")
+    if nfc is None:
+        return True
     if contains_prohibited(text) or contains_prohibited(nfc) or has_username_path(text) or has_username_path(nfc):
         return True
     decoded = _percent_decode_once(nfc)
@@ -680,8 +863,26 @@ def sensitive_path(text):
         return True
     if not decoded["changed"]:
         return False
-    form = unicodedata.normalize("NFC", decoded["text"])
+    form = _contract_form(decoded["text"], "NFC")
+    if form is None:
+        return True
     return contains_prohibited(form) or has_username_path(form)
+
+
+def profile_ready():
+    return unicode_profile.profile_ready()
+
+
+def profile_id():
+    return unicode_profile.profile_id()
+
+
+def profile_version():
+    return unicode_profile.profile_version()
+
+
+def set_profile_unavailable_for_test(flag):
+    unicode_profile.set_profile_unavailable_for_test(flag)
 
 
 _NAMES.update(_comparison_form(name) for name in policy["prohibited_field_names"])

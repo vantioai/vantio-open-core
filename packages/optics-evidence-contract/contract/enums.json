@@ -121,7 +121,8 @@
     "SESSION_ID_REJECTED",
     "CONTEXT_REJECTED",
     "CONFLICTING_PROVENANCE",
-    "MISSING_REQUIRED_STATUS"
+    "MISSING_REQUIRED_STATUS",
+    "SCAN_INCOMPLETE"
   ],
   "health_counters": [
     "events_rejected",

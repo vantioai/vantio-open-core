@@ -11,6 +11,6 @@ Validators:
 - `src/validate.cjs`
 - `src/validate.py`
 
-Both read `contract/`, including `detector-classes.json` for ASCII detector classes. Tests and the shared corpus live in `tests/optics-evidence-contract/`. Internal notes live in `docs/internal/optics-pkg01/`. This package does not claim live runtime protection.
+Both read `contract/`, including `detector-classes.json` for ASCII detector classes and the pinned Unicode profile `PKG01-UCD-16.0.0` for NFKC, NFC, and letter/number membership. Privacy decisions do not consult host ICU or CPython `unicodedata`. Tests and the shared corpus live in `tests/optics-evidence-contract/`. Internal notes live in `docs/internal/optics-pkg01/`. This package does not claim live runtime protection, universal confusable detection, or a shipment.
 
 The contract output is a detached plain-data result. A caller-supplied application result is copied into approved primitives and bounded containers. The validator does not keep the caller's object.

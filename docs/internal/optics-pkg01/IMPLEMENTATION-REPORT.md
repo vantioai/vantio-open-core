@@ -8,7 +8,7 @@ Producer only. This report does not pass council.
 
 `OPTICS_PKG01_REVISION_READY_FOR_COUNCIL`
 
-Producer classification for the detector-parity revision. This is not a council pass. The first council record stays in `INDEPENDENT-COUNCIL-REPORT.md` with classification `OPTICS_PKG01_NEEDS_REVISION`. The fresh re-council record stays in `INDEPENDENT-RECOUNCIL-REPORT.md` with classification `OPTICS_PKG01_NEEDS_REVISION` on tip `6da63f8aafceb7eed3950975d224848fec6c3ba5`. Status for the next agent is `PENDING_INDEPENDENT_RECOUNCIL` (detector-parity).
+Producer classification for the pinned-Unicode revision. This is not a council pass. Status for the next agent is `PENDING_INDEPENDENT_RECOUNCIL` (pinned-Unicode). The revision starts from tip `4a34ce40645ba5aa4495437d4fdfb4f7e91ac156`. Earlier council records stay historical: `INDEPENDENT-COUNCIL-REPORT.md` and `INDEPENDENT-RECOUNCIL-REPORT.md`, both `OPTICS_PKG01_NEEDS_REVISION`.
 
 ## What landed
 
@@ -20,10 +20,12 @@ Private package `packages/optics-evidence-contract/` (Option B):
 - `contract/normalization.json`
 - `contract/contract-metadata.json`
 - `contract/detector-classes.json`
-- Hand-written `src/validate.cjs`, `src/canonical.cjs`, `src/walk.cjs`, `src/privacy.cjs`
-- Hand-written `src/validate.py`, `src/canonical.py`, `src/walk.py`, `src/privacy.py`
+- Hand-written `src/validate.cjs`, `src/canonical.cjs`, `src/walk.cjs`, `src/privacy.cjs`, `src/unicode_profile.cjs`
+- Hand-written `src/validate.py`, `src/canonical.py`, `src/walk.py`, `src/privacy.py`, `src/unicode_profile.py`
+- Pinned Unicode profile `PKG01-UCD-16.0.0` under `contract/unicode-profile.json`, `contract/unicode-nfkc-map.json`, `contract/unicode-category-ranges.json`, and `contract/unicode-profile-metadata.json`
+- Offline generator `tools/generate_unicode_profile.py` and committed UCD sources under `contract/unicode-source/`
 
-Tests: `tests/optics-evidence-contract/corpus.json` (185 fixtures), `node.test.cjs`, `python_test.py`, `hostile_worker.cjs`, `hostile_worker.py`.
+Tests: `tests/optics-evidence-contract/corpus.json` (220 fixtures), `node.test.cjs`, `python_test.py`, `hostile_worker.cjs`, `hostile_worker.py`.
 
 Internal notes: `docs/internal/optics-pkg01/`.
 
@@ -59,13 +61,23 @@ Started from PR head `075b82508fa93b84ce7416512a8d422ed4ca4e49`. Closed B1–B8 
 
 Character classes and the reported-reason order are in `contract/detector-classes.json`. String bounds are UTF-8 bytes. `MAX_SIZE_EXCEEDED` outranks `DETECTOR_MATCH`; the value is still omitted. An ASCII letter still suppresses PAN detection.
 
+## Pinned-Unicode revision
+
+Started from tip `4a34ce40645ba5aa4495437d4fdfb4f7e91ac156`. Privacy normalization and letter/number membership read the committed profile `PKG01-UCD-16.0.0` (Unicode 16.0.0). Node ICU and CPython `unicodedata` are not the privacy decision. NFC is comparison-only. NFKC is detection-only and is not stored. A code point absent from the profile is `UNKNOWN_TO_PROFILE` and fails closed inside an email-shaped span. Pinned format controls are removed only in the detector view; a hit omits the original. A governed prefix may contain one non-ASCII insertion and still match. A walk above 8192 bytes with no detector hit in the scanned prefix is `MAX_SIZE_EXCEEDED`, privacy null, scan state `SIZE_ONLY`. A candidate that crosses that cut is `SCAN_INCOMPLETE` and scan state `BOUNDARY`, without `DETECTOR_MATCH`. `Buffer`, `Uint8Array`, `bytes`, `bytearray`, and `memoryview` are `REJECT_FIELD` / `UNSUPPORTED_COMPLEX_VALUE`.
+
+This is not universal confusable detection, not live runtime protection, and not a shipment. Windows, macOS, and WSL are `NOT_TESTED`.
+
 ## Corpus
 
-185 shared fixtures, including harness metadata for accessor, proxy, class instance, function, function-valued field, and the isolated non-returning getter.
+220 shared fixtures, including harness metadata for accessor, proxy, class instance, function, function-valued field, the isolated non-returning getter, and binary containers. The earlier 185-fixture counts below are the detector-parity baseline, not the pinned-Unicode total.
 
-Disposition counts: `ACCEPT` 33, `NORMALIZE` 15, `STRIP` 23, `REJECT_FIELD` 88, `REPLACE_WITH_SAFE_CATEGORY` 9, `REJECT_RECORD` 17.
+Pinned-Unicode totals: `ACCEPT` 35, `NORMALIZE` 15, `STRIP` 23, `REJECT_FIELD` 121, `REPLACE_WITH_SAFE_CATEGORY` 9, `REJECT_RECORD` 17.
 
-Reason counts: `REDACTION_DROP` 45, `OK` 34, `DETECTOR_MATCH` 25, `MAX_SIZE_EXCEEDED` 17, `NORMALIZED` 7, `UNKNOWN_FIELD_OMITTED` 6, `CONTEXT_REJECTED` 6, `PROHIBITED_FIELD_NAME` 6, `SESSION_ID_REJECTED` 5, `CONFLICTING_PROVENANCE` 5, `LEGACY_UNMARKED` 4, `MISSING_REQUIRED_STATUS` 4, `ACCESSOR_PROPERTY_FORBIDDEN` 3, `UNSUPPORTED_COMPLEX_VALUE` 3, `PROMPT_COMPLETION_EXCLUDED` 2, `UNKNOWN_FIELD_REDACTED` 2, and one each of `BAGGAGE_OMITTED`, `DESTINATION_CONFLICT`, `PROVENANCE_INSUFFICIENT`, `SIMULATED_DEMO`, `SCHEMA_STATUS_CORRECTED`, `ENFORCEMENT_ACTION_EXCLUDED`, `OPTICS_WRITE_FAILURE`, `ANNOTATION_ORIGIN_REFUSED`, `QUERY_STRIPPED`, `DUPLICATE_CANONICAL_FIELD`, `OPTIMISTIC_DEFAULT_FORBIDDEN`.
+Pinned-Unicode reasons: `REDACTION_DROP` 57, `OK` 36, `DETECTOR_MATCH` 36, `MAX_SIZE_EXCEEDED` 24, `NORMALIZED` 7, `UNKNOWN_FIELD_OMITTED` 6, `CONTEXT_REJECTED` 6, `PROHIBITED_FIELD_NAME` 6, `UNSUPPORTED_COMPLEX_VALUE` 6, `SESSION_ID_REJECTED` 5, `CONFLICTING_PROVENANCE` 5, `LEGACY_UNMARKED` 4, `MISSING_REQUIRED_STATUS` 4, `ACCESSOR_PROPERTY_FORBIDDEN` 3, `PROMPT_COMPLETION_EXCLUDED` 2, `UNKNOWN_FIELD_REDACTED` 2, and one each of `BAGGAGE_OMITTED`, `DESTINATION_CONFLICT`, `PROVENANCE_INSUFFICIENT`, `SIMULATED_DEMO`, `SCHEMA_STATUS_CORRECTED`, `ENFORCEMENT_ACTION_EXCLUDED`, `OPTICS_WRITE_FAILURE`, `ANNOTATION_ORIGIN_REFUSED`, `QUERY_STRIPPED`, `DUPLICATE_CANONICAL_FIELD`, `OPTIMISTIC_DEFAULT_FORBIDDEN`.
+
+Detector-parity baseline (185 fixtures, historical): `ACCEPT` 33, `NORMALIZE` 15, `STRIP` 23, `REJECT_FIELD` 88, `REPLACE_WITH_SAFE_CATEGORY` 9, `REJECT_RECORD` 17.
+
+Detector-parity baseline reasons: `REDACTION_DROP` 45, `OK` 34, `DETECTOR_MATCH` 25, `MAX_SIZE_EXCEEDED` 17, `NORMALIZED` 7, `UNKNOWN_FIELD_OMITTED` 6, `CONTEXT_REJECTED` 6, `PROHIBITED_FIELD_NAME` 6, `SESSION_ID_REJECTED` 5, `CONFLICTING_PROVENANCE` 5, `LEGACY_UNMARKED` 4, `MISSING_REQUIRED_STATUS` 4, `ACCESSOR_PROPERTY_FORBIDDEN` 3, `UNSUPPORTED_COMPLEX_VALUE` 3, `PROMPT_COMPLETION_EXCLUDED` 2, `UNKNOWN_FIELD_REDACTED` 2, and one each of `BAGGAGE_OMITTED`, `DESTINATION_CONFLICT`, `PROVENANCE_INSUFFICIENT`, `SIMULATED_DEMO`, `SCHEMA_STATUS_CORRECTED`, `ENFORCEMENT_ACTION_EXCLUDED`, `OPTICS_WRITE_FAILURE`, `ANNOTATION_ORIGIN_REFUSED`, `QUERY_STRIPPED`, `DUPLICATE_CANONICAL_FIELD`, `OPTIMISTIC_DEFAULT_FORBIDDEN`.
 
 Legacy `bytes` 0 and explicit `response_bytes` 0 remain the existing fixtures `legacy-call-zero-bytes` and `explicit-zero-bytes`. The legacy fixture's completeness impact is now `MISSING_REQUIRED_STATUS` because that call has no `optics_status`. Its reason stays `LEGACY_UNMARKED`.
 
@@ -73,16 +85,16 @@ Canaries used in the corpus are absent from canonical output, including the secr
 
 ## Commands and results
 
-Linux `6.12.94+` x86_64. Node `v22.14.0`. Python `3.10.21`, `3.11.16`, and `3.12.3`. No npm install and no pip install of this package.
+Linux host. Node `v22.14.0`. Python `3.10.21`, `3.11.16`, and `3.12.3`. No npm install and no pip install of this package.
 
 ```bash
 node --test tests/optics-evidence-contract/node.test.cjs
-python3 tests/optics-evidence-contract/python_test.py
+python3 -m unittest tests/optics-evidence-contract/python_test.py
 python3.10 -m unittest tests/optics-evidence-contract/python_test.py
 python3.11 -m unittest tests/optics-evidence-contract/python_test.py
 ```
 
-Node: 10 tests, 10 pass. Python 3.10.21, 3.11.16, and 3.12.3: 9 tests, OK. Canonical JSON matched across Node and each Python interpreter for all 185 fixtures. Declared UTF-8 byte lengths matched both encoders. Canary scan of those canonical strings passed. Scope walk found no `optics-evidence-contract` import under the live CLI or Python SDK. Validator sources do not import network clients. Privacy sources do not call `isalpha`, `isalnum`, or locale case conversion. No store file was created.
+Node: 13 tests, 13 pass. Python 3.10.21, 3.11.16, and 3.12.3: 12 tests, OK on each interpreter. Canonical JSON matched across Node and each Python interpreter for all 220 fixtures. Declared UTF-8 byte lengths matched both encoders. Profile file hashes matched `unicode-profile-metadata.json`. The offline generator reproduced those files. Verification vectors matched in both languages. A missing profile returned `VALIDATOR_FAULT` with scan state `UNAVAILABLE` and did not copy the input PAN. Canary scan of the canonical strings passed. Scope walk found no `optics-evidence-contract` import under the live CLI or Python SDK. Validator sources do not import network clients. Privacy and profile sources do not call host Unicode category or normalization APIs. No store file was created.
 
 Windows: `NOT_TESTED`. macOS: `NOT_TESTED`. WSL: `NOT_TESTED`. Other Node versions: `NOT_TESTED`.
 

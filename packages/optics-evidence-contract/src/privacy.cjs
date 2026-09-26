@@ -2,6 +2,7 @@
 
 const { readFileSync } = require("fs");
 const path = require("path");
+const unicode = require("./unicode_profile.cjs");
 
 const CONTRACT_DIR = path.join(__dirname, "..", "contract");
 const policy = JSON.parse(readFileSync(path.join(CONTRACT_DIR, "prohibited-fields.json"), "utf8"));
@@ -45,8 +46,6 @@ const BASIC_EXTRA = new Set(detectorSpec.tails.basic.extra);
 const JWT_EXTRA = new Set(detectorSpec.tails.jwt_extra);
 const PAN_SEPARATORS = new Set(detectorSpec.pan.separators);
 const BASE64_EXTRA = new Set(detectorSpec.base64_standard_extra);
-const EMAIL_CATEGORIES = detectorSpec.email_unicode_category_prefixes;
-
 function unitCode(ch) {
   return ch ? ch.charCodeAt(0) : -1;
 }
@@ -76,6 +75,77 @@ function asciiFold(text) {
 
 function asciiFoldUpper(text) {
   return asciiMap(text, detectorSpec.ascii_case_fold.upper);
+}
+
+function contractForm(text, form) {
+  const normalized = unicode.normalizeText(text, form);
+  if (!normalized.ok) return null;
+  return normalized.text;
+}
+
+function contractNfc(text) {
+  return contractForm(text, "NFC");
+}
+
+function stripFormat(text) {
+  const parts = [];
+  let changed = false;
+  for (const ch of text) {
+    if (unicode.isFormat(ch.codePointAt(0))) {
+      changed = true;
+      continue;
+    }
+    parts.push(ch);
+  }
+  return changed ? parts.join("") : text;
+}
+
+function codeUnitAt(text, index) {
+  const code = text.charCodeAt(index);
+  if (code >= 0xd800 && code <= 0xdbff) {
+    const next = text.charCodeAt(index + 1);
+    if (next >= 0xdc00 && next <= 0xdfff) {
+      return { ch: text.slice(index, index + 2), size: 2, nonAscii: true };
+    }
+  }
+  return { ch: text[index], size: 1, nonAscii: code > detectorSpec.non_ascii.min_exclusive };
+}
+
+function matchPrefixAt(text, prefix, index, caseSensitive) {
+  let cursor = index;
+  let skipped = 0;
+  const budget = 1;
+  for (let part = 0; part < prefix.length; part += 1) {
+    if (cursor >= text.length) return -1;
+    const unit = codeUnitAt(text, cursor);
+    const same = caseSensitive ? unit.ch === prefix[part] : asciiFold(unit.ch) === asciiFold(prefix[part]);
+    if (same && unit.size === 1) {
+      cursor += 1;
+      continue;
+    }
+    if (part > 0 && skipped < budget && unit.nonAscii) {
+      skipped += 1;
+      cursor += unit.size;
+      part -= 1;
+      continue;
+    }
+    return -1;
+  }
+  return cursor;
+}
+
+function utf8Prefix(text, maxBytes) {
+  let bytes = 0;
+  let index = 0;
+  while (index < text.length) {
+    const code = text.codePointAt(index);
+    const width = code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+    const step = code > 0xffff ? 2 : 1;
+    if (bytes + width > maxBytes) break;
+    bytes += width;
+    index += step;
+  }
+  return text.slice(0, index);
 }
 
 function scanTail(text, start, allowed) {
@@ -120,9 +190,13 @@ function isNameControl(code) {
 
 function comparisonForm(name) {
   if (typeof name !== "string") return "";
-  let text = name.normalize("NFC");
+  let text = contractForm(name, "NFC");
+  if (text == null) return "";
   const decoded = percentDecodeOnce(text);
-  if (decoded.changed && !decoded.prohibited && decoded.text) text = decoded.text.normalize("NFC");
+  if (decoded.changed && !decoded.prohibited && decoded.text) {
+    text = contractForm(decoded.text, "NFC");
+    if (text == null) return "";
+  }
   let out = "";
   for (const ch of text) {
     const code = ch.codePointAt(0);
@@ -169,7 +243,8 @@ function classifyFieldName(name) {
   const prohibited = comparison !== "" && NAME_SET.has(comparison);
   const detector = !oversized && containsProhibited(name);
   const exact = EXACT_NAMES.has(name);
-  const safeGrammar = !control && !detector && !oversized && name.normalize("NFC") === name && SAFE_NAME.test(name);
+  const nfcName = contractForm(name, "NFC");
+  const safeGrammar = !control && !detector && !oversized && nfcName === name && SAFE_NAME.test(name);
   let locatorKind = safeGrammar ? "safe" : "redacted";
   if ((payload || prohibited) && !exact) locatorKind = "prohibited";
   if (exact && !detector && !control && !oversized) locatorKind = "safe";
@@ -218,39 +293,27 @@ function startsWithFold(text, prefix, index) {
 }
 
 function hasBearer(text) {
-  const folded = asciiFold(text);
-  let from = 0;
-  while (from < folded.length) {
-    const at = folded.indexOf("bearer", from);
-    if (at === -1) return false;
-    let i = at + 6;
-    if (i >= text.length || (text[i] !== " " && text[i] !== "\t")) {
-      from = at + 6;
-      continue;
-    }
-    while (i < text.length && (text[i] === " " || text[i] === "\t")) i += 1;
-    const scanned = scanTail(text, i, (code) => ASCII_ALNUM.has(code) || BEARER_EXTRA.has(code));
+  for (let index = 0; index < text.length; index += 1) {
+    const end = matchPrefixAt(text, "Bearer", index, false);
+    if (end < 0) continue;
+    let cursor = end;
+    if (cursor >= text.length || (text[cursor] !== " " && text[cursor] !== "\t")) continue;
+    while (cursor < text.length && (text[cursor] === " " || text[cursor] === "\t")) cursor += 1;
+    const scanned = scanTail(text, cursor, (code) => ASCII_ALNUM.has(code) || BEARER_EXTRA.has(code));
     if (tailHit(scanned, detectorSpec.tails.bearer.minimum)) return true;
-    from = at + 6;
   }
   return false;
 }
 
 function hasBasic(text) {
-  const folded = asciiFold(text);
-  let from = 0;
-  while (from < folded.length) {
-    const at = folded.indexOf("basic", from);
-    if (at === -1) return false;
-    let i = at + 5;
-    if (i >= text.length || (text[i] !== " " && text[i] !== "\t")) {
-      from = at + 5;
-      continue;
-    }
-    while (i < text.length && (text[i] === " " || text[i] === "\t")) i += 1;
-    const scanned = scanTail(text, i, (code) => ASCII_ALNUM.has(code) || BASIC_EXTRA.has(code));
+  for (let index = 0; index < text.length; index += 1) {
+    const end = matchPrefixAt(text, "Basic", index, false);
+    if (end < 0) continue;
+    let cursor = end;
+    if (cursor >= text.length || (text[cursor] !== " " && text[cursor] !== "\t")) continue;
+    while (cursor < text.length && (text[cursor] === " " || text[cursor] === "\t")) cursor += 1;
+    const scanned = scanTail(text, cursor, (code) => ASCII_ALNUM.has(code) || BASIC_EXTRA.has(code));
     if (tailHit(scanned, detectorSpec.tails.basic.minimum)) return true;
-    from = at + 5;
   }
   return false;
 }
@@ -265,26 +328,35 @@ function hasCookieMarker(text) {
 
 function hasOpenAiKey(text) {
   const prefixes = policy.openai_prefixes;
-  for (let i = 0; i < text.length; i += 1) {
+  for (let index = 0; index < text.length; index += 1) {
     for (const prefix of prefixes) {
-      if (!startsWithFold(text, prefix, i)) continue;
-      const scanned = scanTail(text, i + prefix.length, (code) => ASCII_ALNUM.has(code));
+      const end = matchPrefixAt(text, prefix, index, false);
+      if (end < 0) continue;
+      const scanned = scanTail(text, end, (code) => ASCII_ALNUM.has(code));
       if (tailHit(scanned, policy.openai_tail_min)) return true;
     }
   }
   return false;
 }
 
+function hasMarker(text, marker, caseSensitive) {
+  for (let index = 0; index < text.length; index += 1) {
+    if (matchPrefixAt(text, marker, index, caseSensitive) >= 0) return true;
+  }
+  return false;
+}
+
 function hasCloudKey(text) {
-  const folded = asciiFold(text);
-  for (let i = 0; i + 4 <= folded.length; i += 1) {
-    const head = folded.slice(i, i + 4);
-    if (head !== "akia" && head !== "asia") continue;
-    const scanned = scanTail(text, i + 4, (code) => ASCII_ALNUM.has(code));
-    if (tailHit(scanned, policy.cloud_akia_tail)) return true;
+  for (let index = 0; index < text.length; index += 1) {
+    for (const head of detectorSpec.akia_prefixes) {
+      const end = matchPrefixAt(text, head, index, false);
+      if (end < 0) continue;
+      const scanned = scanTail(text, end, (code) => ASCII_ALNUM.has(code));
+      if (tailHit(scanned, policy.cloud_akia_tail)) return true;
+    }
   }
   for (const marker of detectorSpec.presence_markers_ascii_case_insensitive) {
-    if (folded.includes(asciiFold(marker))) return true;
+    if (hasMarker(text, marker, false)) return true;
   }
   return false;
 }
@@ -298,19 +370,13 @@ function hasPem(text) {
 }
 
 function hasJwt(text) {
-  const folded = asciiFold(text);
-  let from = 0;
-  while (from < folded.length) {
-    const at = folded.indexOf("eyj", from);
-    if (at === -1) return false;
-    const first = scanTail(text, at + 3, (code) => ASCII_ALNUM.has(code) || JWT_EXTRA.has(code));
-    if (first.ascii < detectorSpec.tails.jwt_first_minimum || text[first.end] !== ".") {
-      from = at + 3;
-      continue;
-    }
+  for (let index = 0; index < text.length; index += 1) {
+    const end = matchPrefixAt(text, "eyJ", index, false);
+    if (end < 0) continue;
+    const first = scanTail(text, end, (code) => ASCII_ALNUM.has(code) || JWT_EXTRA.has(code));
+    if (first.ascii < detectorSpec.tails.jwt_first_minimum || text[first.end] !== ".") continue;
     const second = scanTail(text, first.end + 1, (code) => ASCII_ALNUM.has(code) || JWT_EXTRA.has(code));
     if (tailHit(second, detectorSpec.tails.jwt_second_minimum)) return true;
-    from = at + 3;
   }
   return false;
 }
@@ -346,27 +412,52 @@ function hasSensitiveQuery(text) {
   return false;
 }
 
-function isUnicodeAlnum(ch) {
+function emailClass(ch) {
   const code = ch.codePointAt(0);
-  if (ASCII_ALNUM.has(code)) return true;
-  if (code < 128) return false;
-  if (EMAIL_CATEGORIES.includes("L") && /^\p{L}$/u.test(ch)) return true;
-  if (EMAIL_CATEGORIES.includes("N") && /^\p{N}$/u.test(ch)) return true;
-  return false;
+  if (ASCII_ALNUM.has(code)) return "ALNUM";
+  if (code < 128) return "OTHER";
+  const category = unicode.categoryOf(code);
+  if (category === "UNKNOWN_TO_PROFILE") return "UNKNOWN";
+  if (category === "LETTER" || category === "NUMBER") return "ALNUM";
+  return "OTHER";
 }
 
 function emailIn(chars) {
   for (let i = 0; i < chars.length; i += 1) {
     if (chars[i] !== "@") continue;
     let left = i - 1;
-    while (left >= 0 && (isUnicodeAlnum(chars[left]) || "._%+-".includes(chars[left]))) left -= 1;
-    if (i - left - 1 < 1) continue;
+    let unknown = false;
+    while (left >= 0) {
+      const kind = emailClass(chars[left]);
+      if (kind === "ALNUM" || "._%+-".includes(chars[left])) {
+        left -= 1;
+        continue;
+      }
+      if (kind === "UNKNOWN") {
+        unknown = true;
+        left -= 1;
+        continue;
+      }
+      break;
+    }
+    if (i - left - 1 < 1 && !unknown) continue;
     let right = i + 1;
     let dot = -1;
-    while (right < chars.length && (isUnicodeAlnum(chars[right]) || chars[right] === "." || chars[right] === "-")) {
-      if (chars[right] === ".") dot = right;
-      right += 1;
+    while (right < chars.length) {
+      const kind = emailClass(chars[right]);
+      if (kind === "ALNUM" || chars[right] === "." || chars[right] === "-") {
+        if (chars[right] === ".") dot = right;
+        right += 1;
+        continue;
+      }
+      if (kind === "UNKNOWN") {
+        unknown = true;
+        right += 1;
+        continue;
+      }
+      break;
     }
+    if (unknown && (dot !== -1 || i - left - 1 >= 1)) return true;
     if (dot > i + 1 && right - dot - 1 >= 2) return true;
   }
   return false;
@@ -374,7 +465,9 @@ function emailIn(chars) {
 
 function hasEmail(text) {
   if (typeof text !== "string" || text.length === 0) return false;
-  return emailIn(Array.from(text.normalize("NFC")));
+  const nfc = contractForm(text, "NFC");
+  if (nfc == null) return true;
+  return emailIn(Array.from(nfc));
 }
 
 function hasSsn(text) {
@@ -465,13 +558,11 @@ function hasCard(text) {
 
 function hasMrn(text) {
   const prefix = detectorSpec.prefixes_intentionally_case_sensitive[0];
-  let from = 0;
-  while (from < text.length) {
-    const at = text.indexOf(prefix, from);
-    if (at === -1) return false;
-    const scanned = scanTail(text, at + prefix.length, (code) => ASCII_ALNUM.has(code));
+  for (let index = 0; index < text.length; index += 1) {
+    const end = matchPrefixAt(text, prefix, index, true);
+    if (end < 0) continue;
+    const scanned = scanTail(text, end, (code) => ASCII_ALNUM.has(code));
     if (tailHit(scanned, detectorSpec.tails.mrn_minimum)) return true;
-    from = at + prefix.length;
   }
   return false;
 }
@@ -483,7 +574,7 @@ function hasUsernamePath(text) {
   return false;
 }
 
-function scanDirect(text) {
+function scanDirectRaw(text) {
   if (!text) return false;
   return hasPem(text)
     || hasBearer(text)
@@ -500,6 +591,13 @@ function scanDirect(text) {
     || hasPhone(text)
     || hasCard(text)
     || hasMrn(text);
+}
+
+function scanDirect(text) {
+  if (!text) return false;
+  if (scanDirectRaw(text)) return true;
+  const view = stripFormat(text);
+  return view !== text && scanDirectRaw(view);
 }
 
 function percentDecodeOnce(text) {
@@ -527,12 +625,11 @@ function percentDecodeOnce(text) {
 }
 
 function foldDetection(text) {
-  const nfkc = text.normalize("NFKC");
-  let out = "";
-  for (const ch of nfkc) {
-    out += CONFUSABLE.get(ch) || ch;
-  }
-  return out;
+  const nfkc = contractForm(text, "NFKC");
+  if (nfkc == null) return null;
+  const parts = [];
+  for (const ch of nfkc) parts.push(CONFUSABLE.get(ch) || ch);
+  return parts.join("");
 }
 
 function isBase64Char(ch, allowSlash) {
@@ -602,31 +699,94 @@ function scanBase64(text) {
   return false;
 }
 
-function containsProhibited(value) {
-  if (typeof value !== "string" || value.length === 0) return false;
-  if (Buffer.byteLength(value, "utf8") > detectorSpec.max_scan_bytes) return true;
-  if (scanDirect(value)) return true;
-  const decoded = percentDecodeOnce(value);
+function scanAll(text) {
+  if (scanDirect(text)) return true;
+  const decoded = percentDecodeOnce(text);
   if (decoded.prohibited) return true;
-  if (decoded.changed && scanDirect(decoded.text)) return true;
-  if (scanBase64(value)) return true;
-  const folded = foldDetection(value);
-  if (folded !== value && scanDirect(folded)) return true;
-  if (decoded.changed) {
+  if (decoded.changed && decoded.text && scanDirect(decoded.text)) return true;
+  if (scanBase64(text)) return true;
+  const folded = foldDetection(text);
+  if (folded == null) return true;
+  if (folded !== text && scanDirect(folded)) return true;
+  if (decoded.changed && decoded.text) {
     const foldedDecoded = foldDetection(decoded.text);
+    if (foldedDecoded == null) return true;
     if (foldedDecoded !== decoded.text && scanDirect(foldedDecoded)) return true;
   }
   return false;
 }
 
+function containsProhibited(value) {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!unicode.profileReady()) return true;
+  const size = Buffer.byteLength(value, "utf8");
+  const text = size > detectorSpec.max_scan_bytes ? utf8Prefix(value, detectorSpec.max_scan_bytes) : value;
+  return scanAll(text);
+}
+
+function boundaryCandidate(prefix) {
+  const view = stripFormat(prefix);
+  if (!view) return false;
+  let index = view.length - 1;
+  let digits = 0;
+  while (index >= 0 && isDigit(view[index])) {
+    digits += 1;
+    index -= 1;
+  }
+  if (digits > 0 && digits < detectorSpec.pan.min_digits) {
+    const before = index >= 0 ? view[index] : "";
+    if (!inClass(before, ASCII_ALPHA)) return true;
+  }
+  const windowStart = Math.max(0, view.length - 80);
+  const heads = detectorSpec.akia_prefixes.concat(policy.openai_prefixes);
+  for (let start = windowStart; start < view.length; start += 1) {
+    for (const head of heads) {
+      const end = matchPrefixAt(view, head, start, false);
+      if (end < 0) continue;
+      if (end >= view.length) return true;
+      const scanned = scanTail(view, end, (code) => ASCII_ALNUM.has(code));
+      const minimum = detectorSpec.akia_prefixes.indexOf(head) >= 0 ? policy.cloud_akia_tail : policy.openai_tail_min;
+      if (scanned.end === view.length && scanned.ascii < minimum) return true;
+    }
+  }
+  const at = view.lastIndexOf("@");
+  if (at >= windowStart && at < view.length - 1) {
+    let domain = true;
+    for (let cursor = at + 1; cursor < view.length; cursor += 1) {
+      const kind = emailClass(view[cursor]);
+      if (!(kind === "ALNUM" || kind === "UNKNOWN" || view[cursor] === "." || view[cursor] === "-")) {
+        domain = false;
+        break;
+      }
+    }
+    if (domain) {
+      const dot = view.lastIndexOf(".");
+      if (dot < at || view.length - dot - 1 < 2) return true;
+    }
+  }
+  return false;
+}
+
+function scanBoundedPrefix(text) {
+  if (typeof text !== "string" || text.length === 0) return { matched: false, boundary: false };
+  if (!unicode.profileReady()) return { matched: true, boundary: false };
+  const prefix = utf8Prefix(text, detectorSpec.max_scan_bytes);
+  const matched = containsProhibited(prefix);
+  const cut = Buffer.byteLength(text, "utf8") > Buffer.byteLength(prefix, "utf8");
+  return { matched, boundary: cut && !matched && boundaryCandidate(prefix) };
+}
+
 function sensitivePath(text) {
   if (typeof text !== "string" || text.length === 0) return false;
-  const nfc = text.normalize("NFC");
+  if (!unicode.profileReady()) return true;
+  const nfc = contractForm(text, "NFC");
+  if (nfc == null) return true;
   if (containsProhibited(text) || containsProhibited(nfc) || hasUsernamePath(text) || hasUsernamePath(nfc)) return true;
   const decoded = percentDecodeOnce(nfc);
   if (decoded.prohibited) return true;
   if (!decoded.changed) return false;
-  const form = decoded.text.normalize("NFC");
+  const form = contractForm(decoded.text, "NFC");
+  if (form == null) return true;
   return containsProhibited(form) || hasUsernamePath(form);
 }
 
@@ -641,6 +801,12 @@ module.exports = {
   containsProhibited,
   asciiFold,
   asciiFoldUpper,
+  contractNfc,
+  scanBoundedPrefix,
+  profileReady: unicode.profileReady,
+  profileId: unicode.profileId,
+  profileVersion: unicode.profileVersion,
+  setProfileUnavailableForTest: unicode.setProfileUnavailableForTest,
   detectorSpec,
   hasUsernamePath,
   hasDbScheme,

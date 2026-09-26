@@ -16,8 +16,12 @@ bounds = _BOUNDS
 
 
 class BoundMarker(dict):
-    def __init__(self, kind):
-        super().__init__(__optics_bound=kind)
+    def __init__(self, kind, scan=None):
+        payload = {"__optics_bound": kind}
+        if scan:
+            payload["matched"] = scan.get("matched") is True
+            payload["boundary"] = scan.get("boundary") is True and scan.get("matched") is not True
+        super().__init__(payload)
 
 
 def is_bound(value):
@@ -96,7 +100,7 @@ def _copy(value, state):
         return {"ok": True, "value": None}
     if type(value) is str:
         if privacy.utf8_bytes(value) > _BOUNDS["max_string_chars"]:
-            return {"ok": True, "value": BoundMarker(OVERSIZE)}
+            return {"ok": True, "value": BoundMarker(OVERSIZE, privacy.scan_bounded_prefix(value))}
         if _lone_surrogate(value):
             return {"ok": True, "value": BoundMarker(MALFORMED_TEXT)}
         return {"ok": True, "value": value}
@@ -110,8 +114,8 @@ def _copy(value, state):
         if value.is_integer() and abs(value) <= _BOUNDS["safe_integer_max"]:
             return {"ok": True, "value": int(value)}
         return {"ok": True, "value": value}
-    if type(value) is bytes or type(value) is bytearray:
-        return {"ok": False, "reason": "HOSTILE_INPUT"}
+    if type(value) is bytes or type(value) is bytearray or type(value) is memoryview:
+        return {"ok": False, "reason": "UNSUPPORTED_COMPLEX_VALUE", "disposition": "REJECT_FIELD"}
     if type(value) is list or type(value) is tuple:
         blocked = _enter(value, state)
         if blocked:

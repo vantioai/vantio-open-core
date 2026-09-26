@@ -1,6 +1,7 @@
 """PKG-01 Python validator tests. Stdlib only."""
 
 import copy
+import hashlib
 import json
 import os
 import pathlib
@@ -12,6 +13,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = ROOT / "packages" / "optics-evidence-contract" / "src"
 sys.path.insert(0, str(SRC))
 
+import privacy  # noqa: E402
+import unicode_profile  # noqa: E402
 import validate  # noqa: E402
 
 CORPUS = json.loads((pathlib.Path(__file__).parent / "corpus.json").read_text(encoding="utf-8"))
@@ -109,6 +112,12 @@ def run_case(item):
         return validate.validate_evidence({"record_type": "observation_event", "note": _plain_fn})
     if harness == "nonreturning":
         return _worker_result()
+    if harness == "binary-buffer":
+        return validate.validate_evidence(bytes([9, 8, 7]))
+    if harness == "binary-uint8array":
+        return validate.validate_evidence(bytearray([9, 8, 7]))
+    if harness == "binary-memoryview":
+        return validate.validate_evidence(memoryview(bytes([9, 8, 7])))
     return validate.validate_evidence(materialize(item))
 
 
@@ -121,7 +130,7 @@ def dump_canonical():
 
 class ContractTests(unittest.TestCase):
     def test_corpus(self):
-        self.assertGreaterEqual(len(CORPUS["cases"]), 110)
+        self.assertEqual(len(CORPUS["cases"]), 220)
         banned = ("CANARY", "sk-", "AKIA", "ghp_", "AIza", "BEGIN PRIVATE", "canary.person", "sk-CANARYKEYNAME0001")
         for item in CORPUS["cases"]:
             self._assert_result(item, run_case(item))
@@ -257,17 +266,30 @@ class ContractTests(unittest.TestCase):
 
     def test_no_network_imports(self):
         root = ROOT / "packages" / "optics-evidence-contract" / "src"
-        text = "\n".join((root / name).read_text(encoding="utf-8") for name in (
-            "validate.py", "privacy.py", "walk.py", "canonical.py", "validate.cjs", "privacy.cjs", "walk.cjs", "canonical.cjs"
-        ))
+        names = (
+            "validate.py", "privacy.py", "walk.py", "canonical.py", "unicode_profile.py",
+            "validate.cjs", "privacy.cjs", "walk.cjs", "canonical.cjs", "unicode_profile.cjs",
+        )
+        text = "\n".join((root / name).read_text(encoding="utf-8") for name in names)
         self.assertNotIn('require("http")', text)
         self.assertNotIn('require("net")', text)
         self.assertNotIn("import urllib", text)
         self.assertNotIn("import socket", text)
         self.assertNotIn("import requests", text)
-        detectors = "\n".join((root / name).read_text(encoding="utf-8") for name in ("privacy.py", "privacy.cjs"))
-        for token in ("isalpha", "isalnum", "casefold", "toLowerCase", "toUpperCase", ".lower(", ".upper(", "toLocale"):
+        detectors = "\n".join(
+            (root / name).read_text(encoding="utf-8")
+            for name in ("privacy.py", "privacy.cjs", "unicode_profile.py", "unicode_profile.cjs")
+        )
+        for token in (
+            "isalpha", "isalnum", "casefold", "toLowerCase", "toUpperCase", ".lower(", ".upper(", "toLocale",
+            ".normalize(", "unicodedata", "\\p{L}", "\\p{N}", "Intl.",
+        ):
             self.assertNotIn(token, detectors, token)
+        generator = (ROOT / "packages" / "optics-evidence-contract" / "tools" / "generate_unicode_profile.py").read_text(
+            encoding="utf-8"
+        )
+        for token in ("urllib", "import socket", "requests", "import unicodedata", "unicodedata."):
+            self.assertNotIn(token, generator, token)
         classes = json.loads((ROOT / "packages" / "optics-evidence-contract" / "contract" / "detector-classes.json").read_text(encoding="utf-8"))
         bounds = json.loads((ROOT / "packages" / "optics-evidence-contract" / "contract" / "normalization.json").read_text(encoding="utf-8"))
         self.assertEqual(classes["length_unit"], "UTF-8_BYTES")
@@ -344,6 +366,8 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(result["compatibility"], expect["compatibility"], ident)
         for key, value in (expect.get("diagnostics") or {}).items():
             self.assertEqual(result["diagnostics"][key], value, ident + " " + key)
+        for key, value in (expect.get("completeness_inputs") or {}).items():
+            self.assertEqual(result["completeness_inputs"][key], value, ident + " " + key)
         if expect["record_emitted"]:
             for key, value in (expect.get("record") or {}).items():
                 self.assertEqual(result["record"].get(key), value, ident + " " + key)
@@ -364,6 +388,97 @@ class ContractTests(unittest.TestCase):
                 self.assertEqual(child["record"][key], value, ident + " event " + key)
         for token in expect.get("forbidden") or []:
             self.assertNotIn(token, canon, ident + " leaked " + token)
+
+    def test_pinned_unicode_tables(self):
+        contract = ROOT / "packages" / "optics-evidence-contract" / "contract"
+        meta = json.loads((contract / "unicode-profile-metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["profile_id"], "PKG01-UCD-16.0.0")
+        self.assertEqual(meta["profile_version"], "16.0.0")
+        self.assertEqual(unicode_profile.profile_id(), meta["profile_id"])
+        self.assertEqual(unicode_profile.profile_version(), meta["profile_version"])
+        for item in meta["outputs"]:
+            data = (contract / item["name"]).read_bytes()
+            self.assertGreater(len(data), 0)
+            self.assertLessEqual(len(data), meta["max_file_bytes"])
+            self.assertEqual(hashlib.sha256(data).hexdigest(), item["sha256"], item["name"])
+        for item in meta["sources"]:
+            data = (contract / "unicode-source" / item["name"]).read_bytes()
+            self.assertGreater(len(data), 0)
+            self.assertLessEqual(len(data), meta["max_file_bytes"])
+            self.assertEqual(hashlib.sha256(data).hexdigest(), item["sha256"], item["name"])
+        profile = json.loads((contract / "unicode-profile.json").read_text(encoding="utf-8"))
+        for vector in profile["verification_vectors"]:
+            normalized = unicode_profile.normalize_codes(vector["input"], vector["form"])
+            self.assertTrue(normalized["ok"])
+            self.assertEqual(normalized["codes"], vector["output"])
+            if vector.get("category") and len(vector["input"]) == 1:
+                self.assertEqual(unicode_profile.category_of(vector["input"][0]), vector["category"])
+        raw = bytearray((contract / "unicode-profile.json").read_bytes())
+        raw[0] ^= 0xFF
+        corrupt = hashlib.sha256(raw).hexdigest()
+        good = next(item["sha256"] for item in meta["outputs"] if item["name"] == "unicode-profile.json")
+        self.assertNotEqual(corrupt, good)
+
+    def test_unavailable_profile_fails_closed(self):
+        privacy.set_profile_unavailable_for_test(True)
+        try:
+            source = materialize(next(item for item in CORPUS["cases"] if item["id"] == "clean-observation"))
+            source["path"] = "/pay/4111111111111111"
+            result = validate.validate_evidence(source)
+            self.assertEqual(result["disposition"], "REJECT_RECORD")
+            self.assertEqual(result["reason_code"], "VALIDATOR_FAULT")
+            self.assertEqual(result["issue_location"], "CONFIGURATION")
+            self.assertIsNone(result["record"])
+            self.assertEqual(result["diagnostics"]["scan_state"], "UNAVAILABLE")
+            self.assertIsNone(result["diagnostics"]["privacy_event"])
+            self.assertIsNone(result["diagnostics"]["unicode_profile_id"])
+            self.assertIsNone(result["diagnostics"]["unicode_profile_version"])
+            self.assertEqual(result["completeness_inputs"]["privacy_invariant"], "UNKNOWN")
+            self.assertNotIn("4111111111111111", validate.canonical_json(result))
+        finally:
+            privacy.set_profile_unavailable_for_test(False)
+        self.assertTrue(privacy.profile_ready())
+
+    def test_independent_probes(self):
+        source = materialize(next(item for item in CORPUS["cases"] if item["id"] == "clean-observation"))
+        source["path"] = "/pay/4111\u200e111111111111"
+        pan = validate.validate_evidence(source)
+        self.assertEqual(pan["disposition"], "REJECT_FIELD")
+        self.assertEqual(pan["reason_code"], "REDACTION_DROP")
+        self.assertEqual(pan["diagnostics"]["privacy_event"], "DESTINATION_COMPONENT_REDACTED")
+        self.assertEqual(pan["diagnostics"]["scan_state"], "FULL")
+        self.assertNotIn("path", pan["record"])
+        canon = validate.canonical_json(pan)
+        self.assertNotIn("4111111111111111", canon)
+        self.assertNotIn("\u200e", canon)
+        secret = validate.validate_evidence({
+            "record_type": "import_quarantine",
+            "schema_status": "unstable-pre-1.0",
+            "schema_version": 0,
+            "evidence_origin": "IMPORTED",
+            "original_evidence_origin": "LOCAL_OBSERVATION",
+            "accepted": False,
+            "imported_at": "2026-07-01T00:00:00.000Z",
+            "source_label": "s\u200b\u200bk-abcdefgh",
+        })
+        self.assertEqual(secret["disposition"], "REJECT_FIELD")
+        self.assertEqual(secret["reason_code"], "DETECTOR_MATCH")
+        self.assertEqual(secret["diagnostics"]["privacy_event"], "DETECTOR_MATCH")
+        self.assertNotIn("source_label", secret["record"])
+        self.assertNotIn("sk-", validate.canonical_json(secret))
+        unknown_input = materialize(next(item for item in CORPUS["cases"] if item["id"] == "clean-observation"))
+        unknown_input["path"] = "/a\u0379@b.co"
+        unknown = validate.validate_evidence(unknown_input)
+        self.assertEqual(unknown["disposition"], "REJECT_FIELD")
+        self.assertEqual(unknown["reason_code"], "REDACTION_DROP")
+        self.assertEqual(unknown["diagnostics"]["privacy_event"], "DESTINATION_COMPONENT_REDACTED")
+        self.assertNotIn("path", unknown["record"])
+        self.assertNotIn("\u0379", validate.canonical_json(unknown))
+        nested = validate.validate_evidence({"record_type": "observation_event", "payload": bytes([9, 8, 7])})
+        self.assertEqual(nested["disposition"], "REJECT_FIELD")
+        self.assertEqual(nested["reason_code"], "UNSUPPORTED_COMPLEX_VALUE")
+        self.assertIsNone(nested["record"])
+        self.assertNotIn("bytearray", validate.canonical_json(nested))
 
 
 if __name__ == "__main__":

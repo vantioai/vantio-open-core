@@ -112,7 +112,7 @@ Gate 8 in `docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md` still
 | Hostile getters and cycles | Bounded walk. Getter throws and cycles become `REJECT_RECORD` with no exception text in the result |
 | Recursion and size | Depth, key, array, node, and string caps. Over-long strings are dropped without storing a prefix |
 | Secret in a diagnostic | Reason codes and remediation codes are a closed token set. Values are never interpolated |
-| Unicode bypass | NFC check for session ids. NFKC and a confusable map are detection-only. The folded form is not stored |
+| Unicode bypass | Session ids and field-name comparison use pinned NFC from profile `PKG01-UCD-16.0.0`. NFKC and a confusable map are detection-only. The folded form is not stored. Host ICU and CPython `unicodedata` are not the privacy decision |
 | Percent-encoding and base64 | One detection decode. Decoded text is not stored. Invalid UTF-8 fails closed for that field |
 | JSON number drift | Integers only, inside the safe integer range |
 | Application mutation | Input objects are not written. Frozen-input tests cover that |

@@ -80,5 +80,7 @@
     "normalization",
     "acceptance"
   ],
-  "reported_reason": "The single reason_code follows enums.json reason_priority. MAX_SIZE_EXCEEDED outranks DETECTOR_MATCH and REDACTION_DROP, and the value is still omitted. A size-only failure does not report DETECTOR_MATCH. Session overflow keeps SESSION_ID_REJECTED because that reason owns the session health counter. The measurement for that check is still UTF-8 bytes."
+  "email_category_source": "unicode-category-ranges.json",
+  "unicode_profile_id": "PKG01-UCD-16.0.0",
+  "reported_reason": "The single reason_code follows enums.json reason_priority. MAX_SIZE_EXCEEDED outranks DETECTOR_MATCH and REDACTION_DROP, and the value is still omitted. A size-only failure does not report DETECTOR_MATCH. A candidate cut by the scan cap is SCAN_INCOMPLETE and is not DETECTOR_MATCH. Session overflow keeps SESSION_ID_REJECTED because that reason owns the session health counter. The measurement for that check is still UTF-8 bytes. Letter and number membership comes from the pinned Unicode profile, not host ICU or CPython unicodedata."
 }

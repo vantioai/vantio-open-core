@@ -12,8 +12,13 @@ const bounds = JSON.parse(
 const OVERSIZE = "OVERSIZE";
 const MALFORMED_TEXT = "MALFORMED_TEXT";
 
-function boundMarker(kind) {
-  return Object.freeze({ __optics_bound: kind });
+function boundMarker(kind, scan) {
+  const marker = { __optics_bound: kind };
+  if (scan) {
+    marker.matched = scan.matched === true;
+    marker.boundary = scan.boundary === true && scan.matched !== true;
+  }
+  return Object.freeze(marker);
 }
 
 function isBound(value) {
@@ -76,7 +81,7 @@ function copyValue(value, state) {
   const kind = typeof value;
   if (kind === "string") {
     if (Buffer.byteLength(value, "utf8") > bounds.max_string_chars) {
-      return { ok: true, value: boundMarker(OVERSIZE) };
+      return { ok: true, value: boundMarker(OVERSIZE, privacy.scanBoundedPrefix(value)) };
     }
     if (hasLoneSurrogate(value)) {
       return { ok: true, value: boundMarker(MALFORMED_TEXT) };
@@ -97,6 +102,9 @@ function copyValue(value, state) {
     return { ok: false, reason: "HOSTILE_INPUT" };
   }
   if (kind !== "object") return { ok: false, reason: "HOSTILE_INPUT" };
+  if (types.isUint8Array(value)) {
+    return { ok: false, reason: "UNSUPPORTED_COMPLEX_VALUE", disposition: "REJECT_FIELD" };
+  }
   const shape = containerKind(value);
   if (shape === "proxy" || (shape === "exotic" && chainHasAccessor(value))) {
     return { ok: false, reason: "ACCESSOR_PROPERTY_FORBIDDEN" };

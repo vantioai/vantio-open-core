@@ -7,7 +7,6 @@ This module does not write a store and does not import the live SDK.
 import json
 import re
 import types
-import unicodedata
 from pathlib import Path
 
 import canonical
@@ -126,6 +125,71 @@ class State(object):
         self.failure_identified = False
         self.reader_origin = None
         self.interrupted = False
+        self.scan_state = "FULL"
+
+
+_SCAN_RANK = {"FULL": 0, "SIZE_ONLY": 1, "BOUNDARY": 2, "MATCHED_IN_PREFIX": 3, "UNAVAILABLE": 4}
+
+
+def _note_scan(state, kind):
+    if _SCAN_RANK.get(kind, 0) > _SCAN_RANK.get(state.scan_state, 0):
+        state.scan_state = kind
+
+
+def _bound_facts(value):
+    if not walk.is_bound(value):
+        return None
+    if value.get("__optics_bound") == walk.OVERSIZE:
+        matched = value.get("matched") is True
+        return {
+            "oversize": True,
+            "walk": True,
+            "malformed": False,
+            "matched": matched,
+            "boundary": value.get("boundary") is True and not matched,
+            "prohibited": matched,
+        }
+    return {
+        "oversize": False,
+        "walk": False,
+        "malformed": value.get("__optics_bound") == walk.MALFORMED_TEXT,
+        "matched": False,
+        "boundary": False,
+        "prohibited": True,
+    }
+
+
+def _note_bound_scan(state, facts):
+    if not facts or facts.get("walk") is not True:
+        return
+    if facts.get("matched"):
+        _note_scan(state, "MATCHED_IN_PREFIX")
+    elif facts.get("boundary"):
+        _note_scan(state, "BOUNDARY")
+        state.completeness.add("SCAN_INCOMPLETE")
+    else:
+        _note_scan(state, "SIZE_ONLY")
+
+
+def _observe_bounds(state, value, seen):
+    if walk.is_bound(value):
+        _note_bound_scan(state, _bound_facts(value))
+        return
+    if isinstance(value, list):
+        ident = id(value)
+        if ident in seen:
+            return
+        seen.add(ident)
+        for item in value:
+            _observe_bounds(state, item, seen)
+        return
+    if isinstance(value, dict):
+        ident = id(value)
+        if ident in seen:
+            return
+        seen.add(ident)
+        for item in value.values():
+            _observe_bounds(state, item, seen)
 
 
 def _add_disposition(state, disposition):
@@ -218,6 +282,15 @@ def _drop_record(state, reason):
 
 
 def _put(state, record, name, value, kind):
+    facts = _bound_facts(value)
+    if facts:
+        _reject_field(state, name)
+        if facts["oversize"]:
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+        _note_bound_scan(state, facts)
+        if facts["prohibited"]:
+            _mark_privacy(state)
+        return
     record[name] = value
     if kind == "accepted":
         state.normalized.discard(name)
@@ -514,7 +587,19 @@ def _is_ipv6(text):
 
 def _normalize_host(value):
     if not isinstance(value, str) or walk.is_bound(value):
-        return {"ok": False, "prohibited": walk.is_bound(value)}
+        facts = _bound_facts(value) or {
+            "prohibited": False,
+            "oversize": False,
+            "boundary": False,
+            "matched": False,
+        }
+        return {
+            "ok": False,
+            "prohibited": facts["prohibited"],
+            "oversize": facts["oversize"],
+            "boundary": facts["boundary"],
+            "matched": facts["matched"],
+        }
     width = _utf8_bytes(value)
     if width < 1 or width > bounds["host_max_chars"]:
         return {"ok": False, "oversize": width > bounds["host_max_chars"], "prohibited": privacy.contains_prohibited(value)}
@@ -547,8 +632,21 @@ def _normalize_host(value):
 
 def _normalize_path(value):
     if not isinstance(value, str) or walk.is_bound(value):
-        oversize = walk.is_bound(value) and value.get("__optics_bound") == walk.OVERSIZE
-        return {"ok": False, "oversize": oversize, "prohibited": True}
+        facts = _bound_facts(value) or {
+            "prohibited": False,
+            "oversize": False,
+            "walk": False,
+            "boundary": False,
+            "matched": False,
+        }
+        return {
+            "ok": False,
+            "oversize": facts["oversize"],
+            "walk": facts["walk"],
+            "prohibited": facts["prohibited"],
+            "boundary": facts["boundary"],
+            "matched": facts["matched"],
+        }
     if _utf8_bytes(value) > bounds["path_max_chars"]:
         return {"ok": False, "oversize": True, "prohibited": privacy.sensitive_path(value)}
     if _has_control(value) or "\\" in value or privacy.sensitive_path(value):
@@ -569,7 +667,19 @@ def _normalize_path(value):
 
 def _content_type(value):
     if not isinstance(value, str) or walk.is_bound(value):
-        return {"ok": False, "prohibited": True}
+        facts = _bound_facts(value) or {
+            "prohibited": True,
+            "oversize": False,
+            "boundary": False,
+            "matched": False,
+        }
+        return {
+            "ok": False,
+            "prohibited": facts["prohibited"],
+            "oversize": facts["oversize"],
+            "boundary": facts["boundary"],
+            "matched": facts["matched"],
+        }
     base = privacy.ascii_fold(value.split(";", 1)[0].strip())
     width = _utf8_bytes(base)
     if width < 3 or width > bounds["content_type_max_chars"]:
@@ -643,7 +753,21 @@ def _parse_authority(authority):
 
 def _parse_destination(raw, state):
     if not isinstance(raw, str) or walk.is_bound(raw):
-        return {"ok": False, "failClosed": True, "privacy": True}
+        facts = _bound_facts(raw) or {
+            "prohibited": False,
+            "oversize": False,
+            "boundary": False,
+            "matched": False,
+        }
+        if facts["oversize"]:
+            _note_bound_scan(state, facts)
+        return {
+            "ok": False,
+            "failClosed": True,
+            "privacy": facts["prohibited"],
+            "oversize": facts["oversize"],
+            "boundary": facts["boundary"],
+        }
     raw_bytes = _utf8_bytes(raw)
     if raw_bytes > bounds["destination_raw_max_chars"] or _has_control(raw):
         return {
@@ -731,14 +855,23 @@ def _parse_destination(raw, state):
 
 
 def _string_secret(value):
-    if walk.is_bound(value):
-        return True
+    facts = _bound_facts(value)
+    if facts:
+        return facts["prohibited"]
     return isinstance(value, str) and privacy.contains_prohibited(value)
 
 
 def _consume_string_field(value):
-    if walk.is_bound(value):
-        return {"prohibited": True, "malformed": value.get("__optics_bound") == walk.MALFORMED_TEXT}
+    facts = _bound_facts(value)
+    if facts:
+        return {
+            "prohibited": facts["prohibited"],
+            "malformed": facts["malformed"],
+            "oversize": facts["oversize"],
+            "walk": facts["walk"],
+            "boundary": facts["boundary"],
+            "matched": facts["matched"],
+        }
     if not isinstance(value, str):
         return {"bad": True}
     if privacy.contains_prohibited(value):
@@ -747,16 +880,26 @@ def _consume_string_field(value):
 
 
 def _check_session(value, basis, producer_ok):
-    if walk.is_bound(value):
-        malformed = value.get("__optics_bound") == walk.MALFORMED_TEXT
-        return {"omit": True, "session": True, "privacy": not malformed, "malformed": malformed}
+    facts = _bound_facts(value)
+    if facts:
+        return {
+            "omit": True,
+            "session": True,
+            "privacy": facts["prohibited"] and not facts["malformed"],
+            "malformed": facts["malformed"],
+            "oversize": facts["oversize"],
+            "walk": facts["walk"],
+            "boundary": facts["boundary"],
+            "matched": facts["matched"],
+        }
     if not isinstance(value, str) or not isinstance(basis, str):
         return {"omit": True, "session": True}
     if basis not in SESSION_BASIS:
         return {"omit": True, "session": True}
     if basis == "OPTICS_GENERATED" and not producer_ok:
         return {"omit": True, "session": True}
-    if unicodedata.normalize("NFC", value) != value:
+    nfc = privacy.contract_nfc(value)
+    if nfc is None or nfc != value:
         return {"omit": True, "session": True}
     if _utf8_bytes(value) > bounds["session_id_max_bytes"]:
         return {"omit": True, "session": True, "privacy": privacy.contains_prohibited(value)}
@@ -1052,6 +1195,7 @@ def _collect_destination(source, seen, state):
             _reject_field(state, "path")
             if path_value.get("oversize"):
                 _add_reason(state, "MAX_SIZE_EXCEEDED")
+            _note_bound_scan(state, path_value)
             if path_value.get("prohibited"):
                 _mark_destination_component(state)
         elif chosen.get("path") and chosen["path"] != path_value["value"]:
@@ -1074,6 +1218,7 @@ def _note_orphan_path(state, explicit_path):
     _reject_field(state, "path")
     if path_value.get("oversize"):
         _add_reason(state, "MAX_SIZE_EXCEEDED")
+    _note_bound_scan(state, path_value)
     if path_value.get("prohibited"):
         _mark_destination_component(state)
 
@@ -1418,6 +1563,13 @@ def _apply_session(source, seen, state, record, producer_ok):
         return
     checked = _check_session(identifier["value"], basis["value"], producer_ok)
     if not checked.get("ok"):
+        if checked.get("oversize"):
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            _reject_field(state, "session_id")
+            _note_bound_scan(state, checked)
+            if checked.get("privacy"):
+                _mark_privacy(state)
+            return
         _mark_session(state)
         if checked.get("privacy"):
             _mark_privacy(state)
@@ -1798,6 +1950,7 @@ def _apply_observation_fields(source, seen, state, record):
 
 def _build_observation(source):
     state = State()
+    _observe_bounds(state, source, set())
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "observation_event")
@@ -1834,6 +1987,7 @@ def _build_observation(source):
 
 def _build_envelope(source):
     state = State()
+    _observe_bounds(state, source, set())
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "run_envelope")
@@ -1893,6 +2047,7 @@ def _build_envelope(source):
 
 def _build_derived(source):
     state = State()
+    _observe_bounds(state, source, set())
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "derived_diagnostic")
@@ -1952,6 +2107,7 @@ def _build_derived(source):
 
 def _build_annotation(source):
     state = State()
+    _observe_bounds(state, source, set())
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "annotation")
@@ -1990,9 +2146,10 @@ def _build_annotation(source):
     if text["present"]:
         scanned = _consume_string_field(text["value"])
         too_long = isinstance(text["value"], str) and _utf8_bytes(text["value"]) > bounds["annotation_text_max_chars"]
-        if too_long:
+        if scanned.get("oversize") or too_long:
             _reject_field(state, "text")
             _add_reason(state, "MAX_SIZE_EXCEEDED")
+            _note_bound_scan(state, scanned)
             if scanned.get("prohibited"):
                 _mark_privacy(state)
         elif scanned.get("prohibited") or scanned.get("bad"):
@@ -2023,6 +2180,7 @@ def _value_enum(name, value):
 
 def _build_health(source):
     state = State()
+    _observe_bounds(state, source, set())
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "product_health")
@@ -2078,6 +2236,7 @@ def _build_health(source):
 
 def _build_quarantine(source):
     state = State()
+    _observe_bounds(state, source, set())
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "import_quarantine")
@@ -2289,8 +2448,11 @@ def _finalize(state, record, events, application_result, compatibility):
             "privacy_event": (state.privacy_category or "REDACTION_DROP") if state.privacy else None,
             "provenance": state.provenance,
             "provenance_conflict": state.trace_conflict,
+            "scan_state": state.scan_state or "FULL",
             "scope_complete": False,
             "trace_basis_meaning": state.trace_meaning,
+            "unicode_profile_id": privacy.profile_id() if privacy.profile_ready() else None,
+            "unicode_profile_version": privacy.profile_version() if privacy.profile_ready() else None,
         },
         "completeness_inputs": {
             "accept_reject": "ACCEPT" if emitted else "REJECT",
@@ -2300,7 +2462,13 @@ def _finalize(state, record, events, application_result, compatibility):
             "evidence_origin_label": state.reader_origin,
             "integrity_state": "UNKNOWN",
             "interrupted": state.interrupted,
-            "privacy_invariant": "VIOLATED" if state.privacy else "HELD",
+            "privacy_invariant": "VIOLATED"
+            if state.privacy
+            else (
+                "UNKNOWN"
+                if state.scan_state in ("BOUNDARY", "SIZE_ONLY", "UNAVAILABLE")
+                else "HELD"
+            ),
             "sampling": "UNSAMPLED",
             "scope_complete": False,
             "stripped_fields": _sorted(state.stripped),
@@ -2358,6 +2526,7 @@ def _merge_state(parent, child):
         parent.privacy = True
         if not parent.privacy_category:
             parent.privacy_category = child.privacy_category or "REDACTION_DROP"
+    _note_scan(parent, child.scan_state)
     if not parent.reader_origin and child.reader_origin:
         parent.reader_origin = child.reader_origin
 
@@ -2479,6 +2648,20 @@ def validate_evidence(value, options=None):
     try:
         if isinstance(options, dict) and options.get("injectFault") is True:
             raise RuntimeError("injected")
+        if not privacy.profile_ready():
+            state = State()
+            state.scan_state = "UNAVAILABLE"
+            state.configuration_fault = True
+            state.drop_record = True
+            state.completeness.add("EVENT_DROPPED")
+            state.health["events_rejected"] = 1
+            _add_reason(state, "VALIDATOR_FAULT")
+            _add_disposition(state, "REJECT_RECORD")
+            state.provenance = "NOT_APPLICABLE"
+            return _finish_result(
+                _finalize(state, None, [], application_result, _empty_compatibility("configuration", False, None)),
+                detached,
+            )
         if isinstance(value, str):
             if _utf8_bytes(value) > bounds["max_input_chars"]:
                 return _finish_result(_terminal("INPUT_BOUND", application_result, "bytes"), detached)
@@ -2508,7 +2691,7 @@ def validate_evidence(value, options=None):
                 _reject_field_terminal("UNSUPPORTED_COMPLEX_VALUE", application_result, "unknown"),
                 detached,
             )
-        if value is None or type(value) in (bool, int, float, bytes, bytearray):
+        if value is None or type(value) in (bool, int, float):
             return _finish_result(_terminal("RECORD_TYPE_REJECTED", application_result, "unknown"), detached)
         copied = walk.plain_copy(value)
         if not copied["ok"]:
