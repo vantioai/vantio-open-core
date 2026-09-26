@@ -10,9 +10,94 @@
     "role": "PLANNING_PRODUCER",
     "self_certified_council_pass": false
   },
-  "council_identities": null,
-  "council_status": "PENDING_INDEPENDENT_COUNCIL",
-  "council_verdict": "PENDING",
+  "council_identities": {
+    "agent": "bc-cef881e2-7866-5523-9e29-1116de3490ab",
+    "model": "Grok 4.7",
+    "role": "INDEPENDENT_PLANNING_COUNCIL",
+    "seats": "all 12 filled by this agent",
+    "separate_from_planning_producer": "bc-cdec4aa3-94f6-5b72-b604-d2b7ba3bfbac",
+    "reviewed_tip": "f89f5143ffd70d22d6d9a15b22d191cc9d62e0bd",
+    "url": "https://cursor.com/agents/bc-cef881e2-7866-5523-9e29-1116de3490ab"
+  },
+  "council_status": "PASSED",
+  "council_verdict": "PASS_WITH_NONBLOCKING_NOTES",
+  "council_force_classification": "OPTICS_FOUNDATION_IMPLEMENTATION_PLAN_COUNCIL_PASSED",
+  "council_reviewed_tip": "f89f5143ffd70d22d6d9a15b22d191cc9d62e0bd",
+  "council_reviewed_at_utc": "2026-09-26T17:40:00Z",
+  "council_reviewed_at_america_new_york": "2026-09-26T13:40:00-0400",
+  "council_blocking_findings": [],
+  "council_nonblocking_notes": [
+    "N1",
+    "N2",
+    "N3",
+    "N4",
+    "N5",
+    "N6",
+    "N7",
+    "N8"
+  ],
+  "council_seats": [
+    {
+      "seat": 1,
+      "scope": "Observability product architecture",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 2,
+      "scope": "Privacy engineering",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 3,
+      "scope": "Node instrumentation",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 4,
+      "scope": "Python instrumentation",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 5,
+      "scope": "Storage and migration",
+      "verdict": "PASS"
+    },
+    {
+      "seat": 6,
+      "scope": "Release engineering",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 7,
+      "scope": "Reliability and fail-open",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 8,
+      "scope": "Cross-platform engineering",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 9,
+      "scope": "Developer experience",
+      "verdict": "PASS"
+    },
+    {
+      "seat": 10,
+      "scope": "Scope control",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 11,
+      "scope": "Evidence and verification",
+      "verdict": "PASS"
+    },
+    {
+      "seat": 12,
+      "scope": "Customer supportability",
+      "verdict": "PASS"
+    }
+  ],
   "source_repo": "https://github.com/vantioai/vantio-open-core",
   "starting_main_sha": "8a6ef881169c2bf379e04a7d1e8381532ec236b2",
   "branch": "planning/optics-foundation-a8-decomposition",
@@ -73,7 +158,7 @@
     "06-RELEASE-SEQUENCING.md": "7b5314bcfa3809671df45a99dbbfc5ef0eaeb8094e48c79848d882776bac363e",
     "07-FIRST-SLICE-SPECIFICATION.md": "261c610250a9034218d6374d6424e62d58dedec57b1ccf9734a7f8822fac04f3",
     "08-FIRST-SLICE-FUTURE-FORCE.md": "396447b720d135a9a25f04657f3faaf6cc5db37516e46328845f376f813d1998",
-    "09-INDEPENDENT-PLANNING-COUNCIL.md": "86d0ca82565ecab6d242a4b2dac8d41df10013d751f6b47fd9fc2d973226aa5c",
+    "09-INDEPENDENT-PLANNING-COUNCIL.md": "49166c20e1440143c32c87303b394109ff7f6d3e1d1b91d914548b5606e5e6f7",
     "IMPLEMENTATION-PACKAGES.json": "4a30e32fc918ab7bcd9d000061c7588ae8834f09c2cc44a5a5278975ccf2abe8"
   },
   "manifest_self_hash_note": "This manifest does not store its own SHA-256. Hashing it would change the bytes. Git commit identity is the manifest identity.",
