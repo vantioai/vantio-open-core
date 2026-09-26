@@ -55,9 +55,9 @@ Overall is the worst material seat. `NEEDS_REVISION` is the worst result below. 
    | `detail_code` | `AKIAIOSFODNN7EXAMPLE` | `product_health` |
    | `detail_code` | `AIzaCANARY0001` | `product_health` |
    | `reason_code` | `ghp_CANARYTOKEN0001` | `import_quarantine` |
-   | `provider_id` | `sk-canary0001` | `CATALOG`, `REGIONAL_PATTERN`, and `LOCAL_OLLAMA` on `localhost:11434` |
+   | `provider_id` | `sk-canary0001` | `CATALOG` and `LOCAL_OLLAMA` on `localhost:11434` in both languages. Node also stored it for `REGIONAL_PATTERN`. Python uses that same non-`NONE` branch. |
 
-   Source: `validate.cjs` schema-status-seen store, detail-code store, quarantine reason store, and provider-id store (`confidence === "NONE"` is the only branch that forces `provider_id` to `unknown`). The Python module has the same stores.
+   Source: `validate.cjs` schema-status-seen store, detail-code store, quarantine reason store, and provider-id store (`confidence === "NONE"` is the branch that forces `provider_id` to `unknown`). The Python module has the same stores.
 
 2. **A prohibited value in a field name is copied into diagnostics and classified as an unknown field.** Input key `sk-CANARYKEYNAME0001` with value `x` produced disposition `STRIP`, reason `UNKNOWN_FIELD_OMITTED`, `privacy_event` null, and `fields.stripped` / `completeness_inputs.stripped_fields` equal to that key. `PRIVACY-DISPOSITIONS.md` says the prohibited value is not copied into the result, the reason, or a diagnostic string. The key is the prohibited value. Node and Python matched.
 
