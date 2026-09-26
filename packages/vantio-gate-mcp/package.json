@@ -1,6 +1,6 @@
 {
   "name": "@vantio/gate-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "mcpName": "io.github.vantioai/vantio-gate",
   "description": "@vantio/gate-mcp is a legacy compatibility package for Phantom Engine application-path enforcement dry-run. Gate is not a separate Vantio product or subscription.",
   "license": "MIT",
