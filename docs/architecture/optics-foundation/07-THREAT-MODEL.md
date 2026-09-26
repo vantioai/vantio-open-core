@@ -1,6 +1,6 @@
 # A6 — Threat model
 
-Classification input to `OPTICS_FOUNDATION_A6_READY_FOR_COUNCIL`. This file is the threat model. Gates are in `09-IMPLEMENTATION-GATES.md`.
+Revision: `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. Gate 7 stays reopened until a fresh council passes. This line is not a council pass. This file is the threat model. Gates are in `09-IMPLEMENTATION-GATES.md`.
 
 Audience: INTERNAL_RESTRICTED
 
@@ -56,7 +56,7 @@ Evidence tier for every case: unset. Required tests are specifications, not resu
 - Asset: trends, views, and proof exports
 - Trust boundary: imported bytes versus `LOCAL_OBSERVATION`
 - Abuse path: imported records are presented as locally observed activity
-- Prevention: origin `IMPORTED`, quarantine default `accepted: false`, no silent overwrite, demo and fixture excluded from default queries
+- Prevention: origin `IMPORTED`, `original_evidence_origin` preserved separately, quarantine default `accepted: false`, no silent overwrite, no promotion to `LOCAL_OBSERVATION`, demo, fixture, and `LEGACY_UNMARKED` excluded from default trends
 - Detection: every material view shows evidence origin. This pack does not build the view
 - Failure behavior: failed provenance or schema checks stay in quarantine
 - Recovery: prior local observations are unchanged
@@ -71,12 +71,12 @@ Evidence tier for every case: unset. Required tests are specifications, not resu
 - Asset: correlation fields
 - Trust boundary: incoming context versus local `run_id`
 - Abuse path: malformed, replayed, colliding, or sensitive baggage is stored or propagated
-- Prevention: size limits, hex or legacy-hex allowlist, no baggage field, conflict drops both parents
-- Detection: `rejected_context` product-health
-- Failure behavior: the event is kept with null trace fields. The bad context is not stored
+- Prevention: size limits, hex or legacy-hex allowlist, no baggage field, conflict drops both parents. `VANTIO_TRACE_ID` is `ASSERTED_CONTEXT`, not observation proof. Child `run_id` is new when the child is wrapped. `event_id` is scoped to `producer_id` plus `producer_sequence`
+- Detection: `rejected_context` product-health. Parent and producer-sequence conflicts set `identity_conflict` and are visible on the query envelope
+- Failure behavior: the event is kept with null trace fields. The bad context is not stored. Conflicting parenthood keeps both claims. A duplicate producer sequence with a different identity keeps both rows
 - Recovery: local `run_id` still identifies the attached process
 - Residual risk: `UNSET`
-- Required test: malformed, replay, collision, and oversize-context fixtures
+- Required test: malformed, replay, collision, oversize-context, parent-plus-child, detached child, conflicting parent, duplicate producer sequence, and cross-process timestamp-tie fixtures. Specified in A4. Not executed here
 - Status: `ARCHITECTURE_DEFINED`
 - Implementation: `NOT_STARTED`
 
@@ -159,14 +159,14 @@ Evidence tier for every case: unset. Required tests are specifications, not resu
 
 - Threat actor: crash, disk fault, or a partial write
 - Asset: operational store integrity
-- Trust boundary: durable store versus in-flight buffer
-- Abuse path: a torn write or interrupted migration is opened as a healthy database
-- Prevention: transactional migrations, integrity check, lifecycle states, no silent empty replacement
-- Detection: `integrity_state` and a future “database corruption” view state
-- Failure behavior: refuse recreation. Newer or corrupt schemas stay refused or bounded read-only
-- Recovery: pre-migration backup and resume-or-stop. Legacy JSON files were not deleted
+- Trust boundary: durable store versus in-flight buffer, and versus the external recovery envelope
+- Abuse path: a torn write or interrupted migration is opened as a healthy database, or the only disclosure is a row inside the file that failed
+- Prevention: transactional migrations, integrity check, stop normal writes, preserve original bytes, no silent empty replacement, no automatic overwrite or delete
+- Detection: external recovery envelope under `optics/recovery/`, which the next command surfaces without trusting a health row inside the failed file. `integrity_result` on that envelope. Query `integrityState` uses the envelope when the store is not healthy
+- Failure behavior: first state is `STOPPED_PRESERVED`. The corrupt file is not served as the operational store. `READ_ONLY_SALVAGE` is a later classified mode only. Salvage answers are `PARTIAL` or `UNAVAILABLE`, never `COMPLETE`. Newer-schema and weaker-writer refusals use the same envelope with `RECOVERY_REQUIRED` and do not rewrite the file
+- Recovery: explicit workflow only. Success is `RECOVERED_TO_NEW_STORE` with a new store id. Failure is `RECOVERY_FAILED`. Original bytes and any pre-migration backup stay. Legacy JSON files were not deleted. The envelope may contain only the A3 allowlist
 - Residual risk: `UNSET`
-- Required test: interrupted migration and torn-write fixtures that assert the original bytes still exist
+- Required test: interrupted migration and torn-write fixtures that assert the original bytes still exist, the envelope exists outside the failed file, salvage is not `COMPLETE`, and a replacement does not overwrite the corrupt bytes. Specified in A3. Not executed here
 - Status: `ARCHITECTURE_DEFINED`
 - Implementation: `NOT_STARTED`. Current writers are non-atomic full-file replaces, and errors are swallowed
 
@@ -177,8 +177,8 @@ Evidence tier for every case: unset. Required tests are specifications, not resu
 - Trust boundary: customer AI calls versus Optics-internal diagnostics
 - Abuse path: hooks or formatter failures are stored as customer calls
 - Prevention: product-health and telemetry use a channel that does not pass through the customer hook. Default queries exclude `PRODUCT_HEALTH`
-- Detection: a recursion counter that is itself product-health and stops after one failure
-- Failure behavior: diagnostic failure does not create a customer event
+- Detection: a recursion counter that stops after one failure. That counter is not the corrupt-store record
+- Failure behavior: diagnostic failure does not create a customer event. Store corruption is disclosed by the external envelope, not by a row in the failed file
 - Recovery: drop the recursive diagnostic, record one internal failure, stop
 - Residual risk: `UNSET`
 - Required test: a self-observation fixture that asserts zero customer events from internal diagnostics
@@ -206,7 +206,7 @@ Evidence tier for every case: unset. Required tests are specifications, not resu
 - Asset: event identity and counts
 - Trust boundary: one observation pipeline versus other hooks in the same process
 - Abuse path: one call is stored more than once and inflates counts
-- Prevention: `event_id` from (`producer`, `run_id`, `sequence`). Duplicate insert does not add a second logical event. A time-window heuristic is not adopted while the window is `NOT_SET`
+- Prevention: `event_id` from (`producer_id`, `producer_sequence`). Two processes do not share a producer stream. An identical replay does not add a second logical event. A conflicting replay stays visible. A time-window heuristic is not adopted while the window is `NOT_SET`
 - Detection: duplicate insert counted in product-health
 - Failure behavior: duplicates are marked and excluded from inflated totals
 - Recovery: repeat-safe import does not create a second logical event and does not change origin
@@ -239,7 +239,7 @@ Evidence tier for every case: unset. Required tests are specifications, not resu
 - Prevention: `privacy_generation`. A weaker writer refuses. Down-migration is forbidden
 - Detection: schema version and privacy generation on product-health
 - Failure behavior: refuse the weaker writer. Do not rewrite records
-- Recovery: stay on the privacy-preserving file, or use a bounded read-only adapter that does not export prohibited fields
+- Recovery: stay on the privacy-preserving file. The refusal is recorded on the external envelope. A bounded read-only adapter must not export prohibited fields and must not present a corrupt file as `COMPLETE`
 - Residual risk: `UNSET`
 - Required test: rollback fixtures that open a stronger store with a weaker build and fail closed
 - Status: `ARCHITECTURE_DEFINED`

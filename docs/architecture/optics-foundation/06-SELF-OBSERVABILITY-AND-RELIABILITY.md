@@ -2,6 +2,8 @@
 
 Classification: `OPTICS_FOUNDATION_A5_CONTRACT_READY`
 
+Revision: `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. Gate 6 stays reopened until a fresh council passes. This line is not a council pass.
+
 Audience: INTERNAL_RESTRICTED
 
 No numeric performance target is adopted. Every budget’s current target is `NOT_SET`. The roadmap example “<5ms p99” is an example in that document and is not a target of this pack.
@@ -21,7 +23,10 @@ Diagnostic names (the `name` enum):
 - `query_latency_ms` (measurement method `NOT_SET`)
 - `database_size_bytes`
 - `last_successful_write_at`
-- `integrity_state` (`OK`, `FAILED`, `UNKNOWN`)
+- `integrity_state` (`OK`, `FAILED`, `UNKNOWN`). When the store cannot be opened, the source of this fact is the A3 external recovery envelope. A row inside the failed store is not that source
+- `session_id_rejected`
+- `producer_sequence_conflict`
+- `parent_conflict`
 - `formatter_failures`
 - `migration_state` (`IDLE`, `IN_PROGRESS`, `FAILED`, `NOT_APPLICABLE`)
 - `redaction_failures`
@@ -33,27 +38,36 @@ Diagnostic names (the `name` enum):
 Recursion rule:
 
 - The writer that persists product-health must not pass through the customer observation hook.
-- If a diagnostic write fails, increment one in-memory counter and stop. Do not emit a customer event, and do not emit a new diagnostic per failure in a loop.
+- If a diagnostic write fails, increment one in-memory counter and stop. Do not emit a customer event, and do not emit a new diagnostic per failure in a loop. That counter is a recursion stop. It is not the corrupt-store disclosure. Corrupt-store disclosure is the external recovery envelope in A3, which the next command must surface.
 - Node already captures `fetch` before patching so the telemetry ping does not re-enter the interceptor (`telemetry.cjs` lines 27–36). The same pattern is required for any future store client: the store write is not an observed destination.
 
-A future local UI, if it exists, must not render these rows on the customer timeline. That UI is not authorized here.
+A future local UI, if it exists, must not render these rows on the customer timeline. It still shows the A4 envelope, including `dropState`, `completeness`, and `integrityState`. It must not present `PARTIAL`, `UNKNOWN`, or `UNAVAILABLE` as a complete state. That UI is not authorized here. A future support bundle may include the external recovery envelope and the query envelope, and may not include prompts, completions, raw bodies, credentials, exception text, or customer payloads. No support bundle is created here.
 
 ## 2. Failure taxonomy
 
+Issue location is the A1 section 3 rule. This table uses that rule and does not add a second mapping.
+
 | Failure | Issue location | Customer-visible evidence | Application effect |
 | --- | --- | --- | --- |
-| Hook did not install | `OPTICS` | Coverage gap on the run envelope | Process continues without observation |
+| Successful stored call, HTTP 2xx or 3xx, no identified failure | `NONE` | Human label “None” | The application’s own success |
+| Hook, persistence, read, migration, formatter, privacy, or internal Optics failure | `OPTICS` | Human label “Optics” | Process continues. No fabricated stored success |
 | Event rejected by allowlist | `OPTICS` | Drop count. The secret is absent | Call returns normally |
-| Queue or disk could not accept an event | `OPTICS` or `ENVIRONMENT` | Explicit drop count. Not a silent gap | Call returns normally |
-| Store corrupt | `OPTICS` | Integrity failure. Store file kept | Call returns normally |
-| Provider HTTP 4xx/5xx | `PROVIDER_INTERACTION` or `UNKNOWN` | `application_status` `APPLICATION_ERROR` | The application’s own error |
-| DNS, connect, TLS, timeout | `NETWORK` | `failure_kind` and unavailable HTTP status | The application’s own error |
-| Wrapped application exception | `CUSTOMER_APPLICATION` | `error_class` type name only | The application’s own exception |
-| Unsupported client | `COVERAGE` | `UNSUPPORTED` or no row | No change |
+| Queue or disk could not accept an event | `OPTICS` | Explicit drop count on the query envelope `dropState`. Not a silent gap | Call returns normally |
+| Store corrupt | `OPTICS` | External recovery envelope. Original bytes kept. Query completeness `PARTIAL` or `UNAVAILABLE`, never `COMPLETE` | Call returns normally |
+| HTTP 4xx or 5xx observed | `PROVIDER_INTERACTION` | Human label “Provider interaction”. HTTP status kept. `application_status` `APPLICATION_ERROR` | The application’s own error |
+| DNS, connect, TLS, or transport timeout, no HTTP status | `NETWORK` | Human label “Local network path” | The application’s own error |
+| Wrapped application exception, no HTTP status | `CUSTOMER_APPLICATION` | Human label “Customer application”. `error_class` type name only | The application’s own exception |
+| Local environment condition that is not an Optics-internal failure | `ENVIRONMENT` | Human label “Local environment” | Call returns normally |
+| Configuration fault | `CONFIGURATION` | Human label “Configuration” | Call returns normally |
+| Unsupported client, gap evidenced | `COVERAGE` | Human label “Observation coverage” | No change |
+| Unsupported or unobserved path, gap not evidenced | `UNKNOWN` | Human label “Unknown” | No change |
 | Reader cannot parse a legacy file | `OPTICS` | Corrupt count. File kept | Not an application failure |
-| Context rejected | `CONFIGURATION` | Null trace fields plus `rejected_context` | Call returns normally |
+| Malformed trace context | `NONE` when the call itself has no failing layer | Null trace fields and `rejected_context`. The bad context is not stored | Call returns normally |
+| Layer not determined | `UNKNOWN` | Human label “Unknown” | Call returns normally |
 
-`OPTICS_ERROR` remains the display token when Optics itself could not complete a local operation (unreadable data, signal on the wrapper). It is not used as the application outcome for a provider 500.
+`optics_status` `SUCCESS` means the observation record was stored. A stored HTTP 500 can have `optics_status` `SUCCESS` and `issue_location` `PROVIDER_INTERACTION`.
+
+`OPTICS_ERROR` remains the display token when Optics itself could not complete a local operation (unreadable data, signal on the wrapper). It is not used as the application outcome for a provider 500. Display text does not use “Provider fault.”
 
 ## 3. Fail-open invariant
 
@@ -96,7 +110,7 @@ Measurement method, workload, percentile, release gate, and evidence reference a
 ## 5. Overload and backpressure
 
 - Default sampling policy is `UNSAMPLED`. Every accepted event is in the store, or an explicit drop exists.
-- If a future sampling policy is introduced, each event records the policy id and the probability, and views must not call the result complete. This pack does not introduce sampling.
+- If a future sampling policy is introduced, each event records the policy id and the probability, `samplingState` becomes `SAMPLED`, and completeness is `PARTIAL` with `SAMPLING_NOT_UNSAMPLED`. This pack does not introduce sampling.
 - Error, slow-call, and proof-critical preservation under sampling is unspecified until that policy exists. No percentile defines “slow” (`NOT_SET`).
 - Queue-full behavior: refuse further observation inserts, add one `events_dropped` increment by the number refused, keep the application moving.
 - Burst behavior: same as queue-full. No second customer event per dropped call.
@@ -107,7 +121,7 @@ Measurement method, workload, percentile, release gate, and evidence reference a
 - Canonical timestamps are UTC RFC3339.
 - Duration uses a monotonic clock when the runtime provides one (`perf_counter` / `process.hrtime`). Wall clock is only a fallback and must set `clock_quality` to `WALL_CLAMPED` and must not store a negative duration.
 - Display timezone is a future UI concern. Stored values stay UTC. This Force does not add the UI.
-- Tied timestamps order by `sequence`, then `event_id`.
+- Tied timestamps order by `producer_id`, then `producer_sequence`, then `event_id`. The tie does not assign parenthood.
 - Clock rollback and DST do not rewrite stored instants.
 
 Lifecycle of a run envelope and of an event:
@@ -118,7 +132,7 @@ Lifecycle of a run envelope and of an event:
 | `PARTIAL` | Some calls were durable and the writer knows others were still buffered |
 | `INTERRUPTED` | Exit hook or migration stopped before the planned flush. Crash, signal, or disk error |
 | `ABANDONED` | Process ended with no flush and no partial durable events for that `run_id` |
-| `RECOVERED` | A later open found a partial transaction or partial file and made it readable without deleting it |
+| `RECOVERED` | An explicit recovery workflow reached `RECOVERED_TO_NEW_STORE`, or a partial transaction resumed from its last commit. Original corrupt bytes were not deleted. Salvage of a corrupt file is not this state and is not query `COMPLETE` |
 
 Today’s writers have none of these states. A normal exit that finishes `writeFileSync` is implicitly complete and unlabeled. `SIGKILL` is unlabeled absence. The contract adds the labels. It does not claim current files can be reconstructed into `ABANDONED` after the fact.
 
@@ -133,7 +147,7 @@ For a future view:
 - `STALE` — reserved until the freshness window is set.
 - `UNKNOWN` — the default honest value, including this entire pre-implementation period.
 
-Completeness of a run is the lifecycle field, not a percentage.
+Run lifecycle is not query completeness. Query completeness, freshness, and `integrityState` are three fields of the A4 envelope. Completeness is not a percentage. `CURRENT` stays unemitted while its window is `NOT_SET`, so freshness on the envelope is `UNKNOWN`. Unknown freshness does not by itself set completeness.
 
 ## 8. Indicators, not SLOs
 

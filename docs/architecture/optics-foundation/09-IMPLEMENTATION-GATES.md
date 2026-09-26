@@ -1,6 +1,8 @@
 # A6 — Implementation gates
 
-Classification: `OPTICS_FOUNDATION_A6_READY_FOR_COUNCIL`
+Classification: `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`
+
+This classification is the producer revision state. It is not a council pass. The first council verdict remains `NEEDS_REVISION` in `10-INDEPENDENT-COUNCIL-REPORT.md`.
 
 Audience: INTERNAL_RESTRICTED
 
@@ -12,20 +14,20 @@ Passing a gate in prose inside this pack is not `UNIT_PROVED`, `INTEGRATION_PROV
 
 | Gate | Name | What must be true before the next gate | State |
 | --- | --- | --- | --- |
-| 1 | Inventory | A0 source inventory exists, with conflicts left intact | Written in `01-CURRENT-STATE-INVENTORY.md`. Council has not accepted it |
-| 2 | Evidence and privacy | A1 classes, origins, allowlist, prohibited data, and release-blocking invariants are specified | Written in `02-EVIDENCE-AND-PRIVACY-CONTRACT.md`. Not implemented |
-| 3 | Store and proof | One store recommendation, rejected options, and a portable-proof boundary that avoids attestation language | Written in `03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md`. Founder ratification of option C is still open. No database exists |
-| 4 | Schema and migration | Unstable pre-1.0 identity, no silent empty store, Node/Python target, legacy JSON adapter | Written in `04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md`. No migrator exists |
-| 5 | Correlation and query | Identity hierarchy, deduplication, destination versus provider, bounded query, cardinality | Written in `05-CORRELATION-AND-QUERY-CONTRACT.md`. No query engine exists |
-| 6 | Reliability | Product-health separation, fail-open, lifecycle, budgets at `NOT_SET` | Written in `06-SELF-OBSERVABILITY-AND-RELIABILITY.md` |
-| 7 | Threat model | Cases T1–T15 with required fields and unset residual risk | Written in `07-THREAT-MODEL.md`. Council has not accepted residual risk |
-| 8 | Implementation Force | A separate Founder implementation Force, after an independent council report that is not `PENDING_SEPARATE_COUNCIL` | **Not open. Not started** |
+| 1 | Inventory | A0 source inventory exists, with conflicts left intact | Written in `01-CURRENT-STATE-INVENTORY.md`. First council accepted the gate with one nonblocking inventory note. This revision does not edit that file |
+| 2 | Evidence and privacy | A1 classes, origins, allowlist, issue location including `NONE`, session id, and release-blocking invariants are specified | Revised. Reopened until a fresh council passes. Not implemented |
+| 3 | Store and proof | Option C ratified as architecture only, rejected options, and one canonical proof byte profile | Revised. `STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY`. No database exists. Reopened until a fresh council passes |
+| 4 | Schema and migration | Unstable pre-1.0 identity, external recovery envelope, legacy origin rule | Revised. No migrator exists. Reopened until a fresh council passes |
+| 5 | Correlation and query | Identity hierarchy, child process, query envelope, cardinality | Revised. No query engine exists. Reopened until a fresh council passes |
+| 6 | Reliability | Product-health separation, fail-open, issue-location table aligned with A1, budgets at `NOT_SET` | Revised. Reopened until a fresh council passes |
+| 7 | Threat model | Cases T1–T15, with T10 aligned to the external envelope, residual risk unset | Revised. Reopened until a fresh council passes |
+| 8 | Implementation Force | A separate Founder implementation Force, after a fresh independent council passes | **Closed. Not started** |
 
 ## Rules
 
 - Gates 1–7 in this pack are documents. They are not execution of the controls.
 - Gate 8 is the only gate that could authorize product code, and only a separate Founder implementation Force can open it. This producer cannot open it.
-- A council request for revision reopens the affected gate and sets the producer classification to `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`. That has not happened inside this file.
+- The first council reopened gates 2–7 and classified the pack `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`. This revision leaves gates 2–7 reopened. The producer classification of the revision is `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. A fresh council has not passed.
 - CLI 0.3.24 stays frozen through every gate. Python 3.1.0 is not sealed by any gate in this pack.
 - No gate authorizes SQLite creation, a migration, a tag, a publish, a UI, a daemon, OTLP, or alerting.
 - Numeric budgets stay `NOT_SET` through Gate 8 unless a Founder sets them in a later Force. This pack does not set them.

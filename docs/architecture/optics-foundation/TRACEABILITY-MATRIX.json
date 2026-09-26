@@ -21,12 +21,14 @@
   "evidence_tier_note": "No requirement is assigned UNIT_PROVED, INTEGRATION_PROVED, STRANGER_HOST_PROVED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED.",
   "requirement_count": 52,
   "status_counts": {
-    "ARCHITECTURE_DEFINED": 25,
+    "ARCHITECTURE_DEFINED": 29,
     "TARGET_DESIGN": 20,
     "NEEDS_FOUNDER_DECISION": 3,
-    "ARCHITECTURE_BLOCKED": 4
+    "ARCHITECTURE_BLOCKED": 0
   },
-  "council_status_note": "A7 council bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2 moved OF-27, OF-33, OF-34, and OF-43 to ARCHITECTURE_BLOCKED on 2026-09-26. No row is IMPLEMENTED, SHIPPED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED.",
+  "council_status_note": "A7 council bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2 moved OF-27, OF-33, OF-34, and OF-43 to ARCHITECTURE_BLOCKED on 2026-09-26. The narrow architecture revision moved those four rows back to ARCHITECTURE_DEFINED. No row is IMPLEMENTED, SHIPPED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED. Evidence tiers stay UNSET. A fresh council has not passed.",
+  "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+  "revision_classification": "OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL",
   "inventory": {
     "stage": "A0",
     "classification": "OPTICS_FOUNDATION_A0_INVENTORY_COMPLETE",
@@ -198,7 +200,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Option C recommended. Founder ratification open. Not implemented."
+      "notes": "STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY. Embedded SQLite with WAL and an application-owned schema. Not implemented, not tested, and not customer-validated. Ratification does not authorize a database, a Node binding, a migration, or record conversion."
     },
     {
       "id": "OF-02",
@@ -228,7 +230,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "run_id, session_id, and trace_id are different. Session is not inferred."
+      "notes": "Hierarchy is session_id, run_id, trace_id, span_id. session_id is optional bounded UTF-8 with session_id_basis. Max bytes constant OPTICS_SESSION_ID_MAX_BYTES=80, not a public compatibility claim. Never a metric label. Not inferred."
     },
     {
       "id": "OF-04",
@@ -243,7 +245,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Trend command not specified. Default queries exclude demo, fixture, and imported origins."
+      "notes": "Trend command not specified. Default scope excludes LEGACY_UNMARKED, demo, fixture, and imported origins, and a trend carries source completeness."
     },
     {
       "id": "OF-05",
@@ -559,7 +561,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "event_id from producer, run_id, and sequence."
+      "notes": "event_id encoding is producer_id plus producer_sequence. Identical replay does not inflate counts. A conflicting reuse stays visible."
     },
     {
       "id": "OF-26",
@@ -580,8 +582,10 @@
       "id": "OF-27",
       "section": "Section 23 item 9",
       "title": "Data-quality dimensions",
-      "status": "ARCHITECTURE_BLOCKED",
+      "status": "ARCHITECTURE_DEFINED",
       "architecture_refs": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md",
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
       "evidence_tier": "UNSET",
@@ -589,7 +593,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Coverage, freshness UNKNOWN until a window exists, lifecycle completeness, integrity, correlation, privacy. No aggregate percentage. Council A7: ARCHITECTURE_BLOCKED. Those dimensions are named separately and are not fields of one read answer, so a page can look complete while capture is partial."
+      "notes": "Revision status ARCHITECTURE_DEFINED. Original block: freshness, completeness, and integrity were not one read answer. Revised decision: the query envelope carries freshness, completeness, completenessReasons, and integrityState together. CURRENT stays unemitted. Founder decision 10 remains. Not implemented. See 08 section 39."
     },
     {
       "id": "OF-28",
@@ -670,8 +674,10 @@
       "id": "OF-33",
       "section": "Section 23 item 15",
       "title": "Graceful degradation",
-      "status": "ARCHITECTURE_BLOCKED",
+      "status": "ARCHITECTURE_DEFINED",
       "architecture_refs": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md",
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
       "evidence_tier": "UNSET",
@@ -679,14 +685,16 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Application continues. Drops are explicit. No recursive drop notices. Council A7: ARCHITECTURE_BLOCKED. Continuation is specified. The default read does not have to show the drop, so loss can still look complete."
+      "notes": "Revision status ARCHITECTURE_DEFINED. Original block: default read could hide drops. Revised decision: dropState and completeness are on every default answer. Known drops in scope are PARTIAL. Application still continues. Not implemented. See 08 section 39."
     },
     {
       "id": "OF-34",
       "section": "Section 23 item 16",
       "title": "Crash consistency",
-      "status": "ARCHITECTURE_BLOCKED",
+      "status": "ARCHITECTURE_DEFINED",
       "architecture_refs": [
+        "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md",
+        "07-THREAT-MODEL.md",
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
       "evidence_tier": "UNSET",
@@ -694,7 +702,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Lifecycle states specified. Silent empty replacement forbidden. Council A7: ARCHITECTURE_BLOCKED. A3 stops on a corrupt file. T10 also allows bounded read-only. Disclosure is a health row inside the store that failed."
+      "notes": "Revision status ARCHITECTURE_DEFINED. Original block: A3 and T10 disagreed, and disclosure lived inside the failed store. Revised decision: external recovery envelope, STOPPED_PRESERVED first, salvage later and never COMPLETE. Not implemented. See 08 section 39."
     },
     {
       "id": "OF-35",
@@ -820,8 +828,9 @@
       "id": "OF-43",
       "section": "Section 23 item 25",
       "title": "Export formats",
-      "status": "ARCHITECTURE_BLOCKED",
+      "status": "ARCHITECTURE_DEFINED",
       "architecture_refs": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
         "08-ARCHITECTURE-DECISION-PACK.md"
       ],
       "evidence_tier": "UNSET",
@@ -829,7 +838,7 @@
       "independent_verifier": "UNSET",
       "stranger_host": "UNSET",
       "customer_validation": "UNSET",
-      "notes": "Canonical JSON proof plus renderings. JSONL is an export candidate. OTLP not authorized. Council A7: ARCHITECTURE_BLOCKED. Pretty-printed and compact JSON are both allowed, and no canonical byte profile is defined for the SHA-256."
+      "notes": "Revision status ARCHITECTURE_DEFINED. Original block: no canonical byte profile. Revised decision: OPTICS_CANONICAL_JSON version 1 for proof.json and manifest.json. Golden vector SHA-256 a12adfa5f7b59aa3c4c8c98a52d36a50dcf861c3f8aea9bee7ee2eac70fd263a. OTLP not authorized. Not implemented. See 08 section 39."
     },
     {
       "id": "OF-44",
