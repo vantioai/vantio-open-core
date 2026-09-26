@@ -1322,13 +1322,14 @@
         "reader_origin_label": "LEGACY_UNMARKED",
         "optics_health_impact": "NONE",
         "completeness_impact": [
-          "NONE"
+          "MISSING_REQUIRED_STATUS"
         ],
         "record_emitted": true,
         "record": {
           "response_bytes": null,
           "destination_host": "api.example.com",
-          "application_status": "SUCCESS"
+          "application_status": "SUCCESS",
+          "optics_status": "UNAVAILABLE"
         }
       }
     },
@@ -2044,7 +2045,7 @@
         "reader_origin_label": "LEGACY_UNMARKED",
         "optics_health_impact": "NONE",
         "completeness_impact": [
-          "NONE"
+          "MISSING_REQUIRED_STATUS"
         ],
         "record_emitted": true,
         "record": {
@@ -2124,7 +2125,7 @@
         "reader_origin_label": "LEGACY_UNMARKED",
         "optics_health_impact": "NONE",
         "completeness_impact": [
-          "NONE"
+          "MISSING_REQUIRED_STATUS"
         ],
         "record_emitted": true,
         "record": {
@@ -2152,6 +2153,1857 @@
           "other",
           "Observed"
         ]
+      }
+    },
+    {
+      "id": "detector-schema-status-seen",
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LEGACY_UNMARKED",
+        "source_label": "batch-a",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "schema_status_seen": "sk-CANARYSEEN00001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [],
+        "rejected": [
+          "schema_status_seen"
+        ],
+        "record_absent": [
+          "schema_status_seen"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "forbidden": [
+          "sk-CANARYSEEN00001",
+          "CANARYSEEN"
+        ]
+      }
+    },
+    {
+      "id": "detector-detail-code",
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "integrity_state",
+        "value": "UNKNOWN",
+        "detail_code": "AKIAIOSFODNN7EXAMPLE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "detail_code"
+        ],
+        "record_absent": [
+          "detail_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "forbidden": [
+          "AKIAIOSFODNN7EXAMPLE",
+          "AKIA"
+        ]
+      }
+    },
+    {
+      "id": "detector-quarantine-reason",
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LEGACY_UNMARKED",
+        "source_label": "batch-a",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "reason_code": "ghp_CANARYTOKEN0001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "reason_code"
+        ],
+        "record_absent": [
+          "reason_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "forbidden": [
+          "ghp_CANARYTOKEN0001",
+          "CANARYTOKEN"
+        ]
+      }
+    },
+    {
+      "id": "detector-provider-id",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "provider_id": "sk-canary0001",
+        "provider_confidence": "CATALOG"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "provider_id"
+        ],
+        "record": {
+          "provider_confidence": "CATALOG"
+        },
+        "record_absent": [
+          "provider_id"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "forbidden": [
+          "sk-canary0001",
+          "canary0001"
+        ]
+      }
+    },
+    {
+      "id": "secret-shaped-field-name",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "sk-CANARYKEYNAME0001": "x"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "UNKNOWN_FIELD_REDACTED_1"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "forbidden": [
+          "sk-CANARYKEYNAME0001",
+          "CANARYKEYNAME"
+        ]
+      }
+    },
+    {
+      "id": "path-unicode-email",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/user@exämple.com",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "path"
+        ],
+        "record_absent": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "/user@exämple.com",
+          "exämple.com"
+        ]
+      }
+    },
+    {
+      "id": "path-unicode-email-nfd",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/user@exämple.com",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "path"
+        ],
+        "record_absent": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "exämple",
+          "exämple.com"
+        ]
+      }
+    },
+    {
+      "id": "name-prompt-newline",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "prompt\n": "sk-CANARYPROMPTNL01"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROHIBITED_FIELD_NAME",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "stripped": [
+          "PROHIBITED_FIELD_CATEGORY"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYPROMPTNL01",
+          "prompt\\n",
+          "CANARYPROMPTNL"
+        ]
+      }
+    },
+    {
+      "id": "name-prompt-cr",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "prompt\r": "sk-CANARYPROMPTR01"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROHIBITED_FIELD_NAME",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "stripped": [
+          "PROHIBITED_FIELD_CATEGORY"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYPROMPTR01",
+          "prompt\\r"
+        ]
+      }
+    },
+    {
+      "id": "name-prompt-tab",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "prompt\t": "sk-CANARYPROMPTT01"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROHIBITED_FIELD_NAME",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "stripped": [
+          "PROHIBITED_FIELD_CATEGORY"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYPROMPTT01",
+          "prompt\\t"
+        ]
+      }
+    },
+    {
+      "id": "name-prompt-whitespace",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        " prompt ": "sk-CANARYPROMPTW01"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROHIBITED_FIELD_NAME",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "stripped": [
+          "PROHIBITED_FIELD_CATEGORY"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYPROMPTW01",
+          " prompt "
+        ]
+      }
+    },
+    {
+      "id": "name-prompt-case",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "Prompt": "sk-CANARYPROMPTC01"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROHIBITED_FIELD_NAME",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "stripped": [
+          "PROHIBITED_FIELD_CATEGORY"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYPROMPTC01",
+          "Prompt"
+        ]
+      }
+    },
+    {
+      "id": "name-prompt-percent",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "prompt%0A": "sk-CANARYPROMPTP01"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "PROHIBITED_FIELD_NAME",
+        "issue_location": "OPTICS",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "EVENT_DROPPED",
+          "REDACTION_DROP"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "stripped": [
+          "PROHIBITED_FIELD_CATEGORY"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYPROMPTP01",
+          "prompt%0A"
+        ]
+      }
+    },
+    {
+      "id": "name-duplicate-canonical",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "prompt": "alpha",
+        "Prompt": "beta"
+      },
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "DUPLICATE_CANONICAL_FIELD",
+        "issue_location": "OPTICS",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "forbidden": [
+          "alpha",
+          "beta",
+          "Prompt"
+        ]
+      }
+    },
+    {
+      "id": "trace-inherited-false-optics-generated",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "vantio_trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "OPTICS_GENERATED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "STRIP",
+        "reason_code": "CONFLICTING_PROVENANCE",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "CONFLICTING_PROVENANCE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "vantio_trace_id"
+        ],
+        "record": {
+          "evidence_origin": "LOCAL_OBSERVATION",
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "ASSERTED_CONTEXT"
+        },
+        "diagnostics": {
+          "provenance_conflict": "TRACE_BASIS_REPLACED",
+          "trace_basis_meaning": "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+        }
+      }
+    },
+    {
+      "id": "trace-traceparent-false-optics-generated",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+        "trace_id_basis": "OPTICS_GENERATED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "STRIP",
+        "reason_code": "CONFLICTING_PROVENANCE",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "CONFLICTING_PROVENANCE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "traceparent"
+        ],
+        "record": {
+          "evidence_origin": "LOCAL_OBSERVATION",
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "ASSERTED_CONTEXT"
+        },
+        "diagnostics": {
+          "provenance_conflict": "TRACE_BASIS_REPLACED",
+          "trace_basis_meaning": "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+        }
+      }
+    },
+    {
+      "id": "trace-inherited-false-local-observation",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "vantio_trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "OPTICS_GENERATED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REPLACE_WITH_SAFE_CATEGORY",
+        "reason_code": "CONFLICTING_PROVENANCE",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "CONFLICTING_PROVENANCE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "ASSERTED_CONTEXT"
+        },
+        "record_absent": [
+          "evidence_origin",
+          "destination_host",
+          "http_status"
+        ],
+        "diagnostics": {
+          "provenance_conflict": "TRACE_BASIS_REPLACED",
+          "trace_basis_meaning": "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+        }
+      }
+    },
+    {
+      "id": "trace-inherited-with-local-event",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 500,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "APPLICATION_ERROR",
+        "optics_status": "SUCCESS",
+        "issue_location": "PROVIDER_INTERACTION",
+        "vantio_trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "OPTICS_GENERATED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "STRIP",
+        "reason_code": "CONFLICTING_PROVENANCE",
+        "issue_location": "PROVIDER_INTERACTION",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "CONFLICTING_PROVENANCE"
+        ],
+        "record_emitted": true,
+        "issue_location_label": "Provider interaction",
+        "record": {
+          "evidence_origin": "LOCAL_OBSERVATION",
+          "trace_id_basis": "ASSERTED_CONTEXT",
+          "http_status": 500,
+          "application_status": "APPLICATION_ERROR"
+        },
+        "diagnostics": {
+          "provenance_conflict": "TRACE_BASIS_REPLACED",
+          "trace_basis_meaning": "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+        }
+      }
+    },
+    {
+      "id": "trace-direct-false-optics-generated",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "OPTICS_GENERATED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "NORMALIZE",
+        "reason_code": "CONFLICTING_PROVENANCE",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "CONFLICTING_PROVENANCE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "ASSERTED_CONTEXT",
+          "evidence_origin": "LOCAL_OBSERVATION"
+        },
+        "diagnostics": {
+          "provenance_conflict": "TRACE_BASIS_REPLACED",
+          "trace_basis_meaning": "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+        }
+      }
+    },
+    {
+      "id": "trace-witness-optics-generated",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "trace_id_basis": "OPTICS_GENERATED",
+        "optics_trace_witness": "PKG01_OPTICS_GENERATED_WITNESS"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "OPTICS_GENERATED"
+        },
+        "record_absent": [
+          "optics_trace_witness"
+        ],
+        "diagnostics": {
+          "trace_basis_meaning": "OPTICS_GENERATED",
+          "provenance_conflict": null
+        }
+      }
+    },
+    {
+      "id": "trace-import-traceparent",
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LEGACY_UNMARKED",
+        "source_label": "batch-a",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_OMITTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "traceparent"
+        ],
+        "record": {
+          "evidence_origin": "IMPORTED",
+          "trace_id": "0123456789abcdef0123456789abcdef",
+          "trace_id_basis": "IMPORTED_UNVERIFIED"
+        },
+        "diagnostics": {
+          "trace_basis_meaning": "IMPORTED_UNVERIFIED_NOT_OBSERVATION_PROOF",
+          "provenance_conflict": null
+        }
+      }
+    },
+    {
+      "id": "trace-malformed-traceparent",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "traceparent": "not-a-traceparent"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "CONTEXT_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "CONTEXT_REJECTED",
+        "completeness_impact": [
+          "CONTEXT_REJECTED"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "traceparent"
+        ],
+        "record": {
+          "trace_id": null,
+          "trace_id_basis": null
+        },
+        "diagnostics": {
+          "provenance_conflict": null
+        },
+        "forbidden": [
+          "not-a-traceparent"
+        ]
+      }
+    },
+    {
+      "id": "trace-collision",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "vantio_trace_id": "fedcba9876543210fedcba9876543210",
+        "trace_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "CONTEXT_REJECTED",
+        "issue_location": "CONFIGURATION",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "CONTEXT_REJECTED",
+        "completeness_impact": [
+          "CONTEXT_REJECTED"
+        ],
+        "record_emitted": true,
+        "issue_location_label": "Configuration",
+        "record": {
+          "trace_id": null,
+          "trace_id_basis": null,
+          "span_id": null,
+          "parent_span_id": null
+        },
+        "diagnostics": {
+          "provenance_conflict": "TRACE_COLLISION"
+        },
+        "forbidden": [
+          "0123456789abcdef0123456789abcdef",
+          "fedcba9876543210fedcba9876543210"
+        ]
+      }
+    },
+    {
+      "id": "missing-optics-status",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "MISSING_REQUIRED_STATUS",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "MISSING_REQUIRED_STATUS"
+        ],
+        "record_emitted": true,
+        "record": {
+          "optics_status": "UNAVAILABLE",
+          "action": "OBSERVED"
+        }
+      }
+    },
+    {
+      "id": "missing-optics-status-http-500",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 500,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "APPLICATION_ERROR",
+        "issue_location": "PROVIDER_INTERACTION"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "MISSING_REQUIRED_STATUS",
+        "issue_location": "PROVIDER_INTERACTION",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "MISSING_REQUIRED_STATUS"
+        ],
+        "record_emitted": true,
+        "issue_location_label": "Provider interaction",
+        "record": {
+          "optics_status": "UNAVAILABLE",
+          "http_status": 500,
+          "application_status": "APPLICATION_ERROR",
+          "action": "OBSERVED"
+        }
+      }
+    },
+    {
+      "id": "missing-action",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "MISSING_REQUIRED_STATUS",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "MISSING_REQUIRED_STATUS"
+        ],
+        "record_emitted": true,
+        "record": {
+          "optics_status": "SUCCESS"
+        },
+        "record_absent": [
+          "action"
+        ]
+      }
+    },
+    {
+      "id": "missing-action-emitted",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "MISSING_REQUIRED_STATUS",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "MISSING_REQUIRED_STATUS"
+        ],
+        "record_emitted": true,
+        "record": {
+          "event_id": "e.12.prod_clean_1.0",
+          "destination_host": "api.example.com",
+          "optics_status": "SUCCESS"
+        },
+        "record_absent": [
+          "action"
+        ]
+      }
+    },
+    {
+      "id": "missing-application-status-no-http",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record_absent": [
+          "application_status",
+          "http_status"
+        ],
+        "record": {
+          "optics_status": "SUCCESS",
+          "action": "OBSERVED"
+        }
+      }
+    },
+    {
+      "id": "unknown-optics-token",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUPER_SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "NORMALIZE",
+        "reason_code": "OPTIMISTIC_DEFAULT_FORBIDDEN",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "record": {
+          "optics_status": "UNAVAILABLE"
+        },
+        "forbidden": [
+          "SUPER_SUCCESS"
+        ]
+      }
+    },
+    {
+      "id": "path-percent-email",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/user%40ex%C3%A4mple.com",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "path"
+        ],
+        "record_absent": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "/user%40ex%C3%A4mple.com",
+          "exämple.com"
+        ]
+      }
+    },
+    {
+      "id": "path-unix-home",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/home/alice/notes",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "path"
+        ],
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "/home/alice/notes",
+          "alice"
+        ]
+      }
+    },
+    {
+      "id": "path-windows-username",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "C:\\Users\\alice\\notes",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "rejected": [
+          "path"
+        ],
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "C:\\\\Users\\\\alice",
+          "alice"
+        ]
+      }
+    },
+    {
+      "id": "name-control-unknown",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "bad\u0001name": "plain"
+      },
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_REDACTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "UNKNOWN_FIELD_REDACTED_1"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "\\u0001",
+          "bad\u0001name"
+        ]
+      }
+    },
+    {
+      "id": "name-oversize",
+      "input": {
+        "record_type": "observation_event",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "producer": "node_interceptor",
+        "cli_or_sdk_version": "0.3.24",
+        "evidence_origin": "LOCAL_OBSERVATION",
+        "producer_id": "prod_clean_1",
+        "producer_sequence": 0,
+        "sequence": 0,
+        "event_id": "e.12.prod_clean_1.0",
+        "run_id": "run_clean_1",
+        "destination_host": "api.example.com",
+        "destination_port": 443,
+        "scheme": "https",
+        "path": "/v1/models",
+        "method": "POST",
+        "http_status": 200,
+        "action": "OBSERVED",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "sampling": "UNSAMPLED",
+        "identity_conflict": "NONE",
+        "application_status": "SUCCESS",
+        "optics_status": "SUCCESS",
+        "issue_location": "NONE",
+        "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": "plain"
+      },
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "OPTICS",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false,
+        "issue_location_label": "Optics",
+        "forbidden": [
+          "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+        ]
+      }
+    },
+    {
+      "id": "import-extension-detector",
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LEGACY_UNMARKED",
+        "source_label": "batch-a",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "extension_note": "sk-CANARYEXT000001"
+      },
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "STRIP",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "stripped": [
+          "extension_note"
+        ],
+        "diagnostics": {
+          "privacy_event": "REDACTION_DROP"
+        },
+        "forbidden": [
+          "sk-CANARYEXT000001",
+          "CANARYEXT"
+        ]
+      }
+    },
+    {
+      "id": "harness-accessor",
+      "harness": "accessor",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "ACCESSOR_PROPERTY_FORBIDDEN",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false
+      }
+    },
+    {
+      "id": "harness-proxy",
+      "harness": "proxy",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "ACCESSOR_PROPERTY_FORBIDDEN",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false
+      }
+    },
+    {
+      "id": "harness-custom-class",
+      "harness": "class",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "UNSUPPORTED_COMPLEX_VALUE",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false
+      }
+    },
+    {
+      "id": "harness-nonreturning-getter",
+      "harness": "nonreturning",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "ACCESSOR_PROPERTY_FORBIDDEN",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false
+      }
+    },
+    {
+      "id": "mutable-nested-input",
+      "harness": "mutable",
+      "base": "observation",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true
+      }
+    },
+    {
+      "id": "application-result-mutable",
+      "harness": "application-result",
+      "base": "observation",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true
       }
     }
   ]

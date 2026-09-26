@@ -14,7 +14,7 @@ Starting commit: `311f260a5f1bee1d3dc9b3734fd6910fb1116094`
 
 `packages/optics-evidence-contract/` holds a machine-readable allowlist, denylist, enums, and normalization rules, plus hand-written Node and Python validators. Tests live under `tests/optics-evidence-contract/`. Nothing in this package is on a customer install path.
 
-The validators return a result object. They do not write `~/.vantio/runs`, do not create a database, and do not replace a caller-supplied application result.
+The validators return a detached plain-data result. They do not write `~/.vantio/runs`, do not create a database, and do not retain a caller-supplied application result.
 
 ## Live Node writer (frozen)
 
@@ -88,7 +88,7 @@ A missing origin stays a reader label `LEGACY_UNMARKED`. It is not stored as `LO
 
 ## Fail-open
 
-`interceptor.cjs` already swallows run-log write failures. `_write_run_log` returns on exception. The private validator matches that posture for its own API: internal failures become a result object, the supplied application result is returned unchanged, and no secret from the thrown value is copied into the result.
+`interceptor.cjs` already swallows run-log write failures. `_write_run_log` returns on exception. The private validator matches that posture for its own API: internal failures become a result object, the supplied application result is returned as a detached plain copy, and no secret from the thrown value is copied into the result. This does not claim that the live CLI or Python runtime fail open.
 
 This does not prove the live CLI or Python process is fail-open. Those paths are not wired to this package.
 

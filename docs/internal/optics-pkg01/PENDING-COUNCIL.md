@@ -2,9 +2,11 @@
 
 Audience: INTERNAL_RESTRICTED
 
-`OPTICS_PKG01_NEEDS_REVISION`
+`PENDING_INDEPENDENT_RECOUNCIL`
 
-Independent council is complete. This is not `OPTICS_PKG01_COUNCIL_PASSED`.
+Revision producer classification: `OPTICS_PKG01_REVISION_READY_FOR_COUNCIL`.
+
+This is not `OPTICS_PKG01_COUNCIL_PASSED`. The first council classification remains `OPTICS_PKG01_NEEDS_REVISION` in `INDEPENDENT-COUNCIL-REPORT.md`. That report is the first-council record and is not rewritten by this revision.
 
 Council agent: `bc-795c2ba1-73bc-5a15-beba-f1505acc58cf`
 

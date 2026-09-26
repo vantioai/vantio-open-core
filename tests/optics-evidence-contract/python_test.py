@@ -28,6 +28,34 @@ REMEDIATION = {
 }
 
 
+class _Accessor(object):
+    calls = 0
+
+    @property
+    def boom(self):
+        _Accessor.calls += 1
+        return "getter-secret"
+
+
+class _PlainBox(object):
+    def __init__(self):
+        self.record_type = "observation_event"
+
+
+class _ProxyLike(dict):
+    calls = 0
+
+    def keys(self):
+        _ProxyLike.calls += 1
+        return list(dict.keys(self))
+
+    def __getitem__(self, key):
+        _ProxyLike.calls += 1
+        if key == "boom":
+            raise RuntimeError("getter-secret")
+        return dict.__getitem__(self, key)
+
+
 def materialize(item):
     if "input" in item:
         return copy.deepcopy(item["input"])
@@ -39,18 +67,59 @@ def materialize(item):
     return data
 
 
+def _worker_result():
+    proc = subprocess.run(
+        [sys.executable, str(pathlib.Path(__file__).parent / "hostile_worker.py"), "validate"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=2,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(proc.stderr)
+    line, _, body = proc.stdout.partition("\n")
+    if line != "CALLS 0":
+        raise AssertionError(line)
+    return json.loads(body)
+
+
+def run_case(item):
+    harness = item.get("harness")
+    if harness == "accessor":
+        _Accessor.calls = 0
+        result = validate.validate_evidence(_Accessor())
+        if _Accessor.calls != 0:
+            raise AssertionError(item["id"])
+        return result
+    if harness == "proxy":
+        _ProxyLike.calls = 0
+        result = validate.validate_evidence(_ProxyLike(record_type="observation_event"))
+        if _ProxyLike.calls != 0:
+            raise AssertionError(item["id"])
+        return result
+    if harness == "class":
+        return validate.validate_evidence(_PlainBox())
+    if harness == "nonreturning":
+        return _worker_result()
+    return validate.validate_evidence(materialize(item))
+
+
 def dump_canonical():
     out = {}
     for item in CORPUS["cases"]:
-        out[item["id"]] = validate.canonical_json(validate.validate_evidence(materialize(item)))
+        out[item["id"]] = validate.canonical_json(run_case(item))
     return out
 
 
 class ContractTests(unittest.TestCase):
     def test_corpus(self):
-        self.assertGreaterEqual(len(CORPUS["cases"]), 70)
+        self.assertGreaterEqual(len(CORPUS["cases"]), 110)
+        banned = ("CANARY", "sk-", "AKIA", "ghp_", "AIza", "BEGIN PRIVATE", "canary.person", "sk-CANARYKEYNAME0001")
         for item in CORPUS["cases"]:
-            self._assert_result(item, validate.validate_evidence(materialize(item)))
+            self._assert_result(item, run_case(item))
+        for ident, canon in dump_canonical().items():
+            for token in banned:
+                self.assertNotIn(token, canon, ident + " " + token)
 
     def test_cross_language(self):
         dump_path = "/tmp/pkg01-node-dump.json"
@@ -70,48 +139,51 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(theirs[key], value, key)
 
     def test_fail_open(self):
-        app = {"ok": True, "token": "APP_RESULT"}
+        app = {"ok": True, "token": "APP_RESULT", "nested": {"n": 1}}
         secret = validate.validate_evidence(
             {"record_type": "observation_event", "path": "/sk-CANARYOPENAI0001"},
             {"applicationResult": app},
         )
-        self.assertIs(secret["application_result"], app)
+        self.assertEqual(secret["application_result"], app)
+        self.assertIsNot(secret["application_result"], app)
+        self.assertIsNot(secret["application_result"]["nested"], app["nested"])
+        app["nested"]["n"] = 2
+        self.assertEqual(secret["application_result"]["nested"]["n"], 1)
+        secret["application_result"]["nested"]["n"] = 9
+        self.assertEqual(app["nested"]["n"], 2)
         self.assertNotIn("CANARYOPENAI", validate.canonical_json(secret))
         dropped = validate.validate_evidence(
             {"record_type": "observation_event", "prompt": "sk-CANARYPROMPT0001"},
             {"applicationResult": app},
         )
-        self.assertIs(dropped["application_result"], app)
+        self.assertEqual(dropped["application_result"]["token"], "APP_RESULT")
+        self.assertIsNot(dropped["application_result"], app)
         self.assertIsNone(dropped["record"])
         fault = validate.validate_evidence(
             {"record_type": "observation_event"},
             {"applicationResult": app, "injectFault": True},
         )
         self.assertEqual(fault["reason_code"], "VALIDATOR_FAULT")
-        self.assertIs(fault["application_result"], app)
+        self.assertEqual(fault["application_result"]["token"], "APP_RESULT")
+        self.assertIsNot(fault["application_result"], app)
         self.assertNotIn("injected", validate.canonical_json(fault))
         bad = validate.validate_bytes(bytes([0xFF, 0xFE, 0xFD]), {"applicationResult": app})
         self.assertEqual(bad["reason_code"], "MALFORMED_UTF8")
-        self.assertIs(bad["application_result"], app)
+        self.assertEqual(bad["application_result"]["token"], "APP_RESULT")
+        self.assertIsNot(bad["application_result"], app)
         huge = "x" * 2000000
         bounded = validate.validate_evidence(huge, {"applicationResult": app})
         self.assertEqual(bounded["reason_code"], "INPUT_BOUND")
-        self.assertIs(bounded["application_result"], app)
+        self.assertEqual(bounded["application_result"]["token"], "APP_RESULT")
+        self.assertIsNot(bounded["application_result"], app)
         self.assertNotIn("xxxx", validate.canonical_json(bounded))
 
     def test_hostile_cycle_nesting(self):
-        class Hostile(dict):
-            def keys(self):
-                return list(dict.keys(self)) + ["boom"]
-
-            def __getitem__(self, key):
-                if key == "boom":
-                    raise RuntimeError("getter-secret")
-                return dict.__getitem__(self, key)
-
-        hostile = Hostile(record_type="observation_event")
+        _ProxyLike.calls = 0
+        hostile = _ProxyLike(record_type="observation_event")
         result = validate.validate_evidence(hostile)
-        self.assertEqual(result["reason_code"], "HOSTILE_INPUT")
+        self.assertEqual(_ProxyLike.calls, 0)
+        self.assertEqual(result["reason_code"], "ACCESSOR_PROPERTY_FORBIDDEN")
         self.assertNotIn("getter-secret", validate.canonical_json(result))
         cycle = {}
         cycle["self"] = cycle
@@ -136,6 +208,55 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(result["reason_code"], "PROMPT_COMPLETION_EXCLUDED")
         self.assertIsNone(result["record"])
         self.assertNotIn("CANARYARRAY", validate.canonical_json(result))
+
+    def test_input_mutation(self):
+        item = next(case for case in CORPUS["cases"] if case["id"] == "mutable-nested-input")
+        source = materialize(item)
+        source["nested"] = {"n": 1}
+        snapshot = copy.deepcopy(source)
+        result = validate.validate_evidence(source)
+        self.assertEqual(source, snapshot)
+        source["destination_host"] = "changed.example"
+        source["nested"]["n"] = 4
+        self.assertEqual(result["record"]["destination_host"], "api.example.com")
+        canon = validate.canonical_json(result)
+        self.assertNotIn("changed.example", canon)
+        self.assertNotIn('"n"', canon)
+
+    def test_isolated_getter(self):
+        proc = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).parent / "hostile_worker.py"), "validate"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(proc.stdout.startswith("CALLS 0\n"))
+        self.assertIn("ACCESSOR_PROPERTY_FORBIDDEN", proc.stdout)
+        try:
+            hang = subprocess.run(
+                [sys.executable, str(pathlib.Path(__file__).parent / "hostile_worker.py"), "hang"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=0.5,
+            )
+        except subprocess.TimeoutExpired:
+            hang = None
+        if hang is not None:
+            self.assertNotEqual(hang.returncode, 0)
+
+    def test_no_network_imports(self):
+        root = ROOT / "packages" / "optics-evidence-contract" / "src"
+        text = "\n".join((root / name).read_text(encoding="utf-8") for name in (
+            "validate.py", "privacy.py", "walk.py", "canonical.py", "validate.cjs", "privacy.cjs", "walk.cjs", "canonical.cjs"
+        ))
+        self.assertNotIn('require("http")', text)
+        self.assertNotIn('require("net")', text)
+        self.assertNotIn("import urllib", text)
+        self.assertNotIn("import socket", text)
+        self.assertNotIn("import requests", text)
 
     def test_scope(self):
         cli = json.loads((ROOT / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8"))

@@ -14,6 +14,8 @@ function loadContract(name) {
 
 const enums = loadContract("enums.json");
 const meta = loadContract("contract-metadata.json");
+const normalization = loadContract("normalization.json");
+const TRACE_MEANING = normalization.trace_basis_meaning;
 
 const DISPOSITION_RANK = new Map(enums.disposition_rank.map((name, index) => [name, index]));
 const REASON_RANK = new Map(enums.reason_priority.map((name, index) => [name, index]));
@@ -81,6 +83,12 @@ function createState() {
     stripped: new Set(),
     rejected: new Set(),
     privacy: false,
+    privacyCategory: null,
+    redactedOrdinal: 0,
+    unknownOrdinal: 0,
+    inheritedTrace: false,
+    localEvent: false,
+    traceConflict: null,
     sessionRejected: false,
     contextRejected: false,
     dropRecord: false,
@@ -111,11 +119,41 @@ function addReason(state, reason) {
 }
 
 function markPrivacy(state) {
+  if (!state.privacyCategory) state.privacyCategory = "REDACTION_DROP";
   if (state.privacy) return;
   state.privacy = true;
   state.completeness.add("REDACTION_DROP");
   state.health.redaction_failures = 1;
   addReason(state, "REDACTION_DROP");
+}
+
+function markDetector(state) {
+  state.privacy = true;
+  state.privacyCategory = "DETECTOR_MATCH";
+  state.completeness.add("REDACTION_DROP");
+  state.health.redaction_failures = 1;
+  addReason(state, "DETECTOR_MATCH");
+  addDisposition(state, "REJECT_FIELD");
+}
+
+function locateField(state, name) {
+  const info = privacy.classifyFieldName(name);
+  let locator = name;
+  if (info.locatorKind === "prohibited") locator = "PROHIBITED_FIELD_CATEGORY";
+  else if (info.locatorKind === "redacted") {
+    state.redactedOrdinal += 1;
+    locator = "UNKNOWN_FIELD_REDACTED_" + String(state.redactedOrdinal);
+  } else if (!info.safe) {
+    state.unknownOrdinal += 1;
+    locator = "UNKNOWN_FIELD_" + String(state.unknownOrdinal);
+  }
+  return { info, locator };
+}
+
+function noteMissingStatus(state) {
+  addReason(state, "MISSING_REQUIRED_STATUS");
+  addDisposition(state, "NORMALIZE");
+  state.completeness.add("MISSING_REQUIRED_STATUS");
 }
 
 function markSession(state) {
@@ -167,9 +205,11 @@ function rejectField(state, name) {
 }
 
 function stripKey(state, name) {
-  state.stripped.add(name);
+  const located = locateField(state, name);
+  state.stripped.add(located.locator);
   addDisposition(state, "STRIP");
-  addReason(state, "UNKNOWN_FIELD_OMITTED");
+  addReason(state, located.info.locatorKind === "safe" ? "UNKNOWN_FIELD_OMITTED" : "UNKNOWN_FIELD_REDACTED");
+  return located;
 }
 
 function highest(map, values, fallback) {
@@ -417,7 +457,7 @@ function normalizePath(value) {
   if (codePoints(value).length > bounds.path_max_chars) {
     return { ok: false, oversize: true, prohibited: privacy.containsProhibited(value) };
   }
-  if (hasControl(value) || value.includes("\\") || privacy.hasUsernamePath(value)) {
+  if (hasControl(value) || value.includes("\\") || privacy.sensitivePath(value)) {
     return { ok: false, prohibited: true };
   }
   if (value.includes("://")) return { ok: false, prohibited: true };
@@ -428,7 +468,7 @@ function normalizePath(value) {
     stripped = true;
   }
   if (path.length === 0) return { ok: false, prohibited: privacy.containsProhibited(value) };
-  if (privacy.containsProhibited(value) || privacy.containsProhibited(path)) {
+  if (privacy.sensitivePath(value) || privacy.sensitivePath(path)) {
     return { ok: false, prohibited: true };
   }
   return { ok: true, value: path, changed: stripped || path !== value };
@@ -610,6 +650,13 @@ function applyOrigin(state, record, requestedOrigin, producer, version, demoHost
     state.provenance = producer === "demo_command" ? "SUFFICIENT" : "INSUFFICIENT";
     return;
   }
+  if (state.inheritedTrace && requestedOrigin === "LOCAL_OBSERVATION" && !state.localEvent) {
+    state.readerOrigin = "LEGACY_UNMARKED";
+    state.provenance = "INSUFFICIENT";
+    addReason(state, "PROVENANCE_INSUFFICIENT");
+    addDisposition(state, "REPLACE_WITH_SAFE_CATEGORY");
+    return;
+  }
   const sufficient = recognizedProducer(producer, version, requestedOrigin);
   if (producer === "demo_command" && requestedOrigin === "LOCAL_OBSERVATION") {
     state.readerOrigin = "LEGACY_UNMARKED";
@@ -685,27 +732,41 @@ const STRUCTURAL_EXCLUSIONS = new Set([
   "statuslabels",
 ]);
 
+function rememberStrip(state, located) {
+  state.stripped.add(located.locator);
+  addDisposition(state, "STRIP");
+  addReason(state, located.info.locatorKind === "safe" ? "UNKNOWN_FIELD_OMITTED" : "UNKNOWN_FIELD_REDACTED");
+}
+
 function sweepLeftovers(input, seen, state) {
   const keys = Object.keys(input).sort();
   for (const key of keys) {
     if (seen.has(key)) continue;
     const value = input[key];
+    const located = locateField(state, key);
+    const info = located.info;
     const secret = stringSecret(value) || treeHasSecret(value, 0);
-    if (privacy.isPayloadName(key)) {
-      stripKey(state, key);
+    if (info.payload) {
+      rememberStrip(state, located);
       markPrivacy(state);
-      dropRecord(state, "PROMPT_COMPLETION_EXCLUDED");
+      dropRecord(state, info.disguised ? "PROHIBITED_FIELD_NAME" : "PROMPT_COMPLETION_EXCLUDED");
       continue;
     }
-    if (privacy.isBaggageName(key)) {
-      stripKey(state, key);
+    if (info.detector) {
+      rememberStrip(state, located);
+      markDetector(state);
+      continue;
+    }
+    if (info.baggage) {
+      rememberStrip(state, located);
       addReason(state, "BAGGAGE_OMITTED");
       if (secret) markPrivacy(state);
       continue;
     }
-    stripKey(state, key);
-    const structural = STRUCTURAL_EXCLUSIONS.has(privacy.normalizeName(key));
-    if (secret || (privacy.isProhibitedName(key) && !structural)) markPrivacy(state);
+    rememberStrip(state, located);
+    const structural = STRUCTURAL_EXCLUSIONS.has(info.comparison);
+    if (info.prohibited && !structural) markPrivacy(state);
+    else if (secret) markPrivacy(state);
   }
 }
 
@@ -878,6 +939,7 @@ function storeDestination(state, record, collected) {
   }
   if (collected.conflict || collected.empty) return;
   const chosen = collected.chosen;
+  state.localEvent = true;
   put(state, record, "destination_host", chosen.host, chosen.hostChanged ? "normalized" : "accepted");
   if (chosen.port == null) {
     if (chosen.portNullAccepted) put(state, record, "destination_port", null, "accepted");
@@ -1004,15 +1066,37 @@ function commonIdentity(input, seen, state, record, kind) {
   return { producer: producerValue, version: versionValue };
 }
 
-function applyTrace(input, seen, state, record) {
+function traceMeaning(basisValue) {
+  return TRACE_MEANING[basisValue] || null;
+}
+
+function trustedTraceGeneration(record, witness) {
+  const spec = meta.trace_generation_witness;
+  if (!spec || !witness.present || witness.value !== spec.value) return false;
+  if (!PRODUCERS.has(record.producer)) return false;
+  return typeof record.cli_or_sdk_version === "string" && record.cli_or_sdk_version.length > 0;
+}
+
+function applyTrace(input, seen, state, record, recordType) {
   const direct = take(input, seen, "trace_id");
   const basis = take(input, seen, "trace_id_basis");
   const inherited = take(input, seen, "vantio_trace_id");
   const parentHeader = take(input, seen, "traceparent");
   const span = take(input, seen, "span_id");
   const parentSpan = take(input, seen, "parent_span_id");
-  if (inherited.present) stripKey(state, "vantio_trace_id");
-  if (parentHeader.present) stripKey(state, "traceparent");
+  const witness = take(input, seen, meta.trace_generation_witness.field);
+  if (inherited.present) {
+    stripKey(state, "vantio_trace_id");
+    state.inheritedTrace = true;
+  }
+  if (parentHeader.present) {
+    stripKey(state, "traceparent");
+    state.inheritedTrace = true;
+  }
+  if (witness.present && !trustedTraceGeneration(record, witness) && stringSecret(witness.value)) {
+    markDetector(state);
+  }
+  const trusted = trustedTraceGeneration(record, witness);
 
   const accepted = [];
   if (direct.present && direct.value != null) {
@@ -1030,7 +1114,7 @@ function applyTrace(input, seen, state, record) {
       state.traceMeaning = "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF";
     } else {
       accepted.push({ trace: norm.value, changed: true, source: "vantio_trace_id" });
-      state.traceMeaning = "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF";
+      state.inheritedTrace = true;
     }
   }
   let headerSpan = null;
@@ -1042,11 +1126,13 @@ function applyTrace(input, seen, state, record) {
     } else {
       accepted.push({ trace: parsed.trace, changed: true, source: "traceparent" });
       headerSpan = parsed.span;
+      state.inheritedTrace = true;
     }
   }
   const distinct = Array.from(new Set(accepted.map((item) => item.trace)));
   if (distinct.length > 1) {
     markContext(state);
+    state.traceConflict = "TRACE_COLLISION";
     state.configurationFault = true;
     put(state, record, "trace_id", null, "normalized");
     put(state, record, "trace_id_basis", null, "normalized");
@@ -1055,18 +1141,38 @@ function applyTrace(input, seen, state, record) {
     return;
   }
   if (distinct.length === 1) {
-    const item = accepted[0];
+    const inheritedItem = accepted.find((item) => item.source === "vantio_trace_id" || item.source === "traceparent");
     let basisValue = null;
-    if (basis.present && TRACE_BASIS.has(basis.value)) basisValue = basis.value;
-    else if (item.source !== "trace_id") basisValue = "ASSERTED_CONTEXT";
-    else {
+    if (inheritedItem) {
+      basisValue = inheritedItem.source === "traceparent" && recordType === "import_quarantine"
+        ? normalization.traceparent_import_basis
+        : normalization.inherited_trace_basis;
+      if (trusted && basis.present && basis.value === "OPTICS_GENERATED") basisValue = "OPTICS_GENERATED";
+      else if (basis.present && basis.value !== basisValue) {
+        state.traceConflict = "TRACE_BASIS_REPLACED";
+        state.completeness.add("CONFLICTING_PROVENANCE");
+        addReason(state, "CONFLICTING_PROVENANCE");
+        addDisposition(state, "NORMALIZE");
+      }
+    } else if (basis.present && TRACE_BASIS.has(basis.value)) {
+      basisValue = basis.value;
+      if (basisValue === "OPTICS_GENERATED" && !trusted) {
+        basisValue = normalization.inherited_trace_basis;
+        state.traceConflict = "TRACE_BASIS_REPLACED";
+        state.completeness.add("CONFLICTING_PROVENANCE");
+        addReason(state, "CONFLICTING_PROVENANCE");
+        addDisposition(state, "NORMALIZE");
+      }
+    } else {
       markContext(state);
       put(state, record, "trace_id", null, "normalized");
       put(state, record, "trace_id_basis", null, "normalized");
       return;
     }
+    const item = accepted[0];
     put(state, record, "trace_id", item.trace, item.changed || item.source !== "trace_id" ? "normalized" : "accepted");
     put(state, record, "trace_id_basis", basisValue, basis.present && basis.value === basisValue ? "accepted" : "normalized");
+    state.traceMeaning = traceMeaning(basisValue);
   } else if (direct.present || inherited.present || parentHeader.present) {
     put(state, record, "trace_id", null, "normalized");
     put(state, record, "trace_id_basis", null, "normalized");
@@ -1211,6 +1317,7 @@ function applyObservationFields(input, seen, state, record) {
   }
   if (code != null) {
     state.httpStatus = code;
+    state.localEvent = true;
     put(state, record, "http_status", code, rawStatus === code ? "accepted" : "normalized");
   }
   const derivedApp = code == null ? null : applicationStatusFromHttp(code);
@@ -1252,16 +1359,18 @@ function applyObservationFields(input, seen, state, record) {
       }
     } else {
       rejectField(state, "error_class");
-      markPrivacy(state);
+      if (typeof errorClass.value === "string" && privacy.containsProhibited(errorClass.value)) markDetector(state);
+      else addReason(state, "INVALID_FORMAT");
     }
   }
   const action = take(input, seen, "action");
-  if (action.present && action.value !== "OBSERVED") {
-    if (stringSecret(action.value)) markPrivacy(state);
+  if (!action.present || action.value == null) noteMissingStatus(state);
+  else if (action.value !== "OBSERVED") {
+    if (typeof action.value === "string" && privacy.containsProhibited(action.value)) markDetector(state);
+    else if (stringSecret(action.value)) markPrivacy(state);
     dropRecord(state, "ENFORCEMENT_ACTION_EXCLUDED");
     rejectField(state, "action");
-  } else if (action.present) put(state, record, "action", "OBSERVED", "accepted");
-  else put(state, record, "action", "OBSERVED", "normalized");
+  } else put(state, record, "action", "OBSERVED", "accepted");
 
   const method = take(input, seen, "method");
   if (method.present && method.value != null) {
@@ -1341,11 +1450,17 @@ function applyObservationFields(input, seen, state, record) {
   let providerValue = "unknown";
   let confidenceValue = "NONE";
   let providerKind = "normalized";
-  if (provider.present && typeof provider.value === "string" && /^[a-z0-9_-]{1,64}$/.test(provider.value)) {
+  let providerBlocked = false;
+  if (provider.present && typeof provider.value === "string" && privacy.containsProhibited(provider.value)) {
+    rejectField(state, "provider_id");
+    markDetector(state);
+    providerBlocked = true;
+  } else if (provider.present && typeof provider.value === "string" && /^[a-z0-9_-]{1,64}$/.test(provider.value)) {
     providerValue = provider.value;
     providerKind = "accepted";
   } else if (provider.present && provider.value != null && provider.value !== "unknown") {
     rejectField(state, "provider_id");
+    addReason(state, "INVALID_FORMAT");
     if (stringSecret(provider.value)) markPrivacy(state);
   }
   if (confidence.present && CONFIDENCE.has(confidence.value)) confidenceValue = confidence.value;
@@ -1360,7 +1475,11 @@ function applyObservationFields(input, seen, state, record) {
     }
   }
   if (confidenceValue === "NONE") providerValue = "unknown";
-  if (provider.present || confidence.present || legacyProvider.present) {
+  if (providerBlocked) {
+    if (confidence.present && CONFIDENCE.has(confidence.value)) {
+      put(state, record, "provider_confidence", confidence.value, "accepted");
+    }
+  } else if (provider.present || confidence.present || legacyProvider.present) {
     put(state, record, "provider_id", providerValue, providerValue === provider.value ? providerKind : "normalized");
     put(state, record, "provider_confidence", confidenceValue, confidence.present && confidence.value === confidenceValue ? "accepted" : "normalized");
   }
@@ -1370,7 +1489,15 @@ function applyObservationFields(input, seen, state, record) {
   const opticsValue = optics.present ? optics.value : legacyOptics.present ? legacyOptics.value : undefined;
   if (state.dropRecord) return;
   if (OPTICS_STATUS.has(opticsValue)) put(state, record, "optics_status", opticsValue, "accepted");
-  else put(state, record, "optics_status", "SUCCESS", "normalized");
+  else if (opticsValue == null) {
+    put(state, record, "optics_status", normalization.missing_optics_status, "normalized");
+    noteMissingStatus(state);
+  } else {
+    if (typeof opticsValue === "string" && privacy.containsProhibited(opticsValue)) markDetector(state);
+    else addReason(state, "OPTIMISTIC_DEFAULT_FORBIDDEN");
+    addDisposition(state, "NORMALIZE");
+    put(state, record, "optics_status", normalization.missing_optics_status, "normalized");
+  }
 
   const internal = take(input, seen, "optics_internal_failure");
   if (internal.present) {
@@ -1401,7 +1528,7 @@ function buildObservation(input, inherited) {
   const legacyVersion = applySchema(state, record, input, seen, "observation_event");
   const who = commonIdentity(input, seen, state, record, "observation");
   applySession(input, seen, state, record, Boolean(who.producer && who.version));
-  applyTrace(input, seen, state, record);
+  applyTrace(input, seen, state, record, "observation_event");
   applyClockAndStatus(input, seen, state, record, "observation");
   const destination = collectDestination(input, seen, state);
   if (!state.dropRecord) storeDestination(state, record, destination);
@@ -1430,7 +1557,7 @@ function buildEnvelope(input) {
   const legacyVersion = applySchema(state, record, input, seen, "run_envelope");
   const who = commonIdentity(input, seen, state, record, "envelope");
   applySession(input, seen, state, record, Boolean(who.producer && who.version));
-  applyTrace(input, seen, state, record);
+  applyTrace(input, seen, state, record, "run_envelope");
   applyClockAndStatus(input, seen, state, record, "envelope");
   state.accepted.delete("span_id");
   state.normalized.delete("span_id");
@@ -1602,11 +1729,14 @@ function buildHealth(input) {
   }
   const detail = take(input, seen, "detail_code");
   if (detail.present && detail.value != null) {
-    if (typeof detail.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(detail.value)) {
+    if (typeof detail.value === "string" && privacy.containsProhibited(detail.value)) {
+      rejectField(state, "detail_code");
+      markDetector(state);
+    } else if (typeof detail.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(detail.value)) {
       put(state, record, "detail_code", detail.value, "accepted");
     } else {
       rejectField(state, "detail_code");
-      markPrivacy(state);
+      addReason(state, "INVALID_FORMAT");
     }
   }
   sweepLeftovers(input, seen, state);
@@ -1633,6 +1763,7 @@ function buildQuarantine(input) {
   const seen = new Set();
   const record = Object.create(null);
   applySchema(state, record, input, seen, "import_quarantine");
+  applyTrace(input, seen, state, record, "import_quarantine");
   const requested = input.evidence_origin;
   seen.add("evidence_origin");
   put(state, record, "evidence_origin", "IMPORTED", requested === "IMPORTED" ? "accepted" : "normalized");
@@ -1655,7 +1786,9 @@ function buildQuarantine(input) {
       put(state, record, "source_label", label.value, "accepted");
     } else {
       rejectField(state, "source_label");
-      markPrivacy(state);
+      if (typeof label.value === "string" && (privacy.containsProhibited(label.value) || privacy.hasUsernamePath(label.value))) {
+        markDetector(state);
+      } else addReason(state, "INVALID_FORMAT");
     }
   }
   const hash = take(input, seen, "content_sha256");
@@ -1669,9 +1802,15 @@ function buildQuarantine(input) {
     }
   }
   const seenStatus = take(input, seen, "schema_status_seen");
-  if (seenStatus.present && typeof seenStatus.value === "string" && /^[A-Za-z0-9._+-]{1,64}$/.test(seenStatus.value)) {
+  if (seenStatus.present && typeof seenStatus.value === "string" && privacy.containsProhibited(seenStatus.value)) {
+    rejectField(state, "schema_status_seen");
+    markDetector(state);
+  } else if (seenStatus.present && typeof seenStatus.value === "string" && /^[A-Za-z0-9._+-]{1,64}$/.test(seenStatus.value)) {
     put(state, record, "schema_status_seen", seenStatus.value, "accepted");
-  } else if (seenStatus.present) rejectField(state, "schema_status_seen");
+  } else if (seenStatus.present) {
+    rejectField(state, "schema_status_seen");
+    addReason(state, "INVALID_FORMAT");
+  }
   const importedAt = take(input, seen, "imported_at");
   if (importedAt.present) {
     const time = canonicalTime(importedAt.value);
@@ -1682,11 +1821,14 @@ function buildQuarantine(input) {
   if (accepted.present && typeof accepted.value === "boolean") put(state, record, "accepted", accepted.value, "accepted");
   else put(state, record, "accepted", false, "normalized");
   const reason = take(input, seen, "reason_code");
-  if (reason.present && typeof reason.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(reason.value)) {
+  if (reason.present && typeof reason.value === "string" && privacy.containsProhibited(reason.value)) {
+    rejectField(state, "reason_code");
+    markDetector(state);
+  } else if (reason.present && typeof reason.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(reason.value)) {
     put(state, record, "reason_code", reason.value, "accepted");
   } else if (reason.present && reason.value != null) {
     rejectField(state, "reason_code");
-    if (stringSecret(reason.value)) markPrivacy(state);
+    addReason(state, "INVALID_FORMAT");
   }
   sweepLeftovers(input, seen, state);
   return { state, record: state.dropRecord ? null : record, legacyVersion: null };
@@ -1803,8 +1945,9 @@ function finalize(state, record, events, applicationResult, compatibility) {
     diagnostics: {
       destination_class: state.destinationClass,
       destination_ip_class: state.destinationIpClass,
-      privacy_event: state.privacy ? "REDACTION_DROP" : null,
+      privacy_event: state.privacy ? (state.privacyCategory || "REDACTION_DROP") : null,
       provenance: state.provenance,
+      provenance_conflict: state.traceConflict,
       scope_complete: false,
       trace_basis_meaning: state.traceMeaning,
     },
@@ -1901,7 +2044,12 @@ function validatePlain(input, applicationResult) {
       sweepLeftovers(input, seen, state);
       return finalize(state, null, [], applicationResult, emptyCompatibility(shape, false, null));
     }
-    built = buildObservation(recordType == null ? { ...input, record_type: "observation_event" } : input);
+    if (recordType == null) {
+      const withType = Object.create(null);
+      for (const key of Object.keys(input)) withType[key] = input[key];
+      withType.record_type = "observation_event";
+      built = buildObservation(withType);
+    } else built = buildObservation(input);
   } else if (recordType === "run_envelope") built = buildEnvelope(input);
   else if (recordType === "derived_diagnostic") built = buildDerived(input);
   else if (recordType === "annotation") built = buildAnnotation(input);
@@ -1930,7 +2078,10 @@ function mergeState(parent, child) {
   parent.health.redaction_failures += child.health.redaction_failures;
   parent.health.rejected_context += child.health.rejected_context;
   parent.health.session_id_rejected += child.health.session_id_rejected;
-  if (child.privacy) parent.privacy = true;
+  if (child.privacy) {
+    parent.privacy = true;
+    if (!parent.privacyCategory) parent.privacyCategory = child.privacyCategory || "REDACTION_DROP";
+  }
   if (!parent.readerOrigin && child.readerOrigin) parent.readerOrigin = child.readerOrigin;
   if (child.readerOrigin === "SIMULATED_DEMO" && parent.readerOrigin === "LEGACY_UNMARKED") {
     // The envelope stays unmarked unless every destination is demo. Per-event labels live on events.
@@ -1943,49 +2094,91 @@ function applicationOf(options) {
   return null;
 }
 
+function detachApplication(value) {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  return plainCopy(value);
+}
+
+function finishResult(result, detached) {
+  if (!detached || detached.ok) {
+    result.application_result = detached ? detached.value : null;
+    return result;
+  }
+  result.application_result = null;
+  const reason = detached.reason || "UNSUPPORTED_COMPLEX_VALUE";
+  if ((REASON_RANK.get(reason) ?? -1) > (REASON_RANK.get(result.reason_code) ?? -1)) {
+    result.reason_code = reason;
+    result.remediation_code = enums.remediation_by_reason[reason] || "VALIDATOR_INTERNAL";
+  }
+  if ((DISPOSITION_RANK.get("REJECT_FIELD") ?? -1) > (DISPOSITION_RANK.get(result.disposition) ?? -1)) {
+    result.disposition = "REJECT_FIELD";
+  }
+  if (result.issue_location === "NONE") {
+    result.issue_location = "OPTICS";
+    result.issue_location_label = ISSUE_LABELS.OPTICS || "Optics";
+  }
+  return result;
+}
+
 function validateEvidence(input, options) {
-  const applicationResult = applicationOf(options);
+  const rawApplication = applicationOf(options);
+  let detached;
+  try {
+    detached = detachApplication(rawApplication);
+  } catch {
+    detached = { ok: false, reason: "VALIDATOR_FAULT" };
+  }
+  const applicationResult = detached.ok ? detached.value : null;
   try {
     if (options && options.injectFault === true) {
       throw new Error("injected");
     }
     if (typeof input === "string") {
-      if (input.length > bounds.max_input_chars) return terminal("INPUT_BOUND", applicationResult, "bytes");
+      if (input.length > bounds.max_input_chars) {
+        return finishResult(terminal("INPUT_BOUND", applicationResult, "bytes"), detached);
+      }
       if (privacy.containsProhibited(input) && !input.startsWith("{") && !input.startsWith("[")) {
         const state = createState();
         markPrivacy(state);
         dropRecord(state, "REDACTION_DROP");
-        return finalize(state, null, [], applicationResult, emptyCompatibility("unknown", false, null));
+        return finishResult(finalize(state, null, [], applicationResult, emptyCompatibility("unknown", false, null)), detached);
       }
       if (input.startsWith("{") || input.startsWith("[")) {
         try {
           input = JSON.parse(input);
         } catch {
-          return terminal("MALFORMED_JSON", applicationResult, "bytes");
+          return finishResult(terminal("MALFORMED_JSON", applicationResult, "bytes"), detached);
         }
       } else {
-        return terminal("RECORD_TYPE_REJECTED", applicationResult, "unknown");
+        return finishResult(terminal("RECORD_TYPE_REJECTED", applicationResult, "unknown"), detached);
       }
     }
     if (input == null || typeof input !== "object") {
-      return terminal("RECORD_TYPE_REJECTED", applicationResult, "unknown");
+      return finishResult(terminal("RECORD_TYPE_REJECTED", applicationResult, "unknown"), detached);
     }
     const copied = plainCopy(input);
-    if (!copied.ok) return terminal(copied.reason, applicationResult, "unknown");
+    if (!copied.ok) return finishResult(terminal(copied.reason, applicationResult, "unknown"), detached);
     if (Array.isArray(copied.value)) {
       const state = createState();
       markPrivacy(state);
       dropRecord(state, "PROMPT_COMPLETION_EXCLUDED");
-      return finalize(state, null, [], applicationResult, emptyCompatibility("unknown", false, null));
+      return finishResult(finalize(state, null, [], applicationResult, emptyCompatibility("unknown", false, null)), detached);
     }
-    return validatePlain(copied.value, applicationResult);
+    return finishResult(validatePlain(copied.value, applicationResult), detached);
   } catch {
-    return terminal("VALIDATOR_FAULT", applicationResult, "unavailable");
+    return finishResult(terminal("VALIDATOR_FAULT", applicationResult, "unavailable"), detached);
   }
 }
 
 function validateBytes(buffer, options) {
-  const applicationResult = applicationOf(options);
+  const rawApplication = applicationOf(options);
+  let detached;
+  try {
+    detached = detachApplication(rawApplication);
+  } catch {
+    detached = { ok: false, reason: "VALIDATOR_FAULT" };
+  }
+  const applicationResult = detached.ok ? detached.value : null;
   try {
     if (options && options.injectFault === true) throw new Error("injected");
     const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
@@ -1993,18 +2186,20 @@ function validateBytes(buffer, options) {
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } catch {
-      return terminal("MALFORMED_UTF8", applicationResult, "bytes");
+      return finishResult(terminal("MALFORMED_UTF8", applicationResult, "bytes"), detached);
     }
-    if (text.length > bounds.max_input_chars) return terminal("INPUT_BOUND", applicationResult, "bytes");
+    if (text.length > bounds.max_input_chars) {
+      return finishResult(terminal("INPUT_BOUND", applicationResult, "bytes"), detached);
+    }
     let parsed;
     try {
       parsed = JSON.parse(text);
     } catch {
-      return terminal("MALFORMED_JSON", applicationResult, "bytes");
+      return finishResult(terminal("MALFORMED_JSON", applicationResult, "bytes"), detached);
     }
     return validateEvidence(parsed, options);
   } catch {
-    return terminal("VALIDATOR_FAULT", applicationResult, "bytes");
+    return finishResult(terminal("VALIDATOR_FAULT", applicationResult, "bytes"), detached);
   }
 }
 

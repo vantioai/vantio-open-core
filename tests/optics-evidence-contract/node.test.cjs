@@ -30,6 +30,66 @@ function materialize(item) {
   return data;
 }
 
+function accessorInput() {
+  const input = { record_type: "observation_event" };
+  Object.defineProperty(input, "boom", {
+    enumerable: true,
+    get() {
+      accessorInput.calls += 1;
+      return "getter-secret";
+    },
+  });
+  return input;
+}
+accessorInput.calls = 0;
+
+function proxyInput() {
+  return new Proxy({ record_type: "observation_event" }, {
+    get(target, key) {
+      proxyInput.calls += 1;
+      return target[key];
+    },
+  });
+}
+proxyInput.calls = 0;
+
+function classInput() {
+  class Box {
+    constructor() {
+      this.record_type = "observation_event";
+    }
+  }
+  return new Box();
+}
+
+function workerResult(command, args) {
+  const proc = spawnSync(command, args, { encoding: "utf8", timeout: 2000 });
+  assert.equal(proc.status, 0, proc.stderr || (proc.error && proc.error.message));
+  const newline = proc.stdout.indexOf("\n");
+  assert.equal(proc.stdout.slice(0, newline), "CALLS 0");
+  return JSON.parse(proc.stdout.slice(newline + 1));
+}
+
+function runCase(item) {
+  if (item.harness === "accessor") {
+    accessorInput.calls = 0;
+    const result = validateEvidence(accessorInput());
+    assert.equal(accessorInput.calls, 0, item.id);
+    return result;
+  }
+  if (item.harness === "proxy") {
+    proxyInput.calls = 0;
+    const result = validateEvidence(proxyInput());
+    assert.equal(proxyInput.calls, 0, item.id);
+    return result;
+  }
+  if (item.harness === "class") return validateEvidence(classInput());
+  if (item.harness === "nonreturning") {
+    return workerResult(process.execPath, [path.join(__dirname, "hostile_worker.cjs"), "validate"]);
+  }
+  return validateEvidence(materialize(item));
+}
+
 function assertResult(item, result) {
   const expect = item.expect;
   const canon = canonicalJson(result);
@@ -89,7 +149,7 @@ function assertResult(item, result) {
 
 function dumpCanonical() {
   const out = {};
-  for (const item of corpus.cases) out[item.id] = canonicalJson(validateEvidence(materialize(item)));
+  for (const item of corpus.cases) out[item.id] = canonicalJson(runCase(item));
   return out;
 }
 
@@ -101,8 +161,13 @@ if (process.argv.includes("--dump")) {
 }
 
 test("shared corpus dispositions and canary absence", () => {
-  assert.equal(corpus.cases.length >= 70, true);
-  for (const item of corpus.cases) assertResult(item, validateEvidence(materialize(item)));
+  assert.equal(corpus.cases.length >= 110, true);
+  for (const item of corpus.cases) assertResult(item, runCase(item));
+  const banned = ["CANARY", "sk-", "AKIA", "ghp_", "AIza", "BEGIN PRIVATE", "canary.person", "sk-CANARYKEYNAME0001"];
+  const dumped = dumpCanonical();
+  for (const [id, canon] of Object.entries(dumped)) {
+    for (const token of banned) assert.equal(canon.includes(token), false, id + " " + token);
+  }
 });
 
 test("node and python canonical JSON match", () => {
@@ -117,44 +182,57 @@ test("node and python canonical JSON match", () => {
   for (const id of Object.keys(ours)) assert.equal(theirs[id], ours[id], id);
 });
 
-test("fail-open keeps the application result", () => {
-  const app = { ok: true, token: "APP_RESULT" };
+test("fail-open returns a detached application result", () => {
+  const app = { ok: true, token: "APP_RESULT", nested: { n: 1 } };
   const secret = validateEvidence(
     { ...materialize(corpus.cases.find((item) => item.id === "path-openai")), path: "/sk-CANARYOPENAI0001" },
     { applicationResult: app },
   );
-  assert.equal(secret.application_result, app);
+  assert.deepEqual(secret.application_result, { ok: true, token: "APP_RESULT", nested: { n: 1 } });
+  assert.notStrictEqual(secret.application_result, app);
+  assert.notStrictEqual(secret.application_result.nested, app.nested);
+  app.nested.n = 2;
+  assert.equal(secret.application_result.nested.n, 1);
+  secret.application_result.nested.n = 9;
+  assert.equal(app.nested.n, 2);
   assert.equal(canonicalJson(secret).includes("CANARYOPENAI"), false);
   const dropped = validateEvidence({ record_type: "observation_event", prompt: "sk-CANARYPROMPT0001" }, { applicationResult: app });
-  assert.equal(dropped.application_result, app);
+  assert.deepEqual(dropped.application_result.token, "APP_RESULT");
+  assert.notStrictEqual(dropped.application_result, app);
   assert.equal(dropped.record, null);
   const fault = validateEvidence({ record_type: "observation_event" }, { applicationResult: app, injectFault: true });
   assert.equal(fault.disposition, "REJECT_RECORD");
   assert.equal(fault.reason_code, "VALIDATOR_FAULT");
-  assert.equal(fault.application_result, app);
+  assert.deepEqual(fault.application_result.token, "APP_RESULT");
+  assert.notStrictEqual(fault.application_result, app);
   assert.equal(canonicalJson(fault).includes("injected"), false);
   const bytes = validateBytes(Buffer.from([0xff, 0xfe, 0xfd]), { applicationResult: app });
   assert.equal(bytes.reason_code, "MALFORMED_UTF8");
-  assert.equal(bytes.application_result, app);
+  assert.deepEqual(bytes.application_result.token, "APP_RESULT");
+  assert.notStrictEqual(bytes.application_result, app);
   const huge = "x".repeat(2000000);
   const started = Date.now();
   const bounded = validateEvidence(huge, { applicationResult: app });
   assert.equal(Date.now() - started < 2000, true);
   assert.equal(bounded.reason_code, "INPUT_BOUND");
-  assert.equal(bounded.application_result, app);
+  assert.deepEqual(bounded.application_result.token, "APP_RESULT");
+  assert.notStrictEqual(bounded.application_result, app);
   assert.equal(canonicalJson(bounded).includes("xxxx"), false);
 });
 
 test("hostile getter, cycle, nesting, and freeze do not escape", () => {
   const input = { record_type: "observation_event", producer: "node_interceptor" };
+  let calls = 0;
   Object.defineProperty(input, "boom", {
     enumerable: true,
     get() {
+      calls += 1;
       throw new Error("getter-secret");
     },
   });
   const hostile = validateEvidence(input);
-  assert.equal(hostile.reason_code, "HOSTILE_INPUT");
+  assert.equal(calls, 0);
+  assert.equal(hostile.reason_code, "ACCESSOR_PROPERTY_FORBIDDEN");
   assert.equal(canonicalJson(hostile).includes("getter-secret"), false);
   const cycle = {};
   cycle.self = cycle;
@@ -183,6 +261,50 @@ test("top-level array is not stored", () => {
   assert.equal(result.reason_code, "PROMPT_COMPLETION_EXCLUDED");
   assert.equal(result.record, null);
   assert.equal(canonicalJson(result).includes("CANARYARRAY"), false);
+});
+
+test("input mutation does not change a finished result", () => {
+  const input = materialize(corpus.cases.find((item) => item.id === "mutable-nested-input"));
+  input.nested = { n: 1 };
+  const snapshot = structuredClone(input);
+  const result = validateEvidence(input);
+  assert.deepEqual(input, snapshot);
+  input.destination_host = "changed.example";
+  input.nested.n = 4;
+  assert.equal(result.record.destination_host, "api.example.com");
+  assert.equal(canonicalJson(result).includes("changed.example"), false);
+  assert.equal(canonicalJson(result).includes("\"n\""), false);
+});
+
+test("isolated nonreturning getter terminates", () => {
+  const started = Date.now();
+  const proc = spawnSync(process.execPath, [path.join(__dirname, "hostile_worker.cjs"), "validate"], {
+    encoding: "utf8",
+    timeout: 2000,
+  });
+  assert.equal(proc.status, 0, proc.stderr);
+  assert.equal(Date.now() - started < 2000, true);
+  assert.equal(proc.stdout.startsWith("CALLS 0\n"), true);
+  assert.equal(proc.stdout.includes("ACCESSOR_PROPERTY_FORBIDDEN"), true);
+  const hang = spawnSync(process.execPath, [path.join(__dirname, "hostile_worker.cjs"), "hang"], {
+    encoding: "utf8",
+    timeout: 500,
+  });
+  assert.equal(hang.status, null);
+  assert.equal(hang.error && hang.error.code, "ETIMEDOUT");
+});
+
+test("validator sources do not open network clients", () => {
+  const files = ["validate.cjs", "privacy.cjs", "walk.cjs", "canonical.cjs"].map((name) =>
+    fs.readFileSync(path.join(CONTRACT, "src", name), "utf8"));
+  const py = ["validate.py", "privacy.py", "walk.py", "canonical.py"].map((name) =>
+    fs.readFileSync(path.join(CONTRACT, "src", name), "utf8"));
+  const joined = files.concat(py).join("\n");
+  assert.equal(joined.includes("require(\"http\")"), false);
+  assert.equal(joined.includes("require(\"net\")"), false);
+  assert.equal(joined.includes("import urllib"), false);
+  assert.equal(joined.includes("import socket"), false);
+  assert.equal(joined.includes("import requests"), false);
 });
 
 test("scope stays off the live runtimes", () => {

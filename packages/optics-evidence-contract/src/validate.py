@@ -16,6 +16,8 @@ import walk
 CONTRACT_DIR = Path(__file__).resolve().parent.parent / "contract"
 enums = json.loads((CONTRACT_DIR / "enums.json").read_text(encoding="utf-8"))
 meta = json.loads((CONTRACT_DIR / "contract-metadata.json").read_text(encoding="utf-8"))
+normalization = json.loads((CONTRACT_DIR / "normalization.json").read_text(encoding="utf-8"))
+TRACE_MEANING = normalization["trace_basis_meaning"]
 bounds = walk.bounds
 
 DISPOSITION_RANK = {name: index for index, name in enumerate(enums["disposition_rank"])}
@@ -99,6 +101,12 @@ class State(object):
         self.stripped = set()
         self.rejected = set()
         self.privacy = False
+        self.privacy_category = None
+        self.redacted_ordinal = 0
+        self.unknown_ordinal = 0
+        self.inherited_trace = False
+        self.local_event = False
+        self.trace_conflict = None
         self.session_rejected = False
         self.context_rejected = False
         self.drop_record = False
@@ -128,12 +136,43 @@ def _add_reason(state, reason):
 
 
 def _mark_privacy(state):
+    if not state.privacy_category:
+        state.privacy_category = "REDACTION_DROP"
     if state.privacy:
         return
     state.privacy = True
     state.completeness.add("REDACTION_DROP")
     state.health["redaction_failures"] = 1
     _add_reason(state, "REDACTION_DROP")
+
+
+def _mark_detector(state):
+    state.privacy = True
+    state.privacy_category = "DETECTOR_MATCH"
+    state.completeness.add("REDACTION_DROP")
+    state.health["redaction_failures"] = 1
+    _add_reason(state, "DETECTOR_MATCH")
+    _add_disposition(state, "REJECT_FIELD")
+
+
+def _locate_field(state, name):
+    info = privacy.classify_field_name(name)
+    locator = name
+    if info["locator_kind"] == "prohibited":
+        locator = "PROHIBITED_FIELD_CATEGORY"
+    elif info["locator_kind"] == "redacted":
+        state.redacted_ordinal += 1
+        locator = "UNKNOWN_FIELD_REDACTED_" + str(state.redacted_ordinal)
+    elif not info["safe"]:
+        state.unknown_ordinal += 1
+        locator = "UNKNOWN_FIELD_" + str(state.unknown_ordinal)
+    return {"info": info, "locator": locator}
+
+
+def _note_missing_status(state):
+    _add_reason(state, "MISSING_REQUIRED_STATUS")
+    _add_disposition(state, "NORMALIZE")
+    state.completeness.add("MISSING_REQUIRED_STATUS")
 
 
 def _mark_session(state):
@@ -185,9 +224,19 @@ def _reject_field(state, name):
 
 
 def _strip_key(state, name):
-    state.stripped.add(name)
+    located = _locate_field(state, name)
+    state.stripped.add(located["locator"])
     _add_disposition(state, "STRIP")
-    _add_reason(state, "UNKNOWN_FIELD_OMITTED")
+    reason = "UNKNOWN_FIELD_OMITTED" if located["info"]["locator_kind"] == "safe" else "UNKNOWN_FIELD_REDACTED"
+    _add_reason(state, reason)
+    return located
+
+
+def _remember_strip(state, located):
+    state.stripped.add(located["locator"])
+    _add_disposition(state, "STRIP")
+    reason = "UNKNOWN_FIELD_OMITTED" if located["info"]["locator_kind"] == "safe" else "UNKNOWN_FIELD_REDACTED"
+    _add_reason(state, reason)
 
 
 def _highest(rank, values, fallback):
@@ -482,7 +531,7 @@ def _normalize_path(value):
         return {"ok": False, "oversize": oversize, "prohibited": True}
     if len(value) > bounds["path_max_chars"]:
         return {"ok": False, "oversize": True, "prohibited": privacy.contains_prohibited(value)}
-    if _has_control(value) or "\\" in value or privacy.has_username_path(value):
+    if _has_control(value) or "\\" in value or privacy.sensitive_path(value):
         return {"ok": False, "prohibited": True}
     if "://" in value:
         return {"ok": False, "prohibited": True}
@@ -493,7 +542,7 @@ def _normalize_path(value):
         stripped = True
     if len(path) == 0:
         return {"ok": False, "prohibited": privacy.contains_prohibited(value)}
-    if privacy.contains_prohibited(value) or privacy.contains_prohibited(path):
+    if privacy.sensitive_path(value) or privacy.sensitive_path(path):
         return {"ok": False, "prohibited": True}
     return {"ok": True, "value": path, "changed": stripped or path != value}
 
@@ -725,6 +774,12 @@ def _apply_origin(state, record, requested_origin, producer, version, demo_host)
         _add_disposition(state, "REPLACE_WITH_SAFE_CATEGORY")
         state.provenance = "SUFFICIENT" if producer == "demo_command" else "INSUFFICIENT"
         return
+    if state.inherited_trace and requested_origin == "LOCAL_OBSERVATION" and not state.local_event:
+        state.reader_origin = "LEGACY_UNMARKED"
+        state.provenance = "INSUFFICIENT"
+        _add_reason(state, "PROVENANCE_INSUFFICIENT")
+        _add_disposition(state, "REPLACE_WITH_SAFE_CATEGORY")
+        return
     sufficient = _recognized_producer(producer, version, requested_origin)
     if producer == "demo_command" and requested_origin == "LOCAL_OBSERVATION":
         state.reader_origin = "LEGACY_UNMARKED"
@@ -788,21 +843,29 @@ def _sweep_leftovers(source, seen, state):
         if key in seen:
             continue
         value = source[key]
+        located = _locate_field(state, key)
+        info = located["info"]
         secret = _string_secret(value) or _tree_has_secret(value, 0)
-        if privacy.is_payload_name(key):
-            _strip_key(state, key)
+        if info["payload"]:
+            _remember_strip(state, located)
             _mark_privacy(state)
-            _drop_record(state, "PROMPT_COMPLETION_EXCLUDED")
+            _drop_record(state, "PROHIBITED_FIELD_NAME" if info["disguised"] else "PROMPT_COMPLETION_EXCLUDED")
             continue
-        if privacy.is_baggage_name(key):
-            _strip_key(state, key)
+        if info["detector"]:
+            _remember_strip(state, located)
+            _mark_detector(state)
+            continue
+        if info["baggage"]:
+            _remember_strip(state, located)
             _add_reason(state, "BAGGAGE_OMITTED")
             if secret:
                 _mark_privacy(state)
             continue
-        _strip_key(state, key)
-        structural = privacy.normalize_name(key) in STRUCTURAL_EXCLUSIONS
-        if secret or (privacy.is_prohibited_name(key) and not structural):
+        _remember_strip(state, located)
+        structural = info["comparison"] in STRUCTURAL_EXCLUSIONS
+        if info["prohibited"] and not structural:
+            _mark_privacy(state)
+        elif secret:
             _mark_privacy(state)
 
 
@@ -988,6 +1051,7 @@ def _store_destination(state, record, collected):
     if collected.get("conflict") or collected.get("empty"):
         return
     chosen = collected["chosen"]
+    state.local_event = True
     _put(state, record, "destination_host", chosen["host"], "normalized" if chosen.get("hostChanged") else "accepted")
     if chosen.get("port") is None:
         if chosen.get("portNullAccepted"):
@@ -1119,17 +1183,37 @@ def _common_identity(source, seen, state, record, kind):
     return {"producer": producer_value, "version": version_value}
 
 
-def _apply_trace(source, seen, state, record):
+def _trace_meaning(basis_value):
+    return TRACE_MEANING.get(basis_value)
+
+
+def _trusted_trace_generation(record, witness):
+    spec = meta["trace_generation_witness"]
+    if not spec or not witness["present"] or witness["value"] != spec["value"]:
+        return False
+    if record.get("producer") not in PRODUCERS:
+        return False
+    version = record.get("cli_or_sdk_version")
+    return isinstance(version, str) and len(version) > 0
+
+
+def _apply_trace(source, seen, state, record, record_type=None):
     direct = _take(source, seen, "trace_id")
     basis = _take(source, seen, "trace_id_basis")
     inherited = _take(source, seen, "vantio_trace_id")
     parent_header = _take(source, seen, "traceparent")
     span = _take(source, seen, "span_id")
     parent_span = _take(source, seen, "parent_span_id")
+    witness = _take(source, seen, meta["trace_generation_witness"]["field"])
     if inherited["present"]:
         _strip_key(state, "vantio_trace_id")
+        state.inherited_trace = True
     if parent_header["present"]:
         _strip_key(state, "traceparent")
+        state.inherited_trace = True
+    if witness["present"] and not _trusted_trace_generation(record, witness) and _string_secret(witness["value"]):
+        _mark_detector(state)
+    trusted = _trusted_trace_generation(record, witness)
     accepted = []
     if direct["present"] and direct["value"] is not None:
         norm = _trace_normalize(direct["value"])
@@ -1148,7 +1232,7 @@ def _apply_trace(source, seen, state, record):
             state.trace_meaning = "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
         else:
             accepted.append({"trace": norm["value"], "changed": True, "source": "vantio_trace_id"})
-            state.trace_meaning = "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF"
+            state.inherited_trace = True
     header_span = None
     if parent_header["present"] and parent_header["value"] is not None:
         parsed = _parse_traceparent(parent_header["value"])
@@ -1159,12 +1243,14 @@ def _apply_trace(source, seen, state, record):
         else:
             accepted.append({"trace": parsed["trace"], "changed": True, "source": "traceparent"})
             header_span = parsed["span"]
+            state.inherited_trace = True
     distinct = []
     for item in accepted:
         if item["trace"] not in distinct:
             distinct.append(item["trace"])
     if len(distinct) > 1:
         _mark_context(state)
+        state.trace_conflict = "TRACE_COLLISION"
         state.configuration_fault = True
         _put(state, record, "trace_id", None, "normalized")
         _put(state, record, "trace_id_basis", None, "normalized")
@@ -1172,16 +1258,37 @@ def _apply_trace(source, seen, state, record):
         _put(state, record, "parent_span_id", None, "normalized")
         return
     if len(distinct) == 1:
-        item = accepted[0]
-        if basis["present"] and basis["value"] in TRACE_BASIS:
+        inherited_item = None
+        for item in accepted:
+            if item["source"] in ("vantio_trace_id", "traceparent"):
+                inherited_item = item
+                break
+        if inherited_item:
+            if inherited_item["source"] == "traceparent" and record_type == "import_quarantine":
+                basis_value = normalization["traceparent_import_basis"]
+            else:
+                basis_value = normalization["inherited_trace_basis"]
+            if trusted and basis["present"] and basis["value"] == "OPTICS_GENERATED":
+                basis_value = "OPTICS_GENERATED"
+            elif basis["present"] and basis["value"] != basis_value:
+                state.trace_conflict = "TRACE_BASIS_REPLACED"
+                state.completeness.add("CONFLICTING_PROVENANCE")
+                _add_reason(state, "CONFLICTING_PROVENANCE")
+                _add_disposition(state, "NORMALIZE")
+        elif basis["present"] and basis["value"] in TRACE_BASIS:
             basis_value = basis["value"]
-        elif item["source"] != "trace_id":
-            basis_value = "ASSERTED_CONTEXT"
+            if basis_value == "OPTICS_GENERATED" and not trusted:
+                basis_value = normalization["inherited_trace_basis"]
+                state.trace_conflict = "TRACE_BASIS_REPLACED"
+                state.completeness.add("CONFLICTING_PROVENANCE")
+                _add_reason(state, "CONFLICTING_PROVENANCE")
+                _add_disposition(state, "NORMALIZE")
         else:
             _mark_context(state)
             _put(state, record, "trace_id", None, "normalized")
             _put(state, record, "trace_id_basis", None, "normalized")
             return
+        item = accepted[0]
         _put(
             state,
             record,
@@ -1191,6 +1298,7 @@ def _apply_trace(source, seen, state, record):
         )
         same_basis = basis["present"] and basis["value"] == basis_value
         _put(state, record, "trace_id_basis", basis_value, "accepted" if same_basis else "normalized")
+        state.trace_meaning = _trace_meaning(basis_value)
     elif direct["present"] or inherited["present"] or parent_header["present"]:
         _put(state, record, "trace_id", None, "normalized")
         _put(state, record, "trace_id_basis", None, "normalized")
@@ -1381,6 +1489,7 @@ def _apply_observation_fields(source, seen, state, record):
             _mark_privacy(state)
     if code is not None:
         state.http_status = code
+        state.local_event = True
         _put(state, record, "http_status", code, "accepted" if raw_status == code else "normalized")
     derived_app = None if code is None else _application_status_from_http(code)
     app = _take(source, seen, "application_status")
@@ -1429,17 +1538,22 @@ def _apply_observation_fields(source, seen, state, record):
                 state.customer_exception = True
         else:
             _reject_field(state, "error_class")
-            _mark_privacy(state)
+            if isinstance(token, str) and privacy.contains_prohibited(token):
+                _mark_detector(state)
+            else:
+                _add_reason(state, "INVALID_FORMAT")
     action = _take(source, seen, "action")
-    if action["present"] and action["value"] != "OBSERVED":
-        if _string_secret(action["value"]):
+    if not action["present"] or action["value"] is None:
+        _note_missing_status(state)
+    elif action["value"] != "OBSERVED":
+        if isinstance(action["value"], str) and privacy.contains_prohibited(action["value"]):
+            _mark_detector(state)
+        elif _string_secret(action["value"]):
             _mark_privacy(state)
         _drop_record(state, "ENFORCEMENT_ACTION_EXCLUDED")
         _reject_field(state, "action")
-    elif action["present"]:
-        _put(state, record, "action", "OBSERVED", "accepted")
     else:
-        _put(state, record, "action", "OBSERVED", "normalized")
+        _put(state, record, "action", "OBSERVED", "accepted")
     method = _take(source, seen, "method")
     if method["present"] and method["value"] is not None:
         upper = method["value"].upper() if isinstance(method["value"], str) else ""
@@ -1525,11 +1639,17 @@ def _apply_observation_fields(source, seen, state, record):
     provider_value = "unknown"
     confidence_value = "NONE"
     provider_kind = "normalized"
-    if provider["present"] and isinstance(provider["value"], str) and _PROVIDER.match(provider["value"]):
+    provider_blocked = False
+    if provider["present"] and isinstance(provider["value"], str) and privacy.contains_prohibited(provider["value"]):
+        _reject_field(state, "provider_id")
+        _mark_detector(state)
+        provider_blocked = True
+    elif provider["present"] and isinstance(provider["value"], str) and _PROVIDER.match(provider["value"]):
         provider_value = provider["value"]
         provider_kind = "accepted"
     elif provider["present"] and provider["value"] is not None and provider["value"] != "unknown":
         _reject_field(state, "provider_id")
+        _add_reason(state, "INVALID_FORMAT")
         if _string_secret(provider["value"]):
             _mark_privacy(state)
     if confidence["present"] and confidence["value"] in CONFIDENCE:
@@ -1544,7 +1664,10 @@ def _apply_observation_fields(source, seen, state, record):
             provider_kind = "normalized"
     if confidence_value == "NONE":
         provider_value = "unknown"
-    if provider["present"] or confidence["present"] or legacy_provider["present"]:
+    if provider_blocked:
+        if confidence["present"] and confidence["value"] in CONFIDENCE:
+            _put(state, record, "provider_confidence", confidence["value"], "accepted")
+    elif provider["present"] or confidence["present"] or legacy_provider["present"]:
         kind = provider_kind if provider["present"] and provider_value == provider["value"] else "normalized"
         _put(state, record, "provider_id", provider_value, kind)
         same_confidence = confidence["present"] and confidence["value"] == confidence_value
@@ -1563,8 +1686,16 @@ def _apply_observation_fields(source, seen, state, record):
         return
     if optics_value in OPTICS_STATUS:
         _put(state, record, "optics_status", optics_value, "accepted")
+    elif optics_value is None:
+        _put(state, record, "optics_status", normalization["missing_optics_status"], "normalized")
+        _note_missing_status(state)
     else:
-        _put(state, record, "optics_status", "SUCCESS", "normalized")
+        if isinstance(optics_value, str) and privacy.contains_prohibited(optics_value):
+            _mark_detector(state)
+        else:
+            _add_reason(state, "OPTIMISTIC_DEFAULT_FORBIDDEN")
+        _add_disposition(state, "NORMALIZE")
+        _put(state, record, "optics_status", normalization["missing_optics_status"], "normalized")
     internal = _take(source, seen, "optics_internal_failure")
     if internal["present"]:
         _strip_key(state, "optics_internal_failure")
@@ -1590,7 +1721,7 @@ def _build_observation(source):
     _apply_schema(state, record, source, seen, "observation_event")
     who = _common_identity(source, seen, state, record, "observation")
     _apply_session(source, seen, state, record, bool(who["producer"] and who["version"]))
-    _apply_trace(source, seen, state, record)
+    _apply_trace(source, seen, state, record, "observation_event")
     _apply_clock_and_status(source, seen, state, record, "observation")
     destination = _collect_destination(source, seen, state)
     if not state.drop_record:
@@ -1626,7 +1757,7 @@ def _build_envelope(source):
     _apply_schema(state, record, source, seen, "run_envelope")
     who = _common_identity(source, seen, state, record, "envelope")
     _apply_session(source, seen, state, record, bool(who["producer"] and who["version"]))
-    _apply_trace(source, seen, state, record)
+    _apply_trace(source, seen, state, record, "run_envelope")
     _apply_clock_and_status(source, seen, state, record, "envelope")
     state.accepted.discard("span_id")
     state.normalized.discard("span_id")
@@ -1839,11 +1970,14 @@ def _build_health(source):
             _put(state, record, "observed_at", stamp["value"], "normalized" if stamp["changed"] else "accepted")
     detail = _take(source, seen, "detail_code")
     if detail["present"] and detail["value"] is not None:
-        if isinstance(detail["value"], str) and _TOKEN64.match(detail["value"]):
+        if isinstance(detail["value"], str) and privacy.contains_prohibited(detail["value"]):
+            _reject_field(state, "detail_code")
+            _mark_detector(state)
+        elif isinstance(detail["value"], str) and _TOKEN64.match(detail["value"]):
             _put(state, record, "detail_code", detail["value"], "accepted")
         else:
             _reject_field(state, "detail_code")
-            _mark_privacy(state)
+            _add_reason(state, "INVALID_FORMAT")
     _sweep_leftovers(source, seen, state)
     return {"state": state, "record": None if state.drop_record else record}
 
@@ -1853,6 +1987,7 @@ def _build_quarantine(source):
     seen = set()
     record = {}
     _apply_schema(state, record, source, seen, "import_quarantine")
+    _apply_trace(source, seen, state, record, "import_quarantine")
     requested = source.get("evidence_origin")
     seen.add("evidence_origin")
     _put(state, record, "evidence_origin", "IMPORTED", "accepted" if requested == "IMPORTED" else "normalized")
@@ -1880,7 +2015,10 @@ def _build_quarantine(source):
             _put(state, record, "source_label", text, "accepted")
         else:
             _reject_field(state, "source_label")
-            _mark_privacy(state)
+            if isinstance(text, str) and (privacy.contains_prohibited(text) or privacy.has_username_path(text)):
+                _mark_detector(state)
+            else:
+                _add_reason(state, "INVALID_FORMAT")
     digest = _take(source, seen, "content_sha256")
     if digest["present"] and digest["value"] is not None:
         if isinstance(digest["value"], str) and _SHA.match(digest["value"]):
@@ -1891,10 +2029,14 @@ def _build_quarantine(source):
             if _string_secret(digest["value"]):
                 _mark_privacy(state)
     seen_status = _take(source, seen, "schema_status_seen")
-    if seen_status["present"] and isinstance(seen_status["value"], str) and _SEEN_STATUS.match(seen_status["value"]):
+    if seen_status["present"] and isinstance(seen_status["value"], str) and privacy.contains_prohibited(seen_status["value"]):
+        _reject_field(state, "schema_status_seen")
+        _mark_detector(state)
+    elif seen_status["present"] and isinstance(seen_status["value"], str) and _SEEN_STATUS.match(seen_status["value"]):
         _put(state, record, "schema_status_seen", seen_status["value"], "accepted")
     elif seen_status["present"]:
         _reject_field(state, "schema_status_seen")
+        _add_reason(state, "INVALID_FORMAT")
     imported_at = _take(source, seen, "imported_at")
     if imported_at["present"]:
         stamp = _canonical_time(imported_at["value"])
@@ -1908,12 +2050,14 @@ def _build_quarantine(source):
     else:
         _put(state, record, "accepted", False, "normalized")
     reason = _take(source, seen, "reason_code")
-    if reason["present"] and isinstance(reason["value"], str) and _TOKEN64.match(reason["value"]):
+    if reason["present"] and isinstance(reason["value"], str) and privacy.contains_prohibited(reason["value"]):
+        _reject_field(state, "reason_code")
+        _mark_detector(state)
+    elif reason["present"] and isinstance(reason["value"], str) and _TOKEN64.match(reason["value"]):
         _put(state, record, "reason_code", reason["value"], "accepted")
     elif reason["present"] and reason["value"] is not None:
         _reject_field(state, "reason_code")
-        if _string_secret(reason["value"]):
-            _mark_privacy(state)
+        _add_reason(state, "INVALID_FORMAT")
     _sweep_leftovers(source, seen, state)
     return {"state": state, "record": None if state.drop_record else record}
 
@@ -2045,8 +2189,9 @@ def _finalize(state, record, events, application_result, compatibility):
         "diagnostics": {
             "destination_class": state.destination_class,
             "destination_ip_class": state.destination_ip_class,
-            "privacy_event": "REDACTION_DROP" if state.privacy else None,
+            "privacy_event": (state.privacy_category or "REDACTION_DROP") if state.privacy else None,
             "provenance": state.provenance,
+            "provenance_conflict": state.trace_conflict,
             "scope_complete": False,
             "trace_basis_meaning": state.trace_meaning,
         },
@@ -2105,6 +2250,8 @@ def _merge_state(parent, child):
     parent.health["session_id_rejected"] += child.health["session_id_rejected"]
     if child.privacy:
         parent.privacy = True
+        if not parent.privacy_category:
+            parent.privacy_category = child.privacy_category or "REDACTION_DROP"
     if not parent.reader_origin and child.reader_origin:
         parent.reader_origin = child.reader_origin
 
@@ -2193,43 +2340,82 @@ def _application_of(options):
     return None
 
 
+def _detach_application(value):
+    if value is None:
+        return {"ok": True, "value": None}
+    return walk.plain_copy(value)
+
+
+def _finish_result(result, detached):
+    if not detached or detached.get("ok"):
+        result["application_result"] = detached["value"] if detached else None
+        return result
+    result["application_result"] = None
+    reason = detached.get("reason") or "UNSUPPORTED_COMPLEX_VALUE"
+    if REASON_RANK.get(reason, -1) > REASON_RANK.get(result["reason_code"], -1):
+        result["reason_code"] = reason
+        result["remediation_code"] = enums["remediation_by_reason"].get(reason, "VALIDATOR_INTERNAL")
+    if DISPOSITION_RANK.get("REJECT_FIELD", -1) > DISPOSITION_RANK.get(result["disposition"], -1):
+        result["disposition"] = "REJECT_FIELD"
+    if result["issue_location"] == "NONE":
+        result["issue_location"] = "OPTICS"
+        result["issue_location_label"] = ISSUE_LABELS.get("OPTICS", "Optics")
+    return result
+
+
 def validate_evidence(value, options=None):
-    application_result = _application_of(options)
+    raw_application = _application_of(options)
+    try:
+        detached = _detach_application(raw_application)
+    except Exception:
+        detached = {"ok": False, "reason": "VALIDATOR_FAULT"}
+    application_result = detached["value"] if detached.get("ok") else None
     try:
         if isinstance(options, dict) and options.get("injectFault") is True:
             raise RuntimeError("injected")
         if isinstance(value, str):
             if len(value) > bounds["max_input_chars"]:
-                return _terminal("INPUT_BOUND", application_result, "bytes")
+                return _finish_result(_terminal("INPUT_BOUND", application_result, "bytes"), detached)
             if privacy.contains_prohibited(value) and not value.startswith("{") and not value.startswith("["):
                 state = State()
                 _mark_privacy(state)
                 _drop_record(state, "REDACTION_DROP")
-                return _finalize(state, None, [], application_result, _empty_compatibility("unknown", False, None))
+                return _finish_result(
+                    _finalize(state, None, [], application_result, _empty_compatibility("unknown", False, None)),
+                    detached,
+                )
             if value.startswith("{") or value.startswith("["):
                 try:
                     value = json.loads(value)
                 except json.JSONDecodeError:
-                    return _terminal("MALFORMED_JSON", application_result, "bytes")
+                    return _finish_result(_terminal("MALFORMED_JSON", application_result, "bytes"), detached)
             else:
-                return _terminal("RECORD_TYPE_REJECTED", application_result, "unknown")
-        if not isinstance(value, (dict, list)):
-            return _terminal("RECORD_TYPE_REJECTED", application_result, "unknown")
+                return _finish_result(_terminal("RECORD_TYPE_REJECTED", application_result, "unknown"), detached)
+        if value is None or type(value) in (bool, int, float, bytes, bytearray):
+            return _finish_result(_terminal("RECORD_TYPE_REJECTED", application_result, "unknown"), detached)
         copied = walk.plain_copy(value)
         if not copied["ok"]:
-            return _terminal(copied["reason"], application_result, "unknown")
+            return _finish_result(_terminal(copied["reason"], application_result, "unknown"), detached)
         if isinstance(copied["value"], list):
             state = State()
             _mark_privacy(state)
             _drop_record(state, "PROMPT_COMPLETION_EXCLUDED")
-            return _finalize(state, None, [], application_result, _empty_compatibility("unknown", False, None))
-        return _validate_plain(copied["value"], application_result)
+            return _finish_result(
+                _finalize(state, None, [], application_result, _empty_compatibility("unknown", False, None)),
+                detached,
+            )
+        return _finish_result(_validate_plain(copied["value"], application_result), detached)
     except Exception:
-        return _terminal("VALIDATOR_FAULT", application_result, "unavailable")
+        return _finish_result(_terminal("VALIDATOR_FAULT", application_result, "unavailable"), detached)
 
 
 def validate_bytes(buffer, options=None):
-    application_result = _application_of(options)
+    raw_application = _application_of(options)
+    try:
+        detached = _detach_application(raw_application)
+    except Exception:
+        detached = {"ok": False, "reason": "VALIDATOR_FAULT"}
+    application_result = detached["value"] if detached.get("ok") else None
     try:
         if isinstance(options, dict) and options.get("injectFault") is True:
             raise RuntimeError("injected")
@@ -2240,20 +2426,20 @@ def validate_bytes(buffer, options=None):
         elif isinstance(buffer, bytes):
             raw = buffer
         else:
-            return _terminal("HOSTILE_INPUT", application_result, "bytes")
+            return _finish_result(_terminal("HOSTILE_INPUT", application_result, "bytes"), detached)
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
-            return _terminal("MALFORMED_UTF8", application_result, "bytes")
+            return _finish_result(_terminal("MALFORMED_UTF8", application_result, "bytes"), detached)
         if len(text) > bounds["max_input_chars"]:
-            return _terminal("INPUT_BOUND", application_result, "bytes")
+            return _finish_result(_terminal("INPUT_BOUND", application_result, "bytes"), detached)
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            return _terminal("MALFORMED_JSON", application_result, "bytes")
+            return _finish_result(_terminal("MALFORMED_JSON", application_result, "bytes"), detached)
         return validate_evidence(parsed, options)
     except Exception:
-        return _terminal("VALIDATOR_FAULT", application_result, "bytes")
+        return _finish_result(_terminal("VALIDATOR_FAULT", application_result, "bytes"), detached)
 
 
 def canonical_json(value):

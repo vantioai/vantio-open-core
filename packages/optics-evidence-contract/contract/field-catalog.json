@@ -1904,7 +1904,7 @@
         "PRODUCT_HEALTH",
         "DERIVED_DIAGNOSTIC"
       ],
-      "purpose": "Optics display token. SUCCESS only when the observation object is produced.",
+      "purpose": "Optics display token. A missing value is stored as UNAVAILABLE. SUCCESS is stored only when the caller sent SUCCESS.",
       "sensitivity": "STRUCTURAL",
       "cardinality": "LOW",
       "index_eligible": true,
@@ -1972,7 +1972,7 @@
         "PRODUCT_HEALTH",
         "DERIVED_DIAGNOSTIC"
       ],
-      "purpose": "Optics action. Enforcement actions are not observations.",
+      "purpose": "Optics action. Only an explicit OBSERVED value is stored. A missing action stays absent. Any other value drops the record.",
       "sensitivity": "STRUCTURAL",
       "cardinality": "LOW",
       "index_eligible": false,

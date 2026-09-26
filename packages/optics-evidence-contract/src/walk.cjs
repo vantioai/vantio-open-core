@@ -2,6 +2,8 @@
 
 const { readFileSync } = require("fs");
 const path = require("path");
+const { types } = require("util");
+const privacy = require("./privacy.cjs");
 
 const bounds = JSON.parse(
   readFileSync(path.join(__dirname, "..", "contract", "normalization.json"), "utf8"),
@@ -37,6 +39,38 @@ function plainCopy(value) {
   return copyValue(value, state);
 }
 
+function chainHasAccessor(value) {
+  let proto = Object.getPrototypeOf(value);
+  const seen = new Set();
+  while (proto && proto !== Object.prototype && proto !== Array.prototype && !seen.has(proto)) {
+    seen.add(proto);
+    const descs = Object.getOwnPropertyDescriptors(proto);
+    for (const key of Object.keys(descs)) {
+      if (typeof descs[key].get === "function" || typeof descs[key].set === "function") return true;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
+}
+
+function containerKind(value) {
+  if (types.isProxy(value)) return "proxy";
+  const proto = Object.getPrototypeOf(value);
+  if (Array.isArray(value)) return proto === Array.prototype ? "array" : "exotic";
+  if (proto === Object.prototype || proto === null) return "object";
+  return "exotic";
+}
+
+function rejectDescriptors(descs) {
+  for (const key of Object.keys(descs)) {
+    const desc = descs[key];
+    if (!desc || typeof desc.get === "function" || typeof desc.set === "function") {
+      return "ACCESSOR_PROPERTY_FORBIDDEN";
+    }
+  }
+  return null;
+}
+
 function copyValue(value, state) {
   if (value === null) return { ok: true, value: null };
   const kind = typeof value;
@@ -60,56 +94,60 @@ function copyValue(value, state) {
     return { ok: false, reason: "HOSTILE_INPUT" };
   }
   if (kind !== "object") return { ok: false, reason: "HOSTILE_INPUT" };
+  const shape = containerKind(value);
+  if (shape === "proxy" || (shape === "exotic" && chainHasAccessor(value))) {
+    return { ok: false, reason: "ACCESSOR_PROPERTY_FORBIDDEN" };
+  }
+  if (shape === "exotic") return { ok: false, reason: "UNSUPPORTED_COMPLEX_VALUE" };
   if (state.seen.has(value)) return { ok: false, reason: "CYCLE_REJECTED" };
   if (state.depth >= bounds.max_depth) return { ok: false, reason: "EXCESSIVE_NESTING" };
   if (state.nodes >= bounds.max_nodes) return { ok: false, reason: "INPUT_BOUND" };
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    return { ok: false, reason: "UNSUPPORTED_COMPLEX_VALUE" };
+  }
+
+  const descs = Object.getOwnPropertyDescriptors(value);
+  const descriptorProblem = rejectDescriptors(descs);
+  if (descriptorProblem) return { ok: false, reason: descriptorProblem };
 
   state.seen.add(value);
   state.nodes += 1;
   state.depth += 1;
   try {
-    if (Array.isArray(value)) {
-      let length;
-      try {
-        length = value.length;
-      } catch {
-        return { ok: false, reason: "HOSTILE_INPUT" };
-      }
+    if (shape === "array") {
+      const lengthDesc = descs.length;
+      const length = lengthDesc && Object.prototype.hasOwnProperty.call(lengthDesc, "value")
+        ? lengthDesc.value
+        : value.length;
       if (typeof length !== "number" || length < 0 || length > bounds.max_array) {
         return { ok: false, reason: "INPUT_BOUND" };
       }
       const out = [];
       for (let i = 0; i < length; i += 1) {
-        let item;
-        try {
-          item = value[i];
-        } catch {
-          return { ok: false, reason: "HOSTILE_INPUT" };
-        }
-      const child = copyValue(item, state);
-      if (!child.ok) return child;
-      if (!child.skip) out.push(child.value);
+        const desc = descs[String(i)];
+        if (!desc || !Object.prototype.hasOwnProperty.call(desc, "value")) continue;
+        const child = copyValue(desc.value, state);
+        if (!child.ok) return child;
+        if (!child.skip) out.push(child.value);
       }
       return { ok: true, value: out };
     }
 
-    let keys;
-    try {
-      keys = Object.keys(value);
-    } catch {
-      return { ok: false, reason: "HOSTILE_INPUT" };
-    }
+    const keys = Object.keys(descs).filter((key) => Object.prototype.hasOwnProperty.call(descs[key], "value"));
     if (keys.length > bounds.max_keys) return { ok: false, reason: "INPUT_BOUND" };
+    const forms = new Set();
+    for (const key of keys) {
+      if (typeof key !== "string") return { ok: false, reason: "INVALID_FORMAT" };
+      if (key.length > 128 || Buffer.byteLength(key, "utf8") > 128) {
+        return { ok: false, reason: "MAX_SIZE_EXCEEDED" };
+      }
+      const form = privacy.comparisonForm(key);
+      if (forms.has(form)) return { ok: false, reason: "DUPLICATE_CANONICAL_FIELD" };
+      forms.add(form);
+    }
     const out = Object.create(null);
     for (const key of keys) {
-      if (key.length > 128) return { ok: false, reason: "INPUT_BOUND" };
-      let childValue;
-      try {
-        childValue = value[key];
-      } catch {
-        return { ok: false, reason: "HOSTILE_INPUT" };
-      }
-      const child = copyValue(childValue, state);
+      const child = copyValue(descs[key].value, state);
       if (!child.ok) return child;
       if (!child.skip) out[key] = child.value;
     }

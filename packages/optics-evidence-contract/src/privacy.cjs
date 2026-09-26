@@ -9,13 +9,85 @@ const policy = JSON.parse(
 
 const CONFUSABLE = new Map(policy.confusables);
 
-function normalizeName(name) {
-  return String(name).toLowerCase().replace(/[-_\s]/g, "");
+const SAFE_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const EXACT_NAMES = new Set(policy.prohibited_field_names);
+const SEPARATORS = new Set(["-", "_", " ", ".", ":", "/", "\\", "|", ",", ";", "\t"]);
+
+function isNameControl(code) {
+  return code <= 0x1f || code === 0x7f || code === 0x2028 || code === 0x2029 || code === 0xfeff
+    || (code >= 0x200b && code <= 0x200f) || (code >= 0x202a && code <= 0x202e)
+    || (code >= 0x2066 && code <= 0x2069);
 }
 
-const NAME_SET = new Set(policy.prohibited_field_names.map((name) => normalizeName(name)));
-const PAYLOAD_SET = new Set(policy.payload_drop_record_names.map((name) => normalizeName(name)));
-const BAGGAGE_SET = new Set(policy.baggage_names.map((name) => normalizeName(name)));
+function comparisonForm(name) {
+  if (typeof name !== "string") return "";
+  let text = name.normalize("NFC");
+  const decoded = percentDecodeOnce(text);
+  if (decoded.changed && !decoded.prohibited && decoded.text) text = decoded.text.normalize("NFC");
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    if (isNameControl(code) || SEPARATORS.has(ch)) continue;
+    if (code >= 65 && code <= 90) out += String.fromCharCode(code + 32);
+    else out += ch;
+  }
+  return out;
+}
+
+function normalizeName(name) {
+  return comparisonForm(name);
+}
+
+const NAME_SET = new Set(policy.prohibited_field_names.map((name) => comparisonForm(name)));
+const PAYLOAD_SET = new Set(policy.payload_drop_record_names.map((name) => comparisonForm(name)));
+const BAGGAGE_SET = new Set(policy.baggage_names.map((name) => comparisonForm(name)));
+
+function classifyFieldName(name) {
+  if (typeof name !== "string") {
+    return {
+      comparison: "",
+      payload: false,
+      baggage: false,
+      prohibited: false,
+      detector: false,
+      control: false,
+      oversized: false,
+      exact: false,
+      safe: false,
+      locatorKind: "redacted",
+      disguised: false,
+    };
+  }
+  const chars = Array.from(name);
+  let control = false;
+  for (const ch of chars) {
+    if (isNameControl(ch.codePointAt(0))) control = true;
+  }
+  const oversized = chars.length > 128 || Buffer.byteLength(name, "utf8") > 128;
+  const comparison = oversized ? "" : comparisonForm(name);
+  const payload = comparison !== "" && PAYLOAD_SET.has(comparison);
+  const baggage = comparison !== "" && BAGGAGE_SET.has(comparison);
+  const prohibited = comparison !== "" && NAME_SET.has(comparison);
+  const detector = !oversized && containsProhibited(name);
+  const exact = EXACT_NAMES.has(name);
+  const safeGrammar = !control && !detector && !oversized && name.normalize("NFC") === name && SAFE_NAME.test(name);
+  let locatorKind = safeGrammar ? "safe" : "redacted";
+  if ((payload || prohibited) && !exact) locatorKind = "prohibited";
+  if (exact && !detector && !control && !oversized) locatorKind = "safe";
+  return {
+    comparison,
+    payload,
+    baggage,
+    prohibited,
+    detector,
+    control,
+    oversized,
+    exact,
+    safe: locatorKind === "safe",
+    locatorKind,
+    disguised: locatorKind === "prohibited",
+  };
+}
 
 function isProhibitedName(name) {
   return NAME_SET.has(normalizeName(name));
@@ -217,27 +289,35 @@ function hasSensitiveQuery(text) {
   return false;
 }
 
-function hasEmail(text) {
-  const localOk = (ch) => (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")
-    || ch === "." || ch === "_" || ch === "%" || ch === "+" || ch === "-";
-  for (let i = 0; i < text.length; i += 1) {
-    if (text[i] !== "@") continue;
+function isUnicodeAlnum(ch) {
+  const code = ch.codePointAt(0);
+  if (code >= 48 && code <= 57) return true;
+  if (code >= 65 && code <= 90) return true;
+  if (code >= 97 && code <= 122) return true;
+  if (code < 128) return false;
+  return /^\p{L}$/u.test(ch) || /^\p{N}$/u.test(ch);
+}
+
+function emailIn(chars) {
+  for (let i = 0; i < chars.length; i += 1) {
+    if (chars[i] !== "@") continue;
     let left = i - 1;
-    while (left >= 0 && localOk(text[left])) left -= 1;
+    while (left >= 0 && (isUnicodeAlnum(chars[left]) || "._%+-".includes(chars[left]))) left -= 1;
     if (i - left - 1 < 1) continue;
     let right = i + 1;
     let dot = -1;
-    while (right < text.length) {
-      const ch = text[right];
-      const ok = (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")
-        || ch === "." || ch === "-";
-      if (!ok) break;
-      if (ch === ".") dot = right;
+    while (right < chars.length && (isUnicodeAlnum(chars[right]) || chars[right] === "." || chars[right] === "-")) {
+      if (chars[right] === ".") dot = right;
       right += 1;
     }
     if (dot > i + 1 && right - dot - 1 >= 2) return true;
   }
   return false;
+}
+
+function hasEmail(text) {
+  if (typeof text !== "string" || text.length === 0) return false;
+  return emailIn(Array.from(text.normalize("NFC")));
 }
 
 function hasSsn(text) {
@@ -486,9 +566,22 @@ function containsProhibited(value) {
   return false;
 }
 
+function sensitivePath(text) {
+  if (typeof text !== "string" || text.length === 0) return false;
+  const nfc = text.normalize("NFC");
+  if (containsProhibited(text) || containsProhibited(nfc) || hasUsernamePath(text) || hasUsernamePath(nfc)) return true;
+  const decoded = percentDecodeOnce(nfc);
+  if (decoded.prohibited) return true;
+  if (!decoded.changed) return false;
+  const form = decoded.text.normalize("NFC");
+  return containsProhibited(form) || hasUsernamePath(form);
+}
+
 module.exports = {
   policy,
   normalizeName,
+  comparisonForm,
+  classifyFieldName,
   isProhibitedName,
   isPayloadName,
   isBaggageName,
@@ -496,5 +589,7 @@ module.exports = {
   hasUsernamePath,
   hasDbScheme,
   hasSensitiveQuery,
+  sensitivePath,
+  percentDecodeOnce,
   scanDirect,
 };

@@ -13,4 +13,4 @@ Validators:
 
 Both read `contract/`. Tests and the shared corpus live in `tests/optics-evidence-contract/`. Internal notes live in `docs/internal/optics-pkg01/`.
 
-The contract output is a result object. It does not change a caller-supplied application result.
+The contract output is a detached plain-data result. A caller-supplied application result is copied into approved primitives and bounded containers. The validator does not keep the caller's object.

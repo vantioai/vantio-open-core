@@ -25,6 +25,10 @@
   "customer_promote_legacy_unmarked": false,
   "annotation_origin_added": false,
   "demo_host": "optics-demo.invalid",
+  "trace_generation_witness": {
+    "field": "optics_trace_witness",
+    "value": "PKG01_OPTICS_GENERATED_WITNESS"
+  },
   "session_id_max_bytes": 80,
   "path_max_chars": 512,
   "trace_id_max_chars": 128,

@@ -9,10 +9,11 @@ Audience: INTERNAL_RESTRICTED
 - Detection folds confusables and applies one percent-decode and one base64 pass. It does not store the folded or decoded text. A long base64-alphabet string can be treated as a secret even when the decoded bytes are not a credential. The oversize-path fixture uses `!` so the path rule is the one under test.
 - Phone detection requires a separator or parentheses, so a hex trace is not classified as a phone. Card detection does not treat a digit run bounded by letters as a card.
 - Non-zero timestamp offsets are rejected, not converted. Only `Z`, `+00:00`, and `-00:00` are accepted, and the stored form is `YYYY-MM-DDTHH:MM:SS.mmmZ`.
-- Duplicate JSON object keys are not visible. Parsers keep the last key.
+- Identical JSON object keys are not visible. Parsers keep the last key. Distinct keys that share a comparison form are rejected as `DUPLICATE_CANONICAL_FIELD`.
 - Integers above `9007199254740991` are not a conformance claim. Fixtures stay inside that range.
 - Python string length is Unicode code points. Node string length for some host and version checks is UTF-16 code units. The corpus is BMP text, where those lengths match.
 - There is no importer and no annotation store. Import and annotation objects are contract fixtures only. An import does not receive a fresh observation basis in this slice.
 - `scope_complete` is always false. Record acceptance is not a scope-wide completeness claim.
-- Python 3.10 and 3.11 were not installed here. Windows, macOS, and WSL were not run. Those are `NOT_TESTED`.
+- The accepted input is plain JSON data: objects, arrays, and approved primitives. Accessors and proxies are rejected before ordinary field traversal where that shape is detectable. There is no in-process timeout for a getter that never returns. That case is tested only in a killable subprocess.
+- Python 3.10.21, 3.11.16, and 3.12.3 were run on this Linux host. Windows, macOS, and WSL were not run. Those are `NOT_TESTED`. Node versions other than v22.14.0 are `NOT_TESTED`.
 - The package is private, unversioned for release, and not loaded by the live CLI or Python runtime.

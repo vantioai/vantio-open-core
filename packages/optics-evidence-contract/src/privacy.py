@@ -12,17 +12,107 @@ _CONFUSABLE = {pair[0]: pair[1] for pair in policy["confusables"]}
 _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 
-def normalize_name(name):
+_SAFE_NAME_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
+_EXACT_NAMES = set(policy["prohibited_field_names"])
+_SEPARATORS = set("-_ .:/" + "\\|,;\t")
+_NAMES = set()
+_PAYLOAD = set()
+_BAGGAGE = set()
+
+
+def _name_control(code):
+    return (
+        code <= 0x1F
+        or code == 0x7F
+        or code in (0x2028, 0x2029, 0xFEFF)
+        or 0x200B <= code <= 0x200F
+        or 0x202A <= code <= 0x202E
+        or 0x2066 <= code <= 0x2069
+    )
+
+
+def _comparison_form(name):
+    if not isinstance(name, str):
+        return ""
+    text = unicodedata.normalize("NFC", name)
+    decoded = _percent_decode_once(text)
+    if decoded["changed"] and not decoded["prohibited"] and decoded["text"]:
+        text = unicodedata.normalize("NFC", decoded["text"])
     out = []
-    for ch in str(name).lower():
-        if ch not in "-_ \t":
+    for ch in text:
+        code = ord(ch)
+        if _name_control(code) or ch in _SEPARATORS:
+            continue
+        if 65 <= code <= 90:
+            out.append(chr(code + 32))
+        else:
             out.append(ch)
     return "".join(out)
 
 
-_NAMES = {normalize_name(name) for name in policy["prohibited_field_names"]}
-_PAYLOAD = {normalize_name(name) for name in policy["payload_drop_record_names"]}
-_BAGGAGE = {normalize_name(name) for name in policy["baggage_names"]}
+def normalize_name(name):
+    return _comparison_form(name)
+
+
+comparison_form = _comparison_form
+
+
+def _safe_grammar(name):
+    if not name or len(name) > 64:
+        return False
+    if name[0] not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz":
+        return False
+    return all(ch in _SAFE_NAME_CHARS for ch in name)
+
+
+def classify_field_name(name):
+    if not isinstance(name, str):
+        return {
+            "comparison": "",
+            "payload": False,
+            "baggage": False,
+            "prohibited": False,
+            "detector": False,
+            "control": False,
+            "oversized": False,
+            "exact": False,
+            "safe": False,
+            "locator_kind": "redacted",
+            "disguised": False,
+        }
+    control = any(_name_control(ord(ch)) for ch in name)
+    oversized = len(name) > 128 or len(name.encode("utf-8")) > 128
+    comparison = "" if oversized else _comparison_form(name)
+    payload = comparison != "" and comparison in _PAYLOAD
+    baggage = comparison != "" and comparison in _BAGGAGE
+    prohibited = comparison != "" and comparison in _NAMES
+    detector = (not oversized) and contains_prohibited(name)
+    exact = name in _EXACT_NAMES
+    safe_grammar = (
+        not control
+        and not detector
+        and not oversized
+        and unicodedata.normalize("NFC", name) == name
+        and _safe_grammar(name)
+    )
+    locator_kind = "safe" if safe_grammar else "redacted"
+    if (payload or prohibited) and not exact:
+        locator_kind = "prohibited"
+    if exact and not detector and not control and not oversized:
+        locator_kind = "safe"
+    return {
+        "comparison": comparison,
+        "payload": payload,
+        "baggage": baggage,
+        "prohibited": prohibited,
+        "detector": detector,
+        "control": control,
+        "oversized": oversized,
+        "exact": exact,
+        "safe": locator_kind == "safe",
+        "locator_kind": locator_kind,
+        "disguised": locator_kind == "prohibited",
+    }
 
 
 def is_prohibited_name(name):
@@ -208,23 +298,31 @@ def has_sensitive_query(text):
     return False
 
 
-def _local_ok(ch):
-    return ch.isalnum() or ch in "._%+-"
+def _unicode_alnum(ch):
+    code = ord(ch)
+    if 48 <= code <= 57 or 65 <= code <= 90 or 97 <= code <= 122:
+        return True
+    if code < 128:
+        return False
+    return unicodedata.category(ch)[0] in ("L", "N")
 
 
 def _has_email(text):
-    for i, ch in enumerate(text):
+    if not isinstance(text, str) or text == "":
+        return False
+    chars = list(unicodedata.normalize("NFC", text))
+    for i, ch in enumerate(chars):
         if ch != "@":
             continue
         left = i - 1
-        while left >= 0 and _local_ok(text[left]):
+        while left >= 0 and (_unicode_alnum(chars[left]) or chars[left] in "._%+-"):
             left -= 1
         if i - left - 1 < 1:
             continue
         right = i + 1
         dot = -1
-        while right < len(text) and (text[right].isalnum() or text[right] in ".-"):
-            if text[right] == ".":
+        while right < len(chars) and (_unicode_alnum(chars[right]) or chars[right] in ".-"):
+            if chars[right] == ".":
                 dot = right
             right += 1
         if dot > i + 1 and right - dot - 1 >= 2:
@@ -475,3 +573,23 @@ def contains_prohibited(value):
         if folded_decoded != decoded["text"] and scan_direct(folded_decoded):
             return True
     return False
+
+
+def sensitive_path(text):
+    if not isinstance(text, str) or text == "":
+        return False
+    nfc = unicodedata.normalize("NFC", text)
+    if contains_prohibited(text) or contains_prohibited(nfc) or has_username_path(text) or has_username_path(nfc):
+        return True
+    decoded = _percent_decode_once(nfc)
+    if decoded["prohibited"]:
+        return True
+    if not decoded["changed"]:
+        return False
+    form = unicodedata.normalize("NFC", decoded["text"])
+    return contains_prohibited(form) or has_username_path(form)
+
+
+_NAMES.update(_comparison_form(name) for name in policy["prohibited_field_names"])
+_PAYLOAD.update(_comparison_form(name) for name in policy["payload_drop_record_names"])
+_BAGGAGE.update(_comparison_form(name) for name in policy["baggage_names"])
