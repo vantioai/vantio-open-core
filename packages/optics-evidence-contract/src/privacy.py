@@ -4,12 +4,130 @@ import json
 import unicodedata
 from pathlib import Path
 
-policy = json.loads(
-    (Path(__file__).resolve().parent.parent / "contract" / "prohibited-fields.json").read_text(encoding="utf-8")
-)
+_CONTRACT = Path(__file__).resolve().parent.parent / "contract"
+policy = json.loads((_CONTRACT / "prohibited-fields.json").read_text(encoding="utf-8"))
+detector_spec = json.loads((_CONTRACT / "detector-classes.json").read_text(encoding="utf-8"))
+_FIELD_NAME_MAX_BYTES = json.loads((_CONTRACT / "normalization.json").read_text(encoding="utf-8"))["bounds"]["field_name_max_bytes"]
 
 _CONFUSABLE = {pair[0]: pair[1] for pair in policy["confusables"]}
 _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+_CLASS_CODES = {}
+
+
+def utf8_bytes(text):
+    """UTF-8 byte length. Lone surrogates count as 3 bytes, matching Node Buffer.byteLength."""
+    if not isinstance(text, str):
+        return 0
+    total = 0
+    index = 0
+    length = len(text)
+    while index < length:
+        code = ord(text[index])
+        if 0xD800 <= code <= 0xDBFF and index + 1 < length:
+            nxt = ord(text[index + 1])
+            if 0xDC00 <= nxt <= 0xDFFF:
+                total += 4
+                index += 2
+                continue
+        if code <= 0x7F:
+            total += 1
+        elif code <= 0x7FF:
+            total += 2
+        elif code <= 0xFFFF:
+            total += 3
+        else:
+            total += 4
+        index += 1
+    return total
+
+
+def _class_codes(name):
+    if name in _CLASS_CODES:
+        return _CLASS_CODES[name]
+    definition = detector_spec["classes"].get(name) or {}
+    codes = set()
+    for part in definition.get("union") or []:
+        codes.update(_class_codes(part))
+    for pair in definition.get("ranges") or []:
+        codes.update(range(pair[0], pair[1] + 1))
+    for code in definition.get("codepoints") or []:
+        codes.add(code)
+    _CLASS_CODES[name] = codes
+    return codes
+
+
+_ASCII_ALPHA = _class_codes("ASCII_ALPHA")
+_ASCII_DIGIT = _class_codes("ASCII_DIGIT")
+_ASCII_ALNUM = _class_codes("ASCII_ALNUM")
+_ASCII_HEX = _class_codes("ASCII_HEX")
+_BEARER_EXTRA = set(detector_spec["tails"]["bearer"]["extra"])
+_BASIC_EXTRA = set(detector_spec["tails"]["basic"]["extra"])
+_JWT_EXTRA = set(detector_spec["tails"]["jwt_extra"])
+_PAN_SEPARATORS = set(detector_spec["pan"]["separators"])
+_BASE64_EXTRA = set(detector_spec["base64_standard_extra"])
+_EMAIL_CATEGORIES = tuple(detector_spec["email_unicode_category_prefixes"])
+
+
+def _unit_code(ch):
+    if not ch:
+        return -1
+    return ord(ch)
+
+
+def _in_class(ch, codes):
+    code = _unit_code(ch)
+    return code >= 0 and code in codes
+
+
+def _non_ascii(ch):
+    return _unit_code(ch) > detector_spec["non_ascii"]["min_exclusive"]
+
+
+def _ascii_map(text, spec):
+    out = []
+    for ch in text:
+        code = ord(ch)
+        if spec["from"] <= code <= spec["to"]:
+            out.append(chr(code + spec["delta"]))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def ascii_fold(text):
+    return _ascii_map(text, detector_spec["ascii_case_fold"]["lower"])
+
+
+def ascii_fold_upper(text):
+    return _ascii_map(text, detector_spec["ascii_case_fold"]["upper"])
+
+
+def _scan_tail(text, start, allowed):
+    ascii_count = 0
+    insertions = 0
+    index = start
+    while index < len(text):
+        ch = text[index]
+        if _non_ascii(ch):
+            insertions += 1
+            index += 1
+            continue
+        if allowed(ord(ch)):
+            ascii_count += 1
+            index += 1
+            continue
+        break
+    return {"ascii": ascii_count, "insertions": insertions, "end": index}
+
+
+def _tail_hit(scanned, minimum):
+    if scanned["ascii"] >= minimum:
+        return True
+    return bool(
+        detector_spec["credential_tails"]["mixed_script_matches_when_ascii_tail_and_insertion"]
+        and scanned["insertions"] > 0
+        and scanned["ascii"] > 0
+    )
 
 
 _SAFE_NAME_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
@@ -81,7 +199,7 @@ def classify_field_name(name):
             "disguised": False,
         }
     control = any(_name_control(ord(ch)) for ch in name)
-    oversized = len(name) > 128 or len(name.encode("utf-8")) > 128
+    oversized = utf8_bytes(name) > _FIELD_NAME_MAX_BYTES
     comparison = "" if oversized else _comparison_form(name)
     payload = comparison != "" and comparison in _PAYLOAD
     baggage = comparison != "" and comparison in _BAGGAGE
@@ -128,27 +246,28 @@ def is_baggage_name(name):
 
 
 def _digit(ch):
-    return "0" <= ch <= "9"
+    return _in_class(ch, _ASCII_DIGIT)
 
 
 def _hex(ch):
-    return _digit(ch) or "a" <= ch <= "f" or "A" <= ch <= "F"
+    return _in_class(ch, _ASCII_HEX)
 
 
 def _starts(text, prefix, index):
-    if index + len(prefix) > len(text):
+    folded_prefix = ascii_fold(prefix)
+    if index + len(folded_prefix) > len(text):
         return False
-    for i, ch in enumerate(prefix):
-        if text[index + i].lower() != ch.lower():
+    for i, ch in enumerate(folded_prefix):
+        if ascii_fold(text[index + i]) != ch:
             return False
     return True
 
 
 def _has_bearer(text):
-    lower = text.lower()
+    folded = ascii_fold(text)
     start = 0
-    while start < len(lower):
-        at = lower.find("bearer", start)
+    while start < len(folded):
+        at = folded.find("bearer", start)
         if at < 0:
             return False
         i = at + 6
@@ -157,24 +276,18 @@ def _has_bearer(text):
             continue
         while i < len(text) and text[i] in " \t":
             i += 1
-        n = 0
-        while i < len(text):
-            ch = text[i]
-            if not (ch.isalnum() or ch in "-._~+/="):
-                break
-            n += 1
-            i += 1
-        if n >= 8:
+        scanned = _scan_tail(text, i, lambda code: code in _ASCII_ALNUM or code in _BEARER_EXTRA)
+        if _tail_hit(scanned, detector_spec["tails"]["bearer"]["minimum"]):
             return True
         start = at + 6
     return False
 
 
 def _has_basic(text):
-    lower = text.lower()
+    folded = ascii_fold(text)
     start = 0
-    while start < len(lower):
-        at = lower.find("basic", start)
+    while start < len(folded):
+        at = folded.find("basic", start)
         if at < 0:
             return False
         i = at + 5
@@ -183,22 +296,16 @@ def _has_basic(text):
             continue
         while i < len(text) and text[i] in " \t":
             i += 1
-        n = 0
-        while i < len(text):
-            ch = text[i]
-            if not (ch.isalnum() or ch in "+/="):
-                break
-            n += 1
-            i += 1
-        if n >= 8:
+        scanned = _scan_tail(text, i, lambda code: code in _ASCII_ALNUM or code in _BASIC_EXTRA)
+        if _tail_hit(scanned, detector_spec["tails"]["basic"]["minimum"]):
             return True
         start = at + 5
     return False
 
 
 def _has_cookie(text):
-    lower = text.lower()
-    return "set-cookie" in lower or "cookie:" in lower or "cookie=" in lower
+    folded = ascii_fold(text)
+    return "set-cookie" in folded or "cookie:" in folded or "cookie=" in folded
 
 
 def _has_openai(text):
@@ -206,68 +313,53 @@ def _has_openai(text):
         for prefix in policy["openai_prefixes"]:
             if not _starts(text, prefix, i):
                 continue
-            n = 0
-            j = i + len(prefix)
-            while j < len(text) and text[j].isalnum():
-                n += 1
-                j += 1
-            if n >= policy["openai_tail_min"]:
+            scanned = _scan_tail(text, i + len(prefix), lambda code: code in _ASCII_ALNUM)
+            if _tail_hit(scanned, policy["openai_tail_min"]):
                 return True
     return False
 
 
-def _cloud_tail(text, start):
-    end = start + policy["cloud_akia_tail"]
-    if end > len(text):
-        return False
-    for ch in text[start:end]:
-        if not (("A" <= ch <= "Z") or _digit(ch)):
-            return False
-    return True
-
-
 def _has_cloud(text):
-    for i in range(0, max(0, len(text) - 19)):
-        head = text[i:i + 4]
-        if head in ("AKIA", "ASIA") and _cloud_tail(text, i + 4):
+    folded = ascii_fold(text)
+    for i in range(0, max(0, len(folded) - 3)):
+        head = folded[i:i + 4]
+        if head not in ("akia", "asia"):
+            continue
+        scanned = _scan_tail(text, i + 4, lambda code: code in _ASCII_ALNUM)
+        if _tail_hit(scanned, policy["cloud_akia_tail"]):
             return True
-    if "AIza" in text or "ya29." in text:
-        return True
-    for marker in ("xoxb-", "xoxp-", "xoxa-", "ghp_", "github_pat_"):
-        if marker in text:
+    for marker in detector_spec["presence_markers_ascii_case_insensitive"]:
+        if ascii_fold(marker) in folded:
             return True
     return False
 
 
 def _has_pem(text):
-    upper = text.upper()
-    return any(marker in upper for marker in policy["pem_markers"])
+    folded = ascii_fold_upper(text)
+    return any(ascii_fold_upper(marker) in folded for marker in policy["pem_markers"])
 
 
 def _has_jwt(text):
+    folded = ascii_fold(text)
     start = 0
-    while start < len(text):
-        at = text.find("eyJ", start)
+    while start < len(folded):
+        at = folded.find("eyj", start)
         if at < 0:
             return False
-        dot = text.find(".", at + 3)
-        if dot < 0 or dot - (at + 3) < 8:
+        first = _scan_tail(text, at + 3, lambda code: code in _ASCII_ALNUM or code in _JWT_EXTRA)
+        if first["ascii"] < detector_spec["tails"]["jwt_first_minimum"] or text[first["end"]:first["end"] + 1] != ".":
             start = at + 3
             continue
-        n = 0
-        i = dot + 1
-        while i < len(text) and (text[i].isalnum() or text[i] in "-_"):
-            n += 1
-            i += 1
-        if n >= 4:
+        second = _scan_tail(text, first["end"] + 1, lambda code: code in _ASCII_ALNUM or code in _JWT_EXTRA)
+        if _tail_hit(second, detector_spec["tails"]["jwt_second_minimum"]):
             return True
         start = at + 3
     return False
 
 
 def _has_db(text):
-    lower = text.lower()
-    return any(scheme + "://" in lower for scheme in policy["db_schemes"])
+    folded = ascii_fold(text)
+    return any(ascii_fold(scheme) + "://" in folded for scheme in policy["db_schemes"])
 
 
 def has_db_scheme(text):
@@ -292,7 +384,7 @@ def has_sensitive_query(text):
     for part in parts:
         if "=" not in part:
             continue
-        name = part.split("=", 1)[0].lower()
+        name = ascii_fold(part.split("=", 1)[0])
         if name in policy["sensitive_query_names"]:
             return True
     return False
@@ -300,11 +392,11 @@ def has_sensitive_query(text):
 
 def _unicode_alnum(ch):
     code = ord(ch)
-    if 48 <= code <= 57 or 65 <= code <= 90 or 97 <= code <= 122:
+    if code in _ASCII_ALNUM:
         return True
     if code < 128:
         return False
-    return unicodedata.category(ch)[0] in ("L", "N")
+    return unicodedata.category(ch)[0] in _EMAIL_CATEGORIES
 
 
 def _has_email(text):
@@ -407,34 +499,31 @@ def _has_card(text):
                 separated = False
                 j += 1
                 continue
-            if text[j] in " -" and not separated and digits > 0 and j + 1 < len(text) and _digit(text[j + 1]):
+            if ord(text[j]) in _PAN_SEPARATORS and not separated and digits > 0 and j + 1 < len(text) and _digit(text[j + 1]):
                 separated = True
                 j += 1
                 continue
             break
-        if 13 <= digits <= 19 and (j >= len(text) or not _digit(text[j])):
+        if detector_spec["pan"]["min_digits"] <= digits <= detector_spec["pan"]["max_digits"] and (j >= len(text) or not _digit(text[j])):
             before = text[i - 1] if i > 0 else ""
             after = text[j] if j < len(text) else ""
-            if not (before.isalpha() or after.isalpha()):
+            if not (_in_class(before, _ASCII_ALPHA) or _in_class(after, _ASCII_ALPHA)):
                 return True
         i = max(j, i + 1)
     return False
 
 
 def _has_mrn(text):
+    prefix = detector_spec["prefixes_intentionally_case_sensitive"][0]
     start = 0
     while start < len(text):
-        at = text.find("MRN:", start)
+        at = text.find(prefix, start)
         if at < 0:
             return False
-        n = 0
-        i = at + 4
-        while i < len(text) and text[i].isalnum():
-            n += 1
-            i += 1
-        if n >= 6:
+        scanned = _scan_tail(text, at + len(prefix), lambda code: code in _ASCII_ALNUM)
+        if _tail_hit(scanned, detector_spec["tails"]["mrn_minimum"]):
             return True
-        start = at + 4
+        start = at + len(prefix)
     return False
 
 
@@ -484,7 +573,12 @@ def _fold(text):
 
 
 def _b64_char(ch, allow_slash):
-    return ch.isalnum() or ch == "+" or (allow_slash and ch == "/")
+    code = _unit_code(ch)
+    if code < 0 or code > detector_spec["non_ascii"]["min_exclusive"]:
+        return False
+    if code in _ASCII_ALNUM or code in _BASE64_EXTRA:
+        return True
+    return allow_slash and code == detector_spec["base64_slash"]
 
 
 def _decode_b64(run):
@@ -554,7 +648,7 @@ def _scan_base64(text):
 def contains_prohibited(value):
     if not isinstance(value, str) or value == "":
         return False
-    if len(value) > 8192:
+    if utf8_bytes(value) > detector_spec["max_scan_bytes"]:
         return True
     if scan_direct(value):
         return True

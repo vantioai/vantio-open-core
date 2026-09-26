@@ -4,7 +4,7 @@ Audience: INTERNAL_RESTRICTED
 
 Node and Python validators are hand-written. Both read the same files in `packages/optics-evidence-contract/contract/`. Neither imports `@vantio/cli` or `vantio-agent-sdk`.
 
-The shared corpus is `tests/optics-evidence-contract/corpus.json`. Each case has an input (or a base plus patch, or a language harness), one disposition, one reason, completeness impact, Optics-health impact, a remediation code, and the canary strings that must be absent from canonical output. Harness cases for accessors, proxies, class instances, and the isolated non-returning getter are not plain JSON. Their disposition and reason still match across languages. The non-returning getter is constructed only inside `hostile_worker.cjs` and `hostile_worker.py`.
+The shared corpus is `tests/optics-evidence-contract/corpus.json` (185 cases). Each case has an input (or a base plus patch, or a language harness), one disposition, one reason, completeness impact, Optics-health impact, a remediation code, and the canary strings that must be absent from canonical output. New detector-parity cases also record the UTF-8 byte length of the measured field. Both languages assert that length with their own UTF-8 encoder. Harness cases for accessors, proxies, class instances, functions, a function-valued field, and the isolated non-returning getter are not plain JSON. Their disposition and reason still match across languages. The non-returning getter is constructed only inside `hostile_worker.cjs` and `hostile_worker.py`.
 
 Canonical JSON is sorted keys, no insignificant whitespace, integers only, and the same short control escapes in both languages. The conformance test compares those strings byte for byte.
 

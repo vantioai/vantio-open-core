@@ -75,7 +75,7 @@ function copyValue(value, state) {
   if (value === null) return { ok: true, value: null };
   const kind = typeof value;
   if (kind === "string") {
-    if (value.length > bounds.max_string_chars) {
+    if (Buffer.byteLength(value, "utf8") > bounds.max_string_chars) {
       return { ok: true, value: boundMarker(OVERSIZE) };
     }
     if (hasLoneSurrogate(value)) {
@@ -90,7 +90,10 @@ function copyValue(value, state) {
     return { ok: true, value };
   }
   if (kind === "undefined") return { ok: true, skip: true };
-  if (kind === "bigint" || kind === "function" || kind === "symbol") {
+  if (kind === "function") {
+    return { ok: false, reason: "UNSUPPORTED_COMPLEX_VALUE", disposition: "REJECT_FIELD" };
+  }
+  if (kind === "bigint" || kind === "symbol") {
     return { ok: false, reason: "HOSTILE_INPUT" };
   }
   if (kind !== "object") return { ok: false, reason: "HOSTILE_INPUT" };
@@ -138,7 +141,7 @@ function copyValue(value, state) {
     const forms = new Set();
     for (const key of keys) {
       if (typeof key !== "string") return { ok: false, reason: "INVALID_FORMAT" };
-      if (key.length > 128 || Buffer.byteLength(key, "utf8") > 128) {
+      if (Buffer.byteLength(key, "utf8") > bounds.field_name_max_bytes) {
         return { ok: false, reason: "MAX_SIZE_EXCEEDED" };
       }
       const form = privacy.comparisonForm(key);

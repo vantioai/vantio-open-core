@@ -8,6 +8,6 @@ The injected fault is `options.injectFault === true`. It exists so tests can for
 
 Malformed UTF-8 bytes return `MALFORMED_UTF8` without a decoded secret. A string above `max_input_chars` returns `INPUT_BOUND` without scanning or copying the string into the result.
 
-Cycles and nesting at the depth bound return `CYCLE_REJECTED` and `EXCESSIVE_NESTING`. An accessor property or proxy is rejected as `ACCESSOR_PROPERTY_FORBIDDEN` before the getter runs. A plain class instance is `UNSUPPORTED_COMPLEX_VALUE`. A getter that never returns is not given an in-process timeout. That case is executed only in a killable subprocess. The getter message is not stored.
+Cycles and nesting at the depth bound return `CYCLE_REJECTED` and `EXCESSIVE_NESTING`. An accessor property or proxy is rejected as `ACCESSOR_PROPERTY_FORBIDDEN` before the getter runs. A plain class instance is `REJECT_RECORD` / `UNSUPPORTED_COMPLEX_VALUE`. A function or other callable is `REJECT_FIELD` / `UNSUPPORTED_COMPLEX_VALUE`. A getter that never returns is not given an in-process timeout. That case is executed only in a killable subprocess. The getter message is not stored.
 
 These tests cover the private validator only. They do not claim that the frozen CLI or Python runtime fail open, and they do not execute those writers.

@@ -8,7 +8,7 @@ Producer only. This report does not pass council.
 
 `OPTICS_PKG01_REVISION_READY_FOR_COUNCIL`
 
-The first council record stays in `INDEPENDENT-COUNCIL-REPORT.md` with classification `OPTICS_PKG01_NEEDS_REVISION`. This revision does not pass council. Status for the next agent is `PENDING_INDEPENDENT_RECOUNCIL`.
+Producer classification for the detector-parity revision. This is not a council pass. The first council record stays in `INDEPENDENT-COUNCIL-REPORT.md` with classification `OPTICS_PKG01_NEEDS_REVISION`. The fresh re-council record stays in `INDEPENDENT-RECOUNCIL-REPORT.md` with classification `OPTICS_PKG01_NEEDS_REVISION` on tip `6da63f8aafceb7eed3950975d224848fec6c3ba5`. Status for the next agent is `PENDING_INDEPENDENT_RECOUNCIL` (detector-parity).
 
 ## What landed
 
@@ -19,10 +19,11 @@ Private package `packages/optics-evidence-contract/` (Option B):
 - `contract/enums.json`
 - `contract/normalization.json`
 - `contract/contract-metadata.json`
+- `contract/detector-classes.json`
 - Hand-written `src/validate.cjs`, `src/canonical.cjs`, `src/walk.cjs`, `src/privacy.cjs`
 - Hand-written `src/validate.py`, `src/canonical.py`, `src/walk.py`, `src/privacy.py`
 
-Tests: `tests/optics-evidence-contract/corpus.json` (116 fixtures), `node.test.cjs`, `python_test.py`, `hostile_worker.cjs`, `hostile_worker.py`.
+Tests: `tests/optics-evidence-contract/corpus.json` (185 fixtures), `node.test.cjs`, `python_test.py`, `hostile_worker.cjs`, `hostile_worker.py`.
 
 Internal notes: `docs/internal/optics-pkg01/`.
 
@@ -43,13 +44,28 @@ Started from council head `ed2a45ee9f09a9056050f8082f0302ce24d4ad42`.
 | B7 detached output | `application_result` was the caller reference. | Plain copy. Post-validation mutation does not cross the boundary. |
 | B8 hostile accessor | Throwing getter ran and returned `HOSTILE_INPUT`. | `ACCESSOR_PROPERTY_FORBIDDEN` before the getter runs. Non-returning getter is isolated in a subprocess. No in-process timeout is claimed. |
 
+## Detector-parity revision
+
+Started from PR head `075b82508fa93b84ce7416512a8d422ed4ca4e49`. Closed B1–B8 behavior stays in the corpus.
+
+| Probe | Before (re-council) | After |
+| --- | --- | --- |
+| PAN `/pay/4111111111111111α` and the before-digit form | Node redacted. Python stored the path. | Both `REJECT_FIELD` / `REDACTION_DROP`. Path absent. Privacy category `DESTINATION_COMPONENT_REDACTED`. |
+| Mixed-script `sk-`, Bearer, JWT, Basic, `ghp_`, `AKIA`, `AIza` | One language stored the value. | Both reject. Detector fields use `DETECTOR_MATCH`. A secret path uses `REDACTION_DROP` plus `DESTINATION_COMPONENT_REDACTED`. |
+| `/` plus 300 U+03B1 | Node stored it. Python treated the letters as a privacy drop. | Both `REJECT_FIELD` / `MAX_SIZE_EXCEEDED`. Privacy event null. 601 UTF-8 bytes. |
+| Function value | Node `HOSTILE_INPUT`. Python `ACCESSOR_PROPERTY_FORBIDDEN`. | Both `REJECT_FIELD` / `UNSUPPORTED_COMPLEX_VALUE`. |
+| Secret path with no host | Path absent and privacy event null. | Path absent. Privacy category `DESTINATION_COMPONENT_REDACTED`. |
+| ASCII case fold of `AKIA`, `ghp_`, `Bearer`, `Basic`, `eyJ` | Case-swapped markers were stored. | Same disposition as the canonical-case sample. `MRN:` stays case-sensitive. |
+
+Character classes and the reported-reason order are in `contract/detector-classes.json`. String bounds are UTF-8 bytes. `MAX_SIZE_EXCEEDED` outranks `DETECTOR_MATCH`; the value is still omitted. An ASCII letter still suppresses PAN detection.
+
 ## Corpus
 
-116 shared fixtures, including harness metadata for accessor, proxy, class instance, and the isolated non-returning getter.
+185 shared fixtures, including harness metadata for accessor, proxy, class instance, function, function-valued field, and the isolated non-returning getter.
 
-Disposition counts: `ACCEPT` 15, `NORMALIZE` 15, `STRIP` 22, `REJECT_FIELD` 39, `REPLACE_WITH_SAFE_CATEGORY` 9, `REJECT_RECORD` 16.
+Disposition counts: `ACCEPT` 33, `NORMALIZE` 15, `STRIP` 23, `REJECT_FIELD` 88, `REPLACE_WITH_SAFE_CATEGORY` 9, `REJECT_RECORD` 17.
 
-Reason counts: `REDACTION_DROP` 35, `OK` 16, `NORMALIZED` 7, `UNKNOWN_FIELD_OMITTED` 6, `PROHIBITED_FIELD_NAME` 6, `DETECTOR_MATCH` 5, `CONFLICTING_PROVENANCE` 5, `SESSION_ID_REJECTED` 4, `LEGACY_UNMARKED` 4, `CONTEXT_REJECTED` 4, `MISSING_REQUIRED_STATUS` 4, `ACCESSOR_PROPERTY_FORBIDDEN` 3, `PROMPT_COMPLETION_EXCLUDED` 2, and one each of `BAGGAGE_OMITTED`, `PATH_OVERSIZE`, `DESTINATION_CONFLICT`, `PROVENANCE_INSUFFICIENT`, `SIMULATED_DEMO`, `SCHEMA_STATUS_CORRECTED`, `ENFORCEMENT_ACTION_EXCLUDED`, `OPTICS_WRITE_FAILURE`, `ANNOTATION_ORIGIN_REFUSED`, `QUERY_STRIPPED`, `DUPLICATE_CANONICAL_FIELD`, `OPTIMISTIC_DEFAULT_FORBIDDEN`, `UNKNOWN_FIELD_REDACTED`, `MAX_SIZE_EXCEEDED`, `UNSUPPORTED_COMPLEX_VALUE`.
+Reason counts: `REDACTION_DROP` 45, `OK` 34, `DETECTOR_MATCH` 25, `MAX_SIZE_EXCEEDED` 17, `NORMALIZED` 7, `UNKNOWN_FIELD_OMITTED` 6, `CONTEXT_REJECTED` 6, `PROHIBITED_FIELD_NAME` 6, `SESSION_ID_REJECTED` 5, `CONFLICTING_PROVENANCE` 5, `LEGACY_UNMARKED` 4, `MISSING_REQUIRED_STATUS` 4, `ACCESSOR_PROPERTY_FORBIDDEN` 3, `UNSUPPORTED_COMPLEX_VALUE` 3, `PROMPT_COMPLETION_EXCLUDED` 2, `UNKNOWN_FIELD_REDACTED` 2, and one each of `BAGGAGE_OMITTED`, `DESTINATION_CONFLICT`, `PROVENANCE_INSUFFICIENT`, `SIMULATED_DEMO`, `SCHEMA_STATUS_CORRECTED`, `ENFORCEMENT_ACTION_EXCLUDED`, `OPTICS_WRITE_FAILURE`, `ANNOTATION_ORIGIN_REFUSED`, `QUERY_STRIPPED`, `DUPLICATE_CANONICAL_FIELD`, `OPTIMISTIC_DEFAULT_FORBIDDEN`.
 
 Legacy `bytes` 0 and explicit `response_bytes` 0 remain the existing fixtures `legacy-call-zero-bytes` and `explicit-zero-bytes`. The legacy fixture's completeness impact is now `MISSING_REQUIRED_STATUS` because that call has no `optics_status`. Its reason stays `LEGACY_UNMARKED`.
 
@@ -66,7 +82,7 @@ python3.10 -m unittest tests/optics-evidence-contract/python_test.py
 python3.11 -m unittest tests/optics-evidence-contract/python_test.py
 ```
 
-Node: 10 tests, 10 pass. Python 3.10, 3.11, and 3.12: 9 tests, OK. Canonical JSON matched across Node and each Python interpreter for all 116 fixtures. Canary scan of those canonical strings passed. Scope walk found no `optics-evidence-contract` import under the live CLI or Python SDK. Validator sources do not import network clients. No store file was created.
+Node: 10 tests, 10 pass. Python 3.10.21, 3.11.16, and 3.12.3: 9 tests, OK. Canonical JSON matched across Node and each Python interpreter for all 185 fixtures. Declared UTF-8 byte lengths matched both encoders. Canary scan of those canonical strings passed. Scope walk found no `optics-evidence-contract` import under the live CLI or Python SDK. Validator sources do not import network clients. Privacy sources do not call `isalpha`, `isalnum`, or locale case conversion. No store file was created.
 
 Windows: `NOT_TESTED`. macOS: `NOT_TESTED`. WSL: `NOT_TESTED`. Other Node versions: `NOT_TESTED`.
 

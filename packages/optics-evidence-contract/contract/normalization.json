@@ -1,6 +1,8 @@
 {
   "schema_status": "unstable-pre-1.0",
   "schema_version": 0,
+  "length_unit": "UTF-8_BYTES",
+  "bounds_note": "String bounds are UTF-8 byte lengths. Keys named *_chars are historical names for those byte limits. max_depth, max_nodes, max_keys, max_array, calls_max, and safe_integer_max count structure or numeric range. phrase_max_chars is reserved and unused. Session overflow reports SESSION_ID_REJECTED, measured in UTF-8 bytes.",
   "bounds": {
     "max_depth": 16,
     "max_nodes": 512,
@@ -25,7 +27,9 @@
     "phrase_max_chars": 80,
     "destination_raw_max_chars": 2048,
     "base64_max_run": 256,
-    "calls_max": 64
+    "calls_max": 64,
+    "provider_id_max_bytes": 64,
+    "field_name_max_bytes": 128
   },
   "timestamp_accepted": "YYYY-MM-DDTHH:MM:SS[.fraction]Z or +00:00. Stored as UTC Z with exactly 3 fractional digits. Non-zero offsets are rejected rather than converted.",
   "response_bytes_legacy_zero": "Legacy key bytes with value 0 becomes response_bytes null. An explicit contract response_bytes of 0 is kept.",

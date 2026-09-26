@@ -3,11 +3,110 @@
 const { readFileSync } = require("fs");
 const path = require("path");
 
-const policy = JSON.parse(
-  readFileSync(path.join(__dirname, "..", "contract", "prohibited-fields.json"), "utf8"),
-);
+const CONTRACT_DIR = path.join(__dirname, "..", "contract");
+const policy = JSON.parse(readFileSync(path.join(CONTRACT_DIR, "prohibited-fields.json"), "utf8"));
+const detectorSpec = JSON.parse(readFileSync(path.join(CONTRACT_DIR, "detector-classes.json"), "utf8"));
+const fieldNameMaxBytes = JSON.parse(readFileSync(path.join(CONTRACT_DIR, "normalization.json"), "utf8")).bounds.field_name_max_bytes;
 
 const CONFUSABLE = new Map(policy.confusables);
+const CLASS_CODES = new Map();
+
+function classCodes(name) {
+  if (CLASS_CODES.has(name)) return CLASS_CODES.get(name);
+  const def = detectorSpec.classes[name];
+  const codes = new Set();
+  if (!def) {
+    CLASS_CODES.set(name, codes);
+    return codes;
+  }
+  if (Array.isArray(def.union)) {
+    for (const part of def.union) {
+      for (const code of classCodes(part)) codes.add(code);
+    }
+  }
+  if (Array.isArray(def.ranges)) {
+    for (const pair of def.ranges) {
+      for (let code = pair[0]; code <= pair[1]; code += 1) codes.add(code);
+    }
+  }
+  if (Array.isArray(def.codepoints)) {
+    for (const code of def.codepoints) codes.add(code);
+  }
+  CLASS_CODES.set(name, codes);
+  return codes;
+}
+
+const ASCII_ALPHA = classCodes("ASCII_ALPHA");
+const ASCII_DIGIT = classCodes("ASCII_DIGIT");
+const ASCII_ALNUM = classCodes("ASCII_ALNUM");
+const ASCII_HEX = classCodes("ASCII_HEX");
+const BEARER_EXTRA = new Set(detectorSpec.tails.bearer.extra);
+const BASIC_EXTRA = new Set(detectorSpec.tails.basic.extra);
+const JWT_EXTRA = new Set(detectorSpec.tails.jwt_extra);
+const PAN_SEPARATORS = new Set(detectorSpec.pan.separators);
+const BASE64_EXTRA = new Set(detectorSpec.base64_standard_extra);
+const EMAIL_CATEGORIES = detectorSpec.email_unicode_category_prefixes;
+
+function unitCode(ch) {
+  return ch ? ch.charCodeAt(0) : -1;
+}
+
+function inClass(ch, codes) {
+  const code = unitCode(ch);
+  return code >= 0 && codes.has(code);
+}
+
+function isNonAsciiUnit(ch) {
+  return unitCode(ch) > detectorSpec.non_ascii.min_exclusive;
+}
+
+function asciiMap(text, spec) {
+  let out = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code >= spec.from && code <= spec.to) out += String.fromCharCode(code + spec.delta);
+    else out += text[i];
+  }
+  return out;
+}
+
+function asciiFold(text) {
+  return asciiMap(text, detectorSpec.ascii_case_fold.lower);
+}
+
+function asciiFoldUpper(text) {
+  return asciiMap(text, detectorSpec.ascii_case_fold.upper);
+}
+
+function scanTail(text, start, allowed) {
+  let ascii = 0;
+  let insertions = 0;
+  let i = start;
+  while (i < text.length) {
+    const ch = text[i];
+    if (isNonAsciiUnit(ch)) {
+      insertions += 1;
+      i += 1;
+      continue;
+    }
+    if (allowed(unitCode(ch))) {
+      ascii += 1;
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return { ascii, insertions, end: i };
+}
+
+function tailHit(scanned, minimum) {
+  if (scanned.ascii >= minimum) return true;
+  return Boolean(
+    detectorSpec.credential_tails.mixed_script_matches_when_ascii_tail_and_insertion
+    && scanned.insertions > 0
+    && scanned.ascii > 0,
+  );
+}
 
 const SAFE_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const EXACT_NAMES = new Set(policy.prohibited_field_names);
@@ -63,7 +162,7 @@ function classifyFieldName(name) {
   for (const ch of chars) {
     if (isNameControl(ch.codePointAt(0))) control = true;
   }
-  const oversized = chars.length > 128 || Buffer.byteLength(name, "utf8") > 128;
+  const oversized = Buffer.byteLength(name, "utf8") > fieldNameMaxBytes;
   const comparison = oversized ? "" : comparisonForm(name);
   const payload = comparison !== "" && PAYLOAD_SET.has(comparison);
   const baggage = comparison !== "" && BAGGAGE_SET.has(comparison);
@@ -102,28 +201,27 @@ function isBaggageName(name) {
 }
 
 function isHexChar(ch) {
-  return (ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F");
+  return inClass(ch, ASCII_HEX);
 }
 
 function isDigit(ch) {
-  return ch >= "0" && ch <= "9";
+  return inClass(ch, ASCII_DIGIT);
 }
 
 function startsWithFold(text, prefix, index) {
-  if (index + prefix.length > text.length) return false;
-  for (let i = 0; i < prefix.length; i += 1) {
-    const left = text[index + i];
-    const right = prefix[i];
-    if (left.toLowerCase() !== right.toLowerCase()) return false;
+  const foldedPrefix = asciiFold(prefix);
+  if (index + foldedPrefix.length > text.length) return false;
+  for (let i = 0; i < foldedPrefix.length; i += 1) {
+    if (asciiFold(text[index + i]) !== foldedPrefix[i]) return false;
   }
   return true;
 }
 
 function hasBearer(text) {
-  const lower = text.toLowerCase();
+  const folded = asciiFold(text);
   let from = 0;
-  while (from < lower.length) {
-    const at = lower.indexOf("bearer", from);
+  while (from < folded.length) {
+    const at = folded.indexOf("bearer", from);
     if (at === -1) return false;
     let i = at + 6;
     if (i >= text.length || (text[i] !== " " && text[i] !== "\t")) {
@@ -131,26 +229,18 @@ function hasBearer(text) {
       continue;
     }
     while (i < text.length && (text[i] === " " || text[i] === "\t")) i += 1;
-    let n = 0;
-    while (i < text.length) {
-      const ch = text[i];
-      const ok = (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")
-        || ch === "-" || ch === "." || ch === "_" || ch === "~" || ch === "+" || ch === "/" || ch === "=";
-      if (!ok) break;
-      n += 1;
-      i += 1;
-    }
-    if (n >= 8) return true;
+    const scanned = scanTail(text, i, (code) => ASCII_ALNUM.has(code) || BEARER_EXTRA.has(code));
+    if (tailHit(scanned, detectorSpec.tails.bearer.minimum)) return true;
     from = at + 6;
   }
   return false;
 }
 
 function hasBasic(text) {
-  const lower = text.toLowerCase();
+  const folded = asciiFold(text);
   let from = 0;
-  while (from < lower.length) {
-    const at = lower.indexOf("basic", from);
+  while (from < folded.length) {
+    const at = folded.indexOf("basic", from);
     if (at === -1) return false;
     let i = at + 5;
     if (i >= text.length || (text[i] !== " " && text[i] !== "\t")) {
@@ -158,26 +248,18 @@ function hasBasic(text) {
       continue;
     }
     while (i < text.length && (text[i] === " " || text[i] === "\t")) i += 1;
-    let n = 0;
-    while (i < text.length) {
-      const ch = text[i];
-      const ok = (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")
-        || ch === "+" || ch === "/" || ch === "=";
-      if (!ok) break;
-      n += 1;
-      i += 1;
-    }
-    if (n >= 8) return true;
+    const scanned = scanTail(text, i, (code) => ASCII_ALNUM.has(code) || BASIC_EXTRA.has(code));
+    if (tailHit(scanned, detectorSpec.tails.basic.minimum)) return true;
     from = at + 5;
   }
   return false;
 }
 
 function hasCookieMarker(text) {
-  const lower = text.toLowerCase();
-  if (lower.includes("set-cookie")) return true;
-  if (lower.includes("cookie:")) return true;
-  if (lower.includes("cookie=")) return true;
+  const folded = asciiFold(text);
+  if (folded.includes("set-cookie")) return true;
+  if (folded.includes("cookie:")) return true;
+  if (folded.includes("cookie=")) return true;
   return false;
 }
 
@@ -186,82 +268,57 @@ function hasOpenAiKey(text) {
   for (let i = 0; i < text.length; i += 1) {
     for (const prefix of prefixes) {
       if (!startsWithFold(text, prefix, i)) continue;
-      let n = 0;
-      let j = i + prefix.length;
-      while (j < text.length) {
-        const ch = text[j];
-        const ok = (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9");
-        if (!ok) break;
-        n += 1;
-        j += 1;
-      }
-      if (n >= policy.openai_tail_min) return true;
+      const scanned = scanTail(text, i + prefix.length, (code) => ASCII_ALNUM.has(code));
+      if (tailHit(scanned, policy.openai_tail_min)) return true;
     }
   }
   return false;
 }
 
 function hasCloudKey(text) {
-  for (let i = 0; i + 20 <= text.length; i += 1) {
-    const head = text.slice(i, i + 4);
-    if ((head === "AKIA" || head === "ASIA") && isCloudTail(text, i + 4)) return true;
+  const folded = asciiFold(text);
+  for (let i = 0; i + 4 <= folded.length; i += 1) {
+    const head = folded.slice(i, i + 4);
+    if (head !== "akia" && head !== "asia") continue;
+    const scanned = scanTail(text, i + 4, (code) => ASCII_ALNUM.has(code));
+    if (tailHit(scanned, policy.cloud_akia_tail)) return true;
   }
-  if (text.includes("AIza") || text.includes("ya29.")) return true;
-  const markers = ["xoxb-", "xoxp-", "xoxa-", "ghp_", "github_pat_"];
-  for (const marker of markers) {
-    if (text.includes(marker)) return true;
+  for (const marker of detectorSpec.presence_markers_ascii_case_insensitive) {
+    if (folded.includes(asciiFold(marker))) return true;
   }
   return false;
 }
 
-function isCloudTail(text, start) {
-  if (start + policy.cloud_akia_tail > text.length) return false;
-  for (let i = 0; i < policy.cloud_akia_tail; i += 1) {
-    const ch = text[start + i];
-    const ok = (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9");
-    if (!ok) return false;
-  }
-  return true;
-}
-
 function hasPem(text) {
-  const upper = text.toUpperCase();
+  const folded = asciiFoldUpper(text);
   for (const marker of policy.pem_markers) {
-    if (upper.includes(marker)) return true;
+    if (folded.includes(asciiFoldUpper(marker))) return true;
   }
   return false;
 }
 
 function hasJwt(text) {
+  const folded = asciiFold(text);
   let from = 0;
-  while (from < text.length) {
-    const at = text.indexOf("eyJ", from);
+  while (from < folded.length) {
+    const at = folded.indexOf("eyj", from);
     if (at === -1) return false;
-    const dot = text.indexOf(".", at + 3);
-    if (dot === -1 || dot - (at + 3) < 8) {
+    const first = scanTail(text, at + 3, (code) => ASCII_ALNUM.has(code) || JWT_EXTRA.has(code));
+    if (first.ascii < detectorSpec.tails.jwt_first_minimum || text[first.end] !== ".") {
       from = at + 3;
       continue;
     }
-    let n = 0;
-    let i = dot + 1;
-    while (i < text.length) {
-      const ch = text[i];
-      const ok = (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")
-        || ch === "-" || ch === "_";
-      if (!ok) break;
-      n += 1;
-      i += 1;
-    }
-    if (n >= 4) return true;
+    const second = scanTail(text, first.end + 1, (code) => ASCII_ALNUM.has(code) || JWT_EXTRA.has(code));
+    if (tailHit(second, detectorSpec.tails.jwt_second_minimum)) return true;
     from = at + 3;
   }
   return false;
 }
 
 function hasDbScheme(text) {
-  const lower = text.toLowerCase();
+  const folded = asciiFold(text);
   for (const scheme of policy.db_schemes) {
-    if (lower.includes(scheme + "://")) return true;
+    if (folded.includes(asciiFold(scheme) + "://")) return true;
   }
   return false;
 }
@@ -283,7 +340,7 @@ function hasSensitiveQuery(text) {
   for (const part of parts) {
     const eq = part.indexOf("=");
     if (eq === -1) continue;
-    const name = part.slice(0, eq).toLowerCase();
+    const name = asciiFold(part.slice(0, eq));
     if (policy.sensitive_query_names.includes(name)) return true;
   }
   return false;
@@ -291,11 +348,11 @@ function hasSensitiveQuery(text) {
 
 function isUnicodeAlnum(ch) {
   const code = ch.codePointAt(0);
-  if (code >= 48 && code <= 57) return true;
-  if (code >= 65 && code <= 90) return true;
-  if (code >= 97 && code <= 122) return true;
+  if (ASCII_ALNUM.has(code)) return true;
   if (code < 128) return false;
-  return /^\p{L}$/u.test(ch) || /^\p{N}$/u.test(ch);
+  if (EMAIL_CATEGORIES.includes("L") && /^\p{L}$/u.test(ch)) return true;
+  if (EMAIL_CATEGORIES.includes("N") && /^\p{N}$/u.test(ch)) return true;
+  return false;
 }
 
 function emailIn(chars) {
@@ -388,18 +445,18 @@ function hasCard(text) {
         j += 1;
         continue;
       }
-      if ((text[j] === " " || text[j] === "-") && !separated && digits > 0 && isDigit(text[j + 1] || "")) {
+      if (PAN_SEPARATORS.has(unitCode(text[j])) && !separated && digits > 0 && isDigit(text[j + 1] || "")) {
         separated = true;
         j += 1;
         continue;
       }
       break;
     }
-    if (digits >= 13 && digits <= 19 && (j >= text.length || !isDigit(text[j]))) {
+    if (digits >= detectorSpec.pan.min_digits && digits <= detectorSpec.pan.max_digits && (j >= text.length || !isDigit(text[j]))) {
       const before = i > 0 ? text[i - 1] : "";
       const after = j < text.length ? text[j] : "";
-      const letter = (ch) => (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z");
-      if (!letter(before) && !letter(after)) return true;
+      const suppresses = (ch) => inClass(ch, ASCII_ALPHA);
+      if (!suppresses(before) && !suppresses(after)) return true;
     }
     i = Math.max(j, i + 1);
   }
@@ -407,21 +464,14 @@ function hasCard(text) {
 }
 
 function hasMrn(text) {
+  const prefix = detectorSpec.prefixes_intentionally_case_sensitive[0];
   let from = 0;
   while (from < text.length) {
-    const at = text.indexOf("MRN:", from);
+    const at = text.indexOf(prefix, from);
     if (at === -1) return false;
-    let n = 0;
-    let i = at + 4;
-    while (i < text.length) {
-      const ch = text[i];
-      const ok = (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9");
-      if (!ok) break;
-      n += 1;
-      i += 1;
-    }
-    if (n >= 6) return true;
-    from = at + 4;
+    const scanned = scanTail(text, at + prefix.length, (code) => ASCII_ALNUM.has(code));
+    if (tailHit(scanned, detectorSpec.tails.mrn_minimum)) return true;
+    from = at + prefix.length;
   }
   return false;
 }
@@ -486,7 +536,10 @@ function foldDetection(text) {
 }
 
 function isBase64Char(ch, allowSlash) {
-  return (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "+" || (allowSlash && ch === "/");
+  const code = unitCode(ch);
+  if (code < 0 || code > detectorSpec.non_ascii.min_exclusive) return false;
+  if (ASCII_ALNUM.has(code) || BASE64_EXTRA.has(code)) return true;
+  return allowSlash && code === detectorSpec.base64_slash;
 }
 
 const B64_ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -551,7 +604,7 @@ function scanBase64(text) {
 
 function containsProhibited(value) {
   if (typeof value !== "string" || value.length === 0) return false;
-  if (value.length > 8192) return true;
+  if (Buffer.byteLength(value, "utf8") > detectorSpec.max_scan_bytes) return true;
   if (scanDirect(value)) return true;
   const decoded = percentDecodeOnce(value);
   if (decoded.prohibited) return true;
@@ -586,6 +639,9 @@ module.exports = {
   isPayloadName,
   isBaggageName,
   containsProhibited,
+  asciiFold,
+  asciiFoldUpper,
+  detectorSpec,
   hasUsernamePath,
   hasDbScheme,
   hasSensitiveQuery,

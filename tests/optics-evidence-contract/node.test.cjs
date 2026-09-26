@@ -62,6 +62,14 @@ function classInput() {
   return new Box();
 }
 
+function plainFn() {
+  return "CANARYFUNC0001";
+}
+
+function functionFieldInput() {
+  return { record_type: "observation_event", note: plainFn };
+}
+
 function workerResult(command, args) {
   const proc = spawnSync(command, args, { encoding: "utf8", timeout: 2000 });
   assert.equal(proc.status, 0, proc.stderr || (proc.error && proc.error.message));
@@ -84,6 +92,8 @@ function runCase(item) {
     return result;
   }
   if (item.harness === "class") return validateEvidence(classInput());
+  if (item.harness === "function") return validateEvidence(plainFn);
+  if (item.harness === "function-field") return validateEvidence(functionFieldInput());
   if (item.harness === "nonreturning") {
     return workerResult(process.execPath, [path.join(__dirname, "hostile_worker.cjs"), "validate"]);
   }
@@ -116,6 +126,20 @@ function assertResult(item, result) {
   if (expect.health_impact) assert.deepEqual(result.health_impact, expect.health_impact, item.id);
   if (expect.stripped) assert.deepEqual(result.fields.stripped, expect.stripped, item.id);
   if (expect.rejected) assert.deepEqual(result.fields.rejected, expect.rejected, item.id);
+  if (expect.accepted) assert.deepEqual(result.fields.accepted, expect.accepted, item.id);
+  if (expect.normalized) assert.deepEqual(result.fields.normalized, expect.normalized, item.id);
+  if (item.utf8) {
+    const data = materialize(item);
+    for (const spec of item.utf8) {
+      if (Object.prototype.hasOwnProperty.call(spec, "field")) {
+        assert.equal(Buffer.byteLength(String(data[spec.field]), "utf8"), spec.bytes, item.id + " " + spec.field);
+      }
+      if (Object.prototype.hasOwnProperty.call(spec, "field_name_bytes")) {
+        const hit = Object.keys(data).some((key) => Buffer.byteLength(key, "utf8") === spec.field_name_bytes);
+        assert.equal(hit, true, item.id + " field name bytes");
+      }
+    }
+  }
   if (expect.compatibility) assert.deepEqual(result.compatibility, expect.compatibility, item.id);
   if (expect.diagnostics) {
     for (const [key, value] of Object.entries(expect.diagnostics)) {
@@ -305,6 +329,18 @@ test("validator sources do not open network clients", () => {
   assert.equal(joined.includes("import urllib"), false);
   assert.equal(joined.includes("import socket"), false);
   assert.equal(joined.includes("import requests"), false);
+  const detectors = [
+    fs.readFileSync(path.join(CONTRACT, "src", "privacy.cjs"), "utf8"),
+    fs.readFileSync(path.join(CONTRACT, "src", "privacy.py"), "utf8"),
+  ].join("\n");
+  for (const token of ["isalpha", "isalnum", "casefold", "toLowerCase", "toUpperCase", ".lower(", ".upper(", "toLocale"]) {
+    assert.equal(detectors.includes(token), false, token);
+  }
+  const classes = JSON.parse(fs.readFileSync(path.join(CONTRACT, "contract", "detector-classes.json"), "utf8"));
+  const bounds = JSON.parse(fs.readFileSync(path.join(CONTRACT, "contract", "normalization.json"), "utf8"));
+  assert.equal(classes.length_unit, "UTF-8_BYTES");
+  assert.equal(bounds.length_unit, "UTF-8_BYTES");
+  assert.equal(classes.max_scan_bytes, bounds.bounds.max_string_chars);
 });
 
 test("scope stays off the live runtimes", () => {

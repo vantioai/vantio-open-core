@@ -550,6 +550,9 @@
           "scheme": "https",
           "path": "/v1/models"
         },
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
         "forbidden": [
           "sk-CANARYQUERY0001",
           "api_key"
@@ -583,6 +586,9 @@
           "destination_host": "api.example.com",
           "path": "/v1/models",
           "scheme": "https"
+        },
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
         },
         "forbidden": [
           "sk-CANARYUSER0001",
@@ -619,6 +625,9 @@
           "scheme",
           "path"
         ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
         "forbidden": [
           "postgres",
           "sk-CANARYDB000001",
@@ -998,9 +1007,9 @@
         "path": "/!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
       },
       "expect": {
-        "remediation_code": "REVIEW_DESTINATION_SHAPE",
+        "remediation_code": "VALIDATOR_INTERNAL",
         "disposition": "REJECT_FIELD",
-        "reason_code": "PATH_OVERSIZE",
+        "reason_code": "MAX_SIZE_EXCEEDED",
         "issue_location": "NONE",
         "reader_origin_label": "LOCAL_OBSERVATION",
         "optics_health_impact": "NONE",
@@ -1013,7 +1022,10 @@
         ],
         "rejected": [
           "path"
-        ]
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        }
       }
     },
     {
@@ -2428,7 +2440,7 @@
           "path"
         ],
         "diagnostics": {
-          "privacy_event": "REDACTION_DROP"
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
         },
         "forbidden": [
           "/user@exämple.com",
@@ -2482,7 +2494,7 @@
           "path"
         ],
         "diagnostics": {
-          "privacy_event": "REDACTION_DROP"
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
         },
         "forbidden": [
           "exämple",
@@ -3660,7 +3672,7 @@
           "path"
         ],
         "diagnostics": {
-          "privacy_event": "REDACTION_DROP"
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
         },
         "forbidden": [
           "/user%40ex%C3%A4mple.com",
@@ -4004,6 +4016,4008 @@
           "NONE"
         ],
         "record_emitted": true
+      }
+    },
+    {
+      "id": "parity-pan-after-alpha",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111",
+          "/pay/4111111111111111α"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/4111111111111111α"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-before-alpha",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111",
+          "/pay/α4111111111111111"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/α4111111111111111"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-after-eacute",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111",
+          "/pay/4111111111111111é"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/4111111111111111é"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-before-eacute",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111",
+          "/pay/é4111111111111111"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/é4111111111111111"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-after-emoji",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111",
+          "/pay/4111111111111111😀"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/4111111111111111😀"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 25
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-before-emoji",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111",
+          "/pay/😀4111111111111111"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/😀4111111111111111"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 25
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-ascii-after",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "path": "/pay/4111111111111111a",
+          "destination_host": "api.example.com"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/4111111111111111a"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 22
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-ascii-before",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "path": "/pay/a4111111111111111"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/a4111111111111111"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 22
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-12-digits",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "path": "/pay/444444444444"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/444444444444"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 17
+        }
+      ]
+    },
+    {
+      "id": "parity-pan-20-digits",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "path": "/pay/44444444444444444444"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/44444444444444444444"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 25
+        }
+      ]
+    },
+    {
+      "id": "parity-sk-path",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "/sk-ABCDEFGαHIJK",
+          "sk-"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/sk-ABCDEFGαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 17
+        }
+      ]
+    },
+    {
+      "id": "parity-sk-label",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "sk-ABCDEFGαHIJK",
+          "sk-"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "sk-ABCDEFGαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-bearer",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "Bearer abcdefgαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "Bearer abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 20
+        }
+      ]
+    },
+    {
+      "id": "parity-bearer-lower",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "bearer abcdefgαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "bearer abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 20
+        }
+      ]
+    },
+    {
+      "id": "parity-bearer-mixed",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "BeArEr abcdefgαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "BeArEr abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 20
+        }
+      ]
+    },
+    {
+      "id": "parity-basic",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "Basic abcdefgαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "Basic abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 19
+        }
+      ]
+    },
+    {
+      "id": "parity-basic-lower",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "basic abcdefgαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "basic abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 19
+        }
+      ]
+    },
+    {
+      "id": "parity-basic-mixed",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "BaSiC abcdefgαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "BaSiC abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 19
+        }
+      ]
+    },
+    {
+      "id": "parity-jwt",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "eyJhbGciOiJIUzI1NiJ9.abcα"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "eyJhbGciOiJIUzI1NiJ9.abcα"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 26
+        }
+      ]
+    },
+    {
+      "id": "parity-jwt-fold",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "EyJhbGciOiJIUzI1NiJ9.abcα"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "EyJhbGciOiJIUzI1NiJ9.abcα"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 26
+        }
+      ]
+    },
+    {
+      "id": "parity-mrn",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "MRN:ABCDEF"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "MRN:ABCDEF"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 10
+        }
+      ]
+    },
+    {
+      "id": "parity-duplicate-basic",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "duplicate_of"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "duplicate_of"
+        ],
+        "forbidden": [
+          "Basic abcdefgαHIJK"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "duplicate_of": "Basic abcdefgαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "duplicate_of",
+          "bytes": 19
+        }
+      ]
+    },
+    {
+      "id": "parity-akia-lower",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "evidence_origin",
+          "name",
+          "observed_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "value"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "detail_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "detail_code"
+        ],
+        "forbidden": [
+          "akiaABCDEFαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "events_rejected",
+        "value": 2,
+        "observed_at": "2026-07-01T00:00:00.000Z",
+        "detail_code": "akiaABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "detail_code",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-akia",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "evidence_origin",
+          "name",
+          "observed_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "value"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "detail_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "detail_code"
+        ],
+        "forbidden": [
+          "AKIAABCDEFαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "events_rejected",
+        "value": 2,
+        "observed_at": "2026-07-01T00:00:00.000Z",
+        "detail_code": "AKIAABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "detail_code",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-akia-mixed",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "evidence_origin",
+          "name",
+          "observed_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "value"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "detail_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "detail_code"
+        ],
+        "forbidden": [
+          "AkIaABCDEFαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "events_rejected",
+        "value": 2,
+        "observed_at": "2026-07-01T00:00:00.000Z",
+        "detail_code": "AkIaABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "detail_code",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-ghp",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "reason_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record": {
+          "source_label": "batch-a"
+        },
+        "record_absent": [
+          "reason_code"
+        ],
+        "forbidden": [
+          "ghp_ABCDEFαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "batch-a",
+        "reason_code": "ghp_ABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "reason_code",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-ghp-upper",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "reason_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record": {
+          "source_label": "batch-a"
+        },
+        "record_absent": [
+          "reason_code"
+        ],
+        "forbidden": [
+          "GHP_ABCDEFαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "batch-a",
+        "reason_code": "GHP_ABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "reason_code",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-ghp-mixed",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "reason_code"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record": {
+          "source_label": "batch-a"
+        },
+        "record_absent": [
+          "reason_code"
+        ],
+        "forbidden": [
+          "GhP_ABCDEFαHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "batch-a",
+        "reason_code": "GhP_ABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "reason_code",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-aiza",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "provider_confidence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "provider_id"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record": {
+          "provider_confidence": "CATALOG",
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "provider_id"
+        ],
+        "forbidden": [
+          "AIzaABCDEFαHIJK"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "provider_id": "AIzaABCDEFαHIJK",
+        "provider_confidence": "CATALOG"
+      },
+      "utf8": [
+        {
+          "field": "provider_id",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-aiza-fold",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "provider_confidence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "provider_id"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record": {
+          "provider_confidence": "CATALOG",
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "provider_id"
+        ],
+        "forbidden": [
+          "aizaABCDEFαHIJK"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "provider_id": "aizaABCDEFαHIJK",
+        "provider_confidence": "CATALOG"
+      },
+      "utf8": [
+        {
+          "field": "provider_id",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-error-class-akia",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "DETECTOR_MATCH",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "error_class"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "error_class"
+        ],
+        "forbidden": [
+          "AkIaABCDEFαHIJK"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "error_class": "AkIaABCDEFαHIJK"
+      },
+      "utf8": [
+        {
+          "field": "error_class",
+          "bytes": 16
+        }
+      ]
+    },
+    {
+      "id": "parity-mrn-lower-stored",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "source_label": "mrn:ABCDEF"
+        }
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "mrn:ABCDEF"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 10
+        }
+      ]
+    },
+    {
+      "id": "parity-bearer-greek-only",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "source_label": "Bearer αααααααα"
+        }
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "Bearer αααααααα"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-cafe-label",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "source_label": "café menu"
+        }
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "café menu"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 10
+        }
+      ]
+    },
+    {
+      "id": "parity-greek-word-path",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "path": "/pay/τιμολόγιο"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/τιμολόγιο"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-mixed-byte-label",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "source_label": "ok-éα😀"
+        }
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "ok-éα😀"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 11
+        }
+      ]
+    },
+    {
+      "id": "parity-path-300-greek",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "αααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/αααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 601
+        }
+      ]
+    },
+    {
+      "id": "parity-path-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "path": "/!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 512
+        }
+      ]
+    },
+    {
+      "id": "parity-path-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 513
+        }
+      ]
+    },
+    {
+      "id": "parity-label-composed-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "source_label": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+        }
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 120
+        }
+      ]
+    },
+    {
+      "id": "parity-label-decomposed-over",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 180
+        }
+      ]
+    },
+    {
+      "id": "parity-label-emoji-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "source_label"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "source_label": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+        }
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 120
+        }
+      ]
+    },
+    {
+      "id": "parity-label-emoji-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "source_label"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 124
+        }
+      ]
+    },
+    {
+      "id": "parity-label-size-only",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "source_label"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 121
+        }
+      ]
+    },
+    {
+      "id": "parity-label-size-and-detector",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "IMPORTED",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "accepted",
+          "evidence_origin",
+          "imported_at",
+          "original_evidence_origin",
+          "record_type",
+          "schema_status",
+          "schema_version"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "source_label"
+        ],
+        "diagnostics": {
+          "privacy_event": "DETECTOR_MATCH"
+        },
+        "record_absent": [
+          "source_label"
+        ],
+        "forbidden": [
+          "sk-",
+          "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxsk-ABCDEFGHIJK"
+        ]
+      },
+      "input": {
+        "record_type": "import_quarantine",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LOCAL_OBSERVATION",
+        "accepted": false,
+        "imported_at": "2026-07-01T00:00:00.000Z",
+        "source_label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxsk-ABCDEFGHIJK"
+      },
+      "utf8": [
+        {
+          "field": "source_label",
+          "bytes": 124
+        }
+      ]
+    },
+    {
+      "id": "parity-annotation-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": null,
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "annotation_id",
+          "annotation_role",
+          "created_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "subject_run_id",
+          "text"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+          "annotation_role": "CUSTOMER_ANNOTATION"
+        }
+      },
+      "input": {
+        "record_type": "annotation",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "annotation_role": "CUSTOMER_ANNOTATION",
+        "annotation_id": "ann_1",
+        "subject_run_id": "run_clean_1",
+        "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "created_at": "2026-07-01T00:00:00.000Z"
+      },
+      "utf8": [
+        {
+          "field": "text",
+          "bytes": 280
+        }
+      ]
+    },
+    {
+      "id": "parity-annotation-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": null,
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "annotation_id",
+          "annotation_role",
+          "created_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "subject_run_id"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "text"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "text"
+        ]
+      },
+      "input": {
+        "record_type": "annotation",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "annotation_role": "CUSTOMER_ANNOTATION",
+        "annotation_id": "ann_1",
+        "subject_run_id": "run_clean_1",
+        "text": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "created_at": "2026-07-01T00:00:00.000Z"
+      },
+      "utf8": [
+        {
+          "field": "text",
+          "bytes": 281
+        }
+      ]
+    },
+    {
+      "id": "parity-detail-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "detail_code",
+          "evidence_origin",
+          "name",
+          "observed_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "value"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "detail_code": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      },
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "events_rejected",
+        "value": 2,
+        "observed_at": "2026-07-01T00:00:00.000Z",
+        "detail_code": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "utf8": [
+        {
+          "field": "detail_code",
+          "bytes": 64
+        }
+      ]
+    },
+    {
+      "id": "parity-detail-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "PRODUCT_HEALTH",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "evidence_origin",
+          "name",
+          "observed_at",
+          "record_type",
+          "schema_status",
+          "schema_version",
+          "value"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "detail_code"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "detail_code"
+        ]
+      },
+      "input": {
+        "record_type": "product_health",
+        "schema_status": "unstable-pre-1.0",
+        "schema_version": 0,
+        "evidence_origin": "PRODUCT_HEALTH",
+        "name": "events_rejected",
+        "value": 2,
+        "observed_at": "2026-07-01T00:00:00.000Z",
+        "detail_code": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "utf8": [
+        {
+          "field": "detail_code",
+          "bytes": 65
+        }
+      ]
+    },
+    {
+      "id": "parity-error-class-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "error_class",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "error_class": "Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "error_class": "Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_"
+      },
+      "utf8": [
+        {
+          "field": "error_class",
+          "bytes": 64
+        }
+      ]
+    },
+    {
+      "id": "parity-error-class-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "error_class"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "error_class"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "error_class": "Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_Err_x"
+      },
+      "utf8": [
+        {
+          "field": "error_class",
+          "bytes": 65
+        }
+      ]
+    },
+    {
+      "id": "parity-version-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "cli_or_sdk_version": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "cli_or_sdk_version": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+      },
+      "utf8": [
+        {
+          "field": "cli_or_sdk_version",
+          "bytes": 32
+        }
+      ]
+    },
+    {
+      "id": "parity-version-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LEGACY_UNMARKED",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "cli_or_sdk_version"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "cli_or_sdk_version"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "cli_or_sdk_version": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+      },
+      "utf8": [
+        {
+          "field": "cli_or_sdk_version",
+          "bytes": 33
+        }
+      ]
+    },
+    {
+      "id": "parity-session-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "session_id",
+          "session_id_basis",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "session_id": "αααααααααααααααααααααααααααααααααααααααα",
+          "session_id_basis": "APPLICATION_SUPPLIED"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "session_id": "αααααααααααααααααααααααααααααααααααααααα",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "utf8": [
+        {
+          "field": "session_id",
+          "bytes": 80
+        }
+      ]
+    },
+    {
+      "id": "parity-session-bytes-plus",
+      "expect": {
+        "remediation_code": "REVIEW_SESSION_ID",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "SESSION_ID_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "SESSION_REJECTED",
+        "completeness_impact": [
+          "SESSION_ID_REJECTED"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "session_id",
+          "session_id_basis"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "session_id": "ααααααααααααααααααααααααααααααααααααααααα",
+        "session_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "utf8": [
+        {
+          "field": "session_id",
+          "bytes": 82
+        }
+      ]
+    },
+    {
+      "id": "parity-provider-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "ACCEPT",
+        "reason_code": "OK",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "provider_confidence",
+          "provider_id",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record": {
+          "provider_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "provider_confidence": "CATALOG"
+        }
+      },
+      "base": "observation",
+      "patch": {
+        "provider_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "provider_confidence": "CATALOG"
+      },
+      "utf8": [
+        {
+          "field": "provider_id",
+          "bytes": 64
+        }
+      ]
+    },
+    {
+      "id": "parity-provider-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "provider_confidence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "provider_id"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "provider_id"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "provider_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "provider_confidence": "CATALOG"
+      },
+      "utf8": [
+        {
+          "field": "provider_id",
+          "bytes": 65
+        }
+      ]
+    },
+    {
+      "id": "parity-provider-greek-over",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "provider_confidence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "provider_id"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "record_absent": [
+          "provider_id"
+        ],
+        "forbidden": [
+          "ααααααααααααααααααααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "provider_id": "ααααααααααααααααααααααααααααααααα",
+        "provider_confidence": "CATALOG"
+      },
+      "utf8": [
+        {
+          "field": "provider_id",
+          "bytes": 66
+        }
+      ]
+    },
+    {
+      "id": "parity-trace-bytes-exact",
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "CONTEXT_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "CONTEXT_REJECTED",
+        "completeness_impact": [
+          "CONTEXT_REJECTED"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [
+          "trace_id",
+          "trace_id_basis"
+        ],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "αααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "trace_id": "αααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα",
+        "trace_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "utf8": [
+        {
+          "field": "trace_id",
+          "bytes": 128
+        }
+      ]
+    },
+    {
+      "id": "parity-trace-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [
+          "trace_id",
+          "trace_id_basis"
+        ],
+        "stripped": [],
+        "rejected": [
+          "trace_id"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "ααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "trace_id": "ααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα",
+        "trace_id_basis": "APPLICATION_SUPPLIED"
+      },
+      "utf8": [
+        {
+          "field": "trace_id",
+          "bytes": 130
+        }
+      ]
+    },
+    {
+      "id": "parity-span-bytes-exact",
+      "expect": {
+        "remediation_code": "REVIEW_TRACE_CONTEXT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "CONTEXT_REJECTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "CONTEXT_REJECTED",
+        "completeness_impact": [
+          "CONTEXT_REJECTED"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [
+          "span_id"
+        ],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "αααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "span_id": "αααααααααααααααα"
+      },
+      "utf8": [
+        {
+          "field": "span_id",
+          "bytes": 32
+        }
+      ]
+    },
+    {
+      "id": "parity-span-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [
+          "span_id"
+        ],
+        "stripped": [],
+        "rejected": [
+          "span_id"
+        ],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "ααααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "span_id": "ααααααααααααααααα"
+      },
+      "utf8": [
+        {
+          "field": "span_id",
+          "bytes": 34
+        }
+      ]
+    },
+    {
+      "id": "parity-field-name-bytes-exact",
+      "expect": {
+        "remediation_code": "NONE",
+        "disposition": "STRIP",
+        "reason_code": "UNKNOWN_FIELD_REDACTED",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "path",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [
+          "UNKNOWN_FIELD_REDACTED_1"
+        ],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "αααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "αααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα": "plain"
+      },
+      "utf8": [
+        {
+          "field_name_bytes": 128
+        }
+      ]
+    },
+    {
+      "id": "parity-field-name-bytes-plus",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_RECORD",
+        "reason_code": "MAX_SIZE_EXCEEDED",
+        "issue_location": "OPTICS",
+        "reader_origin_label": null,
+        "optics_health_impact": "EVENT_REJECTED",
+        "completeness_impact": [
+          "EVENT_DROPPED"
+        ],
+        "record_emitted": false,
+        "accepted": [],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [],
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "ααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "ααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααααα": "plain"
+      },
+      "utf8": [
+        {
+          "field_name_bytes": 130
+        }
+      ]
+    },
+    {
+      "id": "parity-dest-path-without-host",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record_absent": [
+          "path",
+          "destination_host",
+          "destination_port",
+          "scheme"
+        ],
+        "forbidden": [
+          "4111111111111111"
+        ]
+      },
+      "base": "observation",
+      "omit": [
+        "destination_host",
+        "destination_port",
+        "scheme"
+      ],
+      "patch": {
+        "path": "/pay/4111111111111111α"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-dest-safe-host-rejected-path",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "destination_host",
+          "destination_port",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "scheme",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [],
+        "rejected": [
+          "path"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record": {
+          "destination_host": "api.example.com"
+        },
+        "record_absent": [
+          "path"
+        ],
+        "forbidden": [
+          "4111111111111111"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "path": "/pay/4111111111111111α"
+      },
+      "utf8": [
+        {
+          "field": "path",
+          "bytes": 23
+        }
+      ]
+    },
+    {
+      "id": "parity-dest-malformed-canary",
+      "expect": {
+        "remediation_code": "REMOVE_PROHIBITED_CONTENT",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "REDACTION_DROP",
+        "issue_location": "NONE",
+        "reader_origin_label": "LOCAL_OBSERVATION",
+        "optics_health_impact": "INTERNAL_PRIVACY_FAILURE",
+        "completeness_impact": [
+          "REDACTION_DROP"
+        ],
+        "record_emitted": true,
+        "accepted": [
+          "action",
+          "application_status",
+          "cli_or_sdk_version",
+          "event_id",
+          "evidence_origin",
+          "http_status",
+          "identity_conflict",
+          "issue_location",
+          "method",
+          "optics_status",
+          "producer",
+          "producer_id",
+          "producer_sequence",
+          "record_type",
+          "run_id",
+          "sampling",
+          "schema_status",
+          "schema_version",
+          "sequence",
+          "started_at"
+        ],
+        "normalized": [],
+        "stripped": [
+          "requested_url"
+        ],
+        "rejected": [
+          "destination_host",
+          "destination_port",
+          "path",
+          "scheme"
+        ],
+        "diagnostics": {
+          "privacy_event": "DESTINATION_COMPONENT_REDACTED"
+        },
+        "record_absent": [
+          "destination_host",
+          "destination_port",
+          "scheme",
+          "path"
+        ],
+        "forbidden": [
+          "sk-CANARYMALFORM0001",
+          "sk-"
+        ]
+      },
+      "base": "observation",
+      "patch": {
+        "requested_url": "://sk-CANARYMALFORM0001"
+      }
+    },
+    {
+      "id": "harness-function",
+      "harness": "function",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "UNSUPPORTED_COMPLEX_VALUE",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": null,
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": false,
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "CANARYFUNC0001",
+          "plainFn",
+          "_plain_fn"
+        ]
+      }
+    },
+    {
+      "id": "harness-function-field",
+      "harness": "function-field",
+      "expect": {
+        "remediation_code": "VALIDATOR_INTERNAL",
+        "disposition": "REJECT_FIELD",
+        "reason_code": "UNSUPPORTED_COMPLEX_VALUE",
+        "issue_location": "OPTICS",
+        "issue_location_label": "Optics",
+        "reader_origin_label": null,
+        "optics_health_impact": "NONE",
+        "completeness_impact": [
+          "NONE"
+        ],
+        "record_emitted": false,
+        "diagnostics": {
+          "privacy_event": null
+        },
+        "forbidden": [
+          "CANARYFUNC0001",
+          "plainFn",
+          "_plain_fn"
+        ]
       }
     }
   ]

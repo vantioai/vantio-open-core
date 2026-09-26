@@ -2,9 +2,11 @@
 
 Audience: INTERNAL_RESTRICTED
 
-`OPTICS_PKG01_NEEDS_REVISION`
+`PENDING_INDEPENDENT_RECOUNCIL`
 
-Re-council is complete. This is not `OPTICS_PKG01_COUNCIL_PASSED`.
+Detector-parity revision. This is not `OPTICS_PKG01_COUNCIL_PASSED`. The producer did not self-council.
+
+The re-council on tip `6da63f8aafceb7eed3950975d224848fec6c3ba5` classified the branch `OPTICS_PKG01_NEEDS_REVISION`. That record stays in `INDEPENDENT-RECOUNCIL-REPORT.md`. This revision starts from PR head `075b82508fa93b84ce7416512a8d422ed4ca4e49` and waits for a fresh independent re-council.
 
 Re-council report: `docs/internal/optics-pkg01/INDEPENDENT-RECOUNCIL-REPORT.md`
 

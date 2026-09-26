@@ -6,6 +6,7 @@ This module does not write a store and does not import the live SDK.
 
 import json
 import re
+import types
 import unicodedata
 from pathlib import Path
 
@@ -146,6 +147,17 @@ def _mark_privacy(state):
     _add_reason(state, "REDACTION_DROP")
 
 
+def _mark_destination_component(state):
+    if state.privacy_category != "DETECTOR_MATCH":
+        state.privacy_category = privacy.detector_spec["destination_redaction_category"]
+    if state.privacy:
+        return
+    state.privacy = True
+    state.completeness.add("REDACTION_DROP")
+    state.health["redaction_failures"] = 1
+    _add_reason(state, "REDACTION_DROP")
+
+
 def _mark_detector(state):
     state.privacy = True
     state.privacy_category = "DETECTOR_MATCH"
@@ -221,6 +233,11 @@ def _put(state, record, name, value, kind):
 def _reject_field(state, name):
     state.rejected.add(name)
     _add_disposition(state, "REJECT_FIELD")
+
+
+def _note_oversize(state, token):
+    if isinstance(token, dict) and token.get("oversize"):
+        _add_reason(state, "MAX_SIZE_EXCEEDED")
 
 
 def _strip_key(state, name):
@@ -325,8 +342,9 @@ def _non_negative_int(value):
 def _version_token(value, limit):
     if not isinstance(value, str):
         return None
-    if len(value) < 1 or len(value) > limit:
-        return None
+    width = _utf8_bytes(value)
+    if width < 1 or width > limit:
+        return {"oversize": True} if width > limit else None
     if not _VERSION.match(value):
         return None
     if privacy.contains_prohibited(value):
@@ -337,8 +355,9 @@ def _version_token(value, limit):
 def _id_token(value, limit):
     if not isinstance(value, str):
         return None
-    if len(value) < 1 or len(value) > limit:
-        return None
+    width = _utf8_bytes(value)
+    if width < 1 or width > limit:
+        return {"oversize": True} if width > limit else None
     if not _ID.match(value):
         return None
     if privacy.contains_prohibited(value):
@@ -390,7 +409,7 @@ def _is_noncharacter(code):
 
 
 def _utf8_bytes(text):
-    return len(text.encode("utf-8"))
+    return privacy.utf8_bytes(text)
 
 
 def _hex_normalize(value, width):
@@ -399,7 +418,7 @@ def _hex_normalize(value, width):
     if width and len(value) == width and _HEX.match(value):
         if re.match(r"^0+$", value):
             return None
-        lower = value.lower()
+        lower = privacy.ascii_fold(value)
         return {"value": lower, "changed": lower != value}
     return None
 
@@ -407,15 +426,15 @@ def _hex_normalize(value, width):
 def _trace_normalize(value):
     if not isinstance(value, str) or walk.is_bound(value):
         return None
-    if len(value) > bounds["trace_id_max_chars"]:
-        return None
+    if _utf8_bytes(value) > bounds["trace_id_max_chars"]:
+        return {"oversize": True}
     if privacy.contains_prohibited(value):
         return {"prohibited": True}
     w3c = _hex_normalize(value, 32)
     if w3c:
         return w3c
     if _LEGACY_TRACE.match(value) and len(value) <= bounds["trace_id_max_chars"]:
-        lower = "0x" + value[2:].lower()
+        lower = "0x" + privacy.ascii_fold(value[2:])
         if re.match(r"^0x0+$", lower):
             return None
         return {"value": lower, "changed": lower != value}
@@ -425,15 +444,15 @@ def _trace_normalize(value):
 def _span_normalize(value):
     if not isinstance(value, str) or walk.is_bound(value):
         return None
-    if len(value) > bounds["span_id_max_chars"]:
-        return None
+    if _utf8_bytes(value) > bounds["span_id_max_chars"]:
+        return {"oversize": True}
     if privacy.contains_prohibited(value):
         return {"prohibited": True}
     w3c = _hex_normalize(value, 16)
     if w3c and len(value) <= bounds["span_id_max_chars"]:
         return w3c
     if _LEGACY_SPAN.match(value) and 3 <= len(value) <= bounds["span_id_max_chars"]:
-        lower = "0x" + value[2:].lower()
+        lower = "0x" + privacy.ascii_fold(value[2:])
         if re.match(r"^0x0+$", lower):
             return None
         return {"value": lower, "changed": lower != value}
@@ -496,8 +515,9 @@ def _is_ipv6(text):
 def _normalize_host(value):
     if not isinstance(value, str) or walk.is_bound(value):
         return {"ok": False, "prohibited": walk.is_bound(value)}
-    if len(value) < 1 or len(value) > bounds["host_max_chars"]:
-        return {"ok": False, "prohibited": len(value) > bounds["host_max_chars"]}
+    width = _utf8_bytes(value)
+    if width < 1 or width > bounds["host_max_chars"]:
+        return {"ok": False, "oversize": width > bounds["host_max_chars"], "prohibited": privacy.contains_prohibited(value)}
     if _has_control(value) or "/" in value or "?" in value or "#" in value or "@" in value:
         return {"ok": False, "prohibited": True}
     if privacy.contains_prohibited(value) or privacy.has_username_path(value) or privacy.has_db_scheme(value):
@@ -506,21 +526,21 @@ def _normalize_host(value):
         inner = value[1:-1]
         if not _is_ipv6(inner):
             return {"ok": False, "prohibited": False}
-        return {"ok": True, "value": inner.lower(), "ipClass": "ipv6", "changed": True}
+        return {"ok": True, "value": privacy.ascii_fold(inner), "ipClass": "ipv6", "changed": True}
     if _is_ipv4(value):
         return {"ok": True, "value": value, "ipClass": "ipv4", "changed": False}
     if ":" in value:
         if not _is_ipv6(value):
             return {"ok": False, "prohibited": False}
-        lower = value.lower()
+        lower = privacy.ascii_fold(value)
         return {"ok": True, "value": lower, "ipClass": "ipv6", "changed": lower != value}
-    lower = value.lower()
+    lower = privacy.ascii_fold(value)
     if not _DNS.match(lower):
         return {"ok": False, "prohibited": False}
     if lower.startswith(".") or lower.endswith(".") or ".." in lower:
         return {"ok": False, "prohibited": False}
     labels = lower.split(".")
-    if any(len(label) < 1 or len(label) > bounds["label_max_chars"] for label in labels):
+    if any(_utf8_bytes(label) < 1 or _utf8_bytes(label) > bounds["label_max_chars"] for label in labels):
         return {"ok": False, "prohibited": False}
     return {"ok": True, "value": lower, "ipClass": "dns", "changed": lower != value}
 
@@ -529,8 +549,8 @@ def _normalize_path(value):
     if not isinstance(value, str) or walk.is_bound(value):
         oversize = walk.is_bound(value) and value.get("__optics_bound") == walk.OVERSIZE
         return {"ok": False, "oversize": oversize, "prohibited": True}
-    if len(value) > bounds["path_max_chars"]:
-        return {"ok": False, "oversize": True, "prohibited": privacy.contains_prohibited(value)}
+    if _utf8_bytes(value) > bounds["path_max_chars"]:
+        return {"ok": False, "oversize": True, "prohibited": privacy.sensitive_path(value)}
     if _has_control(value) or "\\" in value or privacy.sensitive_path(value):
         return {"ok": False, "prohibited": True}
     if "://" in value:
@@ -550,9 +570,10 @@ def _normalize_path(value):
 def _content_type(value):
     if not isinstance(value, str) or walk.is_bound(value):
         return {"ok": False, "prohibited": True}
-    base = value.split(";", 1)[0].strip().lower()
-    if len(base) < 3 or len(base) > bounds["content_type_max_chars"]:
-        return {"ok": False, "prohibited": privacy.contains_prohibited(value)}
+    base = privacy.ascii_fold(value.split(";", 1)[0].strip())
+    width = _utf8_bytes(base)
+    if width < 3 or width > bounds["content_type_max_chars"]:
+        return {"ok": False, "oversize": width > bounds["content_type_max_chars"], "prohibited": privacy.contains_prohibited(value)}
     if not _MEDIA.match(base):
         return {"ok": False, "prohibited": privacy.contains_prohibited(value)}
     if privacy.contains_prohibited(base) or privacy.contains_prohibited(value):
@@ -623,8 +644,14 @@ def _parse_authority(authority):
 def _parse_destination(raw, state):
     if not isinstance(raw, str) or walk.is_bound(raw):
         return {"ok": False, "failClosed": True, "privacy": True}
-    if len(raw) > bounds["destination_raw_max_chars"] or _has_control(raw):
-        return {"ok": False, "failClosed": True, "privacy": True}
+    raw_bytes = _utf8_bytes(raw)
+    if raw_bytes > bounds["destination_raw_max_chars"] or _has_control(raw):
+        return {
+            "ok": False,
+            "failClosed": True,
+            "oversize": raw_bytes > bounds["destination_raw_max_chars"],
+            "privacy": privacy.contains_prohibited(raw) or _has_control(raw),
+        }
     if privacy.has_db_scheme(raw):
         return {"ok": False, "failClosed": True, "privacy": True}
     body = raw
@@ -633,7 +660,7 @@ def _parse_destination(raw, state):
         fragment = body[hash_at + 1 :]
         body = body[:hash_at]
         if fragment and privacy.contains_prohibited(fragment):
-            _mark_privacy(state)
+            _mark_destination_component(state)
         _add_disposition(state, "NORMALIZE")
     query_at = body.find("?")
     if query_at != -1:
@@ -641,13 +668,13 @@ def _parse_destination(raw, state):
         body = body[:query_at]
         _add_disposition(state, "STRIP")
         if privacy.has_sensitive_query(raw) or privacy.contains_prohibited(query):
-            _mark_privacy(state)
+            _mark_destination_component(state)
         else:
             _add_reason(state, "QUERY_STRIPPED")
     scheme_match = _SCHEME.match(body)
     if not scheme_match:
         return {"ok": False, "failClosed": True, "privacy": privacy.contains_prohibited(raw)}
-    scheme = scheme_match.group(1).lower()
+    scheme = privacy.ascii_fold(scheme_match.group(1))
     if scheme in privacy.policy["db_schemes"]:
         return {"ok": False, "failClosed": True, "privacy": True}
     if scheme not in SCHEMES or scheme == "unknown":
@@ -663,7 +690,7 @@ def _parse_destination(raw, state):
         if not userinfo or not hostport or "@" in hostport:
             return {"ok": False, "failClosed": True, "privacy": True}
         _add_disposition(state, "STRIP")
-        _mark_privacy(state)
+        _mark_destination_component(state)
         _add_reason(state, "USERINFO_STRIPPED")
         parsed = _parse_authority(hostport)
         if not parsed["ok"]:
@@ -921,13 +948,13 @@ def _collect_destination(source, seen, state):
         if isinstance(connected_from["value"], str) and "://" in connected_from["value"]:
             got = _parse_destination(connected_from["value"], state)
             if not got["ok"]:
-                return {"fail": True, "privacy": got.get("privacy")}
+                return {"fail": True, "privacy": got.get("privacy"), "oversize": got.get("oversize")}
             got["source"] = "connected"
             parsed.append(got)
         else:
             host = _normalize_host(connected_from["value"])
             if not host["ok"]:
-                return {"fail": True, "privacy": host.get("prohibited")}
+                return {"fail": True, "privacy": host.get("prohibited"), "oversize": host.get("oversize")}
             parsed.append({
                 "source": "connected",
                 "ok": True,
@@ -941,14 +968,14 @@ def _collect_destination(source, seen, state):
     if requested:
         got = _parse_destination(requested["value"], state)
         if not got["ok"]:
-            return {"fail": True, "privacy": got.get("privacy")}
+            return {"fail": True, "privacy": got.get("privacy"), "oversize": got.get("oversize")}
         got["source"] = "requested"
         parsed.append(got)
     chosen = None
     if explicit["present"]:
         host = _normalize_host(explicit["value"])
         if not host["ok"]:
-            return {"fail": True, "privacy": host.get("prohibited")}
+            return {"fail": True, "privacy": host.get("prohibited"), "oversize": host.get("oversize")}
         chosen = {
             "host": host["value"],
             "ipClass": host["ipClass"],
@@ -981,6 +1008,7 @@ def _collect_destination(source, seen, state):
             if not chosen.get("ipClass") and item.get("ipClass"):
                 chosen["ipClass"] = item["ipClass"]
     if not chosen:
+        _note_orphan_path(state, explicit_path)
         return {"empty": True, "explicitPort": explicit_port, "explicitScheme": explicit_scheme, "explicitPath": explicit_path}
     if explicit_port["present"] and explicit_port["value"] is None:
         if chosen.get("port") is None:
@@ -1001,7 +1029,7 @@ def _collect_destination(source, seen, state):
             chosen["port"] = parsed_port["value"]
             chosen["portChanged"] = parsed_port["changed"]
     if explicit_scheme["present"]:
-        scheme = explicit_scheme["value"].lower() if isinstance(explicit_scheme["value"], str) else ""
+        scheme = privacy.ascii_fold(explicit_scheme["value"]) if isinstance(explicit_scheme["value"], str) else ""
         unknown_mismatch = scheme == "unknown" and explicit_scheme["value"] != "unknown"
         if scheme not in SCHEMES or unknown_mismatch:
             if scheme != "unknown":
@@ -1023,9 +1051,9 @@ def _collect_destination(source, seen, state):
         if not path_value["ok"]:
             _reject_field(state, "path")
             if path_value.get("oversize"):
-                _add_reason(state, "PATH_OVERSIZE")
+                _add_reason(state, "MAX_SIZE_EXCEEDED")
             if path_value.get("prohibited"):
-                _mark_privacy(state)
+                _mark_destination_component(state)
         elif chosen.get("path") and chosen["path"] != path_value["value"]:
             state.configuration_fault = True
             _add_reason(state, "DESTINATION_CONFLICT")
@@ -1037,10 +1065,25 @@ def _collect_destination(source, seen, state):
     return {"chosen": chosen}
 
 
+def _note_orphan_path(state, explicit_path):
+    if not explicit_path or not explicit_path["present"]:
+        return
+    path_value = _normalize_path(explicit_path["value"])
+    if path_value["ok"]:
+        return
+    _reject_field(state, "path")
+    if path_value.get("oversize"):
+        _add_reason(state, "MAX_SIZE_EXCEEDED")
+    if path_value.get("prohibited"):
+        _mark_destination_component(state)
+
+
 def _store_destination(state, record, collected):
     if not collected or collected.get("fail"):
+        if collected and collected.get("oversize"):
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
         if collected and collected.get("privacy"):
-            _mark_privacy(state)
+            _mark_destination_component(state)
         _add_reason(state, "DESTINATION_UNSAFE")
         _add_disposition(state, "REJECT_FIELD")
         _reject_field(state, "destination_host")
@@ -1085,10 +1128,13 @@ def _common_identity(source, seen, state, record, kind):
             _put(state, record, "cli_or_sdk_version", token, "accepted")
         elif version["value"] is not None:
             _reject_field(state, "cli_or_sdk_version")
+            _note_oversize(state, token)
     elif producer_version["present"]:
         _strip_key(state, "producer_version")
         token = _version_token(producer_version["value"], 32)
-        if isinstance(token, str):
+        if isinstance(token, dict) and token.get("oversize"):
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+        elif isinstance(token, str):
             version_value = token
             _put(state, record, "cli_or_sdk_version", token, "normalized")
     producer_value = None
@@ -1109,6 +1155,7 @@ def _common_identity(source, seen, state, record, kind):
             _put(state, record, "run_id", token, "accepted")
         else:
             _reject_field(state, "run_id")
+            _note_oversize(state, token)
     parent = _take(source, seen, "parent_run_id")
     if parent["present"]:
         if parent["value"] is None:
@@ -1121,6 +1168,7 @@ def _common_identity(source, seen, state, record, kind):
                 _reject_field(state, "parent_run_id")
                 if isinstance(token, dict) and token.get("prohibited"):
                     _mark_privacy(state)
+                _note_oversize(state, token)
     producer_id = _take(source, seen, "producer_id")
     producer_id_value = None
     if producer_id["present"] and producer_id["value"] is not None:
@@ -1138,6 +1186,7 @@ def _common_identity(source, seen, state, record, kind):
             _reject_field(state, "producer_id")
             if isinstance(token, dict) and token.get("prohibited"):
                 _mark_privacy(state)
+            _note_oversize(state, token)
     sequence = _take(source, seen, "producer_sequence")
     sequence_value = None
     if sequence["present"] and sequence["value"] is not None:
@@ -1161,7 +1210,7 @@ def _common_identity(source, seen, state, record, kind):
         if producer_id_value is not None and sequence_value is not None:
             canonical_id = _event_id_for(producer_id_value, sequence_value)
             event_id = _take(source, seen, "event_id")
-            if len(canonical_id) <= bounds["event_id_max_chars"]:
+            if _utf8_bytes(canonical_id) <= bounds["event_id_max_chars"]:
                 same = event_id["present"] and event_id["value"] == canonical_id
                 _put(state, record, "event_id", canonical_id, "accepted" if same else "normalized")
         else:
@@ -1171,7 +1220,7 @@ def _common_identity(source, seen, state, record, kind):
                 ok = (
                     isinstance(token, str)
                     and _EVENT.match(token)
-                    and len(token) <= bounds["event_id_max_chars"]
+                    and _utf8_bytes(token) <= bounds["event_id_max_chars"]
                     and not privacy.contains_prohibited(token)
                 )
                 if ok:
@@ -1217,7 +1266,10 @@ def _apply_trace(source, seen, state, record, record_type=None):
     accepted = []
     if direct["present"] and direct["value"] is not None:
         norm = _trace_normalize(direct["value"])
-        if not norm or norm.get("prohibited"):
+        if norm and norm.get("oversize"):
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            _reject_field(state, "trace_id")
+        elif not norm or norm.get("prohibited"):
             _mark_context(state)
             if norm and norm.get("prohibited"):
                 _mark_privacy(state)
@@ -1225,7 +1277,10 @@ def _apply_trace(source, seen, state, record, record_type=None):
             accepted.append({"trace": norm["value"], "changed": norm["changed"], "source": "trace_id"})
     if inherited["present"] and inherited["value"] is not None:
         norm = _trace_normalize(inherited["value"])
-        if not norm or norm.get("prohibited"):
+        if norm and norm.get("oversize"):
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            _reject_field(state, "vantio_trace_id")
+        elif not norm or norm.get("prohibited"):
             _mark_context(state)
             if norm and norm.get("prohibited"):
                 _mark_privacy(state)
@@ -1309,7 +1364,11 @@ def _apply_trace(source, seen, state, record, record_type=None):
             _put(state, record, "span_id", None, "accepted")
         else:
             norm = _span_normalize(span["value"])
-            if not norm or norm.get("prohibited"):
+            if norm and norm.get("oversize"):
+                _add_reason(state, "MAX_SIZE_EXCEEDED")
+                _reject_field(state, "span_id")
+                _put(state, record, "span_id", None, "normalized")
+            elif not norm or norm.get("prohibited"):
                 _mark_context(state)
                 _put(state, record, "span_id", None, "normalized")
                 if norm and norm.get("prohibited"):
@@ -1323,7 +1382,11 @@ def _apply_trace(source, seen, state, record, record_type=None):
             _put(state, record, "parent_span_id", None, "accepted")
         else:
             norm = _span_normalize(parent_span["value"])
-            if not norm or norm.get("prohibited"):
+            if norm and norm.get("oversize"):
+                _add_reason(state, "MAX_SIZE_EXCEEDED")
+                _reject_field(state, "parent_span_id")
+                _put(state, record, "parent_span_id", None, "normalized")
+            elif not norm or norm.get("prohibited"):
                 _mark_context(state)
                 _put(state, record, "parent_span_id", None, "normalized")
                 if norm and norm.get("prohibited"):
@@ -1418,6 +1481,7 @@ def _apply_clock_and_status(source, seen, state, record, kind):
             _reject_field(state, "runtime_version")
             if isinstance(token, dict) and token.get("prohibited"):
                 _mark_privacy(state)
+            _note_oversize(state, token)
     platform = _take(source, seen, "platform")
     if platform["present"] and platform["value"] in PLATFORMS:
         _put(state, record, "platform", platform["value"], "accepted")
@@ -1532,7 +1596,12 @@ def _apply_observation_fields(source, seen, state, record):
     error_class = _take(source, seen, "error_class")
     if error_class["present"] and error_class["value"] is not None:
         token = error_class["value"]
-        if isinstance(token, str) and _TOKEN64.match(token) and not privacy.contains_prohibited(token):
+        if isinstance(token, str) and _utf8_bytes(token) > bounds["error_class_max_chars"]:
+            _reject_field(state, "error_class")
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            if privacy.contains_prohibited(token):
+                _mark_detector(state)
+        elif isinstance(token, str) and _TOKEN64.match(token) and not privacy.contains_prohibited(token):
             _put(state, record, "error_class", token, "accepted")
             if code is None and (not failure["present"] or failure["value"] == "wrapped" or failure["value"] is None):
                 state.customer_exception = True
@@ -1556,7 +1625,7 @@ def _apply_observation_fields(source, seen, state, record):
         _put(state, record, "action", "OBSERVED", "accepted")
     method = _take(source, seen, "method")
     if method["present"] and method["value"] is not None:
-        upper = method["value"].upper() if isinstance(method["value"], str) else ""
+        upper = privacy.ascii_fold_upper(method["value"]) if isinstance(method["value"], str) else ""
         if upper in METHODS:
             _put(state, record, "method", upper, "accepted" if upper == method["value"] else "normalized")
         elif _string_secret(method["value"]):
@@ -1598,6 +1667,8 @@ def _apply_observation_fields(source, seen, state, record):
         parsed = _content_type(media["value"])
         if not parsed["ok"]:
             _reject_field(state, "content_type")
+            if parsed.get("oversize"):
+                _add_reason(state, "MAX_SIZE_EXCEEDED")
             if parsed.get("prohibited"):
                 _mark_privacy(state)
         else:
@@ -1623,12 +1694,17 @@ def _apply_observation_fields(source, seen, state, record):
         token = duplicate["value"]
         if token is None:
             _put(state, record, "duplicate_of", None, "accepted")
-        elif isinstance(token, str) and len(token) <= bounds["event_id_max_chars"] and not privacy.contains_prohibited(token):
+        elif isinstance(token, str) and _utf8_bytes(token) > bounds["event_id_max_chars"]:
+            _reject_field(state, "duplicate_of")
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            if privacy.contains_prohibited(token):
+                _mark_detector(state)
+        elif isinstance(token, str) and not privacy.contains_prohibited(token):
             _put(state, record, "duplicate_of", token, "accepted")
         else:
             _reject_field(state, "duplicate_of")
             if _string_secret(token):
-                _mark_privacy(state)
+                _mark_detector(state)
     provider = _take(source, seen, "provider_id")
     confidence = _take(source, seen, "provider_confidence")
     legacy_provider = _take(source, seen, "provider")
@@ -1640,7 +1716,13 @@ def _apply_observation_fields(source, seen, state, record):
     confidence_value = "NONE"
     provider_kind = "normalized"
     provider_blocked = False
-    if provider["present"] and isinstance(provider["value"], str) and privacy.contains_prohibited(provider["value"]):
+    if provider["present"] and isinstance(provider["value"], str) and _utf8_bytes(provider["value"]) > bounds["provider_id_max_bytes"]:
+        _reject_field(state, "provider_id")
+        _add_reason(state, "MAX_SIZE_EXCEEDED")
+        if privacy.contains_prohibited(provider["value"]):
+            _mark_detector(state)
+        provider_blocked = True
+    elif provider["present"] and isinstance(provider["value"], str) and privacy.contains_prohibited(provider["value"]):
         _reject_field(state, "provider_id")
         _mark_detector(state)
         provider_blocked = True
@@ -1835,6 +1917,7 @@ def _build_derived(source):
             _reject_field(state, key)
             if isinstance(token, dict) and token.get("prohibited"):
                 _mark_privacy(state)
+            _note_oversize(state, token)
     outcome = _take(source, seen, "application_outcome_label")
     if outcome["present"]:
         if outcome["value"] in OUTCOME_LABELS:
@@ -1895,6 +1978,7 @@ def _build_annotation(source):
             _reject_field(state, key)
             if isinstance(token, dict) and token.get("prohibited"):
                 _mark_privacy(state)
+            _note_oversize(state, token)
     created = _take(source, seen, "created_at")
     if created["present"]:
         stamp = _canonical_time(created["value"])
@@ -1905,8 +1989,13 @@ def _build_annotation(source):
     text = _take(source, seen, "text")
     if text["present"]:
         scanned = _consume_string_field(text["value"])
-        too_long = isinstance(text["value"], str) and len(text["value"]) > bounds["annotation_text_max_chars"]
-        if scanned.get("prohibited") or too_long or scanned.get("bad"):
+        too_long = isinstance(text["value"], str) and _utf8_bytes(text["value"]) > bounds["annotation_text_max_chars"]
+        if too_long:
+            _reject_field(state, "text")
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            if scanned.get("prohibited"):
+                _mark_privacy(state)
+        elif scanned.get("prohibited") or scanned.get("bad"):
             _reject_field(state, "text")
             _mark_privacy(state)
         else:
@@ -1970,7 +2059,12 @@ def _build_health(source):
             _put(state, record, "observed_at", stamp["value"], "normalized" if stamp["changed"] else "accepted")
     detail = _take(source, seen, "detail_code")
     if detail["present"] and detail["value"] is not None:
-        if isinstance(detail["value"], str) and privacy.contains_prohibited(detail["value"]):
+        if isinstance(detail["value"], str) and _utf8_bytes(detail["value"]) > bounds["detail_code_max_chars"]:
+            _reject_field(state, "detail_code")
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            if privacy.contains_prohibited(detail["value"]):
+                _mark_detector(state)
+        elif isinstance(detail["value"], str) and privacy.contains_prohibited(detail["value"]):
             _reject_field(state, "detail_code")
             _mark_detector(state)
         elif isinstance(detail["value"], str) and _TOKEN64.match(detail["value"]):
@@ -2004,14 +2098,17 @@ def _build_quarantine(source):
     label = _take(source, seen, "source_label")
     if label["present"]:
         text = label["value"]
-        clean = (
+        if isinstance(text, str) and _utf8_bytes(text) > bounds["source_label_max_chars"]:
+            _reject_field(state, "source_label")
+            _add_reason(state, "MAX_SIZE_EXCEEDED")
+            if privacy.contains_prohibited(text) or privacy.has_username_path(text):
+                _mark_detector(state)
+        elif (
             isinstance(text, str)
-            and len(text) <= bounds["source_label_max_chars"]
             and not privacy.has_username_path(text)
             and not privacy.contains_prohibited(text)
             and "\\" not in text
-        )
-        if clean:
+        ):
             _put(state, record, "source_label", text, "accepted")
         else:
             _reject_field(state, "source_label")
@@ -2022,7 +2119,7 @@ def _build_quarantine(source):
     digest = _take(source, seen, "content_sha256")
     if digest["present"] and digest["value"] is not None:
         if isinstance(digest["value"], str) and _SHA.match(digest["value"]):
-            lower = digest["value"].lower()
+            lower = privacy.ascii_fold(digest["value"])
             _put(state, record, "content_sha256", lower, "accepted" if lower == digest["value"] else "normalized")
         else:
             _reject_field(state, "content_sha256")
@@ -2223,6 +2320,15 @@ def _empty_compatibility(shape, legacy_marker, legacy_version):
     }
 
 
+def _reject_field_terminal(reason, application_result, shape):
+    state = State()
+    _add_reason(state, reason)
+    _add_disposition(state, "REJECT_FIELD")
+    state.optics_internal = True
+    state.provenance = "NOT_APPLICABLE"
+    return _finalize(state, None, [], application_result, _empty_compatibility(shape or "unknown", False, None))
+
+
 def _terminal(reason, application_result, shape):
     state = State()
     _drop_record(state, reason)
@@ -2374,7 +2480,7 @@ def validate_evidence(value, options=None):
         if isinstance(options, dict) and options.get("injectFault") is True:
             raise RuntimeError("injected")
         if isinstance(value, str):
-            if len(value) > bounds["max_input_chars"]:
+            if _utf8_bytes(value) > bounds["max_input_chars"]:
                 return _finish_result(_terminal("INPUT_BOUND", application_result, "bytes"), detached)
             if privacy.contains_prohibited(value) and not value.startswith("{") and not value.startswith("["):
                 state = State()
@@ -2391,10 +2497,23 @@ def validate_evidence(value, options=None):
                     return _finish_result(_terminal("MALFORMED_JSON", application_result, "bytes"), detached)
             else:
                 return _finish_result(_terminal("RECORD_TYPE_REJECTED", application_result, "unknown"), detached)
+        if type(value) in (
+            types.FunctionType,
+            types.LambdaType,
+            types.MethodType,
+            types.BuiltinFunctionType,
+            types.BuiltinMethodType,
+        ) or (callable(value) and type(value) not in (dict, list, tuple, str)):
+            return _finish_result(
+                _reject_field_terminal("UNSUPPORTED_COMPLEX_VALUE", application_result, "unknown"),
+                detached,
+            )
         if value is None or type(value) in (bool, int, float, bytes, bytearray):
             return _finish_result(_terminal("RECORD_TYPE_REJECTED", application_result, "unknown"), detached)
         copied = walk.plain_copy(value)
         if not copied["ok"]:
+            if copied.get("disposition") == "REJECT_FIELD":
+                return _finish_result(_reject_field_terminal(copied["reason"], application_result, "unknown"), detached)
             return _finish_result(_terminal(copied["reason"], application_result, "unknown"), detached)
         if isinstance(copied["value"], list):
             state = State()
@@ -2420,7 +2539,10 @@ def validate_bytes(buffer, options=None):
         if isinstance(options, dict) and options.get("injectFault") is True:
             raise RuntimeError("injected")
         if isinstance(buffer, str):
-            raw = buffer.encode("utf-8")
+            try:
+                raw = buffer.encode("utf-8")
+            except UnicodeEncodeError:
+                return _finish_result(_terminal("MALFORMED_UTF8", application_result, "bytes"), detached)
         elif isinstance(buffer, bytearray):
             raw = bytes(buffer)
         elif isinstance(buffer, bytes):
@@ -2431,7 +2553,7 @@ def validate_bytes(buffer, options=None):
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             return _finish_result(_terminal("MALFORMED_UTF8", application_result, "bytes"), detached)
-        if len(text) > bounds["max_input_chars"]:
+        if _utf8_bytes(text) > bounds["max_input_chars"]:
             return _finish_result(_terminal("INPUT_BOUND", application_result, "bytes"), detached)
         try:
             parsed = json.loads(text)

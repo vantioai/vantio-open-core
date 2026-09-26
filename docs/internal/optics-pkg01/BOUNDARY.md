@@ -108,7 +108,7 @@ Gate 8 in `docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md` still
 
 | Risk | Bound |
 | --- | --- |
-| Cross-language drift | One corpus. Canonical JSON compared byte for byte. Patterns are loops and ASCII classes, not mixed regex dialects |
+| Cross-language drift | One corpus. Canonical JSON compared byte for byte. Both scanners load `contract/detector-classes.json`. String bounds are UTF-8 bytes |
 | Hostile getters and cycles | Bounded walk. Getter throws and cycles become `REJECT_RECORD` with no exception text in the result |
 | Recursion and size | Depth, key, array, node, and string caps. Over-long strings are dropped without storing a prefix |
 | Secret in a diagnostic | Reason codes and remediation codes are a closed token set. Values are never interpolated |

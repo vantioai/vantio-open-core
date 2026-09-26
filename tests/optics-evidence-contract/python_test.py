@@ -42,6 +42,10 @@ class _PlainBox(object):
         self.record_type = "observation_event"
 
 
+def _plain_fn():
+    return "CANARYFUNC0001"
+
+
 class _ProxyLike(dict):
     calls = 0
 
@@ -99,6 +103,10 @@ def run_case(item):
         return result
     if harness == "class":
         return validate.validate_evidence(_PlainBox())
+    if harness == "function":
+        return validate.validate_evidence(_plain_fn)
+    if harness == "function-field":
+        return validate.validate_evidence({"record_type": "observation_event", "note": _plain_fn})
     if harness == "nonreturning":
         return _worker_result()
     return validate.validate_evidence(materialize(item))
@@ -257,6 +265,14 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("import urllib", text)
         self.assertNotIn("import socket", text)
         self.assertNotIn("import requests", text)
+        detectors = "\n".join((root / name).read_text(encoding="utf-8") for name in ("privacy.py", "privacy.cjs"))
+        for token in ("isalpha", "isalnum", "casefold", "toLowerCase", "toUpperCase", ".lower(", ".upper(", "toLocale"):
+            self.assertNotIn(token, detectors, token)
+        classes = json.loads((ROOT / "packages" / "optics-evidence-contract" / "contract" / "detector-classes.json").read_text(encoding="utf-8"))
+        bounds = json.loads((ROOT / "packages" / "optics-evidence-contract" / "contract" / "normalization.json").read_text(encoding="utf-8"))
+        self.assertEqual(classes["length_unit"], "UTF-8_BYTES")
+        self.assertEqual(bounds["length_unit"], "UTF-8_BYTES")
+        self.assertEqual(classes["max_scan_bytes"], bounds["bounds"]["max_string_chars"])
 
     def test_scope(self):
         cli = json.loads((ROOT / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8"))
@@ -314,6 +330,16 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(result["fields"]["stripped"], expect["stripped"], ident)
         if "rejected" in expect:
             self.assertEqual(result["fields"]["rejected"], expect["rejected"], ident)
+        if "accepted" in expect:
+            self.assertEqual(result["fields"]["accepted"], expect["accepted"], ident)
+        if "normalized" in expect:
+            self.assertEqual(result["fields"]["normalized"], expect["normalized"], ident)
+        data = materialize(item) if item.get("utf8") else None
+        for spec in item.get("utf8") or []:
+            if "field" in spec:
+                self.assertEqual(len(str(data[spec["field"]]).encode("utf-8")), spec["bytes"], ident + " " + spec["field"])
+            if "field_name_bytes" in spec:
+                self.assertTrue(any(len(key.encode("utf-8")) == spec["field_name_bytes"] for key in data), ident)
         if "compatibility" in expect:
             self.assertEqual(result["compatibility"], expect["compatibility"], ident)
         for key, value in (expect.get("diagnostics") or {}).items():

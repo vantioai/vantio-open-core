@@ -127,6 +127,17 @@ function markPrivacy(state) {
   addReason(state, "REDACTION_DROP");
 }
 
+function markDestinationComponent(state) {
+  if (state.privacyCategory !== "DETECTOR_MATCH") {
+    state.privacyCategory = privacy.detectorSpec.destination_redaction_category;
+  }
+  if (state.privacy) return;
+  state.privacy = true;
+  state.completeness.add("REDACTION_DROP");
+  state.health.redaction_failures = 1;
+  addReason(state, "REDACTION_DROP");
+}
+
 function markDetector(state) {
   state.privacy = true;
   state.privacyCategory = "DETECTOR_MATCH";
@@ -204,6 +215,10 @@ function rejectField(state, name) {
   addDisposition(state, "REJECT_FIELD");
 }
 
+function noteOversize(state, token) {
+  if (token && typeof token === "object" && token.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+}
+
 function stripKey(state, name) {
   const located = locateField(state, name);
   state.stripped.add(located.locator);
@@ -269,10 +284,6 @@ function applicationStatusFromHttp(status) {
   return "UNAVAILABLE";
 }
 
-function codePoints(text) {
-  return Array.from(text);
-}
-
 function isInteger(value) {
   return typeof value === "number" && Number.isInteger(value) && Math.abs(value) <= bounds.safe_integer_max;
 }
@@ -284,7 +295,7 @@ function nonNegativeInt(value) {
 
 function versionToken(value, max) {
   if (typeof value !== "string") return null;
-  if (value.length < 1 || value.length > max) return null;
+  if (utf8Bytes(value) < 1 || utf8Bytes(value) > max) return value && utf8Bytes(value) > max ? { oversize: true } : null;
   if (!/^[A-Za-z0-9._+-]+$/.test(value)) return null;
   if (privacy.containsProhibited(value)) return { prohibited: true };
   return value;
@@ -292,7 +303,7 @@ function versionToken(value, max) {
 
 function idToken(value, max) {
   if (typeof value !== "string") return null;
-  if (value.length < 1 || value.length > max) return null;
+  if (utf8Bytes(value) < 1 || utf8Bytes(value) > max) return utf8Bytes(value) > max ? { oversize: true } : null;
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
   if (privacy.containsProhibited(value)) return { prohibited: true };
   return value;
@@ -342,7 +353,7 @@ function hexNormalize(value, width) {
   if (typeof value !== "string") return null;
   if (width && value.length === width && /^[0-9a-fA-F]+$/.test(value)) {
     if (/^0+$/.test(value)) return null;
-    const lower = value.toLowerCase();
+    const lower = privacy.asciiFold(value);
     return { value: lower, changed: lower !== value };
   }
   return null;
@@ -350,12 +361,12 @@ function hexNormalize(value, width) {
 
 function traceNormalize(value) {
   if (typeof value !== "string" || isBound(value)) return null;
-  if (codePoints(value).length > bounds.trace_id_max_chars) return null;
+  if (utf8Bytes(value) > bounds.trace_id_max_chars) return { oversize: true };
   if (privacy.containsProhibited(value)) return { prohibited: true };
   const w3c = hexNormalize(value, 32);
   if (w3c) return w3c;
   if (/^0x[0-9a-fA-F]{1,126}$/.test(value) && value.length <= bounds.trace_id_max_chars) {
-    const lower = "0x" + value.slice(2).toLowerCase();
+    const lower = "0x" + privacy.asciiFold(value.slice(2));
     if (/^0x0+$/.test(lower)) return null;
     return { value: lower, changed: lower !== value };
   }
@@ -364,12 +375,12 @@ function traceNormalize(value) {
 
 function spanNormalize(value) {
   if (typeof value !== "string" || isBound(value)) return null;
-  if (value.length > bounds.span_id_max_chars) return null;
+  if (utf8Bytes(value) > bounds.span_id_max_chars) return { oversize: true };
   if (privacy.containsProhibited(value)) return { prohibited: true };
   const w3c = hexNormalize(value, 16);
   if (w3c && value.length <= bounds.span_id_max_chars) return w3c;
   if (/^0x[0-9a-fA-F]+$/.test(value) && value.length <= bounds.span_id_max_chars && value.length >= 3) {
-    const lower = "0x" + value.slice(2).toLowerCase();
+    const lower = "0x" + privacy.asciiFold(value.slice(2));
     if (/^0x0+$/.test(lower)) return null;
     return { value: lower, changed: lower !== value };
   }
@@ -422,7 +433,9 @@ function isIpv6(text) {
 
 function normalizeHost(value) {
   if (typeof value !== "string" || isBound(value)) return { ok: false, prohibited: isBound(value) };
-  if (value.length < 1 || value.length > bounds.host_max_chars) return { ok: false, prohibited: value.length > bounds.host_max_chars };
+  if (utf8Bytes(value) < 1 || utf8Bytes(value) > bounds.host_max_chars) {
+    return { ok: false, oversize: utf8Bytes(value) > bounds.host_max_chars, prohibited: privacy.containsProhibited(value) };
+  }
   if (hasControl(value) || value.includes("/") || value.includes("?") || value.includes("#") || value.includes("@")) {
     return { ok: false, prohibited: privacy.containsProhibited(value) || true };
   }
@@ -432,19 +445,19 @@ function normalizeHost(value) {
   if (value.startsWith("[") && value.endsWith("]")) {
     const inner = value.slice(1, -1);
     if (!isIpv6(inner)) return { ok: false, prohibited: false };
-    return { ok: true, value: inner.toLowerCase(), ipClass: "ipv6", changed: true };
+    return { ok: true, value: privacy.asciiFold(inner), ipClass: "ipv6", changed: true };
   }
   if (isIpv4(value)) return { ok: true, value, ipClass: "ipv4", changed: false };
   if (value.includes(":")) {
     if (!isIpv6(value)) return { ok: false, prohibited: false };
-    const lower = value.toLowerCase();
+    const lower = privacy.asciiFold(value);
     return { ok: true, value: lower, ipClass: "ipv6", changed: lower !== value };
   }
-  const lower = value.toLowerCase();
+  const lower = privacy.asciiFold(value);
   if (!/^[a-z0-9.-]+$/.test(lower)) return { ok: false, prohibited: false };
   if (lower.startsWith(".") || lower.endsWith(".") || lower.includes("..")) return { ok: false, prohibited: false };
   const labels = lower.split(".");
-  if (labels.some((label) => label.length < 1 || label.length > bounds.label_max_chars)) {
+  if (labels.some((label) => utf8Bytes(label) < 1 || utf8Bytes(label) > bounds.label_max_chars)) {
     return { ok: false, prohibited: false };
   }
   return { ok: true, value: lower, ipClass: "dns", changed: lower !== value };
@@ -454,8 +467,8 @@ function normalizePath(value) {
   if (typeof value !== "string" || isBound(value)) {
     return { ok: false, oversize: isBound(value) && value.__optics_bound === OVERSIZE, prohibited: true };
   }
-  if (codePoints(value).length > bounds.path_max_chars) {
-    return { ok: false, oversize: true, prohibited: privacy.containsProhibited(value) };
+  if (utf8Bytes(value) > bounds.path_max_chars) {
+    return { ok: false, oversize: true, prohibited: privacy.sensitivePath(value) };
   }
   if (hasControl(value) || value.includes("\\") || privacy.sensitivePath(value)) {
     return { ok: false, prohibited: true };
@@ -476,8 +489,10 @@ function normalizePath(value) {
 
 function contentType(value) {
   if (typeof value !== "string" || isBound(value)) return { ok: false, prohibited: true };
-  const base = value.split(";")[0].trim().toLowerCase();
-  if (base.length < 3 || base.length > bounds.content_type_max_chars) return { ok: false, prohibited: privacy.containsProhibited(value) };
+  const base = privacy.asciiFold(value.split(";")[0].trim());
+  if (utf8Bytes(base) < 3 || utf8Bytes(base) > bounds.content_type_max_chars) {
+    return { ok: false, oversize: utf8Bytes(base) > bounds.content_type_max_chars, prohibited: privacy.containsProhibited(value) };
+  }
   if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(base)) {
     return { ok: false, prohibited: privacy.containsProhibited(value) };
   }
@@ -538,8 +553,13 @@ function parseDestination(raw, state) {
   if (typeof raw !== "string" || isBound(raw)) {
     return { ok: false, failClosed: true, privacy: true };
   }
-  if (raw.length > bounds.destination_raw_max_chars || hasControl(raw)) {
-    return { ok: false, failClosed: true, privacy: true };
+  if (utf8Bytes(raw) > bounds.destination_raw_max_chars || hasControl(raw)) {
+    return {
+      ok: false,
+      failClosed: true,
+      oversize: utf8Bytes(raw) > bounds.destination_raw_max_chars,
+      privacy: privacy.containsProhibited(raw) || hasControl(raw),
+    };
   }
   if (privacy.hasDbScheme(raw)) return { ok: false, failClosed: true, privacy: true };
   let body = raw;
@@ -547,7 +567,7 @@ function parseDestination(raw, state) {
   if (hash !== -1) {
     const fragment = body.slice(hash + 1);
     body = body.slice(0, hash);
-    if (fragment && privacy.containsProhibited(fragment)) markPrivacy(state);
+    if (fragment && privacy.containsProhibited(fragment)) markDestinationComponent(state);
     addDisposition(state, "NORMALIZE");
   }
   const q = body.indexOf("?");
@@ -555,12 +575,12 @@ function parseDestination(raw, state) {
     const query = body.slice(q + 1);
     body = body.slice(0, q);
     addDisposition(state, "STRIP");
-    if (privacy.hasSensitiveQuery(raw) || privacy.containsProhibited(query)) markPrivacy(state);
+    if (privacy.hasSensitiveQuery(raw) || privacy.containsProhibited(query)) markDestinationComponent(state);
     else addReason(state, "QUERY_STRIPPED");
   }
   const schemeMatch = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//.exec(body);
   if (!schemeMatch) return { ok: false, failClosed: true, privacy: privacy.containsProhibited(raw) };
-  const scheme = schemeMatch[1].toLowerCase();
+  const scheme = privacy.asciiFold(schemeMatch[1]);
   if (privacy.policy.db_schemes.includes(scheme)) return { ok: false, failClosed: true, privacy: true };
   if (!SCHEMES.has(scheme) || scheme === "unknown") {
     return { ok: false, failClosed: true, privacy: privacy.containsProhibited(raw) };
@@ -577,7 +597,7 @@ function parseDestination(raw, state) {
       return { ok: false, failClosed: true, privacy: true };
     }
     addDisposition(state, "STRIP");
-    markPrivacy(state);
+    markDestinationComponent(state);
     addReason(state, "USERINFO_STRIPPED");
     const parsed = parseAuthority(hostport);
     if (!parsed.ok) return { ok: false, failClosed: true, privacy: true };
@@ -828,23 +848,23 @@ function collectDestination(input, seen, state) {
   if (connectedFrom) {
     if (typeof connectedFrom.value === "string" && connectedFrom.value.includes("://")) {
       const got = parseDestination(connectedFrom.value, state);
-      if (!got.ok) return { fail: true, privacy: got.privacy };
+      if (!got.ok) return { fail: true, privacy: got.privacy, oversize: got.oversize };
       parsed.push({ source: "connected", ...got });
     } else {
       const host = normalizeHost(connectedFrom.value);
-      if (!host.ok) return { fail: true, privacy: host.prohibited };
+      if (!host.ok) return { fail: true, privacy: host.prohibited, oversize: host.oversize };
       parsed.push({ source: "connected", ok: true, host: host.value, ipClass: host.ipClass, port: null, scheme: null, path: null, hostChanged: host.changed });
     }
   }
   if (requested) {
     const got = parseDestination(requested.value, state);
-    if (!got.ok) return { fail: true, privacy: got.privacy };
+    if (!got.ok) return { fail: true, privacy: got.privacy, oversize: got.oversize };
     parsed.push({ source: "requested", ...got });
   }
   let chosen = null;
   if (explicit.present) {
     const host = normalizeHost(explicit.value);
-    if (!host.ok) return { fail: true, privacy: host.prohibited };
+    if (!host.ok) return { fail: true, privacy: host.prohibited, oversize: host.oversize };
     chosen = { host: host.value, ipClass: host.ipClass, hostChanged: host.changed, scheme: null, port: null, path: null, source: "explicit" };
     if (!state.destinationClass) state.destinationClass = "EXPLICIT";
   } else if (parsed.length) {
@@ -868,7 +888,10 @@ function collectDestination(input, seen, state) {
       if (!chosen.ipClass && item.ipClass) chosen.ipClass = item.ipClass;
     }
   }
-  if (!chosen) return { empty: true, explicitPort, explicitScheme, explicitPath };
+  if (!chosen) {
+    noteOrphanPath(state, explicitPath);
+    return { empty: true, explicitPort, explicitScheme, explicitPath };
+  }
   if (explicitPort.present && explicitPort.value == null) {
     if (chosen.port == null) chosen.portNullAccepted = true;
   } else if (explicitPort.present) {
@@ -888,7 +911,7 @@ function collectDestination(input, seen, state) {
     }
   }
   if (explicitScheme.present) {
-    const scheme = typeof explicitScheme.value === "string" ? explicitScheme.value.toLowerCase() : "";
+    const scheme = typeof explicitScheme.value === "string" ? privacy.asciiFold(explicitScheme.value) : "";
     if (!SCHEMES.has(scheme) || scheme === "unknown" && explicitScheme.value !== "unknown") {
       if (scheme !== "unknown") {
         rejectField(state, "scheme");
@@ -911,8 +934,8 @@ function collectDestination(input, seen, state) {
     const pathValue = normalizePath(explicitPath.value);
     if (!pathValue.ok) {
       rejectField(state, "path");
-      if (pathValue.oversize) addReason(state, "PATH_OVERSIZE");
-      if (pathValue.prohibited) markPrivacy(state);
+      if (pathValue.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+      if (pathValue.prohibited) markDestinationComponent(state);
     } else if (chosen.path && chosen.path !== pathValue.value) {
       state.configurationFault = true;
       addReason(state, "DESTINATION_CONFLICT");
@@ -926,9 +949,19 @@ function collectDestination(input, seen, state) {
   return { chosen };
 }
 
+function noteOrphanPath(state, explicitPath) {
+  if (!explicitPath || !explicitPath.present) return;
+  const pathValue = normalizePath(explicitPath.value);
+  if (pathValue.ok) return;
+  rejectField(state, "path");
+  if (pathValue.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+  if (pathValue.prohibited) markDestinationComponent(state);
+}
+
 function storeDestination(state, record, collected) {
   if (!collected || collected.fail) {
-    if (collected && collected.privacy) markPrivacy(state);
+    if (collected && collected.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+    if (collected && collected.privacy) markDestinationComponent(state);
     addReason(state, "DESTINATION_UNSAFE");
     addDisposition(state, "REJECT_FIELD");
     rejectField(state, "destination_host");
@@ -962,11 +995,15 @@ function commonIdentity(input, seen, state, record, kind) {
     } else if (typeof token === "string") {
       versionValue = token;
       put(state, record, "cli_or_sdk_version", token, "accepted");
-    } else if (version.value != null) rejectField(state, "cli_or_sdk_version");
+    } else if (version.value != null) {
+      rejectField(state, "cli_or_sdk_version");
+      noteOversize(state, token);
+    }
   } else if (producerVersion.present) {
     stripKey(state, "producer_version");
     const token = versionToken(producerVersion.value, 32);
-    if (typeof token === "string") {
+    if (token && token.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
+    else if (typeof token === "string") {
       versionValue = token;
       put(state, record, "cli_or_sdk_version", token, "normalized");
     }
@@ -987,7 +1024,10 @@ function commonIdentity(input, seen, state, record, kind) {
       rejectField(state, "run_id");
       markPrivacy(state);
     } else if (typeof token === "string") put(state, record, "run_id", token, "accepted");
-    else rejectField(state, "run_id");
+    else {
+      rejectField(state, "run_id");
+      noteOversize(state, token);
+    }
   }
   const parent = take(input, seen, "parent_run_id");
   if (parent.present) {
@@ -998,6 +1038,7 @@ function commonIdentity(input, seen, state, record, kind) {
       else {
         rejectField(state, "parent_run_id");
         if (token && token.prohibited) markPrivacy(state);
+        noteOversize(state, token);
       }
     }
   }
@@ -1018,6 +1059,7 @@ function commonIdentity(input, seen, state, record, kind) {
     } else {
       rejectField(state, "producer_id");
       if (token && token.prohibited) markPrivacy(state);
+      noteOversize(state, token);
     }
   }
   const sequence = take(input, seen, "producer_sequence");
@@ -1045,14 +1087,14 @@ function commonIdentity(input, seen, state, record, kind) {
     if (producerIdValue != null && sequenceValue != null) {
       const canonical = eventIdFor(producerIdValue, sequenceValue);
       const eventId = take(input, seen, "event_id");
-      if (canonical.length <= bounds.event_id_max_chars) {
+      if (utf8Bytes(canonical) <= bounds.event_id_max_chars) {
         put(state, record, "event_id", canonical, eventId.present && eventId.value === canonical ? "accepted" : "normalized");
       }
     } else {
       const eventId = take(input, seen, "event_id");
       if (eventId.present) {
         const token = typeof eventId.value === "string" && /^e\.[0-9]+\.[A-Za-z0-9_-]+\.[0-9]+$/.test(eventId.value)
-          && eventId.value.length <= bounds.event_id_max_chars
+          && utf8Bytes(eventId.value) <= bounds.event_id_max_chars
           ? eventId.value
           : null;
         if (token && !privacy.containsProhibited(token)) put(state, record, "event_id", token, "accepted");
@@ -1101,14 +1143,20 @@ function applyTrace(input, seen, state, record, recordType) {
   const accepted = [];
   if (direct.present && direct.value != null) {
     const norm = traceNormalize(direct.value);
-    if (!norm || norm.prohibited) {
+    if (norm && norm.oversize) {
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      rejectField(state, "trace_id");
+    } else if (!norm || norm.prohibited) {
       markContext(state);
       if (norm && norm.prohibited) markPrivacy(state);
     } else accepted.push({ trace: norm.value, changed: norm.changed, source: "trace_id" });
   }
   if (inherited.present && inherited.value != null) {
     const norm = traceNormalize(inherited.value);
-    if (!norm || norm.prohibited) {
+    if (norm && norm.oversize) {
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      rejectField(state, "vantio_trace_id");
+    } else if (!norm || norm.prohibited) {
       markContext(state);
       if (norm && norm.prohibited) markPrivacy(state);
       state.traceMeaning = "ASSERTED_CONTEXT_NOT_OBSERVATION_PROOF";
@@ -1183,7 +1231,11 @@ function applyTrace(input, seen, state, record, recordType) {
     if (span.value == null) put(state, record, "span_id", null, "accepted");
     else {
       const norm = spanNormalize(span.value);
-      if (!norm || norm.prohibited) {
+      if (norm && norm.oversize) {
+        addReason(state, "MAX_SIZE_EXCEEDED");
+        rejectField(state, "span_id");
+        put(state, record, "span_id", null, "normalized");
+      } else if (!norm || norm.prohibited) {
         markContext(state);
         put(state, record, "span_id", null, "normalized");
         if (norm && norm.prohibited) markPrivacy(state);
@@ -1196,7 +1248,11 @@ function applyTrace(input, seen, state, record, recordType) {
     if (parentSpan.value == null) put(state, record, "parent_span_id", null, "accepted");
     else {
       const norm = spanNormalize(parentSpan.value);
-      if (!norm || norm.prohibited) {
+      if (norm && norm.oversize) {
+        addReason(state, "MAX_SIZE_EXCEEDED");
+        rejectField(state, "parent_span_id");
+        put(state, record, "parent_span_id", null, "normalized");
+      } else if (!norm || norm.prohibited) {
         markContext(state);
         put(state, record, "parent_span_id", null, "normalized");
         if (norm && norm.prohibited) markPrivacy(state);
@@ -1265,6 +1321,7 @@ function applyClockAndStatus(input, seen, state, record, kind) {
     else {
       rejectField(state, "runtime_version");
       if (token && token.prohibited) markPrivacy(state);
+      noteOversize(state, token);
     }
   }
   const platform = take(input, seen, "platform");
@@ -1351,7 +1408,11 @@ function applyObservationFields(input, seen, state, record) {
   }
   const errorClass = take(input, seen, "error_class");
   if (errorClass.present && errorClass.value != null) {
-    if (typeof errorClass.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(errorClass.value)
+    if (typeof errorClass.value === "string" && utf8Bytes(errorClass.value) > bounds.error_class_max_chars) {
+      rejectField(state, "error_class");
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      if (privacy.containsProhibited(errorClass.value)) markDetector(state);
+    } else if (typeof errorClass.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(errorClass.value)
       && !privacy.containsProhibited(errorClass.value)) {
       put(state, record, "error_class", errorClass.value, "accepted");
       if (code == null && (!failure.present || failure.value === "wrapped" || failure.value == null)) {
@@ -1374,7 +1435,7 @@ function applyObservationFields(input, seen, state, record) {
 
   const method = take(input, seen, "method");
   if (method.present && method.value != null) {
-    const upper = typeof method.value === "string" ? method.value.toUpperCase() : "";
+    const upper = typeof method.value === "string" ? privacy.asciiFoldUpper(method.value) : "";
     if (METHODS.has(upper)) put(state, record, "method", upper, upper === method.value ? "accepted" : "normalized");
     else if (stringSecret(method.value)) {
       rejectField(state, "method");
@@ -1410,6 +1471,7 @@ function applyObservationFields(input, seen, state, record) {
     const media = contentType(type.value);
     if (!media.ok) {
       rejectField(state, "content_type");
+      if (media.oversize) addReason(state, "MAX_SIZE_EXCEEDED");
       if (media.prohibited) markPrivacy(state);
     } else put(state, record, "content_type", media.value, media.changed ? "normalized" : "accepted");
   }
@@ -1432,12 +1494,15 @@ function applyObservationFields(input, seen, state, record) {
   const duplicate = take(input, seen, "duplicate_of");
   if (duplicate.present) {
     if (duplicate.value == null) put(state, record, "duplicate_of", null, "accepted");
-    else if (typeof duplicate.value === "string" && duplicate.value.length <= bounds.event_id_max_chars
-      && !privacy.containsProhibited(duplicate.value)) {
+    else if (typeof duplicate.value === "string" && utf8Bytes(duplicate.value) > bounds.event_id_max_chars) {
+      rejectField(state, "duplicate_of");
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      if (privacy.containsProhibited(duplicate.value)) markDetector(state);
+    } else if (typeof duplicate.value === "string" && !privacy.containsProhibited(duplicate.value)) {
       put(state, record, "duplicate_of", duplicate.value, "accepted");
     } else {
       rejectField(state, "duplicate_of");
-      if (stringSecret(duplicate.value)) markPrivacy(state);
+      if (stringSecret(duplicate.value)) markDetector(state);
     }
   }
   const provider = take(input, seen, "provider_id");
@@ -1451,7 +1516,12 @@ function applyObservationFields(input, seen, state, record) {
   let confidenceValue = "NONE";
   let providerKind = "normalized";
   let providerBlocked = false;
-  if (provider.present && typeof provider.value === "string" && privacy.containsProhibited(provider.value)) {
+  if (provider.present && typeof provider.value === "string" && utf8Bytes(provider.value) > bounds.provider_id_max_bytes) {
+    rejectField(state, "provider_id");
+    addReason(state, "MAX_SIZE_EXCEEDED");
+    if (privacy.containsProhibited(provider.value)) markDetector(state);
+    providerBlocked = true;
+  } else if (provider.present && typeof provider.value === "string" && privacy.containsProhibited(provider.value)) {
     rejectField(state, "provider_id");
     markDetector(state);
     providerBlocked = true;
@@ -1619,6 +1689,7 @@ function buildDerived(input) {
     else {
       rejectField(state, key);
       if (token && token.prohibited) markPrivacy(state);
+      noteOversize(state, token);
     }
   }
   const outcome = take(input, seen, "application_outcome_label");
@@ -1675,6 +1746,7 @@ function buildAnnotation(input) {
     else {
       rejectField(state, key);
       if (token && token.prohibited) markPrivacy(state);
+      noteOversize(state, token);
     }
   }
   const created = take(input, seen, "created_at");
@@ -1686,8 +1758,12 @@ function buildAnnotation(input) {
   const text = take(input, seen, "text");
   if (text.present) {
     const scanned = consumeStringField(text.value);
-    const tooLong = typeof text.value === "string" && codePoints(text.value).length > bounds.annotation_text_max_chars;
-    if (scanned.prohibited || tooLong || scanned.bad) {
+    const tooLong = typeof text.value === "string" && utf8Bytes(text.value) > bounds.annotation_text_max_chars;
+    if (tooLong) {
+      rejectField(state, "text");
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      if (scanned.prohibited) markPrivacy(state);
+    } else if (scanned.prohibited || scanned.bad) {
       rejectField(state, "text");
       markPrivacy(state);
     } else put(state, record, "text", scanned.value, "accepted");
@@ -1729,7 +1805,11 @@ function buildHealth(input) {
   }
   const detail = take(input, seen, "detail_code");
   if (detail.present && detail.value != null) {
-    if (typeof detail.value === "string" && privacy.containsProhibited(detail.value)) {
+    if (typeof detail.value === "string" && utf8Bytes(detail.value) > bounds.detail_code_max_chars) {
+      rejectField(state, "detail_code");
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      if (privacy.containsProhibited(detail.value)) markDetector(state);
+    } else if (typeof detail.value === "string" && privacy.containsProhibited(detail.value)) {
       rejectField(state, "detail_code");
       markDetector(state);
     } else if (typeof detail.value === "string" && /^[A-Za-z0-9_]{1,64}$/.test(detail.value)) {
@@ -1781,8 +1861,11 @@ function buildQuarantine(input) {
   }
   const label = take(input, seen, "source_label");
   if (label.present) {
-    if (typeof label.value === "string" && codePoints(label.value).length <= bounds.source_label_max_chars
-      && !privacy.hasUsernamePath(label.value) && !privacy.containsProhibited(label.value) && !label.value.includes("\\")) {
+    if (typeof label.value === "string" && utf8Bytes(label.value) > bounds.source_label_max_chars) {
+      rejectField(state, "source_label");
+      addReason(state, "MAX_SIZE_EXCEEDED");
+      if (privacy.containsProhibited(label.value) || privacy.hasUsernamePath(label.value)) markDetector(state);
+    } else if (typeof label.value === "string" && !privacy.hasUsernamePath(label.value) && !privacy.containsProhibited(label.value) && !label.value.includes("\\")) {
       put(state, record, "source_label", label.value, "accepted");
     } else {
       rejectField(state, "source_label");
@@ -1794,7 +1877,7 @@ function buildQuarantine(input) {
   const hash = take(input, seen, "content_sha256");
   if (hash.present && hash.value != null) {
     if (typeof hash.value === "string" && /^[0-9a-fA-F]{64}$/.test(hash.value)) {
-      const lower = hash.value.toLowerCase();
+      const lower = privacy.asciiFold(hash.value);
       put(state, record, "content_sha256", lower, lower === hash.value ? "accepted" : "normalized");
     } else {
       rejectField(state, "content_sha256");
@@ -1977,6 +2060,15 @@ function emptyCompatibility(shape, legacyMarker, legacyVersion) {
   };
 }
 
+function rejectFieldTerminal(reason, applicationResult, shape) {
+  const state = createState();
+  addReason(state, reason);
+  addDisposition(state, "REJECT_FIELD");
+  state.opticsInternal = true;
+  state.provenance = "NOT_APPLICABLE";
+  return finalize(state, null, [], applicationResult, emptyCompatibility(shape || "unknown", false, null));
+}
+
 function terminal(reason, applicationResult, shape) {
   const state = createState();
   dropRecord(state, reason);
@@ -2134,7 +2226,7 @@ function validateEvidence(input, options) {
       throw new Error("injected");
     }
     if (typeof input === "string") {
-      if (input.length > bounds.max_input_chars) {
+      if (utf8Bytes(input) > bounds.max_input_chars) {
         return finishResult(terminal("INPUT_BOUND", applicationResult, "bytes"), detached);
       }
       if (privacy.containsProhibited(input) && !input.startsWith("{") && !input.startsWith("[")) {
@@ -2153,11 +2245,19 @@ function validateEvidence(input, options) {
         return finishResult(terminal("RECORD_TYPE_REJECTED", applicationResult, "unknown"), detached);
       }
     }
+    if (typeof input === "function") {
+      return finishResult(rejectFieldTerminal("UNSUPPORTED_COMPLEX_VALUE", applicationResult, "unknown"), detached);
+    }
     if (input == null || typeof input !== "object") {
       return finishResult(terminal("RECORD_TYPE_REJECTED", applicationResult, "unknown"), detached);
     }
     const copied = plainCopy(input);
-    if (!copied.ok) return finishResult(terminal(copied.reason, applicationResult, "unknown"), detached);
+    if (!copied.ok) {
+      if (copied.disposition === "REJECT_FIELD") {
+        return finishResult(rejectFieldTerminal(copied.reason, applicationResult, "unknown"), detached);
+      }
+      return finishResult(terminal(copied.reason, applicationResult, "unknown"), detached);
+    }
     if (Array.isArray(copied.value)) {
       const state = createState();
       markPrivacy(state);
@@ -2188,7 +2288,7 @@ function validateBytes(buffer, options) {
     } catch {
       return finishResult(terminal("MALFORMED_UTF8", applicationResult, "bytes"), detached);
     }
-    if (text.length > bounds.max_input_chars) {
+    if (utf8Bytes(text) > bounds.max_input_chars) {
       return finishResult(terminal("INPUT_BOUND", applicationResult, "bytes"), detached);
     }
     let parsed;

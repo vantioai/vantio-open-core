@@ -11,6 +11,6 @@ Validators:
 - `src/validate.cjs`
 - `src/validate.py`
 
-Both read `contract/`. Tests and the shared corpus live in `tests/optics-evidence-contract/`. Internal notes live in `docs/internal/optics-pkg01/`.
+Both read `contract/`, including `detector-classes.json` for ASCII detector classes. Tests and the shared corpus live in `tests/optics-evidence-contract/`. Internal notes live in `docs/internal/optics-pkg01/`. This package does not claim live runtime protection.
 
 The contract output is a detached plain-data result. A caller-supplied application result is copied into approved primitives and bounded containers. The validator does not keep the caller's object.

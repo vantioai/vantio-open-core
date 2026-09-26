@@ -1,6 +1,7 @@
 """Bounded copy. Plain dict, list, and tuple values only."""
 
 import json
+import types
 from pathlib import Path
 
 import privacy
@@ -94,7 +95,7 @@ def _copy(value, state):
     if value is None:
         return {"ok": True, "value": None}
     if type(value) is str:
-        if len(value) > _BOUNDS["max_string_chars"]:
+        if privacy.utf8_bytes(value) > _BOUNDS["max_string_chars"]:
             return {"ok": True, "value": BoundMarker(OVERSIZE)}
         if _lone_surrogate(value):
             return {"ok": True, "value": BoundMarker(MALFORMED_TEXT)}
@@ -141,7 +142,7 @@ def _copy(value, state):
             for key in keys:
                 if type(key) is not str:
                     return {"ok": False, "reason": "INVALID_FORMAT"}
-                if len(key) > 128 or len(key.encode("utf-8")) > 128:
+                if privacy.utf8_bytes(key) > _BOUNDS["field_name_max_bytes"]:
                     return {"ok": False, "reason": "MAX_SIZE_EXCEEDED"}
                 form = privacy.comparison_form(key)
                 if form in forms:
@@ -156,4 +157,17 @@ def _copy(value, state):
             return {"ok": True, "value": out}
         finally:
             _leave(value, state)
-    return {"ok": False, "reason": _exotic_reason(value)}
+    if type(value) in (
+        types.FunctionType,
+        types.LambdaType,
+        types.MethodType,
+        types.BuiltinFunctionType,
+        types.BuiltinMethodType,
+    ):
+        return {"ok": False, "reason": "UNSUPPORTED_COMPLEX_VALUE", "disposition": "REJECT_FIELD"}
+    exotic = _exotic_reason(value)
+    if exotic == "ACCESSOR_PROPERTY_FORBIDDEN":
+        return {"ok": False, "reason": exotic}
+    if callable(value):
+        return {"ok": False, "reason": "UNSUPPORTED_COMPLEX_VALUE", "disposition": "REJECT_FIELD"}
+    return {"ok": False, "reason": exotic}

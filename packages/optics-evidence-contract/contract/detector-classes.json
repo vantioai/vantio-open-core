@@ -1,0 +1,84 @@
+{
+  "schema_status": "unstable-pre-1.0",
+  "schema_version": 0,
+  "length_unit": "UTF-8_BYTES",
+  "ascii_case_fold": {
+    "lower": { "from": 65, "to": 90, "delta": 32 },
+    "upper": { "from": 97, "to": 122, "delta": -32 },
+    "locale": false,
+    "unicode_casefold": false
+  },
+  "classes": {
+    "ASCII_ALPHA": { "ranges": [[65, 90], [97, 122]] },
+    "ASCII_DIGIT": { "ranges": [[48, 57]] },
+    "ASCII_ALNUM": { "union": ["ASCII_ALPHA", "ASCII_DIGIT"] },
+    "ASCII_HEX": { "ranges": [[48, 57], [65, 70], [97, 102]] },
+    "ASCII_BASE64": { "union": ["ASCII_ALNUM"], "codepoints": [43, 47, 45, 95] }
+  },
+  "non_ascii": { "min_exclusive": 127 },
+  "pan": {
+    "min_digits": 13,
+    "max_digits": 19,
+    "separators": [32, 45],
+    "suppressing_boundary": "ASCII_ALPHA",
+    "non_ascii_suppresses": false
+  },
+  "tails": {
+    "bearer": { "minimum": 8, "extra": [45, 46, 95, 126, 43, 47, 61] },
+    "basic": { "minimum": 8, "extra": [43, 47, 61] },
+    "jwt_first_minimum": 8,
+    "jwt_second_minimum": 4,
+    "jwt_extra": [45, 95],
+    "mrn_minimum": 6
+  },
+  "credential_tails": {
+    "non_ascii_terminates": false,
+    "mixed_script_matches_when_ascii_tail_and_insertion": true
+  },
+  "prefixes_ascii_case_insensitive": [
+    "AKIA",
+    "ASIA",
+    "AIza",
+    "ya29.",
+    "xoxb-",
+    "xoxp-",
+    "xoxa-",
+    "ghp_",
+    "github_pat_",
+    "Bearer",
+    "Basic",
+    "eyJ",
+    "sk-",
+    "sk-proj-",
+    "sk-ant-"
+  ],
+  "presence_markers_ascii_case_insensitive": [
+    "AIza",
+    "ya29.",
+    "xoxb-",
+    "xoxp-",
+    "xoxa-",
+    "ghp_",
+    "github_pat_"
+  ],
+  "akia_prefixes": ["AKIA", "ASIA"],
+  "prefixes_intentionally_case_sensitive": ["MRN:"],
+  "pem_markers_ascii_case_insensitive": true,
+  "base64_standard_extra": [43],
+  "base64_slash": 47,
+  "email_unicode_category_prefixes": ["L", "N"],
+  "max_scan_bytes": 8192,
+  "destination_redaction_category": "DESTINATION_COMPONENT_REDACTED",
+  "precedence": [
+    "prohibited_field_name",
+    "unsafe_or_executable_object",
+    "conflicting_trusted_provenance",
+    "detector_positive_prohibited_content",
+    "excessive_size",
+    "invalid_format",
+    "unknown_field",
+    "normalization",
+    "acceptance"
+  ],
+  "reported_reason": "The single reason_code follows enums.json reason_priority. MAX_SIZE_EXCEEDED outranks DETECTOR_MATCH and REDACTION_DROP, and the value is still omitted. A size-only failure does not report DETECTOR_MATCH. Session overflow keeps SESSION_ID_REJECTED because that reason owns the session health counter. The measurement for that check is still UTF-8 bytes."
+}
