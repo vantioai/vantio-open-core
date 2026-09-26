@@ -2,7 +2,7 @@
 
 Classification: `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`
 
-This classification is the producer revision state. It is not a council pass. The first council verdict remains `NEEDS_REVISION` in `10-INDEPENDENT-COUNCIL-REPORT.md`.
+This classification is the producer revision state. The fresh council classification is `OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED`, recorded in `10-INDEPENDENT-COUNCIL-REPORT.md`. The first council verdict was `NEEDS_REVISION`.
 
 Audience: INTERNAL_RESTRICTED
 
@@ -14,20 +14,20 @@ Passing a gate in prose inside this pack is not `UNIT_PROVED`, `INTEGRATION_PROV
 
 | Gate | Name | What must be true before the next gate | State |
 | --- | --- | --- | --- |
-| 1 | Inventory | A0 source inventory exists, with conflicts left intact | Written in `01-CURRENT-STATE-INVENTORY.md`. First council accepted the gate with one nonblocking inventory note. This revision does not edit that file |
-| 2 | Evidence and privacy | A1 classes, origins, allowlist, issue location including `NONE`, session id, and release-blocking invariants are specified | Revised. Reopened until a fresh council passes. Not implemented |
-| 3 | Store and proof | Option C ratified as architecture only, rejected options, and one canonical proof byte profile | Revised. `STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY`. No database exists. Reopened until a fresh council passes |
-| 4 | Schema and migration | Unstable pre-1.0 identity, external recovery envelope, legacy origin rule | Revised. No migrator exists. Reopened until a fresh council passes |
-| 5 | Correlation and query | Identity hierarchy, child process, query envelope, cardinality | Revised. No query engine exists. Reopened until a fresh council passes |
-| 6 | Reliability | Product-health separation, fail-open, issue-location table aligned with A1, budgets at `NOT_SET` | Revised. Reopened until a fresh council passes |
-| 7 | Threat model | Cases T1–T15, with T10 aligned to the external envelope, residual risk unset | Revised. Reopened until a fresh council passes |
+| 1 | Inventory | A0 source inventory exists, with conflicts left intact | Written in `01-CURRENT-STATE-INVENTORY.md`. First council accepted the gate with one nonblocking inventory note. This revision does not edit that file. The fresh council did not reopen Gate 1 |
+| 2 | Evidence and privacy | A1 classes, origins, allowlist, issue location including `NONE`, session id, and release-blocking invariants are specified | Revised. Accepted as architecture by the fresh council on 2026-09-26. Not implemented |
+| 3 | Store and proof | Option C ratified as architecture only, rejected options, and one canonical proof byte profile | Revised. `STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY`. No database exists. Accepted as architecture by the fresh council on 2026-09-26 |
+| 4 | Schema and migration | Unstable pre-1.0 identity, external recovery envelope, legacy origin rule | Revised. No migrator exists. Accepted as architecture by the fresh council on 2026-09-26 |
+| 5 | Correlation and query | Identity hierarchy, child process, query envelope, cardinality | Revised. No query engine exists. Accepted as architecture by the fresh council on 2026-09-26 |
+| 6 | Reliability | Product-health separation, fail-open, issue-location table aligned with A1, budgets at `NOT_SET` | Revised. Accepted as architecture by the fresh council on 2026-09-26 |
+| 7 | Threat model | Cases T1–T15, with T10 aligned to the external envelope, residual risk unset | Revised. Accepted as architecture by the fresh council on 2026-09-26 |
 | 8 | Implementation Force | A separate Founder implementation Force, after a fresh independent council passes | **Closed. Not started** |
 
 ## Rules
 
 - Gates 1–7 in this pack are documents. They are not execution of the controls.
 - Gate 8 is the only gate that could authorize product code, and only a separate Founder implementation Force can open it. This producer cannot open it.
-- The first council reopened gates 2–7 and classified the pack `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`. This revision leaves gates 2–7 reopened. The producer classification of the revision is `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. A fresh council has not passed.
+- The first council reopened gates 2–7 and classified the pack `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`. The fresh council accepted gates 2–7 as architecture documents and classified the pack `OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED`. The producer classification of the revision remains `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. Gate 8 stays closed.
 - CLI 0.3.24 stays frozen through every gate. Python 3.1.0 is not sealed by any gate in this pack.
 - No gate authorizes SQLite creation, a migration, a tag, a publish, a UI, a daemon, OTLP, or alerting.
 - Numeric budgets stay `NOT_SET` through Gate 8 unless a Founder sets them in a later Force. This pack does not set them.

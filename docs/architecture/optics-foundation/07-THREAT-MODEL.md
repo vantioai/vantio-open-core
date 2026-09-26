@@ -1,6 +1,6 @@
 # A6 — Threat model
 
-Revision: `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. Gate 7 stays reopened until a fresh council passes. This line is not a council pass. This file is the threat model. Gates are in `09-IMPLEMENTATION-GATES.md`.
+Revision: `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`. Fresh council `bc-5bb719b6-65bf-522c-a9b9-f3a9a96ef08b` accepted Gate 7 as architecture on 2026-09-26 (`OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED`). Gate 8 stays closed. This line is not implementation. This file is the threat model. Gates are in `09-IMPLEMENTATION-GATES.md`.
 
 Audience: INTERNAL_RESTRICTED
 

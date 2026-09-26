@@ -26,7 +26,7 @@
     "NEEDS_FOUNDER_DECISION": 3,
     "ARCHITECTURE_BLOCKED": 0
   },
-  "council_status_note": "A7 council bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2 moved OF-27, OF-33, OF-34, and OF-43 to ARCHITECTURE_BLOCKED on 2026-09-26. The narrow architecture revision moved those four rows back to ARCHITECTURE_DEFINED. No row is IMPLEMENTED, SHIPPED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED. Evidence tiers stay UNSET. A fresh council has not passed.",
+  "council_status_note": "A7 council bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2 moved OF-27, OF-33, OF-34, and OF-43 to ARCHITECTURE_BLOCKED on 2026-09-26. The narrow architecture revision moved those four rows back to ARCHITECTURE_DEFINED. Fresh re-council bc-5bb719b6-65bf-522c-a9b9-f3a9a96ef08b accepted that status on 2026-09-26 and did not change requirement counts. No row is IMPLEMENTED, SHIPPED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED. Evidence tiers stay UNSET. Classification OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED.",
   "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
   "revision_classification": "OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL",
   "inventory": {

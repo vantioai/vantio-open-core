@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Council verdict: `NEEDS_REVISION`
+Council verdict: `OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED`
 
 This pack records producer decisions for A0–A6. It does not implement them. Unresolved items stay unresolved.
 
@@ -140,7 +140,7 @@ Cases T1–T15 in `07-THREAT-MODEL.md`. Residual risk `UNSET`. Implementation `N
 
 ## 34. Gates
 
-Gates 1–7 are the documents in this directory. The first council reopened gates 2–7. This revision leaves them reopened for a fresh council. Gate 8 is a separate Founder implementation Force and is not open. See `09-IMPLEMENTATION-GATES.md`.
+Gates 1–7 are the documents in this directory. The first council reopened gates 2–7. The fresh independent council accepted gates 2–7 as architecture documents. Gate 8 is a separate Founder implementation Force and is not open. See `09-IMPLEMENTATION-GATES.md`.
 
 ## 35. Unresolved Founder decisions
 
@@ -160,21 +160,23 @@ Gates 1–7 are the documents in this directory. The first council reopened gate
 
 Council disposition of this list, 2026-09-26: the council ratified none of them. A later Founder architecture decision ratified item 1 only, as `STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY`. Items 2–13 stay unresolved. No item was added.
 
-## 36. Council verdict
+## 36. First council verdict (historical)
 
 Independent council: Cursor cloud agent `bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2`, model Grok 4.7, reviewing producer tip `8aef23cd6886139d3b8f7de52cfb28c0972628cd`. This agent did not produce A0–A6.
 
-Council verdict: `NEEDS_REVISION`
+This section records the first council only. The current verdict is section 41.
 
-Force classification: `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`
+First council verdict: `NEEDS_REVISION`
 
-Full seat table, challenge answers, and blocking text: `10-INDEPENDENT-COUNCIL-REPORT.md`.
+First council force classification: `OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION`
 
-Gates reopened for revision: 2, 3, 4, 5, 6, and 7. Gate 1 stays accepted with one nonblocking inventory note in that report. Gate 8 stays closed. A8 is not started.
+The first council’s seat table is in git history at commit `48bec77`. `10-INDEPENDENT-COUNCIL-REPORT.md` now holds the fresh re-council report.
+
+Historical gate effect of that first council: gates 2, 3, 4, 5, 6, and 7 were reopened. Gate 1 stayed accepted. Gate 8 stayed closed. A8 was not started.
 
 The producer classification that the council reviewed was `OPTICS_FOUNDATION_A6_READY_FOR_COUNCIL`. This revision’s producer classification is in section 40. It is not a council pass.
 
-This pack does not authorize implementation, a release, a tag, a seal, a publish, a store file, a migration, a UI, a daemon, OTLP, alerting, or A8. The first council record is not rewritten by this revision.
+This pack does not authorize implementation, a release, a tag, a seal, a publish, a store file, a migration, a UI, a daemon, OTLP, alerting, or A8. The revision producer did not rewrite the first council record. The fresh re-council replaced `10-INDEPENDENT-COUNCIL-REPORT.md`.
 
 ## 37. Nonblocking notes left unresolved
 
@@ -241,4 +243,16 @@ No row is `IMPLEMENTED`, `SHIPPED`, `PROVED_EXTERNAL`, or `CUSTOMER_VALIDATED`. 
 
 `OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL`
 
-This classification means the six blockers are specified in the documents named above and the four requirements are no longer `ARCHITECTURE_BLOCKED`. It does not mean a fresh council has passed. Gates 2–7 stay reopened. Gate 8 stays closed. A8 is not started. Draft PR #55 stays draft.
+This classification means the six blockers are specified in the documents named above and the four requirements are no longer `ARCHITECTURE_BLOCKED`. It was the producer’s handoff. The fresh council result is section 41. Gate 8 stays closed. A8 is not started. Draft PR #55 stays draft.
+
+## 41. Fresh independent re-council
+
+Independent council: Cursor cloud agent `bc-5bb719b6-65bf-522c-a9b9-f3a9a96ef08b`, model Grok 4.7, reviewing revised tip `7db944d17c7f74706f08970b4908e92d0bf2d589`. This agent did not produce A0–A6 and did not produce the revision. It did not reuse the first council’s judgments.
+
+Council verdict: `PASS`
+
+Force classification: `OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED`
+
+Full seat table, blocker dispositions, and scope attestations: `10-INDEPENDENT-COUNCIL-REPORT.md`.
+
+Gates 2–7 are accepted as architecture documents. Gate 1 stays accepted as the inventory document. Gate 8 stays closed. A8 is not started. Draft PR #55 stays draft. No evidence tier is assigned.
