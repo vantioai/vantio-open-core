@@ -1,0 +1,968 @@
+{
+  "document": "TRACEABILITY-MATRIX",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "source_main_sha": "d6b74d41808a43f251d6de46e1313625a025d16d",
+  "roadmap_input": "docs/internal/optics-best-in-class-roadmap.md",
+  "roadmap_role": "requirements input only",
+  "status_enum": [
+    "TARGET_DESIGN",
+    "ARCHITECTURE_DEFINED",
+    "ARCHITECTURE_BLOCKED",
+    "NEEDS_FOUNDER_DECISION"
+  ],
+  "forbidden_status_values": [
+    "IMPLEMENTED",
+    "SHIPPED",
+    "PROVED_EXTERNAL",
+    "CUSTOMER_VALIDATED",
+    "INTERNAL_PROOF"
+  ],
+  "evidence_tier_note": "No requirement is assigned UNIT_PROVED, INTEGRATION_PROVED, STRANGER_HOST_PROVED, PROVED_EXTERNAL, or CUSTOMER_VALIDATED.",
+  "requirement_count": 52,
+  "status_counts": {
+    "ARCHITECTURE_DEFINED": 29,
+    "TARGET_DESIGN": 20,
+    "NEEDS_FOUNDER_DECISION": 3
+  },
+  "inventory": {
+    "stage": "A0",
+    "classification": "OPTICS_FOUNDATION_A0_INVENTORY_COMPLETE",
+    "topic_count": 25,
+    "topics": [
+      {
+        "topic": 1,
+        "title": "Node record path and shape",
+        "classification": "PARTIAL",
+        "conflict_note": "Envelope is implemented and incomplete versus the target catalog."
+      },
+      {
+        "topic": 2,
+        "title": "Python record path and shape",
+        "classification": "CONFLICTING",
+        "conflict_note": "Python envelope and docs disagree with the Node writer and with observe-only wording inside the residual string."
+      },
+      {
+        "topic": 3,
+        "title": "Run-log locations",
+        "classification": "CONFLICTING",
+        "conflict_note": "VANTIO_HOME is honored by writers and MCP, not by the CLI reader. Zero-call behavior differs by runtime."
+      },
+      {
+        "topic": 4,
+        "title": "Naming",
+        "classification": "PARTIAL",
+        "conflict_note": "trace_id is a process-run id."
+      },
+      {
+        "topic": 5,
+        "title": "Write",
+        "classification": "PARTIAL",
+        "conflict_note": "Single non-atomic exit write. No store engine."
+      },
+      {
+        "topic": 6,
+        "title": "Read",
+        "classification": "CONFLICTING",
+        "conflict_note": "CLI exits on corrupt files. MCP skips them."
+      },
+      {
+        "topic": 7,
+        "title": "Tail",
+        "classification": "PARTIAL",
+        "conflict_note": "Follow cannot see calls until the exit rewrite."
+      },
+      {
+        "topic": 8,
+        "title": "Search",
+        "classification": "PARTIAL",
+        "conflict_note": "Full-file substring scan. No bound."
+      },
+      {
+        "topic": 9,
+        "title": "Diff",
+        "classification": "PARTIAL",
+        "conflict_note": "Two-run host rollup only."
+      },
+      {
+        "topic": 10,
+        "title": "Proof",
+        "classification": "CONFLICTING",
+        "conflict_note": "Rendering of the run file. Docs describe fields and badges the HTML path does not show."
+      },
+      {
+        "topic": 11,
+        "title": "Locking",
+        "classification": "ABSENT",
+        "conflict_note": "In-process lock only."
+      },
+      {
+        "topic": 12,
+        "title": "Retention",
+        "classification": "ABSENT",
+        "conflict_note": "No prune and no silent delete."
+      },
+      {
+        "topic": 13,
+        "title": "Cleanup",
+        "classification": "ABSENT",
+        "conflict_note": "logout deletes config.json only."
+      },
+      {
+        "topic": 14,
+        "title": "Permissions",
+        "classification": "PARTIAL",
+        "conflict_note": "Unix create modes only. No symlink confinement on write."
+      },
+      {
+        "topic": 15,
+        "title": "JSON schema markers",
+        "classification": "CONFLICTING",
+        "conflict_note": "schema_status is on CLI stdout and Python files, not on Node run files."
+      },
+      {
+        "topic": 16,
+        "title": "Run, trace, process, provider, and status fields",
+        "classification": "CONFLICTING",
+        "conflict_note": "machine is documented and not written. Provider algorithms differ."
+      },
+      {
+        "topic": 17,
+        "title": "Privacy filters",
+        "classification": "PARTIAL",
+        "conflict_note": "Query and body are not stored on the free path. No release-blocking corpus against the file."
+      },
+      {
+        "topic": 18,
+        "title": "Provider detection",
+        "classification": "CONFLICTING",
+        "conflict_note": "Node substring guess versus Python catalog."
+      },
+      {
+        "topic": 19,
+        "title": "URL and destination normalization",
+        "classification": "PARTIAL",
+        "conflict_note": "Path and host only. No redirect or proxy canonicalization."
+      },
+      {
+        "topic": 20,
+        "title": "Demo and fixture",
+        "classification": "PARTIAL",
+        "conflict_note": "Demo writes a normal run file with no origin."
+      },
+      {
+        "topic": 21,
+        "title": "Import and export",
+        "classification": "PARTIAL",
+        "conflict_note": "prove renders. It does not quarantine imports. No OTLP."
+      },
+      {
+        "topic": 22,
+        "title": "Version skew",
+        "classification": "ABSENT",
+        "conflict_note": "schema_version is not enforced."
+      },
+      {
+        "topic": 23,
+        "title": "Corrupt records, disk full, and write failure",
+        "classification": "PARTIAL",
+        "conflict_note": "Write errors are swallowed. Corrupt handling differs by command."
+      },
+      {
+        "topic": 24,
+        "title": "Process exit, interruption, clock, and duration",
+        "classification": "PARTIAL",
+        "conflict_note": "No lifecycle state. Wall-clock duration. Node can go negative."
+      },
+      {
+        "topic": 25,
+        "title": "Product telemetry and test coverage",
+        "classification": "PARTIAL",
+        "conflict_note": "Telemetry channel is implemented and separate. Store, migration, and privacy-corpus tests are absent."
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "OF-01",
+      "section": "Section 1 item 1",
+      "title": "Local operational store distinct from JSON proof",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Option C recommended. Founder ratification open. Not implemented."
+    },
+    {
+      "id": "OF-02",
+      "section": "Section 1 item 2",
+      "title": "Retention and pruning without silent deletion",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Default unbounded. Dry-run manifest specified. Commands not created."
+    },
+    {
+      "id": "OF-03",
+      "section": "Section 2 item 3",
+      "title": "Session grouping distinct from a call trace id",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "run_id, session_id, and trace_id are different. Session is not inferred."
+    },
+    {
+      "id": "OF-04",
+      "section": "Section 2 item 4",
+      "title": "Cross-run trend command",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Trend command not specified. Default queries exclude demo, fixture, and imported origins."
+    },
+    {
+      "id": "OF-05",
+      "section": "Section 2 item 5",
+      "title": "Usage and cost metadata",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "architecture_refs": [
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not on the allowlist. No body inspection."
+    },
+    {
+      "id": "OF-06",
+      "section": "Section 3 item 6",
+      "title": "Local read-only web UI",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "09-IMPLEMENTATION-GATES.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Prerequisites named. UI not designed as a build and not authorized."
+    },
+    {
+      "id": "OF-07",
+      "section": "Section 4 item 7",
+      "title": "NO_COLOR support",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "01-CURRENT-STATE-INVENTORY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Inventory: vantio.js has no NO_COLOR handling."
+    },
+    {
+      "id": "OF-08",
+      "section": "Section 4 item 8",
+      "title": "Shell completion",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "00-PROGRAM-BOUNDARY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Out of this foundation implementation scope."
+    },
+    {
+      "id": "OF-09",
+      "section": "Section 4 item 9",
+      "title": "Status legend command",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "00-PROGRAM-BOUNDARY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Out of this foundation implementation scope."
+    },
+    {
+      "id": "OF-10",
+      "section": "Section 4 item 10",
+      "title": "Pager awareness",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "01-CURRENT-STATE-INVENTORY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not present on tail or search."
+    },
+    {
+      "id": "OF-11",
+      "section": "Section 4 item 11",
+      "title": "Quiet mode distinct from JSON",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "00-PROGRAM-BOUNDARY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not specified as a command in this pack."
+    },
+    {
+      "id": "OF-12",
+      "section": "Section 5 item 12",
+      "title": "Coverage status command",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "01-CURRENT-STATE-INVENTORY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "status lists resolvable Node SDKs only. A coverage command is not specified."
+    },
+    {
+      "id": "OF-13",
+      "section": "Section 6 item 13",
+      "title": "Metadata redaction release-blocking suite",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md",
+        "07-THREAT-MODEL.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Invariants specified. Suite not implemented. Current behavior PARTIAL."
+    },
+    {
+      "id": "OF-14",
+      "section": "Section 6 item 14",
+      "title": "Fail-open reliability",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Invariant specified. Numeric overhead target NOT_SET."
+    },
+    {
+      "id": "OF-15",
+      "section": "Section 7 item 15",
+      "title": "Versioned config file",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Retention limits are future configuration. A config-file schema is not fully specified."
+    },
+    {
+      "id": "OF-16",
+      "section": "Section 7 item 16",
+      "title": "Flag and schema deprecation policy",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "No stable schema, so no deprecation schedule is opened."
+    },
+    {
+      "id": "OF-17",
+      "section": "Section 7 item 17",
+      "title": "Generated help reference",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "00-PROGRAM-BOUNDARY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not produced by this Force."
+    },
+    {
+      "id": "OF-18",
+      "section": "Section 7 item 18",
+      "title": "Runnable multi-agent example repository",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "00-PROGRAM-BOUNDARY.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not produced by this Force."
+    },
+    {
+      "id": "OF-19",
+      "section": "Section 23 item 1",
+      "title": "Signal contract",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Structural metadata only. No prompts, bodies, or OTLP content attributes."
+    },
+    {
+      "id": "OF-20",
+      "section": "Section 23 item 2",
+      "title": "Semantic-convention conformance",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "No OTLP export. schema_status unstable-pre-1.0. Trace id is not overloaded as run id in the target model."
+    },
+    {
+      "id": "OF-21",
+      "section": "Section 23 item 3",
+      "title": "Context-propagation security",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Baggage prohibited. Size limits and conflict behavior specified."
+    },
+    {
+      "id": "OF-22",
+      "section": "Section 23 item 4",
+      "title": "Resource identity",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Process and runtime allowed. Machine hostname and username are not allowlisted."
+    },
+    {
+      "id": "OF-23",
+      "section": "Section 23 item 5",
+      "title": "Observed dependency topology",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "No ownership inference. A topology surface is not specified."
+    },
+    {
+      "id": "OF-24",
+      "section": "Section 23 item 6",
+      "title": "Baselines",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not specified beyond exclusion of non-local origins and structural fields only."
+    },
+    {
+      "id": "OF-25",
+      "section": "Section 23 item 7",
+      "title": "Deduplication and idempotency",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "event_id from producer, run_id, and sequence."
+    },
+    {
+      "id": "OF-26",
+      "section": "Section 23 item 8",
+      "title": "Instrumentation conflicts",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Duplicate insert does not inflate counts. Coexistence tests are specified, not run."
+    },
+    {
+      "id": "OF-27",
+      "section": "Section 23 item 9",
+      "title": "Data-quality dimensions",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Coverage, freshness UNKNOWN until a window exists, lifecycle completeness, integrity, correlation, privacy. No aggregate percentage."
+    },
+    {
+      "id": "OF-28",
+      "section": "Section 23 item 10",
+      "title": "Golden signals",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Indicators only. Separate from product-health. Not SLOs."
+    },
+    {
+      "id": "OF-29",
+      "section": "Section 23 item 11",
+      "title": "Cardinality-safe metric model",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "High-cardinality ids stay on events."
+    },
+    {
+      "id": "OF-30",
+      "section": "Section 23 item 12",
+      "title": "Exemplars",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Drill-down depends on a UI that is not in this Force."
+    },
+    {
+      "id": "OF-31",
+      "section": "Section 23 item 13",
+      "title": "Sampling correction",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Default UNSAMPLED. Future sampling must be labeled and is not introduced."
+    },
+    {
+      "id": "OF-32",
+      "section": "Section 23 item 14",
+      "title": "Performance budgets",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Ledger exists. Every numeric target is NOT_SET."
+    },
+    {
+      "id": "OF-33",
+      "section": "Section 23 item 15",
+      "title": "Graceful degradation",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Application continues. Drops are explicit. No recursive drop notices."
+    },
+    {
+      "id": "OF-34",
+      "section": "Section 23 item 16",
+      "title": "Crash consistency",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Lifecycle states specified. Silent empty replacement forbidden."
+    },
+    {
+      "id": "OF-35",
+      "section": "Section 23 item 17",
+      "title": "Local security",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Owner-only modes and symlink confinement specified. Windows ACL detail unresolved."
+    },
+    {
+      "id": "OF-36",
+      "section": "Section 23 item 18",
+      "title": "Local UI security",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Loopback, no third-party assets, no mutation API, no daemon. UI itself remains TARGET_DESIGN as OF-06."
+    },
+    {
+      "id": "OF-37",
+      "section": "Section 23 item 19",
+      "title": "Accessibility",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not designed in this Force."
+    },
+    {
+      "id": "OF-38",
+      "section": "Section 23 item 20",
+      "title": "Destination normalization",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Case, explicit ports, query stripped, no redirect rewrite."
+    },
+    {
+      "id": "OF-39",
+      "section": "Section 23 item 21",
+      "title": "Provider identity confidence",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Catalog, regional pattern, local Ollama, or unknown. No substring guess."
+    },
+    {
+      "id": "OF-40",
+      "section": "Section 23 item 22",
+      "title": "Privacy corpus",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Allowlist and corpus scope specified. Tests not implemented."
+    },
+    {
+      "id": "OF-41",
+      "section": "Section 23 item 23",
+      "title": "Local data operations",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Selective delete only via manifest. No compliance claims."
+    },
+    {
+      "id": "OF-42",
+      "section": "Section 23 item 24",
+      "title": "Automation contract",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Bounded query is the read contract. Local only."
+    },
+    {
+      "id": "OF-43",
+      "section": "Section 23 item 25",
+      "title": "Export formats",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Canonical JSON proof plus renderings. JSONL is an export candidate. OTLP not authorized."
+    },
+    {
+      "id": "OF-44",
+      "section": "Section 23 item 26",
+      "title": "Incident workflow",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not specified as a workflow."
+    },
+    {
+      "id": "OF-45",
+      "section": "Section 23 item 27",
+      "title": "Alert lifecycle",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Delivery mode not selected. No daemon added."
+    },
+    {
+      "id": "OF-46",
+      "section": "Section 23 item 28",
+      "title": "SLI/SLO separation",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "No SLO until a customer sets a target and a window."
+    },
+    {
+      "id": "OF-47",
+      "section": "Section 23 item 29",
+      "title": "Cross-platform matrix",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Matrix not executed. Windows ACL specifics unresolved."
+    },
+    {
+      "id": "OF-48",
+      "section": "Section 23 item 30",
+      "title": "Upgrade and rollback",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "No down-migration. Privacy-weaker writer refused. Legacy files retained."
+    },
+    {
+      "id": "OF-49",
+      "section": "Section 23 item 31",
+      "title": "Product telemetry separation",
+      "status": "ARCHITECTURE_DEFINED",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Existing opt-in channel stays outside the evidence store."
+    },
+    {
+      "id": "OF-50",
+      "section": "Section 23 item 32",
+      "title": "Documentation operability",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Public docs that conflict with source were inventoried, not rewritten."
+    },
+    {
+      "id": "OF-51",
+      "section": "Section 23 item 33",
+      "title": "Support and security operations",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Not specified beyond threat cases and gates."
+    },
+    {
+      "id": "OF-52",
+      "section": "Section 23 item 34",
+      "title": "Independent customer acceptance",
+      "status": "TARGET_DESIGN",
+      "architecture_refs": [
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "evidence_tier": "UNSET",
+      "required_closing_tier": "UNSET",
+      "independent_verifier": "UNSET",
+      "stranger_host": "UNSET",
+      "customer_validation": "UNSET",
+      "notes": "Tier is defined and assigned to no requirement."
+    }
+  ]
+}
