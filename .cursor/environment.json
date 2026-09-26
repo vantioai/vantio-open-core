@@ -1,0 +1,4 @@
+{
+  "name": "Vantio Optics (open-core)",
+  "install": "bash .cursor/install.sh"
+}
