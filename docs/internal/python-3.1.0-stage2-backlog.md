@@ -8,11 +8,14 @@ CLI 0.3.24 stays frozen. This note tracks the Python 3.1.0 design-and-code pass.
 
 - 200–399 → `ok` true, `applicationStatus` `SUCCESS`
 - 400–599 → `ok` false, `applicationStatus` `APPLICATION_ERROR`
-- no HTTP status → `ok` false on a transport failure, `applicationStatus` `UNAVAILABLE`, `error` `network_error`
+- DNS, connection, or TLS failure with no HTTP status → `ok` false, `applicationStatus` `UNAVAILABLE`, `error` `network_error`
+- a wrapped application exception with no HTTP status → `ok` false, `applicationStatus` `UNAVAILABLE`, exception class name only, not `network_error`
 
 Covered clients: urllib (`urlopen` and `OpenerDirector.open`), requests, httpx sync and async, aiohttp, and urllib3. urllib HTTP errors used to be stored as `network_error` because `urlopen` raises `HTTPError`. Those responses are application outcomes now.
 
-Each recorded call stores `opticsStatus` / `applicationStatus` and the human token labels. The run log names the headings in `status_labels`: Optics status, Application outcome. The summary uses the same tokens. Mixed outcomes in one run are `PARTIAL`.
+Each recorded call stores `opticsStatus` / `applicationStatus` and the customer lines Optics status, observed outcome (`applicationOutcomeLabel`), and provider response. `APPLICATION_ERROR` stays the machine category. The run log names those headings in `status_labels` and sets `schema_status` to `unstable-pre-1.0`. Mixed machine outcomes in one run are `PARTIAL`. The summary line for that run is `Partial`.
+
+A hostname in the supported provider catalog is named. Any other host uses Upstream response. CLI customer-line refinement is deferred in `docs/internal/optics-cli-post-0324-cx-backlog.md`. `@vantio/cli@0.3.24` is not reopened.
 
 `socket.connect`, `connect_ex`, `create_connection`, and a distinct `SSLSocket.connect` store `duration_ms` measured around the real connect. A connect that has not returned is not recorded as a success.
 
@@ -26,7 +29,7 @@ Each recorded call stores `opticsStatus` / `applicationStatus` and the human tok
 
 ## Left without an invented HTTP status
 
-`http.client.request` and `pycurl.perform` still do not see a response status on the success path, so this pass does not invent one. `applicationStatus` there is `UNAVAILABLE`. Their exception path uses the same HTTP-versus-network split, so an HTTP-status exception is not labeled `network_error`.
+`http.client.request` and `pycurl.perform` still do not see a response status on the success path, so this pass does not invent one. `applicationStatus` there is `UNAVAILABLE`, and the observed-outcome line is `Provider outcome unavailable` with provider response `No HTTP response`. Their exception path uses the same HTTP-versus-network split, so an HTTP-status exception is not labeled `network_error`.
 
 ## Not done
 
@@ -42,9 +45,9 @@ Each recorded call stores `opticsStatus` / `applicationStatus` and the human tok
 
 | Interpreter | Result |
 |---|---|
-| CPython 3.10.21 | 95 tests, 0 failures, 1 skipped (`pycurl` is not installed) |
-| CPython 3.11.16 | 95 tests, 0 failures, 1 skipped (`pycurl` is not installed) |
-| CPython 3.12.3 | 95 tests, 0 failures, 1 skipped (`pycurl` is not installed) |
+| CPython 3.10.21 | 107 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
+| CPython 3.11.16 | 107 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
+| CPython 3.12.3 | 107 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
 
 Socket timing (`tests/test_socket_timing.py`) passed on all three. `connect`, `connect_ex`, `create_connection`, a refused connect, and the SSL entry this interpreter installs each store `duration_ms` around the real call (a 250 ms delay inside the original connect is included).
 

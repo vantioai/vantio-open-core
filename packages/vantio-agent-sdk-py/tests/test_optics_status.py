@@ -16,6 +16,7 @@ from vantio._http_observe import (
     _ok_for_http_status,
     _rollup_status,
 )
+from vantio._outcome import http_outcome_label, http_response_text
 
 from .mock_server import MockServer
 
@@ -78,7 +79,12 @@ class HttpOutcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["opticsStatus"], "SUCCESS")
         self.assertEqual(call["applicationStatus"], "APPLICATION_ERROR")
         self.assertEqual(call["opticsLabel"], "Successful")
-        self.assertEqual(call["applicationLabel"], "Application error")
+        self.assertEqual(call["applicationOutcomeLabel"], http_outcome_label(status))
+        self.assertEqual(call["applicationLabel"], call["applicationOutcomeLabel"])
+        self.assertEqual(call["providerResponse"], http_response_text(status))
+        self.assertEqual(call["providerResponseLabel"], "Upstream response")
+        self.assertEqual(call["nextActionCategory"], "remediation")
+        self.assertNotIn("Application error", call["applicationOutcomeLabel"])
 
     def _assert_success(self, call: dict, status: int) -> None:
         self.assertEqual(call["status"], status)
@@ -86,13 +92,19 @@ class HttpOutcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["opticsStatus"], "SUCCESS")
         self.assertEqual(call["applicationStatus"], "SUCCESS")
         self.assertEqual(call["opticsLabel"], "Successful")
+        self.assertEqual(call["applicationOutcomeLabel"], "Successful")
         self.assertEqual(call["applicationLabel"], "Successful")
+        self.assertEqual(call["providerResponse"], http_response_text(status))
+        self.assertEqual(call["nextActionCategory"], "inspection")
 
     def _assert_log_labels(self, data: dict, application: str) -> None:
+        self.assertEqual(data["schema_status"], "unstable-pre-1.0")
         self.assertEqual(data["status_labels"]["opticsStatus"], "Optics status")
-        self.assertEqual(data["status_labels"]["applicationStatus"], "Application outcome")
+        self.assertEqual(data["status_labels"]["applicationStatus"], "Observed outcome")
+        self.assertEqual(data["status_labels"]["providerResponse"], "Provider response")
         self.assertEqual(data["summary"]["opticsStatus"], "SUCCESS")
         self.assertEqual(data["summary"]["applicationStatus"], application)
+        self.assertNotIn("Application error", json.dumps(data))
 
     async def test_urlopen_http_error_is_an_application_outcome(self) -> None:
         for status in (404, 500):
@@ -147,7 +159,13 @@ class HttpOutcomeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(calls[0]["ok"], False)
         self.assertEqual(calls[0]["opticsStatus"], "SUCCESS")
         self.assertEqual(calls[0]["applicationStatus"], "UNAVAILABLE")
-        self.assertEqual(calls[0]["applicationLabel"], "Unavailable")
+        self.assertNotIn("status", calls[0])
+        self.assertEqual(calls[0]["applicationOutcomeLabel"], "Connection to provider failed")
+        self.assertEqual(calls[0]["applicationLabel"], "Connection to provider failed")
+        self.assertEqual(calls[0]["providerResponse"], "Connection refused")
+        self.assertEqual(calls[0]["providerResponseLabel"], "Upstream response")
+        self.assertEqual(calls[0]["nextActionCategory"], "remediation")
+        self.assertNotIn("Optics error", calls[0]["applicationOutcomeLabel"])
 
     async def test_requests_http_errors_are_not_ok(self) -> None:
         try:
@@ -228,7 +246,9 @@ class CustomerSurfaceTests(unittest.TestCase):
         readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
         lowered = readme.lower()
         self.assertIn("Optics status", readme)
-        self.assertIn("Application outcome", readme)
+        self.assertIn("Observed outcome", readme)
+        self.assertIn("Provider response", readme)
+        self.assertNotIn("Application error", readme)
         self.assertIn("VANTIO_TELEMETRY=1", readme)
         self.assertIn("VANTIO_TELEMETRY_DISABLED=1", readme)
         self.assertIn("DO_NOT_TRACK=1", readme)

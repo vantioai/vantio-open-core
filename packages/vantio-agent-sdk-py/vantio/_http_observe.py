@@ -4,7 +4,8 @@ Sight Loop observe for Python HTTP clients while shield() is active.
 Records host, path, status, and size — never prompts or completions.
 HTTP 200–399 is stored ok=true. HTTP 400–599 is stored ok=false and is an
 application outcome, not network_error. Each record separates opticsStatus
-(Optics status) from applicationStatus (Application outcome).
+(Optics status) from applicationStatus (machine token). The customer lines are
+Optics status, observed outcome, and provider response.
 In-scope LLM hosts (plus VANTIO_EXTRA_LLM_HOSTS), including regional Bedrock
 and Vertex patterns and local Ollama on port 11434.
 
@@ -41,6 +42,14 @@ from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Iterator, Optional
 from urllib.parse import urlparse
+
+from ._outcome import (
+    SCHEMA_STATUS,
+    apply_customer_outcome,
+    classify_exception,
+    socket_failure,
+    summarize_customer_fields,
+)
 
 try:
     import requests as _requests
@@ -513,8 +522,8 @@ def _append(rec: dict[str, Any]) -> None:
         _calls.append(rec)
 
 
-# Same tokens and human words as the CLI Optics display. Headings stay
-# "Optics status" and "Application outcome"; these values are the tokens.
+# Machine-token gloss. Customer observed-outcome lines are chosen in _outcome
+# from the HTTP status or transport kind, not from APPLICATION_ERROR's gloss.
 _STATUS_HUMAN = {
     "OBSERVED": "Observed",
     "NOT_OBSERVED": "Not observed",
@@ -631,16 +640,18 @@ def _record_http_exception(
                 **extra,
             )
         return
-    _record(
-        hostname,
-        "OBSERVED",
-        mediation,
-        ok=False,
-        duration_ms=_duration_ms(t0),
-        error="network_error",
-        error_class=type(exc).__name__,
+    kind, phrase = classify_exception(exc)
+    fields: dict[str, Any] = {
         **extra,
-    )
+        "ok": False,
+        "duration_ms": _duration_ms(t0),
+        "error_class": type(exc).__name__,
+        "failure_kind": kind,
+        "failure_response": phrase,
+    }
+    if kind != "wrapped":
+        fields["error"] = "network_error"
+    _record(hostname, "OBSERVED", mediation, **fields)
 
 
 def _rollup_status(calls: list[dict[str, Any]]) -> tuple[str, str]:
@@ -670,7 +681,7 @@ def _record(
     rec["opticsStatus"] = optics
     rec["applicationStatus"] = application
     rec["opticsLabel"] = _human_status(optics)
-    rec["applicationLabel"] = _human_status(application)
+    apply_customer_outcome(rec)
     _append(rec)
     ingest_map = {
         "OBSERVED": None,
@@ -1240,8 +1251,11 @@ def _record_socket_timing(
         "duration_ms": max(0, int((time.perf_counter() - t0) * 1000)),
     }
     if not ok:
+        kind, phrase = socket_failure(error_class or "OSError")
         extra["error"] = "network_error"
         extra["error_class"] = error_class or "OSError"
+        extra["failure_kind"] = kind
+        extra["failure_response"] = phrase
     _record(hostname, action, "python_socket", **extra)
 
 
@@ -2465,15 +2479,19 @@ def _write_run_log() -> None:
         hosts = sorted({c.get("hostname") or "unknown" for c in _calls})
         mediations = sorted({c.get("mediation") or "python_urllib" for c in _calls})
         optics_status, application_status = _rollup_status(_calls)
+        customer = summarize_customer_fields(_calls, application_status)
         payload = {
             "vantio_run_log": "1",
             "schema_version": 2,
+            "schema_status": SCHEMA_STATUS,
             "plane": "optics",
             "workflow": "sight_loop",
             "data_note": "Developer egress data log — metadata only; never prompts or completions.",
             "status_labels": {
                 "opticsStatus": "Optics status",
-                "applicationStatus": "Application outcome",
+                "applicationStatus": "Observed outcome",
+                "applicationOutcomeLabel": "Observed outcome",
+                "providerResponse": "Provider response",
             },
             "trace_id": _trace_id,
             "runtime": "python",
@@ -2487,7 +2505,7 @@ def _write_run_log() -> None:
                 "opticsStatus": optics_status,
                 "applicationStatus": application_status,
                 "opticsLabel": _human_status(optics_status),
-                "applicationLabel": _human_status(application_status),
+                **customer,
             },
             "residual": {
                 "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read). With a Phantom Engine API key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",

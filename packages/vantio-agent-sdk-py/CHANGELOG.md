@@ -3,7 +3,7 @@
 ## 3.1.0
 
 - HTTP 400–599 is stored with `ok` false for urllib, requests, httpx, aiohttp, and urllib3. urllib HTTP errors are application outcomes and are not labeled `network_error`.
-- Recorded calls and the run summary separate `opticsStatus` (Optics status) from `applicationStatus` (Application outcome).
+- Recorded calls and the run summary separate `opticsStatus` (Optics status) from `applicationStatus` (machine token). The customer lines are Optics status, observed outcome (`applicationOutcomeLabel`), and provider response. `APPLICATION_ERROR` stays the machine category. `schema_status` on the run log is `unstable-pre-1.0`.
 - `socket.connect`, `connect_ex`, `create_connection`, and a distinct `SSLSocket.connect` store `duration_ms` measured around the real connect.
 - Telemetry stays off unless `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` still override that opt-in.
 - Phantom Engine and Enterprise APIs remain separately provisioned. The package-local MIT license is unchanged.

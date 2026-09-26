@@ -88,11 +88,21 @@ class SocketTimingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["opticsStatus"], "SUCCESS")
         self.assertEqual(call["applicationStatus"], "UNAVAILABLE")
         self.assertEqual(call["opticsLabel"], "Successful")
-        self.assertEqual(call["applicationLabel"], "Unavailable")
+        self.assertEqual(call["applicationLabel"], call["applicationOutcomeLabel"])
+        self.assertNotIn("Application error", call["applicationOutcomeLabel"])
+        self.assertNotIn("Optics error", call["applicationOutcomeLabel"])
         if ok:
             self.assertNotIn("error", call)
+            self.assertEqual(call["applicationOutcomeLabel"], "Provider outcome unavailable")
+            self.assertEqual(call["providerResponse"], "No HTTP response")
+            self.assertEqual(call["nextActionCategory"], "inspection")
         else:
             self.assertEqual(call["error"], "network_error")
+            self.assertIn(
+                call["applicationOutcomeLabel"],
+                ("Connection to provider failed", "Secure connection to provider failed"),
+            )
+            self.assertEqual(call["nextActionCategory"], "remediation")
 
     async def test_connect_duration_covers_the_real_connect(self) -> None:
         with _TcpSink() as sink:
