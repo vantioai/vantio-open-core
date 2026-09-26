@@ -2,17 +2,27 @@
 
 Audience: INTERNAL_RESTRICTED
 
-`PENDING_INDEPENDENT_RECOUNCIL` (pinned-Unicode)
+`OPTICS_PKG01_COUNCIL_PASSED` (pinned-Unicode re-council)
 
-This is not `OPTICS_PKG01_COUNCIL_PASSED`. The producer did not self-council.
+Overall seat result: `PASS_WITH_NONBLOCKING_NOTES`
 
-The pinned-Unicode revision starts from tip `4a34ce40645ba5aa4495437d4fdfb4f7e91ac156` on draft PR #58. It waits for a fresh independent re-council. Earlier council records stay historical and are not this revision's pass.
+This pass is not a merge authorization. PR #58 stays draft. Do not seal, publish, or integrate the live CLI or Python runtime from this branch.
+
+Pinned-Unicode re-council record: `docs/internal/optics-pkg01/INDEPENDENT-PINNED-UNICODE-RECOUNCIL-REPORT.md`
+
+Reviewed tip: `888121476bffd9451a0de2bc7e53bbbac1e373ab`
+
+Re-council agent: `bc-1cc76959-8e57-5a6a-8ced-f51acd350637`
+
+The producer classification was `OPTICS_PKG01_REVISION_READY_FOR_COUNCIL`. The producer did not self-council.
 
 Detector-parity re-council record: `docs/internal/optics-pkg01/INDEPENDENT-RECOUNCIL-REPORT.md`
 
 Earlier re-council tip: `6da63f8aafceb7eed3950975d224848fec6c3ba5`
 
 Earlier re-council agent: `bc-88b874ba-c80d-593c-be31-7332c8ba3f89`
+
+Earlier re-council classification: `OPTICS_PKG01_NEEDS_REVISION`
 
 First council report: `docs/internal/optics-pkg01/INDEPENDENT-COUNCIL-REPORT.md`
 
