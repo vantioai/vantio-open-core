@@ -95,7 +95,7 @@ with auditors, security teams, or compliance reviewers.
 
 ## Step 5 — Phantom Engine / Enterprise connected discover
 
-Connected `vantio discover` is a Phantom Engine / Enterprise capability. It is not part of free Optics 0.3.21. Free Optics stays on this machine (`vantio discover --local`). The commands below are that upgrade path:
+Connected `vantio discover` is a Phantom Engine / Enterprise capability. It is not part of free Optics. Free Optics stays on this machine (`vantio discover --local`). The commands below are that upgrade path:
 
 ```bash
 vantio discover
@@ -114,7 +114,7 @@ api.openai.com                       42         38          4        0         0
 1 host(s) shown  |  No Shadow AI indicators detected.
 ```
 
-That reading belongs to Phantom Engine / Enterprise connected discover. It is not a free Optics 0.3.21 workspace.
+That reading belongs to Phantom Engine / Enterprise connected discover. It is not a free Optics workspace.
 
 ---
 

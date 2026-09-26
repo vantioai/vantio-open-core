@@ -11,7 +11,7 @@
 // and Phantom Engine enforcement component PII rewrite of inline argv bodies — not file contents or stdin pipes)
 // to in-scope hosts. Browsers stay outside this wrap.
 //
-// Optics 0.3.21 records supported outbound calls locally.
+// Supported outbound calls are recorded locally.
 // The public host is not an account or ingest service. A key does not fetch
 // configuration from that host. An explicit VANTIO_INGEST_URL pointing at a
 // different control plane, together with VANTIO_API_KEY, still loads policy
@@ -43,7 +43,7 @@ const c = {
 };
 
 const INGEST_URL = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
-// Optics 0.3.21: do not fetch account configuration or paid ingest from the
+// Do not fetch account configuration or paid ingest from the
 // public host. Another VANTIO_INGEST_URL keeps the control-plane client.
 function isPublicCloudHost(raw) {
   try {

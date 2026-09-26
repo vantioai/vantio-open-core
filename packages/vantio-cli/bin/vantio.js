@@ -174,7 +174,7 @@ Examples:
 function configDir()  { return join(homedir(), ".vantio"); }
 function configPath() { return join(configDir(), "config.json"); }
 
-// Optics 0.3.21 compatibility: ~/.vantio/config.json is not read by run,
+// Compatibility: ~/.vantio/config.json is not read by run,
 // discover, prove, search, tail, or diff. A previously saved apiKey is never
 // injected, printed, or sent. `vantio logout` only deletes that local file.
 function clearConfig() {
@@ -251,7 +251,7 @@ function runCommand(rest) {
     extraPythonPath = join(dirname(fileURLToPath(import.meta.url)), "python-wrap");
   }
 
-  // Stored ~/.vantio/config.json is ignored. Optics 0.3.21 does not inject a
+  // Stored ~/.vantio/config.json is ignored. The CLI does not inject a
   // saved key or ingest URL. An explicit environment variable already present
   // on the parent is inherited with the rest of process.env.
   const mergedNodeOptions = [process.env.NODE_OPTIONS, extraNodeOptions].filter(Boolean).join(" ");
@@ -696,7 +696,7 @@ async function proveCommand(args) {
 }
 
 // ── discover (local run history) ─────────────────────────────────────────────
-// Optics 0.3.21 discover reads ~/.vantio/runs only. It does not contact the
+// discover reads ~/.vantio/runs only. It does not contact the
 // network and it does not read stored account config or environment secrets.
 
 function discoverLocalCommand(since, hostFilter, asJson) {
