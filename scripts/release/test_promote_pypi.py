@@ -60,6 +60,9 @@ class Index(ThreadingHTTPServer):
         self.directory = directory
         self.phase = directory / "phase"
         self.phase.write_text("absent", encoding="utf-8")
+        self.lag_path = directory / "lag"
+        self.corrupt_path = directory / "corrupt"
+        self.live_hits = 0
         super().__init__(("127.0.0.1", 0), self._handler())
 
     def _handler(self):
@@ -69,6 +72,15 @@ class Index(ThreadingHTTPServer):
             def do_GET(self) -> None:  # noqa: N802
                 if self.path.endswith(f"/{VERSION}/json"):
                     if server.phase.read_text(encoding="utf-8").strip() != "live":
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    server.live_hits += 1
+                    lag = 0
+                    if server.lag_path.is_file():
+                        raw_lag = server.lag_path.read_text(encoding="utf-8").strip()
+                        lag = int(raw_lag) if raw_lag.isdigit() else 0
+                    if server.live_hits <= lag:
                         self.send_response(404)
                         self.end_headers()
                         return
@@ -82,19 +94,22 @@ class Index(ThreadingHTTPServer):
                         self.end_headers()
                         self.wfile.write(raw)
                         return
+                    corrupt = server.corrupt_path.is_file()
+                    wheel_digest = hashlib.sha256(b"corrupt-wheel" if corrupt else wheel.read_bytes()).hexdigest()
+                    sdist_digest = hashlib.sha256(b"corrupt-sdist" if corrupt else sdist.read_bytes()).hexdigest()
                     body = {
                         "urls": [
                             {
                                 "packagetype": "bdist_wheel",
                                 "filename": wheel.name,
                                 "url": f"http://127.0.0.1:{server.server_address[1]}/files/{wheel.name}",
-                                "digests": {"sha256": hashlib.sha256(wheel.read_bytes()).hexdigest()},
+                                "digests": {"sha256": wheel_digest},
                             },
                             {
                                 "packagetype": "sdist",
                                 "filename": sdist.name,
                                 "url": f"http://127.0.0.1:{server.server_address[1]}/files/{sdist.name}",
-                                "digests": {"sha256": hashlib.sha256(sdist.read_bytes()).hexdigest()},
+                                "digests": {"sha256": sdist_digest},
                             },
                         ]
                     }
@@ -343,6 +358,163 @@ class PromotePyPITests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("ARTIFACT_HASH_MISMATCH", result.stdout)
                 self.assertFalse(seen.exists())
+            finally:
+                index.shutdown()
+
+    def _publish(self, tmp: Path, twine_body: str, *, lag: int = 0, corrupt: bool = False, attempts: str = "6") -> subprocess.CompletedProcess[str]:
+        _repo(tmp)
+        wheel = tmp / f"vantio_agent_sdk-{VERSION}-py3-none-any.whl"
+        sdist = tmp / f"vantio_agent_sdk-{VERSION}.tar.gz"
+        _wheel(wheel)
+        _sdist(sdist)
+        if lag:
+            (tmp / "lag").write_text(str(lag), encoding="utf-8")
+        if corrupt:
+            (tmp / "corrupt").write_text("1", encoding="utf-8")
+        twine = tmp / "twine"
+        twine.write_text(twine_body, encoding="utf-8")
+        twine.chmod(0o755)
+        self.wheel = wheel
+        self.sdist = sdist
+        self.twine = twine
+        return wheel, sdist, twine
+
+    def test_delayed_visibility_then_exact_match(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            seen = tmp / "seen.txt"
+            phase = tmp / "phase"
+            wheel, sdist, twine = self._publish(
+                tmp,
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    printf '%s\\n' "$@" >> "{seen}"
+                    printf '%s\\n' live > "{phase}"
+                    echo "HTTP 202 Accepted"
+                    exit 0
+                    """
+                ),
+                lag=2,
+            )
+            index, _thread, url = _serve(tmp)
+            try:
+                result = _run(
+                    tmp,
+                    "--publish",
+                    "--metadata-url",
+                    url,
+                    "--wheel",
+                    str(wheel),
+                    "--sdist",
+                    str(sdist),
+                    "--wheel-sha256",
+                    hashlib.sha256(wheel.read_bytes()).hexdigest(),
+                    "--sdist-sha256",
+                    hashlib.sha256(sdist.read_bytes()).hexdigest(),
+                    "--twine-bin",
+                    str(twine),
+                    env={
+                        "VANTIO_REGISTRY_POLL_INTERVAL_SECONDS": "0",
+                        "VANTIO_REGISTRY_POLL_MAX_ATTEMPTS": "6",
+                    },
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PUBLISHED_VERIFIED", result.stdout)
+                self.assertIn("REGISTRY_PROCESSING", result.stderr)
+                self.assertEqual(seen.read_text(encoding="utf-8").count("upload"), 1)
+                self.assertNotIn(CANARY, result.stdout + result.stderr)
+            finally:
+                index.shutdown()
+
+    def test_delayed_visibility_times_out_without_a_second_upload(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            seen = tmp / "seen.txt"
+            phase = tmp / "phase"
+            wheel, sdist, twine = self._publish(
+                tmp,
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    printf '%s\\n' "$@" >> "{seen}"
+                    printf '%s\\n' live > "{phase}"
+                    exit 0
+                    """
+                ),
+                lag=50,
+            )
+            index, _thread, url = _serve(tmp)
+            try:
+                result = _run(
+                    tmp,
+                    "--publish",
+                    "--metadata-url",
+                    url,
+                    "--wheel",
+                    str(wheel),
+                    "--sdist",
+                    str(sdist),
+                    "--wheel-sha256",
+                    hashlib.sha256(wheel.read_bytes()).hexdigest(),
+                    "--sdist-sha256",
+                    hashlib.sha256(sdist.read_bytes()).hexdigest(),
+                    "--twine-bin",
+                    str(twine),
+                    env={
+                        "VANTIO_REGISTRY_POLL_INTERVAL_SECONDS": "0",
+                        "VANTIO_REGISTRY_POLL_MAX_ATTEMPTS": "3",
+                    },
+                )
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("REGISTRY_TIMEOUT", result.stdout)
+                self.assertNotIn("PUBLISHED_VERIFIED", result.stdout)
+                self.assertEqual(seen.read_text(encoding="utf-8").count("upload"), 1)
+            finally:
+                index.shutdown()
+
+    def test_visible_version_with_wrong_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            seen = tmp / "seen.txt"
+            phase = tmp / "phase"
+            wheel, sdist, twine = self._publish(
+                tmp,
+                textwrap.dedent(
+                    f"""\
+                    #!/bin/sh
+                    printf '%s\\n' "$@" >> "{seen}"
+                    printf '%s\\n' live > "{phase}"
+                    exit 0
+                    """
+                ),
+                corrupt=True,
+            )
+            index, _thread, url = _serve(tmp)
+            try:
+                result = _run(
+                    tmp,
+                    "--publish",
+                    "--metadata-url",
+                    url,
+                    "--wheel",
+                    str(wheel),
+                    "--sdist",
+                    str(sdist),
+                    "--wheel-sha256",
+                    hashlib.sha256(wheel.read_bytes()).hexdigest(),
+                    "--sdist-sha256",
+                    hashlib.sha256(sdist.read_bytes()).hexdigest(),
+                    "--twine-bin",
+                    str(twine),
+                    env={
+                        "VANTIO_REGISTRY_POLL_INTERVAL_SECONDS": "0",
+                        "VANTIO_REGISTRY_POLL_MAX_ATTEMPTS": "3",
+                    },
+                )
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("HASH_MISMATCH", result.stdout)
+                self.assertEqual(seen.read_text(encoding="utf-8").count("upload"), 1)
             finally:
                 index.shutdown()
 
