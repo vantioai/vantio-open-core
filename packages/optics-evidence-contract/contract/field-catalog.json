@@ -1,0 +1,3651 @@
+{
+  "schema_status": "unstable-pre-1.0",
+  "schema_version": 0,
+  "stable_schema": false,
+  "deny_by_default": true,
+  "record_types": [
+    "run_envelope",
+    "observation_event",
+    "derived_diagnostic",
+    "annotation",
+    "product_health",
+    "import_quarantine",
+    "validation_result"
+  ],
+  "not_in_slice_writer": [
+    "proof_manifest"
+  ],
+  "fields": [
+    {
+      "name": "record_type",
+      "type": "const:run_envelope",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Record class",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope",
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "schema_status",
+      "type": "const:unstable-pre-1.0",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Unstable schema identity",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_unstable_pre_1_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "schema-status-not-stable"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "schema_version",
+      "type": "integer",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Unassigned contract version. 0 means unassigned.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_zero",
+      "max_size": 0,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "evidence_origin",
+      "type": "origin_enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Writer origin. Missing is not LOCAL_OBSERVATION.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "origin_rules",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "legacy-missing-origin",
+        "demo-destination",
+        "claimed-local-without-provenance"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "run_id",
+      "type": "id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "One wrapped execution boundary",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope",
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "parent_run_id",
+      "type": "id_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Explicit parent run only",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "trace_id",
+      "type": "trace_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Validated trace context. Not a synonym for run_id.",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "trace_hex",
+      "max_size": 128,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "trace-valid-asserted",
+        "privacy-malformed-trace"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "trace_id_basis",
+      "type": "trace_basis_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Required when trace_id is present",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "pair_with_trace",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-inherited-trace"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "span_id",
+      "type": "null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Null on the run envelope",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "force_null",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "parent_span_id",
+      "type": "null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Null on the run envelope",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "force_null",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "session_id",
+      "type": "utf8",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Optional session group. Never a metric label.",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "session_rules",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "session-valid",
+        "privacy-oversized-session",
+        "privacy-invalid-session"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "session_id_basis",
+      "type": "session_basis",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Paired with session_id",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "pair_with_session",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "session-valid",
+        "session-missing-basis"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "process_id",
+      "type": "integer_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "OS pid when the runtime provided it",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "parent_process_id",
+      "type": "integer_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "OS parent pid when provided",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "producer_id",
+      "type": "id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Producer stream minted at process start",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "producer_sequence",
+      "type": "integer",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Sequence scoped to producer_id",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "runtime",
+      "type": "enum:node|python",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Runtime family",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope",
+        "compat-python-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "runtime_version",
+      "type": "string",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Runtime version token",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "version_token",
+      "max_size": 32,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "cli_or_sdk_version",
+      "type": "string",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "CLI or SDK version. Provenance version.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "version_token",
+      "max_size": 32,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation",
+        "claimed-local-without-provenance"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "platform",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "process.platform or sys.platform token",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "platform_enum",
+      "max_size": 32,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "arch",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "CPU architecture token",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "arch_enum",
+      "max_size": 32,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "started_at",
+      "type": "rfc3339",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Start timestamp",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "utc_z_millis",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "ended_at",
+      "type": "rfc3339_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "End timestamp",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "utc_z_millis",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "duration_ms",
+      "type": "integer_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Monotonic duration",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "clock_quality",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Clock source quality",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "lifecycle",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Run lifecycle. Distinct from display PARTIAL and query completeness.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "coverage_note",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Closed coverage token. Not free text.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "call_count",
+      "type": "integer",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Observed call count",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "dropped_count",
+      "type": "integer",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Calls the contract refused to emit",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "producer",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Recognized producer",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "producer_enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation",
+        "claimed-local-without-provenance"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "identity_conflict",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Visible identity conflict",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-run-envelope"
+      ],
+      "record_type": "run_envelope"
+    },
+    {
+      "name": "record_type",
+      "type": "const:observation_event",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Record class",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "schema_status",
+      "type": "const:unstable-pre-1.0",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Unstable schema identity",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_unstable_pre_1_0",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "schema-status-not-stable"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "schema_version",
+      "type": "integer",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Unassigned version",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_zero",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "evidence_origin",
+      "type": "origin_enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Writer origin",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "origin_rules",
+      "max_size": null,
+      "invalid_disposition": "REPLACE_WITH_SAFE_CATEGORY",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "demo-destination",
+        "claimed-local-without-provenance"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "event_id",
+      "type": "event_id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Stable event encoding",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "event_id_encoding",
+      "max_size": 160,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "run_id",
+      "type": "id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Run boundary",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "parent_run_id",
+      "type": "id_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Explicit parent run",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "trace_id",
+      "type": "trace_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Validated trace id",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "trace_hex",
+      "max_size": 128,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-malformed-trace",
+        "privacy-inherited-trace",
+        "trace-conflict"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "trace_id_basis",
+      "type": "trace_basis_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Trace basis",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "pair_with_trace",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-inherited-trace"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "span_id",
+      "type": "span_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Span id",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "span_hex",
+      "max_size": 32,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "trace-valid-asserted"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "parent_span_id",
+      "type": "span_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Parent span",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "span_hex",
+      "max_size": 32,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "trace-conflict"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "session_id",
+      "type": "utf8",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Session id",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "session_rules",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "session-valid",
+        "privacy-session-token"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "session_id_basis",
+      "type": "session_basis",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Session basis",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "pair_with_session",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "session-missing-basis"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "producer_id",
+      "type": "id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Producer stream",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "producer_sequence",
+      "type": "integer",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Producer sequence",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "sequence",
+      "type": "integer",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Equals producer_sequence",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "equals_producer_sequence",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "destination_host",
+      "type": "host",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Sanitized host",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "destination",
+      "max_size": 253,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "normalize-dns-host",
+        "privacy-query-api-key",
+        "privacy-db-url"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "destination_port",
+      "type": "port_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Explicit port only",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "explicit_port",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "explicit-port-kept",
+        "default-port-not-invented"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "scheme",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Scheme",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "scheme_enum",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "method",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "HTTP method",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "method_enum",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "path",
+      "type": "path",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Path without query or fragment",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "path_only",
+      "max_size": 512,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-oversized-path",
+        "privacy-username-path",
+        "privacy-query-api-key"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "provider_id",
+      "type": "token_or_unknown",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Catalog id or unknown. No substring guess.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "provider_id",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation",
+        "compat-node-envelope"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "provider_confidence",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "How provider_id was chosen",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "provider_confidence",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "http_status",
+      "type": "http_status_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Observed HTTP status",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "http_status",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "issue-http-500",
+        "issue-http-200"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "application_status",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Application outcome from HTTP status",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "from_http",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "issue-http-401",
+        "issue-dns-no-status"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "optics_status",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Optics display token. SUCCESS only when the observation object is produced.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "optics_vocabulary",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation",
+        "privacy-prompt-completion"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "issue_location",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Machine issue location including NONE",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "issue_location_rules",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "issue-http-401",
+        "issue-provider-fault-label"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "action",
+      "type": "const:OBSERVED",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Optics action. Enforcement actions are not observations.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "observed_only",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "enforcement-action-excluded"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "started_at",
+      "type": "rfc3339",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Event start",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "utc_z_millis",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "duration_ms",
+      "type": "integer_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Duration",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "clock_quality",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Clock quality",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "request_bytes",
+      "type": "integer_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Request length only",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "integer_gte_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "response_bytes",
+      "type": "integer_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Response length. Null if unknown. Never invented.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "response_bytes",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "response-bytes-legacy-zero"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "content_type",
+      "type": "media_type",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Media type without parameters",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "drop_parameters",
+      "max_size": 64,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "content-type-parameters"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "error_class",
+      "type": "token",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Exception type name only",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "type_name",
+      "max_size": 64,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-exception-message",
+        "issue-customer-exception"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "failure_kind",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Typed failure kind",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "issue-dns-no-status"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "mediation",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Hooked client name",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "mediation_enum",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "duplicate_of",
+      "type": "event_id_or_null",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Duplicate pointer",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "event_id_ref",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "sampling",
+      "type": "const:UNSAMPLED",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Sampling const until a future policy",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_unsampled",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "sampling-forced-unsampled"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "lifecycle",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Event lifecycle",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "identity_conflict",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "LOCAL_OBSERVATION",
+        "SIMULATED_DEMO",
+        "IMPORTED",
+        "TEST_FIXTURE",
+        "PRODUCT_HEALTH",
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Visible conflict. Does not drop the row.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "NORMALIZE",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "observation_event"
+    },
+    {
+      "name": "record_type",
+      "type": "const:derived_diagnostic",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Derived class",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "evidence_origin",
+      "type": "const:DERIVED_DIAGNOSTIC",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Fixed origin",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_derived",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "derived-fixed-phrase"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "schema_status",
+      "type": "const:unstable-pre-1.0",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Unstable schema identity",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_unstable_pre_1_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "subject_event_id",
+      "type": "string",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Subject event",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_ref",
+      "max_size": 160,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "derived-fixed-phrase"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "subject_run_id",
+      "type": "string",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Subject run",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "application_outcome_label",
+      "type": "fixed_phrase",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Fixed phrase, not an exception message",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "fixed_table",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "derived-fixed-phrase",
+        "derived-free-text-rejected"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "provider_response_phrase",
+      "type": "fixed_phrase",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Fixed phrase from the HTTP or failure table",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "fixed_table",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "derived-free-text-rejected"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "next_action_category",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "inspection or remediation",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "enum",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "derived-fixed-phrase"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "issue_location",
+      "type": "enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "DERIVED_DIAGNOSTIC"
+      ],
+      "purpose": "Issue location including NONE",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": true,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "issue_location_rules",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "derived-fixed-phrase"
+      ],
+      "record_type": "derived_diagnostic"
+    },
+    {
+      "name": "record_type",
+      "type": "const:annotation",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Annotation class. Not an observation.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "annotation"
+    },
+    {
+      "name": "annotation_role",
+      "type": "const:CUSTOMER_ANNOTATION",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [],
+      "purpose": "Role. No seventh evidence origin.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "annotation-clean",
+        "privacy-annotation-canary"
+      ],
+      "record_type": "annotation"
+    },
+    {
+      "name": "annotation_id",
+      "type": "id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [],
+      "purpose": "Annotation id",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "annotation-clean"
+      ],
+      "record_type": "annotation"
+    },
+    {
+      "name": "subject_run_id",
+      "type": "id",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [],
+      "purpose": "Subject run",
+      "sensitivity": "IDENTITY",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "id_charset",
+      "max_size": 80,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "annotation-clean"
+      ],
+      "record_type": "annotation"
+    },
+    {
+      "name": "created_at",
+      "type": "rfc3339",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [],
+      "purpose": "Created timestamp",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "utc_z_millis",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "annotation-clean"
+      ],
+      "record_type": "annotation"
+    },
+    {
+      "name": "text",
+      "type": "customer_text",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [],
+      "purpose": "Customer note. Secret-shaped text is rejected. Not written onto the observation.",
+      "sensitivity": "CUSTOMER_TEXT",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "secret_scan_no_truncate",
+      "max_size": 280,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "annotation-clean",
+        "privacy-annotation-canary"
+      ],
+      "record_type": "annotation"
+    },
+    {
+      "name": "record_type",
+      "type": "const:product_health",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "Health class",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "evidence_origin",
+      "type": "const:PRODUCT_HEALTH",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "Fixed origin",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_product_health",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-product-health"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "schema_status",
+      "type": "const:unstable-pre-1.0",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "Unstable schema identity",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_unstable_pre_1_0",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "name",
+      "type": "enum",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "A5 diagnostic name",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "health_name",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-product-health"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "value",
+      "type": "number_or_short_enum",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "Counter or closed enum. No hostname and no payload.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "health_value",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-product-health"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "observed_at",
+      "type": "rfc3339",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "Observation time of the counter",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "utc_z_millis",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-product-health"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "detail_code",
+      "type": "token",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "PRODUCT_HEALTH"
+      ],
+      "purpose": "Bounded detail token",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "type_name",
+      "max_size": 64,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "accept-product-health"
+      ],
+      "record_type": "product_health"
+    },
+    {
+      "name": "record_type",
+      "type": "const:import_quarantine",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Quarantine shape for fixtures. Slice 1 does not run an importer.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "const",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "evidence_origin",
+      "type": "const:IMPORTED",
+      "required": true,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Always IMPORTED. Never rewritten to LOCAL_OBSERVATION.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "force_imported",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-imported-canary"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "source_label",
+      "type": "string",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Caller label. Not a raw filesystem path.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "label_not_path",
+      "max_size": 120,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-imported-canary"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "content_sha256",
+      "type": "hex64",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Hash of imported bytes when the caller already computed one. This package does not hash a canary in order to store it.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "hex64",
+      "max_size": 64,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-imported-canary"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "schema_status_seen",
+      "type": "string",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Schema status string seen on the bytes",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "bounded_token",
+      "max_size": 64,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "original_evidence_origin",
+      "type": "origin_or_legacy",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Preserved from the bytes. Not promoted.",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "preserve_original_origin",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-imported-canary"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "imported_at",
+      "type": "rfc3339",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Import timestamp",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "HIGH",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "utc_z_millis",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "accepted",
+      "type": "boolean",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Default false",
+      "sensitivity": "STRUCTURAL",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": true,
+      "normalization": "boolean",
+      "max_size": null,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "privacy-imported-canary"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "reason_code",
+      "type": "token",
+      "required": false,
+      "producers": [
+        "node_interceptor",
+        "python_observe",
+        "demo_command"
+      ],
+      "origins": [
+        "IMPORTED"
+      ],
+      "purpose": "Quarantine reason token",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "BOUNDED",
+      "index_eligible": false,
+      "export_eligible": true,
+      "proof_eligible": true,
+      "metric_label_eligible": false,
+      "normalization": "type_name",
+      "max_size": 64,
+      "invalid_disposition": "REJECT_FIELD",
+      "compatibility": "A1 allowlist. Legacy files omit this key until a later writer.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "import_quarantine"
+    },
+    {
+      "name": "disposition",
+      "type": "enum",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Exactly one disposition",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "reason_code",
+      "type": "token",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Bounded reason. Never a prohibited value.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "remediation_code",
+      "type": "token",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Safe remediation code. Does not ask for raw evidence upload.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "shared-corpus"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "reader_origin_label",
+      "type": "origin_or_legacy_or_null",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Reader label. LEGACY_UNMARKED is not a writer value.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "legacy-missing-origin"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "issue_location",
+      "type": "enum",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Diagnostic issue location",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "issue-http-401"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "issue_location_label",
+      "type": "fixed_label",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Human label. Provider interaction, never Provider fault.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "issue-provider-fault-label"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "completeness_impact",
+      "type": "token_list",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Record-level completeness impact. Not a scope-wide COMPLETE claim.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "privacy-query-api-key"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "health_impact",
+      "type": "counts",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Optics health counters at the boundary",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "privacy-openai-key"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "optics_health_impact",
+      "type": "token",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Single health label. Privacy failure outranks other labels.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "privacy-openai-key"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "fields",
+      "type": "field_lists",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Accepted, normalized, stripped, and rejected names only",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "privacy-unknown-field"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "record",
+      "type": "object_or_null",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Contract object after validation, or null when that object was not emitted",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "events",
+      "type": "result_list",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Per-call results for a legacy envelope",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "compat-node-envelope"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "record_emitted",
+      "type": "boolean",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Whether record is present",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "privacy-prompt-completion"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "diagnostics",
+      "type": "object",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Bounded diagnostic tokens without values",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "privacy-inherited-trace"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "completeness_inputs",
+      "type": "object",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Record-level inputs for a future completeness envelope",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "accept-clean-observation"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "compatibility",
+      "type": "object",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Legacy marker metadata. live_writer_modified is false.",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "compat-python-envelope"
+      ],
+      "record_type": "validation_result"
+    },
+    {
+      "name": "application_result",
+      "type": "opaque",
+      "required": true,
+      "producers": [],
+      "origins": [],
+      "purpose": "Caller application result, unchanged",
+      "sensitivity": "DIAGNOSTIC",
+      "cardinality": "LOW",
+      "index_eligible": false,
+      "export_eligible": false,
+      "proof_eligible": false,
+      "metric_label_eligible": false,
+      "normalization": "result_token",
+      "max_size": null,
+      "invalid_disposition": "REJECT_RECORD",
+      "compatibility": "Validation result only. Not an operational row.",
+      "fixture_coverage": [
+        "failopen-secret"
+      ],
+      "record_type": "validation_result"
+    }
+  ]
+}

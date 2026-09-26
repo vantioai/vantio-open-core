@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/optics-evidence-contract",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "INTERNAL_RESTRICTED private Optics evidence contract. Not loaded by the live CLI or Python runtime. schema_status unstable-pre-1.0. Not a stable schema. Not published.",
+  "type": "commonjs",
+  "main": "src/validate.cjs",
+  "exports": {
+    ".": "./src/validate.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-evidence-contract/node.test.cjs"
+  }
+}
