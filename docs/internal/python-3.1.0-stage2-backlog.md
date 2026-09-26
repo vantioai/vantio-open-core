@@ -10,6 +10,7 @@ CLI 0.3.24 stays frozen. This note tracks the Python 3.1.0 design-and-code pass.
 - 400–599 → `ok` false, `applicationStatus` `APPLICATION_ERROR`
 - DNS, connection, or TLS failure with no HTTP status → `ok` false, `applicationStatus` `UNAVAILABLE`, `error` `network_error`
 - a wrapped application exception with no HTTP status → `ok` false, `applicationStatus` `UNAVAILABLE`, exception class name only, not `network_error`
+- DNS, connection, TLS, and timeout are read from a bounded chain (`__cause__`, `__context__`, exception `.reason`, exception `args`). The depth and visit caps are an internal safety limit, not a compatibility promise. A final HTTP status on that attempt wins over a nested transport error. Unknown hosts use Upstream wording on those transport lines.
 
 Covered clients: urllib (`urlopen` and `OpenerDirector.open`), requests, httpx sync and async, aiohttp, and urllib3. urllib HTTP errors used to be stored as `network_error` because `urlopen` raises `HTTPError`. Those responses are application outcomes now.
 
@@ -45,9 +46,9 @@ A hostname in the supported provider catalog is named. Any other host uses Upstr
 
 | Interpreter | Result |
 |---|---|
-| CPython 3.10.21 | 107 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
-| CPython 3.11.16 | 107 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
-| CPython 3.12.3 | 107 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
+| CPython 3.10.21 | 115 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
+| CPython 3.11.16 | 115 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
+| CPython 3.12.3 | 115 tests, 0 failures, 2 skipped (pycurl is not installed; the success-path gap test skips with it) |
 
 Socket timing (`tests/test_socket_timing.py`) passed on all three. `connect`, `connect_ex`, `create_connection`, a refused connect, and the SSL entry this interpreter installs each store `duration_ms` around the real call (a 250 ms delay inside the original connect is included).
 

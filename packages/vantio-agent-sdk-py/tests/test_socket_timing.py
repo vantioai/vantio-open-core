@@ -100,7 +100,11 @@ class SocketTimingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call["error"], "network_error")
             self.assertIn(
                 call["applicationOutcomeLabel"],
-                ("Connection to provider failed", "Secure connection to provider failed"),
+                (
+                    "Connection to upstream service failed",
+                    "Secure connection to upstream service failed",
+                    "Upstream request timed out",
+                ),
             )
             self.assertEqual(call["nextActionCategory"], "remediation")
 

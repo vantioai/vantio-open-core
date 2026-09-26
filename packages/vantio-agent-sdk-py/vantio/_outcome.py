@@ -6,6 +6,7 @@ reads: Optics status, observed outcome, and provider response.
 """
 from __future__ import annotations
 
+import asyncio
 import errno
 import http.client
 import socket
@@ -54,7 +55,27 @@ _HTTP_OUTCOME = {
     429: "Provider rate-limited the request",
 }
 
-_CAUSE_LIMIT = 6
+# Internal safety caps for exception-chain walking. They are not a customer
+# compatibility guarantee: a chain deeper or wider than these limits is
+# classified only from the nodes the walk actually visits.
+CHAIN_MAX_DEPTH = 8
+CHAIN_MAX_VISITS = 16
+CHAIN_MAX_ARGS = 8
+
+# Lower rank wins when one attempt carries more than one recognized failure.
+_KIND_RANK = {
+    "tls": 0,
+    "dns": 1,
+    "connection": 2,
+    "timeout": 3,
+    "network": 4,
+}
+
+_NETWORK_ERRNOS = {
+    errno.EPIPE,
+    errno.ENOTCONN,
+    errno.ESHUTDOWN,
+}
 
 _DNS_ERRNOS = {
     getattr(socket, "EAI_NONAME", None),
@@ -184,48 +205,122 @@ def resolve_provider(hostname: str, port: Optional[str] = None) -> Optional[tupl
     return None
 
 
+def _safe_get(obj: Any, name: str) -> Any:
+    """Read one attribute. A hostile property must not escape classification."""
+    try:
+        return getattr(obj, name)
+    except Exception:
+        return None
+
+
 def _classify_one(exc: BaseException) -> Optional[tuple[str, str]]:
-    if isinstance(exc, ssl.SSLError):
-        return "tls", "TLS handshake failed"
-    if isinstance(exc, socket.gaierror):
-        return "dns", "DNS lookup failed"
-    if isinstance(exc, ConnectionRefusedError):
-        return "connection", "Connection refused"
-    if isinstance(exc, (TimeoutError, socket.timeout)):
-        return "connection", "Connection timed out"
-    if isinstance(exc, (ConnectionResetError, ConnectionAbortedError)):
-        return "connection", "Connection failed"
-    err = getattr(exc, "errno", None)
-    if isinstance(err, int):
-        if err in _DNS_ERRNOS:
+    """Kind of this object only. Does not follow a chain or read a message."""
+    try:
+        if isinstance(exc, ssl.SSLError):
+            return "tls", "TLS handshake failed"
+        if isinstance(exc, socket.gaierror):
             return "dns", "DNS lookup failed"
-        if err == errno.ECONNREFUSED:
+        if isinstance(exc, ConnectionRefusedError):
             return "connection", "Connection refused"
-        if err == errno.ETIMEDOUT:
-            return "connection", "Connection timed out"
-        if err in (errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ECONNRESET):
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError)):
             return "connection", "Connection failed"
+        if isinstance(exc, (TimeoutError, socket.timeout, asyncio.TimeoutError)):
+            return "timeout", "Request timed out"
+        if isinstance(exc, ConnectionError):
+            return "connection", "Connection failed"
+        if isinstance(exc, BrokenPipeError):
+            return "network", "Network error"
+        err = _safe_get(exc, "errno")
+        if isinstance(err, int):
+            if err in _DNS_ERRNOS:
+                return "dns", "DNS lookup failed"
+            if err == errno.ECONNREFUSED:
+                return "connection", "Connection refused"
+            if err == errno.ETIMEDOUT:
+                return "timeout", "Request timed out"
+            if err in (errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ECONNRESET, errno.ECONNABORTED):
+                return "connection", "Connection failed"
+            if err in _NETWORK_ERRNOS:
+                return "network", "Network error"
+    except Exception:
+        return None
     return None
 
 
-def classify_exception(exc: BaseException, depth: int = 0) -> tuple[str, str]:
-    """Transport kind and a fixed response phrase. Never returns the exception text."""
-    if depth > _CAUSE_LIMIT:
-        return "wrapped", type(exc).__name__
-    found = _classify_one(exc)
-    if found is not None:
-        return found
-    reason = getattr(exc, "reason", None)
-    if isinstance(reason, BaseException) and reason is not exc:
-        kind, phrase = classify_exception(reason, depth + 1)
-        if kind != "wrapped":
-            return kind, phrase
-    cause = exc.__cause__
-    if isinstance(cause, BaseException) and cause is not exc:
-        kind, phrase = classify_exception(cause, depth + 1)
-        if kind != "wrapped":
-            return kind, phrase
-    return "wrapped", type(exc).__name__
+def _exception_edges(exc: BaseException) -> list[BaseException]:
+    """Allowed links only: cause, context, reason, and exception args.
+
+    This is not an object-graph walk. Arbitrary attributes are ignored.
+    """
+    found: list[BaseException] = []
+    seen: set[int] = set()
+
+    def add(value: Any) -> None:
+        if isinstance(value, BaseException) and value is not exc and id(value) not in seen:
+            seen.add(id(value))
+            found.append(value)
+
+    add(_safe_get(exc, "__cause__"))
+    add(_safe_get(exc, "__context__"))
+    add(_safe_get(exc, "reason"))
+    args = _safe_get(exc, "args")
+    if isinstance(args, tuple):
+        for item in args[:CHAIN_MAX_ARGS]:
+            if isinstance(item, (tuple, list)):
+                for sub in list(item)[:CHAIN_MAX_ARGS]:
+                    add(sub)
+            else:
+                add(item)
+    return found
+
+
+def classify_exception(exc: BaseException) -> tuple[str, str]:
+    """Best transport kind on a bounded chain. Never returns exception text.
+
+    Walk order is breadth-first: __cause__, then __context__, then .reason
+    when it is an exception, then args entries that are exceptions or a
+    bounded tuple/list of exceptions. Cycles are skipped. The fixed depth
+    and visit caps above are internal safety limits, not a compatibility promise.
+    """
+    try:
+        if not isinstance(exc, BaseException):
+            return "wrapped", "Exception"
+    except Exception:
+        return "wrapped", "Exception"
+    best_rank = 99
+    best: Optional[tuple[str, str]] = None
+    visited: set[int] = set()
+    queue: list[tuple[BaseException, int]] = [(exc, 0)]
+    while queue and len(visited) < CHAIN_MAX_VISITS:
+        current, level = queue.pop(0)
+        marker = id(current)
+        if marker in visited or level > CHAIN_MAX_DEPTH:
+            continue
+        visited.add(marker)
+        direct = _classify_one(current)
+        if direct is not None:
+            rank = _KIND_RANK.get(direct[0], 99)
+            if rank < best_rank:
+                best_rank = rank
+                best = direct
+                if best_rank == 0:
+                    break
+        if level >= CHAIN_MAX_DEPTH:
+            continue
+        try:
+            children = _exception_edges(current)
+        except Exception:
+            children = []
+        for child in children:
+            if id(child) not in visited:
+                queue.append((child, level + 1))
+    if best is None:
+        try:
+            name = type(exc).__name__
+        except Exception:
+            name = "Exception"
+        return "wrapped", name
+    return best
 
 
 def socket_failure(error_class: str) -> tuple[str, str]:
@@ -238,31 +333,44 @@ def socket_failure(error_class: str) -> tuple[str, str]:
     if name == "ConnectionRefusedError":
         return "connection", "Connection refused"
     if name in ("TimeoutError", "timeout"):
-        return "connection", "Connection timed out"
+        return "timeout", "Request timed out"
     return "connection", "Connection failed"
 
 
-def _transport_outcome(kind: str, phrase: str) -> tuple[str, str, str, str]:
+def _failure_lines(kind: str, phrase: str, known: bool) -> tuple[str, str, str, str]:
+    """Observed-outcome sentence names the interaction layer, not a fault owner."""
     if kind == "dns":
+        label = "Provider could not be resolved" if known else "Upstream service could not be resolved"
         return (
-            "Provider could not be resolved",
+            label,
             phrase or "DNS lookup failed",
             "remediation",
-            "Check the provider hostname. DNS did not resolve.",
+            "Check the hostname the agent called. DNS did not resolve.",
         )
-    if kind == "connection":
+    if kind in ("connection", "network"):
+        label = "Connection to provider failed" if known else "Connection to upstream service failed"
+        fallback = "Network error" if kind == "network" else "Connection failed"
         return (
-            "Connection to provider failed",
-            phrase or "Connection failed",
+            label,
+            phrase or fallback,
             "remediation",
-            "Check network reachability to the provider.",
+            "Check network reachability to the host the agent called.",
         )
     if kind == "tls":
+        label = "Secure connection to provider failed" if known else "Secure connection to upstream service failed"
         return (
-            "Secure connection to provider failed",
+            label,
             phrase or "TLS handshake failed",
             "remediation",
             "Check the TLS setup. The secure connection did not complete.",
+        )
+    if kind == "timeout":
+        label = "Provider request timed out" if known else "Upstream request timed out"
+        return (
+            label,
+            phrase or "Request timed out",
+            "remediation",
+            "The request timed out before a response was stored. Check the client timeout and run again under shield().",
         )
     return (
         "Wrapped application raised an exception",
@@ -282,7 +390,13 @@ def _unavailable_outcome() -> tuple[str, str, str, str]:
 
 
 def apply_customer_outcome(rec: dict[str, Any]) -> None:
-    """Add human outcome fields. Leaves opticsStatus, applicationStatus, and status in place."""
+    """Add human outcome fields. Leaves opticsStatus, applicationStatus, and status in place.
+
+    An integer HTTP status is the final response for this attempt. It is not
+    replaced by a transport error nested on the same exception.
+    """
+    identity = resolve_provider(str(rec.get("hostname") or ""), rec.get("port") if rec.get("port") is not None else None)
+    known = identity is not None
     status = rec.get("status")
     if isinstance(status, int) and not isinstance(status, bool):
         label = http_outcome_label(status)
@@ -290,17 +404,16 @@ def apply_customer_outcome(rec: dict[str, Any]) -> None:
         category, action = next_action_for_status(status)
     else:
         kind = rec.get("failure_kind")
-        if kind in ("dns", "connection", "tls", "wrapped"):
+        if kind in ("dns", "connection", "tls", "timeout", "network", "wrapped"):
             phrase = str(rec.pop("failure_response", "") or "")
             if kind == "wrapped":
                 phrase = str(rec.get("error_class") or phrase or "Exception")
-            label, response, category, action = _transport_outcome(str(kind), phrase)
+            label, response, category, action = _failure_lines(str(kind), phrase, known)
         else:
             rec.pop("failure_response", None)
             label, response, category, action = _unavailable_outcome()
     rec["applicationOutcomeLabel"] = label
     rec["applicationLabel"] = label
-    identity = resolve_provider(str(rec.get("hostname") or ""), rec.get("port") if rec.get("port") is not None else None)
     if identity is not None:
         provider_id, provider_name = identity
         rec["providerName"] = provider_name

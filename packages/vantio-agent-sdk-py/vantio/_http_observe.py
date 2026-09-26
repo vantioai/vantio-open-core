@@ -627,7 +627,11 @@ def _record_http_exception(
     action: str,
     **extra: Any,
 ) -> None:
-    """Store an HTTP error as an application outcome. Network failures stay network_error."""
+    """Store an HTTP error as an application outcome. Network failures stay network_error.
+
+    A final HTTP status on this exception wins over a transport error nested
+    in its chain. The walk does not invent a status from a handled retry.
+    """
     status = _http_status_from_exception(exc)
     if status is not None:
         if record_send:
@@ -1487,24 +1491,34 @@ def _uninstall_http_client() -> None:
     _orig_http_putrequest = None
 
 
-def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, body: Any = None, headers: Any = None, **kwargs: Any) -> Any:
+def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
+    # urllib3 retries call urlopen again with extra positional arguments.
+    # That re-entry is the same attempt; forward it unchanged.
     if _http_owns():
-        return _orig_urllib3_request(self, method, url, body=body, headers=headers, **kwargs)
+        return _orig_urllib3_request(self, method, url, *args, **kwargs)
+    body = args[0] if args else kwargs.get("body")
     hostname, port = _http_conn_host_port(self)
     path = str(url or "/").split("?")[0] or "/"
     kind, payload, redactions, record_send = _dispatch_gate(
         hostname, port, path, body, "python_urllib3"
     )
     if kind == "pass":
-        return _http_orig(_orig_urllib3_request, self, method, url, body=body, headers=headers, **kwargs)
+        return _http_orig(_orig_urllib3_request, self, method, url, *args, **kwargs)
     if kind == "block":
         raise GateBlockedError(hostname or "")
-    send_body = payload if redactions else body
+    call_args = args
+    call_kwargs = kwargs
+    if redactions:
+        if args:
+            call_args = (payload,) + args[1:]
+        else:
+            call_kwargs = dict(kwargs)
+            call_kwargs["body"] = payload
     t0 = time.time()
     method_s = str(method or "GET").upper()
     try:
         resp = _http_orig(
-            _orig_urllib3_request, self, method, url, body=send_body, headers=headers, **kwargs
+            _orig_urllib3_request, self, method, url, *call_args, **call_kwargs
         )
         if record_send:
             action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")

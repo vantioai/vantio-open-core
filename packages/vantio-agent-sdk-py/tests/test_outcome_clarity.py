@@ -1,15 +1,19 @@
 """Customer outcome lines for Python Optics. Machine tokens stay unchanged."""
 from __future__ import annotations
 
+import asyncio
 import http.client
 import json
 import os
 import socket
 import ssl
 import tempfile
+import threading
 import unittest
 import urllib.error
 import urllib.request
+from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
@@ -34,12 +38,17 @@ except ImportError:
 
 try:
     import urllib3
+    from urllib3.util.retry import Retry
 except ImportError:
     urllib3 = None  # type: ignore[assignment]
+    Retry = None  # type: ignore[assignment]
 
 from vantio import shield
 from vantio import _http_observe as observe
 from vantio._outcome import (
+    CHAIN_MAX_ARGS,
+    CHAIN_MAX_DEPTH,
+    CHAIN_MAX_VISITS,
     apply_customer_outcome,
     classify_exception,
     customer_view_lines,
@@ -53,6 +62,88 @@ from vantio._outcome import (
 from .mock_server import MockServer
 
 HTTP_CODES = (200, 302, 400, 401, 403, 404, 408, 409, 422, 429, 500, 502, 503)
+
+
+class _HoldPort:
+    """Accepts TCP and does not answer, so a short client timeout is a read timeout."""
+
+    def __init__(self) -> None:
+        self._sock = socket.socket()
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(64)
+        self.port = int(self._sock.getsockname()[1])
+        self._live = True
+        self._held: list[socket.socket] = []
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        self._sock.settimeout(0.2)
+        while self._live:
+            try:
+                conn, _addr = self._sock.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            self._held.append(conn)
+
+    def close(self) -> None:
+        self._live = False
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+        for conn in self._held:
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+
+class _DropOnceServer:
+    """First request on a path closes the socket. The next request on that path returns 200."""
+
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+        self._lock = threading.Lock()
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                with parent._lock:
+                    parent._counts[self.path] = parent._counts.get(self.path, 0) + 1
+                    attempt = parent._counts[self.path]
+                if attempt == 1:
+                    try:
+                        self.connection.shutdown(socket.SHUT_RDWR)
+                    except OSError:
+                        pass
+                    return
+                body = b"{}"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+                return
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    @property
+    def url(self) -> str:
+        host, port = self._server.server_address[:2]
+        return f"http://{host}:{port}"
+
+    def __enter__(self) -> "_DropOnceServer":
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._server.shutdown()
+        self._server.server_close()
 
 # Literal customer lines. These are the contract, not a mirror of a helper's return.
 EXPECTED = {
@@ -231,6 +322,111 @@ class OutcomeMappingTests(unittest.TestCase):
         )
         self.assertEqual(single["applicationOutcomeLabel"], "Provider authentication failed")
         self.assertEqual(single["providerResponse"], "HTTP 401 Unauthorized")
+
+    def test_chain_walk_follows_context_and_args_not_messages(self) -> None:
+        secret = "sk-live-do-not-store"
+        leaf = socket.gaierror(socket.EAI_NONAME, secret)
+        named = RuntimeError("named")
+        named.__cause__ = leaf
+        retry = RuntimeError("retry")
+        retry.__cause__ = named
+        retry.reason = named  # type: ignore[attr-defined]
+        outer = RuntimeError("requests-shaped")
+        outer.args = (retry,)
+        outer.__context__ = retry
+        outer.__cause__ = None
+        kind, phrase = classify_exception(outer)
+        self.assertEqual((kind, phrase), ("dns", "DNS lookup failed"))
+        self.assertNotIn(secret, phrase)
+
+        refused = ConnectionRefusedError(secret)
+        core = RuntimeError("httpcore-shaped")
+        core.args = (refused,)
+        core.__cause__ = None
+        core.__context__ = refused
+        core.__suppress_context__ = True
+        httpx_shaped = RuntimeError("httpx-shaped")
+        httpx_shaped.__cause__ = core
+        self.assertEqual(classify_exception(httpx_shaped), ("connection", "Connection refused"))
+
+        misleading = RuntimeError("connection refused DNS lookup failed TLS handshake HTTP 500")
+        self.assertEqual(classify_exception(misleading), ("wrapped", "RuntimeError"))
+        self.assertNotIn("connection refused", classify_exception(misleading)[1])
+
+    def test_tls_outranks_a_deeper_dns_error(self) -> None:
+        outer = socket.gaierror(socket.EAI_NONAME, "hidden")
+        outer.__cause__ = ssl.SSLError("hidden")
+        self.assertEqual(classify_exception(outer), ("tls", "TLS handshake failed"))
+
+    def test_chain_caps_cycles_and_hostile_properties(self) -> None:
+        self.assertGreaterEqual(CHAIN_MAX_DEPTH, 1)
+        self.assertGreaterEqual(CHAIN_MAX_VISITS, 1)
+        self.assertGreaterEqual(CHAIN_MAX_ARGS, 1)
+
+        def linked(length: int, leaf: BaseException) -> BaseException:
+            current: BaseException = leaf
+            for _ in range(length - 1):
+                wrapper = RuntimeError("wrap")
+                wrapper.__cause__ = current
+                current = wrapper
+            return current
+
+        visible = linked(CHAIN_MAX_DEPTH + 1, ConnectionRefusedError())
+        self.assertEqual(classify_exception(visible)[0], "connection")
+        hidden = linked(CHAIN_MAX_DEPTH + 2, ConnectionRefusedError())
+        self.assertEqual(classify_exception(hidden), ("wrapped", "RuntimeError"))
+
+        left = RuntimeError("left")
+        right = RuntimeError("right")
+        left.__cause__ = right
+        right.__cause__ = left
+        self.assertEqual(classify_exception(left), ("wrapped", "RuntimeError"))
+
+        class Hostile(Exception):
+            @property
+            def reason(self) -> BaseException:
+                raise RuntimeError("hostile-property")
+
+        hostile = Hostile("nope")
+        hostile.__context__ = ConnectionRefusedError()
+        self.assertEqual(classify_exception(hostile), ("connection", "Connection refused"))
+
+        root = RuntimeError("wide")
+        children = []
+        for _ in range(CHAIN_MAX_ARGS):
+            child = RuntimeError("child")
+            children.append(child)
+        root.args = tuple(children)
+        for child in children:
+            child.__cause__ = RuntimeError("grandchild")
+        children[-1].__cause__ = ConnectionRefusedError()
+        self.assertEqual(classify_exception(root), ("wrapped", "RuntimeError"))
+        children[0].__cause__ = ConnectionRefusedError()
+        self.assertEqual(classify_exception(root)[0], "connection")
+
+    def test_unknown_transport_lines_use_upstream_wording(self) -> None:
+        rec = {
+            "hostname": "203.0.113.10",
+            "provider": "other",
+            "failure_kind": "dns",
+            "failure_response": "DNS lookup failed",
+            "opticsLabel": "Successful",
+        }
+        apply_customer_outcome(rec)
+        self.assertEqual(rec["applicationOutcomeLabel"], "Upstream service could not be resolved")
+        self.assertEqual(rec["providerResponseLabel"], "Upstream response")
+        known = {
+            "hostname": "api.openai.com",
+            "provider": "other",
+            "failure_kind": "timeout",
+            "failure_response": "Request timed out",
+            "opticsLabel": "Successful",
+        }
+        apply_customer_outcome(known)
+        self.assertEqual(known["applicationOutcomeLabel"], "Provider request timed out")
+        self.assertEqual(known["providerResponse"], "Request timed out")
+        self.assertEqual(known["providerResponseLabel"], "Provider response")
+        self.assertNotIn("status", known)
 
 
 class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
@@ -425,19 +621,19 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         dns, refused, tls, wrapped = urllib_calls
         self._assert_transport(
             dns,
-            label="Provider could not be resolved",
+            label="Upstream service could not be resolved",
             response="DNS lookup failed",
             network=True,
         )
         self._assert_transport(
             refused,
-            label="Connection to provider failed",
+            label="Connection to upstream service failed",
             response="Connection refused",
             network=True,
         )
         self._assert_transport(
             tls,
-            label="Secure connection to provider failed",
+            label="Secure connection to upstream service failed",
             response="TLS handshake failed",
             network=True,
         )
@@ -522,6 +718,204 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 "Upstream response: HTTP 401 Unauthorized",
             ],
         )
+
+    def _assert_kind(self, call: dict, *, kind: str, label: str, response: str) -> None:
+        self.assertEqual(call["failure_kind"], kind)
+        self.assertEqual(call["error"], "network_error")
+        self.assertIs(call["ok"], False)
+        self.assertNotIn("status", call)
+        self.assertEqual(call["opticsStatus"], "SUCCESS")
+        self.assertNotEqual(call["opticsStatus"], "OPTICS_ERROR")
+        self.assertEqual(call["applicationStatus"], "UNAVAILABLE")
+        self.assertEqual(call["applicationOutcomeLabel"], label)
+        self.assertEqual(call["providerResponse"], response)
+        self.assertEqual(call["providerResponseLabel"], "Upstream response")
+        self.assertEqual(call["nextActionCategory"], "remediation")
+        self.assertNotIn("Application error", call["applicationOutcomeLabel"])
+
+    async def test_optional_clients_classify_transport_chains(self) -> None:
+        if requests is None and httpx is None and aiohttp is None and urllib3 is None:
+            self.skipTest("no optional HTTP client installed")
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        refused_port = int(probe.getsockname()[1])
+        probe.close()
+        hold = _HoldPort()
+        try:
+            with MockServer() as server:
+                server.respond_with(200, {"ok": True})
+                https = server.url.replace("http://", "https://", 1)
+                async with shield(trace_id="outcome-clients"):
+                    if requests is not None:
+                        for url in (
+                            "http://does-not-exist.invalid/v1",
+                            f"http://127.0.0.1:{refused_port}/v1",
+                            https + "/v1",
+                            f"http://127.0.0.1:{hold.port}/v1",
+                        ):
+                            with self.assertRaises(requests.RequestException):
+                                requests.get(url, timeout=0.5, verify=False)
+                    if httpx is not None:
+                        for url in (
+                            "http://does-not-exist.invalid/v1",
+                            f"http://127.0.0.1:{refused_port}/v1",
+                            https + "/v1",
+                            f"http://127.0.0.1:{hold.port}/v1",
+                        ):
+                            with self.assertRaises(httpx.HTTPError):
+                                httpx.get(url, timeout=0.5, verify=False)
+                        async with httpx.AsyncClient(timeout=0.5, verify=False) as client:
+                            for url in (
+                                "http://does-not-exist.invalid/v1",
+                                f"http://127.0.0.1:{refused_port}/v1",
+                                https + "/v1",
+                                f"http://127.0.0.1:{hold.port}/v1",
+                            ):
+                                with self.assertRaises(httpx.HTTPError):
+                                    await client.get(url)
+                    if aiohttp is not None:
+                        timeout = aiohttp.ClientTimeout(total=0.5)
+                        async with aiohttp.ClientSession(timeout=timeout) as session:
+                            for url, ssl_flag in (
+                                ("http://does-not-exist.invalid/v1", None),
+                                (f"http://127.0.0.1:{refused_port}/v1", None),
+                                (https + "/v1", False),
+                                (f"http://127.0.0.1:{hold.port}/v1", None),
+                            ):
+                                with self.assertRaises((aiohttp.ClientError, TimeoutError, asyncio.TimeoutError)):
+                                    kwargs = {"ssl": ssl_flag} if ssl_flag is not None else {}
+                                    async with session.get(url, **kwargs) as resp:
+                                        await resp.read()
+                    if urllib3 is not None:
+                        http = urllib3.PoolManager(cert_reqs="CERT_NONE")
+                        for url in (
+                            "http://does-not-exist.invalid/v1",
+                            f"http://127.0.0.1:{refused_port}/v1",
+                            https + "/v1",
+                            f"http://127.0.0.1:{hold.port}/v1",
+                        ):
+                            with self.assertRaises(urllib3.exceptions.HTTPError):
+                                http.request("GET", url, timeout=0.5, retries=False)
+        finally:
+            hold.close()
+        calls = self._log("outcome-clients")["calls"]
+        blob = json.dumps(calls)
+        self.assertNotIn("Application error", blob)
+        self.assertNotIn("Optics error", blob)
+        expected = (
+            ("dns", "Upstream service could not be resolved", "DNS lookup failed"),
+            ("connection", "Connection to upstream service failed", "Connection refused"),
+            ("tls", "Secure connection to upstream service failed", "TLS handshake failed"),
+            ("timeout", "Upstream request timed out", "Request timed out"),
+        )
+        grouped: dict[str, list[dict]] = {}
+        for call in calls:
+            grouped.setdefault(call["mediation"], []).append(call)
+        if requests is not None:
+            self.assertEqual(len(grouped["python_requests"]), 4)
+            for call, spec in zip(grouped["python_requests"], expected):
+                self._assert_kind(call, kind=spec[0], label=spec[1], response=spec[2])
+        if urllib3 is not None:
+            self.assertEqual(len(grouped["python_urllib3"]), 4)
+            for call, spec in zip(grouped["python_urllib3"], expected):
+                self._assert_kind(call, kind=spec[0], label=spec[1], response=spec[2])
+        if aiohttp is not None:
+            self.assertEqual(len(grouped["python_aiohttp"]), 4)
+            for call, spec in zip(grouped["python_aiohttp"], expected):
+                self._assert_kind(call, kind=spec[0], label=spec[1], response=spec[2])
+        if httpx is not None:
+            httpx_calls = grouped["python_httpx"]
+            self.assertEqual(len(httpx_calls), 8)
+            for call, spec in zip(httpx_calls[:4], expected):
+                self._assert_kind(call, kind=spec[0], label=spec[1], response=spec[2])
+            for call, spec in zip(httpx_calls[4:], expected):
+                self._assert_kind(call, kind=spec[0], label=spec[1], response=spec[2])
+
+    async def test_final_http_status_beats_nested_transport(self) -> None:
+        real = observe._orig_urlopen
+
+        def boom(url, *args, **kwargs):
+            try:
+                raise socket.gaierror(socket.EAI_NONAME, "hidden-dns")
+            except socket.gaierror:
+                raise urllib.error.HTTPError(url, 401, "Unauthorized", Message(), None)
+
+        observe._orig_urlopen = boom
+        try:
+            with MockServer() as server:
+                with self.assertRaises(urllib.error.HTTPError):
+                    async with shield(trace_id="outcome-http-wins"):
+                        urllib.request.urlopen(server.url + "/v1", timeout=2)
+        finally:
+            observe._orig_urlopen = real
+        call = self._log("outcome-http-wins")["calls"][0]
+        self.assertEqual(call["status"], 401)
+        self.assertEqual(call["applicationStatus"], "APPLICATION_ERROR")
+        self.assertEqual(call["opticsStatus"], "SUCCESS")
+        self.assertIs(call["ok"], False)
+        self.assertNotEqual(call.get("error"), "network_error")
+        self.assertNotIn("failure_kind", call)
+        self.assertEqual(call["applicationOutcomeLabel"], "Provider authentication failed")
+        self.assertEqual(call["providerResponse"], "HTTP 401 Unauthorized")
+
+    async def test_misleading_message_stays_wrapped(self) -> None:
+        canary = "canary-connection-refused-dns-tls-http-500"
+        real = observe._orig_urlopen
+
+        def boom(*args, **kwargs):
+            raise RuntimeError(canary)
+
+        observe._orig_urlopen = boom
+        try:
+            with MockServer() as server:
+                with self.assertRaises(RuntimeError):
+                    async with shield(trace_id="outcome-message"):
+                        urllib.request.urlopen(server.url + "/v1", timeout=2)
+        finally:
+            observe._orig_urlopen = real
+        data = self._log("outcome-message")
+        self.assertNotIn(canary, json.dumps(data))
+        call = data["calls"][0]
+        self.assertEqual(call["failure_kind"], "wrapped")
+        self.assertNotIn("error", call)
+        self.assertNotIn("status", call)
+        self.assertEqual(call["applicationStatus"], "UNAVAILABLE")
+        self.assertEqual(call["providerResponse"], "RuntimeError")
+        self.assertEqual(call["applicationOutcomeLabel"], "Wrapped application raised an exception")
+
+    async def test_handled_retry_records_the_final_http_status(self) -> None:
+        if urllib3 is None or Retry is None or requests is None:
+            self.skipTest("urllib3 retry support is not installed")
+        with _DropOnceServer() as server:
+            retry = Retry(total=2, connect=2, read=2, redirect=0, status=0, backoff_factor=0)
+            async with shield(trace_id="outcome-retry"):
+                http = urllib3.PoolManager()
+                resp = http.request(
+                    "GET",
+                    server.url + "/u3",
+                    timeout=2.0,
+                    retries=retry,
+                )
+                self.assertEqual(resp.status, 200)
+                session = requests.Session()
+                session.mount("http://", requests.adapters.HTTPAdapter(max_retries=retry))
+                got = session.get(server.url + "/req", timeout=2)
+                self.assertEqual(got.status_code, 200)
+        calls = self._log("outcome-retry")["calls"]
+        by_med: dict[str, list[dict]] = {}
+        for call in calls:
+            by_med.setdefault(call["mediation"], []).append(call)
+        for mediation in ("python_urllib3", "python_requests"):
+            matched = by_med[mediation]
+            self.assertEqual(len(matched), 1, mediation)
+            self.assertEqual(matched[0]["status"], 200)
+            self.assertIs(matched[0]["ok"], True)
+            self.assertEqual(matched[0]["applicationStatus"], "SUCCESS")
+            self.assertEqual(matched[0]["opticsStatus"], "SUCCESS")
+            self.assertNotIn("failure_kind", matched[0])
+            self.assertNotEqual(matched[0].get("error"), "network_error")
+            self.assertEqual(matched[0]["applicationOutcomeLabel"], "Successful")
+            self.assertEqual(matched[0]["providerResponse"], "HTTP 200 OK")
 
     async def test_pycurl_success_path_does_not_invent_status(self) -> None:
         if pycurl is None:
