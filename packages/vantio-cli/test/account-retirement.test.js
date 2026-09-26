@@ -1,4 +1,4 @@
-// Optics 0.3.21 account retirement. Public surfaces stay local. Synthetic
+// Account retirement. Public surfaces stay local. Synthetic
 // values only — never a real credential.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -55,7 +55,7 @@ function listen(handler) {
   });
 }
 
-describe("Optics 0.3.21 public surfaces do not advertise accounts", () => {
+describe("public surfaces do not advertise accounts", () => {
   test("primary help is the approved identity and has no account commands", async () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
@@ -97,7 +97,14 @@ describe("Optics 0.3.21 public surfaces do not advertise accounts", () => {
   test("README and package metadata do not promise accounts, billing, or the missing config route", () => {
     const readme = readFileSync(README_PATH, "utf8");
     const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8"));
-    assert.equal(pkg.version, "0.3.22");
+    assert.equal(pkg.version, "0.3.23");
+    assert.equal(pkg.license, "MIT");
+    assert.ok(pkg.files.includes("README.md"));
+    assert.ok(pkg.files.includes("LICENSE"));
+    const rootLicense = readFileSync(join(__dirname, "..", "..", "..", "LICENSE"));
+    const packedLicense = readFileSync(join(__dirname, "..", "LICENSE"));
+    assert.deepEqual(packedLicense, rootLicense);
+    assert.equal(packedLicense.includes("Copyright (c) 2026 Vantio AI, Inc."), true);
     assert.match(pkg.description, /Vantio Optics \| Free Observability for AI Agents/);
     assert.match(pkg.description, /Free, local-first observability for supported AI-agent traffic\. Prompts and completions are never stored\./);
     assert.doesNotMatch(readme, ACCOUNT_PROMISE);
@@ -346,7 +353,7 @@ describe("local proof still works with no config", () => {
     writeFileSync(logPath, JSON.stringify({
       vantio_run_log: "1",
       trace_id: "0xstatus",
-      cli_version: "0.3.21",
+      cli_version: "0.3.23",
       calls: [{ hostname: "api.openai.com", action: "OBSERVED", status: 503, bytes: 12, ts: "2026-09-23T00:00:00.000Z" }],
       summary: { total_calls: 1, total_bytes: 12, hosts: ["api.openai.com"] },
     }));

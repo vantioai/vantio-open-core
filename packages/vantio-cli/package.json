@@ -1,6 +1,6 @@
 {
   "name": "@vantio/cli",
-  "version": "0.3.22",
+  "version": "0.3.23",
   "description": "Vantio Optics | Free Observability for AI Agents. Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
@@ -10,7 +10,9 @@
     "url": "https://github.com/vantioai/vantio-open-core.git",
     "directory": "packages/vantio-cli"
   },
-  "bugs": { "url": "https://github.com/vantioai/vantio-open-core/issues" },
+  "bugs": {
+    "url": "https://github.com/vantioai/vantio-open-core/issues"
+  },
   "keywords": [
     "vantio",
     "vantio-optics",
@@ -27,7 +29,13 @@
   "bin": {
     "vantio": "bin/vantio.js"
   },
-  "files": ["bin/*.js", "bin/*.cjs", "bin/python-wrap/*.py"],
+  "files": [
+    "bin/*.js",
+    "bin/*.cjs",
+    "bin/python-wrap/*.py",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "lint": "node --check bin/vantio.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs",
     "test": "node --test"
