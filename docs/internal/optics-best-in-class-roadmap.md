@@ -6,6 +6,8 @@ Out of scope for this capture: `packages/vantio-cli` (frozen at 0.3.24, LIVE_AND
 
 **Planning sequence (no dates):** Foundational → Operational maturity → Product experience → Later strategic decisions. This order is planning language only. It does not promise delivery.
 
+**Planning note (no dates):** After this addendum, stop expanding feature categories and turn the roadmap into a traceable architecture. Best-in-class sequence: Evidence and privacy → Storage integrity and migration → Correlation and query → Diagnostics and self-observability → Performance and overload proof → Local UI → Trends, alerts, interoperability → Independent customer validation. This order is planning language only. It does not promise delivery.
+
 ## Section 1 — Data architecture
 
 **FOUNDATIONAL.** Highest priority. Sequence this section before other roadmap items.
@@ -233,4 +235,61 @@ Demo and fixture evidence must be excluded from operational trends by default.
 - Annotation is stored separately
 - Annotation never mutates original observation evidence
 - UI must visibly distinguish observed evidence from customer-entered context
+
+## Section 23 — Complete observability requirement matrix
+
+Roadmap and design only. None of these requirements is claimed to exist. None is marked implemented. Status for every item in this section is TARGET_DESIGN.
+
+1. Signal contract: traces, metrics, logs/events, context/baggage, external profiles, and what Optics intentionally does not collect.
+2. Semantic-convention conformance: upstream version, implemented fields, intentional omissions, Optics-specific extension namespace, schema identity, compatibility handling, and tests.
+3. Context-propagation security: sensitive baggage prohibition, allowlists, size limits, imported-context provenance, malformed context, replay, collision, and trust classification.
+4. Resource identity: service/application, environment, deployment version, runtime, process, host and container identity with privacy-safe provenance and conflict handling.
+5. Observed dependency topology: current/historical edges, first/last seen, partial coverage, simulated-data exclusion, and no ownership inference from names alone.
+6. Baselines: transparent deterministic baselines for call volume, destinations, latency, errors, retries, unknown outcomes, and coverage changes.
+7. Deduplication and idempotency: stable event identity, duplicate markers, repeat-safe import, multi-hook detection, and no duplicate inflation of metrics.
+8. Instrumentation conflicts: coexistence with OpenTelemetry/APM/provider SDK instrumentation, duplicate hooks, wrapper order, and multiple Optics copies.
+9. Data-quality dimensions: coverage, freshness, completeness, integrity, correlation, and privacy checks; no misleading aggregate percentage.
+10. Golden signals: call rate, error rate, duration, in-progress work, retries, queue depth, dropped records, write latency, unknown outcomes, and coverage gaps.
+11. Cardinality-safe metric model: no trace/run/session IDs or arbitrary URLs in metric labels; high-cardinality identifiers remain in events/traces.
+12. Exemplars: trend/chart drill-down to representative local runs and traces.
+13. Sampling correction: exact versus estimated counts, sampling probability, mixed-policy periods, proof disclosure, and policy-change markers.
+14. Performance budgets: startup, initialization, per-call overhead, memory, write latency, queue, query, UI, export, and shutdown flush, measured by percentiles.
+15. Graceful degradation: application continues under queue saturation or storage failure; incomplete evidence is disclosed; no recursive drop-notice storms.
+16. Crash consistency: normal exit, signals, power loss, sleep/resume, interpreter shutdown, interrupted streams, and queued writes; COMPLETE/PARTIAL/INTERRUPTED/ABANDONED/RECOVERED states.
+17. Local security: filesystem permissions, Windows ACLs, Unix modes, multi-user workstation boundaries, symlink defense, imported-evidence quarantine, and optional at-rest-encryption feasibility.
+18. Local UI security: loopback-only binding, no third-party assets/analytics, CSP, origin restrictions, CSRF defense, output escaping, no query-string secrets, no mutation endpoints in v1, explicit shutdown, and no persistent daemon.
+19. Accessibility: screen readers, keyboard flow, focus, non-color status, contrast, reduced motion, text scaling, narrow viewports, ASCII fallback, and terminal width.
+20. Destination normalization: case, ports, IPv4/IPv6, redirects, proxies, regional hosts, and query-string exclusion by default.
+21. Provider identity confidence: provenance of provider/model identity and no unsupported inference.
+22. Privacy corpus: allowlisting before persistence, encoded/nested secrets, URLs, credentials, PII, financial/health indicators, Unicode bypass testing, and release-blocking invariant failures.
+23. Local data operations: selective deletion, backup implications, import provenance, retention proof, and no unsupported compliance claims.
+24. Automation contract: read-only local API/CLI schema, pagination, sorting, time bounds, error objects, cancellation, query limits, schema negotiation, and localhost-only default.
+25. Export formats: JSON/JSONL, simple tabular export, future OTLP/SIEM feasibility, integrity manifest, filters/time range, schema version, completeness, sampling, and redaction metadata.
+26. Incident workflow: detect, scope, investigate, explain, export, remediate, and verify recovery.
+27. Alert lifecycle: active, acknowledged, silenced, resolved, deduplication, maintenance windows, evidence retention, recovery notices, and honest idle handling.
+28. SLI/SLO separation: Optics-product-health SLIs separate from observed-workload provider SLIs; no SLO claim until customer target and window are configured.
+29. Cross-platform matrix: Windows/WSL, Linux, macOS if supported, containers, CI, proxies, TLS interception, IPv6, offline, locale, and restrictive filesystem cases.
+30. Upgrade and rollback: old/new record compatibility, interrupted migration, safe rollback, mixed CLI/Python versions, future schema refusal, and export/import testing.
+31. Product telemetry separation: customer evidence versus optional Vantio telemetry, explicit destinations, fields, triggers, frequency, last result, and disable precedence.
+32. Documentation operability: executable quickstarts, fixture-generated output, versioned docs, flag parity, known issues, migration notes, and remediation anchors.
+33. Support/security operations: vulnerability disclosure, supported-version policy, safe issue templates, support bundle, severity model, release advisories, integrity checks, and rollback guidance.
+34. Independent customer acceptance: persona matrix and adversity scenarios covering errors, coverage gaps, concurrency, migration, privacy, rollback, uninstall, and portability.
+
+## Requirement traceability template
+
+Applies to every roadmap item in Sections 1–23. No item in this document is marked implemented. Every item remains TARGET_DESIGN.
+
+- Requirement ID
+- Customer problem
+- Scope
+- Evidence required
+- Test required
+- Privacy classification
+- Failure behavior
+- UI state
+- CLI state
+- Structured state
+- Documentation
+- Release gate
+- Status: TARGET_DESIGN / INTERNAL_PROOF / PROVED_EXTERNAL / CUSTOMER_VALIDATED
 
