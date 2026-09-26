@@ -30,6 +30,12 @@ const {
   catalogInScope,
   guessProvider,
 } = require("./llm-hosts.cjs");
+const {
+  SCHEMA_STATUS,
+  applicationStatusFromHttp,
+  humanStatus,
+  rollupCalls,
+} = require("./optics-cx.cjs");
 
 const USE_COLOR = process.stderr.isTTY === true;
 const c = {
@@ -268,6 +274,46 @@ function launchUndiciBackend(fn) {
 
 function log(line) {
   process.stderr.write(line + "\n");
+}
+
+// Free Optics only. Paid control-plane lines stay on their own path.
+function logFreeObservation(info) {
+  const httpStatus = info.httpStatus == null ? null : info.httpStatus;
+  const applicationStatus = applicationStatusFromHttp(httpStatus);
+  const opticsStatus = "SUCCESS";
+  if (process.env.VANTIO_JSON === "1") {
+    log(JSON.stringify({
+      schema_status: SCHEMA_STATUS,
+      event: "observation",
+      opticsStatus,
+      applicationStatus,
+      httpStatus,
+      host: info.host || null,
+      provider: info.provider || null,
+      method: info.method || null,
+      path: info.path || null,
+      detail: info.detail || null,
+      duration_ms: info.duration_ms ?? null,
+      bytes: info.bytes ?? null,
+    }));
+    return;
+  }
+  const lines = [
+    "",
+    `${c.dim}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus(opticsStatus)}`,
+    `  Application outcome: ${humanStatus(applicationStatus)}`,
+    `  http_status: ${httpStatus == null ? "none" : httpStatus}`,
+  ];
+  if (info.host) lines.push(`  host:     ${c.cyan}${info.host}${c.reset}`);
+  if (info.provider) lines.push(`  provider: ${info.provider}`);
+  if (info.method) lines.push(`  method:   ${info.method}${info.path ? " " + info.path : ""}`);
+  if (info.detail) lines.push(`  detail:   ${info.detail}`);
+  if (info.duration_ms != null) lines.push(`  duration: ${info.duration_ms}ms`);
+  if (info.bytes != null) lines.push(`  bytes:    ${typeof info.bytes === "number" ? info.bytes.toLocaleString() : info.bytes}`);
+  lines.push(`  pid:      ${process.pid}`);
+  lines.push(`  ${c.dim}Observed locally. Prompts and completions are never stored.${c.reset}`);
+  lines.push(`  ${c.dim}Next: vantio tail${c.reset}`);
+  log(lines.join("\n"));
 }
 
 // ── Policy load (Tier 2) ──────────────────────────────────────────────────────
@@ -792,17 +838,16 @@ async function wrapFetch(backend, input, init) {
         error_class: err && err.name ? String(err.name) : "Error",
         error: "network_error",
       });
-      log([
-        "",
-        `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.red}Outbound LLM call failed${c.reset}`,
-        `  host:     ${c.cyan}${hostname}${c.reset}`,
-        `  provider: ${provider}`,
-        `  method:   ${reqMeta.method} ${reqMeta.path}`,
-        `  error:    ${err && err.name ? err.name : "Error"}`,
-        `  duration: ${duration_ms}ms`,
-        `  pid:      ${process.pid}`,
-        `  time:     ${ts}`,
-      ].join("\n"));
+      logFreeObservation({
+        httpStatus: null,
+        host: hostname,
+        provider,
+        method: reqMeta.method,
+        path: reqMeta.path,
+        detail: err && err.name ? err.name : "Error",
+        duration_ms,
+        bytes: null,
+      });
       throw err;
     }
     const resp = responseMeta(response);
@@ -823,19 +868,15 @@ async function wrapFetch(backend, input, init) {
       ts,
       action: "OBSERVED",
     });
-    log([
-      "",
-      `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.yellow}Outbound LLM call intercepted${c.reset}`,
-      `  host:     ${c.cyan}${hostname}${c.reset}`,
-      `  provider: ${provider}`,
-      `  method:   ${reqMeta.method} ${reqMeta.path}`,
-      `  status:   ${resp.status != null ? resp.status : "unknown"}`,
-      `  duration: ${duration_ms}ms`,
-      `  bytes:    ${resp.bytes != null ? resp.bytes.toLocaleString() : "unknown"}`,
-      `  pid:      ${process.pid}`,
-      `  time:     ${ts}`,
-      `  ${c.dim}→ Observed locally. Prompts and completions are never stored.${c.reset}`,
-    ].join("\n"));
+    logFreeObservation({
+      httpStatus: resp.status,
+      host: hostname,
+      provider,
+      method: reqMeta.method,
+      path: reqMeta.path,
+      duration_ms,
+      bytes: resp.bytes != null ? resp.bytes : null,
+    });
     return response;
   }
 
@@ -1319,7 +1360,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           request_bytes: n, mediation: "undici_ws", plane: "optics_gate",
         });
         if (FREE_MODE) {
-          log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — tunnel frames`);
+          log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — tunnel frames`);
         }
       }
       return true;
@@ -1859,7 +1900,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           mediation: "node_http", plane: "optics_gate",
         });
         if (FREE_MODE) {
-          log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — Node ${scheme}.request`);
+          log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — Node ${scheme}.request`);
         }
       }
 
@@ -2160,7 +2201,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           mediation: "node_ws", plane: "optics_gate",
         });
         if (FREE_MODE) {
-          log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — WebSocket`);
+          log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — WebSocket`);
         }
       }
 
@@ -2387,7 +2428,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       _calls.push({ ...baseCall, action: FREE_MODE ? "OBSERVED" : "ALLOWED" });
       reportH2(hostname, FREE_MODE ? "OBSERVED" : "ALLOWED");
       if (FREE_MODE) {
-        log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — Node http2.request`);
+        log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — Node http2.request`);
       }
 
       const stream = origRequest(headers, options);
@@ -2647,7 +2688,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         mediation: "node_net", plane: "optics_gate",
       });
       if (FREE_MODE) {
-        log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — Node net.connect`);
+        log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — Node net.connect`);
       }
     }
     return orig.apply(socket, args);
@@ -3457,7 +3498,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     } else if (action === "REDACTED") {
       log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — ${meta.label} — stripped ${nRedact} PII item(s)`);
     } else if (FREE_MODE) {
-      log(`${c.cyan}[ ∅ VANTIO ] OBSERVED${c.reset} ${hostname} — ${meta.label}`);
+      log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — ${meta.label}`);
     }
   }
 
@@ -3727,6 +3768,21 @@ process.on("exit", () => {
   }
 
   if (_calls.length === 0) return;
+
+  if (FREE_MODE && process.env.VANTIO_JSON === "1") {
+    const rollup = rollupCalls(_calls);
+    process.stderr.write(JSON.stringify({
+      schema_status: SCHEMA_STATUS,
+      event: "run_summary",
+      opticsStatus: rollup.opticsStatus,
+      applicationStatus: rollup.applicationStatus,
+      calls: _calls.length,
+      hosts,
+      total_bytes: totalBytes,
+      duration_ms: now - _startMs,
+    }) + "\n");
+    return;
+  }
 
   if (!SUMMARY && !FREE_MODE) return;
 

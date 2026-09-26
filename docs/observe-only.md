@@ -24,6 +24,7 @@ This doc is the Free-tier fence: what Optics does, what it explicitly does not d
 - Does **not** capture prompts or completions by default
 - Does **not** block, redact, or enforce policy alone
 - Free-tier events are labelled **`OBSERVED`** — not `ALLOWED`, `BLOCKED`, or `REDACTED`
+- CLI display separates **Optics status** from **Application outcome**. A provider HTTP code is the application outcome. See [Optics to OpenTelemetry](./optics-otel-mapping.md).
 
 ---
 

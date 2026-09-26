@@ -1,11 +1,24 @@
 #!/usr/bin/env node
-import { spawn }         from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { parseArgs }     from "node:util";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, existsSync, watch } from "node:fs";
 import { randomUUID }    from "node:crypto";
+
+const require = createRequire(import.meta.url);
+const {
+  SCHEMA_STATUS,
+  VOCABULARY,
+  PROVIDER_SDKS,
+  humanStatus,
+  displayCall,
+  rollupCalls,
+  telemetryPosture,
+  withSchema,
+} = require("./optics-cx.cjs");
 
 const USAGE = `\
 Vantio Optics | Free Observability for AI Agents
@@ -14,6 +27,8 @@ Free, local-first observability for supported AI-agent traffic. Prompts and comp
 
 Usage:
   vantio run [flags] <prog>   Spawn <prog> under the Vantio execution context
+  vantio demo                 In-process demo of one observed call (no network)
+  vantio status               Local install and data status (no network by default)
   vantio discover [options]   Show AI-agent call history (--local; no key required)
   vantio prove [options]      Generate a proof artifact from a local run log (no key required)
   vantio search [query]       Search local run logs (host, path, action, free text)
@@ -22,11 +37,16 @@ Usage:
 
 Flags (run):
   --summary, -s   Print a run summary on exit.
+  --json          Unstable JSON on stdout when the program exits.
+
+--json output includes "schema_status": "unstable-pre-1.0" and may change without notice.
 
 Examples:
   vantio run node agent.js
   vantio run python agent.py
   vantio run --summary tsx agent.ts
+  vantio demo
+  vantio status
   vantio discover --local
   vantio discover --since=7d
   vantio prove
@@ -34,6 +54,8 @@ Examples:
   vantio prove --format=md --out=report.md
   vantio search openai
   vantio tail -n 20
+  vantio tail -n 0
+  vantio tail --all
   vantio diff 0xabc 0xdef
 `;
 
@@ -53,9 +75,11 @@ Usage:
 Options:
   --since=<period>    Look back 24h, 7d, or 30d  (default: 24h)
   --host=<hostname>   Filter to a specific target host
-  --json              Output raw JSON instead of a formatted table
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   --local             Same local history (accepted; this command is always local)
   -h, --help          Show this help
+
+Exit status: 0 completed, including an empty result. 1 bad arguments, or a file that exists but cannot be read or parsed.
 
 Examples:
   vantio discover
@@ -83,6 +107,7 @@ Options:
   --run=<trace-id>    Generate a report for a specific run (by trace ID or prefix)
   --from=<file>       Generate a report from an explicit log file path
   --format=html|md    Output format (default: html)
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   --out=<file>        Write output to a file (default: vantio-proof-<id>.html)
   -h, --help          Show this help
 
@@ -93,7 +118,7 @@ Examples:
   vantio prove --format=md                   → Markdown to stdout
   vantio prove --format=html --out=proof.html
 
-Exit status: 0 finished, 1 missing or invalid arguments, or the named log could not be read.
+Exit status: 0 completed, including an empty result. 1 bad arguments, or a file that exists but cannot be read or parsed.
 `;
 
 const SEARCH_HELP = `\
@@ -108,11 +133,13 @@ Usage:
 Options:
   --host=<hostname>   Filter to a target host (substring match)
   --provider=<name>   Filter by provider label (substring match)
-  --action=<label>    Filter by action (e.g. OBSERVED, BLOCKED)
+  --action=<label>    Filter by stored action (e.g. OBSERVED)
   --run=<trace-id>    Limit to one run (trace ID or prefix)
   --since=24h|7d|30d  Only runs newer than this window (default: all)
-  --json              Output raw JSON
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   -h, --help          Show this help
+
+Exit status: 0 completed, including an empty result. 1 bad arguments, or a file that exists but cannot be read or parsed.
 
 Examples:
   vantio search openai
@@ -132,10 +159,14 @@ Usage:
 
 Options:
   --run=<trace-id>    Run to read (default: most recent local run)
-  -n, --lines=<n>     Number of calls to show (default: 20)
+  -n, --lines=<n>     Number of calls to show (default: 20). 0 shows zero calls.
+  --all               Show every call in the run
   -f, --follow        Keep watching the run log for new calls
-  --json              Output raw JSON
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   -h, --help          Show this help
+
+--json and --follow cannot be combined.
+--all and --lines cannot be combined.
 
 A run log is written when the wrapped agent exits, so --follow stays quiet
 during a run that is still going and prints the calls once it finishes.
@@ -146,7 +177,7 @@ Examples:
   vantio tail --run=0x1a2b3c4d
   vantio tail -f
 
-Exit status: 0 finished, 1 missing or invalid arguments, or the named log could not be read.
+Exit status: 0 completed, including an empty result. 1 bad arguments, or a file that exists but cannot be read or parsed.
 `;
 
 const DIFF_HELP = `\
@@ -162,12 +193,55 @@ Arguments:
   <run-a> <run-b>     Trace IDs or prefixes of two local run logs
 
 Options:
-  --json              Output raw JSON
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   -h, --help          Show this help
+
+Exit status: 0 completed, including an empty result. 1 bad arguments, or a file that exists but cannot be read or parsed.
 
 Examples:
   vantio diff 0xabc123 0xdef456
   vantio diff 0xabc 0xdef --json
+`;
+
+const DEMO_HELP = `\
+vantio demo — in-process Optics demo
+
+Simulates one POST /v1/chat/completions that returns HTTP 200.
+No network. No prompt or completion is created or stored.
+Duration is fixed at 0 ms.
+
+Usage:
+  vantio demo [options]
+
+Options:
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
+  -h, --help          Show this help
+
+Examples:
+  vantio demo
+  vantio demo --json
+`;
+
+const STATUS_HELP = `\
+vantio status — local Optics status
+
+Reports the installed CLI version, telemetry posture, local data size,
+whether a run has been recorded, and which supported provider SDKs can
+be resolved from the current directory. This command does not contact
+the network unless --check-registry is set.
+
+Usage:
+  vantio status [options]
+
+Options:
+  --check-registry    Ask the npm registry for the latest @vantio/cli version
+  --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
+  -h, --help          Show this help
+
+Examples:
+  vantio status
+  vantio status --json
+  vantio status --check-registry
 `;
 
 // ── config store (~/.vantio/config.json) ───────────────────────────────────────────────────
@@ -214,13 +288,14 @@ function runCommand(rest) {
     options: {
       audit:   { type: "boolean", short: "a", default: false },
       summary: { type: "boolean", short: "s", default: false },
+      json:    { type: "boolean", default: false },
     },
     allowPositionals: false,
   });
 
   if (progArgs.length === 0) {
     process.stderr.write(
-      "vantio run: no program specified\n\nUsage: vantio run [--summary] <program> [...args]\n",
+      "vantio run: no program specified\n\nUsage: vantio run [--summary] [--json] <program> [...args]\n",
     );
     process.exit(1);
   }
@@ -267,9 +342,22 @@ function runCommand(rest) {
     VANTIO_TRACE_ID: runTraceId,
     ...(values.audit     ? { VANTIO_AUDIT_MODE: "1" } : {}),
     ...(values.summary   ? { VANTIO_SUMMARY:    "1" } : {}),
+    ...(values.json      ? { VANTIO_JSON:       "1" } : {}),
     ...(extraNodeOptions ? { NODE_OPTIONS: mergedNodeOptions } : {}),
     ...(mergedPythonPath ? { PYTHONPATH: mergedPythonPath } : {}),
   });
+
+  function writeRunJson(exitCode, signal) {
+    if (!values.json) return;
+    process.stdout.write(JSON.stringify(withSchema({
+      command: "run",
+      trace_id: runTraceId,
+      exit_code: exitCode,
+      signal: signal || null,
+      opticsStatus: signal ? "OPTICS_ERROR" : "SUCCESS",
+      applicationStatus: "NOT_OBSERVED",
+    })) + "\n");
+  }
 
   process.stderr.write(`[ ∅ VANTIO ] run trace_id=${runTraceId}\n`);
 
@@ -277,12 +365,19 @@ function runCommand(rest) {
 
   child.on("error", (err) => {
     process.stderr.write(`vantio: failed to start '${program}': ${err.message}\n`);
+    writeRunJson(1, null);
     process.exit(1);
   });
 
   child.on("exit", (code, signal) => {
-    if (signal !== null) { process.kill(process.pid, signal); return; }
-    process.exit(code ?? 1);
+    if (signal !== null) {
+      writeRunJson(null, signal);
+      process.kill(process.pid, signal);
+      return;
+    }
+    const exitCode = code ?? 1;
+    writeRunJson(exitCode, null);
+    process.exit(exitCode);
   });
 }
 
@@ -337,8 +432,7 @@ function generateHtmlReport(log) {
   const totalBytes = summary.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0);
   const hosts      = Array.isArray(summary.hosts) ? summary.hosts
                      : [...new Set(calls.map((c) => c.hostname || "?"))];
-  const redacted   = summary.redacted ?? 0;
-  const blocked    = summary.blocked  ?? 0;
+  const rollup     = rollupCalls(calls);
   const traceId    = escHtml(log.trace_id    || "—");
   const pid        = escHtml(log.pid         || "—");
   const startedAt  = escHtml(log.started_at  || "—");
@@ -347,16 +441,16 @@ function generateHtmlReport(log) {
   const cliVer     = escHtml(log.cli_version || "—");
 
   const rows = calls.map((c, i) => {
-    const act = (c.action || "OBSERVED").toUpperCase();
-    const cls = act.startsWith("BLOCKED") ? "blocked" : act.toLowerCase();
-    const status = c.status != null ? String(c.status) : "—";
+    const view = displayCall(c);
+    const http = view.httpStatus != null ? String(view.httpStatus) : "—";
     return `        <tr>
           <td class="num">${i + 1}</td>
-          <td class="mono">${escHtml(c.hostname || "—")}</td>
-          <td><span class="badge badge-${cls}">${escHtml(act)}</span></td>
-          <td class="num">${escHtml(status)}</td>
-          <td class="num">${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"}</td>
-          <td class="mono">${escHtml(c.ts || "—")}</td>
+          <td class="mono">${escHtml(view.hostname || "—")}</td>
+          <td>${escHtml(view.opticsLabel)}</td>
+          <td>${escHtml(view.applicationLabel)}</td>
+          <td class="num">${escHtml(http)}</td>
+          <td class="num">${view.bytes != null ? Number(view.bytes).toLocaleString() : "—"}</td>
+          <td class="mono">${escHtml(view.ts || "—")}</td>
         </tr>`;
   }).join("\n");
 
@@ -390,10 +484,6 @@ function generateHtmlReport(log) {
     .num  { text-align: right; color: #888; }
     .mono { font-family: "SFMono-Regular", Consolas, monospace; font-size: .8rem; }
     .badge { display: inline-block; font-size: .7rem; font-weight: 600; padding: 2px 7px; border-radius: 3px; text-transform: uppercase; letter-spacing: .3px; font-family: "SFMono-Regular", Consolas, monospace; }
-    .badge-observed { background: #f0f0f0; color: #555; }
-    .badge-allowed  { background: #e6f7ee; color: #1a6b3a; }
-    .badge-redacted { background: #fff8e0; color: #7a5500; }
-    .badge-blocked  { background: #fde8e8; color: #9b1c1c; }
     .footer { margin-top: 40px; border-top: 1px solid #eee; padding-top: 16px; color: #aaa; font-size: .76rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
     .footer a { color: #aaa; }
     @media (max-width: 640px) { .page { padding: 24px 20px; } .metrics { grid-template-columns: repeat(2, 1fr); } }
@@ -406,7 +496,7 @@ function generateHtmlReport(log) {
 
     <div class="privacy-banner">
       ✓ <strong>Prompts and completions are never stored.</strong>
-      This report contains hostnames, byte counts, process IDs, trace IDs, and action labels. CLI v${cliVer}.
+      This report contains hostnames, byte counts, process IDs, trace IDs, Optics status, and Application outcome. CLI v${cliVer}.
     </div>
 
     <h2>Run identity</h2>
@@ -424,8 +514,8 @@ function generateHtmlReport(log) {
       <div class="metric"><div class="metric-value">${totalCalls.toLocaleString()}</div><div class="metric-label">Total calls</div></div>
       <div class="metric"><div class="metric-value">${totalBytes > 0 ? formatBytes(totalBytes) : "—"}</div><div class="metric-label">Total bytes</div></div>
       <div class="metric"><div class="metric-value">${hosts.length}</div><div class="metric-label">Unique hosts</div></div>
-      <div class="metric"><div class="metric-value">${redacted}</div><div class="metric-label">PII redacted</div></div>
-      <div class="metric"><div class="metric-value">${blocked}</div><div class="metric-label">Blocked</div></div>
+      <div class="metric"><div class="metric-value">${escHtml(humanStatus(rollup.opticsStatus))}</div><div class="metric-label">Optics status</div></div>
+      <div class="metric"><div class="metric-value">${escHtml(humanStatus(rollup.applicationStatus))}</div><div class="metric-label">Application outcome</div></div>
     </div>
 
     <h2>Call log (${totalCalls.toLocaleString()} call${totalCalls === 1 ? "" : "s"})</h2>
@@ -433,8 +523,8 @@ function generateHtmlReport(log) {
       ? "<p style=\"color:#888;font-size:.875rem\">No calls recorded in this run log.</p>"
       : `<table>
       <thead><tr>
-        <th class=\"num\">#</th><th>Host</th><th>Action</th>
-        <th class=\"num\">Status</th><th class=\"num\">Bytes</th><th>Timestamp</th>
+        <th class=\"num\">#</th><th>Host</th><th>Optics status</th>
+        <th>Application outcome</th><th class=\"num\">HTTP</th><th class=\"num\">Bytes</th><th>Timestamp</th>
       </tr></thead>
       <tbody>
 ${rows}
@@ -450,6 +540,44 @@ ${rows}
 </html>`;
 }
 
+function proofJson(log) {
+  const calls = Array.isArray(log.calls) ? log.calls : [];
+  const rollup = rollupCalls(calls);
+  return withSchema({
+    command: "prove",
+    trace_id: log.trace_id || null,
+    pid: log.pid || null,
+    started_at: log.started_at || null,
+    generated_at: log.generated_at || null,
+    duration_ms: log.duration_ms ?? null,
+    cli_version: log.cli_version || null,
+    opticsStatus: rollup.opticsStatus,
+    applicationStatus: rollup.applicationStatus,
+    summary: {
+      total_calls: log.summary?.total_calls ?? calls.length,
+      total_bytes: log.summary?.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0),
+      opticsStatus: rollup.opticsStatus,
+      applicationStatus: rollup.applicationStatus,
+    },
+    calls: calls.map((call, index) => Object.assign({ index: index + 1 }, publicCall(call))),
+  });
+}
+
+function publicCall(call) {
+  const view = displayCall(call);
+  return {
+    hostname: view.hostname,
+    provider: view.provider,
+    method: view.method,
+    path: view.path,
+    bytes: view.bytes,
+    ts: view.ts,
+    httpStatus: view.httpStatus,
+    opticsStatus: view.opticsStatus,
+    applicationStatus: view.applicationStatus,
+  };
+}
+
 function generateMarkdownReport(log) {
   const calls      = Array.isArray(log.calls) ? log.calls : [];
   const summary    = log.summary || {};
@@ -457,19 +585,20 @@ function generateMarkdownReport(log) {
   const totalBytes = summary.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0);
   const hosts      = Array.isArray(summary.hosts) ? summary.hosts
                      : [...new Set(calls.map((c) => c.hostname || "?"))];
-  const redacted   = summary.redacted ?? 0;
-  const blocked    = summary.blocked  ?? 0;
+  const rollup     = rollupCalls(calls);
 
-  const rows = calls.map((c, i) =>
-    `| ${i + 1} | \`${c.hostname || "—"}\` | \`${(c.action || "OBSERVED").toUpperCase()}\` | ${c.status != null ? c.status : "—"} | ${c.bytes != null ? Number(c.bytes).toLocaleString() : "—"} | \`${c.ts || "—"}\` |`
-  ).join("\n");
+  const rows = calls.map((c, i) => {
+    const view = displayCall(c);
+    const http = view.httpStatus != null ? view.httpStatus : "—";
+    return `| ${i + 1} | \`${view.hostname || "—"}\` | ${view.opticsLabel} | ${view.applicationLabel} | ${http} | ${view.bytes != null ? Number(view.bytes).toLocaleString() : "—"} | \`${view.ts || "—"}\` |`;
+  }).join("\n");
 
   return `# Vantio Optics | Free Observability for AI Agents
 
 > Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 
 **Privacy notice:** This report contains hostnames, byte counts, process IDs,
-trace IDs, and action labels. Prompts and completions are never stored.
+trace IDs, Optics status, and Application outcome. Prompts and completions are never stored.
 CLI v${log.cli_version || "—"}.
 
 ---
@@ -494,8 +623,8 @@ CLI v${log.cli_version || "—"}.
 | Total calls | **${totalCalls.toLocaleString()}** |
 | Total bytes | ${totalBytes > 0 ? totalBytes.toLocaleString() : "—"} |
 | Unique hosts | ${hosts.length} |
-| PII redacted | ${redacted} |
-| Blocked | ${blocked} |
+| Optics status | ${humanStatus(rollup.opticsStatus)} |
+| Application outcome | ${humanStatus(rollup.applicationStatus)} |
 
 Hosts: ${hosts.map((h) => `\`${h}\``).join(", ") || "—"}
 
@@ -503,9 +632,9 @@ Hosts: ${hosts.map((h) => `\`${h}\``).join(", ") || "—"}
 
 ## Call log (${totalCalls} call${totalCalls === 1 ? "" : "s"})
 
-| # | Host | Action | Status | Bytes | Timestamp |
-|---|------|--------|--------|-------|-----------|
-${rows || "| — | — | — | — | — |"}
+| # | Host | Optics status | Application outcome | HTTP | Bytes | Timestamp |
+|---|------|---------------|---------------------|------|-------|-----------|
+${rows || "| — | — | — | — | — | — | — |"}
 
 ---
 
@@ -521,7 +650,9 @@ function listRuns(dir) {
       .filter((f) => f.endsWith(".json"))
       .map((f) => {
         try {
-          const log = JSON.parse(readFileSync(join(dir, f), "utf8"));
+          const loaded = readJsonFile(join(dir, f));
+          if (loaded.unreadable || loaded.corrupt) failUnreadable("prove", join(dir, f), loaded.error);
+          const log = loaded.json;
           if (log?.vantio_run_log !== "1") return null;
           return { f, log };
         } catch { return null; }
@@ -573,24 +704,37 @@ function listRuns(dir) {
 function findRunByPrefix(dir, prefix, cmd = "prove") {
   let files = [];
   try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); } catch {
-    process.stderr.write(`vantio ${cmd}: no run logs found in ~/.vantio/runs/\n`);
-    process.exit(1);
+    return { path: null, empty: true };
   }
   const norm = prefix.replace(/[^a-zA-Z0-9_-]/g, "_");
   const matches = files.filter((f) => f.includes(norm));
-  if (matches.length === 0) {
-    process.stderr.write(
-      `vantio ${cmd}: no run found with trace ID containing '${prefix}'\n` +
-      "  Run `vantio prove --list` to see available runs.\n"
-    );
-    process.exit(1);
-  }
+  if (matches.length === 0) return { path: null, empty: true };
   if (matches.length > 1) {
     process.stderr.write(`vantio ${cmd}: '${prefix}' matches ${matches.length} runs. Use a longer prefix:\n`);
     for (const f of matches) process.stderr.write(`  ${f.replace(/\.json$/, "")}\n`);
     process.exit(1);
   }
-  return join(dir, matches[0]);
+  return { path: join(dir, matches[0]), empty: false };
+}
+
+function readJsonFile(path) {
+  let text;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (err) {
+    return { unreadable: true, error: err };
+  }
+  try {
+    return { json: JSON.parse(text) };
+  } catch (err) {
+    return { corrupt: true, error: err };
+  }
+}
+
+function failUnreadable(cmd, path, err) {
+  const detail = err && err.message ? String(err.message).split("\n")[0] : "could not read the file";
+  process.stderr.write(`vantio ${cmd}: could not read ${path}: ${detail}\n`);
+  process.exit(1);
 }
 
 function findMostRecentRun(dir) {
@@ -624,6 +768,7 @@ async function proveCommand(args) {
       run:    { type: "string" },
       from:   { type: "string" },
       format: { type: "string",  default: "html" },
+      json:   { type: "boolean", default: false },
       out:    { type: "string" },
       help:   { type: "boolean", short: "h", default: false },
     },
@@ -644,7 +789,12 @@ async function proveCommand(args) {
       process.exit(1);
     }
   } else if (values.run) {
-    logPath = findRunByPrefix(dir, values.run);
+    const found = findRunByPrefix(dir, values.run, "prove");
+    if (!found.path) {
+      process.stdout.write(`No run log matched '${values.run}'.\nNext: vantio prove --list\n`);
+      return;
+    }
+    logPath = found.path;
   } else {
     logPath = findMostRecentRun(dir);
     if (!logPath) {
@@ -659,20 +809,29 @@ async function proveCommand(args) {
     process.stderr.write(`[ ∅ VANTIO ] Using most recent run log: ~/.vantio/runs/${logPath.split(/[\\/]/).pop()}\n`);
   }
 
-  let log;
-  try { log = JSON.parse(readFileSync(logPath, "utf8")); }
-  catch (err) {
-    process.stderr.write(`vantio prove: could not read log: ${err.message}\n`);
+  const loaded = readJsonFile(logPath);
+  if (loaded.unreadable || loaded.corrupt) failUnreadable("prove", logPath, loaded.error);
+  const log = loaded.json;
+  if (!log || typeof log !== "object" || Array.isArray(log)) {
+    process.stderr.write(`vantio prove: could not read log: not a JSON object\n`);
+    process.exit(1);
+  }
+
+  const formatGiven = args.some((a) => a === "--format" || a.startsWith("--format="));
+  if (values.json && formatGiven) {
+    process.stderr.write("vantio prove: use either --json or --format, not both\n");
     process.exit(1);
   }
 
   const format = (values.format || "html").toLowerCase();
-  if (format !== "html" && format !== "md") {
+  if (!values.json && format !== "html" && format !== "md") {
     process.stderr.write(`vantio prove: invalid format '${format}'. Use html or md.\n`);
     process.exit(1);
   }
 
-  const report = format === "html" ? generateHtmlReport(log) : generateMarkdownReport(log);
+  const report = values.json
+    ? JSON.stringify(proofJson(log), null, 2) + "\n"
+    : (format === "html" ? generateHtmlReport(log) : generateMarkdownReport(log));
 
   function writeProof(outPath) {
     try {
@@ -687,7 +846,7 @@ async function proveCommand(args) {
 
   if (values.out) {
     writeProof(values.out);
-  } else if (format === "html") {
+  } else if (!values.json && format === "html") {
     const safeid = (log.trace_id || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
     writeProof(`vantio-proof-${safeid}.html`);
   } else {
@@ -713,7 +872,9 @@ function discoverLocalCommand(since, hostFilter, asJson) {
     try {
       const s = statSync(filePath);
       if (s.mtimeMs < cutoff) continue;
-      const log = JSON.parse(readFileSync(filePath, "utf8"));
+      const loaded = readJsonFile(filePath);
+      if (loaded.unreadable || loaded.corrupt) failUnreadable("discover", filePath, loaded.error);
+      const log = loaded.json;
       if (log?.vantio_run_log !== "1" || !Array.isArray(log.calls)) continue;
       scannedRuns++;
       const ts = log.generated_at ? new Date(log.generated_at).getTime() : 0;
@@ -731,16 +892,19 @@ function discoverLocalCommand(since, hostFilter, asJson) {
 
   const hosts = [...hostMap.values()].sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
   if (asJson) {
-    process.stdout.write(JSON.stringify({
+    process.stdout.write(JSON.stringify(withSchema({
+      command: "discover",
       since,
       scanned_runs: scannedRuns,
+      opticsStatus: hosts.length ? "SUCCESS" : "NOT_OBSERVED",
+      applicationStatus: hosts.length ? "SUCCESS" : "NOT_OBSERVED",
       hosts: hosts.map((h) => ({
         host: h.host,
         total: h.total,
         bytes: h.bytes,
         last_seen: h.last_seen ? new Date(h.last_seen).toISOString() : null,
       })),
-    }, null, 2) + "\n");
+    }), null, 2) + "\n");
     return;
   }
 
@@ -756,6 +920,7 @@ function discoverLocalCommand(since, hostFilter, asJson) {
       process.stdout.write(`\nNo LLM calls recorded in the last ${since} (${scannedRuns} run log(s) scanned, zero calls).\n`);
       process.stdout.write(`  Check that your agent is actually making LLM API calls.\n`);
     }
+    process.stdout.write("Next: vantio run node agent.js\n");
     return;
   }
 
@@ -776,7 +941,8 @@ function discoverLocalCommand(since, hostFilter, asJson) {
   }
   process.stdout.write(`${div}\n`);
   const totalCalls = hosts.reduce((a, h) => a + h.total, 0);
-  process.stdout.write(`${hosts.length} host(s)  |  ${totalCalls} total call(s) observed locally\n\n`);
+  process.stdout.write(`${hosts.length} host(s)  |  ${totalCalls} total call(s) observed locally\n`);
+  process.stdout.write("Next: vantio search <query>\n\n");
 }
 
 async function discoverCommand(args) {
@@ -809,44 +975,27 @@ async function discoverCommand(args) {
 // ── inspect helpers (search / tail / diff) ───────────────────────────────────────────────────
 
 function loadRunLog(path, cmd) {
-  try {
-    const log = JSON.parse(readFileSync(path, "utf8"));
-    if (log?.vantio_run_log !== "1") {
-      process.stderr.write(`vantio ${cmd}: not a Vantio run log: ${path}\n`);
-      process.exit(1);
-    }
-    return log;
-  } catch (err) {
-    process.stderr.write(`vantio ${cmd}: could not read log: ${err.message}\n`);
+  const loaded = readJsonFile(path);
+  if (loaded.unreadable || loaded.corrupt) failUnreadable(cmd, path, loaded.error);
+  const log = loaded.json;
+  if (log?.vantio_run_log !== "1") {
+    process.stderr.write(`vantio ${cmd}: not a Vantio run log: ${path}\n`);
     process.exit(1);
   }
+  return log;
 }
 
 function tryLoadRunLog(path) {
-  try {
-    const log = JSON.parse(readFileSync(path, "utf8"));
-    if (log?.vantio_run_log !== "1") return null;
-    return log;
-  } catch {
-    return null;
-  }
+  const loaded = readJsonFile(path);
+  if (loaded.unreadable || loaded.corrupt || loaded.json?.vantio_run_log !== "1") return null;
+  return loaded.json;
 }
 
 function resolveRunPath(dir, runPrefix, cmd) {
   if (runPrefix) return findRunByPrefix(dir, runPrefix, cmd);
   const newest = findMostRecentRun(dir);
-  if (!newest) {
-    process.stdout.write(
-      "No local run logs found. Wrap an agent first:\n" +
-      "  vantio run node agent.js\n\n" +
-      "Then inspect with:\n" +
-      "  vantio search <query>\n" +
-      "  vantio tail\n" +
-      "  vantio diff <run-a> <run-b>\n"
-    );
-    process.exit(0);
-  }
-  return newest;
+  if (!newest) return { path: null, empty: true };
+  return { path: newest, empty: false };
 }
 
 function listValidRunEntries(dir, sinceMs = null) {
@@ -857,7 +1006,9 @@ function listValidRunEntries(dir, sinceMs = null) {
   for (const f of files) {
     const p = join(dir, f);
     try {
-      const log = JSON.parse(readFileSync(p, "utf8"));
+      const loaded = readJsonFile(p);
+      if (loaded.unreadable || loaded.corrupt) failUnreadable("search", p, loaded.error);
+      const log = loaded.json;
       if (log?.vantio_run_log !== "1") continue;
       if (cutoff != null) {
         const t = log.generated_at ? new Date(log.generated_at).getTime()
@@ -887,30 +1038,28 @@ function callSearchBlob(call, traceId) {
   ].join(" ").toLowerCase();
 }
 
-// Column widths shared by the header and every row so a call with a missing
-// timestamp or a long action label (DRY_RUN_BLOCKED_SPEND) still lines up.
-const CALL_COLS = { ts: 24, host: 28, action: 22, route: 36, bytes: 10 };
+// Column widths shared by the header and every row. Trace ID is never truncated.
+const CALL_COLS = { ts: 24, host: 28, optics: 16, outcome: 18, route: 36, bytes: 10 };
 
 function formatCallLine(call, traceId) {
-  const host = call.hostname || "—";
-  const action = (call.action || "OBSERVED").toUpperCase();
-  const method = call.method || "";
-  const path = call.path || "";
+  const view = displayCall(call);
+  const host = view.hostname || "—";
+  const method = view.method || "";
+  const path = view.path || "";
   const route = [method, path].filter(Boolean).join(" ") || "—";
-  const bytes = call.bytes != null ? Number(call.bytes).toLocaleString() : "—";
-  const ts = call.ts || "—";
-  // Trace ID is printed in full: it is what you paste into `vantio prove --run=`
-  // or `vantio diff`, so truncating it would make the row unusable.
+  const bytes = view.bytes != null ? Number(view.bytes).toLocaleString() : "—";
+  const ts = view.ts || "—";
   const tid = traceId ? String(traceId) : "—";
-  return `${col(ts, CALL_COLS.ts)}  ${col(host, CALL_COLS.host)}  ${col(action, CALL_COLS.action)}  ` +
-    `${col(route, CALL_COLS.route)}  ${col(bytes, CALL_COLS.bytes)}  ${tid}`;
+  return `${col(ts, CALL_COLS.ts)}  ${col(host, CALL_COLS.host)}  ${col(view.opticsLabel, CALL_COLS.optics)}  ` +
+    `${col(view.applicationLabel, CALL_COLS.outcome)}  ${col(route, CALL_COLS.route)}  ${col(bytes, CALL_COLS.bytes)}  ${tid}`;
 }
 
 function printCallHeader() {
   const hdr =
     col("TIMESTAMP", CALL_COLS.ts) + "  " +
     col("HOST", CALL_COLS.host) + "  " +
-    col("ACTION", CALL_COLS.action) + "  " +
+    col("OPTICS STATUS", CALL_COLS.optics) + "  " +
+    col("APP OUTCOME", CALL_COLS.outcome) + "  " +
     col("METHOD / PATH", CALL_COLS.route) + "  " +
     col("BYTES", CALL_COLS.bytes) + "  TRACE ID";
   process.stdout.write(`${hdr}\n${"-".repeat(hdr.length)}\n`);
@@ -948,8 +1097,12 @@ async function searchCommand(args) {
   const dir = runsDir();
   let entries;
   if (values.run) {
-    const path = findRunByPrefix(dir, values.run, "search");
-    entries = [{ path, log: loadRunLog(path, "search") }];
+    const found = findRunByPrefix(dir, values.run, "search");
+    if (!found.path) {
+      process.stdout.write(`No run log matched '${values.run}'.\nNext: vantio prove --list\n`);
+      return;
+    }
+    entries = [{ path: found.path, log: loadRunLog(found.path, "search") }];
   } else {
     const sinceMs = values.since ? parseSincePeriod(values.since) : null;
     entries = listValidRunEntries(dir, sinceMs);
@@ -976,23 +1129,22 @@ async function searchCommand(args) {
       if (providerF && !(call.provider || "").toLowerCase().includes(providerF)) continue;
       if (actionF && !(call.action || "").toLowerCase().includes(actionF)) continue;
       if (query && !callSearchBlob(call, log.trace_id).includes(query)) continue;
-      hits.push({
+      hits.push(Object.assign({
         trace_id: log.trace_id || null,
         index: i + 1,
-        hostname: call.hostname || null,
-        provider: call.provider || null,
-        method: call.method || null,
-        path: call.path || null,
-        action: call.action || "OBSERVED",
-        bytes: call.bytes ?? null,
-        ts: call.ts || null,
-        status: call.status ?? null,
-      });
+      }, publicCall(call)));
     }
   }
 
   if (values.json) {
-    process.stdout.write(JSON.stringify({ query: query || null, matches: hits.length, calls: hits }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify(withSchema({
+      command: "search",
+      query: query || null,
+      matches: hits.length,
+      opticsStatus: hits.length ? "SUCCESS" : "NOT_OBSERVED",
+      applicationStatus: rollupCalls(hits.map((hit) => ({ status: hit.httpStatus }))).applicationStatus,
+      calls: hits,
+    }), null, 2) + "\n");
     return;
   }
 
@@ -1006,35 +1158,40 @@ async function searchCommand(args) {
   for (const h of hits) {
     process.stdout.write(formatCallLine(h, h.trace_id) + "\n");
   }
-  process.stdout.write(`\n${hits.length} match(es). Export a full report with \`vantio prove --run=<trace-id>\`.\n`);
+  process.stdout.write(`\n${hits.length} match(es).\nNext: vantio prove --run=<trace-id>\n`);
 }
 
 function readCallsFromLog(log) {
   return Array.isArray(log.calls) ? log.calls : [];
 }
 
-function printTailCalls(log, lines, asJson) {
+function printTailCalls(log, lines, asJson, showAll) {
   const calls = readCallsFromLog(log);
-  const slice = lines > 0 ? calls.slice(-lines) : calls;
+  const slice = showAll ? calls : (lines === 0 ? [] : calls.slice(-lines));
   if (asJson) {
-    process.stdout.write(JSON.stringify({
+    const shown = slice.map((call) => publicCall(call));
+    process.stdout.write(JSON.stringify(withSchema({
+      command: "tail",
       trace_id: log.trace_id || null,
       total_calls: calls.length,
-      shown: slice.length,
-      calls: slice,
-    }, null, 2) + "\n");
-    return slice.length;
+      shown: shown.length,
+      opticsStatus: rollupCalls(slice).opticsStatus,
+      applicationStatus: rollupCalls(slice).applicationStatus,
+      calls: shown,
+    }), null, 2) + "\n");
+    return shown.length;
   }
   process.stdout.write(
     `\nTail — trace ${log.trace_id || "—"} · showing ${slice.length} of ${calls.length} call(s)\n\n`
   );
   if (slice.length === 0) {
-    process.stdout.write("No calls recorded in this run log.\n");
+    if (calls.length === 0) process.stdout.write("No calls recorded in this run log.\n");
+    process.stdout.write(`Next: vantio prove --run=${log.trace_id || ""}\n`);
     return 0;
   }
   printCallHeader();
   for (const c of slice) process.stdout.write(formatCallLine(c, log.trace_id) + "\n");
-  process.stdout.write("\n");
+  process.stdout.write(`\nNext: vantio prove --run=${log.trace_id || ""}\n`);
   return slice.length;
 }
 
@@ -1044,6 +1201,7 @@ async function tailCommand(args) {
     options: {
       run:     { type: "string" },
       lines:   { type: "string", short: "n", default: "20" },
+      all:     { type: "boolean", default: false },
       follow:  { type: "boolean", short: "f", default: false },
       json:    { type: "boolean", default: false },
       help:    { type: "boolean", short: "h", default: false },
@@ -1053,26 +1211,39 @@ async function tailCommand(args) {
 
   if (values.help) { process.stdout.write(TAIL_HELP); return; }
 
+  if (values.json && values.follow) {
+    process.stderr.write("vantio tail: --json and --follow cannot be used together\n");
+    process.exit(1);
+  }
+
+  const linesGiven = args.some((arg) => arg === "-n" || arg === "--lines" || arg.startsWith("--lines=") || /^-n\d/.test(arg));
+  if (values.all && linesGiven) {
+    process.stderr.write("vantio tail: use either --all or --lines, not both\n");
+    process.exit(1);
+  }
+
   const n = Number.parseInt(values.lines, 10);
-  if (!Number.isFinite(n) || n < 0) {
+  if (!values.all && (!Number.isFinite(n) || n < 0)) {
     process.stderr.write("vantio tail: --lines must be a non-negative integer\n");
     process.exit(1);
   }
 
   const dir = runsDir();
-  const logPath = resolveRunPath(dir, values.run, "tail");
+  const found = resolveRunPath(dir, values.run, "tail");
+  if (!found.path) {
+    const which = values.run ? `'${values.run}'` : "the local run directory";
+    process.stdout.write(`No run log matched ${which}.\nNext: vantio run node agent.js\n`);
+    return;
+  }
+  const logPath = found.path;
   let log = loadRunLog(logPath, "tail");
   if (!values.run) {
     process.stderr.write(`[ ∅ VANTIO ] Tailing most recent run: ${log.trace_id || "local run"}\n`);
   }
 
-  printTailCalls(log, n, values.json);
+  printTailCalls(log, n, values.json, values.all);
 
   if (!values.follow) return;
-
-  if (values.json) {
-    process.stderr.write("vantio tail: --follow writes human lines; omit --json to follow.\n");
-  }
 
   process.stderr.write("[ ∅ VANTIO ] Following run log (Ctrl+C to stop)…\n");
   let lastCount = readCallsFromLog(log).length;
@@ -1157,10 +1328,15 @@ async function diffCommand(args) {
   }
 
   const dir = runsDir();
-  const pathA = findRunByPrefix(dir, positionals[0], "diff");
-  const pathB = findRunByPrefix(dir, positionals[1], "diff");
-  const a = runTotals(loadRunLog(pathA, "diff"));
-  const b = runTotals(loadRunLog(pathB, "diff"));
+  const foundA = findRunByPrefix(dir, positionals[0], "diff");
+  const foundB = findRunByPrefix(dir, positionals[1], "diff");
+  if (!foundA.path || !foundB.path) {
+    const missing = [foundA.path ? null : positionals[0], foundB.path ? null : positionals[1]].filter(Boolean);
+    process.stdout.write(`No run log matched ${missing.map((id) => `'${id}'`).join(" and ")}.\nNext: vantio prove --list\n`);
+    return;
+  }
+  const a = runTotals(loadRunLog(foundA.path, "diff"));
+  const b = runTotals(loadRunLog(foundB.path, "diff"));
 
   const hostsA = new Set(Object.keys(a.hosts));
   const hostsB = new Set(Object.keys(b.hosts));
@@ -1190,7 +1366,7 @@ async function diffCommand(args) {
   };
 
   if (values.json) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    process.stdout.write(JSON.stringify(withSchema(Object.assign({ command: "diff" }, result)), null, 2) + "\n");
     return;
   }
 
@@ -1222,6 +1398,230 @@ async function diffCommand(args) {
   if (!added.length && !removed.length && !changed.length) {
     process.stdout.write("No host-level differences between these two runs.\n\n");
   }
+  process.stdout.write("Next: vantio prove --run=<trace-id>\n");
+}
+
+const DEMO_DURATION_MS = 0;
+
+function demoCommand(args) {
+  const { values } = parseArgsSafe("demo", {
+    args,
+    options: {
+      json: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: false,
+  });
+  if (values.help) { process.stdout.write(DEMO_HELP); return; }
+
+  const traceId = `0x${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const stamp = new Date().toISOString();
+  const call = {
+    hostname: "optics-demo.invalid",
+    provider: "openai",
+    method: "POST",
+    path: "/v1/chat/completions",
+    status: 200,
+    bytes: 0,
+    ts: stamp,
+    action: "OBSERVED",
+  };
+  const log = {
+    vantio_run_log: "1",
+    schema_version: 2,
+    plane: "optics",
+    trace_id: traceId,
+    started_at: stamp,
+    generated_at: stamp,
+    duration_ms: DEMO_DURATION_MS,
+    cli_version: getVersion(),
+    calls: [call],
+    summary: {
+      total_calls: 1,
+      total_bytes: 0,
+      hosts: [call.hostname],
+    },
+  };
+  const dir = runsDir();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const safeid = traceId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  writeFileSync(join(dir, `${safeid}.json`), JSON.stringify(log, null, 2) + "\n", { mode: 0o600 });
+
+  const view = displayCall(call);
+  if (values.json) {
+    process.stdout.write(JSON.stringify(withSchema({
+      command: "demo",
+      network: "none",
+      trace_id: traceId,
+      method: "POST",
+      path: "/v1/chat/completions",
+      httpStatus: 200,
+      duration_ms: DEMO_DURATION_MS,
+      opticsStatus: view.opticsStatus,
+      applicationStatus: view.applicationStatus,
+      content: null,
+    }), null, 2) + "\n");
+    return;
+  }
+  process.stdout.write(
+    "Vantio Optics | Free Observability for AI Agents\n" +
+    "Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.\n\n" +
+    "Demo — in-process stub. No network.\n\n" +
+    "  method: POST /v1/chat/completions\n" +
+    "  http_status: 200\n" +
+    `  Optics status: ${view.opticsLabel}\n` +
+    `  Application outcome: ${view.applicationLabel}\n` +
+    `  duration_ms: ${DEMO_DURATION_MS}\n` +
+    `  trace_id: ${traceId}\n\n` +
+    `Next: vantio prove --run=${traceId}\n`
+  );
+}
+
+function directoryBytes(root) {
+  let total = 0;
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch (err) {
+    if (err && err.code === "ENOENT") return { bytes: 0, missing: true };
+    return { bytes: 0, unreadable: true };
+  }
+  for (const ent of entries) {
+    if (ent.isSymbolicLink()) continue;
+    const path = join(root, ent.name);
+    if (ent.isDirectory()) {
+      const sub = directoryBytes(path);
+      if (sub.unreadable) return { bytes: total, unreadable: true };
+      total += sub.bytes;
+    } else if (ent.isFile()) {
+      try { total += statSync(path).size; }
+      catch { return { bytes: total, unreadable: true }; }
+    }
+  }
+  return { bytes: total, missing: false };
+}
+
+function sdkRows() {
+  let req = null;
+  try { req = createRequire(join(process.cwd(), "package.json")); } catch { req = null; }
+  return PROVIDER_SDKS.map((sdk) => {
+    let importable = false;
+    if (req) {
+      try { req.resolve(sdk.spec); importable = true; }
+      catch { importable = false; }
+    }
+    return {
+      name: sdk.name,
+      spec: sdk.spec,
+      opticsStatus: importable ? "SUCCESS" : "UNSUPPORTED",
+    };
+  });
+}
+
+function firstRunScan(dir) {
+  let files = [];
+  try { files = readdirSync(dir).filter((f) => f.endsWith(".json")); }
+  catch (err) {
+    if (err && err.code === "ENOENT") {
+      return { first_run_since_install: true, first_run_at: null, corrupt: false, runs: 0 };
+    }
+    return { first_run_since_install: true, first_run_at: null, corrupt: true, runs: 0 };
+  }
+  let earliest = null;
+  let valid = 0;
+  let corrupt = false;
+  for (const file of files) {
+    const loaded = readJsonFile(join(dir, file));
+    if (loaded.unreadable || loaded.corrupt) { corrupt = true; continue; }
+    const log = loaded.json;
+    if (log?.vantio_run_log !== "1") continue;
+    valid += 1;
+    const stamp = log.started_at || log.generated_at || null;
+    if (stamp && (!earliest || String(stamp) < earliest)) earliest = String(stamp);
+  }
+  return {
+    first_run_since_install: valid === 0,
+    first_run_at: earliest,
+    corrupt,
+    runs: valid,
+  };
+}
+
+function lookupRegistryVersion() {
+  const res = spawnSync("npm", ["view", "@vantio/cli", "version"], {
+    encoding: "utf8",
+    timeout: 8000,
+    env: Object.assign({}, process.env, { npm_config_update_notifier: "false" }),
+  });
+  const version = res && res.stdout ? String(res.stdout).trim() : "";
+  if (!res || res.status !== 0 || !version || /[\r\n]/.test(version)) {
+    return { checked: true, version: null, opticsStatus: "UNAVAILABLE" };
+  }
+  return { checked: true, version, opticsStatus: "SUCCESS" };
+}
+
+function statusCommand(args) {
+  const { values } = parseArgsSafe("status", {
+    args,
+    options: {
+      "check-registry": { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    allowPositionals: false,
+  });
+  if (values.help) { process.stdout.write(STATUS_HELP); return; }
+
+  const version = getVersion();
+  const dataDir = configDir();
+  const size = directoryBytes(dataDir);
+  const runs = firstRunScan(runsDir());
+  const registry = values["check-registry"]
+    ? lookupRegistryVersion()
+    : { checked: false, version: null, opticsStatus: "NOT_OBSERVED" };
+  const dataStatus = size.unreadable ? "OPTICS_ERROR" : (size.missing ? "NOT_OBSERVED" : "SUCCESS");
+  const report = withSchema({
+    command: "status",
+    vocabulary: VOCABULARY,
+    install: {
+      version,
+      opticsStatus: version && version !== "unknown" ? "SUCCESS" : "OPTICS_ERROR",
+    },
+    registry,
+    telemetry: { posture: telemetryPosture(process.env), opticsStatus: "SUCCESS" },
+    data: { bytes: size.bytes || 0, opticsStatus: dataStatus },
+    first_run_since_install: runs.first_run_since_install,
+    first_run_at: runs.first_run_at,
+    runs: {
+      count: runs.runs,
+      opticsStatus: runs.corrupt ? "OPTICS_ERROR" : (runs.first_run_since_install ? "NOT_OBSERVED" : "SUCCESS"),
+    },
+    sdks: sdkRows(),
+  });
+
+  if (values.json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    return;
+  }
+
+  const registryLine = registry.checked
+    ? (registry.version || humanStatus("UNAVAILABLE"))
+    : "not checked";
+  const sdkLines = report.sdks.map((sdk) => `  ${sdk.name}  ${humanStatus(sdk.opticsStatus)}`).join("\n");
+  process.stdout.write(
+    "Vantio Optics | Free Observability for AI Agents\n" +
+    "Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.\n\n" +
+    `Install version:             ${version}\n` +
+    `Registry latest:             ${registryLine}\n` +
+    `Telemetry:                   ${report.telemetry.posture}\n` +
+    `Local data:                  ${report.data.bytes} bytes\n` +
+    `First run since install:     ${report.first_run_since_install ? "yes" : "no"}\n` +
+    `First run at:                ${report.first_run_at || "none"}\n` +
+    `Run logs:                    ${humanStatus(report.runs.opticsStatus)}\n` +
+    "Provider SDKs:\n" +
+    `${sdkLines}\n\n` +
+    "Next: vantio demo\n"
+  );
 }
 
 // ── dispatch ────────────────────────────────────────────────────────────────────────────
@@ -1240,6 +1640,12 @@ if (command === "--version" || command === "-v") {
 switch (command) {
   case "run":
     runCommand(rest);
+    break;
+  case "demo":
+    demoCommand(rest);
+    break;
+  case "status":
+    await statusCommand(rest);
     break;
   case "logout":
     logoutCommand();

@@ -195,9 +195,10 @@ describe("vantio inspect — search / tail / diff", () => {
       ]);
       const { code, stdout } = await runCli(["tail"], { HOME: home });
       assert.equal(code, 0);
-      // Full label, not a truncated "DRY_RUN_B…" that reads the same as
-      // DRY_RUN_BLOCKED_SIZE, and a trace ID you can paste into prove/diff.
-      assert.match(stdout, /DRY_RUN_BLOCKED_SPEND/);
+      // Stored enforcement labels stay out of free Optics output.
+      // The trace ID is printed in full so it can be pasted into prove/diff.
+      assert.doesNotMatch(stdout, /BLOCKED|REDACTED|DRY_RUN/);
+      assert.match(stdout, /Successful/);
       assert.match(stdout, /0xccc333inspect03/);
 
       const lines = stdout.split("\n");
