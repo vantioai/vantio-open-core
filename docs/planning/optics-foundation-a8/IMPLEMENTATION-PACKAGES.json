@@ -1,0 +1,2606 @@
+{
+  "document": "IMPLEMENTATION-PACKAGES",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "OPTICS_FOUNDATION_IMPLEMENTATION_PLAN_READY_FOR_COUNCIL",
+  "status_enum": [
+    "PLANNED",
+    "BLOCKED_BY_DEPENDENCY",
+    "NEEDS_FOUNDER_DECISION",
+    "DEFERRED"
+  ],
+  "forbidden_status_values": [
+    "CUSTOMER_VALIDATED",
+    "IMPLEMENTED",
+    "INTEGRATION_PROVED",
+    "IN_PROGRESS",
+    "PROVED",
+    "PROVED_EXTERNAL",
+    "SHIPPED",
+    "STRANGER_HOST_PROVED",
+    "UNIT_PROVED"
+  ],
+  "package_count": 17,
+  "package_status_counts": {
+    "PLANNED": 1,
+    "BLOCKED_BY_DEPENDENCY": 12,
+    "NEEDS_FOUNDER_DECISION": 4
+  },
+  "requirement_count": 52,
+  "requirement_status_counts": {
+    "BLOCKED_BY_DEPENDENCY": 26,
+    "NEEDS_FOUNDER_DECISION": 6,
+    "DEFERRED": 13,
+    "PLANNED": 7
+  },
+  "slice_1": {
+    "id": "SLICE-1",
+    "name": "EVIDENCE CONTRACT AND WRITE-PATH PRIVACY BOUNDARY",
+    "package": "PKG-01",
+    "authorized": false
+  },
+  "dependency_graph": {
+    "edge_meaning": "successor waits for predecessor",
+    "edges": [
+      [
+        "PKG-01",
+        "PKG-02"
+      ],
+      [
+        "PKG-01",
+        "PKG-03"
+      ],
+      [
+        "PKG-01",
+        "PKG-04"
+      ],
+      [
+        "PKG-01",
+        "PKG-05"
+      ],
+      [
+        "PKG-01",
+        "PKG-09"
+      ],
+      [
+        "PKG-01",
+        "PKG-12"
+      ],
+      [
+        "PKG-01",
+        "PKG-15"
+      ],
+      [
+        "PKG-01",
+        "PKG-17"
+      ],
+      [
+        "PKG-02",
+        "PKG-09"
+      ],
+      [
+        "PKG-03",
+        "PKG-12"
+      ],
+      [
+        "PKG-03",
+        "PKG-13"
+      ],
+      [
+        "PKG-04",
+        "PKG-08"
+      ],
+      [
+        "PKG-04",
+        "PKG-17"
+      ],
+      [
+        "PKG-05",
+        "PKG-06"
+      ],
+      [
+        "PKG-05",
+        "PKG-07"
+      ],
+      [
+        "PKG-05",
+        "PKG-10"
+      ],
+      [
+        "PKG-05",
+        "PKG-12"
+      ],
+      [
+        "PKG-06",
+        "PKG-07"
+      ],
+      [
+        "PKG-07",
+        "PKG-08"
+      ],
+      [
+        "PKG-07",
+        "PKG-11"
+      ],
+      [
+        "PKG-09",
+        "PKG-10"
+      ],
+      [
+        "PKG-10",
+        "PKG-14"
+      ],
+      [
+        "PKG-10",
+        "PKG-15"
+      ],
+      [
+        "PKG-12",
+        "PKG-07"
+      ],
+      [
+        "PKG-15",
+        "PKG-16"
+      ]
+    ],
+    "no_dates": true,
+    "no_durations": true,
+    "mode_gates": [
+      {
+        "package": "PKG-10",
+        "mode": "file-backed query",
+        "waits_for": "PKG-07",
+        "note": "The memory-adapter mode waits for PKG-05 and PKG-09 only. This mode gate is not a package-level edge."
+      }
+    ]
+  },
+  "packages": [
+    {
+      "id": "PKG-01",
+      "name": "Evidence contract and write-path privacy boundary",
+      "status": "PLANNED",
+      "customer_problem": "Records crossing the persistence boundary can carry secrets or unlabeled origins, and Node and Python JSON writers disagree.",
+      "scope": "Shared testable contract for current JSON records: allowlist, denylist, origin, issue location, status tokens, destination sanitization, session id, trace context, structural redaction, privacy results, rejection behavior, completeness impact, conformance fixtures, privacy corpus, fail-open contract API, current-reader compatibility.",
+      "non_scope": "SQLite, binding, schema, WAL, migration, import execution, retention, trends, alerting, UI, daemon, OTLP, SIEM, stable schema, public API, new telemetry, cost fields, encryption, hostname, LEGACY_UNMARKED promotion, seventh annotation origin, freshness CURRENT, numeric targets, wiring into CLI 0.3.24 or Python 3.1.0 imports.",
+      "requirements_assigned": [
+        "OF-05",
+        "OF-13",
+        "OF-19",
+        "OF-22",
+        "OF-38",
+        "OF-39",
+        "OF-40",
+        "OF-49"
+      ],
+      "architecture_documents": [
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md",
+        "07-THREAT-MODEL.md",
+        "08-ARCHITECTURE-DECISION-PACK.md",
+        "01-CURRENT-STATE-INVENTORY.md"
+      ],
+      "predecessors": [],
+      "downstream": [
+        "PKG-02",
+        "PKG-03",
+        "PKG-04",
+        "PKG-05",
+        "PKG-09",
+        "PKG-12",
+        "PKG-15",
+        "PKG-17"
+      ],
+      "later_files": [
+        "packages/optics-evidence-contract/**"
+      ],
+      "forbidden_files_during_slice_1": [
+        "packages/vantio-cli/**",
+        "packages/vantio-agent-sdk-py/vantio/**",
+        "packages/vantio-agent-sdk/**"
+      ],
+      "fixtures": [
+        "privacy corpus",
+        "legacy Node envelope",
+        "legacy Python envelope",
+        "A1 issue-location cases",
+        "A1 session-id cases"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "NONE_UNTIL_WRITER_CUTOVER",
+      "compatibility_risk": "Current readers must keep parsing today's files.",
+      "rollback": "Remove the private package. Legacy JSON stays.",
+      "release_boundary": "RU-S1 private package. Not a CLI or Python release.",
+      "evidence_required_before_external_claim": "UNIT_PROVED for the library; INTEGRATION_PROVED after writer cutover; STRANGER_HOST_PROVED and PROVED_EXTERNAL before the claim.",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        2,
+        6,
+        7,
+        11
+      ],
+      "gates": [
+        "S1-G1",
+        "S1-G2",
+        "S1-G3",
+        "S1-G4",
+        "S1-G5",
+        "S1-G6",
+        "S1-G7",
+        "S1-G8",
+        "S1-G9",
+        "S1-G10"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-02",
+      "name": "Shared record vocabulary and Node/Python conformance",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Node and Python persist different envelopes for the same run.",
+      "scope": "Future writers emit the PKG-01 catalog. Shared fixtures gate both languages.",
+      "non_scope": "SQLite, CLI 0.3.24 patch, Python 3.0.15, OTLP export, stable v1, schema generator.",
+      "requirements_assigned": [
+        "OF-20",
+        "OF-47"
+      ],
+      "architecture_documents": [
+        "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md",
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md"
+      ],
+      "predecessors": [
+        "PKG-01"
+      ],
+      "downstream": [
+        "PKG-09"
+      ],
+      "later_files": [
+        "future CLI interceptor mapper",
+        "future Python writer after 3.1.0"
+      ],
+      "fixtures": [
+        "paired envelopes",
+        "zero-call attach",
+        "est_spend_usd dropped",
+        "workflow omitted"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "container",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "RECORD_FORMAT",
+      "compatibility_risk": "Record-format and customer-output once wired.",
+      "rollback": "Previous writer. Dual-read. Unknown fields are not success.",
+      "release_boundary": "RU-VOCAB staged. Conformance evidence for a paired claim ships together.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED then STRANGER_HOST_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        2,
+        7,
+        11
+      ],
+      "gates": [
+        "after PKG-01 S1-G2",
+        "separate writer-cutover force",
+        "CLI 0.3.24 remains frozen"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-03",
+      "name": "Optics self-health and diagnostic event model",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Optics failures can be mistaken for customer or provider failures, and diagnostic writes can recurse.",
+      "scope": "product_health record and A5 diagnostic names, recursion stop, separation from customer activity.",
+      "non_scope": "vantio doctor, support bundle, UI, numeric targets, alerting.",
+      "requirements_assigned": [],
+      "architecture_documents": [
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md"
+      ],
+      "predecessors": [
+        "PKG-01"
+      ],
+      "downstream": [
+        "PKG-12",
+        "PKG-13",
+        "PKG-10"
+      ],
+      "later_files": [
+        "health-record builder beside the contract package"
+      ],
+      "fixtures": [
+        "recursion stop",
+        "canary absent from health payload"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "LOW_UNTIL_STORED",
+      "compatibility_risk": "Missing health later means unknown drop state, which is not query COMPLETE.",
+      "rollback": "Stop writing health records. Observation files remain.",
+      "release_boundary": "RU-HEALTH before diagnostic commands and before default store path.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4
+      ],
+      "gates": [
+        "after PKG-01",
+        "before PKG-13",
+        "before PKG-07 default path"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-04",
+      "name": "Portable proof canonicalization and verifier",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Today's proof is a rendering. A byte-stable local export is specified and not built.",
+      "scope": "OPTICS_CANONICAL_JSON version 1 for proof.json and manifest.json, golden vector, allowlist, completeness copy, annotation exclusion by default.",
+      "non_scope": "Attestation language, OTLP, HTML or Markdown inside the hash, rewriting proofs during compaction.",
+      "requirements_assigned": [
+        "OF-43"
+      ],
+      "architecture_documents": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "predecessors": [
+        "PKG-01"
+      ],
+      "downstream": [
+        "PKG-08",
+        "PKG-17"
+      ],
+      "later_files": [
+        "Node and Python canonicalizers"
+      ],
+      "fixtures": [
+        "428-byte golden vector",
+        "inserted space",
+        "key order",
+        "prohibited field absent"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "PROOF_BYTES_IMMUTABLE",
+      "compatibility_risk": "Existing proofs must verify or fail closed without reserialization.",
+      "rollback": "Keep proof files. Failed verification is not a pass.",
+      "release_boundary": "RU-PROOF library after PKG-01 and before preservation claims.",
+      "evidence_required_before_external_claim": "UNIT_PROVED on the vector, then INTEGRATION_PROVED for both languages",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        12
+      ],
+      "gates": [
+        "after PKG-01",
+        "before PKG-08 preservation claim"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-05",
+      "name": "Operational-store interface and in-memory/reference adapter",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Search, tail, and diff scan every JSON file. The application API must exist before a binding is chosen.",
+      "scope": "Application-owned put/get/query interface and an in-memory adapter. No caller SQL.",
+      "non_scope": "Node binding selection, store.sqlite, WAL, migrations, raw SQL API, DuckDB, daemon.",
+      "requirements_assigned": [],
+      "architecture_documents": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "05-CORRELATION-AND-QUERY-CONTRACT.md"
+      ],
+      "predecessors": [
+        "PKG-01"
+      ],
+      "downstream": [
+        "PKG-06",
+        "PKG-07",
+        "PKG-10",
+        "PKG-12"
+      ],
+      "later_files": [
+        "interface module and in-memory adapter"
+      ],
+      "fixtures": [
+        "allowlist before insert",
+        "SQL text rejected"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "NONE",
+      "compatibility_risk": "Interface shape becomes the PKG-07 surface.",
+      "rollback": "Delete the adapter. No customer files change.",
+      "release_boundary": "RU-STORE-IFACE test library.",
+      "evidence_required_before_external_claim": "UNIT_PROVED. External store claims wait for PKG-07.",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": false,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [],
+      "gates": [
+        "after PKG-01",
+        "before PKG-06"
+      ],
+      "gates_satisfied": false,
+      "note": "OF-01 closes at PKG-07. This package is the interface half."
+    },
+    {
+      "id": "PKG-06",
+      "name": "SQLite binding evaluation and selection",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "customer_problem": "Node has no stdlib SQLite. Python stdlib sqlite3 is the expected mechanism and is not implemented.",
+      "scope": "A later Founder force selects a Node binding against the PKG-05 interface. This plan does not list candidates or add a dependency.",
+      "non_scope": "Adding a dependency, creating a database, schema, benchmarks, encryption.",
+      "requirements_assigned": [],
+      "architecture_documents": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "predecessors": [
+        "PKG-05"
+      ],
+      "downstream": [
+        "PKG-07"
+      ],
+      "later_files": [
+        "Founder decision record in a later force"
+      ],
+      "fixtures": [
+        "load-failure leaves application output unchanged"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "MEDIUM",
+      "migration_risk": "NONE_UNTIL_PKG-07",
+      "compatibility_risk": "Selection locks packaging.",
+      "rollback": "Founder reversal before PKG-07 ships.",
+      "release_boundary": "RU-BINDING ships together with PKG-07 after selection.",
+      "evidence_required_before_external_claim": "STRANGER_HOST_PROVED load matrix before the binding is called shippable",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        9
+      ],
+      "gates": [
+        "Founder decision 9",
+        "PKG-05 accepted"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-07",
+      "name": "SQLite schema and transactional persistence",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Per-run JSON is the current index and does not provide transactional crash behavior.",
+      "scope": "Application-owned schema, WAL, user_version, privacy_generation, external recovery envelope, owner-only create, symlink confinement, no raw SQL API, no empty replacement of a corrupt file.",
+      "non_scope": "Legacy import, retention commands, binding shopping, encryption, invented Windows ACLs, numeric page size, stable public schema.",
+      "requirements_assigned": [
+        "OF-01",
+        "OF-16",
+        "OF-34",
+        "OF-35"
+      ],
+      "architecture_documents": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md",
+        "07-THREAT-MODEL.md"
+      ],
+      "predecessors": [
+        "PKG-01",
+        "PKG-05",
+        "PKG-06",
+        "PKG-12"
+      ],
+      "downstream": [
+        "PKG-08",
+        "PKG-11"
+      ],
+      "later_files": [
+        "schema and open/write/recover modules called by a future CLI and future Python"
+      ],
+      "fixtures": [
+        "A3 corrupt-store plan",
+        "newer user_version refused",
+        "weaker writer refused",
+        "alternating writers"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "container",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "HIGH",
+      "compatibility_risk": "First writer assigns versions later writers must honor. Legacy JSON is kept.",
+      "rollback": "No down-migration. Legacy JSON remains. Corrupt bytes stay. Unknown fields are not success.",
+      "release_boundary": "RU-STORE together with the selected binding and PKG-12.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED on one file from both languages, then STRANGER_HOST_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4,
+        5,
+        8,
+        9
+      ],
+      "gates": [
+        "decision 9",
+        "PKG-12 green",
+        "independent council on the implementation tip"
+      ],
+      "gates_satisfied": false,
+      "note": "File-backed query in PKG-10 waits for this package. The memory-adapter query does not. That wait is a mode gate, not a package-level edge."
+    },
+    {
+      "id": "PKG-08",
+      "name": "Legacy JSON compatibility and migration tooling",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Customers already have per-run JSON. Ignoring it hides evidence. Copying on first open would surprise them.",
+      "scope": "Dual-read adapter plus explicit copy that keeps originals. VANTIO_HOME for future readers. Origin rules. Corrupt JSON counted and skipped.",
+      "non_scope": "Copy on first open, promote to LOCAL_OBSERVATION, deletion of originals, reusing legacy schema_version 2 as user_version, patching CLI 0.3.24.",
+      "requirements_assigned": [
+        "OF-48"
+      ],
+      "architecture_documents": [
+        "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md",
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md"
+      ],
+      "predecessors": [
+        "PKG-07",
+        "PKG-04",
+        "PKG-01"
+      ],
+      "downstream": [
+        "PKG-15"
+      ],
+      "later_files": [
+        "read-only adapter and explicit migrate command in a future CLI"
+      ],
+      "fixtures": [
+        "A3 section 7",
+        "unproven LOCAL_OBSERVATION reads as LEGACY_UNMARKED",
+        "demo excluded from trends"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "HIGH",
+      "compatibility_risk": "A bad mapper can persist a secret or launder origin.",
+      "rollback": "Originals remain. Failed copy rolls back the transaction. No down-migration.",
+      "release_boundary": "RU-MIGRATE explicit customer invocation.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        6
+      ],
+      "gates": [
+        "after PKG-07 and PKG-04",
+        "dry-run before write copy"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-09",
+      "name": "Correlation identity and child-process propagation",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Today's trace_id is a process-run id. Child processes and inherited context can be miscounted.",
+      "scope": "session_id, run_id, trace_id, span_id, producer_id, producer_sequence, event_id encoding, asserted trace context, explicit parent run, conflict visibility, baggage dropped.",
+      "non_scope": "Timestamp parenthood, time-window dedup while NOT_SET, synthetic LOCAL_OBSERVATION for unobserved children, SQLite.",
+      "requirements_assigned": [
+        "OF-03",
+        "OF-21",
+        "OF-25"
+      ],
+      "architecture_documents": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md",
+        "07-THREAT-MODEL.md",
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md"
+      ],
+      "predecessors": [
+        "PKG-01",
+        "PKG-02"
+      ],
+      "downstream": [
+        "PKG-10"
+      ],
+      "later_files": [
+        "future CLI wrapper and future Python process wrap"
+      ],
+      "fixtures": [
+        "A4 section 1.1"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "MEDIUM",
+      "migration_risk": "RECORD_FORMAT",
+      "compatibility_risk": "High-cardinality ids stay off metric labels.",
+      "rollback": "Old files keep one trace_id mapped to legacy run_id. Missing parent stays null.",
+      "release_boundary": "RU-CORRELATION after PKG-02. Session-aware queries wait for PKG-10.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4
+      ],
+      "gates": [
+        "after PKG-01",
+        "before PKG-10 session filters"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-10",
+      "name": "Bounded query contract and query engine",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Search is an unbounded substring scan. Completeness, drops, and integrity are not one answer.",
+      "scope": "A4 request and response envelope, limits, two sorts, opaque cursor, exact predicates, cardinality, completeness of declared scope, default origin LOCAL_OBSERVATION.",
+      "non_scope": "Arbitrary SQL, caller regular expressions, body filters, UI, trend commands, freshness CURRENT.",
+      "requirements_assigned": [
+        "OF-27",
+        "OF-29",
+        "OF-33",
+        "OF-42"
+      ],
+      "architecture_documents": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md",
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "predecessors": [
+        "PKG-09",
+        "PKG-05",
+        "PKG-03",
+        "PKG-12"
+      ],
+      "downstream": [
+        "PKG-14",
+        "PKG-15"
+      ],
+      "later_files": [
+        "query module and a future CLI command"
+      ],
+      "fixtures": [
+        "A4 section 5.3"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "NONE",
+      "compatibility_risk": "Customer-output. Pagination is not completeness.",
+      "rollback": "Disable the command. An answer without completeness is not rendered as COMPLETE.",
+      "release_boundary": "RU-QUERY. Memory adapter can precede the file. Customer command waits for the file.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4,
+        10
+      ],
+      "gates": [
+        "after correlation and store interface",
+        "before UI",
+        "before trends"
+      ],
+      "gates_satisfied": false,
+      "note": "File-backed engine also waits for PKG-07."
+    },
+    {
+      "id": "PKG-11",
+      "name": "Retention, pruning, deletion, backup, and restoration",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "A future limit must not silently delete evidence or rewrite exported proofs.",
+      "scope": "Default unbounded retention, dry-run manifest, second explicit delete step, explicit restore onto a new store id.",
+      "non_scope": "vantio prune in this plan, compliance claims, deletion to free space, encryption.",
+      "requirements_assigned": [
+        "OF-02",
+        "OF-15",
+        "OF-41"
+      ],
+      "architecture_documents": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md"
+      ],
+      "predecessors": [
+        "PKG-07"
+      ],
+      "downstream": [],
+      "later_files": [
+        "future prune and config commands"
+      ],
+      "fixtures": [
+        "unset limit deletes nothing",
+        "dry-run deletes nothing",
+        "proof bytes unchanged"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "HIGH",
+      "compatibility_risk": "Manifests must not list payloads. Salvage is not COMPLETE.",
+      "rollback": "Completed deletes are not guessed back. Failed restore leaves original bytes.",
+      "release_boundary": "RU-RETENTION optional. Default install stays unbounded.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4,
+        5,
+        8
+      ],
+      "gates": [
+        "after PKG-07",
+        "two-step prune"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-12",
+      "name": "Fail-open, overload, crash, and recovery behavior",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Observation must not fail, hang, or rewrite the application call, and must not invent a successful observation.",
+      "scope": "A5 fail-open invariant, explicit drops, default UNSAMPLED, queue-full without deleting history, lifecycle, clock quality, crash labels.",
+      "non_scope": "Numeric budgets, sampling policies, enforcement actions, invented timeouts, alerting.",
+      "requirements_assigned": [
+        "OF-14",
+        "OF-26",
+        "OF-31",
+        "OF-32"
+      ],
+      "architecture_documents": [
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+        "07-THREAT-MODEL.md"
+      ],
+      "predecessors": [
+        "PKG-01",
+        "PKG-03",
+        "PKG-05"
+      ],
+      "downstream": [
+        "PKG-07",
+        "PKG-10",
+        "PKG-16"
+      ],
+      "later_files": [
+        "runtime guards in a future CLI and future Python writer"
+      ],
+      "fixtures": [
+        "application result unchanged",
+        "symlink refusal",
+        "queue-full drop count",
+        "duplicate hooks"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "container",
+        "offline"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "MEDIUM",
+      "compatibility_risk": "Missing flush is not relabeled COMPLETE.",
+      "rollback": "Revert to today's exit write. Recovery envelopes stay. They are not deleted to look healthy.",
+      "release_boundary": "RU-FAILOPEN ships with the default SQLite writer. Slice 1 covers the contract-API subset.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED including crash and fail-open, then STRANGER_HOST_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4
+      ],
+      "gates": [
+        "before PKG-07 default path",
+        "S1-G7 covers only the contract-API subset"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-13",
+      "name": "Coverage transparency and future diagnostic command surface",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Unsupported clients and coverage gaps can be read as quiet success.",
+      "scope": "Future coverage status using existing tokens and product-health. Deferred CLI chrome stays deferred.",
+      "non_scope": "vantio doctor, NO_COLOR, shell completion, status legend, pager, quiet mode, generated help, example repository, public doc rewrite.",
+      "requirements_assigned": [
+        "OF-07",
+        "OF-08",
+        "OF-09",
+        "OF-10",
+        "OF-11",
+        "OF-12",
+        "OF-17",
+        "OF-18",
+        "OF-50",
+        "OF-51",
+        "OF-52"
+      ],
+      "architecture_documents": [
+        "01-CURRENT-STATE-INVENTORY.md",
+        "00-PROGRAM-BOUNDARY.md"
+      ],
+      "predecessors": [
+        "PKG-03",
+        "PKG-01"
+      ],
+      "downstream": [],
+      "later_files": [
+        "future CLI coverage command after 0.3.24"
+      ],
+      "fixtures": [
+        "unsupported client is COVERAGE or UNKNOWN and NOT_OBSERVED"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "LOW",
+      "migration_risk": "NONE",
+      "compatibility_risk": "Customer-output if a command is added. Read-only.",
+      "rollback": "Remove the command. Stored evidence stays.",
+      "release_boundary": "RU-COVERAGE independently after self-health. Deferred items stay out.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED if OF-12 is built",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [],
+      "gates": [
+        "self-health before the command",
+        "CLI 0.3.24 unchanged"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-14",
+      "name": "Local read-only UI foundation",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "customer_problem": "A local read-only view is a roadmap target. The charter is not opened.",
+      "scope": "After decision 13: loopback, no third-party assets, no mutation API, no daemon, PKG-10 envelope, incomplete states shown as incomplete.",
+      "non_scope": "Any UI file in this plan, account login, hosted dashboard.",
+      "requirements_assigned": [
+        "OF-06",
+        "OF-36",
+        "OF-37"
+      ],
+      "architecture_documents": [
+        "08-ARCHITECTURE-DECISION-PACK.md",
+        "07-THREAT-MODEL.md",
+        "09-IMPLEMENTATION-GATES.md"
+      ],
+      "predecessors": [
+        "PKG-10"
+      ],
+      "downstream": [],
+      "later_files": [],
+      "fixtures": [
+        "T7 injection",
+        "T8 non-loopback refusal",
+        "partial envelope not shown as success"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS"
+      ],
+      "privacy_risk": "HIGH",
+      "migration_risk": "NONE",
+      "compatibility_risk": "UI writes nothing.",
+      "rollback": "Stop the process. No data half.",
+      "release_boundary": "RU-UI own release after the charter.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED after a charter",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        4,
+        13
+      ],
+      "gates": [
+        "decision 13",
+        "PKG-10",
+        "OF-36 prerequisites"
+      ],
+      "gates_satisfied": false,
+      "note": "OF-30 exemplars wait on a UI drill-down. Trend indicators in PKG-15 do not wait on the UI charter."
+    },
+    {
+      "id": "PKG-15",
+      "name": "Trends, baselines, indicators, and exemplars",
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "customer_problem": "Cross-run comparison is a two-file diff. Indicators are easy to confuse with SLOs and with demo or legacy rows.",
+      "scope": "Structural indicators, default trend exclusions, completeness carried from the source, no SLO until a customer sets a target and a window.",
+      "non_scope": "Topology surface, customer-configured objectives, alerting, numeric SLO targets.",
+      "requirements_assigned": [
+        "OF-04",
+        "OF-23",
+        "OF-24",
+        "OF-28",
+        "OF-30",
+        "OF-46"
+      ],
+      "architecture_documents": [
+        "05-CORRELATION-AND-QUERY-CONTRACT.md",
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "predecessors": [
+        "PKG-10",
+        "PKG-01"
+      ],
+      "downstream": [
+        "PKG-16"
+      ],
+      "later_files": [
+        "future trend command after the query engine"
+      ],
+      "fixtures": [
+        "demo and LEGACY_UNMARKED excluded",
+        "partial source stays partial",
+        "session_id rejected as a metric label"
+      ],
+      "platform_matrix": [
+        "Windows",
+        "Linux",
+        "macOS",
+        "WSL",
+        "offline"
+      ],
+      "privacy_risk": "MEDIUM",
+      "migration_risk": "NONE",
+      "compatibility_risk": "Wrong origin filter inflates customer activity.",
+      "rollback": "Disable the command. Missing origin is not treated as LOCAL_OBSERVATION.",
+      "release_boundary": "RU-TREND after query. SLO configuration is not in this release.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        6,
+        10,
+        13
+      ],
+      "gates": [
+        "origin and completeness before trends",
+        "indicators before customer objectives",
+        "UI charter before exemplar drill-down"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-16",
+      "name": "Future alerting architecture implementation",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "customer_problem": "Alert delivery mode is unselected. A daemon would contradict fail-open.",
+      "scope": "After decision 3, only the selected mode, fed by indicators and completeness.",
+      "non_scope": "Any alerter, daemon, or webhook in this plan. Incident workflow is deferred.",
+      "requirements_assigned": [
+        "OF-44",
+        "OF-45"
+      ],
+      "architecture_documents": [
+        "06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+        "08-ARCHITECTURE-DECISION-PACK.md"
+      ],
+      "predecessors": [
+        "PKG-15",
+        "PKG-10",
+        "PKG-12"
+      ],
+      "downstream": [],
+      "later_files": [],
+      "fixtures": [
+        "Optics failure does not fail the application exit"
+      ],
+      "platform_matrix": [],
+      "privacy_risk": "HIGH",
+      "migration_risk": "NONE",
+      "compatibility_risk": "Alert body must not copy a prohibited payload.",
+      "rollback": "Disable the emitter. Evidence rows stay.",
+      "release_boundary": "RU-ALERT own release after decision 3.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED then STRANGER_HOST_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        3
+      ],
+      "gates": [
+        "decision 3 before any alert implementation"
+      ],
+      "gates_satisfied": false
+    },
+    {
+      "id": "PKG-17",
+      "name": "Future interoperability and export implementation",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "customer_problem": "OTLP or SIEM export is requested by the roadmap and left unauthorized. Portable proof is the specified export.",
+      "scope": "After decision 12, only the exporter the Founder names, using the PKG-01 denylist and copied completeness.",
+      "non_scope": "OTLP, SIEM, webhooks, and any network export in this plan.",
+      "requirements_assigned": [],
+      "architecture_documents": [
+        "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md",
+        "08-ARCHITECTURE-DECISION-PACK.md",
+        "02-EVIDENCE-AND-PRIVACY-CONTRACT.md"
+      ],
+      "predecessors": [
+        "PKG-01",
+        "PKG-04"
+      ],
+      "downstream": [],
+      "later_files": [],
+      "fixtures": [
+        "prohibited canary absent from exported bytes"
+      ],
+      "platform_matrix": [],
+      "privacy_risk": "HIGH",
+      "migration_risk": "NONE",
+      "compatibility_risk": "Export can leave the machine. It does not exist in this plan.",
+      "rollback": "Disable the exporter. Proof files stay. A denied payload is not sent after rollback.",
+      "release_boundary": "RU-EXPORT own release after decision 12.",
+      "evidence_required_before_external_claim": "INTEGRATION_PROVED and STRANGER_HOST_PROVED",
+      "evidence_tier_now": "UNSET",
+      "independent_verifier_required": true,
+      "stranger_host_required_before_external_claim": true,
+      "customer_validation_now": "UNSET",
+      "unresolved_founder_decisions": [
+        12
+      ],
+      "gates": [
+        "decision 12",
+        "export privacy before the exporter"
+      ],
+      "gates_satisfied": false,
+      "note": "OF-43 closes in PKG-04. This package is the blocked network-export successor."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "OF-01",
+      "title": "Local operational store distinct from JSON proof",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 1 item 1",
+      "package": "PKG-07",
+      "prerequisites": [
+        "PKG-01",
+        "PKG-05",
+        "PKG-06",
+        "PKG-12"
+      ],
+      "release_unit": "RU-STORE",
+      "rollback_unit": "PKG-07",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "STORE_FILE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "crash",
+        "concurrency",
+        "cross-version",
+        "os-matrix",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        4,
+        5,
+        8,
+        9
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Closes the local store. Interface is PKG-05. Binding is decision 9."
+    },
+    {
+      "id": "OF-02",
+      "title": "Retention and pruning without silent deletion",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 1 item 2",
+      "package": "PKG-11",
+      "prerequisites": [
+        "PKG-07"
+      ],
+      "release_unit": "RU-RETENTION",
+      "rollback_unit": "PKG-11",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "STORE_FILE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "privacy-corpus",
+        "os-matrix",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        4,
+        5,
+        8
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Default unbounded. Dry-run manifest. Commands not created here."
+    },
+    {
+      "id": "OF-03",
+      "title": "Session grouping distinct from a call trace id",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 2 item 3",
+      "package": "PKG-09",
+      "prerequisites": [
+        "PKG-01",
+        "PKG-02"
+      ],
+      "release_unit": "RU-CORRELATION",
+      "rollback_unit": "PKG-09",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "RECORD_FORMAT",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "privacy-corpus",
+        "os-matrix",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Session grouping distinct from trace id. Slice 1 validates the field. Propagation is this package."
+    },
+    {
+      "id": "OF-04",
+      "title": "Cross-run trend command",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 2 item 4",
+      "package": "PKG-15",
+      "prerequisites": [
+        "PKG-10",
+        "PKG-01"
+      ],
+      "release_unit": "RU-TREND",
+      "rollback_unit": "PKG-15",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "privacy-corpus",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        6,
+        10
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Default scope excludes LEGACY_UNMARKED, demo, fixture, and imported origins."
+    },
+    {
+      "id": "OF-05",
+      "title": "Usage and cost metadata",
+      "architecture_status": "NEEDS_FOUNDER_DECISION",
+      "architecture_section": "Section 2 item 5",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        2
+      ],
+      "status": "NEEDS_FOUNDER_DECISION",
+      "notes": "Not on the allowlist. No body inspection. Safe default is exclusion."
+    },
+    {
+      "id": "OF-06",
+      "title": "Local read-only web UI",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 3 item 6",
+      "package": "PKG-14",
+      "prerequisites": [
+        "PKG-10"
+      ],
+      "release_unit": "RU-UI",
+      "rollback_unit": "PKG-14",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "privacy-corpus",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        13,
+        4
+      ],
+      "status": "NEEDS_FOUNDER_DECISION",
+      "notes": "UI not designed as a build. Charter is decision 13."
+    },
+    {
+      "id": "OF-07",
+      "title": "NO_COLOR support",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 4 item 7",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [
+        "unit"
+      ],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Inventory shows no NO_COLOR handling. Out of the foundation critical path."
+    },
+    {
+      "id": "OF-08",
+      "title": "Shell completion",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 4 item 8",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Architecture note: out of this foundation implementation scope."
+    },
+    {
+      "id": "OF-09",
+      "title": "Status legend command",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 4 item 9",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Architecture note: out of this foundation implementation scope."
+    },
+    {
+      "id": "OF-10",
+      "title": "Pager awareness",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 4 item 10",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Pager not present on tail or search. No contract in this pack."
+    },
+    {
+      "id": "OF-11",
+      "title": "Quiet mode distinct from JSON",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 4 item 11",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Not specified as a command in the architecture pack."
+    },
+    {
+      "id": "OF-12",
+      "title": "Coverage status command",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 5 item 12",
+      "package": "PKG-13",
+      "prerequisites": [
+        "PKG-03",
+        "PKG-01"
+      ],
+      "release_unit": "RU-COVERAGE",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "os-matrix",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Coverage command waits on self-health. It is not created here."
+    },
+    {
+      "id": "OF-13",
+      "title": "Metadata redaction release-blocking suite",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 6 item 13",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "privacy-corpus",
+        "adversity",
+        "property"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "PLANNED",
+      "notes": "Release-blocking suite is specified. Slice 1 builds it against the contract function. Live CLI stays PARTIAL until a later writer cutover."
+    },
+    {
+      "id": "OF-14",
+      "title": "Fail-open reliability",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 6 item 14",
+      "package": "PKG-12",
+      "prerequisites": [
+        "PKG-01",
+        "PKG-03",
+        "PKG-05"
+      ],
+      "release_unit": "RU-FAILOPEN",
+      "rollback_unit": "PKG-12",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "BOTH",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "crash",
+        "concurrency",
+        "os-matrix",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        4
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Slice 1 covers the contract-API subset only. Closing package is PKG-12. Numeric target stays NOT_SET."
+    },
+    {
+      "id": "OF-15",
+      "title": "Versioned config file",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 7 item 15",
+      "package": "PKG-11",
+      "prerequisites": [
+        "PKG-07"
+      ],
+      "release_unit": "RU-RETENTION",
+      "rollback_unit": "PKG-11",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "CONFIGURATION",
+      "cross_package_effect": true,
+      "tests": [
+        "integration"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        4
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Config-file schema is not fully specified. Limits stay unset, which means unbounded."
+    },
+    {
+      "id": "OF-16",
+      "title": "Flag and schema deprecation policy",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 7 item 16",
+      "package": "PKG-07",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-07",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "No stable schema, so no deprecation schedule is opened."
+    },
+    {
+      "id": "OF-17",
+      "title": "Generated help reference",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 7 item 17",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Not produced by the architecture force and not scheduled here."
+    },
+    {
+      "id": "OF-18",
+      "title": "Runnable multi-agent example repository",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 7 item 18",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Not produced by the architecture force and not scheduled here."
+    },
+    {
+      "id": "OF-19",
+      "title": "Signal contract",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 1",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "PLANNED",
+      "notes": "Structural metadata only. Prompts, bodies, and OTLP content attributes stay excluded."
+    },
+    {
+      "id": "OF-20",
+      "title": "Semantic-convention conformance",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 2",
+      "package": "PKG-02",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-VOCAB",
+      "rollback_unit": "PKG-02",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "RECORD_FORMAT",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "cross-version",
+        "os-matrix",
+        "conformance"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "No OTLP export. schema_status stays unstable-pre-1.0. Trace id is not the run id in the target model."
+    },
+    {
+      "id": "OF-21",
+      "title": "Context-propagation security",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 3",
+      "package": "PKG-09",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-CORRELATION",
+      "rollback_unit": "PKG-09",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "RECORD_FORMAT",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "privacy-corpus",
+        "adversity"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Baggage prohibited. Size limits and conflict behavior are specified. Slice 1 validates. This package propagates."
+    },
+    {
+      "id": "OF-22",
+      "title": "Resource identity",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 4",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        11
+      ],
+      "status": "PLANNED",
+      "notes": "Process and runtime allowed. Machine hostname and username stay off the allowlist."
+    },
+    {
+      "id": "OF-23",
+      "title": "Observed dependency topology",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 5",
+      "package": "PKG-15",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-15",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "No ownership inference. A topology surface is not specified."
+    },
+    {
+      "id": "OF-24",
+      "title": "Baselines",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 6",
+      "package": "PKG-15",
+      "prerequisites": [
+        "PKG-10",
+        "PKG-01"
+      ],
+      "release_unit": "RU-TREND",
+      "rollback_unit": "PKG-15",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        6,
+        10
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Excludes non-local origins. Structural fields only."
+    },
+    {
+      "id": "OF-25",
+      "title": "Deduplication and idempotency",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 7",
+      "package": "PKG-09",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-CORRELATION",
+      "rollback_unit": "PKG-09",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "RECORD_FORMAT",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "property"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        4
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "event_id is producer_id plus producer_sequence. Identical replay does not inflate counts. Time window stays NOT_SET."
+    },
+    {
+      "id": "OF-26",
+      "title": "Instrumentation conflicts",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 8",
+      "package": "PKG-12",
+      "prerequisites": [
+        "PKG-01",
+        "PKG-03",
+        "PKG-05"
+      ],
+      "release_unit": "RU-FAILOPEN",
+      "rollback_unit": "PKG-12",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "RECORD_FORMAT",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "concurrency"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Duplicate insert does not inflate counts. Fail-open closure waits on PKG-01, PKG-03, and PKG-05. Fixtures that need event_id also use PKG-09 once that package exists. Coexistence tests are specified and not run."
+    },
+    {
+      "id": "OF-27",
+      "title": "Data-quality dimensions",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 9",
+      "package": "PKG-10",
+      "prerequisites": [
+        "PKG-05",
+        "PKG-09",
+        "PKG-12"
+      ],
+      "release_unit": "RU-QUERY",
+      "rollback_unit": "PKG-10",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "property"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        10
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Query envelope carries freshness, completeness, completenessReasons, and integrityState. CURRENT stays unemitted."
+    },
+    {
+      "id": "OF-28",
+      "title": "Golden signals",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 10",
+      "package": "PKG-15",
+      "prerequisites": [
+        "PKG-10"
+      ],
+      "release_unit": "RU-TREND",
+      "rollback_unit": "PKG-15",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Indicators only. Separate from product-health. Not SLOs."
+    },
+    {
+      "id": "OF-29",
+      "title": "Cardinality-safe metric model",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 11",
+      "package": "PKG-10",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-QUERY",
+      "rollback_unit": "PKG-10",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "property"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "High-cardinality ids stay on events. They are not metric labels."
+    },
+    {
+      "id": "OF-30",
+      "title": "Exemplars",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 12",
+      "package": "PKG-15",
+      "prerequisites": [
+        "PKG-14",
+        "PKG-10"
+      ],
+      "release_unit": "RU-TREND",
+      "rollback_unit": "PKG-15",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        13
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Drill-down depends on a UI charter that is not opened."
+    },
+    {
+      "id": "OF-31",
+      "title": "Sampling correction",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 13",
+      "package": "PKG-12",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-FAILOPEN",
+      "rollback_unit": "PKG-12",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "RECORD_FORMAT",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "integration"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Default UNSAMPLED. Sampling is not introduced."
+    },
+    {
+      "id": "OF-32",
+      "title": "Performance budgets",
+      "architecture_status": "NEEDS_FOUNDER_DECISION",
+      "architecture_section": "Section 23 item 14",
+      "package": "PKG-12",
+      "prerequisites": [],
+      "release_unit": "RU-FAILOPEN",
+      "rollback_unit": "PKG-12",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        4
+      ],
+      "status": "NEEDS_FOUNDER_DECISION",
+      "notes": "Every numeric target is NOT_SET. This plan does not set one."
+    },
+    {
+      "id": "OF-33",
+      "title": "Graceful degradation",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 15",
+      "package": "PKG-10",
+      "prerequisites": [
+        "PKG-12",
+        "PKG-03"
+      ],
+      "release_unit": "RU-QUERY",
+      "rollback_unit": "PKG-10",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "dropState and completeness are on every default answer. Known drops in scope are PARTIAL. Application continues."
+    },
+    {
+      "id": "OF-34",
+      "title": "Crash consistency",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 16",
+      "package": "PKG-07",
+      "prerequisites": [
+        "PKG-12",
+        "PKG-05",
+        "PKG-06"
+      ],
+      "release_unit": "RU-STORE",
+      "rollback_unit": "PKG-07",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "STORE_FILE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "crash",
+        "adversity",
+        "os-matrix"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        5,
+        9
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "External recovery envelope. STOPPED_PRESERVED first. Salvage is never COMPLETE."
+    },
+    {
+      "id": "OF-35",
+      "title": "Local security",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 17",
+      "package": "PKG-07",
+      "prerequisites": [
+        "PKG-06"
+      ],
+      "release_unit": "RU-STORE",
+      "rollback_unit": "PKG-07",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "STORE_FILE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "os-matrix",
+        "offline"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        5,
+        8
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Owner-only modes and symlink confinement. Windows ACL detail is decision 8."
+    },
+    {
+      "id": "OF-36",
+      "title": "Local UI security",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 18",
+      "package": "PKG-14",
+      "prerequisites": [
+        "PKG-10"
+      ],
+      "release_unit": "RU-UI",
+      "rollback_unit": "PKG-14",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        13
+      ],
+      "status": "NEEDS_FOUNDER_DECISION",
+      "notes": "Loopback, no third-party assets, no mutation API, no daemon. UI itself waits on decision 13."
+    },
+    {
+      "id": "OF-37",
+      "title": "Accessibility",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 19",
+      "package": "PKG-14",
+      "prerequisites": [
+        "PKG-10"
+      ],
+      "release_unit": "RU-UI",
+      "rollback_unit": "PKG-14",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        13
+      ],
+      "status": "NEEDS_FOUNDER_DECISION",
+      "notes": "Accessibility is not designed. Charter is decision 13."
+    },
+    {
+      "id": "OF-38",
+      "title": "Destination normalization",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 20",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "privacy-corpus",
+        "property"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "PLANNED",
+      "notes": "Case, explicit ports, query stripped, no redirect rewrite."
+    },
+    {
+      "id": "OF-39",
+      "title": "Provider identity confidence",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 21",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "conformance"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "PLANNED",
+      "notes": "Catalog, regional pattern, local Ollama, or unknown. Writer cutover is PKG-02. Slice 1 locks the rule and fixtures."
+    },
+    {
+      "id": "OF-40",
+      "title": "Privacy corpus",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 22",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "privacy-corpus",
+        "unit",
+        "property"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "PLANNED",
+      "notes": "Corpus scope is specified in the Slice 1 spec. Tests are not implemented by this planning PR."
+    },
+    {
+      "id": "OF-41",
+      "title": "Local data operations",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 23",
+      "package": "PKG-11",
+      "prerequisites": [
+        "PKG-07"
+      ],
+      "release_unit": "RU-RETENTION",
+      "rollback_unit": "PKG-11",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "STORE_FILE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "privacy-corpus",
+        "adversity"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Selective delete only via manifest. No compliance claims."
+    },
+    {
+      "id": "OF-42",
+      "title": "Automation contract",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 24",
+      "package": "PKG-10",
+      "prerequisites": [
+        "PKG-05",
+        "PKG-09"
+      ],
+      "release_unit": "RU-QUERY",
+      "rollback_unit": "PKG-10",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Bounded query is the read contract. Local only."
+    },
+    {
+      "id": "OF-43",
+      "title": "Export formats",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 25",
+      "package": "PKG-04",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-PROOF",
+      "rollback_unit": "PKG-04",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "integration",
+        "property",
+        "privacy-corpus",
+        "cross-version"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        12
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Proof profile only. OTLP stays unauthorized under decision 12 and PKG-17."
+    },
+    {
+      "id": "OF-44",
+      "title": "Incident workflow",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 26",
+      "package": "PKG-16",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-16",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Incident workflow is not specified."
+    },
+    {
+      "id": "OF-45",
+      "title": "Alert lifecycle",
+      "architecture_status": "NEEDS_FOUNDER_DECISION",
+      "architecture_section": "Section 23 item 27",
+      "package": "PKG-16",
+      "prerequisites": [
+        "PKG-15",
+        "PKG-10",
+        "PKG-12"
+      ],
+      "release_unit": "RU-ALERT",
+      "rollback_unit": "PKG-16",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "adversity",
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        3
+      ],
+      "status": "NEEDS_FOUNDER_DECISION",
+      "notes": "Delivery mode not selected. No daemon."
+    },
+    {
+      "id": "OF-46",
+      "title": "SLI/SLO separation",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 28",
+      "package": "PKG-15",
+      "prerequisites": [
+        "PKG-10"
+      ],
+      "release_unit": "RU-TREND",
+      "rollback_unit": "PKG-15",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "No SLO until a customer sets a target and a window. This plan does not create that configuration."
+    },
+    {
+      "id": "OF-47",
+      "title": "Cross-platform matrix",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 29",
+      "package": "PKG-02",
+      "prerequisites": [
+        "PKG-01"
+      ],
+      "release_unit": "RU-VOCAB",
+      "rollback_unit": "PKG-02",
+      "privacy_criticality": "MEDIUM",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "os-matrix",
+        "offline",
+        "stranger-host",
+        "independent-verifier"
+      ],
+      "required_evidence_tier_before_external_claim": "STRANGER_HOST_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        8
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "Matrix is not executed. Windows ACL specifics remain decision 8."
+    },
+    {
+      "id": "OF-48",
+      "title": "Upgrade and rollback",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 30",
+      "package": "PKG-08",
+      "prerequisites": [
+        "PKG-07",
+        "PKG-04",
+        "PKG-01"
+      ],
+      "release_unit": "RU-MIGRATE",
+      "rollback_unit": "PKG-08",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "BOTH",
+      "cross_package_effect": true,
+      "tests": [
+        "integration",
+        "cross-version",
+        "adversity",
+        "privacy-corpus",
+        "os-matrix"
+      ],
+      "required_evidence_tier_before_external_claim": "INTEGRATION_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [
+        6
+      ],
+      "status": "BLOCKED_BY_DEPENDENCY",
+      "notes": "No down-migration. Privacy-weaker writer refused. Legacy files retained."
+    },
+    {
+      "id": "OF-49",
+      "title": "Product telemetry separation",
+      "architecture_status": "ARCHITECTURE_DEFINED",
+      "architecture_section": "Section 23 item 31",
+      "package": "PKG-01",
+      "prerequisites": [],
+      "release_unit": "RU-S1",
+      "rollback_unit": "PKG-01",
+      "privacy_criticality": "HIGH",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": true,
+      "tests": [
+        "unit",
+        "privacy-corpus"
+      ],
+      "required_evidence_tier_before_external_claim": "UNIT_PROVED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "PLANNED",
+      "notes": "Existing opt-in channel stays outside the evidence store. Disable overrides stay."
+    },
+    {
+      "id": "OF-50",
+      "title": "Documentation operability",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 32",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Public docs that conflict with source were inventoried and are not rewritten here."
+    },
+    {
+      "id": "OF-51",
+      "title": "Support and security operations",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 33",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "LOW",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [],
+      "required_evidence_tier_before_external_claim": "UNSET",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Not specified beyond threat cases and gates."
+    },
+    {
+      "id": "OF-52",
+      "title": "Independent customer acceptance",
+      "architecture_status": "TARGET_DESIGN",
+      "architecture_section": "Section 23 item 34",
+      "package": "PKG-13",
+      "prerequisites": [],
+      "release_unit": "RU-DEFERRED",
+      "rollback_unit": "PKG-13",
+      "privacy_criticality": "NONE",
+      "persistent_data_effect": "NONE",
+      "cross_package_effect": false,
+      "tests": [
+        "customer-validation"
+      ],
+      "required_evidence_tier_before_external_claim": "CUSTOMER_VALIDATED",
+      "evidence_tier_now": "UNSET",
+      "customer_validation_now": "UNSET",
+      "independent_verifier_now": "UNSET",
+      "stranger_host_now": "UNSET",
+      "unresolved_decisions": [],
+      "status": "DEFERRED",
+      "notes": "Tier is defined and assigned to no requirement as achieved. Customer validation stays UNSET."
+    }
+  ],
+  "evidence_note": "evidence_tier_now and customer_validation_now stay UNSET. required_evidence_tier_before_external_claim is the tier a later claim would need. It is not an achieved tier.",
+  "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+  "gate_8": "CLOSED",
+  "a8": "NOT_STARTED",
+  "persistent_data_effect_enum": [
+    "NONE",
+    "RECORD_FORMAT",
+    "STORE_FILE",
+    "BOTH",
+    "CONFIGURATION"
+  ],
+  "privacy_criticality_enum": [
+    "NONE",
+    "LOW",
+    "MEDIUM",
+    "HIGH"
+  ]
+}
