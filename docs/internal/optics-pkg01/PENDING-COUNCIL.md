@@ -2,24 +2,28 @@
 
 Audience: INTERNAL_RESTRICTED
 
-`PENDING_INDEPENDENT_RECOUNCIL`
+`OPTICS_PKG01_NEEDS_REVISION`
 
-Revision producer classification: `OPTICS_PKG01_REVISION_READY_FOR_COUNCIL`.
+Re-council is complete. This is not `OPTICS_PKG01_COUNCIL_PASSED`.
 
-This is not `OPTICS_PKG01_COUNCIL_PASSED`. The first council classification remains `OPTICS_PKG01_NEEDS_REVISION` in `INDEPENDENT-COUNCIL-REPORT.md`. That report is the first-council record and is not rewritten by this revision.
+Re-council report: `docs/internal/optics-pkg01/INDEPENDENT-RECOUNCIL-REPORT.md`
 
-Council agent: `bc-795c2ba1-73bc-5a15-beba-f1505acc58cf`
+Re-council agent: `bc-88b874ba-c80d-593c-be31-7332c8ba3f89`
 
-Report: `docs/internal/optics-pkg01/INDEPENDENT-COUNCIL-REPORT.md`
+Re-council run: https://cursor.com/agents/bc-88b874ba-c80d-593c-be31-7332c8ba3f89
 
-Branch: `implementation/optics-pkg01-evidence-privacy`
+Tip reviewed: `6da63f8aafceb7eed3950975d224848fec6c3ba5`
 
-Tip reviewed: `aac796416d3e6f64223445086f4a649b779c29fe`
+First council report remains historical: `docs/internal/optics-pkg01/INDEPENDENT-COUNCIL-REPORT.md`
 
-Implementation commit: `a25cdd00e6b0e4a531bf71538899b52b1efdb151`
+First council classification: `OPTICS_PKG01_NEEDS_REVISION`
+
+First council agent: `bc-795c2ba1-73bc-5a15-beba-f1505acc58cf`
 
 Draft PR: https://github.com/vantioai/vantio-open-core/pull/58
 
+Branch: `implementation/optics-pkg01-evidence-privacy`
+
 Do not merge, seal, publish, or integrate the live CLI or Python runtime from this branch.
 
-Founder choice: revise PKG-01. Runtime integration stays unauthorized.
+Founder choice: revise PKG-01 again. Runtime integration stays unauthorized.
