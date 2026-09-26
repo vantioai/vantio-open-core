@@ -15,11 +15,13 @@ class VersionTests(unittest.TestCase):
         self.assertIn('license = "MIT"', text)
         self.assertIn('license-files = ["LICENSE"]', text)
         package = project.parent
-        root = package.parents[1] / "LICENSE"
+        approved = package.parents[1] / "extensions" / "vantio-optics" / "LICENSE.txt"
         packed = package / "LICENSE"
-        self.assertEqual(packed.read_bytes(), root.read_bytes())
-        self.assertEqual(hashlib.sha256(root.read_bytes()).hexdigest(), "f41a838e502baec9034ac2011f6c8848be21ff18f2003fa22bc416a79df9bf11")
-        self.assertNotIn("patent", root.read_text(encoding="utf-8").lower())
+        root = package.parents[1] / "LICENSE"
+        self.assertFalse(root.exists())
+        self.assertEqual(packed.read_bytes(), approved.read_bytes())
+        self.assertEqual(hashlib.sha256(packed.read_bytes()).hexdigest(), "f41a838e502baec9034ac2011f6c8848be21ff18f2003fa22bc416a79df9bf11")
+        self.assertNotIn("patent", packed.read_text(encoding="utf-8").lower())
 
 
 if __name__ == "__main__":
