@@ -576,7 +576,7 @@ else go();
     assert.equal(result.status, 200);
     assert.equal(requests.target.length, 1, "observe must not block http.get");
     assert.equal(requests.ingest.length, 0, "free mode must never ingest");
-    assert.match(stderr, /OBSERVED/);
+    assert.match(stderr, /Optics status: Successful/);
   });
 
   test("PAID_MODE Node http.get + blocked_hosts: target never reached, BLOCKED_HOST ingest", async () => {
@@ -687,7 +687,8 @@ else go();
         FETCH_ONCE_SCRIPT
       );
       assert.equal(code, 0);
-      assert.match(stderr, /OBSERVED|Outbound LLM call intercepted/);
+      assert.match(stderr, /Optics status: Successful/);
+      assert.match(stderr, /Application outcome: Successful/);
     } finally {
       await new Promise((resolve) => ollamaServer.close(resolve));
     }

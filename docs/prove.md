@@ -40,6 +40,7 @@ vantio prove [options]
 | `--run=<trace-id>` | Generate a report for a specific run (by trace ID or prefix) |
 | `--from=<file>` | Generate a report from an explicit log file path |
 | `--format=html\|md` | Output format (default: `html`) |
+| `--json` | Unstable JSON (`schema_status` `unstable-pre-1.0`). May change without notice. |
 | `--out=<file>` | Write output to a named file |
 | `-h, --help` | Show help |
 

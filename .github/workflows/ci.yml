@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install strace
+        run: sudo apt-get update && sudo apt-get install -y strace
+
       - name: Lint @vantio/cli
         run: pnpm --filter @vantio/cli run lint
 

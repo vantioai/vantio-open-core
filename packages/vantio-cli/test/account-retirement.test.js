@@ -97,7 +97,7 @@ describe("public surfaces do not advertise accounts", () => {
   test("README and package metadata do not promise accounts, billing, or the missing config route", () => {
     const readme = readFileSync(README_PATH, "utf8");
     const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8"));
-    assert.equal(pkg.version, "0.3.23");
+    assert.equal(pkg.version, "0.3.24");
     assert.equal(pkg.license, "MIT");
     assert.ok(pkg.files.includes("README.md"));
     assert.ok(pkg.files.includes("LICENSE"));
@@ -363,7 +363,11 @@ describe("local proof still works with no config", () => {
       assert.equal(html.code, 0);
       const body = readFileSync(join(home, "p.html"), "utf8");
       assert.match(body, />503</);
-      assert.match(body, /OBSERVED/);
+      assert.match(body, /Optics status/);
+      assert.match(body, /Application outcome/);
+      assert.match(body, /Successful/);
+      assert.match(body, /Application error/);
+      assert.doesNotMatch(body, /Blocked|BLOCKED|REDACTED|DRY_RUN/);
       const md = await runCli(["prove", "--from", logPath, "--format=md"], { HOME: home });
       assert.equal(md.code, 0);
       assert.match(md.stdout, /503/);

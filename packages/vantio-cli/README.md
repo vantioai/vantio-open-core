@@ -48,6 +48,8 @@ Local `vantio prove`, `vantio search`, `vantio tail`, `vantio diff`, and `vantio
 
 ```bash
 vantio run <program>  # spawn a program under the Vantio execution context
+vantio demo           # in-process demo of one observed call (no network)
+vantio status         # local install and data status (no network by default)
 vantio discover       # local wrap history on this machine
 vantio prove          # generate a proof artifact from a local run log
 vantio search [query] # search local run logs by host, path, action, or free text
@@ -83,7 +85,10 @@ Your code doesn't change. Your agent runs normally. Observed calls are recorded 
 
 ```bash
 vantio run --summary node agent.js   # print a run summary on exit
+vantio run --json node agent.js      # unstable JSON run record on stdout
 ```
+
+**`--json`** on `run`, `demo`, `status`, `discover`, `prove`, `search`, `tail`, and `diff` prints `"schema_status": "unstable-pre-1.0"`. That shape may change without notice. Field mapping to OpenTelemetry GenAI terms is documented in the open-core repo at `docs/optics-otel-mapping.md`. There is no OTLP exporter.
 
 **`--summary`** — prints a summary when the process exits:
 
@@ -125,7 +130,17 @@ vantio search openai                   # free-text search across local runs
 vantio search --host=api.anthropic.com
 vantio tail                            # latest calls from the most recent run
 vantio tail -n 50 --run=<trace-id>
+vantio tail -n 0                       # zero calls
+vantio tail --all                      # every call in the run
 vantio diff <run-a> <run-b>            # hosts added/removed, call and byte deltas
+```
+
+`vantio tail --json --follow` is a usage error. Proofs and search results separate **Optics status** from **Application outcome**. The HTTP code is shown as HTTP status. A stored `ok` flag is not used.
+
+```bash
+vantio demo                            # POST /v1/chat/completions, HTTP 200, no network
+vantio status                          # version, telemetry, local data, provider SDKs
+vantio status --check-registry         # also asks npm for the latest version
 ```
 
 Same `~/.vantio/runs/` logs as `vantio prove`. Metadata only — prompts and completions are never stored.
