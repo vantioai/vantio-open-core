@@ -6,7 +6,9 @@ Status: `PENDING_INDEPENDENT_COUNCIL`
 
 Producer classification under review: `ENTERPRISE_E1_E3_INTERNAL_READY_FOR_COUNCIL`
 
-That classification is the handoff. It is not a verdict. The producer `bc-c9b05a34-636c-589b-987b-4ea94e4f8c4c` does not fill the verdict column.
+Revision handoff: `ENTERPRISE_E1_E3_INTERNAL_REVISION_READY_FOR_COUNCIL`
+
+That classification is the handoff. It is not a verdict. The producer `bc-c9b05a34-636c-589b-987b-4ea94e4f8c4c` does not fill the verdict column. A later revision on the same draft pull request closed three record-layer holds (`not_before`, sticky `ENDED`, and a later `NARROW` bounding existing grants). It does not fill the verdict column. Host proofs stay open.
 
 The plan council in `docs/planning/enterprise-governance/06-INDEPENDENT-COUNCIL.md` is a different review and is still pending. This file does not close it.
 

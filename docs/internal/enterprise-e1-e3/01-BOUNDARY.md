@@ -11,7 +11,7 @@ That classification means this branch is ready for a separate council. It is not
 An in-memory evaluator that applies the merged plan's record rules:
 
 - E1 title stays with the customer root. Vantio is not a member of the root set. Host enroll and retire are intent records. Policy approval is not host attachment.
-- E2 grants are subsets, carry `not_before` and `not_after`, and do not transfer title. Redelegation stays forbidden. Spawn does not mint a grant. A child envelope wider than the permitted subset is refused.
+- E2 grants are subsets, carry `not_before` and `not_after`, and do not transfer title. Exercise stays closed before `not_before`. `ENDED` does not reopen. A later narrow bounds existing grants. Redelegation stays forbidden. Spawn does not mint a grant. A child envelope wider than the permitted subset of the current customer policy is refused.
 - E3 classes are `INSPECT`, `NARROW`, `WIDEN`, `ROOT`, and `RECOVERY`. The rejected acts in the plan stay rejected. Same-person `WIDEN`, workload self-approval, and a grant recipient approving their own grant are refused as approval.
 - Role labels and agent consensus do not satisfy a class. Opaque handles are not identity proof. No external identity and no credential is created.
 - EG-D1 through EG-D10 stay unresolved. EG-D5 and EG-D6 stay on their defaults: this module does not activate a host, and it does not select a store product.

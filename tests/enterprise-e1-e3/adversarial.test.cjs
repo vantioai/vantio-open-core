@@ -182,16 +182,16 @@ test("children cannot inherit more than the permitted subset", () => {
   });
   assert.equal(wider.reason, "CHILD_EXCEEDS_PERMITTED_SUBSET");
   assert.equal(wider.grant_minted, false);
-  eg.noteClock(store, { now: "2026-10-05T00:00:00.000Z" });
+  eg.noteClock(store, { now: "2099-06-01T00:00:00.000Z" });
   const after = eg.noteSpawn(store, {
     parent_grant_id: granted.grant_id,
-    now: "2026-10-05T00:00:00.000Z",
+    now: "2099-06-01T00:00:00.000Z",
     child_envelope: envelope({ domains: ["workload"], actions: ["connect"], destinations: ["d1"], spend_cap: 50, size_cap: 50 }),
   });
   assert.equal(after.reason, "CHILD_EXCEEDS_PERMITTED_SUBSET");
   const rolled = eg.noteSpawn(store, {
     parent_grant_id: granted.grant_id,
-    now: "2026-10-05T00:00:00.000Z",
+    now: "2099-06-01T00:00:00.000Z",
     child_envelope: envelope({ domains: ["workload"], actions: ["connect"], destinations: ["d1"], spend_cap: 10, size_cap: 10 }),
   });
   assert.equal(rolled.inheritance, "ROLLBACK_SCOPE_ONLY");
@@ -373,6 +373,259 @@ test("security and recovery grants revoke only through ROOT", () => {
   });
   assert.equal(byRoot.outcome, "APPROVED");
   assert.equal(byRoot.title_holder, "customer_root");
+});
+
+test("not_before closes exercise and defers a future policy widen", () => {
+  const { eg, store } = world();
+  const granted = eg.proposeGrant(store, grantInput({
+    not_before: "2030-01-01T00:00:00.000Z",
+    not_after: "2030-02-01T00:00:00.000Z",
+  }));
+  assert.equal(granted.outcome, "APPROVED");
+  assert.equal(store.grants.get(granted.grant_id).can_exercise, false);
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "NOT_YET");
+  const earlySpawn = eg.noteSpawn(store, {
+    parent_grant_id: granted.grant_id,
+    now: "2029-12-01T00:00:00.000Z",
+    child_envelope: envelope({
+      domains: ["workload"],
+      actions: ["connect"],
+      destinations: ["d1"],
+      spend_cap: 10,
+      size_cap: 10,
+    }),
+  });
+  assert.notEqual(earlySpawn.inheritance, "PARENT_EGRESS_SCOPE_ONLY");
+  assert.equal(earlySpawn.within_subset, false);
+  assert.equal(earlySpawn.grant_minted, false);
+  assert.equal(earlySpawn.verified_on_host, false);
+
+  const opened = eg.proposeGrant(store, grantInput({
+    not_before: "2026-09-01T00:00:00.000Z",
+    not_after: "2099-01-01T00:00:00.000Z",
+  }));
+  eg.noteClock(store, { now: "2026-10-01T00:00:00.000Z" });
+  assert.equal(store.grants.get(opened.grant_id).record_layer_exercise, "OPEN");
+  const beforeWindow = eg.noteSpawn(store, {
+    parent_grant_id: opened.grant_id,
+    now: "2026-08-01T00:00:00.000Z",
+    child_envelope: envelope({
+      domains: ["workload"],
+      actions: ["connect"],
+      destinations: ["d1"],
+      spend_cap: 10,
+      size_cap: 10,
+    }),
+  });
+  assert.notEqual(beforeWindow.inheritance, "PARENT_EGRESS_SCOPE_ONLY");
+  assert.equal(beforeWindow.within_subset, false);
+
+  const security = eg.proposeGrant(store, grantInput({
+    delegate: "cust-c",
+    domain: "security",
+    purpose: "lower caps inside this host",
+    not_before: "2031-01-01T00:00:00.000Z",
+    not_after: "2031-06-01T00:00:00.000Z",
+    scope: envelope({ domains: ["security"], actions: ["read"], destinations: ["d1"] }),
+    rollback_target: envelope({ domains: ["security"], actions: ["read"], spend_cap: 10, size_cap: 10 }),
+  }));
+  assert.equal(security.outcome, "APPROVED");
+  assert.equal(store.grants.get(security.grant_id).can_exercise, false);
+  const premature = eg.recordPolicyDecision(store, {
+    class: "NARROW",
+    parties: ["cust-c"],
+    next_policy: envelope({ spend_cap: 40 }),
+  });
+  assert.notEqual(premature.reason, "POLICY_NARROWED");
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+
+  const widened = eg.recordPolicyDecision(store, {
+    class: "WIDEN",
+    parties: ["root-a", "cust-b"],
+    not_before: "2032-01-01T00:00:00.000Z",
+    not_after: "2032-02-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"], spend_cap: 80 }),
+    rollback_target: envelope(),
+  });
+  assert.equal(widened.outcome, "APPROVED");
+  assert.equal(widened.verified_on_host, false);
+  assert.equal(widened.policy_applied, false);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.equal(store.root.open_widens.length, 1);
+  assert.equal(store.root.open_widens[0].not_before_ms, Date.parse("2032-01-01T00:00:00.000Z"));
+  assert.equal(store.root.open_widens[0].applied, false);
+  eg.noteClock(store, { now: "2031-12-01T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  const during = eg.noteClock(store, { now: "2032-01-15T00:00:00.000Z" });
+  assert.equal(during.policy_reverted, false);
+  assert.equal(during.host_expanded_authority_cleared, "UNSATISFIED");
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  eg.noteClock(store, { now: "2031-11-01T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  eg.noteClock(store, { now: "2032-01-20T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  const after = eg.noteClock(store, { now: "2032-03-01T00:00:00.000Z" });
+  assert.equal(after.policy_reverted, true);
+  assert.equal(after.host_expanded_authority_cleared, "UNSATISFIED");
+  assert.equal(after.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  eg.noteClock(store, { now: "2032-01-20T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+
+  const timed = eg.proposeGrant(store, grantInput({
+    delegate: "cust-c",
+    domain: "security",
+    purpose: "lower caps once the window opens",
+    not_before: "2033-01-01T00:00:00.000Z",
+    not_after: "2033-06-01T00:00:00.000Z",
+    scope: envelope({ domains: ["security"], actions: ["read"], destinations: ["d1"] }),
+    rollback_target: envelope({ domains: ["security"], actions: ["read"], spend_cap: 10, size_cap: 10 }),
+  }));
+  assert.equal(store.grants.get(timed.grant_id).record_layer_exercise, "NOT_YET");
+  const stillClosed = eg.recordPolicyDecision(store, {
+    class: "NARROW",
+    parties: ["cust-c"],
+    next_policy: envelope({ spend_cap: 40 }),
+  });
+  assert.notEqual(stillClosed.reason, "POLICY_NARROWED");
+  eg.noteClock(store, { now: "2033-02-01T00:00:00.000Z" });
+  assert.equal(store.grants.get(timed.grant_id).record_layer_exercise, "OPEN");
+  assert.equal(store.grants.get(timed.grant_id).can_exercise, true);
+  const openedNarrow = eg.recordPolicyDecision(store, {
+    class: "NARROW",
+    parties: ["cust-c"],
+    next_policy: envelope({ spend_cap: 40 }),
+  });
+  assert.equal(openedNarrow.reason, "POLICY_NARROWED");
+  assert.equal(eg.snapshot(store).policy.spend_cap, 40);
+  assert.equal(openedNarrow.verified_on_host, false);
+});
+
+test("ENDED stays ended across an earlier clock and an omitted now", () => {
+  const { eg, store } = world();
+  const granted = eg.proposeGrant(store, grantInput({
+    not_before: "2026-06-01T00:00:00.000Z",
+    not_after: "2090-01-01T00:00:00.000Z",
+  }));
+  eg.noteClock(store, { now: "2026-07-01T00:00:00.000Z" });
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "OPEN");
+  const ended = eg.noteClock(store, { now: "2090-02-01T00:00:00.000Z" });
+  assert.equal(ended.host_expanded_authority_cleared, "UNSATISFIED");
+  assert.equal(ended.verified_on_host, false);
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "ENDED");
+  assert.equal(store.grants.get(granted.grant_id).can_exercise, false);
+  assert.equal(store.grants.get(granted.grant_id).state, "APPROVED");
+  const regressed = eg.noteClock(store, { now: "2026-05-01T00:00:00.000Z" });
+  assert.equal(regressed.verified_on_host, false);
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "ENDED");
+  assert.notEqual(store.grants.get(granted.grant_id).record_layer_exercise, "NOT_YET");
+  assert.equal(store.grants.get(granted.grant_id).can_exercise, false);
+  const inside = eg.noteClock(store, { now: "2026-08-01T00:00:00.000Z" });
+  assert.equal(inside.host_expanded_authority_cleared, "UNSATISFIED");
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "ENDED");
+  assert.equal(store.grants.get(granted.grant_id).can_exercise, false);
+  const omitted = eg.noteSpawn(store, { parent_grant_id: granted.grant_id });
+  assert.notEqual(omitted.inheritance, "PARENT_EGRESS_SCOPE_ONLY");
+  assert.equal(omitted.inheritance, "ROLLBACK_SCOPE_ONLY");
+  assert.equal(omitted.grant_minted, false);
+  const earlyNow = eg.noteSpawn(store, {
+    parent_grant_id: granted.grant_id,
+    now: "2026-05-15T00:00:00.000Z",
+    child_envelope: envelope({
+      domains: ["workload"],
+      actions: ["connect"],
+      destinations: ["d1"],
+      spend_cap: 50,
+      size_cap: 50,
+    }),
+  });
+  assert.notEqual(earlyNow.inheritance, "PARENT_EGRESS_SCOPE_ONLY");
+  assert.notEqual(earlyNow.within_subset, true);
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "ENDED");
+
+  const alreadyPast = eg.proposeGrant(store, grantInput({
+    not_before: "2020-01-01T00:00:00.000Z",
+    not_after: "2020-02-01T00:00:00.000Z",
+  }));
+  assert.equal(alreadyPast.outcome, "APPROVED");
+  assert.notEqual(store.grants.get(alreadyPast.grant_id).record_layer_exercise, "OPEN");
+  assert.equal(store.grants.get(alreadyPast.grant_id).can_exercise, false);
+  const inherited = eg.noteSpawn(store, { parent_grant_id: alreadyPast.grant_id });
+  assert.notEqual(inherited.inheritance, "PARENT_EGRESS_SCOPE_ONLY");
+  assert.equal(inherited.grant_minted, false);
+});
+
+test("a later root narrow bounds spawn under an existing workload grant", () => {
+  const { eg, store } = world();
+  const granted = eg.proposeGrant(store, grantInput());
+  assert.equal(store.grants.get(granted.grant_id).can_exercise, true);
+  const narrowed = eg.recordPolicyDecision(store, {
+    class: "ROOT",
+    parties: ["root-a"],
+    next_policy: envelope({ actions: ["read"], spend_cap: 15 }),
+  });
+  assert.equal(narrowed.outcome, "APPROVED");
+  assert.equal(narrowed.reason, "POLICY_NARROWED");
+  assert.equal(narrowed.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 15);
+  assert.deepEqual(eg.snapshot(store).policy.actions, ["read"]);
+  assert.equal(store.grants.get(granted.grant_id).state, "APPROVED");
+  assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "OPEN");
+  const child = eg.noteSpawn(store, {
+    parent_grant_id: granted.grant_id,
+    child_envelope: envelope({
+      domains: ["workload"],
+      actions: ["connect"],
+      destinations: ["d1"],
+      spend_cap: 50,
+      size_cap: 50,
+    }),
+  });
+  assert.equal(child.within_subset, false);
+  assert.equal(child.grant_minted, false);
+  assert.equal(child.outcome, "REFUSED");
+  assert.equal(child.verified_on_host, false);
+  assert.ok(child.violations.includes("action:connect"));
+  assert.ok(child.violations.includes("spend_cap_raised"));
+  assert.equal(eg.snapshot(store).grant_count, 1);
+
+  const capped = world();
+  const workload = capped.eg.proposeGrant(capped.store, grantInput());
+  capped.eg.recordPolicyDecision(capped.store, {
+    class: "ROOT",
+    parties: ["root-a"],
+    next_policy: envelope({ spend_cap: 15 }),
+  });
+  const overCap = capped.eg.noteSpawn(capped.store, {
+    parent_grant_id: workload.grant_id,
+    child_envelope: envelope({
+      domains: ["workload"],
+      actions: ["connect"],
+      destinations: ["d1"],
+      spend_cap: 50,
+      size_cap: 50,
+    }),
+  });
+  assert.equal(overCap.within_subset, false);
+  const insideCap = capped.eg.noteSpawn(capped.store, {
+    parent_grant_id: workload.grant_id,
+    child_envelope: envelope({
+      domains: ["workload"],
+      actions: ["connect"],
+      destinations: ["d1"],
+      spend_cap: 15,
+      size_cap: 15,
+    }),
+  });
+  assert.equal(insideCap.within_subset, true);
+  assert.equal(insideCap.inheritance, "PARENT_EGRESS_SCOPE_ONLY");
+  assert.equal(insideCap.grant_minted, false);
 });
 
 test("a policy exception reverts inside the record layer and does not claim host clearance", () => {

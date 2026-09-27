@@ -487,10 +487,15 @@ function requireEnvelope(input, key) {
   return normalizeEnvelope(input ? input[key] : undefined);
 }
 
+function grantCurrentlyOpen(grant) {
+  return grant.state === "APPROVED"
+    && grant.can_exercise === true
+    && grant.record_layer_exercise === "OPEN";
+}
+
 function openSecurityGrant(store, actor) {
   for (const grant of store.grants.values()) {
-    if (grant.state !== "APPROVED" || grant.can_exercise !== true) continue;
-    if (grant.record_layer_exercise === "ENDED") continue;
+    if (!grantCurrentlyOpen(grant)) continue;
     if (grant.domain !== "security" || grant.delegate !== actor) continue;
     return grant;
   }
@@ -499,12 +504,22 @@ function openSecurityGrant(store, actor) {
 
 function openReadGrant(store, actor) {
   for (const grant of store.grants.values()) {
-    if (grant.state !== "APPROVED" || grant.can_exercise !== true) continue;
-    if (grant.record_layer_exercise === "ENDED") continue;
+    if (!grantCurrentlyOpen(grant)) continue;
     if (grant.delegate !== actor) continue;
     if (grant.scope.actions.includes("read")) return grant;
   }
   return null;
+}
+
+function exerciseAtApproval(notBeforeMs, notAfterMs) {
+  const now = Date.now();
+  if (now >= notAfterMs) {
+    return { can_exercise: false, record_layer_exercise: "ENDED" };
+  }
+  if (now < notBeforeMs) {
+    return { can_exercise: false, record_layer_exercise: "NOT_YET" };
+  }
+  return { can_exercise: true, record_layer_exercise: "OPEN" };
 }
 
 function narrowInsideGrant(current, next, grant) {
@@ -564,12 +579,18 @@ function recordPolicyDecision(store, input) {
       return base(store, "REFUSED", "ROLLBACK_WIDER_THAN_CURRENT");
     }
     parties = distinct(input.parties);
-    store.root.policy = next.envelope;
-    store.root.policy_version += 1;
+    const deferred = notBefore != null && notBefore > Date.now();
+    if (!deferred) {
+      store.root.policy = next.envelope;
+      store.root.policy_version += 1;
+    }
     store.root.open_widens.push({
       version: store.root.policy_version,
+      not_before_ms: notBefore,
       not_after_ms: notAfter,
+      next_policy: next.envelope,
       rollback_target: rollback.envelope,
+      applied: !deferred,
     });
     const approval = pushApproval(store, {
       className: "WIDEN",
@@ -580,11 +601,12 @@ function recordPolicyDecision(store, input) {
       rollback: rollback.envelope,
       notAfter: input.not_after,
     });
-    return base(store, "APPROVED", "POLICY_WIDENED", {
+    return base(store, "APPROVED", deferred ? "POLICY_WIDEN_DEFERRED" : "POLICY_WIDENED", {
       policy_version: store.root.policy_version,
       enterprise_state: "APPROVED",
       host_state: null,
       approval_id: approval.approval_id,
+      policy_applied: !deferred,
     });
   }
   if (subsetViolations(next.envelope, current).length) {
@@ -727,9 +749,10 @@ function proposeGrant(store, input) {
       enterprise_state: "PROPOSED",
     });
   }
+  const exercise = exerciseAtApproval(notBefore, notAfter);
   grant.state = "APPROVED";
-  grant.can_exercise = true;
-  grant.record_layer_exercise = "OPEN";
+  grant.can_exercise = exercise.can_exercise;
+  grant.record_layer_exercise = exercise.record_layer_exercise;
   store.grants.set(grant.grant_id, grant);
   const approval = pushApproval(store, {
     className: "WIDEN",
@@ -750,11 +773,31 @@ function proposeGrant(store, input) {
   });
 }
 
-function permittedScope(grant, nowMs) {
-  const ended = grant.state === "REVOKED"
-    || grant.record_layer_exercise === "ENDED"
-    || (nowMs != null && nowMs >= grant.not_after_ms);
-  return ended ? grant.rollback_target : grant.scope;
+function sealExpiredGrant(grant, nowMs) {
+  if (grant.state !== "APPROVED" || grant.record_layer_exercise === "ENDED") return;
+  const clock = nowMs != null ? nowMs : Date.now();
+  if (clock >= grant.not_after_ms) {
+    grant.record_layer_exercise = "ENDED";
+    grant.can_exercise = false;
+    grant.host_expanded_authority_cleared = "UNSATISFIED";
+  }
+}
+
+function exercisePhase(grant, nowMs) {
+  if (grant.state === "REVOKED" || grant.record_layer_exercise === "ENDED") return "ENDED";
+  if (nowMs != null && nowMs >= grant.not_after_ms) return "ENDED";
+  if (nowMs != null && nowMs < grant.not_before_ms) return "NOT_YET";
+  if (nowMs == null && grant.record_layer_exercise === "NOT_YET") return "NOT_YET";
+  if (nowMs == null && Date.now() >= grant.not_after_ms) return "ENDED";
+  if (nowMs == null && grant.record_layer_exercise === "OPEN" && Date.now() < grant.not_before_ms) return "NOT_YET";
+  if (grant.record_layer_exercise === "OPEN") return "OPEN";
+  if (nowMs != null && nowMs >= grant.not_before_ms && nowMs < grant.not_after_ms) return "OPEN";
+  return "CLOSED";
+}
+
+function rawPermittedScope(grant, phase) {
+  if (phase === "ENDED" || grant.state === "REVOKED") return grant.rollback_target;
+  return grant.scope;
 }
 
 function noteSpawn(store, input) {
@@ -766,18 +809,27 @@ function noteSpawn(store, input) {
     return base(store, "REFUSED", "SPAWN_DOES_NOT_MINT", { grant_minted: false, grant_count: before });
   }
   const grant = store.grants.get(input.parent_grant_id);
-  const endedApproved = grant && grant.state === "APPROVED" && grant.record_layer_exercise === "ENDED";
-  if (!grant || (grant.state !== "APPROVED" && grant.state !== "REVOKED") || (grant.state === "APPROVED" && grant.can_exercise !== true && !endedApproved)) {
+  if (!grant || (grant.state !== "APPROVED" && grant.state !== "REVOKED")) {
     return base(store, "REFUSED", "GRANT_NOT_APPROVED", { grant_minted: false, grant_count: store.grants.size });
+  }
+  const nowMs = input.now ? parseTime(input.now) : null;
+  if (input.now && nowMs == null) {
+    return base(store, "REFUSED", "CLOCK_INVALID", { grant_minted: false, grant_count: store.grants.size });
+  }
+  sealExpiredGrant(grant, nowMs);
+  const phase = exercisePhase(grant, nowMs);
+  if (phase === "NOT_YET" || phase === "CLOSED") {
+    return base(store, "REFUSED", phase === "NOT_YET" ? "GRANT_NOT_YET" : "GRANT_NOT_APPROVED", {
+      grant_minted: false,
+      grant_count: store.grants.size,
+      within_subset: false,
+      inheritance: phase === "NOT_YET" ? "NOT_YET" : "CLOSED",
+    });
   }
   if (grant.state === "REVOKED" && !input.child_envelope) {
     return base(store, "REFUSED", "GRANT_NOT_APPROVED", { grant_minted: false, grant_count: store.grants.size });
   }
-  const nowMs = input.now ? parseTime(input.now) : null;
-  if (input.now && nowMs == null) return base(store, "REFUSED", "CLOCK_INVALID");
-  const inheritance = grant.state === "REVOKED" || grant.record_layer_exercise === "ENDED" || (nowMs != null && nowMs >= grant.not_after_ms)
-    ? "ROLLBACK_SCOPE_ONLY"
-    : "PARENT_EGRESS_SCOPE_ONLY";
+  const inheritance = phase === "ENDED" ? "ROLLBACK_SCOPE_ONLY" : "PARENT_EGRESS_SCOPE_ONLY";
   if (!input.child_envelope) {
     return base(store, "RECORDED", "SPAWN_IS_NOT_A_GRANT", {
       grant_minted: false,
@@ -787,13 +839,16 @@ function noteSpawn(store, input) {
   }
   const child = normalizeEnvelope(input.child_envelope);
   if (!child.ok) return base(store, "REFUSED", child.reason, { grant_minted: false });
-  const permitted = permittedScope(grant, nowMs);
+  const raw = rawPermittedScope(grant, phase);
+  const permitted = store.root ? tightenTo(raw, store.root.policy) : raw;
   const violations = subsetViolations(child.envelope, permitted);
   if (violations.length) {
     return base(store, "REFUSED", "CHILD_EXCEEDS_PERMITTED_SUBSET", {
       violations,
       grant_minted: false,
       grant_count: store.grants.size,
+      within_subset: false,
+      inheritance,
     });
   }
   return base(store, "RECORDED", "SPAWN_IS_NOT_A_GRANT", {
@@ -849,13 +904,12 @@ function noteClock(store, input) {
   const ended = [];
   for (const grant of store.grants.values()) {
     if (grant.state !== "APPROVED") continue;
+    if (grant.record_layer_exercise === "ENDED") continue;
     if (nowMs >= grant.not_after_ms) {
-      if (grant.record_layer_exercise !== "ENDED") {
-        grant.record_layer_exercise = "ENDED";
-        grant.can_exercise = false;
-        grant.host_expanded_authority_cleared = "UNSATISFIED";
-        ended.push(grant.grant_id);
-      }
+      grant.record_layer_exercise = "ENDED";
+      grant.can_exercise = false;
+      grant.host_expanded_authority_cleared = "UNSATISFIED";
+      ended.push(grant.grant_id);
     } else if (nowMs < grant.not_before_ms) {
       grant.record_layer_exercise = "NOT_YET";
       grant.can_exercise = false;
@@ -869,12 +923,32 @@ function noteClock(store, input) {
   const remaining = [];
   for (const open of store.root.open_widens) {
     if (nowMs >= open.not_after_ms) {
-      const tightened = tightenTo(policy, open.rollback_target);
-      if (!envelopesEqual(policy, tightened)) policyReverted = true;
-      policy = tightened;
-    } else {
-      remaining.push(open);
+      if (open.applied) {
+        const tightened = tightenTo(policy, open.rollback_target);
+        if (!envelopesEqual(policy, tightened)) policyReverted = true;
+        policy = tightened;
+      }
+      continue;
     }
+    if (open.not_before_ms != null && nowMs < open.not_before_ms) {
+      if (open.applied) {
+        const tightened = tightenTo(policy, open.rollback_target);
+        if (!envelopesEqual(policy, tightened)) policyReverted = true;
+        policy = tightened;
+        open.applied = false;
+      }
+      remaining.push(open);
+      continue;
+    }
+    if (!open.applied) {
+      if (!envelopesEqual(policy, open.next_policy)) {
+        policy = open.next_policy;
+        store.root.policy_version += 1;
+        open.version = store.root.policy_version;
+      }
+      open.applied = true;
+    }
+    remaining.push(open);
   }
   store.root.policy = policy;
   store.root.open_widens = remaining;

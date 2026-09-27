@@ -99,7 +99,7 @@ test("a subset grant expires by clock at the record layer and does not mint titl
   assert.equal(display.display_active, true);
   assert.equal(display.display_source, "host_quote");
   assert.equal(display.enterprise_state, "APPROVED");
-  const early = eg.noteClock(store, { now: "2026-09-26T00:00:00.000Z" });
+  const early = eg.noteClock(store, { now: "2019-06-01T00:00:00.000Z" });
   assert.equal(early.outcome, "RECORDED");
   assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "NOT_YET");
   assert.equal(store.grants.get(granted.grant_id).can_exercise, false);
@@ -107,7 +107,7 @@ test("a subset grant expires by clock at the record layer and does not mint titl
   assert.equal(open.outcome, "RECORDED");
   assert.equal(store.grants.get(granted.grant_id).record_layer_exercise, "OPEN");
   assert.equal(store.grants.get(granted.grant_id).can_exercise, true);
-  const clock = eg.noteClock(store, { now: "2026-10-05T00:00:00.000Z" });
+  const clock = eg.noteClock(store, { now: "2099-06-01T00:00:00.000Z" });
   assert.equal(clock.outcome, "RECORDED");
   assert.deepEqual(clock.ended_grant_ids, [granted.grant_id]);
   assert.equal(clock.claimed_expired_state, false);

@@ -44,11 +44,13 @@ Adding a path constraint or lowering a cap is a narrow. Adding a destination, ra
 
 A new grant requires class `WIDEN`, two distinct customer identities inside the recognized set, and a delegate who is not one of those two. The delegator must be in the root set. Any other delegator is `REDELEGATION_FORBIDDEN` while EG-D1 stays unresolved. A `redelegation: allowed` flag is refused.
 
-`noteSpawn` does not insert a grant. A child envelope must be a subset of the grant scope while the window is open, and a subset of `rollback_target` after the clock passes `not_after` or after revocation. A missing parent does not mint a grant.
+`noteSpawn` does not insert a grant. A child envelope must be a subset of the grant scope while the window is open, and a subset of `rollback_target` after the clock passes `not_after` or after revocation. It must also be a subset of the current customer policy, so a later root `NARROW` bounds grants that were approved under a wider envelope. A child outside that intersection is refused with `within_subset: false`. A missing parent does not mint a grant.
 
-`noteClock` applies `not_before` and `not_after` on the record. Before the window, exercise is `NOT_YET`. After `not_after`, exercise is `ENDED` and further record-layer use of the expanded scope stops. The grant state is not set to `EXPIRED`, and `host_expanded_authority_cleared` stays `UNSATISFIED`. That is EG-E2-8: the record stops handing out the expansion; the host maps are not observed.
+Approval compares `not_before` and `not_after` to the process clock. Before `not_before`, exercise is `NOT_YET` and `can_exercise` is false, including a security grant, so that grant does not narrow policy yet. `noteClock` into the window opens it. After `not_after`, or when `not_after` is already past at approval, exercise is `ENDED`. `noteSpawn` applies the same window when `now` is present: a `now` before `not_before` does not return `PARENT_EGRESS_SCOPE_ONLY` or `within_subset: true`. Omitting `now` on an ended grant returns `ROLLBACK_SCOPE_ONLY`.
 
-An open policy widen is tightened back toward its rollback on the same clock, including after a later narrow, by intersection of authority. The tighten step does not add a destination, host, action, or domain, does not drop a path constraint, and does not raise a cap. Host clearance stays `UNSATISFIED`.
+`ENDED` stays ended. A later `noteClock` before `not_before` does not write `NOT_YET`, and a later `noteClock` inside the old window does not write `OPEN` or set `can_exercise` true. The grant state is not set to `EXPIRED`, and `host_expanded_authority_cleared` stays `UNSATISFIED`. That is the record half of EG-E2-8. The host half stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED` because host maps are not read.
+
+A policy `WIDEN` whose `not_before` is still in the future is stored on `open_widens` with that start time and is not written onto `root.policy` until a clock reaches the window. A clock that moves back before the start tightens policy to the rollback and leaves the entry deferred. After `not_after`, an applied widen is tightened back toward its rollback by intersection of authority and the entry is dropped, so a later clock does not restore it. The tighten step does not add a destination, host, action, or domain, does not drop a path constraint, and does not raise a cap. Host clearance stays `UNSATISFIED`.
 
 ## 6. Approval classes
 
@@ -80,7 +82,7 @@ This is a caller-supplied quote inside a unit test or a later adapter. It is not
 
 | Id | This branch | Still unsatisfied |
 | --- | --- | --- |
-| EG-E2-8 | Record layer stops expanded exercise after the clock or revocation | Host maps were not read |
+| EG-E2-8 | Record layer stops expanded exercise after the clock or revocation, and does not reopen it | Host maps were not read |
 | EG-E3-7 | Wider-than-snapshot recovery is rejected in the record | Phantom Engine ceiling check was not run |
 | EG-E3-8 | Freeze is a customer record | No one-shot freeze on a host Vantio does not operate |
 | EG-SUB-6 | Not implemented | No customer-owned on-host channel |

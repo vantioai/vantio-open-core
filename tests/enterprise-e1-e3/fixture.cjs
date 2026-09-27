@@ -46,8 +46,8 @@ function grantInput(extra) {
     delegate: "work-w",
     domain: "workload",
     purpose: "connect from the named host",
-    not_before: "2026-09-27T00:00:00.000Z",
-    not_after: "2026-10-04T00:00:00.000Z",
+    not_before: "2020-01-01T00:00:00.000Z",
+    not_after: "2099-01-01T00:00:00.000Z",
     parties: ["root-a", "cust-b"],
     witness_ids: [],
     scope: envelope({
