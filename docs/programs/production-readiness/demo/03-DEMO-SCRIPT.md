@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Follow `04-OPERATOR-RUNBOOK.md` for the home directory and environment. Say the lines. Run only the commands in each beat. Leave the simulation banner visible from B07 through B10 and again during B15.
+Follow `04-OPERATOR-RUNBOOK.md` for the home directory and environment. Say the lines. Run only the commands in each beat. Leave the simulation banner visible from B07 through B10 and again during B15, including the `discover` command and the F1 stop.
 
 Banner text, kept on screen:
 
@@ -64,7 +64,7 @@ Say: The Markdown names host `optics-demo.invalid`, duration 0 ms, process id as
 
 ## B10 — Recorded fields
 
-Say: The record shows destination host, method, path, HTTP status, byte count, and time. Byte count is 0 because the stub sent nothing. Prompts and completions are absent from the file. `content` on `demo --json` is null. That JSON mode is documented in the expected outputs. The spoken script does not run a second demo.
+Say: The record shows destination host, method, path, HTTP status, byte count, and time. Byte count is 0 because the stub sent nothing. Prompts and completions are absent from the file the room opened. `demo --json` setting `content` to null is a design-host reference in `06-EXPECTED-OUTPUTS.md`. The spoken script does not run JSON mode and does not run a second demo.
 
 ## B11 — Two statuses
 
@@ -72,7 +72,7 @@ Say: Optics status Successful means a record exists. Application outcome Success
 
 ## B12 — Free Optics boundary
 
-Say: This demo did not block, redact, or apply a spend cap. There is no OTLP exporter. JSON command output uses schema_status `unstable-pre-1.0`. The store in this CLI is one JSON file per trace id. A database, a local UI, a daemon, and alerting are absent from the command that just ran.
+Say: This demo did not block, redact, or apply a spend cap. There is no OTLP exporter. `schema_status` `unstable-pre-1.0` on JSON command output is a design-host reference in `06-EXPECTED-OUTPUTS.md`. The spoken script does not run JSON mode. The store in this CLI is one JSON file per trace id. A database, a local UI, a daemon, and alerting are absent from the command that just ran.
 
 ## B13 — Phantom Engine boundary
 
@@ -82,26 +82,36 @@ Say: Phantom Engine is a separate product and a separate repository. This laptop
 
 Read the `DO_NOT_SAY` rows in `08-CLAIM-LEDGER.json` by id and statement.
 
-Say: Rows marked shown-as-simulation were the stub you just saw. Rows marked narrated were speech from a doc. Rows marked not demonstrated were not executed. No row is customer validation.
+Say: Rows marked shown-as-simulation were the stub you just saw. Rows marked narrated were speech from a doc. Rows marked design-host reference were checked on the design host and written in `06-EXPECTED-OUTPUTS.md`. The room did not run JSON mode for those rows. Rows marked not demonstrated were not executed. Evidence tier on every row stays unset. No row is customer validation.
 
-## B15 — Unlabeled injection
+## B15 — Discover, then unlabeled injection
 
-Follow `07-FAILURE-INJECTION-OUTLINE.md` injection F1 only.
+Keep the banner up. The banner is `SIMULATED_DEMO`.
 
-Say: This planted file has no simulation label and its host is not `optics-demo.invalid`. The demo stops on it. We do not prove it and we do not add it to a total. Discover on the real demo file already lists `optics-demo.invalid` as observed locally. That sentence in the CLI is why the banner has to stay up. The CLI does not remove demo files from that count.
+Run `discover` once, before any planted file exists.
+
+Say: Discover just listed host `optics-demo.invalid` and printed the observed-locally line. That sentence is the CLI output the room just saw. The banner is why it is not customer traffic. The CLI does not remove demo files from that count. The same invariants are in `06-EXPECTED-OUTPUTS.md`.
+
+Then follow `07-FAILURE-INJECTION-OUTLINE.md` injection F1 only. Plant the defect in the demo home. Do not show the inner object as an event.
+
+Say: This planted file has no simulation label and its host is not `optics-demo.invalid`. On F1, an unlabeled synthetic file is discarded. The operator does not prove it, does not add it to a total, and does not resume a success narration. The operator still speaks B16–B18 as the close, including `L-FOUNDER-BEATS-ABSENT`. The operator does not keep speaking as if the demo succeeded with the unlabeled file.
+
+Do not delete the planted file in this beat. B17 reset deletes it with the demo home. Until then, discard is the disposition.
 
 ## B16 — No narrated block
 
-Say: I will not describe a block that this room did not produce. Free Optics records `OBSERVED` on this stub. The SDK type list includes enforcement action tokens for a Phantom Engine or Enterprise policy path. Those tokens are not the outcome of the command we ran.
+B16 through B18 are the close after the F1 stop. They are not a success narration of the unlabeled file.
+
+Say: I will not describe a block that this room did not produce. Free Optics records `OBSERVED` on the stub from `demo`, under the simulation banner. The SDK type list includes enforcement action tokens for a Phantom Engine or Enterprise policy path. Those tokens are not the outcome of the command we ran. The planted file is not part of that stub.
 
 ## B17 — Reset
 
 Follow `05-RESET-OUTLINE.md` while the room can see the demo home path.
 
-Say: The demo home is a temporary directory. Deleting it removes the stub and the planted defect. The operator's own home directory is not the demo home.
+Say: The demo home is a temporary directory. Deleting it removes the stub and the planted defect. That deletion completes the discard in the F1 stop rule. The operator's own home directory is not the demo home. This reset is not a success narration of the unlabeled file.
 
 ## B18 — Close
 
 Read limitation ids `L-DEMO-FILE-UNLABELED`, `L-PROVE-OMITS-LABEL`, `L-DISCOVER-COUNTS-DEMO`, `L-NOT-DETERMINISTIC-IDS`, `L-PE-NOT-RUN`, and `L-FOUNDER-BEATS-ABSENT` from `09-LIMITATION-LEDGER.json`.
 
-Say: This session is a design script checked against CLI 0.3.24 on a design host. It is not a customer validation and it is not a production-cluster proof.
+Say: This close states the stop and the limitations, including `L-FOUNDER-BEATS-ABSENT`. It does not restore a success story for the unlabeled file. This session is a design script checked against CLI 0.3.24 on a design host. It is not a customer validation and it is not a production-cluster proof.

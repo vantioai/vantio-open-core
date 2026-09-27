@@ -90,7 +90,7 @@
     },
     {
       "id": "L-COUNCIL-OPEN",
-      "statement": "Producer classification INVESTOR_DEMO_DESIGN_READY_FOR_COUNCIL is not a council verdict.",
+      "statement": "Revision classification INVESTOR_DEMO_DESIGN_REVISION_READY_FOR_COUNCIL is not a council verdict. The prior tip received INVESTOR_DEMO_DESIGN_NEEDS_REVISION.",
       "beat": "B18",
       "source": "11-COUNCIL-SLOT.md"
     }

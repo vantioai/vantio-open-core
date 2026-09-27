@@ -3,7 +3,7 @@
   "status": "STUB",
   "audience": "INTERNAL_RESTRICTED",
   "base_commit": "1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
-  "note": "Stub for council review. evidence_tier is UNSET on every row. customer_validation is UNSET on every row. A shown simulation is not a customer claim. A narrated doc line is not a demonstration that the other product ran.",
+  "note": "Stub for council review of the revision. evidence_tier is UNSET on every row, including demo_json_half. customer_validation is UNSET on every row. A shown simulation is not a customer claim. A narrated doc line is not a demonstration that the other product ran. DESIGN_HOST_REFERENCE means the fact was checked on the design host and recorded in 06-EXPECTED-OUTPUTS.md. The spoken script does not run JSON mode for those facts.",
   "claims": [
     {
       "id": "C-OPTICS-OBSERVE",
@@ -79,12 +79,20 @@
     },
     {
       "id": "C-NO-PROMPT",
-      "statement": "The demo file and the demo JSON do not contain a prompt or a completion. demo --json sets content to null.",
+      "statement": "The demo run file the room opens does not contain a prompt or a completion.",
       "beat": "B10",
       "source": "06-EXPECTED-OUTPUTS.md",
       "room_disposition": "SHOWN_AS_SIMULATION",
       "evidence_tier": "UNSET",
-      "customer_validation": "UNSET"
+      "customer_validation": "UNSET",
+      "demo_json_half": {
+        "statement": "demo --json sets content to null.",
+        "source": "06-EXPECTED-OUTPUTS.md",
+        "room_disposition": "DESIGN_HOST_REFERENCE",
+        "room_note": "The spoken script does not run JSON mode. This half is the design-host reference in 06-EXPECTED-OUTPUTS.md.",
+        "evidence_tier": "UNSET",
+        "customer_validation": "UNSET"
+      }
     },
     {
       "id": "C-STATUS-SPLIT",
@@ -108,8 +116,9 @@
       "id": "C-SCHEMA-UNSTABLE",
       "statement": "JSON command output uses schema_status unstable-pre-1.0.",
       "beat": "B12",
-      "source": "docs/governance/canonical/status-tokens.md",
-      "room_disposition": "SHOWN_AS_SIMULATION",
+      "source": "06-EXPECTED-OUTPUTS.md",
+      "room_disposition": "DESIGN_HOST_REFERENCE",
+      "room_note": "The spoken script does not run JSON mode. This fact is the design-host reference in 06-EXPECTED-OUTPUTS.md. The canonical wording is also in docs/governance/canonical/status-tokens.md.",
       "evidence_tier": "UNSET",
       "customer_validation": "UNSET"
     },
@@ -124,7 +133,7 @@
     },
     {
       "id": "C-UNLABELED-STOPS",
-      "statement": "An unlabeled synthetic run file stops the demo and is not proved.",
+      "statement": "On F1, an unlabeled synthetic file is discarded. The operator does not prove it, does not add it to a total, and does not resume a success narration. The operator still speaks B16–B18 as the close, including `L-FOUNDER-BEATS-ABSENT`. The operator does not keep speaking as if the demo succeeded with the unlabeled file.",
       "beat": "B15",
       "source": "01-SIMULATION-LABEL-RULE.md",
       "room_disposition": "OPERATOR_RULE",

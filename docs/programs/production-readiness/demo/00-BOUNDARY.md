@@ -2,11 +2,15 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Producer: Cursor cloud agent `bc-da04b99d-56bf-55bb-b780-0531b9d953d7`, model Grok 4.7. This agent designs the demo. It does not sit the independent council and does not assign a council pass.
+Design producer: Cursor cloud agent `bc-da04b99d-56bf-55bb-b780-0531b9d953d7`, model Grok 4.7. That agent designed the first pack. It does not sit the independent council and does not assign a council pass.
 
-Producer classification: `INVESTOR_DEMO_DESIGN_READY_FOR_COUNCIL`
+This revision is a later docs-only edit on the same draft. It is not that producer and not council `bc-0b0275f0-8be5-507d-b4bb-2f0b22ddd8c0`.
 
-That classification means this directory is ready for a separate council. It is not a council verdict, not a customer demonstration, and not implementation.
+Revision classification: `INVESTOR_DEMO_DESIGN_REVISION_READY_FOR_COUNCIL`
+
+Council on tip `c2026a9c8d42130705f434faa0f79d922f473d31` returned `INVESTOR_DEMO_DESIGN_NEEDS_REVISION`. This revision answers that return. The classification means the directory is ready for a separate council again. It is not a council verdict, not a customer demonstration, not Wave 2 authorization, and not implementation.
+
+The first producer classification on that tip was `INVESTOR_DEMO_DESIGN_READY_FOR_COUNCIL`.
 
 ## Locked input
 

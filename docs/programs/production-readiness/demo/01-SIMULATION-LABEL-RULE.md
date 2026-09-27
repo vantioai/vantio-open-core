@@ -8,7 +8,11 @@ Status: design rule for the investor demo. CLI 0.3.24 does not enforce this rule
 
 Every synthetic event in the investor room carries a simulation label before anyone in the room treats it as something that happened.
 
-An unlabeled synthetic event stops the demo. The operator does not prove it, does not add it to a customer total, and does not keep speaking.
+On F1, an unlabeled synthetic file is discarded. The operator does not prove it, does not add it to a total, and does not resume a success narration. The operator still speaks B16–B18 as the close, including `L-FOUNDER-BEATS-ABSENT`. The operator does not keep speaking as if the demo succeeded with the unlabeled file.
+
+That sentence is the stop rule. `03-DEMO-SCRIPT.md` and `07-FAILURE-INJECTION-OUTLINE.md` use the same sentence.
+
+The planted file remains in the demo home until the B17 reset deletes it. Until that reset, discard is the disposition: the file is not proved, not counted, and not narrated as success.
 
 Stored action `OBSERVED` is the free Optics action token. It is not a simulation label.
 
@@ -41,7 +45,7 @@ A file dropped into a demo home is synthetic when a person or `vantio demo` crea
 
 - If the file has `evidence_origin` `SIMULATED_DEMO` and `producer` `demo_command`, the label is on the file. The spoken banner is still required.
 - If the file has hostname `optics-demo.invalid` and no origin field, the spoken banner is required and the missing field is limitation `L-DEMO-FILE-UNLABELED`.
-- If the file has neither an origin field nor hostname `optics-demo.invalid`, it is an unlabeled synthetic event when the operator planted it. Stop. Disposition: discard. Do not run `vantio prove` on it.
+- If the file has neither an origin field nor hostname `optics-demo.invalid`, it is an unlabeled synthetic event when the operator planted it. Apply the stop rule above. Do not run `vantio prove` on it.
 
 Narrated boundaries do not get a run file. Phantom Engine enforce, host enrollment, and cluster behavior are narration. They are not events in `~/.vantio/runs/`.
 

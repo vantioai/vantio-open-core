@@ -62,7 +62,7 @@ Absent from stdout and stderr: `BLOCKED`, `REDACTED`, `DRY_RUN`, `content`, a pr
 
 ## `demo --json` reference
 
-The spoken script does not run this. The shape, checked on the design host, is:
+The spoken script does not run this. `C-SCHEMA-UNSTABLE` and the `demo --json` half of `C-NO-PROMPT` cite this section as a design-host reference. The shape, checked on the design host, is:
 
 | Field | Value |
 | --- | --- |
@@ -137,6 +137,8 @@ The Markdown includes the privacy sentence that prompts and completions are neve
 `prove --list` shows the trace, call count `1`, total bytes as an em dash, and a wall-clock date. With one `demo`, the list count is 1. The design-host check ran `demo` twice and saw count 2. The room must see count 1.
 
 ## B15 discover, before the defect is planted
+
+The room runs `discover` once under the `SIMULATED_DEMO` banner, after one `demo` and before F1 is planted. The spoken observed-locally line refers to this output.
 
 After one `demo`, `discover` scans 1 run log and prints host `optics-demo.invalid` with calls `1` and total bytes as an em dash, then a line of the form `1 host(s)  |  1 total call(s) observed locally`.
 

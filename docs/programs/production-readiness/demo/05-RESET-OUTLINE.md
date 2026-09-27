@@ -31,7 +31,7 @@ The scripted prove path uses `--format=md` and writes to the terminal. A correct
 ## Pass condition
 
 - The demo trace id is gone from the demo home because the demo home is gone.
-- The planted defect is gone with it.
+- The planted defect is gone with it. That removal completes the discard in the F1 stop rule. It is not a success narration of the unlabeled file.
 - The operator's real runs directory does not contain that trace id.
 - No session HTML proof remains in the working directory.
 

@@ -8,7 +8,7 @@ The planted defect for F1 is created in the demo home during the beat. It is del
 
 ## F1 — Unlabeled synthetic file (room)
 
-When: B15, after discover has been described, before reset.
+When: B15, after `discover` has been run under the `SIMULATED_DEMO` banner, before reset.
 
 Setup, inside `$DEMO_HOME/.vantio/runs/` only:
 
@@ -26,13 +26,17 @@ The wrapper below is the design record of that defect. The wrapper is labeled. T
 }
 ```
 
-Expected operator result:
+Expected operator result, same rule as `01-SIMULATION-LABEL-RULE.md` and `03-DEMO-SCRIPT.md`:
+
+On F1, an unlabeled synthetic file is discarded. The operator does not prove it, does not add it to a total, and does not resume a success narration. The operator still speaks B16–B18 as the close, including `L-FOUNDER-BEATS-ABSENT`. The operator does not keep speaking as if the demo succeeded with the unlabeled file.
+
+Checks:
 
 1. The operator states the file has no simulation label.
 2. The operator does not run `vantio prove` on `0xinjectunlabeled01`.
 3. The operator does not add its call count to a customer total.
-4. The demo does not continue to a success slide. B16 through B18 still happen, and they describe the stop.
-5. Reset removes the file with the demo home.
+4. The operator does not resume a success narration. B16 through B18 are the close.
+5. Do not delete the planted file before B17. Reset in B17 removes the file with the demo home. That removal completes the discard. Until then, discard is the disposition.
 
 Fail if anyone calls the planted host a live provider call.
 
@@ -58,4 +62,4 @@ A second `demo` writes a second trace id and a second timestamp. Expected output
 
 ## Pass for the injection portion of the room
 
-F1 was planted only in the demo home, was not proved, was not counted as customer activity, and was removed by reset. No enforcement token was written.
+F1 was planted only in the demo home, was not proved, was not counted as customer activity, did not resume a success narration, and was removed by reset. B16 through B18 were spoken as the close. No enforcement token was written.

@@ -15,7 +15,7 @@ This is the operator outline for the script in `03-DEMO-SCRIPT.md`. It is not an
 7. Leave `VANTIO_TELEMETRY` unset.
 8. Leave `VANTIO_API_KEY` unset.
 9. Working directory is the repository root.
-10. Put the simulation banner where the room can read it before B07. Keep it through B10 and B15.
+10. Put the simulation banner where the room can read it before B07. Keep it through B10 and through B15, including `discover` and the F1 stop.
 11. Have these files open: `03-DEMO-SCRIPT.md`, `08-CLAIM-LEDGER.json`, `09-LIMITATION-LEDGER.json`, `docs/PRODUCT_LINEUP.md`.
 
 ## During the room
@@ -26,11 +26,14 @@ This is the operator outline for the script in `03-DEMO-SCRIPT.md`. It is not an
 4. If a command prints a block token, a redact token, or a dry-run block token, stop. That output is outside this script.
 5. If the version line is not `0.3.24`, stop.
 6. If `status` prints `opt-in` for telemetry, stop and fix the environment. The scripted word is `disabled`.
-7. If the run file hostname is not `optics-demo.invalid`, stop. Do not explain the file as the stub.
-8. Do not answer an improvised question by starting `vantio run` against a network.
-9. Do not open a Phantom Engine repository and do not paste kernel output into the room.
+7. If the run file written by `demo` has a hostname other than `optics-demo.invalid`, stop. Do not explain that file as the stub. The F1 planted file is a different file and follows the stop rule in `01-SIMULATION-LABEL-RULE.md`.
+8. At B15, run `discover` once while the banner is up and before F1 is planted. Then plant F1. On F1, an unlabeled synthetic file is discarded. The operator does not prove it, does not add it to a total, and does not resume a success narration. The operator still speaks B16–B18 as the close, including `L-FOUNDER-BEATS-ABSENT`. The operator does not keep speaking as if the demo succeeded with the unlabeled file.
+9. Do not answer an improvised question by starting `vantio run` against a network.
+10. Do not open a Phantom Engine repository and do not paste kernel output into the room.
 
 ## After a deviation
+
+Scripted F1 is not a deviation. It follows the stop rule and still speaks B16–B18. A deviation is an unexpected file, token, version, or telemetry state.
 
 1. Say that the script has stopped.
 2. Do not continue with prove or discover on an unexpected file.
