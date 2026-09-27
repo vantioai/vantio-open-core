@@ -30,7 +30,7 @@ An empty call list rolls up to `NOT_OBSERVED` for both.
 
 If the calls in one run produce more than one application status, the rollup `applicationStatus` is `PARTIAL`. Optics status on that rollup stays `SUCCESS`.
 
-Published Python 3.0.14 can store `ok: true` on a 4xx or 5xx response. Trust the HTTP status and the derived application token. Unpublished 3.1.0 source stores `ok` false for 400–599. The CLI rule is the same either way: it does not read `ok`.
+Published Python 3.0.14 can store `ok` true on a 4xx or 5xx response when the client returns the response object (`requests`, `httpx`, `aiohttp` in the 3.0.14 source). urllib is different: a local check of the 3.0.14 wheel recorded HTTP 500 from `urlopen` with `ok` false and `error` `network_error`. Trust the HTTP status and the derived application token. The `error` string on that urllib file says `network_error` even though `status` is 500. Unpublished 3.1.0 source stores `ok` false for 400–599 and does not label that HTTP status as `network_error`. The CLI rule is the same either way: it does not read `ok`.
 
 ## Where the tokens show up
 

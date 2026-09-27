@@ -34,7 +34,7 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 - A crash during the single write can leave a partial file. Write errors are swallowed.
 - `SIGKILL` skips the flush.
 - Query strings are dropped. Path segments are stored and can hold secrets.
-- Published Python 3.0.14 can store `ok: true` on HTTP errors. Display uses the status code.
+- Published Python 3.0.14 urllib records an HTTP error status with `error` `network_error`. The return path in that source can store `ok` true on a 4xx or 5xx. Display uses the status code.
 - Python files contain `"workflow": "sight_loop"`. That string is not current product terminology.
 - The published PyPI summary and the MCP package description still contain that older phrase. This manual does not adopt it.
 - `vantio prove` HTML and MCP Markdown do not show the same columns.
@@ -56,4 +56,4 @@ Not covered by those tests as a product guarantee: SQLite, retention, cross-proc
 
 ## Unpublished source is not the product
 
-Reading `packages/vantio-agent-sdk-py` at this commit shows version 3.1.0. The PyPI project JSON for `vantio-agent-sdk` on 2026-09-27 reported latest version 3.0.14. This manual did not upload a package. Features that exist only in 3.1.0 source are documented as unpublished. They are not in the manual's install instructions.
+Reading `packages/vantio-agent-sdk-py` at this commit shows version 3.1.0. The PyPI project JSON on 2026-09-27 reported latest version 3.0.14, and `pip install --target … vantio-agent-sdk==3.0.14` printed `3.0.14`. This manual did not upload a package. Features that exist only in 3.1.0 source are documented as unpublished. They are not in the manual's install instructions.

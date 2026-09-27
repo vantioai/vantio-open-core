@@ -8,7 +8,7 @@ Two Python versions matter. Only one is on PyPI.
 | Version | **3.0.14** | **3.1.0 unpublished** |
 | `pip install vantio-agent-sdk` | Installs this | Does not install this |
 | Telemetry gate | `shield()` sends unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` | Off unless `VANTIO_TELEMETRY=1` |
-| HTTP 4xx/5xx `ok` | Can be stored true. CLI display ignores `ok` and uses the status code | Source stores `ok` false for 400–599 |
+| HTTP 4xx/5xx `ok` | urllib `urlopen` in a local 3.0.14 check stored `ok` false and `error` `network_error` with the status still set. The return path in that source can store `ok` true. CLI display ignores `ok` | Source stores `ok` false for 400–599 and does not label an HTTP status as `network_error` |
 | Customer outcome lines on the file | Absent | Present in source (`opticsStatus`, `applicationOutcomeLabel`, and related fields) |
 | `schema_status` on the run file | Absent | `unstable-pre-1.0` in source |
 
@@ -80,6 +80,8 @@ The file also contains `"workflow": "sight_loop"`. That value is leftover storag
 The file does not include `pid`, `ppid`, `free_mode`, `duration_ms` on the envelope, `by_host`, or `schema_status`.
 
 `http.client` and `pycurl` success paths in this generation do not store an HTTP status. CLI display then shows application outcome `Unavailable`.
+
+A local check of the published 3.0.14 wheel, using `urllib.request.urlopen` against HTTP 500, stored `status` 500, `ok` false, and `error` `network_error` (`error_class` `HTTPError`). urllib raises for that status, so this path is the exception path. The return path in the 3.0.14 source (a `requests` / `httpx` / `aiohttp` call that returns a response object) sets `ok` true together with the status code. That return path was read from the 3.0.14 sources and was not re-executed in this manual's command check. CLI display ignores `ok` and uses the HTTP status, so a stored 500 is application outcome `APPLICATION_ERROR` either way. The stored `error` string `network_error` on the urllib path is what 3.0.14 wrote. Unpublished 3.1.0 source stops labeling that HTTP status as `network_error`.
 
 ## Unpublished 3.1.0 source
 

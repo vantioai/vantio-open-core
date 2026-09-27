@@ -90,9 +90,29 @@ Full narrative: [USER-MANUAL.md](USER-MANUAL.md).
 
 ## Examples
 
-Command blocks are either **tested** in this documentation pass or **illustrative**.
+Command blocks in the other pages are marked **illustrative** when they are the documented shape of a command, including `npm install -g` and calls to customer LLM providers. This pass did not send a prompt to a customer LLM endpoint.
 
-The first draft marks command blocks **illustrative** when they are taken from CLI help text and source and have not yet been executed for this manual. A later revision of this same manual records which commands were executed locally. Live calls to customer LLM providers stay illustrative: this pass does not send prompts to those providers.
+The following were executed locally on 2026-09-27 against `node packages/vantio-cli/bin/vantio.js` (package version 0.3.24) and, where noted, the PyPI wheel `vantio-agent-sdk==3.0.14` installed with `pip install --target` (not a global install):
+
+| Check | Result |
+| --- | --- |
+| `vantio --version` | `0.3.24` |
+| `vantio --help` | No `login` command |
+| `vantio demo`, `vantio demo --json` | Stub HTTP 200, `schema_status` `unstable-pre-1.0`, `content` null, duration 0 |
+| `vantio status` with telemetry vars unset | Posture `off` |
+| `vantio status` with `VANTIO_TELEMETRY_DISABLED=1` | Posture `disabled`. Provider SDK rows `Unsupported` in an empty directory |
+| `vantio prove --list`, `search`, `tail -n 5`, `tail -n 0`, `diff` | Read the demo files |
+| `vantio tail --json --follow` | Exit 1 |
+| `vantio run --json node -e 'process.exit(0)'` | Stdout `opticsStatus` `SUCCESS`, `applicationStatus` `NOT_OBSERVED`, `schema_status` `unstable-pre-1.0` |
+| `vantio run node` with no in-scope call | Wrote a run file with `calls` `[]`, `schema_version` 2, no `schema_status` |
+| `vantio run node` POST to `127.0.0.1` with `VANTIO_EXTRA_LLM_HOSTS` | Recorded `action` `OBSERVED`, path `/v1/chat/completions`, HTTP 201, provider `local`. The prompt, the query token, and the response body were absent from the file |
+| `vantio run python3` without the SDK | Stderr warning. The process still printed and exited |
+| `vantio discover --local` | Listed hosts from `~/.vantio/runs` only |
+| PyPI `vantio-agent-sdk==3.0.14` | `vantio.__version__` is `3.0.14`. With telemetry variables unset, `is_telemetry_disabled()` is false (the ping is allowed). `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` each make it true. The check did not POST |
+| Unpublished source import | `vantio.__version__` is `3.1.0`. With telemetry variables unset, `is_telemetry_disabled()` is true |
+| `vantio run python3` with 3.0.14 and `VANTIO_HOME` set, urllib POST that returns HTTP 500 | Writer directory received the file. CLI `discover` did not. File has `workflow` `sight_loop`, no `schema_status`, no `pid`, `provider` `other`, `status` 500, `ok` false, `error` `network_error`. Prompt, query, and response body were absent |
+
+`vantio prove --format=md` was also run on the local Node file. It did not contain the prompt canary.
 
 ## PDF
 

@@ -54,9 +54,11 @@ The file name is the trace id with characters outside `A-Za-z0-9_-` replaced by 
 
 Published 3.0.14 stores `provider` `"other"`. Use `hostname`. Node may show `openai` for the same host because it guesses from substrings. Both can be correct for their writers.
 
-## `ok` is true on an HTTP error
+## `ok` and `network_error` on an HTTP error
 
-That matches published Python 3.0.14. CLI display ignores `ok` and uses the status code. Application outcome for 400–599 is `APPLICATION_ERROR`. Unpublished 3.1.0 source stores `ok` false for those statuses. You only have that storage if you are running the unpublished tree.
+CLI display ignores `ok` and uses the status code. Application outcome for 400–599 is `APPLICATION_ERROR`.
+
+Published Python 3.0.14 urllib `urlopen` raises `HTTPError` for an HTTP error status. A local check of that wheel stored HTTP 500 as `ok` false and `error` `network_error`. The return path for `requests`, `httpx`, and `aiohttp` in that same source sets `ok` true when the call returns a response object, including a 4xx or 5xx. Unpublished 3.1.0 source stores `ok` false for 400–599 and does not use `network_error` for an HTTP status. You only have that 3.1.0 storage when you are running the unpublished tree.
 
 ## Duration looks wrong
 

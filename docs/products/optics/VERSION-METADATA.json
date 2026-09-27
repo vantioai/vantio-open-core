@@ -8,6 +8,7 @@
   "contract_version": "unstable-pre-1.0",
   "source_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
   "generated_at_utc": "2026-09-27T05:26:05Z",
+  "command_check_utc": "2026-09-27T05:36:00Z",
   "registry_checked_utc": "2026-09-27T05:24:00Z",
   "products": {
     "cli": {
@@ -53,6 +54,9 @@
   "examples": {
     "policy": "tested or illustrative",
     "live_llm_provider_calls": "illustrative",
-    "command_transcript": "not yet executed for this manual revision"
+    "command_transcript": "local CLI 0.3.24 and PyPI vantio-agent-sdk 3.0.14 checks recorded in README.md on 2026-09-27",
+    "global_npm_install": "not executed",
+    "pypi_install_method": "pip install --target, package version 3.0.14",
+    "telemetry_post": "not sent"
   }
 }

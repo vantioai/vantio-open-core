@@ -102,9 +102,29 @@ Full narrative: [USER-MANUAL.md](USER-MANUAL.md).
 
 ## Examples
 
-Command blocks are either **tested** in this documentation pass or **illustrative**.
+Command blocks in the other pages are marked **illustrative** when they are the documented shape of a command, including `npm install -g` and calls to customer LLM providers. This pass did not send a prompt to a customer LLM endpoint.
 
-The first draft marks command blocks **illustrative** when they are taken from CLI help text and source and have not yet been executed for this manual. A later revision of this same manual records which commands were executed locally. Live calls to customer LLM providers stay illustrative: this pass does not send prompts to those providers.
+The following were executed locally on 2026-09-27 against `node packages/vantio-cli/bin/vantio.js` (package version 0.3.24) and, where noted, the PyPI wheel `vantio-agent-sdk==3.0.14` installed with `pip install --target` (not a global install):
+
+| Check | Result |
+| --- | --- |
+| `vantio --version` | `0.3.24` |
+| `vantio --help` | No `login` command |
+| `vantio demo`, `vantio demo --json` | Stub HTTP 200, `schema_status` `unstable-pre-1.0`, `content` null, duration 0 |
+| `vantio status` with telemetry vars unset | Posture `off` |
+| `vantio status` with `VANTIO_TELEMETRY_DISABLED=1` | Posture `disabled`. Provider SDK rows `Unsupported` in an empty directory |
+| `vantio prove --list`, `search`, `tail -n 5`, `tail -n 0`, `diff` | Read the demo files |
+| `vantio tail --json --follow` | Exit 1 |
+| `vantio run --json node -e 'process.exit(0)'` | Stdout `opticsStatus` `SUCCESS`, `applicationStatus` `NOT_OBSERVED`, `schema_status` `unstable-pre-1.0` |
+| `vantio run node` with no in-scope call | Wrote a run file with `calls` `[]`, `schema_version` 2, no `schema_status` |
+| `vantio run node` POST to `127.0.0.1` with `VANTIO_EXTRA_LLM_HOSTS` | Recorded `action` `OBSERVED`, path `/v1/chat/completions`, HTTP 201, provider `local`. The prompt, the query token, and the response body were absent from the file |
+| `vantio run python3` without the SDK | Stderr warning. The process still printed and exited |
+| `vantio discover --local` | Listed hosts from `~/.vantio/runs` only |
+| PyPI `vantio-agent-sdk==3.0.14` | `vantio.__version__` is `3.0.14`. With telemetry variables unset, `is_telemetry_disabled()` is false (the ping is allowed). `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` each make it true. The check did not POST |
+| Unpublished source import | `vantio.__version__` is `3.1.0`. With telemetry variables unset, `is_telemetry_disabled()` is true |
+| `vantio run python3` with 3.0.14 and `VANTIO_HOME` set, urllib POST that returns HTTP 500 | Writer directory received the file. CLI `discover` did not. File has `workflow` `sight_loop`, no `schema_status`, no `pid`, `provider` `other`, `status` 500, `ok` false, `error` `network_error`. Prompt, query, and response body were absent |
+
+`vantio prove --format=md` was also run on the local Node file. It did not contain the prompt canary.
 
 ## PDF
 
@@ -549,7 +569,7 @@ Two Python versions matter. Only one is on PyPI.
 | Version | **3.0.14** | **3.1.0 unpublished** |
 | `pip install vantio-agent-sdk` | Installs this | Does not install this |
 | Telemetry gate | `shield()` sends unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` | Off unless `VANTIO_TELEMETRY=1` |
-| HTTP 4xx/5xx `ok` | Can be stored true. CLI display ignores `ok` and uses the status code | Source stores `ok` false for 400–599 |
+| HTTP 4xx/5xx `ok` | urllib `urlopen` in a local 3.0.14 check stored `ok` false and `error` `network_error` with the status still set. The return path in that source can store `ok` true. CLI display ignores `ok` | Source stores `ok` false for 400–599 and does not label an HTTP status as `network_error` |
 | Customer outcome lines on the file | Absent | Present in source (`opticsStatus`, `applicationOutcomeLabel`, and related fields) |
 | `schema_status` on the run file | Absent | `unstable-pre-1.0` in source |
 
@@ -621,6 +641,8 @@ The file also contains `"workflow": "sight_loop"`. That value is leftover storag
 The file does not include `pid`, `ppid`, `free_mode`, `duration_ms` on the envelope, `by_host`, or `schema_status`.
 
 `http.client` and `pycurl` success paths in this generation do not store an HTTP status. CLI display then shows application outcome `Unavailable`.
+
+A local check of the published 3.0.14 wheel, using `urllib.request.urlopen` against HTTP 500, stored `status` 500, `ok` false, and `error` `network_error` (`error_class` `HTTPError`). urllib raises for that status, so this path is the exception path. The return path in the 3.0.14 source (a `requests` / `httpx` / `aiohttp` call that returns a response object) sets `ok` true together with the status code. That return path was read from the 3.0.14 sources and was not re-executed in this manual's command check. CLI display ignores `ok` and uses the HTTP status, so a stored 500 is application outcome `APPLICATION_ERROR` either way. The stored `error` string `network_error` on the urllib path is what 3.0.14 wrote. Unpublished 3.1.0 source stops labeling that HTTP status as `network_error`.
 
 ## Unpublished 3.1.0 source
 
@@ -925,7 +947,7 @@ An empty call list rolls up to `NOT_OBSERVED` for both.
 
 If the calls in one run produce more than one application status, the rollup `applicationStatus` is `PARTIAL`. Optics status on that rollup stays `SUCCESS`.
 
-Published Python 3.0.14 can store `ok: true` on a 4xx or 5xx response. Trust the HTTP status and the derived application token. Unpublished 3.1.0 source stores `ok` false for 400–599. The CLI rule is the same either way: it does not read `ok`.
+Published Python 3.0.14 can store `ok` true on a 4xx or 5xx response when the client returns the response object (`requests`, `httpx`, `aiohttp` in the 3.0.14 source). urllib is different: a local check of the 3.0.14 wheel recorded HTTP 500 from `urlopen` with `ok` false and `error` `network_error`. Trust the HTTP status and the derived application token. The `error` string on that urllib file says `network_error` even though `status` is 500. Unpublished 3.1.0 source stores `ok` false for 400–599 and does not label that HTTP status as `network_error`. The CLI rule is the same either way: it does not read `ok`.
 
 ## Where the tokens show up
 
@@ -972,6 +994,8 @@ For a recorded call, the Node 0.3.24 file can contain hostname, provider guess, 
 Published Python 3.0.14 stores a smaller call object: hostname, provider `"other"`, action, mediation, timestamp, and the extras that hook recorded (path, status, ok, duration, error name). The envelope has no pid. See [RECORD-REFERENCE.md](RECORD-REFERENCE.md).
 
 Response size on Node is `Content-Length` when the header exists. A missing header leaves the size empty or zero depending on the path. Streaming byte totals in a control-plane branch are outside free Optics.
+
+A local check on 2026-09-27 posted a prompt canary and a query token to a loopback server through `vantio run node` (CLI 0.3.24) and through `vantio run python3` with published `vantio-agent-sdk==3.0.14`. The run files contained the path and the host. They did not contain the prompt, the query token, or the response body.
 
 ## Absent from the free record
 
@@ -1184,9 +1208,11 @@ The file name is the trace id with characters outside `A-Za-z0-9_-` replaced by 
 
 Published 3.0.14 stores `provider` `"other"`. Use `hostname`. Node may show `openai` for the same host because it guesses from substrings. Both can be correct for their writers.
 
-## `ok` is true on an HTTP error
+## `ok` and `network_error` on an HTTP error
 
-That matches published Python 3.0.14. CLI display ignores `ok` and uses the status code. Application outcome for 400–599 is `APPLICATION_ERROR`. Unpublished 3.1.0 source stores `ok` false for those statuses. You only have that storage if you are running the unpublished tree.
+CLI display ignores `ok` and uses the status code. Application outcome for 400–599 is `APPLICATION_ERROR`.
+
+Published Python 3.0.14 urllib `urlopen` raises `HTTPError` for an HTTP error status. A local check of that wheel stored HTTP 500 as `ok` false and `error` `network_error`. The return path for `requests`, `httpx`, and `aiohttp` in that same source sets `ok` true when the call returns a response object, including a 4xx or 5xx. Unpublished 3.1.0 source stores `ok` false for 400–599 and does not use `network_error` for an HTTP status. You only have that 3.1.0 storage when you are running the unpublished tree.
 
 ## Duration looks wrong
 
@@ -1354,7 +1380,7 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 - A crash during the single write can leave a partial file. Write errors are swallowed.
 - `SIGKILL` skips the flush.
 - Query strings are dropped. Path segments are stored and can hold secrets.
-- Published Python 3.0.14 can store `ok: true` on HTTP errors. Display uses the status code.
+- Published Python 3.0.14 urllib records an HTTP error status with `error` `network_error`. The return path in that source can store `ok` true on a 4xx or 5xx. Display uses the status code.
 - Python files contain `"workflow": "sight_loop"`. That string is not current product terminology.
 - The published PyPI summary and the MCP package description still contain that older phrase. This manual does not adopt it.
 - `vantio prove` HTML and MCP Markdown do not show the same columns.
@@ -1376,7 +1402,7 @@ Not covered by those tests as a product guarantee: SQLite, retention, cross-proc
 
 ## Unpublished source is not the product
 
-Reading `packages/vantio-agent-sdk-py` at this commit shows version 3.1.0. The PyPI project JSON for `vantio-agent-sdk` on 2026-09-27 reported latest version 3.0.14. This manual did not upload a package. Features that exist only in 3.1.0 source are documented as unpublished. They are not in the manual's install instructions.
+Reading `packages/vantio-agent-sdk-py` at this commit shows version 3.1.0. The PyPI project JSON on 2026-09-27 reported latest version 3.0.14, and `pip install --target … vantio-agent-sdk==3.0.14` printed `3.0.14`. This manual did not upload a package. Features that exist only in 3.1.0 source are documented as unpublished. They are not in the manual's install instructions.
 
 
 ========================================================================
@@ -1514,6 +1540,7 @@ FILE: VERSION-METADATA.json
   "contract_version": "unstable-pre-1.0",
   "source_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
   "generated_at_utc": "2026-09-27T05:26:05Z",
+  "command_check_utc": "2026-09-27T05:36:00Z",
   "registry_checked_utc": "2026-09-27T05:24:00Z",
   "products": {
     "cli": {
@@ -1559,6 +1586,9 @@ FILE: VERSION-METADATA.json
   "examples": {
     "policy": "tested or illustrative",
     "live_llm_provider_calls": "illustrative",
-    "command_transcript": "not yet executed for this manual revision"
+    "command_transcript": "local CLI 0.3.24 and PyPI vantio-agent-sdk 3.0.14 checks recorded in README.md on 2026-09-27",
+    "global_npm_install": "not executed",
+    "pypi_install_method": "pip install --target, package version 3.0.14",
+    "telemetry_post": "not sent"
   }
 }

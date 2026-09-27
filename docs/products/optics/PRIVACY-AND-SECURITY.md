@@ -10,6 +10,8 @@ Published Python 3.0.14 stores a smaller call object: hostname, provider `"other
 
 Response size on Node is `Content-Length` when the header exists. A missing header leaves the size empty or zero depending on the path. Streaming byte totals in a control-plane branch are outside free Optics.
 
+A local check on 2026-09-27 posted a prompt canary and a query token to a loopback server through `vantio run node` (CLI 0.3.24) and through `vantio run python3` with published `vantio-agent-sdk==3.0.14`. The run files contained the path and the host. They did not contain the prompt, the query token, or the response body.
+
 ## Absent from the free record
 
 - Prompt text
