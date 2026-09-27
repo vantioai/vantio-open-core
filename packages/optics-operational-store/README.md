@@ -8,4 +8,4 @@ Callers use put, get, and the query request. A caller-supplied SQL string is rej
 
 Packet: `docs/planning/optics-o7-store/00-STORE.md`.
 
-Classification: `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL`. Evidence tier `UNSET`.
+Classification: `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL`. Evidence tier `UNSET`. Node binding `UNSELECTED`.

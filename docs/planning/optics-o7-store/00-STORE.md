@@ -8,7 +8,7 @@ Producer identity: Cursor cloud agent `bc-4b9b153e-e636-58b6-a894-7de8dd2cd819`,
 
 Producer URL: https://cursor.com/agents/bc-4b9b153e-e636-58b6-a894-7de8dd2cd819
 
-Producer classification: `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL`
+Producer classification: `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL`
 
 That classification means the Python file store is implemented and the Node file store is not. Founder decision 9 is unresolved, so this force did not select a Node binding. The packet is a handoff to a separate council. It is not a council verdict, not a Gate 8 opening, not an evidence tier, and not a claim that Optics persistence is product-complete.
 
@@ -47,13 +47,15 @@ This force leaves these surfaces untouched:
 - Callers use put, get, and the A4 query request. A caller-supplied SQL string is rejected. A caller regular expression is rejected. Allowlist enforcement calls the private PKG-01 validator before insert. Prohibited fields are not written.
 - Unix create mode is `0600` for the store, the id sidecar, the backup, and the recovery envelope. Directories this force creates are `0700`. Windows ACL detail stays Founder decision 8. No ACL is invented.
 - A symlink on `optics`, the store path, the id sidecar, the backup, the recovery directory, or a WAL sidecar is refused. The store does not follow it.
-- A corrupt or unreadable file stays in place. Disclosure is `optics/recovery/<safe-store-id>.recovery.json`. The first corruption state is `STOPPED_PRESERVED`. Salvage after that classification returns `UNAVAILABLE` for a torn file and is never `COMPLETE`. This force does not add a replacement command and does not write `store.sqlite.new`.
+- A corrupt or unreadable file stays in place. Disclosure is `optics/recovery/<safe-store-id>.recovery.json`. The first corruption state is `STOPPED_PRESERVED`. A mode `000` file, or any open that raises `PermissionError` before the database handler, takes that same path and writes the recovery envelope. It does not leave an uncaught `PermissionError`. Salvage after that classification returns `UNAVAILABLE` for a torn or unreadable file and is never `COMPLETE`. This force does not add a replacement command and does not write `store.sqlite.new`.
+- A duplicate or identity-conflict put whose stored `body_json` is not JSON returns `REQUIRED_EVIDENCE_CORRUPT`. The call does not raise `JSONDecodeError`. The corrupt row stays. A later valid put can still commit.
 - A newer `user_version` is refused with `NEWER_SCHEMA_REFUSED`. A privacy-weaker writer is refused with `WEAKER_WRITER_REFUSED`. Software rollback does not down-migrate the file.
 - An empty database below version 1 is migrated forward after a `0600` backup. A file that already has foreign tables is not replaced. An injected migration fault leaves the original bytes, keeps the backup, and records `MIGRATION_FAILED`.
 - If the store cannot be opened or a write cannot finish, the call returns and the application result is detached. Normal writes stop. The function does not raise for those cases.
 - Busy-timeout and page-size stay `NOT_SET`. Connections use no wait. That is not a selected NFR number. At-rest encryption is not selected.
 - Default retention is unbounded. This force does not prune.
 - Query freshness is `UNKNOWN`. A request for freshness `CURRENT` is rejected. Decision 10 stays unresolved.
+- Completeness is a property of the declared scope. Coverage gaps, non-complete run lifecycles, parent conflicts, producer-sequence conflicts, sampled rows, and corrupt stored bodies are evaluated on every matching row. A page that does not include the later row still returns the same `completeness` and `completenessReasons` as the full scope. `COUNT(*)` and drops were already scope-wide.
 - The store is not a default write path. `O12` is still `NOT_AUTHORIZED`, and the dependency order says fail-open is required before the store is a default write path.
 
 ## 3. What stays blocked
@@ -84,6 +86,15 @@ The test now still rejects a tracked `*.sqlite` file, a package dependency on `s
 
 ## 5. Result
 
-`OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL`
+`OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL`
 
 Machine-readable copy: `STORE-MANIFEST.json`. Council stub: `10-INDEPENDENT-COUNCIL.md`, status `PENDING_INDEPENDENT_COUNCIL`.
+
+## 6. Revision
+
+Council `bc-55359182-f6a6-505c-932b-c55e0904f8ea` returned `OPTICS_O7_STORE_NEEDS_REVISION` on tip `0bb93d3a799c8c514bc88e2a971f63f4cebe4860`. This revision closes those two holds.
+
+- Page 1 of a scope that also contains a later coverage gap, a `run_envelope` with `lifecycle` `PARTIAL`, or `identity_conflict` `PARENT` is `PARTIAL` with `COVERAGE_GAP_IN_SCOPE`, `RUN_LIFECYCLE_NOT_COMPLETE`, or `PARENT_CONFLICT`. It is not `COMPLETE` with an empty reason list while `matchingRecords` is 2 and `hasMore` is true.
+- Unreadable open and a duplicate put of corrupt `body_json` fail open. A readable torn file still stays in place and returns `STOPPED_PRESERVED`.
+
+Node `openStore` still returns `NODE_BINDING_UNSELECTED`. No library is selected. No Node file is created. Founder decision 9 stays unresolved. `PACKAGES.json` `O7` stays `NOT_AUTHORIZED`. Gate 8 stays closed. Evidence tier stays `UNSET`. This revision does not claim `O1`, `O2`, `O6`, `O8`, `O10`, `O11`, or `O12` met.

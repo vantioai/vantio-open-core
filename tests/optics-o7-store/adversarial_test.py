@@ -330,6 +330,201 @@ class AdversarialStoreTest(unittest.TestCase):
         self.assertEqual(backup.read_bytes(), original)
         self.assertTrue(db.stat().st_size >= len(original))
 
+    def _window(self, **extra):
+        window = {
+            "time_start": "2026-07-01T00:00:00.000Z",
+            "time_end": "2026-07-01T01:00:00.000Z",
+        }
+        window.update(extra)
+        return window
+
+    def _assert_off_page_scope(self, handle, reason):
+        full = handle.query(self._window())
+        page = handle.query(self._window(limit=1))
+        self.assertEqual(full["matchingRecords"], 2)
+        self.assertFalse(full["hasMore"])
+        self.assertEqual(full["completeness"], "PARTIAL")
+        self.assertEqual(full["completenessReasons"], [reason])
+        self.assertEqual(page["matchingRecords"], 2)
+        self.assertTrue(page["hasMore"])
+        self.assertEqual(page["returnedRecords"], 1)
+        self.assertEqual(page["rows"][0]["event_id"], "e.12.prod_clean_1.0")
+        self.assertEqual(page["completeness"], "PARTIAL")
+        self.assertEqual(page["completenessReasons"], full["completenessReasons"])
+        self.assertIn(reason, page["completenessReasons"])
+        self.assertNotEqual(page["completeness"], "COMPLETE")
+        self.assertNotEqual(page["completenessReasons"], [])
+
+    def test_off_page_coverage_gap_is_scope_partial(self):
+        handle = self._create()
+        try:
+            self.assertTrue(handle.put(clean_record())["stored"])
+            stored = handle.put(
+                record_with(
+                    producer_sequence=1,
+                    sequence=1,
+                    started_at="2026-07-01T00:00:01.000Z",
+                    coverage_gap="EVIDENCED",
+                )
+            )
+            self.assertTrue(stored["stored"], stored["reason_code"])
+            self.assertEqual(stored["record"]["issue_location"], "COVERAGE")
+            gap = handle.conn.execute(
+                "SELECT issue_location FROM records WHERE event_id = ?",
+                (stored["record"]["event_id"],),
+            ).fetchone()[0]
+            self.assertEqual(gap, "COVERAGE")
+            self._assert_off_page_scope(handle, "COVERAGE_GAP_IN_SCOPE")
+        finally:
+            handle.close()
+
+    def test_off_page_partial_run_is_scope_partial(self):
+        handle = self._create()
+        try:
+            self.assertTrue(handle.put(clean_record())["stored"])
+            stored = handle.put(
+                {
+                    "record_type": "run_envelope",
+                    "schema_status": "unstable-pre-1.0",
+                    "schema_version": 0,
+                    "producer": "node_interceptor",
+                    "cli_or_sdk_version": "0.3.24",
+                    "evidence_origin": "LOCAL_OBSERVATION",
+                    "producer_id": "prod_clean_1",
+                    "run_id": "run_clean_1",
+                    "started_at": "2026-07-01T00:00:03.000Z",
+                    "lifecycle": "PARTIAL",
+                    "identity_conflict": "NONE",
+                }
+            )
+            self.assertTrue(stored["stored"], stored["reason_code"])
+            self.assertEqual(stored["record"]["record_type"], "run_envelope")
+            self.assertEqual(stored["record"]["lifecycle"], "PARTIAL")
+            row = handle.conn.execute(
+                "SELECT record_type, lifecycle FROM records WHERE record_type = 'run_envelope'"
+            ).fetchone()
+            self.assertEqual(tuple(row), ("run_envelope", "PARTIAL"))
+            self._assert_off_page_scope(handle, "RUN_LIFECYCLE_NOT_COMPLETE")
+        finally:
+            handle.close()
+
+    def test_off_page_parent_conflict_is_scope_partial(self):
+        handle = self._create()
+        try:
+            self.assertTrue(handle.put(clean_record())["stored"])
+            stored = handle.put(
+                record_with(
+                    producer_sequence=2,
+                    sequence=2,
+                    started_at="2026-07-01T00:00:02.000Z",
+                    parent_conflict=True,
+                )
+            )
+            self.assertTrue(stored["stored"], stored["reason_code"])
+            self.assertEqual(stored["record"]["identity_conflict"], "PARENT")
+            body = json.loads(
+                handle.conn.execute(
+                    "SELECT body_json FROM records WHERE event_id = ?",
+                    (stored["record"]["event_id"],),
+                ).fetchone()[0]
+            )
+            self.assertEqual(body["identity_conflict"], "PARENT")
+            self._assert_off_page_scope(handle, "PARENT_CONFLICT")
+        finally:
+            handle.close()
+
+    def test_unreadable_store_fails_open_and_preserves_bytes(self):
+        handle = self._create()
+        handle.close()
+        target = self.root / "optics" / "store.sqlite"
+        original = target.read_bytes()
+        before = target.stat()
+        os.chmod(target, 0)
+        opened = None
+        try:
+            opened = open_store(self.root)
+            self.assertFalse(opened.writes_enabled)
+            self.assertTrue(opened.application_continues)
+            self.assertFalse(opened.file_created)
+            self.assertEqual(opened.reason_code, "INTEGRITY_FAILED")
+            self.assertEqual(opened.integrity, "UNREADABLE")
+            self.assertEqual(opened.recovery_state, "STOPPED_PRESERVED")
+            preserved = target.stat()
+            self.assertEqual(preserved.st_ino, before.st_ino)
+            self.assertEqual(preserved.st_size, before.st_size)
+            self.assertEqual(stat.S_IMODE(preserved.st_mode), 0)
+            self.assertFalse((self.root / "optics" / "store.sqlite.new").exists())
+            envelope = opened.recovery
+            self.assertEqual(envelope["record_type"], "recovery_envelope")
+            self.assertEqual(envelope["recovery_state"], "STOPPED_PRESERVED")
+            self.assertEqual(envelope["integrity_result"], "UNREADABLE")
+            self.assertEqual(envelope["remediation_code"], "INTEGRITY_FAILED")
+            self.assertIsNone(envelope["preserved_bytes_sha256"])
+            self.assertIsNone(envelope["replacement_store_id"])
+            self.assertEqual(stat.S_IMODE(opened.recovery_path.stat().st_mode), 0o600)
+            page = opened.query(self._window())
+            self.assertEqual(page["completeness"], "UNAVAILABLE")
+            self.assertNotEqual(page["completeness"], "COMPLETE")
+            self.assertEqual(page["rows"], [])
+            salvaged = opened.salvage()
+            self.assertNotEqual(salvaged["completeness"], "COMPLETE")
+            self.assertEqual(salvaged["rows"], [])
+            after_salvage = target.stat()
+            self.assertEqual(after_salvage.st_ino, before.st_ino)
+            self.assertEqual(after_salvage.st_size, before.st_size)
+            os.chmod(target, 0o600)
+            self.assertEqual(target.read_bytes(), original)
+        finally:
+            if opened is not None:
+                opened.close()
+            os.chmod(target, 0o600)
+
+    def test_duplicate_put_with_corrupt_body_fails_open(self):
+        handle = self._create()
+        try:
+            self.assertTrue(handle.put(clean_record())["stored"])
+            handle.conn.execute("UPDATE records SET body_json = ?", ("not-json",))
+            try:
+                again = handle.put(clean_record(), application_result={"token": "APP"})
+            except (json.JSONDecodeError, ValueError) as exc:
+                self.fail("put raised %s" % type(exc).__name__)
+            self.assertFalse(again["stored"])
+            self.assertFalse(again["duplicate"])
+            self.assertTrue(again["application_continues"])
+            self.assertEqual(again["application_result"]["token"], "APP")
+            self.assertEqual(again["reason_code"], "REQUIRED_EVIDENCE_CORRUPT")
+            self.assertEqual(handle.conn.execute("SELECT body_json FROM records").fetchone()[0], "not-json")
+            self.assertEqual(handle.conn.execute("SELECT COUNT(*) FROM records").fetchone()[0], 1)
+            other = record_with(
+                producer_sequence=1,
+                sequence=1,
+                started_at="2026-07-01T00:00:01.000Z",
+            )
+            followed = handle.put(other, application_result={"token": "APP"})
+            self.assertTrue(followed["stored"], followed["reason_code"])
+            self.assertEqual(followed["application_result"]["token"], "APP")
+        finally:
+            handle.close()
+
+    def test_conflict_put_with_corrupt_body_fails_open(self):
+        handle = self._create()
+        try:
+            self.assertTrue(handle.put(clean_record())["stored"])
+            handle.conn.execute("UPDATE records SET body_json = ?", ("not-json",))
+            conflict = record_with(destination_host="api.example.org")
+            try:
+                refused = handle.put(conflict, application_result={"token": "APP"})
+            except (json.JSONDecodeError, ValueError) as exc:
+                self.fail("put raised %s" % type(exc).__name__)
+            self.assertFalse(refused["stored"])
+            self.assertTrue(refused["application_continues"])
+            self.assertEqual(refused["application_result"]["token"], "APP")
+            self.assertEqual(refused["reason_code"], "REQUIRED_EVIDENCE_CORRUPT")
+            self.assertEqual(handle.conn.execute("SELECT COUNT(*) FROM records").fetchone()[0], 1)
+            self.assertEqual(handle.conn.execute("SELECT body_json FROM records").fetchone()[0], "not-json")
+        finally:
+            handle.close()
+
 
 def json_text(value):
     return json.dumps(value)

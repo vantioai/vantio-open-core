@@ -4,7 +4,7 @@ Audience: INTERNAL_RESTRICTED
 
 Status: `PENDING_INDEPENDENT_COUNCIL`
 
-Producer classification under review: `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL`
+Producer classification under review: `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL`
 
 Producer: Cursor cloud agent `bc-4b9b153e-e636-58b6-a894-7de8dd2cd819`, model Grok 4.7.
 
@@ -24,7 +24,7 @@ This file is the producer stub. The store producer does not sit the council and 
 | Engine | Embedded SQLite, WAL, application-owned schema, cited from decision-pack section 12 and A2 section 4 |
 | Python mechanism | Standard-library `sqlite3`, the mechanism A2 already names |
 | Node binding | `UNSELECTED` |
-| Classification the producer claims | `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL` |
+| Classification the producer claims | `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL` |
 | Evidence tier | `UNSET` |
 | Default write path | Off |
 | `PACKAGES.json` `O7` cell | Left `NOT_AUTHORIZED` |
@@ -60,7 +60,15 @@ Also:
 - No tracked file name ends in `.sqlite`.
 - The producer classification is the blocked token above, not `OPTICS_O7_STORE_READY_FOR_COUNCIL`.
 
-## 4. Notes for the council
+## 4. Revision under review
+
+The previous council returned `OPTICS_O7_STORE_NEEDS_REVISION`. The producer classification is now `OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL`.
+
+The revision evaluates coverage, run lifecycle, and parent conflict on the declared scope, including rows that are not on the current page. An unreadable open writes `STOPPED_PRESERVED` instead of raising `PermissionError`. A duplicate put whose stored `body_json` is not JSON returns `REQUIRED_EVIDENCE_CORRUPT` instead of raising `JSONDecodeError`.
+
+Node binding stays `UNSELECTED`. This stub still does not contain a council verdict.
+
+## 5. Notes for the council
 
 A pass of this packet would accept the Python store and the Node refusal as the current implementation. It would not select a Node binding, would not open Gate 8, and would not assign an evidence tier.
 

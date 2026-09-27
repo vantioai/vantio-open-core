@@ -146,6 +146,25 @@ def _sha256_file(path):
     return digest.hexdigest()
 
 
+def _unreadable_open(paths):
+    handle = StoreHandle(paths)
+    envelope, target = _write_envelope(
+        paths,
+        _read_store_id(paths["store_id"]),
+        None,
+        "UNREADABLE",
+        "STOPPED_PRESERVED",
+        "INTEGRITY_FAILED",
+        None,
+        "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+        None,
+    )
+    _note_envelope(handle, envelope, target, "STOPPED_PRESERVED")
+    handle.reason_code = "INTEGRITY_FAILED"
+    handle.integrity = "UNREADABLE"
+    return handle
+
+
 def _mode(path):
     return os.stat(path).st_mode & 0o777
 
@@ -484,7 +503,10 @@ def open_store(evidence_root=None, create=False, writer_privacy_generation=WRITE
         return _create_store(paths)
     if not store_path.is_file():
         return _stopped(paths, "STORE_NOT_A_FILE")
-    before = _sha256_file(store_path)
+    try:
+        before = _sha256_file(store_path)
+    except OSError:
+        return _unreadable_open(paths)
     return _open_existing(paths, before, writer_privacy_generation, inject_migration_fault)
 
 
@@ -546,8 +568,13 @@ def _open_existing(paths, before_hash, writer_privacy_generation, inject_migrati
     handle = StoreHandle(paths)
     try:
         probe = _connect(paths["store"], readonly=True)
+    except OSError:
+        return _unreadable_open(paths)
     except sqlite3.Error:
-        after = _sha256_file(paths["store"])
+        try:
+            after = _sha256_file(paths["store"])
+        except OSError:
+            return _unreadable_open(paths)
         preserved = before_hash if after == before_hash else None
         envelope, target = _write_envelope(
             paths,
@@ -831,6 +858,30 @@ def _reject_sql(sql, statement):
     return sql is not None or statement is not None
 
 
+def _rollback(conn):
+    try:
+        conn.execute("ROLLBACK")
+    except sqlite3.Error:
+        pass
+
+
+def _load_stored_body(text):
+    try:
+        loaded = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    return loaded
+
+
+def _corrupt_body_result(handle, application_result):
+    _rollback(handle.conn)
+    if handle.diagnostic_failures == 0:
+        handle.diagnostic_failures = 1
+    return _result(False, "REQUIRED_EVIDENCE_CORRUPT", application_result)
+
+
 def _result(stored, reason, application_result, record=None, duplicate=False):
     return {
         "application_continues": True,
@@ -923,21 +974,29 @@ def put(handle, record, application_result=None, sql=None, statement=None):
             existing = []
         same = [row for row in existing if row[1] == identity]
         if same:
+            loaded = _load_stored_body(same[0][0])
+            if loaded is None:
+                return _corrupt_body_result(handle, application_result)
             handle.conn.execute("COMMIT")
-            return _result(True, "IDEMPOTENT_DUPLICATE", application_result, json.loads(same[0][0]), duplicate=True)
+            return _result(True, "IDEMPOTENT_DUPLICATE", application_result, loaded, duplicate=True)
         if existing:
             emitted = dict(emitted)
             emitted["identity_conflict"] = "PRODUCER_SEQUENCE"
             body = json.dumps(emitted, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            rewritten = []
             for row in existing:
-                previous = json.loads(row[0])
+                previous = _load_stored_body(row[0])
+                if previous is None:
+                    return _corrupt_body_result(handle, application_result)
                 previous["identity_conflict"] = "PRODUCER_SEQUENCE"
+                rewritten.append((previous, row[1]))
+            for previous, previous_hash in rewritten:
                 handle.conn.execute(
                     "UPDATE records SET body_json = ? WHERE event_id = ? AND identity_hash = ?",
                     (
                         json.dumps(previous, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
                         event_id,
-                        row[1],
+                        previous_hash,
                     ),
                 )
         handle.conn.execute(
@@ -1168,6 +1227,36 @@ def _cursor_params(decoded):
     ]
 
 
+def _scope_completeness(scope_rows):
+    # A4: completeness is a property of the declared scope, including rows past this page.
+    reasons = []
+    sampled = False
+    unsampled = True
+    for sampling, lifecycle, record_type, issue_location, body_text in scope_rows:
+        if sampling not in (None, "UNSAMPLED"):
+            sampled = True
+            unsampled = False
+            reasons.append("SAMPLING_NOT_UNSAMPLED")
+        if record_type == "run_envelope" and lifecycle not in (None, "COMPLETE"):
+            reasons.append("RUN_LIFECYCLE_NOT_COMPLETE")
+        if issue_location == "COVERAGE":
+            reasons.append("COVERAGE_GAP_IN_SCOPE")
+        try:
+            body = json.loads(body_text)
+        except (ValueError, TypeError):
+            reasons.append("REQUIRED_EVIDENCE_CORRUPT")
+            continue
+        if not isinstance(body, dict):
+            reasons.append("REQUIRED_EVIDENCE_CORRUPT")
+            continue
+        conflict = body.get("identity_conflict")
+        if conflict == "PARENT":
+            reasons.append("PARENT_CONFLICT")
+        elif conflict == "PRODUCER_SEQUENCE":
+            reasons.append("PRODUCER_SEQUENCE_CONFLICT")
+    return reasons, sampled, unsampled
+
+
 def query(handle, request=None):
     normalized, reason = _validate_request(request)
     if reason is not None:
@@ -1224,34 +1313,27 @@ def query(handle, request=None):
         else:
             drop_count = handle.conn.execute("SELECT COALESCE(SUM(drop_count), 0) FROM drops").fetchone()[0]
             drops_scoped = False
+        scope_rows = handle.conn.execute(
+            "SELECT sampling, lifecycle, record_type, issue_location, body_json FROM records WHERE "
+            + scope_sql
+            + " ORDER BY started_at ASC, producer_id ASC, producer_sequence ASC, event_id ASC, row_id ASC",
+            params,
+        ).fetchall()
     except sqlite3.Error:
         return _query_rejected("STORE_UNAVAILABLE")
     has_more = len(fetched) > normalized["limit"]
     page = fetched[: normalized["limit"]]
+    scope_reasons, sampled, unsampled = _scope_completeness(scope_rows)
     rows = []
-    reasons = []
-    sampled = False
-    unsampled = True
     for row in page:
         try:
             body = json.loads(row[1])
-        except ValueError:
-            reasons.append("REQUIRED_EVIDENCE_CORRUPT")
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(body, dict):
             continue
         rows.append(body)
-        sampling = row[6]
-        if sampling not in (None, "UNSAMPLED"):
-            sampled = True
-            unsampled = False
-        if row[8] == "run_envelope" and row[7] not in (None, "COMPLETE"):
-            reasons.append("RUN_LIFECYCLE_NOT_COMPLETE")
-        conflict = body.get("identity_conflict")
-        if conflict == "PARENT":
-            reasons.append("PARENT_CONFLICT")
-        elif conflict == "PRODUCER_SEQUENCE":
-            reasons.append("PRODUCER_SEQUENCE_CONFLICT")
-        if row[9] == "COVERAGE":
-            reasons.append("COVERAGE_GAP_IN_SCOPE")
+    reasons = list(scope_reasons)
     if int(drop_count) > 0 and drops_scoped:
         reasons.append("DROPS_IN_SCOPE")
         drop_state = "DROPS_IN_SCOPE"
@@ -1322,7 +1404,12 @@ def salvage(handle):
         refused["completeness"] = "UNAVAILABLE"
         return refused
     paths = handle.paths
-    before = _sha256_file(paths["store"]) if paths["store"].exists() and not paths["store"].is_symlink() else None
+    before = None
+    if paths["store"].exists() and not paths["store"].is_symlink():
+        try:
+            before = _sha256_file(paths["store"])
+        except OSError:
+            before = None
     envelope = dict(handle.recovery or {})
     envelope["recovery_state"] = "READ_ONLY_SALVAGE"
     envelope["integrity_result"] = handle.integrity if handle.integrity in ("FAILED", "UNREADABLE") else "FAILED"
@@ -1341,7 +1428,12 @@ def salvage(handle):
         handle.recovery = written
         handle.recovery_path = target
         handle.recovery_state = "READ_ONLY_SALVAGE"
-    after = _sha256_file(paths["store"]) if before is not None else None
+    after = None
+    if before is not None:
+        try:
+            after = _sha256_file(paths["store"])
+        except OSError:
+            after = None
     if before is not None and after != before:
         return _query_rejected("BYTES_CHANGED")
     answer = _query_rejected("SALVAGE_UNAVAILABLE")

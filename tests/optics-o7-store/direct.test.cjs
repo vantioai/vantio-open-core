@@ -94,7 +94,10 @@ test("frozen product versions and the closed architecture gate stay in place", (
 
 test("the store manifest hashes match the packet and the implementation", () => {
   const manifest = readJson("docs/planning/optics-o7-store/STORE-MANIFEST.json");
-  assert.equal(manifest.producer_classification, "OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL");
+  assert.equal(
+    manifest.producer_classification,
+    "OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL",
+  );
   assert.equal(manifest.evidence_tier, "UNSET");
   assert.equal(manifest.default_write_path, false);
   assert.equal(manifest.node_binding, "UNSELECTED");
