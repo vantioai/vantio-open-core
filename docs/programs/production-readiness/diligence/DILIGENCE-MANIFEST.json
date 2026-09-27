@@ -1,0 +1,287 @@
+{
+  "schema": "vantio.diligence-room/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "classification": "INVESTOR_DILIGENCE_ROOM_SCAFFOLD_READY_FOR_MERGE",
+  "external_publication": "PROHIBITED",
+  "investor_send": "NOT_CLEARED",
+  "repository": "vantioai/vantio-open-core",
+  "path": "docs/programs/production-readiness/diligence/",
+  "base_commit": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "written_at_utc": "2026-09-27T07:12:00Z",
+  "producer": {
+    "role": "SCAFFOLD_PRODUCER",
+    "agent": "bc-c4fccba6-6357-58cd-b731-f935d88a31a9",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-c4fccba6-6357-58cd-b731-f935d88a31a9"
+  },
+  "tiers": [
+    "PUBLIC",
+    "INVESTOR_UNDER_NDA",
+    "INTERNAL_RESTRICTED",
+    "CUSTOMER_CONFIDENTIAL"
+  ],
+  "hard_excludes": [
+    "kernel_bypass_detail",
+    "exploit_material",
+    "credentials",
+    "customer_information",
+    "private_prompts",
+    "company_operating_procedures",
+    "phantom_engine_customer_confidential_bodies"
+  ],
+  "evidence_tiers_assigned": [],
+  "documents": [
+    {
+      "id": "readme",
+      "path": "docs/programs/production-readiness/diligence/README.md",
+      "title": "Investor diligence room",
+      "kind": "control",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "CONTROL"
+    },
+    {
+      "id": "boundary",
+      "path": "docs/programs/production-readiness/diligence/00-ROOM-BOUNDARY.md",
+      "title": "Diligence room boundary",
+      "kind": "control",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "CONTROL"
+    },
+    {
+      "id": "tiers",
+      "path": "docs/programs/production-readiness/diligence/01-TIERS.md",
+      "title": "Handling tiers",
+      "kind": "control",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "CONTROL"
+    },
+    {
+      "id": "manifest",
+      "path": "docs/programs/production-readiness/diligence/DILIGENCE-MANIFEST.json",
+      "title": "Diligence manifest",
+      "kind": "control",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "CONTROL"
+    },
+    {
+      "id": "category-thesis",
+      "path": "docs/programs/production-readiness/diligence/02-CATEGORY-THESIS.md",
+      "title": "Category thesis",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "product-ladder",
+      "path": "docs/programs/production-readiness/diligence/03-PRODUCT-LADDER.md",
+      "title": "Product ladder",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "architecture",
+      "path": "docs/programs/production-readiness/diligence/04-ARCHITECTURE.md",
+      "title": "Architecture",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "threat-model",
+      "path": "docs/programs/production-readiness/diligence/05-THREAT-MODEL.md",
+      "title": "Threat model",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "privacy-model",
+      "path": "docs/programs/production-readiness/diligence/06-PRIVACY-MODEL.md",
+      "title": "Privacy model",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "claim-ledger",
+      "path": "docs/programs/production-readiness/diligence/07-CLAIM-LEDGER.md",
+      "title": "Claim ledger",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "INDEX_ONLY"
+    },
+    {
+      "id": "proof-taxonomy",
+      "path": "docs/programs/production-readiness/diligence/08-PROOF-TAXONOMY.md",
+      "title": "Proof taxonomy",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "capabilities",
+      "path": "docs/programs/production-readiness/diligence/09-CAPABILITIES.md",
+      "title": "Capabilities",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "target-architecture",
+      "path": "docs/programs/production-readiness/diligence/10-TARGET-ARCHITECTURE.md",
+      "title": "Target architecture",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "build-status",
+      "path": "docs/programs/production-readiness/diligence/11-BUILD-STATUS.md",
+      "title": "Build status",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "VERSIONS_INDEXED"
+    },
+    {
+      "id": "demo-guide",
+      "path": "docs/programs/production-readiness/diligence/12-DEMO-GUIDE.md",
+      "title": "Demo guide",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "technical-appendix",
+      "path": "docs/programs/production-readiness/diligence/13-TECHNICAL-APPENDIX.md",
+      "title": "Technical appendix",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "POINTERS_ONLY"
+    },
+    {
+      "id": "release-discipline",
+      "path": "docs/programs/production-readiness/diligence/14-RELEASE-DISCIPLINE.md",
+      "title": "Release discipline",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "deployment",
+      "path": "docs/programs/production-readiness/diligence/15-DEPLOYMENT.md",
+      "title": "Deployment",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "pilot",
+      "path": "docs/programs/production-readiness/diligence/16-PILOT.md",
+      "title": "Pilot",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "CUSTOMER_CONFIDENTIAL",
+      "fill_status": "BODY_PROHIBITED"
+    },
+    {
+      "id": "design-partner",
+      "path": "docs/programs/production-readiness/diligence/17-DESIGN-PARTNER.md",
+      "title": "Design partner",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "CUSTOMER_CONFIDENTIAL",
+      "fill_status": "BODY_PROHIBITED"
+    },
+    {
+      "id": "stranger-host-gate",
+      "path": "docs/programs/production-readiness/diligence/18-STRANGER-HOST-GATE.md",
+      "title": "Stranger-host gate",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "roadmap",
+      "path": "docs/programs/production-readiness/diligence/19-ROADMAP.md",
+      "title": "Roadmap",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "differentiation",
+      "path": "docs/programs/production-readiness/diligence/20-DIFFERENTIATION.md",
+      "title": "Differentiation",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    },
+    {
+      "id": "use-of-funds",
+      "path": "docs/programs/production-readiness/diligence/21-USE-OF-FUNDS.md",
+      "title": "Use of funds",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_SET"
+    },
+    {
+      "id": "hiring-plan",
+      "path": "docs/programs/production-readiness/diligence/22-HIRING-PLAN.md",
+      "title": "Hiring plan",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_SET"
+    },
+    {
+      "id": "evidence-index",
+      "path": "docs/programs/production-readiness/diligence/23-EVIDENCE-INDEX.md",
+      "title": "Evidence index",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INTERNAL_RESTRICTED",
+      "fill_status": "POINTERS_ONLY"
+    },
+    {
+      "id": "limitations",
+      "path": "docs/programs/production-readiness/diligence/24-LIMITATIONS.md",
+      "title": "Limitations",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "PUBLIC_LIMITS_INDEXED"
+    },
+    {
+      "id": "risks",
+      "path": "docs/programs/production-readiness/diligence/25-RISKS.md",
+      "title": "Risks",
+      "kind": "skeleton",
+      "audience": "INTERNAL_RESTRICTED",
+      "future_slot": "INVESTOR_UNDER_NDA",
+      "fill_status": "NOT_FILLED"
+    }
+  ]
+}
