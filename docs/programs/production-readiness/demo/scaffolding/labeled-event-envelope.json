@@ -1,0 +1,15 @@
+{
+  "schema": "vantio.investor-demo.event-envelope/v0",
+  "implementation_status": "NOT_AUTHORIZED",
+  "simulation_label": "SIMULATED_DEMO",
+  "evidence_origin": "SIMULATED_DEMO",
+  "producer": "demo_command",
+  "counted_in_customer_activity": false,
+  "network": "none",
+  "hostname": "optics-demo.invalid",
+  "action": "OBSERVED",
+  "content": null,
+  "bytes": 0,
+  "duration_ms": 0,
+  "note": "Design envelope only. Not a run log. No vantio_run_log marker. Do not copy into a runs directory. Wave 2 is not authorized by this file."
+}

@@ -1,0 +1,104 @@
+{
+  "schema": "vantio.investor-demo.manifest/v0",
+  "audience": "INTERNAL_RESTRICTED",
+  "producer_classification": "INVESTOR_DEMO_DESIGN_READY_FOR_COUNCIL",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "producer": "bc-da04b99d-56bf-55bb-b780-0531b9d953d7",
+  "base_commit": "1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
+  "writable_path": "docs/programs/production-readiness/demo/",
+  "wave2": "NOT_AUTHORIZED",
+  "founder_story_beats": "ABSENT",
+  "design_beats": [
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "B09",
+    "B10",
+    "B11",
+    "B12",
+    "B13",
+    "B14",
+    "B15",
+    "B16",
+    "B17",
+    "B18"
+  ],
+  "simulation_label_rule": "01-SIMULATION-LABEL-RULE.md",
+  "files": [
+    {
+      "path": "00-BOUNDARY.md",
+      "sha256": "8309a98baee1de3109b8ac02357ca6d22c610683b61ad0f3b656f3158deebc36",
+      "bytes": 3470
+    },
+    {
+      "path": "01-SIMULATION-LABEL-RULE.md",
+      "sha256": "15483ae2da8bc433bb0ca9b2da0f80adf23a56b83dcca28e6bdb0a49e99bf6dc",
+      "bytes": 3721
+    },
+    {
+      "path": "02-STORY-BEATS.md",
+      "sha256": "e6be1b8a832c9138a4cecf4817be4ef7414ee28d1d94e53209529b315b0a18c6",
+      "bytes": 4210
+    },
+    {
+      "path": "03-DEMO-SCRIPT.md",
+      "sha256": "d20d883253b3628a00c1ad7959920c052c85d3d75bcfa823b8512a9673074d6c",
+      "bytes": 6868
+    },
+    {
+      "path": "04-OPERATOR-RUNBOOK.md",
+      "sha256": "a55bb4baed789d2634bbc4f5e6ae49466d3e355dc7ce533169addc3d862c6d2f",
+      "bytes": 2468
+    },
+    {
+      "path": "05-RESET-OUTLINE.md",
+      "sha256": "1296b364f7e72c47d15adb2dcaaa6d85827ac2ce32b53d8cad7fa47f19ffe6b9",
+      "bytes": 2169
+    },
+    {
+      "path": "06-EXPECTED-OUTPUTS.md",
+      "sha256": "20e523e3daaa52d8ff83d2c765b1513d17be400dbc783cb691e26857c1321818",
+      "bytes": 5797
+    },
+    {
+      "path": "07-FAILURE-INJECTION-OUTLINE.md",
+      "sha256": "9344735f34353885929a170677bd6d662dbfd6563540c73f8ce14ce027847397",
+      "bytes": 3571
+    },
+    {
+      "path": "08-CLAIM-LEDGER.json",
+      "sha256": "36008f36957f1cbfac0ceac84f225f6560e4ee7d43c750a7f73d053555d7e937",
+      "bytes": 6879
+    },
+    {
+      "path": "09-LIMITATION-LEDGER.json",
+      "sha256": "73298e02365265875e8f596ae3f9e5eb8c137d35ba949cb56dee51046c5b1027",
+      "bytes": 4670
+    },
+    {
+      "path": "10-WAVE2-SCAFFOLD.md",
+      "sha256": "a2e90f0f85990774b2d91c3ab5b359fc8bf293ef1bba4ee20a9fe77bf2a33f15",
+      "bytes": 2556
+    },
+    {
+      "path": "11-COUNCIL-SLOT.md",
+      "sha256": "1f1258f6ec30e67cbc7c6d190d425a55ecfae162fd8711df1d1aa90ba650fc2d",
+      "bytes": 1017
+    },
+    {
+      "path": "scaffolding/README.md",
+      "sha256": "c9d98136a279f4b11d3d072a37cb27177f112a42a3b8ebc288421a007d856f7a",
+      "bytes": 487
+    },
+    {
+      "path": "scaffolding/labeled-event-envelope.json",
+      "sha256": "dfc8cdc1a6cbc254c404544c1fd1881fcc548d7343c7c9c94af2819853b65dc1",
+      "bytes": 537
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "schema": "vantio.investor-demo.claim-ledger/v0",
+  "status": "STUB",
+  "audience": "INTERNAL_RESTRICTED",
+  "base_commit": "1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
+  "note": "Stub for council review. evidence_tier is UNSET on every row. customer_validation is UNSET on every row. A shown simulation is not a customer claim. A narrated doc line is not a demonstration that the other product ran.",
+  "claims": [
+    {
+      "id": "C-OPTICS-OBSERVE",
+      "statement": "Vantio Optics is free, local-first observability for AI agent egress and is the free Observe tier.",
+      "beat": "B02",
+      "source": "docs/governance/canonical/product-boundary.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-NO-ACCOUNT",
+      "statement": "Free Optics needs no account and no API key.",
+      "beat": "B02",
+      "source": "docs/governance/canonical/product-boundary.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-PRICE-PE",
+      "statement": "Phantom Engine is Enforce + Control on enrolled Linux hosts at $799/node/mo.",
+      "beat": "B02",
+      "source": "docs/PRODUCT_LINEUP.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-ENTERPRISE-TALKS",
+      "statement": "Enterprise is governance on top of that protection and is talk to sales.",
+      "beat": "B02",
+      "source": "docs/governance/canonical/product-boundary.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-GATE-NOT-SKU",
+      "statement": "Gate is not a current standalone public SKU.",
+      "beat": "B02",
+      "source": "docs/PRODUCT_LINEUP.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-CLI-0324",
+      "statement": "The demo binary prints version 0.3.24.",
+      "beat": "B03",
+      "source": "packages/vantio-cli/package.json",
+      "room_disposition": "SHOWN_ON_DESIGN_HOST",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-REQUIRE-INJECT",
+      "statement": "vantio run injects the Node interceptor with NODE_OPTIONS --require for node, npx, tsx, and ts-node.",
+      "beat": "B05",
+      "source": "docs/governance/canonical/product-boundary.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-DEMO-STUB",
+      "statement": "vantio demo writes one in-process stub, prints Demo — in-process stub. No network., and stores hostname optics-demo.invalid with action OBSERVED, HTTP 200, and 0 bytes.",
+      "beat": "B07",
+      "source": "packages/vantio-cli/bin/vantio.js demoCommand; 06-EXPECTED-OUTPUTS.md",
+      "room_disposition": "SHOWN_AS_SIMULATION",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-NO-PROMPT",
+      "statement": "The demo file and the demo JSON do not contain a prompt or a completion. demo --json sets content to null.",
+      "beat": "B10",
+      "source": "06-EXPECTED-OUTPUTS.md",
+      "room_disposition": "SHOWN_AS_SIMULATION",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-STATUS-SPLIT",
+      "statement": "Optics status SUCCESS means a record exists. Application status SUCCESS on this stub means HTTP 200-399. The stored ok boolean is not the application outcome.",
+      "beat": "B11",
+      "source": "docs/governance/canonical/status-tokens.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-NO-OTLP",
+      "statement": "There is no OTLP exporter.",
+      "beat": "B12",
+      "source": "docs/governance/canonical/product-boundary.md",
+      "room_disposition": "NARRATED_FROM_DOC",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-SCHEMA-UNSTABLE",
+      "statement": "JSON command output uses schema_status unstable-pre-1.0.",
+      "beat": "B12",
+      "source": "docs/governance/canonical/status-tokens.md",
+      "room_disposition": "SHOWN_AS_SIMULATION",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-PE-NOT-EXECUTED",
+      "statement": "This demo does not run Phantom Engine, enroll a host, or show an enforce event.",
+      "beat": "B13",
+      "source": "00-BOUNDARY.md",
+      "room_disposition": "NOT_DEMONSTRATED",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "C-UNLABELED-STOPS",
+      "statement": "An unlabeled synthetic run file stops the demo and is not proved.",
+      "beat": "B15",
+      "source": "01-SIMULATION-LABEL-RULE.md",
+      "room_disposition": "OPERATOR_RULE",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "D-NO-INVENTED-MECHANISMS",
+      "statement": "Do not name a cryptographic proof system, a microVM, a confidential-computing product, or a numeric acceleration or audit-cost figure. Those are not claims in this demo's sources.",
+      "beat": "B14",
+      "source": "00-BOUNDARY.md",
+      "room_disposition": "DO_NOT_SAY",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "D-NO-CLUSTER-PROOF",
+      "statement": "Do not say this room proved host enforcement on a production cluster.",
+      "beat": "B14",
+      "source": "00-BOUNDARY.md",
+      "room_disposition": "DO_NOT_SAY",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "D-NO-CUSTOMER-TOTAL",
+      "statement": "Do not add the demo file or the planted defect to a customer activity total.",
+      "beat": "B15",
+      "source": "01-SIMULATION-LABEL-RULE.md",
+      "room_disposition": "DO_NOT_SAY",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "D-NO-GATE-DEMO",
+      "statement": "Do not demo @vantio/gate-mcp as a current product SKU.",
+      "beat": "B02",
+      "source": "docs/PRODUCT_LINEUP.md",
+      "room_disposition": "DO_NOT_SAY",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    },
+    {
+      "id": "D-NO-LOGIN",
+      "statement": "Do not demonstrate an account login flow. Free Optics in this script has no account step.",
+      "beat": "B02",
+      "source": "docs/governance/canonical/product-boundary.md",
+      "room_disposition": "DO_NOT_SAY",
+      "evidence_tier": "UNSET",
+      "customer_validation": "UNSET"
+    }
+  ]
+}
