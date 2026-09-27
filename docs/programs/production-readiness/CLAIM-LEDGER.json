@@ -1,24 +1,32 @@
 {
   "schema": "vantio.program.production-readiness.claim-ledger/v1",
   "audience": "INTERNAL_RESTRICTED",
-  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
-  "status_enum": ["EVIDENCE_RECORDED", "NOT_ASSERTED"],
+  "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+  "status_enum": [
+    "EVIDENCE_RECORDED",
+    "NOT_ASSERTED"
+  ],
   "claims": [
     {
       "id": "CL-001",
       "status": "EVIDENCE_RECORDED",
-      "claim": "Retrieved origin/main is 5064f32f1cdfcb840dfd100e2ce5c712d046550d.",
+      "claim": "Retrieved origin/main for this refresh is 601342f08a59798ce207840cfb75293c3c22f45c.",
       "evidence": [
         "git fetch origin main on 2026-09-27",
         "git rev-parse origin/main",
-        "subject: Merge pull request #65 from vantioai/docs/documentation-release-governance-v1"
+        "subject: Merge pull request #74 from vantioai/cursor/phantom-wave1-packaging-health-aa8c",
+        "Opening control-plane pin 5064f32f1cdfcb840dfd100e2ce5c712d046550d is an ancestor",
+        "Store-plan merge 79b53e0e29df047aabb1863b62609ffd7b4dcff7 is an ancestor"
       ]
     },
     {
       "id": "CL-002",
       "status": "EVIDENCE_RECORDED",
-      "claim": "The expected prefix 5064f32 matches the retrieved main SHA.",
-      "evidence": ["Control-plane upload expected ~5064f32f. Full SHA starts with 5064f32."]
+      "claim": "The opening pin 5064f32f1cdfcb840dfd100e2ce5c712d046550d matched the control-plane prefix and remains an ancestor of this main.",
+      "evidence": [
+        "Opening record expected prefix 5064f32",
+        "git merge-base --is-ancestor 5064f32f1cdfcb840dfd100e2ce5c712d046550d HEAD"
+      ]
     },
     {
       "id": "CL-003",
@@ -34,8 +42,13 @@
     {
       "id": "CL-004",
       "status": "EVIDENCE_RECORDED",
-      "claim": "PyPI vantio-agent-sdk info.version was 3.0.14 on 2026-09-27, and 3.1.0 was absent from that release list.",
-      "evidence": ["GET https://pypi.org/pypi/vantio-agent-sdk/json during this force"]
+      "claim": "PyPI vantio-agent-sdk info.version is 3.1.0. The opening record's 3.0.14 observation was made before trusted-publisher run 36302566868.",
+      "evidence": [
+        "GET https://pypi.org/pypi/vantio-agent-sdk/json on 2026-09-27",
+        "Opening CLAIM-LEDGER recorded 3.0.14 before that upload",
+        "wheel upload_time 2026-09-27T07:20:54.167999Z sha256 dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
+        "sdist upload_time 2026-09-27T07:20:55.533817Z sha256 9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f"
+      ]
     },
     {
       "id": "CL-005",
@@ -49,8 +62,12 @@
     {
       "id": "CL-006",
       "status": "EVIDENCE_RECORDED",
-      "claim": "This control plane authorizes the Python line from published 3.0.14 toward source 3.1.0 and performs no publish.",
-      "evidence": ["Control-plane upload locked state: Python 3.0.14→3.1.0 authorized", "CL-004", "CL-005"]
+      "claim": "This refresh does not publish. Sealed 3.1.0 is already on PyPI from trusted-publisher run 36302566868.",
+      "evidence": [
+        "CL-004",
+        "CL-005",
+        "https://github.com/vantioai/vantio-open-core/actions/runs/36302566868"
+      ]
     },
     {
       "id": "CL-007",
@@ -73,42 +90,56 @@
     {
       "id": "CL-009",
       "status": "EVIDENCE_RECORDED",
-      "claim": "Pull request #66 is an open draft and is not merged.",
+      "claim": "Pull request #66 is closed without a merge. The public head branch ref was absent. This refresh did not read a private manual body.",
       "evidence": [
         "https://github.com/vantioai/vantio-open-core/pull/66",
+        "state CLOSED, isDraft true, mergedAt null, closedAt 2026-09-27T07:33:14Z",
         "head 60726bef7a7d7da35525a4d832ec63b5f8ca5bad",
-        "state OPEN, isDraft true, mergedAt null, read 2026-09-27"
+        "git ls-remote origin refs/heads/docs/phantom-engine-customer-manual-v1 returned empty",
+        "Close text states PHANTOM_CUSTOMER_DOCS_PRIVATE_CHANNEL_PLACED"
       ]
     },
     {
       "id": "CL-010",
       "status": "EVIDENCE_RECORDED",
       "claim": "The open-core lineup at this main separates Optics, Phantom Engine, and Enterprise, and states that this repository does not ship Phantom Engine.",
-      "evidence": ["docs/PRODUCT_LINEUP.md", "docs/governance/canonical/product-boundary.md"]
+      "evidence": [
+        "docs/PRODUCT_LINEUP.md",
+        "docs/governance/canonical/product-boundary.md"
+      ]
     },
     {
       "id": "CL-011",
       "status": "EVIDENCE_RECORDED",
       "claim": "Store Option C is ratified as architecture only.",
-      "evidence": ["docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md section 12 token STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY"]
+      "evidence": [
+        "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md section 12 token STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY"
+      ]
     },
     {
       "id": "CL-012",
       "status": "EVIDENCE_RECORDED",
       "claim": "Architecture Gate 8 is closed in the gate file on this main.",
-      "evidence": ["docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md"]
+      "evidence": [
+        "docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md"
+      ]
     },
     {
       "id": "CL-013",
       "status": "EVIDENCE_RECORDED",
       "claim": "Lightweight tag custody-py-3.1.0 points at 620c68fd6fb10960194bbefb25bbfb2036d6d435, the pull request #60 planning merge, which is not the 3.1.0 publisher commit 764361d7adfbd7eb6c5d4baac71cf32901a7eed0.",
-      "evidence": ["git ls-remote --tags origin", "git log -1 of both SHAs"]
+      "evidence": [
+        "git ls-remote --tags origin",
+        "git log -1 of both SHAs"
+      ]
     },
     {
       "id": "CL-014",
       "status": "NOT_ASSERTED",
       "claim": "Wave 1 items A–V have no retrieved definitions, so this ledger assigns them no scope and no completion.",
-      "evidence": ["WORKSTREAM-REGISTRY.json wave_1.item_definitions_retrieved false"]
+      "evidence": [
+        "WORKSTREAM-REGISTRY.json wave_1.item_definitions_retrieved false"
+      ]
     },
     {
       "id": "CL-015",
@@ -117,14 +148,154 @@
       "evidence": [
         "DEMO-READINESS.json, PILOT-READINESS.json, and INVESTOR-READINESS.json are NOT_READY",
         "docs/governance/canonical/product-boundary.md: There is no OTLP exporter.",
-        "WS3 P34 and WS5 briefs keep stranger-host execution closed"
+        "Pull requests #75, #76, and #77 are open drafts"
       ]
     },
     {
       "id": "CL-016",
       "status": "NOT_ASSERTED",
       "claim": "This ledger does not restate Phantom Engine kernel mechanisms, customer-manual text, or a price as a new commercial measurement.",
-      "evidence": ["Category text cites docs/PRODUCT_LINEUP.md and the canonical product boundary already on main"]
+      "evidence": [
+        "Category text cites docs/PRODUCT_LINEUP.md and the canonical product boundary already on main"
+      ]
+    },
+    {
+      "id": "CL-017",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Downloaded PyPI 3.1.0 bytes match the sealed wheel and sdist pins on main.",
+      "evidence": [
+        "wheel vantio_agent_sdk-3.1.0-py3-none-any.whl sha256 dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb size 39235",
+        "sdist vantio_agent_sdk-3.1.0.tar.gz sha256 9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f size 59669",
+        "scripts/release/stage_sealed_pypi.py and .github/workflows/pypi-publish.yml pin the same hashes and lengths",
+        "sha256sum of the files.pythonhosted.org downloads matched those pins"
+      ]
+    },
+    {
+      "id": "CL-018",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Index-installed vantio-agent-sdk 3.1.0 is PYTHON_310_PYPI_PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED for a loopback observe client. That is not stranger-host proof and not customer validation.",
+      "evidence": [
+        "pip install --target of vantio-agent-sdk==3.1.0 from the PyPI index on Python 3.12.3",
+        "importlib.metadata version 3.1.0 and vantio.__version__ 3.1.0",
+        "With VANTIO_TELEMETRY, VANTIO_TELEMETRY_DISABLED, and DO_NOT_TRACK unset, is_telemetry_disabled() is true",
+        "A second process set VANTIO_TELEMETRY_DISABLED=1, DO_NOT_TRACK=1, VANTIO_EXTRA_LLM_HOSTS=127.0.0.1, and a temporary VANTIO_HOME",
+        "async with shield(trace_id=refresh-client-proof) observed one urllib POST to 127.0.0.1 that returned HTTP 401",
+        "Run log summary opticsStatus SUCCESS, applicationStatus APPLICATION_ERROR, call status 401, ok false, action OBSERVED",
+        "Trusted-publisher run 36302566868 concluded success on head 5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+        "PyPI integrity provenance for the wheel names that workflow, ref refs/heads/main, that SHA, and that run. This refresh did not re-verify the sigstore signature."
+      ]
+    },
+    {
+      "id": "CL-019",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "No GitHub Release announcement of the PyPI 3.1.0 upload was observed. This refresh did not announce it.",
+      "evidence": [
+        "gh release list: custody-py-3.1.0 publishedAt 2026-09-27T04:24:56Z, before the 07:20Z upload",
+        "No later GitHub Release was listed",
+        "docs/products/optics/README.md and INSTALLATION.md on this main still describe PyPI 3.1.0 as unpublished and latest as 3.0.14"
+      ]
+    },
+    {
+      "id": "CL-020",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Documentation governance CI is merged and does not publish.",
+      "evidence": [
+        "Pull request #67 merged at cc7f7ae4a503b7934f2a4fa37a8159d02de66370",
+        ".github/workflows/docs-release-governance.yml triggers pull_request and workflow_dispatch, permissions contents read, command node --test docs/scripts/check-docs-release.test.mjs",
+        "The workflow file has no publish step and no secrets",
+        "Registration label DOCS_GOVERNANCE_CI_MERGED_NO_PUBLICATION"
+      ]
+    },
+    {
+      "id": "CL-021",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "The Head of Product package is merged. The offer does not promise CTO.",
+      "evidence": [
+        "Pull request #68 merged at 1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
+        "docs/internal/hiring/head-of-product/PACKAGE.json cto_consideration is POSSIBLE / UNDECIDED / NOT PROMISED / NOT APPROVED / NOT AUTOMATIC",
+        "cto_automatic_succession false and titles_outside_offer includes CTO",
+        "founder_master_program_responsibilities ABSENT",
+        "Registration label HEAD_OF_PRODUCT_PACKAGE_MERGED"
+      ]
+    },
+    {
+      "id": "CL-022",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "The investor diligence scaffold is merged. Investor send is NOT_CLEARED.",
+      "evidence": [
+        "Pull request #70 merged at 2f9fadaa47a73ddbfd0efa2848cf9c4e375e2936",
+        "docs/programs/production-readiness/diligence/DILIGENCE-MANIFEST.json classification INVESTOR_DILIGENCE_ROOM_SCAFFOLD_MERGED, investor_send NOT_CLEARED, external_publication PROHIBITED",
+        "INVESTOR-READINESS.json readiness remains NOT_READY"
+      ]
+    },
+    {
+      "id": "CL-023",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "The production-readiness control plane merged as pull request #72.",
+      "evidence": [
+        "Merge commit c5fd71abfa6bc94800ba156ec2685db7e2e00184",
+        "mergedAt 2026-09-27T07:28:43Z",
+        "That merge recorded main 5064f32f1cdfcb840dfd100e2ce5c712d046550d"
+      ]
+    },
+    {
+      "id": "CL-024",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Enterprise E1–E3 planning merged. Its council file is still PENDING_INDEPENDENT_COUNCIL.",
+      "evidence": [
+        "Pull request #71 merged at 8eb353a94c08c1adaaa36d36e2536ee5619e9eb6",
+        "docs/planning/enterprise-governance/GOVERNANCE-MANIFEST.json producer_classification ENTERPRISE_GOVERNANCE_E1_E3_PLAN_READY_FOR_COUNCIL",
+        "council_status PENDING_INDEPENDENT_COUNCIL and council_verdict null"
+      ]
+    },
+    {
+      "id": "CL-025",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "The Optics store Option C plan merged as architecture-only planning. Gate 8 stays closed and the council file is PENDING_COUNCIL.",
+      "evidence": [
+        "Pull request #69 merged at 79b53e0e29df047aabb1863b62609ffd7b4dcff7",
+        "docs/planning/optics-production/PRODUCTION-MANIFEST.json store_option_c FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+        "store_verification STORE_OPTION_C_VERIFIED_ARCHITECTURE_ONLY",
+        "gate_8 CLOSED, sqlite_file_present false, council_status PENDING_COUNCIL"
+      ]
+    },
+    {
+      "id": "CL-026",
+      "status": "NOT_ASSERTED",
+      "claim": "Wave 1 items A–V still have no retrieved definitions.",
+      "evidence": [
+        "WORKSTREAM-REGISTRY.json wave_1.item_definitions_retrieved false",
+        "Merged planning packets did not assign those letters"
+      ]
+    },
+    {
+      "id": "CL-027",
+      "status": "NOT_ASSERTED",
+      "claim": "Demo, pilot, and investor send are not ready.",
+      "evidence": [
+        "DEMO-READINESS.json readiness NOT_READY",
+        "PILOT-READINESS.json readiness NOT_READY",
+        "INVESTOR-READINESS.json readiness NOT_READY and investor_send NOT_CLEARED"
+      ]
+    },
+    {
+      "id": "CL-028",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Phantom packaging and health planning merged. Its council is still PENDING_INDEPENDENT_COUNCIL. Workstream 4 stays undefined. No live load, stranger-host, or customer deploy is recorded.",
+      "evidence": [
+        "Pull request #74 merged at 601342f08a59798ce207840cfb75293c3c22f45c",
+        "docs/planning/phantom-engine-production/PLANNING-MANIFEST.json producer_classification PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
+        "council_status PENDING_INDEPENDENT_COUNCIL and council_verdict null",
+        "workstream_4 DEFINITION_NOT_RETRIEVED and vocabulary_status PENDING_WS4",
+        "live_ebpf_load false, stranger_host false, customer_deploy false, customer_manual_bodies_copied false"
+      ]
     }
-  ]
+  ],
+  "refresh": {
+    "classification": "MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL",
+    "observed_at_utc": "2026-09-27T07:44:14Z",
+    "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "prior_recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+    "merges_under_this_refresh": false
+  }
 }
