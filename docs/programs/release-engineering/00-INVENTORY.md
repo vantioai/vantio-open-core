@@ -32,7 +32,7 @@ The control-plane snapshot in `docs/programs/production-readiness/WORKSTREAM-REG
 | `vantio-optics` | `0.1.0` | No |
 | `@vantio/optics-evidence-contract` | `0.0.0-unstable-pre-1.0` | Unpublished private source |
 
-Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes, SHA-256 `dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb`. The sdist `vantio_agent_sdk-3.1.0.tar.gz` is pinned at 59669 bytes, SHA-256 `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f`. The release register calls the earlier observation `PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED`. The Optics dossier keeps registry status `NOT_FETCHED` and `this_force_refetched: false`. The historical label stays a citation.
+Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes, SHA-256 `dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb`. The sdist `vantio_agent_sdk-3.1.0.tar.gz` is pinned at 59669 bytes, SHA-256 `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f`. The release register's current row state is `RELEASE_CLOSED_REGISTRY_VERIFIED`. Its earlier observation remains `PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED`. The Optics dossier keeps registry status `NOT_FETCHED` and `this_force_refetched: false`. The historical label stays a citation. This refresh did not fetch registry bytes.
 
 ## Pins this tree actually has
 

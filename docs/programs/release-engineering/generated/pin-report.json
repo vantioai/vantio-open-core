@@ -187,8 +187,9 @@
     "cli_tag": "v0.3.24",
     "cli_tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
     "cli_version": "0.3.24",
+    "python_prior_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
     "python_publisher_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
-    "python_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
+    "python_state": "RELEASE_CLOSED_REGISTRY_VERIFIED",
     "python_version": "3.1.0"
   },
   "release_success": false,

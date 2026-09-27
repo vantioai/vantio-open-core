@@ -279,6 +279,7 @@ export function buildInventory(root) {
       cli_tag_commit: cli.tag_commit,
       python_version: py.version,
       python_state: py.state,
+      python_prior_state: typeof py.prior_state === "string" ? py.prior_state : null,
       python_publisher_commit: py.publisher_commit,
     },
     provenance_workflow: {

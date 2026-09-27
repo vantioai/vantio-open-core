@@ -9,6 +9,12 @@
     },
     {
       "accepted": false,
+      "id": "license-missing:packages/investor-demo-wave2/package.json",
+      "name": "@vantio/investor-demo-wave2",
+      "path": "packages/investor-demo-wave2/package.json"
+    },
+    {
+      "accepted": false,
       "id": "license-missing:packages/optics-evidence-contract/package.json",
       "name": "@vantio/optics-evidence-contract",
       "path": "packages/optics-evidence-contract/package.json"
@@ -21,9 +27,21 @@
     },
     {
       "accepted": false,
+      "id": "license-missing:packages/optics-otel-i3/package.json",
+      "name": "@vantio/optics-otel-i3",
+      "path": "packages/optics-otel-i3/package.json"
+    },
+    {
+      "accepted": false,
       "id": "license-missing:packages/optics-otel-mapping/package.json",
       "name": "@vantio/optics-otel-mapping",
       "path": "packages/optics-otel-mapping/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-reader-compat-gates/package.json",
+      "name": "@vantio/optics-reader-compat-gates",
+      "path": "packages/optics-reader-compat-gates/package.json"
     },
     {
       "accepted": false,
@@ -36,17 +54,48 @@
       "id": "license-missing:packages/optics-record-vocabulary/package.json",
       "name": "@vantio/optics-record-vocabulary",
       "path": "packages/optics-record-vocabulary/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/pe-host-authority/package.json",
+      "name": "@vantio/pe-host-authority",
+      "path": "packages/pe-host-authority/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/pe-progressive-enforcement/package.json",
+      "name": "@vantio/pe-progressive-enforcement",
+      "path": "packages/pe-progressive-enforcement/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/pe-sequential-authority/package.json",
+      "name": "@vantio/pe-sequential-authority",
+      "path": "packages/pe-sequential-authority/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/shared-health-runtime/package.json",
+      "name": "@vantio/shared-health-runtime",
+      "path": "packages/shared-health-runtime/package.json"
     }
   ],
   "scanned": [
     "extensions/vantio-optics/package.json",
     "package.json",
+    "packages/investor-demo-wave2/package.json",
     "packages/optics-evidence-contract/package.json",
     "packages/optics-node-adapter/package.json",
+    "packages/optics-otel-i3/package.json",
     "packages/optics-otel-mapping/package.json",
     "packages/optics-python-adapter/pyproject.toml",
+    "packages/optics-reader-compat-gates/package.json",
     "packages/optics-record-reader/package.json",
     "packages/optics-record-vocabulary/package.json",
+    "packages/pe-host-authority/package.json",
+    "packages/pe-progressive-enforcement/package.json",
+    "packages/pe-sequential-authority/package.json",
+    "packages/shared-health-runtime/package.json",
     "packages/vantio-agent-sdk-py/pyproject.toml",
     "packages/vantio-agent-sdk/package.json",
     "packages/vantio-cli/package.json",

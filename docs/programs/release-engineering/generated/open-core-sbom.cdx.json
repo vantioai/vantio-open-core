@@ -23,6 +23,13 @@
       "version": "0.0.0"
     },
     {
+      "name": "@vantio/investor-demo-wave2",
+      "purl": "pkg:npm/%40vantio/investor-demo-wave2@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
       "name": "@vantio/optics-evidence-contract",
       "purl": "pkg:npm/%40vantio/optics-evidence-contract@0.0.0-unstable-pre-1.0",
       "scope": "workspace-manifest",
@@ -37,8 +44,22 @@
       "version": "0.0.0-unstable-pre-1.0"
     },
     {
+      "name": "@vantio/optics-otel-i3",
+      "purl": "pkg:npm/%40vantio/optics-otel-i3@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
       "name": "@vantio/optics-otel-mapping",
       "purl": "pkg:npm/%40vantio/optics-otel-mapping@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/optics-reader-compat-gates",
+      "purl": "pkg:npm/%40vantio/optics-reader-compat-gates@0.0.0-unstable-pre-1.0",
       "scope": "workspace-manifest",
       "type": "library",
       "version": "0.0.0-unstable-pre-1.0"
@@ -53,6 +74,34 @@
     {
       "name": "@vantio/optics-record-vocabulary",
       "purl": "pkg:npm/%40vantio/optics-record-vocabulary@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/pe-host-authority",
+      "purl": "pkg:npm/%40vantio/pe-host-authority@0.0.0-internal-proof",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-internal-proof"
+    },
+    {
+      "name": "@vantio/pe-progressive-enforcement",
+      "purl": "pkg:npm/%40vantio/pe-progressive-enforcement@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/pe-sequential-authority",
+      "purl": "pkg:npm/%40vantio/pe-sequential-authority@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/shared-health-runtime",
+      "purl": "pkg:npm/%40vantio/shared-health-runtime@0.0.0-unstable-pre-1.0",
       "scope": "workspace-manifest",
       "type": "library",
       "version": "0.0.0-unstable-pre-1.0"

@@ -151,7 +151,7 @@ export function characterizeOptics(root, inventory = buildInventory(root)) {
       }));
       unit.registry = {
         status: "NOT_FETCHED",
-        historical_register_state: inventory.release_register.python_state,
+        historical_register_state: inventory.release_register.python_prior_state ?? inventory.release_register.python_state,
         this_force_refetched: false,
       };
       unit.upgrade = {
