@@ -1,0 +1,1090 @@
+{
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "stable_schema": false,
+  "writers": [
+    "cli_0_3_24",
+    "future_cli",
+    "node_sdk_0_2_4",
+    "future_node_sdk",
+    "python_3_1_0",
+    "future_python",
+    "demo_command",
+    "pkg01_contract_output"
+  ],
+  "readers": [
+    "cli_0_3_24",
+    "future_cli",
+    "future_node",
+    "future_python",
+    "python_3_1_0",
+    "mixed_versions",
+    "unknown_fields_and_enums",
+    "missing_canonical",
+    "alias_reader",
+    "imported",
+    "legacy_unmarked",
+    "proof_export",
+    "future_store_import"
+  ],
+  "cell_count": 104,
+  "classification_counts": {
+    "PARTIAL": 20,
+    "REQUIRES_ADAPTER": 12,
+    "UNSUPPORTED": 16,
+    "REJECT_WITH_EXPLANATION": 8,
+    "REQUIRES_ALIAS": 8,
+    "READ_ONLY": 16,
+    "NOT_YET_DECIDED": 15,
+    "FULL": 9
+  },
+  "hard_rules": [
+    "Old readers must not treat an unknown status as success.",
+    "Future records must not silently overwrite old evidence.",
+    "Adapters preserve origin and must not upgrade evidence maturity.",
+    "Unsupported records remain visible.",
+    "PKG-02 performs no automatic conversion and no migration."
+  ],
+  "cells": [
+    {
+      "writer": "cli_0_3_24",
+      "reader": "cli_0_3_24",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The frozen reader can open vantio_run_log 1 files. It recomputes status and can turn a missing byte count into a displayed total of zero.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "future_cli",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "future_node",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "future_python",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Python 3.1.0 writes run logs and does not read them back. This plan does not add a reader to 3.1.0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "mixed_versions",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "proof_export",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "prove JSON and HTML use displayCall. MCP markdown prints action and reads machine, which writers do not store.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "cli_0_3_24",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "cli_0_3_24",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Frozen CLI display assigns optics SUCCESS to every call row and reads hostname and status, not destination_host and http_status.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "future_cli",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "future_node",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "future_python",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Python 3.1.0 writes run logs and does not read them back. This plan does not add a reader to 3.1.0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "mixed_versions",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "proof_export",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "A future proof of contract records needs the canonical names. PKG-02 does not add that exporter.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_cli",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "cli_0_3_24",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "future_cli",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "future_node",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "future_python",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "mixed_versions",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "proof_export",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "@vantio/agent-sdk 0.2.4 does not write or read a local Optics run log.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "node_sdk_0_2_4",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "cli_0_3_24",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "future_cli",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "future_node",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "future_python",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "python_3_1_0",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "mixed_versions",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "proof_export",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The local Node writer is the CLI interceptor. A future SDK run log is not selected.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_node_sdk",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "cli_0_3_24",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The frozen reader can open vantio_run_log 1 files. It recomputes status and can turn a missing byte count into a displayed total of zero.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "future_cli",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "future_node",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "future_python",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Python 3.1.0 writes run logs and does not read them back. This plan does not add a reader to 3.1.0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "mixed_versions",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "proof_export",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "prove JSON and HTML use displayCall. MCP markdown prints action and reads machine, which writers do not store.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "python_3_1_0",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "cli_0_3_24",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Frozen CLI display assigns optics SUCCESS to every call row and reads hostname and status, not destination_host and http_status.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "future_cli",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "future_node",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "future_python",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Python 3.1.0 writes run logs and does not read them back. This plan does not add a reader to 3.1.0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "mixed_versions",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "proof_export",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "A future proof of contract records needs the canonical names. PKG-02 does not add that exporter.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "future_python",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "cli_0_3_24",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "The frozen reader can open vantio_run_log 1 files. It recomputes status and can turn a missing byte count into a displayed total of zero.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "future_cli",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "future_node",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "future_python",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Future readers use the PKG-01 legacy mapper as a read-only adapter. They do not rewrite the file.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Python 3.1.0 writes run logs and does not read them back. This plan does not add a reader to 3.1.0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "mixed_versions",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "proof_export",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "prove JSON and HTML use displayCall. MCP markdown prints action and reads machine, which writers do not store.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "demo_command",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "cli_0_3_24",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Frozen CLI display assigns optics SUCCESS to every call row and reads hostname and status, not destination_host and http_status.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "future_cli",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned read of detached contract output. schema_status remains unstable-pre-1.0. FULL is not a shipment claim.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "future_node",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned read of detached contract output. schema_status remains unstable-pre-1.0. FULL is not a shipment claim.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "future_python",
+      "classification": "FULL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Planned read of detached contract output. schema_status remains unstable-pre-1.0. FULL is not a shipment claim.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "python_3_1_0",
+      "classification": "UNSUPPORTED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Python 3.1.0 writes run logs and does not read them back. This plan does not add a reader to 3.1.0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "mixed_versions",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "unknown_fields_and_enums",
+      "classification": "REJECT_WITH_EXPLANATION",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "missing_canonical",
+      "classification": "PARTIAL",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "alias_reader",
+      "classification": "REQUIRES_ALIAS",
+      "achievement": "NOT_SHIPPED",
+      "reason": "CamelCase and legacy keys are read aliases. Future stored keys are canonical.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "imported",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "Imports stay IMPORTED. original_evidence_origin is preserved. Maturity is not upgraded.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "legacy_unmarked",
+      "classification": "READ_ONLY",
+      "achievement": "NOT_SHIPPED",
+      "reason": "LEGACY_UNMARKED stays a reader label. Founder decision 6 does not allow a customer promote.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "proof_export",
+      "classification": "REQUIRES_ADAPTER",
+      "achievement": "NOT_SHIPPED",
+      "reason": "A future proof of contract records needs the canonical names. PKG-02 does not add that exporter.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    },
+    {
+      "writer": "pkg01_contract_output",
+      "reader": "future_store_import",
+      "classification": "NOT_YET_DECIDED",
+      "achievement": "NOT_SHIPPED",
+      "reason": "No store and no migration exist. PKG-02 does not import or convert records.",
+      "rewrites_source": false,
+      "may_upgrade_origin": false,
+      "unknown_status_becomes_success": false
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "audience": "INTERNAL_RESTRICTED",
+  "classification": "OPTICS_PKG02_PLAN_READY_FOR_COUNCIL",
+  "council_verdict": "PENDING_COUNCIL",
+  "stable_schema": false,
+  "schema_status": "unstable-pre-1.0",
+  "repository": "vantioai/vantio-open-core",
+  "starting_main_sha": "dc212bca61fe80b65bb2cbab8e8f812c035ff2e0",
+  "branch": "planning/optics-pkg02-record-conformance",
+  "producer": {
+    "role": "PLANNING_PRODUCER",
+    "agent": "bc-ebb705c2-daab-59d2-85c1-689c7af5499e",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-ebb705c2-daab-59d2-85c1-689c7af5499e"
+  },
+  "council": {
+    "agent": "PENDING_COUNCIL",
+    "verdict": "PENDING_COUNCIL",
+    "report": "10-INDEPENDENT-COUNCIL-REPORT.md"
+  },
+  "generated_at_utc": "2026-09-27T01:44:19Z",
+  "generated_at_america_new_york": "2026-09-26T21:44:19-0400",
+  "input_sha256": {
+    "packages/optics-evidence-contract/contract/field-catalog.json": "497ef2372a507eb87583eeeaf6ccc7b8c53f5207195ca1561ab56a6d008e0bbe",
+    "packages/optics-evidence-contract/contract/enums.json": "a4b73d607aea4dbd55a32b3a746ab9fbeeeb261605a9f8146a76898c4fb9ee14",
+    "packages/optics-evidence-contract/contract/prohibited-fields.json": "f2f62263c3f764578b52c61dfe7407457138c0cc52436ec7c1f590f9805ec711",
+    "packages/optics-evidence-contract/contract/normalization.json": "7c6a4a969fd85a977a307102064171c36e26425a69171da7cf6368e1ffbd15ec",
+    "packages/optics-evidence-contract/contract/contract-metadata.json": "0ae9925959618b59f21850b1ba6d0cd56a941a5d6237601c63a9c49b55b7a657",
+    "packages/optics-evidence-contract/contract/unicode-profile.json": "edceba7880051fe2ca760d94f61ec8bf6b261ace47e23d1683bf1eab333ee6b6",
+    "packages/optics-evidence-contract/contract/unicode-profile-metadata.json": "491195d2be91f82aa6fcc959c8ce6e68621b7cd699a199a34331587eec1cadcc",
+    "packages/optics-evidence-contract/package.json": "e9eb9d050085a8d42b8ce2d862b03f955ce119db40a9d4c69767f5ad98b2f851",
+    "docs/internal/optics-pkg01/COMPATIBILITY.md": "175c12364e84869047777d5329bbcb4d96a9a9dbc2e917c71355b5ee11fd324c",
+    "docs/internal/optics-pkg01/FIELD-CATALOG.md": "f359be852bf6b11c7d68ad6a8aa59a69b5e56497caa942a445fcf237b481acf1",
+    "docs/internal/optics-pkg01/PENDING-COUNCIL.md": "7a6645fbf22c643a1442cdeff21bfa0166db200b0f7df10e52d5cf21b493ff23",
+    "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md": "165583b45883bd431c956e91a2f181529d61a56f51a86d706b5d6f759c9852fa",
+    "docs/architecture/optics-foundation/ARCHITECTURE-MANIFEST.json": "363b26c167f9650aaae9747efa1915a9f0c67b4d1579c6a49914ffca2cef6640",
+    "docs/planning/optics-foundation-a8/PLANNING-MANIFEST.json": "3465b841e8890cdfc2245d26d37b9da9f3828dfc3e21c6d4da907a4c5bec9ce6"
+  },
+  "files_sha256": {
+    "00-PROGRAM-BOUNDARY.md": "32601d530f3ca9b1220475c54ab9f55ae1ac01217da1250f41b5520228cf85f6",
+    "01-CURRENT-RECORD-INVENTORY.md": "6251000bc84c0a93ebb231f369880976a0783fc1239d43679f1c846b69624843",
+    "02-SHARED-RECORD-VOCABULARY.md": "7cf7f8eb48d9b067ccedc61bdbff214b30cc724b130ef7fc000c52b044008bc4",
+    "03-NODE-PYTHON-DELTA.md": "dbe0aa891db7bdbcea662bb2201e6404117e55f1d8778c72e8524ccee39cc581",
+    "04-COMPATIBILITY-MATRIX.md": "d217e48f0358347de6b4f15717a70bf4f4d7528f1a8eeb01db30c860d606bb78",
+    "05-INTEGRATION-SEQUENCING.md": "dae26b07cebe7398ffa7b027f6e742417f0312b6f731115dfb269e4ab273c5b4",
+    "06-RELEASE-AND-ROLLBACK-BOUNDARY.md": "f9a1a048731d584f9df7d651c52aa04b016038c755df9e92e43103a554eb60cd",
+    "07-CONFORMANCE-TEST-PLAN.md": "04d6a132dcce46a08e446305542e7422f56a37fc72bc38a4bbb2379f27cd36db",
+    "08-FUTURE-NODE-INTEGRATION-FORCE.md": "6549e7b0ef77db75b2cd6c9d99b3b5e6756c944e8720001e93621550df87f6a9",
+    "09-FUTURE-PYTHON-INTEGRATION-FORCE.md": "e523f5f84f7c06ca7338378641f45081b566a778bf040ce0aee07e5adbeba0b7",
+    "10-INDEPENDENT-COUNCIL-REPORT.md": "91f81ec545eaf120eb720354107c21bc13992245e063c1b0d71bd75c8cd0a769",
+    "RECORD-COMPATIBILITY-MATRIX.json": "095174a0361fe089a6eb446852c264dafd3bd0303c07a5d0e1a825882f27e489",
+    "RECORD-VOCABULARY.json": "07561a41847135152c8cb6da4154979547295160921504c53427237b1539514f"
+  },
+  "counts": {
+    "canonical_rows": 120,
+    "unique_canonical_names": 88,
+    "compatibility_fields": 67,
+    "missing_in_both_live_writers": 88,
+    "cli_class": {
+      "EXACT_MATCH": 10,
+      "NAME_ONLY_MATCH": 9,
+      "SEMANTIC_MISMATCH": 6,
+      "TYPE_MISMATCH": 0,
+      "OPTIMISTIC_DEFAULT": 2,
+      "MISSING_IN_NODE": 93,
+      "MISSING_IN_PYTHON": 0,
+      "LEGACY_ONLY": 0,
+      "READER_ONLY": 0,
+      "PROHIBITED_BY_PKG01": 0,
+      "UNKNOWN": 0
+    },
+    "python_class": {
+      "EXACT_MATCH": 8,
+      "NAME_ONLY_MATCH": 5,
+      "SEMANTIC_MISMATCH": 8,
+      "TYPE_MISMATCH": 0,
+      "OPTIMISTIC_DEFAULT": 1,
+      "MISSING_IN_NODE": 0,
+      "MISSING_IN_PYTHON": 98,
+      "LEGACY_ONLY": 0,
+      "READER_ONLY": 0,
+      "PROHIBITED_BY_PKG01": 0,
+      "UNKNOWN": 0
+    },
+    "primary_class": {
+      "MISSING_IN_NODE": 92,
+      "SEMANTIC_MISMATCH": 9,
+      "NAME_ONLY_MATCH": 9,
+      "MISSING_IN_PYTHON": 5,
+      "EXACT_MATCH": 3,
+      "OPTIMISTIC_DEFAULT": 2
+    },
+    "compatibility_class": {
+      "LEGACY_ONLY": 15,
+      "SEMANTIC_MISMATCH": 11,
+      "NAME_ONLY_MATCH": 13,
+      "PROHIBITED_BY_PKG01": 15,
+      "OPTIMISTIC_DEFAULT": 5,
+      "READER_ONLY": 5,
+      "TYPE_MISMATCH": 1,
+      "MISSING_IN_NODE": 2
+    },
+    "matrix_cells": 104,
+    "matrix_class": {
+      "PARTIAL": 20,
+      "REQUIRES_ADAPTER": 12,
+      "UNSUPPORTED": 16,
+      "REJECT_WITH_EXPLANATION": 8,
+      "REQUIRES_ALIAS": 8,
+      "READ_ONLY": 16,
+      "NOT_YET_DECIDED": 15,
+      "FULL": 9
+    }
+  },
+  "recommended_sequence": [
+    "UNIT_A_SHARED_VOCABULARY_FIXTURES",
+    "UNIT_B_NODE_ADAPTER_INERT_PARALLEL_WITH_UNIT_C",
+    "UNIT_C_PYTHON_ADAPTER_INERT_PARALLEL_WITH_UNIT_B",
+    "UNIT_F_READER_COMPATIBILITY",
+    "UNIT_D_NODE_WRITER_ACTIVATION",
+    "UNIT_E_PYTHON_WRITER_ACTIVATION"
+  ],
+  "selected_option": "D_ADAPTERS_THEN_ACTIVATION",
+  "shared_corpus_during_inert_adapters": "C_PARALLEL_BRANCHES_SHARED_CONFORMANCE_WITHOUT_ACTIVATION",
+  "future_version_placeholders": {
+    "cli": "PKG02-FUTURE-CLI-UNASSIGNED",
+    "node_sdk": "PKG02-FUTURE-NODE-SDK-UNASSIGNED",
+    "python": "PKG02-FUTURE-PYTHON-UNASSIGNED",
+    "starting_sha": "PKG02-FUTURE-START-SHA-UNASSIGNED"
+  },
+  "current_versions_unchanged": {
+    "cli": "0.3.24",
+    "node_sdk": "0.2.4",
+    "python": "3.1.0",
+    "python_3_0_15": "NEVER_PUBLISH",
+    "evidence_contract": "0.0.0-unstable-pre-1.0"
+  },
+  "unresolved_founder_decisions": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "unresolved_planning_gaps": [
+    "contract calls_max 64 versus unbounded live logs",
+    "whether the Node SDK ever writes a local run log"
+  ],
+  "pr_59_classification": "SUPERSEDED_HISTORICAL_COUNCIL",
+  "attestations": {
+    "no_product_code_change": true,
+    "no_live_integration": true,
+    "no_pkg01_behavior_change": true,
+    "no_version_change": true,
+    "no_release_rc_seal_publish": true,
+    "no_sqlite_migration_ui_daemon_export_alert": true,
+    "no_stable_schema": true,
+    "no_record_conversion": true,
+    "no_announcement": true,
+    "implementation_gate_satisfied": false
+  }
+}
