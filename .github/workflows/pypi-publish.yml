@@ -1,151 +1,151 @@
 name: Publish to PyPI
 
-# Manual promotion of one sealed wheel and one sealed sdist.
-# Ordinary pushes and pull-request merges do not run this workflow.
-# The promote job uploads the named files. It does not run a build.
-# skip-existing is false. An existing version is VERSION_ALREADY_EXISTS.
-# This workflow does not verify SLSA provenance.
+# Governed production path for vantio-agent-sdk 3.1.0 Trusted Publishing.
+#
+# Trigger: workflow_dispatch only. Dispatch inputs are absent. Package name,
+# version, filenames, byte lengths, SHA-256, and the custody tag are pinned
+# here and in scripts/release/stage_sealed_pypi.py. An operator cannot
+# replace them at dispatch time.
+#
+# Upload client: pypa/gh-action-pypi-publish@release/v1
+# The action exchanges a GitHub OIDC token for a short-lived PyPI token only
+# when no password is supplied and the user stays the default __token__.
+# The id-token write permission is required for that exchange. It is not, by itself, the
+# upload client. This job sets neither user nor password.
+#
+# Custody: gh release download of tag custody-py-3.1.0 in
+# vantioai/vantio-open-core, via scripts/release/fetch_custody_release.py.
+# That tag is a GitHub Release selector. Release assets can be replaced and
+# the tag can be moved by a principal with contents write. This workflow does
+# not treat the tag as immutable. The pinned SHA-256 and byte length are the
+# integrity gate. Download failure, a missing file, an extra file, or a hash
+# mismatch fails the job before the upload action.
+#
+# The publish job checks out only the custody fetch script and the stage
+# script. It does not check out package source and it does not build.
+# The action receives only pypi-sealed-upload, which is created after the
+# sealed bytes are verified.
+# The version lookup runs before that directory is created. The upload action
+# is the next step after staging.
+#
+# skip-existing is false. PyPI 3.1.0 already existing stops the job before
+# the upload action. The action is also configured with skip-existing false,
+# so a race that publishes first still fails the upload.
+#
+# The action's attestations input is left unset. Its default is true, so a
+# real publication can generate PEP 740 attestations. This workflow does not
+# add attestations itself. No attestation is claimed until a publication runs.
+#
+# DISPOSITION: scripts/release/promote_pypi.py is unchanged. It is not called.
+# It is not the authorized Trusted Publisher upload path.
+#
+# Environment pypi is required. Required reviewers and the main-only
+# deployment branch policy are configured on the GitHub environment, outside
+# this file.
+#
+# Failure before the upload action leaves PyPI unchanged. This workflow does
+# not retry a failed upload and does not yank.
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: Exact vantio-agent-sdk version
-        required: true
-        type: string
-      source_commit:
-        description: Full source commit SHA
-        required: true
-        type: string
-      wheel_sha256:
-        description: SHA-256 of the sealed wheel
-        required: true
-        type: string
-      sdist_sha256:
-        description: SHA-256 of the sealed sdist
-        required: true
-        type: string
-      wheel_name:
-        description: Sealed wheel filename
-        required: true
-        type: string
-      sdist_name:
-        description: Sealed sdist filename
-        required: true
-        type: string
-      custody_tag:
-        description: Draft custody tag holding the sealed files
-        required: true
-        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: pypi-vantio-agent-sdk-3.1.0
+  cancel-in-progress: false
+
 jobs:
-  validate:
-    name: Validate Python release coordinates
+  publish:
+    name: Publish sealed vantio-agent-sdk 3.1.0
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.source_commit }}
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Gate version absence
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          INPUT_COMMIT: ${{ inputs.source_commit }}
-          CHECKOUT_SHA: ${{ github.sha }}
-        run: |
-          set -eu
-          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
-          python3 scripts/release/promote_pypi.py \
-            --version "$INPUT_VERSION" \
-            --source-commit "$INPUT_COMMIT" \
-            --checkout-sha "$CHECKOUT_SHA" \
-            --repo-root "$GITHUB_WORKSPACE"
-
-  promote:
-    name: Promote sealed wheel and sdist
-    needs: validate
-    runs-on: ubuntu-latest
-    environment: pypi
+    environment:
+      name: pypi
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write
     steps:
-      - name: Checkout source commit
+      - name: Checkout release scripts
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_commit }}
           persist-credentials: false
+          sparse-checkout: |
+            scripts/release/fetch_custody_release.py
+            scripts/release/stage_sealed_pypi.py
+          sparse-checkout-cone-mode: false
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Download sealed artifacts
-        env:
-          CUSTODY_TAG: ${{ inputs.custody_tag }}
-          WHEEL_NAME: ${{ inputs.wheel_name }}
-          SDIST_NAME: ${{ inputs.sdist_name }}
-          INPUT_VERSION: ${{ inputs.version }}
+      - name: Require the trusted-publisher workflow identity
         run: |
-          set -eu
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/pypi-publish.yml@refs/heads/main"
+          test ! -e packages
+          test ! -e packages/vantio-agent-sdk-py
+          test ! -e packages/vantio-cli
+          test ! -e packages/optics-evidence-contract
+          test ! -e dist
+          test ! -e pypi-sealed-upload
+
+      - name: Stop when 3.1.0 is already on PyPI
+        env:
+          VANTIO_STAGE_ENFORCE_ACTIONS_CONTEXT: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/release/stage_sealed_pypi.py --reject-existing-version
+
+      - name: Download sealed custody assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
           python3 scripts/release/fetch_custody_release.py \
-            --tag "$CUSTODY_TAG" \
-            --version "$INPUT_VERSION" \
-            --wheel-name "$WHEEL_NAME" \
-            --sdist-name "$SDIST_NAME" \
-            --dest "$RUNNER_TEMP/sealed"
+            --tag custody-py-3.1.0 \
+            --version 3.1.0 \
+            --wheel-name vantio_agent_sdk-3.1.0-py3-none-any.whl \
+            --sdist-name vantio_agent_sdk-3.1.0.tar.gz \
+            --dest "$RUNNER_TEMP/sealed-custody"
 
-      - name: Install twine
-        run: python3 -m pip install --disable-pip-version-check twine
-
-      - name: Publish sealed files and verify registry hashes
+      - name: Verify sealed bytes and stage the upload directory
         env:
-          INPUT_VERSION: ${{ inputs.version }}
-          INPUT_COMMIT: ${{ inputs.source_commit }}
-          CHECKOUT_SHA: ${{ github.sha }}
-          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
-          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
-          WHEEL_NAME: ${{ inputs.wheel_name }}
-          SDIST_NAME: ${{ inputs.sdist_name }}
+          SEALED_PACKAGE: vantio-agent-sdk
+          SEALED_VERSION: "3.1.0"
+          SEALED_WHEEL_NAME: vantio_agent_sdk-3.1.0-py3-none-any.whl
+          SEALED_SDIST_NAME: vantio_agent_sdk-3.1.0.tar.gz
+          SEALED_WHEEL_SHA256: dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb
+          SEALED_SDIST_SHA256: 9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f
+          SEALED_WHEEL_BYTES: "39235"
+          SEALED_SDIST_BYTES: "59669"
+          VANTIO_STAGE_ENFORCE_ACTIONS_CONTEXT: "1"
         run: |
-          set -eu
-          echo "upload_policy=skip-existing is false"
-          python3 scripts/release/promote_pypi.py --publish \
-            --version "$INPUT_VERSION" \
-            --source-commit "$INPUT_COMMIT" \
-            --checkout-sha "$CHECKOUT_SHA" \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --wheel "$RUNNER_TEMP/sealed/$WHEEL_NAME" \
-            --sdist "$RUNNER_TEMP/sealed/$SDIST_NAME" \
-            --wheel-sha256 "$WHEEL_SHA256" \
-            --sdist-sha256 "$SDIST_SHA256"
+          set -euo pipefail
+          python3 scripts/release/stage_sealed_pypi.py \
+            --source "$RUNNER_TEMP/sealed-custody" \
+            --upload-dir "$GITHUB_WORKSPACE/pypi-sealed-upload"
 
-      - name: Write release summary
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          INPUT_COMMIT: ${{ inputs.source_commit }}
-          WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
-          SDIST_SHA256: ${{ inputs.sdist_sha256 }}
-          RELEASE_ACTOR: ${{ github.actor }}
+      - name: Publish sealed distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pypi-sealed-upload
+          verbose: false
+          print-hash: false
+          skip-existing: false
+
+      - name: Record publication coordinates
         run: |
-          {
-            echo "source_commit=$INPUT_COMMIT"
-            echo "package=vantio-agent-sdk"
-            echo "version=$INPUT_VERSION"
-            echo "wheel_sha256=$WHEEL_SHA256"
-            echo "sdist_sha256=$SDIST_SHA256"
-            echo "environment=pypi"
-            echo "actor=$RELEASE_ACTOR"
-            echo "verification=registry_hash_equality_required"
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          package=vantio-agent-sdk
+          version=3.1.0
+          wheel=vantio_agent_sdk-3.1.0-py3-none-any.whl
+          wheel_bytes=39235
+          wheel_sha256=dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb
+          sdist=vantio_agent_sdk-3.1.0.tar.gz
+          sdist_bytes=59669
+          sdist_sha256=9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f
+          environment=pypi
+          upload_client=pypa/gh-action-pypi-publish@release/v1
+          EOF
