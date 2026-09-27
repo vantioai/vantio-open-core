@@ -1,0 +1,59 @@
+{
+  "document": "PLANNING-MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "0.1.0-design",
+  "stable_schema": false,
+  "producer_classification": "SHARED_HEALTH_VOCABULARY_READY_FOR_COUNCIL",
+  "producer_role": "DESIGN_CATALOG_ONLY",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "council_verdict": null,
+  "self_certified_council_pass": false,
+  "producer_identity": {
+    "agent": "bc-17018458-81e4-592e-9017-8ea8dd4ae3c7",
+    "model": "Grok 4.7",
+    "role": "DESIGN_CATALOG_ONLY",
+    "url": "https://cursor.com/agents/bc-17018458-81e4-592e-9017-8ea8dd4ae3c7"
+  },
+  "open_core_base": "4b1b85ad6af41b1bb54dc4c55cde16b711ae7dd4",
+  "open_core_base_subject": "Merge pull request #81 from vantioai/cursor/pkg02-unit-f-reader-compat-2409",
+  "home": "docs/planning/shared-health-vocabulary/",
+  "home_reason": "Layer A stays owned by docs/governance/STATUS-TOKENS.json. This catalog is the planning binding P24 deferred to Workstream 4.",
+  "freshness_rule": "FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN",
+  "pe_packet": {
+    "path": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json",
+    "vocabulary_status": "PENDING_WS4",
+    "workstream_4": "DEFINITION_NOT_RETRIEVED",
+    "sha256_unchanged": "a2592a2496f65897c3258106f3bc187d8efb16e9b3d6c53a54c099163e8e3cd1",
+    "binding": "A later revision of that packet replaces PENDING_WS4 with the council-accepted catalog commit. This force does not edit the packet."
+  },
+  "hard_stops": {
+    "live_ebpf_load": false,
+    "live_probe": false,
+    "stranger_host_execution": false,
+    "customer_deploy": false,
+    "unit_d_writer": false,
+    "unit_e_writer": false,
+    "optics_store_write": false,
+    "o7": false,
+    "i3_otel_adapter": false,
+    "cli_reopen": false,
+    "publish": false,
+    "announcement": false,
+    "customer_confidential_bodies_copied": false,
+    "merge_authorized": false
+  },
+  "paths": [
+    "docs/planning/shared-health-vocabulary/",
+    "tests/shared-health-vocabulary/"
+  ],
+  "files_sha256": {
+    "docs/planning/shared-health-vocabulary/00-BOUNDARY.md": "2fdd63966771cdcfbc1b1455ed5a9b9c993cad2e32cb7f2c0a6aaf20e52950dc",
+    "docs/planning/shared-health-vocabulary/01-CATALOG.md": "65484674b4d09804d6a309a64d017d785d0bdd364d8f77cff186f796fe1f73a3",
+    "docs/planning/shared-health-vocabulary/BINDINGS.md": "652b4f385efc9b0def39f78b7c7561960263adc3298db9ea9d9f63bff31db6b7",
+    "docs/planning/shared-health-vocabulary/COLLISION-MATRIX.json": "70d8f4455fe08415041021ca632acbb4551b765cd198811c21e3e58e675f35d2",
+    "docs/planning/shared-health-vocabulary/HEALTH-VOCABULARY.json": "8cb66208a8cbf6d12801353247b99ed0c9323419af5cdf1b27acee813d7ea531",
+    "docs/planning/shared-health-vocabulary/INDEPENDENT-COUNCIL.md": "3f87449c855e5e1fa1a9599b31eb0c588daa67a8f9918ea3efaf5fbf6c877a2c",
+    "tests/shared-health-vocabulary/catalog.test.cjs": "1b2257ee489b9e9b3ffb7c34f6f1c52817b723e42735533aa396ddabbf13fe8e",
+    "tests/shared-health-vocabulary/collision.test.cjs": "6c4833c0a9f5f14b5bae0d73e0de008c6af034c68f82337f6108e52e5d47dc76"
+  }
+}
