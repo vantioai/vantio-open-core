@@ -1,0 +1,72 @@
+{
+  "document": "OPTICS_PRODUCTION_PLANNING_MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "OPTICS_STORE_OPTION_C_VERIFIED_PLAN_READY_FOR_COUNCIL",
+  "producer_role": "PLANNING_PRODUCER_ONLY",
+  "producer_identity": {
+    "agent": "bc-e139d03a-e24f-5d71-95e9-2a71dc8ac633",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-e139d03a-e24f-5d71-95e9-2a71dc8ac633",
+    "self_certified_council_pass": false
+  },
+  "council_status": "PENDING_COUNCIL",
+  "repository": "vantioai/vantio-open-core",
+  "starting_commit": "587f3b94d47ea958f91d3a99125cd55931d995f1",
+  "starting_commit_subject": "Merge pull request #63 from vantioai/implementation/optics-pkg02-unit-a-vocabulary",
+  "writable_path": "docs/planning/optics-production/",
+  "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+  "store_verification": "STORE_OPTION_C_VERIFIED_ARCHITECTURE_ONLY",
+  "gate_8": "CLOSED",
+  "cli_version": "0.3.24",
+  "cli_reopened": false,
+  "sqlite_file_present": false,
+  "sqlite_dependency_present": false,
+  "proof_golden_vector": {
+    "byte_length": 428,
+    "sha256": "a12adfa5f7b59aa3c4c8c98a52d36a50dcf861c3f8aea9bee7ee2eac70fd263a",
+    "note": "Recomputed from A2 section 5.2. Proof profile check. Not a store."
+  },
+  "package_count": 20,
+  "edge_count": 39,
+  "dependency_graph_sha256": "c9702d2dbb4f75f0f9c668efc144a080935e0d950ceb107d12d3455b8f9e66ce",
+  "dependency_graph_sha256_note": "SHA-256 of dependency_graph.edges from PACKAGES.json encoded as JSON with no extra whitespace.",
+  "input_sha256": {
+    "docs/architecture/optics-foundation/00-PROGRAM-BOUNDARY.md": "291af0a510cbe68f2f5bc67b344d837dde6f99a6e360dc74d5870a93768ba743",
+    "docs/architecture/optics-foundation/03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md": "91d8b5e697cdcd4e13e7d6bc3a14e43bac27213ac70fe50b3718fd7156cdd003",
+    "docs/architecture/optics-foundation/04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md": "2e07d3753bd8d9896e7eff6ed000d7d722e09d5ecfc8c55a87c4a4275a30281a",
+    "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md": "79a2580879cb2613d7a0fb3c0b9d9ff3044ea7cf36d93558fb40adffa171d0b0",
+    "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md": "165583b45883bd431c956e91a2f181529d61a56f51a86d706b5d6f759c9852fa",
+    "docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md": "250ca7cb58ec6fae52b5974a2de4684cc736a2d3dd60568b5215f677786ea486",
+    "docs/architecture/optics-foundation/ARCHITECTURE-MANIFEST.json": "363b26c167f9650aaae9747efa1915a9f0c67b4d1579c6a49914ffca2cef6640",
+    "docs/architecture/optics-foundation/TRACEABILITY-MATRIX.json": "880c9eadcace0bd1659c3cfb8ba2876047e972b70543e85a36fc90165630b93d",
+    "docs/planning/optics-foundation-a8/01-IMPLEMENTATION-PACKAGE-MAP.md": "3a8ea83e88a03a2d1f2a3d4204db69c3f263c0cae3b3e30809048a470c9e6637",
+    "docs/planning/optics-foundation-a8/02-DEPENDENCY-AND-CRITICAL-PATH.md": "d9eb5b92df8b87a441a84efd5a748abd8f2abf6f67647fac8b5c376dad267dc2",
+    "packages/vantio-cli/package.json": "5f772f6ad1a071f34905a6b30eb29be32eea4175ab58bee1e235f9ee3c7ef6e0",
+    "packages/optics-evidence-contract/package.json": "e9eb9d050085a8d42b8ce2d862b03f955ce119db40a9d4c69767f5ad98b2f851",
+    "packages/optics-record-vocabulary/package.json": "a92d1e457907669533618744b66fceef1041884ced8dd303e2b3953bc56f6ace",
+    "packages/vantio-agent-sdk-py/pyproject.toml": "7a031c6b36bff33529c434b489231dbd2d041e596424833255cd05cfd77e935f"
+  },
+  "files_sha256": {
+    "00-PROGRAM-BOUNDARY.md": "1a586d8be258a92bac355318e25318da4629688676c099c9b71ebfdefc54310d",
+    "01-STORE-OPTION-C-VERIFICATION.md": "2c73723567559cceafa96be6c046f630c0741c6b5ffbde8f5d68610465cc7474",
+    "02-O1-SELF-HEALTH-BOUNDARIES.md": "fc79537640aadfeb0917866a0428b7f648e0901156705c4da2bafc80d222f480",
+    "03-PACKAGE-CATALOG.md": "93c07a7dbd84ac3a449f2237e7f593b1e6d0118b66176b2efa4780e2f6fc7744",
+    "04-DEPENDENCY-ORDER.md": "e983d94296ad6999f46ae24753d1b5c4d470606fd865fab7e84dcec31d7607df",
+    "10-INDEPENDENT-COUNCIL-REPORT.md": "9253d122311d8f9c555f4e033ea9b9c493803a12d2439293ce50b9038ba4a757",
+    "PACKAGES.json": "c112d04f13b26f95cb70d75bc0ac4e8a6eedb2734dbb1b970ad52e3c493c344b"
+  },
+  "files_sha256_note": "This manifest is excluded because writing its own hash would change the bytes.",
+  "hard_stops": {
+    "no_database": true,
+    "no_node_binding": true,
+    "no_schema_implementation": true,
+    "no_migration": true,
+    "no_record_conversion": true,
+    "no_package_change": true,
+    "no_cli_reopen": true,
+    "no_enforcement_in_optics": true,
+    "gate_8_closed": true,
+    "council_pending": true
+  }
+}
