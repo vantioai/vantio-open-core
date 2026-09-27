@@ -1,0 +1,46 @@
+{
+  "schema": "vantio.docs-release.public-exports/v1",
+  "doc": "docs/governance/canonical/public-exports.md",
+  "removed": ["VantioSession", "VANTIO_PROXY_ENDPOINT"],
+  "historical_heading": "removed|breaking|migrate|old \\(v2",
+  "packages": [
+    {
+      "id": "node-sdk",
+      "source": "packages/vantio-agent-sdk/src/index.ts",
+      "kind": "ts-export",
+      "names": [
+        "VantioContext",
+        "WithVantioOptions",
+        "VantioEventPayload",
+        "VantioActionTaken",
+        "VantioPolicy",
+        "DEFAULT_POLICY",
+        "normalizePolicy",
+        "withVantio",
+        "shield",
+        "getCurrentTraceId",
+        "getCurrentContext",
+        "reportAnomaly",
+        "FetchPolicyOptions",
+        "fetchPolicy",
+        "RedactionResult",
+        "redactPII"
+      ]
+    },
+    {
+      "id": "python-sdk",
+      "source": "packages/vantio-agent-sdk-py/vantio/__init__.py",
+      "kind": "python-all",
+      "names": [
+        "shield",
+        "report_anomaly",
+        "get_current_trace_id",
+        "VantioContext",
+        "fetch_policy",
+        "redact_pii",
+        "VantioPolicy",
+        "RedactionResult"
+      ]
+    }
+  ]
+}

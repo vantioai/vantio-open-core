@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vantio.docs-release/v1",
+  "title": "Vantio documentation release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "base_commit",
+    "version_metadata",
+    "product_boundary",
+    "public_exports",
+    "env_vars",
+    "status_tokens",
+    "supported_paths",
+    "llm_hosts",
+    "stale_names",
+    "roadmap_not_current",
+    "packaging_exclusion",
+    "pe_customer_bundle",
+    "legacy_stale_names",
+    "known_limitations",
+    "ai_guide",
+    "llms_txt",
+    "llms_full_txt",
+    "readme",
+    "canonical_docs",
+    "examples",
+    "legacy_scan"
+  ],
+  "properties": {
+    "schema": { "const": "vantio.docs-release/v1" },
+    "base_commit": { "type": "string", "minLength": 40, "maxLength": 40 },
+    "version_metadata": { "type": "string" },
+    "product_boundary": { "type": "string" },
+    "public_exports": { "type": "string" },
+    "env_vars": { "type": "string" },
+    "status_tokens": { "type": "string" },
+    "supported_paths": { "type": "string" },
+    "llm_hosts": { "type": "string" },
+    "stale_names": { "type": "string" },
+    "roadmap_not_current": { "type": "string" },
+    "packaging_exclusion": { "type": "string" },
+    "pe_customer_bundle": { "type": "string" },
+    "legacy_stale_names": { "type": "string" },
+    "known_limitations": { "type": "string" },
+    "ai_guide": { "type": "string" },
+    "llms_txt": { "type": "string" },
+    "llms_full_txt": { "type": "string" },
+    "readme": { "type": "string" },
+    "canonical_docs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "feasible"],
+        "properties": {
+          "id": { "type": "string" },
+          "feasible": { "type": "boolean" },
+          "run": { "type": "array", "items": { "type": "string" } },
+          "path": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "legacy_scan": {
+      "type": "object",
+      "required": ["extensions", "exclude_prefixes"],
+      "properties": {
+        "extensions": { "type": "array", "items": { "type": "string" } },
+        "exclude_prefixes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

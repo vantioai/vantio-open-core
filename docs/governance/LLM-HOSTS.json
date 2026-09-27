@@ -1,0 +1,52 @@
+{
+  "schema": "vantio.docs-release.llm-hosts/v1",
+  "sources": [
+    {
+      "id": "node",
+      "file": "packages/vantio-cli/bin/llm-hosts.cjs",
+      "start": "const LLM_HOSTS = [",
+      "end": "];",
+      "extract": "quoted"
+    },
+    {
+      "id": "python-observe",
+      "file": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "start": "_LLM_HOSTS = {",
+      "end": "}",
+      "extract": "quoted"
+    },
+    {
+      "id": "python-catalog",
+      "file": "packages/vantio-agent-sdk-py/vantio/_outcome.py",
+      "start": "_CATALOG: dict[str, tuple[str, str]] = {",
+      "end": "}",
+      "extract": "dict-keys"
+    }
+  ],
+  "hosts": [
+    "api.openai.com",
+    "api.anthropic.com",
+    "generativelanguage.googleapis.com",
+    "api.cohere.ai",
+    "api.cohere.com",
+    "api.mistral.ai",
+    "api.groq.com",
+    "api.together.xyz",
+    "api.perplexity.ai",
+    "inference.ai.azure.com",
+    "openai.azure.com",
+    "api.x.ai",
+    "api.deepseek.com",
+    "api.fireworks.ai",
+    "openrouter.ai",
+    "api.cerebras.ai",
+    "api.voyageai.com",
+    "api.sambanova.ai",
+    "api.deepinfra.com",
+    "router.huggingface.co",
+    "api-inference.huggingface.co",
+    "api.replicate.com",
+    "ollama.com",
+    "integrate.api.nvidia.com"
+  ]
+}

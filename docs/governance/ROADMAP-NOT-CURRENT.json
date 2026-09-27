@@ -1,0 +1,62 @@
+{
+  "schema": "vantio.docs-release.roadmap-not-current/v1",
+  "note": "These items are planning or explicitly absent. Canonical docs must not present them as current.",
+  "features": [
+    {
+      "id": "local-ui",
+      "forbidden": "vantio ui",
+      "reason": "Internal roadmap local UI. Not a shipped command."
+    },
+    {
+      "id": "trends",
+      "forbidden": "vantio trends",
+      "reason": "Internal roadmap cross-run trends. Not a shipped command."
+    },
+    {
+      "id": "prune",
+      "forbidden": "vantio prune",
+      "reason": "Internal roadmap retention prune. Not a shipped command."
+    },
+    {
+      "id": "completion",
+      "forbidden": "vantio completion",
+      "reason": "Internal roadmap shell completion. Not a shipped command."
+    },
+    {
+      "id": "legend",
+      "forbidden": "vantio legend",
+      "reason": "Internal roadmap legend command. Not a shipped command."
+    },
+    {
+      "id": "leave",
+      "forbidden": "vantio leave",
+      "reason": "LEAVE_ENGINEERING_GAP.md records that vantio leave is not shipped."
+    },
+    {
+      "id": "smithery",
+      "forbidden": "Smithery",
+      "reason": "docs/surfaces.md lists hosted remote MCP / Smithery as earmarked, not shipping."
+    },
+    {
+      "id": "browser-extension",
+      "forbidden": "browser extension",
+      "reason": "docs/surfaces.md lists a browser extension as earmarked, not shipping."
+    },
+    {
+      "id": "phantom-evidence-mcp",
+      "forbidden": "Phantom evidence MCP",
+      "reason": "docs/surfaces.md lists Phantom evidence MCP as earmarked, not shipping."
+    },
+    {
+      "id": "siem",
+      "forbidden": "\\bSIEM\\b",
+      "reason": "docs/surfaces.md lists SIEM export as earmarked, not shipping."
+    },
+    {
+      "id": "otlp-exporter",
+      "forbidden": "OTLP exporter",
+      "allowed_line": "no OTLP exporter",
+      "reason": "The CLI README states there is no OTLP exporter."
+    }
+  ]
+}

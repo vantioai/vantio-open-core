@@ -1,0 +1,29 @@
+{
+  "schema": "vantio.docs-release.status-tokens/v1",
+  "doc": "docs/governance/canonical/status-tokens.md",
+  "schema_status": "unstable-pre-1.0",
+  "display_source": "packages/vantio-cli/bin/optics-cx.cjs",
+  "display_tokens": [
+    "OBSERVED",
+    "NOT_OBSERVED",
+    "UNSUPPORTED",
+    "UNAVAILABLE",
+    "APPLICATION_ERROR",
+    "OPTICS_ERROR",
+    "PARTIAL",
+    "SUCCESS"
+  ],
+  "action_source": "packages/vantio-agent-sdk/src/index.ts",
+  "action_tokens": [
+    "OBSERVED",
+    "ALLOWED",
+    "REDACTED",
+    "BLOCKED_HOST",
+    "BLOCKED_SIZE",
+    "BLOCKED_SPEND",
+    "ENFORCEMENT_GAP",
+    "DRY_RUN_BLOCKED_HOST",
+    "DRY_RUN_BLOCKED_SIZE",
+    "DRY_RUN_BLOCKED_SPEND"
+  ]
+}

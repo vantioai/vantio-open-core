@@ -1,0 +1,294 @@
+{
+  "schema": "vantio.docs-release.supported-paths/v1",
+  "doc": "docs/governance/canonical/supported-paths.md",
+  "paths": [
+    {
+      "id": "node-fetch",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "globalThis.fetch",
+      "doc_phrase": "globalThis.fetch"
+    },
+    {
+      "id": "node-undici",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "undici.fetch",
+      "doc_phrase": "undici.fetch"
+    },
+    {
+      "id": "node-undici-request",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "undici.request",
+      "doc_phrase": "undici.request"
+    },
+    {
+      "id": "node-client-dispatch",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "Client/Pool/Agent request() and dispatch()",
+      "doc_phrase": "Client/Pool/Agent request() and dispatch()"
+    },
+    {
+      "id": "node-undici-stream",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "undici.stream/pipeline/connect/upgrade",
+      "doc_phrase": "undici.stream/pipeline/connect/upgrade"
+    },
+    {
+      "id": "node-http",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "http/https.request|get and ClientRequest",
+      "doc_phrase": "http/https.request|get and ClientRequest"
+    },
+    {
+      "id": "node-http-get",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "http/https.request|get and ClientRequest",
+      "doc_phrase": "http/https.request|get"
+    },
+    {
+      "id": "node-clientrequest",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "http/https.request|get and ClientRequest",
+      "doc_phrase": "ClientRequest"
+    },
+    {
+      "id": "node-http2",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "http2.connect / session.request",
+      "doc_phrase": "http2.connect / session.request"
+    },
+    {
+      "id": "node-http2-session",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "http2.connect / session.request",
+      "doc_phrase": "session.request"
+    },
+    {
+      "id": "node-net-tls",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "net.Socket.connect / tls.connect",
+      "doc_phrase": "net.Socket.connect / tls.connect"
+    },
+    {
+      "id": "node-websocket",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "globalThis.WebSocket / undici.WebSocket",
+      "doc_phrase": "globalThis.WebSocket / undici.WebSocket"
+    },
+    {
+      "id": "node-undici-websocket",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "globalThis.WebSocket / undici.WebSocket",
+      "doc_phrase": "undici.WebSocket"
+    },
+    {
+      "id": "node-undici-upgrade",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "undici.upgrade / CONNECT tunnel writes",
+      "doc_phrase": "undici.upgrade / CONNECT tunnel writes"
+    },
+    {
+      "id": "node-curl",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "spawn/exec of curl, wget, httpie, and aria2c",
+      "doc_phrase": "Node spawn tool curl"
+    },
+    {
+      "id": "node-wget",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "spawn/exec of curl, wget, httpie, and aria2c",
+      "doc_phrase": "Node spawn tool wget"
+    },
+    {
+      "id": "node-httpie",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "spawn/exec of curl, wget, httpie, and aria2c",
+      "doc_phrase": "Node spawn tool httpie"
+    },
+    {
+      "id": "node-aria2c",
+      "state": "supported",
+      "runtime": "node",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "spawn/exec of curl, wget, httpie, and aria2c",
+      "doc_phrase": "Node spawn tool aria2c"
+    },
+    {
+      "id": "python-urllib",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "urllib.request.urlopen and OpenerDirector.open",
+      "doc_phrase": "urllib.request.urlopen and OpenerDirector.open"
+    },
+    {
+      "id": "python-opener",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "urllib.request.urlopen and OpenerDirector.open",
+      "doc_phrase": "OpenerDirector.open"
+    },
+    {
+      "id": "python-requests",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "requests",
+      "doc_phrase": "requests"
+    },
+    {
+      "id": "python-httpx",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "httpx",
+      "doc_phrase": "httpx"
+    },
+    {
+      "id": "python-aiohttp",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "aiohttp",
+      "doc_phrase": "aiohttp"
+    },
+    {
+      "id": "python-urllib3",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "urllib3",
+      "doc_phrase": "urllib3"
+    },
+    {
+      "id": "python-pycurl",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "pycurl",
+      "doc_phrase": "pycurl"
+    },
+    {
+      "id": "python-socket",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and http.client request/putrequest",
+      "doc_phrase": "socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and http.client request/putrequest"
+    },
+    {
+      "id": "python-http-client",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and http.client request/putrequest",
+      "doc_phrase": "http.client request/putrequest"
+    },
+    {
+      "id": "python-curl",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "subprocess / os.system / asyncio curl, wget, httpie, and aria2c",
+      "doc_phrase": "Python spawn tool curl"
+    },
+    {
+      "id": "python-wget",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "subprocess / os.system / asyncio curl, wget, httpie, and aria2c",
+      "doc_phrase": "Python spawn tool wget"
+    },
+    {
+      "id": "python-httpie",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "subprocess / os.system / asyncio curl, wget, httpie, and aria2c",
+      "doc_phrase": "Python spawn tool httpie"
+    },
+    {
+      "id": "python-aria2c",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "source_needle": "subprocess / os.system / asyncio curl, wget, httpie, and aria2c",
+      "doc_phrase": "Python spawn tool aria2c"
+    },
+    {
+      "id": "python-sdk-required",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-cli/bin/vantio.js",
+      "source_needle": "needs vantio-agent-sdk",
+      "doc_phrase": "needs vantio-agent-sdk"
+    },
+    {
+      "id": "regional-patterns",
+      "state": "supported",
+      "runtime": "node-and-python",
+      "source": "packages/vantio-cli/bin/llm-hosts.cjs",
+      "source_needle": "function hostMatchesRegional",
+      "doc_phrase": "hostMatchesRegional"
+    },
+    {
+      "id": "python-regional",
+      "state": "supported",
+      "runtime": "python",
+      "source": "packages/vantio-agent-sdk-py/vantio/_outcome.py",
+      "source_needle": "def _regional_provider",
+      "doc_phrase": "_regional_provider"
+    },
+    {
+      "id": "browser",
+      "state": "unsupported",
+      "runtime": "browser",
+      "source": "packages/vantio-cli/bin/interceptor.cjs",
+      "source_needle": "Browsers stay outside this wrap",
+      "doc_phrase": "Browser paths stay outside this wrap"
+    },
+    {
+      "id": "python-without-sdk",
+      "state": "unsupported",
+      "runtime": "python",
+      "source": "README.md",
+      "source_needle": "Prefixing `vantio run python` does not intercept by itself.",
+      "doc_phrase": "Prefixing `vantio run python` does not intercept by itself."
+    }
+  ]
+}

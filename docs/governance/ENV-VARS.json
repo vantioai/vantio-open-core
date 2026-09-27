@@ -1,0 +1,74 @@
+{
+  "schema": "vantio.docs-release.env-vars/v1",
+  "doc": "docs/governance/canonical/environment.md",
+  "scan_directories": [
+    "packages/vantio-cli/bin",
+    "packages/vantio-agent-sdk/src",
+    "packages/vantio-agent-sdk-py/vantio",
+    "packages/vantio-optics-mcp/src",
+    "packages/vantio-gate-mcp/src"
+  ],
+  "vars": [
+    {
+      "name": "DO_NOT_TRACK",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_API_BASE",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_API_KEY",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_AUDIT_MODE",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_CLOUD_INGEST",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_EXTRA_LLM_HOSTS",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_HOME",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_IDENTITY",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_INGEST_URL",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_JSON",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_SOAK_LOCAL",
+      "audience": "internal",
+      "reason": "Soak harness flag read by the CLI interceptor. Not a supported customer setting."
+    },
+    {
+      "name": "VANTIO_SUMMARY",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_TELEMETRY",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_TELEMETRY_DISABLED",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_TRACE_ID",
+      "audience": "public"
+    }
+  ]
+}

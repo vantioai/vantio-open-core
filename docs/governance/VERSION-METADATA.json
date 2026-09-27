@@ -1,0 +1,69 @@
+{
+  "schema": "vantio.docs-release.version-metadata/v1",
+  "base_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
+  "note": "Records the versions already in this tree. Documentation release checks compare package manifests to this file. They do not bump versions.",
+  "packages": [
+    {
+      "id": "cli",
+      "name": "@vantio/cli",
+      "version": "0.3.24",
+      "manifest": "packages/vantio-cli/package.json",
+      "changelog": "docs/governance/changelogs/cli.md",
+      "changelog_heading": "## 0.3.24"
+    },
+    {
+      "id": "node-sdk",
+      "name": "@vantio/agent-sdk",
+      "version": "0.2.4",
+      "manifest": "packages/vantio-agent-sdk/package.json",
+      "changelog": "docs/governance/changelogs/node-sdk.md",
+      "changelog_heading": "## 0.2.4"
+    },
+    {
+      "id": "python-sdk",
+      "name": "vantio-agent-sdk",
+      "version": "3.1.0",
+      "manifest": "packages/vantio-agent-sdk-py/pyproject.toml",
+      "also": [
+        {
+          "file": "packages/vantio-agent-sdk-py/vantio/__init__.py",
+          "contains": "__version__ = \"3.1.0\""
+        }
+      ],
+      "changelog": "packages/vantio-agent-sdk-py/CHANGELOG.md",
+      "changelog_heading": "## 3.1.0"
+    },
+    {
+      "id": "optics-mcp",
+      "name": "@vantio/optics-mcp",
+      "version": "0.1.2",
+      "manifest": "packages/vantio-optics-mcp/package.json",
+      "changelog": "docs/governance/changelogs/optics-mcp.md",
+      "changelog_heading": "## 0.1.2"
+    },
+    {
+      "id": "gate-mcp",
+      "name": "@vantio/gate-mcp",
+      "version": "0.1.0",
+      "manifest": "packages/vantio-gate-mcp/package.json",
+      "changelog": "docs/governance/changelogs/gate-mcp.md",
+      "changelog_heading": "## 0.1.0"
+    },
+    {
+      "id": "vscode",
+      "name": "vantio-optics",
+      "version": "0.1.0",
+      "manifest": "extensions/vantio-optics/package.json",
+      "changelog": "extensions/vantio-optics/CHANGELOG.md",
+      "changelog_heading": "## 0.1.0"
+    },
+    {
+      "id": "evidence-contract",
+      "name": "@vantio/optics-evidence-contract",
+      "version": "0.0.0-unstable-pre-1.0",
+      "manifest": "packages/optics-evidence-contract/package.json",
+      "changelog": "docs/governance/changelogs/evidence-contract.md",
+      "changelog_heading": "## 0.0.0-unstable-pre-1.0"
+    }
+  ]
+}
