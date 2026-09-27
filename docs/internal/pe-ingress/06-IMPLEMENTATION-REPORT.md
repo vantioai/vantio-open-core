@@ -1,0 +1,35 @@
+# Implementation report
+
+Audience: INTERNAL_RESTRICTED
+
+Producer classification: `PE_INGRESS_PROGRAM_READY_FOR_COUNCIL`
+
+This classification means the branch is ready for a separate council. It is not a council verdict and not a statement that the live loader changed.
+
+## What landed
+
+Private package `@vantio/pe-ingress-authority` at `0.0.0-internal`. It is not in `pnpm-workspace.yaml`. Live CLI `0.3.24` and Python `3.1.0` do not import it.
+
+The evaluator classifies listeners with the P0b envelope rule, then applies the authority contract in `03-AUTHORITY-CONTRACT.md`. Session helpers cover revoke, restart, and rollback. No source file in the package starts a process or writes a file.
+
+## Checks
+
+From the repository root:
+
+```sh
+node --test tests/pe-ingress/*.test.cjs
+```
+
+The producer run of that command reported 49 tests and 0 failures.
+
+## Hard-stop attestations
+
+- No edit to `vantio-phantom-engine` and no live loader mutation.
+- No customer deploy and no stranger-host execution.
+- No CLI `0.3.24` or Python `3.1.0` source or version change.
+- No inbound packet drop and no `ActionTaken` of `ALLOWED` or `BLOCKED`.
+- No shared freshness token other than `UNKNOWN`.
+- No protection-state invention and no `ingress_protected_claim`.
+- No credential create, rotate, or identity-provider call.
+- Draft pull request only. Not marked ready. Not merged.
+- Council is a separate agent. This producer did not run it.

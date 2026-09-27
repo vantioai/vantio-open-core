@@ -1,0 +1,45 @@
+{
+  "document": "PE-INGRESS-MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "producer_classification": "PE_INGRESS_PROGRAM_READY_FOR_COUNCIL",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "open_core_base": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "private_product_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
+  "private_tip_executed": false,
+  "package": {
+    "name": "@vantio/pe-ingress-authority",
+    "version": "0.0.0-internal",
+    "private": true,
+    "workspace_member": false
+  },
+  "sources": [
+    {
+      "repo": "vantioai/vantio-phantom-engine",
+      "path": "docs/enterprise/INGRESS_P0B.md",
+      "blob": "92fe8a5692bb55ec710206120a78e537642a7d3b",
+      "class": "OBSERVED_FROM_REPOSITORY_EVIDENCE"
+    },
+    {
+      "repo": "vantioai/vantio-phantom-engine",
+      "path": "docs/enterprise/INGRESS_SECURITY_FEASIBILITY.md",
+      "blob": "3da24295df42105f1d060ecdb3f1c551034d95bd",
+      "class": "OBSERVED_FROM_REPOSITORY_EVIDENCE"
+    },
+    {
+      "repo": "vantioai/vantio-phantom-engine",
+      "path": "python/pe_ingress_truth.py",
+      "blob": "a83dc64e63000f34c28f5d590f9e1508e205e9f6",
+      "class": "OBSERVED_FROM_REPOSITORY_EVIDENCE"
+    }
+  ],
+  "hard_stops": {
+    "live_loader_mutated": false,
+    "customer_deploy": false,
+    "stranger_host_execution": false,
+    "inbound_packet_drop": false,
+    "cli_0324_edited": false,
+    "python_310_edited": false,
+    "merge_authorized": false,
+    "self_certified_council_pass": false
+  }
+}
