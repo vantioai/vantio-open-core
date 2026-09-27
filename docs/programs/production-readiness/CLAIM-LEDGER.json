@@ -1,0 +1,130 @@
+{
+  "schema": "vantio.program.production-readiness.claim-ledger/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "status_enum": ["EVIDENCE_RECORDED", "NOT_ASSERTED"],
+  "claims": [
+    {
+      "id": "CL-001",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Retrieved origin/main is 5064f32f1cdfcb840dfd100e2ce5c712d046550d.",
+      "evidence": [
+        "git fetch origin main on 2026-09-27",
+        "git rev-parse origin/main",
+        "subject: Merge pull request #65 from vantioai/docs/documentation-release-governance-v1"
+      ]
+    },
+    {
+      "id": "CL-002",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "The expected prefix 5064f32 matches the retrieved main SHA.",
+      "evidence": ["Control-plane upload expected ~5064f32f. Full SHA starts with 5064f32."]
+    },
+    {
+      "id": "CL-003",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "@vantio/cli 0.3.24 is the frozen CLI named by this program.",
+      "evidence": [
+        "packages/vantio-cli/package.json on the recorded main",
+        "docs/governance/VERSION-METADATA.json",
+        "tag v0.3.24 peels to 1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
+        "npm dist-tag latest 0.3.24 observed 2026-09-27"
+      ]
+    },
+    {
+      "id": "CL-004",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "PyPI vantio-agent-sdk info.version was 3.0.14 on 2026-09-27, and 3.1.0 was absent from that release list.",
+      "evidence": ["GET https://pypi.org/pypi/vantio-agent-sdk/json during this force"]
+    },
+    {
+      "id": "CL-005",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Source on the recorded main declares vantio-agent-sdk 3.1.0.",
+      "evidence": [
+        "packages/vantio-agent-sdk-py/pyproject.toml",
+        "docs/governance/VERSION-METADATA.json python-sdk"
+      ]
+    },
+    {
+      "id": "CL-006",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "This control plane authorizes the Python line from published 3.0.14 toward source 3.1.0 and performs no publish.",
+      "evidence": ["Control-plane upload locked state: Python 3.0.14→3.1.0 authorized", "CL-004", "CL-005"]
+    },
+    {
+      "id": "CL-007",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "PKG-01 source is merged and live runtime integration remains unauthorized in the planning record.",
+      "evidence": [
+        "dc212bca61fe80b65bb2cbab8e8f812c035ff2e0 merges pull request #58 and is an ancestor of recorded main",
+        "docs/planning/optics-pkg02/00-PROGRAM-BOUNDARY.md label OPTICS_PKG01_MERGED_NO_LIVE_INTEGRATION"
+      ]
+    },
+    {
+      "id": "CL-008",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "PKG-02 Unit A vocabulary source is merged. The pre-merge implementation report still says the draft was not merged; git history is the merge evidence.",
+      "evidence": [
+        "587f3b94d47ea958f91d3a99125cd55931d995f1 merges pull request #63 and is an ancestor of recorded main",
+        "docs/internal/optics-pkg02-unit-a/IMPLEMENTATION-REPORT.md was written before that merge"
+      ]
+    },
+    {
+      "id": "CL-009",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Pull request #66 is an open draft and is not merged.",
+      "evidence": [
+        "https://github.com/vantioai/vantio-open-core/pull/66",
+        "head 60726bef7a7d7da35525a4d832ec63b5f8ca5bad",
+        "state OPEN, isDraft true, mergedAt null, read 2026-09-27"
+      ]
+    },
+    {
+      "id": "CL-010",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "The open-core lineup at this main separates Optics, Phantom Engine, and Enterprise, and states that this repository does not ship Phantom Engine.",
+      "evidence": ["docs/PRODUCT_LINEUP.md", "docs/governance/canonical/product-boundary.md"]
+    },
+    {
+      "id": "CL-011",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Store Option C is ratified as architecture only.",
+      "evidence": ["docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md section 12 token STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY"]
+    },
+    {
+      "id": "CL-012",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Architecture Gate 8 is closed in the gate file on this main.",
+      "evidence": ["docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md"]
+    },
+    {
+      "id": "CL-013",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Lightweight tag custody-py-3.1.0 points at 620c68fd6fb10960194bbefb25bbfb2036d6d435, the pull request #60 planning merge, which is not the 3.1.0 publisher commit 764361d7adfbd7eb6c5d4baac71cf32901a7eed0.",
+      "evidence": ["git ls-remote --tags origin", "git log -1 of both SHAs"]
+    },
+    {
+      "id": "CL-014",
+      "status": "NOT_ASSERTED",
+      "claim": "Wave 1 items A–V have no retrieved definitions, so this ledger assigns them no scope and no completion.",
+      "evidence": ["WORKSTREAM-REGISTRY.json wave_1.item_definitions_retrieved false"]
+    },
+    {
+      "id": "CL-015",
+      "status": "NOT_ASSERTED",
+      "claim": "Production readiness, stranger-host proof, customer validation, cluster verification, and a shipped OTLP exporter are outside this record.",
+      "evidence": [
+        "DEMO-READINESS.json, PILOT-READINESS.json, and INVESTOR-READINESS.json are NOT_READY",
+        "docs/governance/canonical/product-boundary.md: There is no OTLP exporter.",
+        "WS3 P34 and WS5 briefs keep stranger-host execution closed"
+      ]
+    },
+    {
+      "id": "CL-016",
+      "status": "NOT_ASSERTED",
+      "claim": "This ledger does not restate Phantom Engine kernel mechanisms, customer-manual text, or a price as a new commercial measurement.",
+      "evidence": ["Category text cites docs/PRODUCT_LINEUP.md and the canonical product boundary already on main"]
+    }
+  ]
+}
