@@ -1,6 +1,6 @@
 {
   "schema": "vantio.docs-release/v1",
-  "base_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
+  "base_commit": "d7299a35be0d9a70ec306ca672aa1359e09f1515",
   "version_metadata": "docs/governance/VERSION-METADATA.json",
   "product_boundary": "docs/governance/PRODUCT-BOUNDARY.json",
   "public_exports": "docs/governance/PUBLIC-EXPORTS.json",
@@ -56,7 +56,7 @@
     }
   ],
   "legacy_scan": {
-    "extensions": [".md", ".js", ".cjs", ".mjs", ".py", ".ts", ".json", ".yml", ".yaml", ".toml"],
+    "extensions": [".md", ".txt", ".js", ".cjs", ".mjs", ".py", ".ts", ".json", ".yml", ".yaml", ".toml"],
     "exclude_prefixes": ["docs/governance/", "docs/scripts/", ".git/", "node_modules/"]
   }
 }

@@ -2,9 +2,17 @@
 
 Status: proposal for council review. This change does not modify publish or release workflows.
 
-Base commit: `14249ba84ff1f3d5aa8ad7a7366172f29235c76e`
+Base commit: `d7299a35be0d9a70ec306ca672aa1359e09f1515`
 
 Branch: `docs/documentation-release-governance-v1`
+
+## Revision after DOCS_GOVERNANCE_NEEDS_REVISION
+
+The gate is rebased onto `d7299a35be0d9a70ec306ca672aa1359e09f1515`, the Optics public manual from PR #64. `MANIFEST.json` `base_commit` and the hardcoded SHA in `checkManifestShape` are that same commit.
+
+Supported-path needles are whole clauses from `packages/vantio-cli/bin/interceptor.cjs` and `packages/vantio-agent-sdk-py/vantio/_http_observe.py`. A needle that is only a prefix of a longer path clause fails `supported-paths-match-catalogs`. The catalog includes Client/Pool/Agent `request()` and `dispatch()`, `http/https.request|get` and `ClientRequest`, `http2` `session.request`, `undici.WebSocket`, `undici.upgrade / CONNECT tunnel writes`, and distinct `curl`, `wget`, `httpie`, and `aria2c` rows for Node and Python. Python also includes `requests`, `OpenerDirector.open`, and `http.client`. The known-limitations sentence about `http.client` and pycurl success-path HTTP status is repeated in the supported-paths doc.
+
+The legacy scan includes `.txt`. PR #64 pages that name `Sight Loop` / `sight_loop` as leftover storage are `intentional_leftovers` in `LEGACY-STALE-NAMES.json`, not new debt. The product name in that rule is Vantio Optics. `docs/products/optics/llms.txt` and `docs/products/optics/llms-full.txt` are the same leftovers outside `docs/governance/`. The manual text is unchanged.
 
 ## Manifest design
 
@@ -47,7 +55,7 @@ Report: `node docs/scripts/check-docs-release.mjs`
 | `examples-execute` | Feasible examples run; infeasible examples name a reason and an existing path. |
 | `env-vars-documented` | Runtime `VANTIO_*` and `DO_NOT_TRACK` reads match the catalog. Public names are in `canonical/environment.md`. |
 | `status-tokens-documented` | Display and action tokens match source and `canonical/status-tokens.md`. |
-| `supported-paths-match-catalogs` | Path needles, the canonical path doc, and the three host catalogs agree. |
+| `supported-paths-match-catalogs` | Path needles match whole source clauses, the canonical path doc, and the three host catalogs. A prefix of a longer path clause fails. |
 | `known-limitations-exist` | The known-limitations doc contains each required phrase. |
 | `changelog-entry-exists` | Each governed version has a changelog heading. New headings for packages that had no changelog live under `docs/governance/changelogs/` so they are not added to an npm pack. |
 | `ai-guide-version-matches` | AI guide versions equal the package versions. |
@@ -59,7 +67,7 @@ Report: `node docs/scripts/check-docs-release.mjs`
 | `pe-customer-bundle-includes-matching-manual` | The bundle design is non-public and the test fixture manual version matches the bundle version. |
 | `stale-product-names-rejected` | Canonical docs contain none of the retired-name patterns. |
 | `roadmap-features-not-current` | Canonical docs do not present unimplemented roadmap items as current. A line may say there is no OTLP exporter. |
-| `legacy-stale-name-inventory-frozen` | Non-canonical matches stay exactly the committed inventory. New matches fail. Canonical paths cannot be listed as debt. |
+| `legacy-stale-name-inventory-frozen` | Non-canonical matches stay exactly the committed debt inventory, including `.txt`. Optics intentional leftovers stay on their own list. New matches fail. Canonical paths cannot be listed as debt or as leftovers. |
 
 Packaging tests build temporary npm and Python trees that include `CUSTOMER-MANUAL` and `docs/internal/` and assert those paths are hits. They do not upload anywhere.
 
@@ -77,9 +85,13 @@ Public packs are rejected if a path contains `CUSTOMER-MANUAL`, `PRIVATE-MANUAL`
 
 ## Legacy retired names
 
-Canonical docs were chosen so they do not contain the retired-name patterns in `STALE-NAMES.json`. Other files still contain those patterns, including some text that ships inside package metadata. That debt is frozen in `LEGACY-STALE-NAMES.json`. Adding a new match fails the check. Removing a match requires a reviewed inventory edit. Promoting a legacy file into `llms.txt` fails until the names are gone.
+Canonical docs were chosen so they do not contain the retired-name patterns in `STALE-NAMES.json`. Other files still contain those patterns, including some text that ships inside package metadata. That debt is frozen in `LEGACY-STALE-NAMES.json` `hits`. Adding a new match fails the check. Removing a match requires a reviewed inventory edit. Promoting a legacy file into `llms.txt` fails until the names are gone.
 
-This change does not rewrite product source, package descriptions, or historical docs.
+`.txt` is part of the scan. `docs/governance/` stays excluded, so the governance `llms.txt` is not this scan. `docs/products/optics/llms.txt` and `docs/products/optics/llms-full.txt` are outside that directory. They repeat PR #64's manual.
+
+`intentional_leftovers` records that manual. The seven markdown pages and the two text exports name `Sight Loop` / `sight_loop` as leftover storage. The rule states that the product name is Vantio Optics. Those sentences are not new debt. A count change on those paths fails until the rule is updated. A retired name in any other file, including another `.txt`, is still new debt.
+
+This change does not rewrite product source, package descriptions, historical docs, or the Optics public manual.
 
 ## Proposed CI job (not added)
 

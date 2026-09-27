@@ -7,10 +7,14 @@ import { fileURLToPath } from "node:url";
 import {
   assemblePeCustomerBundle,
   checkRelease,
+  collectLegacyHits,
   countPatterns,
   denialHits,
   diffHitLists,
+  diffLegacyInventory,
+  needleIsTruncatedPrefix,
   npmPackPaths,
+  opticsLeftoverRuleProblems,
   parseLlmsPaths,
   pythonCandidatePaths,
   readmeBoundaryProblems,
@@ -92,6 +96,65 @@ test("stale-name counter finds retired wording", () => {
 test("legacy inventory diff reports a new file", () => {
   const diff = diffHitLists([{ path: "docs/new.md", count: 1 }], []);
   assert.deepEqual(diff.unexpected, ["docs/new.md"]);
+});
+
+test("a supported-path needle cannot be a prefix of a longer path clause", () => {
+  const source = [
+    "// Patches http/https.request|get and ClientRequest, Node http2.connect / session.request,",
+    "// and spawn/exec of curl, wget,",
+    "// httpie, and aria2c (including prefixes).",
+    "",
+  ].join("\n");
+  assert.equal(needleIsTruncatedPrefix(source, "http/https.request"), true);
+  assert.equal(needleIsTruncatedPrefix(source, "http/https.request|get and ClientRequest"), false);
+  assert.equal(needleIsTruncatedPrefix(source, "http2.connect"), true);
+  assert.equal(needleIsTruncatedPrefix(source, "http2.connect / session.request"), false);
+  assert.equal(needleIsTruncatedPrefix(source, "spawn/exec of curl, wget"), true);
+  assert.equal(needleIsTruncatedPrefix(source, "spawn/exec of curl, wget, httpie, and aria2c"), false);
+});
+
+test("legacy scan counts txt files outside the governance directory", () => {
+  const dir = mkdtempSync(join(tmpdir(), "vantio-docs-txt-"));
+  try {
+    mkdirSync(join(dir, "docs/governance"), { recursive: true });
+    mkdirSync(join(dir, "docs/products/optics"), { recursive: true });
+    writeFileSync(join(dir, "docs/governance/llms.txt"), "Sight Loop\n");
+    writeFileSync(join(dir, "docs/products/optics/llms.txt"), "sight_loop leftover\n");
+    const hits = collectLegacyHits(dir, {
+      extensions: [".txt"],
+      exclude_prefixes: ["docs/governance/"],
+    }, [{ id: "sight-loop-snake", regex: "sight_loop" }]);
+    assert.deepEqual(hits, [{ path: "docs/products/optics/llms.txt", count: 1 }]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("intentional leftovers are not counted as new stale-name debt", () => {
+  const actual = [
+    { path: "docs/old.md", count: 1 },
+    { path: "docs/products/optics/README.md", count: 2 },
+  ];
+  assert.deepEqual(diffLegacyInventory(
+    actual,
+    [{ path: "docs/old.md", count: 1 }],
+    [{ path: "docs/products/optics/README.md", count: 2 }],
+  ), []);
+  const extra = diffLegacyInventory(
+    [...actual, { path: "notes.txt", count: 1 }],
+    [{ path: "docs/old.md", count: 1 }],
+    [{ path: "docs/products/optics/README.md", count: 2 }],
+  );
+  assert.match(extra.join("\n"), /notes.txt/);
+});
+
+test("optics leftover rule must name the manual and the product", () => {
+  const problems = opticsLeftoverRuleProblems({
+    hits: [],
+    intentional_leftovers: { rule: "leftover", hits: [] },
+  }, () => "");
+  assert.match(problems, /Vantio Optics/);
+  assert.match(problems, /PR #64/);
 });
 
 test("PE customer bundle requires a matching private manual and stays non-public", () => {

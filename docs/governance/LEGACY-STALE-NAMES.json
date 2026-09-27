@@ -1,6 +1,59 @@
 {
   "schema": "vantio.docs-release.legacy-stale-names/v1",
-  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here.",
+  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits.",
+  "intentional_leftovers": {
+    "rule": "PR #64 Optics public manual at d7299a35be0d9a70ec306ca672aa1359e09f1515 names Sight Loop and sight_loop as leftover storage while the product name is Vantio Optics. Those sentences are allowed intentional leftovers, not new debt. The manual stays in the tree. The pages are docs/products/optics/AI-GUIDE.md, docs/products/optics/CHANGELOG-GUIDE.md, docs/products/optics/KNOWN-LIMITATIONS.md, docs/products/optics/PYTHON-GUIDE.md, docs/products/optics/README.md, docs/products/optics/RECORD-REFERENCE.md, and docs/products/optics/USER-MANUAL.md. KNOWN-LIMITATIONS.md says the stored string is not current product terminology. RECORD-REFERENCE.md says it is leftover storage and not the product name. The other pages say the product name is Vantio Optics. docs/products/optics/llms.txt and docs/products/optics/llms-full.txt repeat that manual outside docs/governance/. They are the same leftovers, scanned because .txt is in the legacy scan, and they are not new debt.",
+    "pull_request": 64,
+    "base_commit": "d7299a35be0d9a70ec306ca672aa1359e09f1515",
+    "product_name": "Vantio Optics",
+    "hits": [
+      {
+        "path": "docs/products/optics/AI-GUIDE.md",
+        "count": 2,
+        "disclaimer": "Do not explain the product as Sight Loop."
+      },
+      {
+        "path": "docs/products/optics/CHANGELOG-GUIDE.md",
+        "count": 2,
+        "disclaimer": "The product name in this manual is Vantio Optics."
+      },
+      {
+        "path": "docs/products/optics/KNOWN-LIMITATIONS.md",
+        "count": 1,
+        "disclaimer": "That string is not current product terminology."
+      },
+      {
+        "path": "docs/products/optics/PYTHON-GUIDE.md",
+        "count": 1,
+        "disclaimer": "Vantio Optics is the product name."
+      },
+      {
+        "path": "docs/products/optics/README.md",
+        "count": 2,
+        "disclaimer": "The product name is Vantio Optics."
+      },
+      {
+        "path": "docs/products/optics/RECORD-REFERENCE.md",
+        "count": 2,
+        "disclaimer": "Leftover storage. Not the product name."
+      },
+      {
+        "path": "docs/products/optics/USER-MANUAL.md",
+        "count": 1,
+        "disclaimer": "leftover storage, not the product name."
+      },
+      {
+        "path": "docs/products/optics/llms-full.txt",
+        "count": 11,
+        "disclaimer": "Do not explain the product as Sight Loop."
+      },
+      {
+        "path": "docs/products/optics/llms.txt",
+        "count": 2,
+        "disclaimer": "Do not use Sight Loop as the product name."
+      }
+    ]
+  },
   "hits": [
     {
       "path": ".github/actions/vantio-prove/action.yml",

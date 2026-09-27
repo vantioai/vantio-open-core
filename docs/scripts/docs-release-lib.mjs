@@ -59,8 +59,8 @@ export function checkManifestShape(manifest, schema) {
   if (manifest.schema !== "vantio.docs-release/v1") problems.push("schema must be vantio.docs-release/v1");
   if (missing.length) problems.push(`missing keys: ${missing.join(", ")}`);
   if (extra.length) problems.push(`unexpected keys: ${extra.join(", ")}`);
-  if (manifest.base_commit !== "14249ba84ff1f3d5aa8ad7a7366172f29235c76e") {
-    problems.push("base_commit is not 14249ba84ff1f3d5aa8ad7a7366172f29235c76e");
+  if (manifest.base_commit !== "d7299a35be0d9a70ec306ca672aa1359e09f1515") {
+    problems.push("base_commit is not d7299a35be0d9a70ec306ca672aa1359e09f1515");
   }
   return problems.join("; ");
 }
@@ -243,17 +243,110 @@ export function hostCatalogProblems(root, spec) {
   return problems.join("; ");
 }
 
+function collapseWs(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function leadingProse(source) {
+  const text = source.replace(/^\uFEFF/, "");
+  const doc = text.match(/^"""([\s\S]*?)"""/) || text.match(/^'''([\s\S]*?)'''/);
+  if (doc) return doc[1];
+  const lines = text.split("\n");
+  const buf = [];
+  for (const line of lines) {
+    if (line.startsWith("//")) buf.push(line.replace(/^\/\/\s?/, ""));
+    else if (buf.length === 0 && line.trim() === "") continue;
+    else break;
+  }
+  return buf.join("\n");
+}
+
+function isPathContinuation(after) {
+  const s = after.replace(/^\s+/, "");
+  if (!s) return false;
+  if (s.startsWith("|") || s.startsWith("/")) return true;
+  if (s.startsWith("()")) return true;
+  const and = s.match(/^and\s+([A-Za-z_][A-Za-z0-9_]*)/);
+  if (and) {
+    const prose = new Set(["observe", "the", "a", "an", "not", "file", "inline"]);
+    if (!prose.has(and[1])) return true;
+  }
+  if (/^,\s*(?:and\s+)?(?:curl|wget|httpie|aria2c)\b/.test(s)) return true;
+  const word = s.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
+  if (!word) return false;
+  const rest = s.slice(word[1].length);
+  if (rest.startsWith("/")) return true;
+  if (rest.startsWith(".") && /^[A-Za-z_]/.test(rest.slice(1))) return true;
+  if (rest.startsWith("()")) return true;
+  return false;
+}
+
+function boundedIndex(haystack, needle, from) {
+  let at = from;
+  while (at < haystack.length) {
+    const index = haystack.indexOf(needle, at);
+    if (index < 0) return -1;
+    const prev = index === 0 ? "" : haystack[index - 1];
+    if (!/[A-Za-z0-9_]/.test(prev)) return index;
+    at = index + 1;
+  }
+  return -1;
+}
+
+function needleHaystack(source, needle) {
+  const collapsedNeedle = collapseWs(needle);
+  const prose = collapseWs(leadingProse(source));
+  if (boundedIndex(prose, collapsedNeedle, 0) >= 0) return prose;
+  return collapseWs(source);
+}
+
+// Reject a needle when every bounded match is only the start of a longer path clause.
+export function needleIsTruncatedPrefix(source, needle) {
+  const collapsedNeedle = collapseWs(needle);
+  if (!collapsedNeedle) return true;
+  const haystack = needleHaystack(source, needle);
+  let from = 0;
+  let matches = 0;
+  while (from < haystack.length) {
+    const at = boundedIndex(haystack, collapsedNeedle, from);
+    if (at < 0) break;
+    matches += 1;
+    if (!isPathContinuation(haystack.slice(at + collapsedNeedle.length))) return false;
+    from = at + 1;
+  }
+  return matches > 0;
+}
+
+function sourceHasNeedle(source, needle) {
+  const collapsedNeedle = collapseWs(needle);
+  return boundedIndex(needleHaystack(source, needle), collapsedNeedle, 0) >= 0;
+}
+
 export function supportedPathProblems(root, spec) {
   const doc = readText(root, spec.doc);
   const problems = [];
-  for (const path of spec.paths) {
+  const paths = spec.paths;
+  for (const path of paths) {
     const source = readText(root, path.source);
-    if (!source.includes(path.source_needle)) {
+    if (!sourceHasNeedle(source, path.source_needle)) {
       problems.push(`${path.id} source needle missing in ${path.source}`);
+    } else if (needleIsTruncatedPrefix(source, path.source_needle)) {
+      problems.push(`${path.id} source needle is a prefix of a longer path sentence in ${path.source}`);
     }
     if (!doc.includes(path.doc_phrase)) problems.push(`${path.id} doc phrase missing`);
     if (path.state !== "supported" && path.state !== "unsupported") {
       problems.push(`${path.id} has unknown state ${path.state}`);
+    }
+  }
+  for (const path of paths) {
+    const needle = collapseWs(path.source_needle);
+    for (const other of paths) {
+      if (path.source !== other.source || path.id === other.id) continue;
+      const longer = collapseWs(other.source_needle);
+      if (needle === longer) continue;
+      if (longer.startsWith(needle) && isPathContinuation(longer.slice(needle.length))) {
+        problems.push(`${path.id} source needle is a prefix of ${other.id}`);
+      }
     }
   }
   return problems.join("; ");
@@ -495,6 +588,79 @@ export function diffHitLists(actual, expected) {
   return { unexpected, missing, changed };
 }
 
+export const OPTICS_INTENTIONAL_LEFTOVER_PATHS = [
+  "docs/products/optics/AI-GUIDE.md",
+  "docs/products/optics/CHANGELOG-GUIDE.md",
+  "docs/products/optics/KNOWN-LIMITATIONS.md",
+  "docs/products/optics/PYTHON-GUIDE.md",
+  "docs/products/optics/README.md",
+  "docs/products/optics/RECORD-REFERENCE.md",
+  "docs/products/optics/USER-MANUAL.md",
+  "docs/products/optics/llms-full.txt",
+  "docs/products/optics/llms.txt",
+];
+
+export function diffLegacyInventory(actual, debtHits, leftoverHits) {
+  const problems = [];
+  const leftoverSet = new Set(leftoverHits.map((hit) => hit.path));
+  for (const hit of debtHits) {
+    if (leftoverSet.has(hit.path)) problems.push(`path is both debt and intentional leftover: ${hit.path}`);
+  }
+  const debtActual = actual.filter((hit) => !leftoverSet.has(hit.path));
+  const leftActual = actual.filter((hit) => leftoverSet.has(hit.path));
+  const debtDiff = diffHitLists(debtActual, debtHits);
+  const leftDiff = diffHitLists(leftActual, leftoverHits);
+  if (debtDiff.unexpected.length) problems.push(`new stale-name files: ${debtDiff.unexpected.join(", ")}`);
+  if (debtDiff.missing.length) problems.push(`stale-name files no longer present: ${debtDiff.missing.join(", ")}`);
+  if (debtDiff.changed.length) problems.push(`stale-name counts changed: ${debtDiff.changed.join(", ")}`);
+  if (leftDiff.unexpected.length) problems.push(`new intentional leftover files: ${leftDiff.unexpected.join(", ")}`);
+  if (leftDiff.missing.length) problems.push(`intentional leftover files no longer present: ${leftDiff.missing.join(", ")}`);
+  if (leftDiff.changed.length) problems.push(`intentional leftover counts changed: ${leftDiff.changed.join(", ")}`);
+  return problems;
+}
+
+export function opticsLeftoverRuleProblems(legacy, readPath) {
+  const problems = [];
+  const rule = legacy?.intentional_leftovers;
+  if (!rule || typeof rule.rule !== "string") return "intentional leftover rule is missing";
+  if (!rule.rule.includes("Vantio Optics")) problems.push("intentional leftover rule does not name Vantio Optics");
+  if (!rule.rule.includes("leftover")) problems.push("intentional leftover rule does not say leftover");
+  if (!rule.rule.includes("PR #64")) problems.push("intentional leftover rule does not keep PR #64 visible");
+  if (!rule.rule.includes("d7299a35be0d9a70ec306ca672aa1359e09f1515")) {
+    problems.push("intentional leftover rule does not pin the Optics manual commit");
+  }
+  if (!rule.rule.includes("not new debt")) problems.push("intentional leftover rule does not say these are not new debt");
+  for (const rel of OPTICS_INTENTIONAL_LEFTOVER_PATHS) {
+    if (!rule.rule.includes(rel)) problems.push(`intentional leftover rule does not name ${rel}`);
+  }
+  const hits = rule.hits || [];
+  const diff = setDiff(OPTICS_INTENTIONAL_LEFTOVER_PATHS, hits.map((hit) => hit.path));
+  if (diff.missing.length || diff.unexpected.length) {
+    problems.push(
+      `intentional leftover paths drifted; missing [${diff.missing.join(", ")}] unexpected [${diff.unexpected.join(", ")}]`,
+    );
+  }
+  for (const hit of hits) {
+    if (!hit.disclaimer) {
+      problems.push(`${hit.path} intentional leftover has no disclaimer`);
+      continue;
+    }
+    if (!readPath) continue;
+    const body = readPath(hit.path);
+    if (!body.includes(hit.disclaimer)) problems.push(`${hit.path} missing leftover disclaimer`);
+    const namesProduct = body.includes("Vantio Optics")
+      || body.includes("not the product name")
+      || body.includes("Not the product name")
+      || body.includes("not current product terminology")
+      || body.includes("Do not use Sight Loop as the product name");
+    if (!namesProduct) problems.push(`${hit.path} does not keep the product-name instruction`);
+    if (!body.includes("sight_loop") && !body.includes("Sight Loop")) {
+      problems.push(`${hit.path} does not name the leftover string`);
+    }
+  }
+  return problems.join("; ");
+}
+
 function staleProblems(root, canonicalDocs, patterns) {
   const problems = [];
   for (const rel of canonicalDocs) {
@@ -640,15 +806,16 @@ export function checkRelease(root) {
   })());
   record(checks, "legacy-stale-name-inventory-frozen", (() => {
     const actual = collectLegacyHits(root, manifest.legacy_scan, staleSpec.patterns);
-    const diff = diffHitLists(actual, legacy.hits);
-    const problems = [];
-    if (diff.unexpected.length) problems.push(`new stale-name files: ${diff.unexpected.join(", ")}`);
-    if (diff.missing.length) problems.push(`stale-name files no longer present: ${diff.missing.join(", ")}`);
-    if (diff.changed.length) problems.push(`stale-name counts changed: ${diff.changed.join(", ")}`);
+    const leftoverHits = legacy.intentional_leftovers?.hits || [];
+    const problems = [
+      ...diffLegacyInventory(actual, legacy.hits, leftoverHits),
+      opticsLeftoverRuleProblems(legacy, (rel) => readText(root, rel)),
+    ];
     for (const rel of manifest.canonical_docs) {
       if (legacy.hits.some((hit) => hit.path === rel)) problems.push(`canonical doc is listed as legacy debt: ${rel}`);
+      if (leftoverHits.some((hit) => hit.path === rel)) problems.push(`canonical doc is listed as an intentional leftover: ${rel}`);
     }
-    return problems.join("; ");
+    return problems.filter(Boolean).join("; ");
   })());
 
   const failures = checks.filter((check) => !check.ok);
