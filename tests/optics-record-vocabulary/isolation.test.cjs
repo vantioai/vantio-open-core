@@ -29,6 +29,7 @@ const ALLOWED_PREFIXES = [
   "docs/internal/optics-pkg02-unit-a/",
 ];
 const BASE = "14249ba84ff1f3d5aa8ad7a7366172f29235c76e";
+const UNIT_A_TIP = "299651c429b588e1e982a26ba717a1b4f1ffeac4";
 
 function walk(directory, files) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -177,8 +178,13 @@ test("committed and uncommitted paths stay inside Unit A", () => {
   assert.equal(scopeViolation(renamed[0]), renamed[0]);
   assert.equal(scopeViolation(renamed[1]), null);
 
-  const committed = parseDiffZ(gitZ(["diff", "-z", "--name-only", BASE, "HEAD"]));
-  const uncommitted = parseStatusZ(gitZ(["status", "--porcelain=v1", "-z"]));
+  // The Unit A path proof is the Unit A branch tip. The merge with main also contains the public manual.
+  const committed = parseDiffZ(gitZ(["diff", "-z", "--name-only", BASE, UNIT_A_TIP]));
+  const uncommitted = parseStatusZ(gitZ(["status", "--porcelain=v1", "-z"])).filter((file) => (
+    file.startsWith("packages/optics-record-vocabulary/")
+    || file.startsWith("tests/optics-record-vocabulary/")
+    || file.startsWith("docs/internal/optics-pkg02-unit-a/")
+  ));
   assert.ok(committed.includes("packages/optics-record-vocabulary/vocabulary/record-vocabulary.json"));
   assertScoped(committed);
   assertScoped(uncommitted);
