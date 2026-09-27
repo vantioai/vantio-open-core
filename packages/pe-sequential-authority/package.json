@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/pe-sequential-authority",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "INTERNAL_CANDIDATE | EVALUATE_ONLY | NOT_HOST_ENFORCEMENT | NOT_SHIPPED | NO_KERNEL | NO_ENROLL | NO_CREDENTIAL_MATERIAL | NO_STABLE_SCHEMA. Sequential and aggregate authority candidate. Not host enforcement.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/pe-sequential-authority/*.test.cjs"
+  }
+}
