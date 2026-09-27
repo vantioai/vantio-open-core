@@ -1,0 +1,25 @@
+{
+  "name": "@vantio/governance-assurance",
+  "private": true,
+  "version": "0.1.0-internal",
+  "license": "MIT",
+  "description": "PRIVATE | INTERNAL_RESTRICTED | 0.1.0-internal | NOT A CUSTOMER RELEASE | NOT A CERTIFICATION. Governance Assurance maps actual controls and evidence. It is not a fourth product and it is not published.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/governance-assurance/*.test.cjs"
+  },
+  "vantio": {
+    "audience": "INTERNAL_RESTRICTED",
+    "distribution": "INTERNAL_RESTRICTED",
+    "public_sku": false,
+    "npm_publish": false,
+    "pnpm_workspace_member": false
+  }
+}
