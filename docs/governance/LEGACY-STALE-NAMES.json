@@ -1,6 +1,6 @@
 {
   "schema": "vantio.docs-release.legacy-stale-names/v1",
-  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits. packages/optics-record-vocabulary/vocabulary/record-vocabulary.json is frozen at count 2 for sight_loop. That Unit A file is on main and may be absent on this branch; the freeze applies when the file is present. tests/shared-health-vocabulary/collision.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes.",
+  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits. packages/optics-record-vocabulary/vocabulary/record-vocabulary.json is frozen at count 2 for sight_loop. That Unit A file is on main and may be absent on this branch; the freeze applies when the file is present. tests/shared-health-vocabulary/collision.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. tests/optics-pkg02-reader-compat-gates/isolation.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the isolation test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes.",
   "reviewed_updates": [
     {
       "path": "tests/shared-health-vocabulary/collision.test.cjs",
@@ -8,6 +8,13 @@
       "disposition": "FROZEN_DEBT",
       "reviewed_on": "2026-09-27",
       "reason": "The collision test names retired public strings only to assert that the shared-health catalog does not contain them. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
+    },
+    {
+      "path": "tests/optics-pkg02-reader-compat-gates/isolation.test.cjs",
+      "count": 2,
+      "disposition": "FROZEN_DEBT",
+      "reviewed_on": "2026-09-27",
+      "reason": "The isolation test names retired public strings only to assert that the reader-compat gate docs do not contain them. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
     }
   ],
   "intentional_leftovers": {
@@ -326,6 +333,10 @@
     },
     {
       "path": "tests/optics-evidence-contract/corpus.json",
+      "count": 2
+    },
+    {
+      "path": "tests/optics-pkg02-reader-compat-gates/isolation.test.cjs",
       "count": 2
     },
     {
