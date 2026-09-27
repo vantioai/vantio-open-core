@@ -1,0 +1,95 @@
+{
+  "document": "HEALTH-VOCABULARY",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
+  "vocabulary_owner": "WORKSTREAM_4",
+  "vocabulary_status": "PENDING_WS4",
+  "workstream_4": "DEFINITION_NOT_RETRIEVED",
+  "consumer": "P24",
+  "record_type": "SHARED_HEALTH_FACT",
+  "subjects": [
+    "ARTIFACT",
+    "HOST_PREREQUISITE",
+    "LOADER",
+    "COVERAGE",
+    "CONTROL_PLANE",
+    "LEDGER"
+  ],
+  "protection_state": [
+    "protected",
+    "observing",
+    "not_enrolled",
+    "protection_stale",
+    "policy_stale",
+    "degraded",
+    "quarantined",
+    "recovery_required",
+    "coverage_unknown"
+  ],
+  "protection_state_source": {
+    "repo": "vantioai/vantio-phantom-engine",
+    "git_sha": "631e435315cd780d83d3259e111893c1d0569bc3",
+    "path": "python/pe_protection_state.py",
+    "blob": "a1b49fe6e431cdb574f0d285f7976236945519c7"
+  },
+  "verifier_result": [
+    "PASS",
+    "FAIL",
+    "NOT_APPLICABLE",
+    "OPTIONAL_COMPONENT_ABSENT",
+    "REQUIRED_DEPENDENCY_MISSING",
+    "NOT_TESTED",
+    "BLOCKED"
+  ],
+  "verifier_result_source": {
+    "repo": "vantioai/vantio-phantom-engine",
+    "git_sha": "631e435315cd780d83d3259e111893c1d0569bc3",
+    "path": "docs/internal/VERIFIER_CONTRACT.md",
+    "blob": "4c215cb2ebdff63a85c29094adb8dfbe2bb30dc7"
+  },
+  "deployment_profile": ["bundled_gate", "no_gate", "unknown"],
+  "platform_scope": [
+    "REPOSITORY_ONLY",
+    "WSL2_PRIVILEGED",
+    "KIND_LOCAL",
+    "REFERENCE_HOST",
+    "MANAGED_CLOUD",
+    "STRANGER_HOST"
+  ],
+  "evidence_class": [
+    "EXECUTED_IN_THIS_REMEDIATION",
+    "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+    "NOT_INDEPENDENTLY_VERIFIED",
+    "NOT_EXECUTED_IN_THIS_PASS"
+  ],
+  "platform_status": [
+    "VERIFIED_ON_REFERENCE_HOST",
+    "DOCUMENTED_REQUIREMENT",
+    "UNVERIFIED",
+    "TESTED_LOCAL",
+    "TARGET_DESIGN"
+  ],
+  "freshness": "UNKNOWN",
+  "heartbeat_age_limit_s": 60,
+  "heartbeat_path_in_manifests": "/run/vantio/heartbeat",
+  "optics_display_tokens_not_protection_states": [
+    "OBSERVED",
+    "NOT_OBSERVED",
+    "UNSUPPORTED",
+    "UNAVAILABLE",
+    "APPLICATION_ERROR",
+    "OPTICS_ERROR",
+    "PARTIAL",
+    "SUCCESS"
+  ],
+  "collision_rules": [
+    "verifier_result BLOCKED is a separate field from ledger ActionTaken BLOCKED",
+    "wire ActionTaken OBSERVED is not protection_state protected",
+    "OPTIONAL_COMPONENT_ABSENT is not verifier_result PASS",
+    "coverage_unknown is not protection_state protected",
+    "KIND_LOCAL is not MANAGED_CLOUD",
+    "internally_proven is not STRANGER_HOST",
+    "freshness stays UNKNOWN until Workstream 4 sets a window"
+  ]
+}

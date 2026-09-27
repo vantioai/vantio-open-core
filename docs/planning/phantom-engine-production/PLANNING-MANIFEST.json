@@ -1,0 +1,41 @@
+{
+  "document": "PLANNING-MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
+  "producer_role": "PLANNING_PRODUCER_ONLY",
+  "producer_identity": {
+    "agent": "bc-67390466-de62-5277-ba0b-3f01b390aa8c",
+    "model": "Grok 4.7",
+    "role": "PLANNING_PRODUCER",
+    "self_certified_council_pass": false,
+    "url": "https://cursor.com/agents/bc-67390466-de62-5277-ba0b-3f01b390aa8c"
+  },
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "council_verdict": null,
+  "open_core_base": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "private_phantom_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
+  "enterprise_tip": "2df2d1f2d2e5a8e65c6d3021b20b94f179e485b7",
+  "workstream_4": "DEFINITION_NOT_RETRIEVED",
+  "vocabulary_status": "PENDING_WS4",
+  "live_ebpf_load": false,
+  "stranger_host": false,
+  "customer_deploy": false,
+  "customer_manual_bodies_copied": false,
+  "items": [
+    "P1",
+    "P2",
+    "P24"
+  ],
+  "files_sha256": {
+    "docs/planning/phantom-engine-production/00-PLANNING-BOUNDARY.md": "c024433b287282a13e0a113569a3881cad0ff2d609f409c3acc0c5b14d07b5ee",
+    "docs/planning/phantom-engine-production/01-PRIVATE-PE-ACCESS-AND-COMMIT-CONSTRAINTS.md": "dda5eab5b07672367252acac310b9a38efdc567e138696d6a2c2f1a4f1054334",
+    "docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md": "a14f5c3863ffa92abe6869ed312a496e557874b497f36ad21ea4190aa374596b",
+    "docs/planning/phantom-engine-production/03-P2-PREREQUISITE-COMPATIBILITY.md": "d69b94473633850b9e3eaae30aed1dd53e55e264f36002770595e420807799a6",
+    "docs/planning/phantom-engine-production/04-P24-HEALTH-AND-COVERAGE.md": "75657ed3c82c6f0d3ea2edf009e24e357fe3da72cf2a2f62ad5270e63eda4b84",
+    "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md": "11c674ff3f44b41f6e99b8bc83b3c7736485f7849801381e2981d0680c5367d0",
+    "docs/planning/phantom-engine-production/06-INDEPENDENT-COUNCIL.md": "b2d906ea5250eb89ce4b44d2870cae5a8c1c3a62a764b5928d63d9909e1a0350",
+    "docs/planning/phantom-engine-production/COVERAGE-MATRIX.json": "e5013a599550e0f272279952ce05bb6d70eace49b4a82f618b3cf45e4ce478a4",
+    "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json": "a2592a2496f65897c3258106f3bc187d8efb16e9b3d6c53a54c099163e8e3cd1"
+  }
+}
