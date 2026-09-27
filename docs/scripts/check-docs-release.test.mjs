@@ -12,6 +12,7 @@ import {
   denialHits,
   diffHitLists,
   diffLegacyInventory,
+  legacyDebtHitsForTree,
   needleIsTruncatedPrefix,
   npmPackPaths,
   opticsLeftoverRuleProblems,
@@ -125,6 +126,26 @@ test("legacy scan counts txt files outside the governance directory", () => {
       exclude_prefixes: ["docs/governance/"],
     }, [{ id: "sight-loop-snake", regex: "sight_loop" }]);
     assert.deepEqual(hits, [{ path: "docs/products/optics/llms.txt", count: 1 }]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Unit A vocabulary debt is enforced only when the file is present", () => {
+  const path = "packages/optics-record-vocabulary/vocabulary/record-vocabulary.json";
+  const hit = { path, count: 2 };
+  const other = { path: "docs/sight-loop.md", count: 4 };
+  const dir = mkdtempSync(join(tmpdir(), "vantio-vocab-"));
+  try {
+    assert.deepEqual(legacyDebtHitsForTree(dir, [hit, other]), [other]);
+    mkdirSync(join(dir, "packages/optics-record-vocabulary/vocabulary"), { recursive: true });
+    writeFileSync(join(dir, path), "sight_loop\nsight_loop\n");
+    assert.deepEqual(legacyDebtHitsForTree(dir, [hit]), [hit]);
+    assert.deepEqual(diffLegacyInventory([{ path, count: 2 }], legacyDebtHitsForTree(dir, [hit]), []), []);
+    assert.match(
+      diffLegacyInventory([{ path, count: 1 }], legacyDebtHitsForTree(dir, [hit]), []).join("\n"),
+      /count 1 != 2/,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

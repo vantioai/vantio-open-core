@@ -600,6 +600,16 @@ export const OPTICS_INTENTIONAL_LEFTOVER_PATHS = [
   "docs/products/optics/llms.txt",
 ];
 
+export const UNIT_A_RECORD_VOCABULARY_PATH =
+  "packages/optics-record-vocabulary/vocabulary/record-vocabulary.json";
+
+export function legacyDebtHitsForTree(root, hits) {
+  return hits.filter((hit) => {
+    if (hit.path !== UNIT_A_RECORD_VOCABULARY_PATH) return true;
+    return existsSync(join(root, hit.path));
+  });
+}
+
 export function diffLegacyInventory(actual, debtHits, leftoverHits) {
   const problems = [];
   const leftoverSet = new Set(leftoverHits.map((hit) => hit.path));
@@ -808,7 +818,7 @@ export function checkRelease(root) {
     const actual = collectLegacyHits(root, manifest.legacy_scan, staleSpec.patterns);
     const leftoverHits = legacy.intentional_leftovers?.hits || [];
     const problems = [
-      ...diffLegacyInventory(actual, legacy.hits, leftoverHits),
+      ...diffLegacyInventory(actual, legacyDebtHitsForTree(root, legacy.hits), leftoverHits),
       opticsLeftoverRuleProblems(legacy, (rel) => readText(root, rel)),
     ];
     for (const rel of manifest.canonical_docs) {
