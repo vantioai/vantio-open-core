@@ -1,7 +1,7 @@
 {
   "schema": "vantio.diligence-room/v1",
   "audience": "INTERNAL_RESTRICTED",
-  "classification": "INVESTOR_DILIGENCE_ROOM_SCAFFOLD_READY_FOR_MERGE",
+  "classification": "INVESTOR_DILIGENCE_ROOM_SCAFFOLD_MERGED",
   "external_publication": "PROHIBITED",
   "investor_send": "NOT_CLEARED",
   "repository": "vantioai/vantio-open-core",
