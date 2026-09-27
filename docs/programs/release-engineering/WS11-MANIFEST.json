@@ -1,0 +1,36 @@
+{
+  "schema": "vantio.ws11.program/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "producer_classification": "WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL",
+  "prior_producer_classification": "WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL",
+  "prior_council": "WS11_RELEASE_ENGINEERING_NEEDS_REVISION",
+  "prior_council_tip": "2e20cb018590dff720e2c209ad2b41ee2b9a0035",
+  "prior_council_agent": "bc-6ad40712-8957-5742-b9a4-b42fecf3b115",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "council_pass": false,
+  "release_success": false,
+  "merge": false,
+  "base_commit": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "formal_slsa_level": "NOT_CLAIMED",
+  "formal_certification": "NOT_CLAIMED",
+  "formal_reproducibility": "NOT_CLAIMED",
+  "hardware_backed_provenance": "NOT_CLAIMED",
+  "surfaces": ["optics", "phantom-engine", "private-customer"],
+  "requirements": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "R16", "R17", "R18"],
+  "producer": {
+    "agent": "bc-b0d40632-9601-5475-9941-b2aab0f4b75d",
+    "url": "https://cursor.com/agents/bc-b0d40632-9601-5475-9941-b2aab0f4b75d",
+    "model": "grok-4.7"
+  },
+  "revision_producer": {
+    "agent": "bc-704011d3-67f8-5bb7-93fa-3824550cba5c",
+    "url": "https://cursor.com/agents/bc-704011d3-67f8-5bb7-93fa-3824550cba5c",
+    "model": "grok-4.7"
+  },
+  "verifier": "scripts/release/ws11/verify.mjs",
+  "dossiers": [
+    "docs/programs/release-engineering/dossiers/optics-public.json",
+    "docs/programs/release-engineering/dossiers/phantom-engine-private.json",
+    "docs/programs/release-engineering/dossiers/private-customer.json"
+  ]
+}

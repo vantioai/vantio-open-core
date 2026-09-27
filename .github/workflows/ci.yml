@@ -93,6 +93,7 @@ jobs:
         run: |
           python3 -m pip install --disable-pip-version-check 'pyyaml==6.0.1'
           node --test scripts/release/governance.test.mjs
+          node --test scripts/release/ws11/ws11.test.mjs
           python3 scripts/release/test_promote_pypi.py -v
           python3 scripts/release/test_pypi_publish_workflow.py -v
 

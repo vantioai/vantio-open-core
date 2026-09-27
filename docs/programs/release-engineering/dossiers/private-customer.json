@@ -1,0 +1,143 @@
+{
+  "disposition_requested": "CHARACTERIZED",
+  "emergency": {
+    "invoked": false
+  },
+  "partial": {
+    "recovery": "DO_NOT_REPLACE_BYTES",
+    "state": "NOT_ASSESSED_THIS_FORCE"
+  },
+  "pins": [
+    {
+      "accepted_as_pin": true,
+      "kind": "exact-version",
+      "name": "fixture-version",
+      "required_for_publish": false,
+      "value": "0.0.0-test"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unrecorded",
+      "name": "customer-bytes",
+      "required_for_publish": true,
+      "value": "UNRECORDED"
+    }
+  ],
+  "private_distribution": {
+    "applicable": true,
+    "body_class": "test-double",
+    "bundle_version": "0.0.0-test",
+    "channel": "private",
+    "customer_body_in_public_repo": false,
+    "manual_version": "0.0.0-test",
+    "public_distribution": false,
+    "test_double_path": "docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md"
+  },
+  "provenance": {
+    "certification": null,
+    "characterization": "NONE",
+    "hardware_backed": false,
+    "reproducible_build_claimed": false,
+    "slsa_level": null,
+    "verified": false
+  },
+  "reproducibility": {
+    "builds": [],
+    "formal_claim": false,
+    "reasons": [
+      "The file under docs/scripts/fixtures is a documentation test double.",
+      "No customer package bytes are stored in this repository."
+    ],
+    "status": "ASSESSED_NOT_REPRODUCIBLE"
+  },
+  "retention": {
+    "class": "private-customer",
+    "customer_body_in_public_repo": false,
+    "demonstrated": false,
+    "location": "customer handoff channel outside this public repository",
+    "minimum_days": 730
+  },
+  "roles": {
+    "approver": "slot:approver",
+    "approver_recorded": false,
+    "author": "slot:author",
+    "builder": "slot:builder",
+    "custodian": "slot:custodian",
+    "publisher": "slot:publisher",
+    "roles_are_slots": true,
+    "verifier": "slot:verifier"
+  },
+  "sbom": {
+    "completeness": "not-applicable",
+    "dependency_graph": "none",
+    "reason": "The test double has no dependency graph.",
+    "status": "NOT_APPLICABLE"
+  },
+  "scans": {
+    "license": {
+      "reason": "The test double is not a sealed customer package.",
+      "scope": "sealed-bytes",
+      "status": "NOT_RUN"
+    },
+    "vulnerability": {
+      "reason": "The test double is not a sealed customer package.",
+      "scope": "sealed-bytes",
+      "status": "NOT_RUN"
+    }
+  },
+  "schema": "vantio.ws11.release-dossier/v1",
+  "subject": {
+    "distribution": "private",
+    "package": "pe-customer-bundle-fixture",
+    "product": "private-customer"
+  },
+  "units": [
+    {
+      "artifacts": [
+        {
+          "byte_length": 190,
+          "custody": {
+            "hash_status": "RECORDED",
+            "selector": {
+              "kind": "sha256",
+              "value": "96282ca16eb4dfc216a87f298178d132abd19b00e8e6c9e39e2224749c5c47ff"
+            },
+            "selector_is_integrity": true
+          },
+          "distribution": "private",
+          "filename": "PRIVATE-MANUAL.md",
+          "hash_status": "RECORDED",
+          "role": "test-double",
+          "sha256": "96282ca16eb4dfc216a87f298178d132abd19b00e8e6c9e39e2224749c5c47ff",
+          "source_commit": "UNRECORDED",
+          "version": "0.0.0-test"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "private",
+      "docs_gate": {
+        "reason": "The test double is not a public docs release.",
+        "status": "NOT_APPLICABLE"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "pe-customer-bundle-fixture",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED"
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.0.0-test",
+        "verified": false
+      },
+      "version": "0.0.0-test"
+    }
+  ]
+}

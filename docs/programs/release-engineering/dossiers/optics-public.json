@@ -1,0 +1,694 @@
+{
+  "disposition_requested": "CHARACTERIZED",
+  "emergency": {
+    "invoked": false
+  },
+  "partial": {
+    "recovery": "DO_NOT_REPLACE_BYTES",
+    "state": "NOT_ASSESSED_THIS_FORCE"
+  },
+  "pins": [
+    {
+      "accepted_as_pin": true,
+      "kind": "exact-version",
+      "name": "pnpm",
+      "required_for_publish": true,
+      "value": "pnpm@11.13.0+sha512.88d94724d8f2e6c186744a5584c6e59ecac869ec7ba15e9cb4cd628e8dc7066820b2481d8ee3b51ea8da323a7378068aa58c556a3720d32b7c20a051d088363a"
+    },
+    {
+      "accepted_as_pin": true,
+      "kind": "lockfile-digest",
+      "name": "pnpm-lock.yaml",
+      "required_for_publish": true,
+      "value": "0c1d17ac6188dec7c5754634ef6cd0dee4ed1fd56f84b7bbcdffdc6f6bc307ad"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": "python-build-hatchling",
+      "required_for_publish": true,
+      "value": "hatchling"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": "node-toolchain",
+      "required_for_publish": true,
+      "value": "22"
+    },
+    {
+      "accepted_as_pin": true,
+      "kind": "integrity-hash",
+      "name": "python-wheel",
+      "required_for_publish": true,
+      "value": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb"
+    },
+    {
+      "accepted_as_pin": true,
+      "kind": "integrity-hash",
+      "name": "python-sdist",
+      "required_for_publish": true,
+      "value": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unrecorded",
+      "name": "cli-tarball",
+      "required_for_publish": true,
+      "value": "UNRECORDED"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/actions/vantio-prove/action.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/actions/vantio-prove/action.yml actions/upload-artifact@v4",
+      "required_for_publish": true,
+      "value": "actions/upload-artifact@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml pnpm/action-setup@v4",
+      "required_for_publish": true,
+      "value": "pnpm/action-setup@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-python@v5",
+      "required_for_publish": true,
+      "value": "actions/setup-python@v5"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-python@v5",
+      "required_for_publish": true,
+      "value": "actions/setup-python@v5"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml pnpm/action-setup@v4",
+      "required_for_publish": true,
+      "value": "pnpm/action-setup@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-python@v5",
+      "required_for_publish": true,
+      "value": "actions/setup-python@v5"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/upload-artifact@v4",
+      "required_for_publish": true,
+      "value": "actions/upload-artifact@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/docs-release-governance.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/docs-release-governance.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/enterprise-slsa-provenance.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/enterprise-slsa-provenance.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/enterprise-slsa-provenance.yml pnpm/action-setup@v4",
+      "required_for_publish": true,
+      "value": "pnpm/action-setup@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/enterprise-slsa-provenance.yml actions/upload-artifact@v4",
+      "required_for_publish": true,
+      "value": "actions/upload-artifact@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/enterprise-slsa-provenance.yml actions/attest-build-provenance@v2",
+      "required_for_publish": true,
+      "value": "actions/attest-build-provenance@v2"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/mcp-registry-publish.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/npm-publish.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/npm-publish.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/npm-publish.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/npm-publish.yml actions/setup-node@v4",
+      "required_for_publish": true,
+      "value": "actions/setup-node@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/npm-publish.yml actions/upload-artifact@v4",
+      "required_for_publish": true,
+      "value": "actions/upload-artifact@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/pypi-publish.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/pypi-publish.yml pypa/gh-action-pypi-publish@release/v1",
+      "required_for_publish": true,
+      "value": "pypa/gh-action-pypi-publish@release/v1"
+    }
+  ],
+  "private_distribution": {
+    "applicable": true,
+    "body_class": "absent",
+    "customer_body_in_public_repo": false,
+    "public_distribution_of_customer_manual": false
+  },
+  "provenance": {
+    "certification": null,
+    "characterization": "GITHUB_ATTESTATION_CAPABLE_UNVERIFIED",
+    "hardware_backed": false,
+    "reproducible_build_claimed": false,
+    "slsa_level": null,
+    "verified": false
+  },
+  "reproducibility": {
+    "builds": [],
+    "formal_claim": false,
+    "reasons": [
+      "GitHub Actions steps use floating refs such as @v4 and @release/v1.",
+      "The Python build-system requirement is hatchling with no version comparator.",
+      "No second build digest is recorded in this force."
+    ],
+    "status": "ASSESSED_NOT_REPRODUCIBLE"
+  },
+  "retention": {
+    "class": "sealed-bytes",
+    "customer_body_in_public_repo": false,
+    "demonstrated": false,
+    "location": "hash pins in scripts/release/stage_sealed_pypi.py and git history of this repository",
+    "minimum_days": 730
+  },
+  "roles": {
+    "approver": "slot:approver",
+    "approver_recorded": false,
+    "author": "slot:author",
+    "builder": "slot:builder",
+    "custodian": "slot:custodian",
+    "publisher": "slot:publisher",
+    "roles_are_slots": true,
+    "verifier": "slot:verifier"
+  },
+  "sbom": {
+    "completeness": "not-applicable",
+    "dependency_graph": "present",
+    "reason": "The generated workspace SBOM is not bound to the sealed Python bytes or an npm tarball.",
+    "status": "ABSENT"
+  },
+  "scans": {
+    "license": {
+      "reason": "No vulnerability or license scanner result is attached to the sealed bytes. The workspace manifest license scan is a separate tree report.",
+      "scope": "sealed-bytes",
+      "status": "NOT_RUN"
+    },
+    "vulnerability": {
+      "reason": "No vulnerability or license scanner result is attached to the sealed bytes. The workspace manifest license scan is a separate tree report.",
+      "scope": "sealed-bytes",
+      "status": "NOT_RUN"
+    }
+  },
+  "schema": "vantio.ws11.release-dossier/v1",
+  "subject": {
+    "distribution": "mixed",
+    "package": "optics-public-and-private-source",
+    "product": "optics"
+  },
+  "units": [
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "git-tag",
+              "value": "v0.3.24"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "public",
+          "filename": "@vantio-cli-0.3.24.source",
+          "hash_status": "UNRECORDED",
+          "role": "source-tree",
+          "sha256": null,
+          "source_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
+          "version": "0.3.24"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "public",
+      "docs_gate": {
+        "docs_version": "0.3.24",
+        "manifest_version": "0.3.24",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "@vantio/cli",
+      "registry": {
+        "historical_register_state": "FROZEN_PUBLISHED",
+        "status": "NOT_FETCHED",
+        "this_force_refetched": false
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.3.24",
+        "verified": false
+      },
+      "version": "0.3.24"
+    },
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "unrecorded",
+              "value": "UNRECORDED"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "public",
+          "filename": "@vantio-agent-sdk-0.2.4.source",
+          "hash_status": "UNRECORDED",
+          "role": "source-tree",
+          "sha256": null,
+          "source_commit": "UNRECORDED",
+          "version": "0.2.4"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "public",
+      "docs_gate": {
+        "docs_version": "0.2.4",
+        "manifest_version": "0.2.4",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "@vantio/agent-sdk",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED"
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.2.4",
+        "verified": false
+      },
+      "version": "0.2.4"
+    },
+    {
+      "artifacts": [
+        {
+          "byte_length": 39235,
+          "custody": {
+            "hash_status": "RECORDED",
+            "selector": {
+              "kind": "sha256",
+              "value": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb"
+            },
+            "selector_is_integrity": true
+          },
+          "distribution": "public",
+          "filename": "vantio_agent_sdk-3.1.0-py3-none-any.whl",
+          "hash_status": "RECORDED",
+          "role": "wheel",
+          "sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
+          "source_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
+          "version": "3.1.0"
+        },
+        {
+          "byte_length": 59669,
+          "custody": {
+            "hash_status": "RECORDED",
+            "selector": {
+              "kind": "sha256",
+              "value": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f"
+            },
+            "selector_is_integrity": true
+          },
+          "distribution": "public",
+          "filename": "vantio_agent_sdk-3.1.0.tar.gz",
+          "hash_status": "RECORDED",
+          "role": "sdist",
+          "sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
+          "source_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
+          "version": "3.1.0"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "public",
+      "docs_gate": {
+        "docs_version": "3.1.0",
+        "manifest_version": "3.1.0",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "vantio-agent-sdk",
+      "registry": {
+        "historical_register_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
+        "status": "NOT_FETCHED",
+        "this_force_refetched": false
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": "3.0.14",
+        "rollback_sha256": null,
+        "to_sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
+        "to_version": "3.1.0",
+        "verified": false
+      },
+      "version": "3.1.0"
+    },
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "unrecorded",
+              "value": "UNRECORDED"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "public",
+          "filename": "@vantio-optics-mcp-0.1.2.source",
+          "hash_status": "UNRECORDED",
+          "role": "source-tree",
+          "sha256": null,
+          "source_commit": "UNRECORDED",
+          "version": "0.1.2"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "public",
+      "docs_gate": {
+        "docs_version": "0.1.2",
+        "manifest_version": "0.1.2",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "@vantio/optics-mcp",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED"
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.1.2",
+        "verified": false
+      },
+      "version": "0.1.2"
+    },
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "unrecorded",
+              "value": "UNRECORDED"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "public",
+          "filename": "@vantio-gate-mcp-0.1.0.source",
+          "hash_status": "UNRECORDED",
+          "role": "source-tree",
+          "sha256": null,
+          "source_commit": "UNRECORDED",
+          "version": "0.1.0"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "public",
+      "docs_gate": {
+        "docs_version": "0.1.0",
+        "manifest_version": "0.1.0",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "@vantio/gate-mcp",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED"
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.1.0",
+        "verified": false
+      },
+      "version": "0.1.0"
+    },
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "unrecorded",
+              "value": "UNRECORDED"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "public",
+          "filename": "vantio-optics-0.1.0.source",
+          "hash_status": "UNRECORDED",
+          "role": "source-tree",
+          "sha256": null,
+          "source_commit": "UNRECORDED",
+          "version": "0.1.0"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "public",
+      "docs_gate": {
+        "docs_version": "0.1.0",
+        "manifest_version": "0.1.0",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "vantio-optics",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED"
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.1.0",
+        "verified": false
+      },
+      "version": "0.1.0"
+    },
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "unrecorded",
+              "value": "UNRECORDED"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "private",
+          "filename": "@vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source",
+          "hash_status": "UNRECORDED",
+          "role": "source-tree",
+          "sha256": null,
+          "source_commit": "UNRECORDED",
+          "version": "0.0.0-unstable-pre-1.0"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "private",
+      "docs_gate": {
+        "docs_version": "0.0.0-unstable-pre-1.0",
+        "manifest_version": "0.0.0-unstable-pre-1.0",
+        "status": "MATCH"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "@vantio/optics-evidence-contract",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED"
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.0.0-unstable-pre-1.0",
+        "verified": false
+      },
+      "version": "0.0.0-unstable-pre-1.0"
+    }
+  ]
+}

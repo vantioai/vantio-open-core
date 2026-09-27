@@ -1,0 +1,27 @@
+{
+  "schema": "vantio.ws11.retention-policy/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "operated_in_this_force": false,
+  "classes": [
+    {
+      "id": "public-source",
+      "minimum_days": 365,
+      "location": "git history of vantioai/vantio-open-core"
+    },
+    {
+      "id": "sealed-bytes",
+      "minimum_days": 730,
+      "location": "hash pins in scripts/release/stage_sealed_pypi.py and the custody release that fetched them"
+    },
+    {
+      "id": "phantom-private",
+      "minimum_days": 730,
+      "location": "private vantio-phantom-engine repository and its private registry"
+    },
+    {
+      "id": "private-customer",
+      "minimum_days": 730,
+      "location": "customer handoff channel outside this public repository"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "vantio.ws11.requirements/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "forbidden_claim_patterns": [
+    "\\bSLSA\\s+Level\\b",
+    "\\bSLSA\\s+L[1-4]\\b",
+    "\\bcertified\\b",
+    "\\bcertification\\b",
+    "\\bhardware-backed\\b",
+    "\\bhardware backed\\b",
+    "\\breproducible build\\b",
+    "\\bformally reproducible\\b"
+  ],
+  "requirements": [
+    {"id": "R1", "name": "pinning"},
+    {"id": "R2", "name": "reproducible-build assessment"},
+    {"id": "R3", "name": "artifact manifest"},
+    {"id": "R4", "name": "exact-hash custody"},
+    {"id": "R5", "name": "signing and provenance characterization"},
+    {"id": "R6", "name": "SBOM where appropriate"},
+    {"id": "R7", "name": "vulnerability and license scan"},
+    {"id": "R8", "name": "clean-environment install"},
+    {"id": "R9", "name": "upgrade and rollback verification"},
+    {"id": "R10", "name": "registry-byte verification"},
+    {"id": "R11", "name": "ordinary-client proof"},
+    {"id": "R12", "name": "evidence retention"},
+    {"id": "R13", "name": "private Phantom Engine package distribution"},
+    {"id": "R14", "name": "version-matched docs gates"},
+    {"id": "R15", "name": "emergency release and revocation"},
+    {"id": "R16", "name": "partial-publication recovery"},
+    {"id": "R17", "name": "role separation"},
+    {"id": "R18", "name": "independent release verifier"}
+  ]
+}
