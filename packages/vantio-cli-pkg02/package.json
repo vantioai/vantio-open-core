@@ -1,0 +1,29 @@
+{
+  "name": "@vantio/cli",
+  "private": true,
+  "version": "0.4.0-pkg02-unit-d",
+  "description": "PRIVATE future @vantio/cli line 0.4.0-pkg02-unit-d. PKG-02 Unit D Node Optics writer. Not 0.3.24. Not published. Not a seal. Not a release candidate. schema_version 0.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "bin": {
+    "vantio-pkg02": "bin/vantio-future.cjs"
+  },
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-pkg02-unit-d/*.test.cjs"
+  },
+  "vantio": {
+    "activates_unit_d": true,
+    "activates_unit_e": false,
+    "frozen_cli_version": "0.3.24",
+    "not_published": true,
+    "schema_version": 0,
+    "shipped_product": false,
+    "unicode_profile_id": "PKG01-UCD-16.0.0"
+  }
+}

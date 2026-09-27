@@ -180,21 +180,27 @@
       "writer": "future_cli",
       "reader": "cli_0_3_24",
       "classification": "UNSUPPORTED",
-      "achievement": "NOT_SHIPPED",
-      "reason": "Frozen CLI display assigns optics SUCCESS to every call row and reads hostname and status, not destination_host and http_status.",
+      "achievement": "UNIT_D_PROVED_NOT_SHIPPED",
+      "reason": "Frozen CLI display assigns optics SUCCESS to every call row and reads hostname and status, not destination_host and http_status. Unit D proved this cell on 0.4.0-pkg02-unit-d and did not ship it.",
       "rewrites_source": false,
       "may_upgrade_origin": false,
-      "unknown_status_becomes_success": false
+      "unknown_status_becomes_success": false,
+      "activates_unit_d": true,
+      "activates_unit_e": false,
+      "shipped_product": false
     },
     {
       "writer": "future_cli",
       "reader": "future_cli",
       "classification": "FULL",
-      "achievement": "NOT_SHIPPED",
-      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell.",
+      "achievement": "UNIT_D_PROVED_NOT_SHIPPED",
+      "reason": "Planned shared vocabulary. Not shipped. A later contract change is outside this cell. Unit D proved this cell on 0.4.0-pkg02-unit-d and did not ship it.",
       "rewrites_source": false,
       "may_upgrade_origin": false,
-      "unknown_status_becomes_success": false
+      "unknown_status_becomes_success": false,
+      "activates_unit_d": true,
+      "activates_unit_e": false,
+      "shipped_product": false
     },
     {
       "writer": "future_cli",
@@ -230,31 +236,40 @@
       "writer": "future_cli",
       "reader": "mixed_versions",
       "classification": "PARTIAL",
-      "achievement": "NOT_SHIPPED",
-      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer.",
+      "achievement": "UNIT_D_PROVED_NOT_SHIPPED",
+      "reason": "Mixed files stay side by side. No writer overwrites an older file to look newer. Unit D proved this cell on 0.4.0-pkg02-unit-d and did not ship it.",
       "rewrites_source": false,
       "may_upgrade_origin": false,
-      "unknown_status_becomes_success": false
+      "unknown_status_becomes_success": false,
+      "activates_unit_d": true,
+      "activates_unit_e": false,
+      "shipped_product": false
     },
     {
       "writer": "future_cli",
       "reader": "unknown_fields_and_enums",
       "classification": "REJECT_WITH_EXPLANATION",
-      "achievement": "NOT_SHIPPED",
-      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS.",
+      "achievement": "UNIT_D_PROVED_NOT_SHIPPED",
+      "reason": "Unknown optics tokens become UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN. They do not become SUCCESS. Unit D proved this cell on 0.4.0-pkg02-unit-d and did not ship it.",
       "rewrites_source": false,
       "may_upgrade_origin": false,
-      "unknown_status_becomes_success": false
+      "unknown_status_becomes_success": false,
+      "activates_unit_d": true,
+      "activates_unit_e": false,
+      "shipped_product": false
     },
     {
       "writer": "future_cli",
       "reader": "missing_canonical",
       "classification": "PARTIAL",
-      "achievement": "NOT_SHIPPED",
-      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0.",
+      "achievement": "UNIT_D_PROVED_NOT_SHIPPED",
+      "reason": "Missing canonical fields stay missing. Readers do not fill SUCCESS, OBSERVED, 200, or 0. Unit D proved this cell on 0.4.0-pkg02-unit-d and did not ship it.",
       "rewrites_source": false,
       "may_upgrade_origin": false,
-      "unknown_status_becomes_success": false
+      "unknown_status_becomes_success": false,
+      "activates_unit_d": true,
+      "activates_unit_e": false,
+      "shipped_product": false
     },
     {
       "writer": "future_cli",
@@ -1086,5 +1101,10 @@
       "may_upgrade_origin": false,
       "unknown_status_becomes_success": false
     }
-  ]
+  ],
+  "activates_unit_d": true,
+  "activates_unit_e": false,
+  "unit_d_future_cli_version": "0.4.0-pkg02-unit-d",
+  "unit_d_shipped_product": false,
+  "unit_d_note": "UNIT_D_PROVED_NOT_SHIPPED marks future CLI cells this unit proved on the private 0.4.0-pkg02-unit-d line. It is not a release, not a seal, and not Unit E. Every other cell stays NOT_SHIPPED."
 }
