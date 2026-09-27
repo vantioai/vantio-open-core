@@ -187,10 +187,12 @@ function checkDestination(ctx) {
     const allowedIp = ipListed(dest.ip, policy.allowed_ips);
     if (allowedIp.bad) return emit(ctx, "UNKNOWN", "ip_policy_unclassifiable");
     if (allowedIp.absent) {
-      mark(ctx, "destination", "unavailable", "ip");
-      return emit(ctx, "EVIDENCE_UNAVAILABLE", "destination_ip_absent");
-    }
-    if (!allowedIp.listed) {
+      const deferDns = own(ctx.attempt, "dns") && !ctx.path.seesResolvedIp;
+      if (!deferDns) {
+        mark(ctx, "destination", "unavailable", "ip");
+        return emit(ctx, "EVIDENCE_UNAVAILABLE", "destination_ip_absent");
+      }
+    } else if (!allowedIp.listed) {
       if (!ctx.path.seesResolvedIp) {
         mark(ctx, "destination", "gap", "ip_not_visible");
         return emit(ctx, "ENFORCEMENT_GAP", "destination_ip_not_visible", { authority: "DENIED", would: "DENIED" });
@@ -445,11 +447,47 @@ function hopDenied(policy, hop) {
 }
 
 function chainMismatch(ctx, hops) {
+  if (hops.length === 0) return false;
   const destHost = ctx.dest && ctx.dest.hostname ? ctx.dest.hostname : "";
-  if (!destHost || hops.length === 0) return false;
+  // A missing destination hostname does not anchor the chain.
+  if (!destHost) return true;
   const first = hopHost(hops[0]);
   if (first.bad || first.unavailable) return false;
   return first.host !== destHost;
+}
+
+function unanchoredBlockedHop(ctx, hops) {
+  const destHost = ctx.dest && ctx.dest.hostname ? ctx.dest.hostname : "";
+  if (destHost) return null;
+  let denied = false;
+  for (const hop of hops) {
+    const verdict = hopDenied(ctx.policy, hop);
+    if (verdict.bad || verdict.unavailable) return null;
+    if (verdict.denied) denied = true;
+  }
+  if (!denied) return null;
+  if (hostDidNotDrop(ctx)) {
+    mark(ctx, "redirect", "gap", "host_did_not_drop");
+    return emit(ctx, "ENFORCEMENT_GAP", "host_did_not_drop", { authority: "DENIED", would: "DENIED" });
+  }
+  if (ctx.path.plane === "host" && ctx.observation && ctx.observation.dropped === true) {
+    mark(ctx, "redirect", "unknown", "chain_mismatch");
+    return emit(ctx, "UNKNOWN", "host_drop_unexplained");
+  }
+  return null;
+}
+
+function allowListSplitsAnswers(policy, answers) {
+  if (!policy.allowed_ips.length) return { split: false };
+  let onList = 0;
+  let offList = 0;
+  for (const answer of answers) {
+    const hit = ipListed(answer, policy.allowed_ips);
+    if (hit.bad) return { bad: true };
+    if (hit.listed) onList += 1;
+    else offList += 1;
+  }
+  return { split: onList > 0 && offList > 0 };
 }
 
 function checkRedirect(ctx, attempt) {
@@ -467,6 +505,8 @@ function checkRedirect(ctx, attempt) {
     return emit(ctx, "EVIDENCE_UNAVAILABLE", "redirect_evidence_absent");
   }
   if (chainMismatch(ctx, redirect.hops)) {
+    const blocked = unanchoredBlockedHop(ctx, redirect.hops);
+    if (blocked) return blocked;
     mark(ctx, "redirect", "unknown", "chain_mismatch");
     return emit(ctx, "UNKNOWN", "redirect_unclassifiable");
   }
@@ -477,6 +517,7 @@ function checkRedirect(ctx, attempt) {
       mark(ctx, "redirect", "unavailable", "hop");
       return emit(ctx, "EVIDENCE_UNAVAILABLE", "redirect_evidence_absent");
     }
+    if (single.denied) return deniedObserved(ctx, "redirect", "hop", "redirect_hop_denied");
     mark(ctx, "redirect", "clear", "single_hop");
     return null;
   }
@@ -526,6 +567,14 @@ function checkDns(ctx, attempt) {
   const selected = typeof dns.selected === "string" ? dns.selected : null;
   const atConnect = typeof dns.at_connect === "string" ? dns.at_connect : null;
   if (unique.size > 1 && selected == null && atConnect == null) {
+    if (!ctx.path.seesResolvedIp) {
+      const split = allowListSplitsAnswers(ctx.policy, dns.answers);
+      if (split.bad) return emit(ctx, "UNKNOWN", "ip_policy_unclassifiable");
+      if (split.split) {
+        mark(ctx, "dns", "gap", "allow_list_split");
+        return emit(ctx, "ENFORCEMENT_GAP", "dns_answer_not_visible", { authority: "DENIED", would: "DENIED" });
+      }
+    }
     mark(ctx, "dns", "unknown", "unresolved");
     return emit(ctx, "UNKNOWN", "dns_answers_unresolved");
   }
@@ -565,8 +614,11 @@ function checkDns(ctx, attempt) {
       if (hit.bad) return emit(ctx, "UNKNOWN", "ip_policy_unclassifiable");
       if (hit.listed) blockedAnswer = true;
     }
-    mark(ctx, "dns", "gap", blockedAnswer ? "blocked_answer_not_selected" : "ip_not_visible");
-    return emit(ctx, "ENFORCEMENT_GAP", blockedAnswer ? "dns_answer_not_visible" : "destination_ip_not_visible", {
+    const split = allowListSplitsAnswers(ctx.policy, dns.answers);
+    if (split.bad) return emit(ctx, "UNKNOWN", "ip_policy_unclassifiable");
+    const constrained = blockedAnswer || split.split === true;
+    mark(ctx, "dns", "gap", constrained ? (blockedAnswer ? "blocked_answer_not_selected" : "allow_list_split") : "ip_not_visible");
+    return emit(ctx, "ENFORCEMENT_GAP", constrained ? "dns_answer_not_visible" : "destination_ip_not_visible", {
       authority: "DENIED",
       would: "DENIED",
     });

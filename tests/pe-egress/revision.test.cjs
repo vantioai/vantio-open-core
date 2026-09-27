@@ -183,6 +183,146 @@ describe("revision holds", () => {
     assertClosed(otherChain, "UNKNOWN", "redirect_unclassifiable");
   });
 
+  it("does not clear a blocked redirect when the destination has no hostname", () => {
+    const quiet = run({
+      path: "host_tc_enrolled",
+      policy: { blocked_hosts: ["evil.example"] },
+      attempt: {
+        destination: { ip: "203.0.113.10", port: "443", protocol: "tcp" },
+        redirect: { hops: [{ hostname: "evil.example" }] },
+        host_observation: hostObservation({ dropped: false, saw: ["destination_ip", "port", "protocol", "redirect"] }),
+      },
+    });
+    assertClosed(quiet, "ENFORCEMENT_GAP", "host_did_not_drop");
+    assert.notEqual(quiet.reason, "policy_permits");
+    assert.notEqual(quiet.dimensions.redirect.state, "clear");
+    assert.notEqual(quiet.dimensions.redirect.detail, "single_hop");
+
+    const dropped = run({
+      path: "host_tc_enrolled",
+      policy: { blocked_hosts: ["evil.example"] },
+      attempt: {
+        destination: { ip: "203.0.113.10", port: "443", protocol: "tcp" },
+        redirect: { hops: [{ hostname: "evil.example" }] },
+        host_observation: hostObservation({ dropped: true, saw: ["destination_ip", "port", "protocol", "redirect"] }),
+      },
+    });
+    assertClosed(dropped, "UNKNOWN", "host_drop_unexplained");
+    assert.equal(dropped.dimensions.redirect.state, "unknown");
+    assert.notEqual(dropped.dimensions.redirect.state, "clear");
+    assert.notEqual(dropped.dimensions.redirect.detail, "single_hop");
+
+    const app = run({
+      policy: { blocked_hosts: ["evil.example"] },
+      attempt: {
+        destination: { ip: "203.0.113.10", port: "443", protocol: "https", in_product_scope: true },
+        redirect: { hops: [{ hostname: "evil.example" }] },
+      },
+    });
+    assert.notEqual(app.result, "ALLOWED");
+    assert.notEqual(app.reason, "policy_permits");
+    assert.equal(app.result, "UNKNOWN");
+    assert.equal(app.reason, "redirect_unclassifiable");
+    assert.notEqual(app.dimensions.redirect.state, "clear");
+    assert.notEqual(app.dimensions.redirect.detail, "single_hop");
+
+    const classified = run({
+      path: "host_tc_enrolled",
+      policy: { blocked_hosts: ["evil.example"] },
+      attempt: {
+        destination: { hostname: "api.openai.com", port: "443", protocol: "https" },
+        redirect: { hops: [{ hostname: "api.openai.com" }, { hostname: "evil.example" }] },
+        host_observation: hostObservation({ dropped: true, saw: ["destination_ip", "port", "protocol", "redirect"] }),
+      },
+    });
+    assert.equal(classified.result, "DENIED");
+    assert.equal(classified.reason, "redirect_hop_denied");
+    assert.equal(classified.optimistic_allow, false);
+  });
+
+  it("does not allow an observed two-hop chain that is not anchored to a hostname", () => {
+    const observed = run({
+      path: "host_tc_enrolled",
+      attempt: {
+        destination: { ip: "203.0.113.10", port: "443", protocol: "tcp" },
+        redirect: { hops: [{ hostname: "cdn.example" }, { hostname: "img.example" }] },
+        host_observation: hostObservation({ dropped: false, saw: ["destination_ip", "port", "protocol", "redirect"] }),
+      },
+    });
+    assertClosed(observed, "UNKNOWN", "redirect_unclassifiable");
+    assert.notEqual(observed.reason, "policy_permits");
+    assert.notEqual(observed.dimensions.redirect.state, "clear");
+
+    const app = run({
+      attempt: {
+        destination: { ip: "203.0.113.10", port: "443", protocol: "https", in_product_scope: true },
+        redirect: { hops: [{ hostname: "cdn.example" }, { hostname: "img.example" }] },
+      },
+    });
+    assertClosed(app, "UNKNOWN", "redirect_unclassifiable");
+  });
+
+  it("keeps a hostname mismatch and an empty hop list off the allow path", () => {
+    const mismatch = run({
+      policy: { blocked_hosts: ["evil.example"] },
+      attempt: {
+        destination: { hostname: "203.0.113.10", port: "443", protocol: "https", in_product_scope: true },
+        redirect: { hops: [{ hostname: "evil.example" }] },
+      },
+    });
+    assertClosed(mismatch, "UNKNOWN", "redirect_unclassifiable");
+    assert.equal(mismatch.dimensions.redirect.detail, "chain_mismatch");
+
+    const empty = run({
+      attempt: {
+        destination: { hostname: "203.0.113.10", port: "443", protocol: "https", in_product_scope: true },
+        redirect: { hops: [] },
+      },
+    });
+    assertClosed(empty, "EVIDENCE_UNAVAILABLE", "redirect_evidence_absent");
+    assert.notEqual(empty.dimensions.redirect.state, "clear");
+  });
+
+  it("does not treat an allow-list DNS split with no destination IP as missing evidence", () => {
+    const destination = { hostname: "api.openai.com", port: "443", protocol: "https", in_product_scope: true };
+    const selected = run({
+      policy: { allowed_ips: ["203.0.113.9"] },
+      attempt: {
+        destination,
+        dns: { answers: ["203.0.113.9", "198.51.100.9"], selected: "203.0.113.9" },
+      },
+    });
+    assertClosed(selected, "ENFORCEMENT_GAP", "dns_answer_not_visible");
+    assert.notEqual(selected.reason, "destination_ip_absent");
+    assert.equal(selected.dimensions.dns.state, "gap");
+
+    const open = run({
+      policy: { allowed_ips: ["203.0.113.9"] },
+      attempt: {
+        destination,
+        dns: { answers: ["203.0.113.9", "198.51.100.9"] },
+      },
+    });
+    assertClosed(open, "ENFORCEMENT_GAP", "dns_answer_not_visible");
+    assert.notEqual(open.reason, "destination_ip_absent");
+
+    const padded = run({
+      policy: { blocked_ips: ["203.0.113.9"] },
+      attempt: {
+        destination: { hostname: "api.openai.com", ip: "203.0.113.009", port: "443", protocol: "https", in_product_scope: true },
+      },
+    });
+    assertClosed(padded, "ENFORCEMENT_GAP", "destination_ip_not_visible");
+
+    const mapped = run({
+      policy: { allowed_ips: ["198.51.100.10"] },
+      attempt: {
+        destination: { hostname: "api.openai.com", ip: "::ffff:198.51.100.10", port: "443", protocol: "https", in_product_scope: true },
+      },
+    });
+    assertClosed(mapped, "ENFORCEMENT_GAP", "destination_ip_not_visible");
+  });
+
   it("still allows a single hop that is the destination", () => {
     const decision = run({
       attempt: { redirect: { hops: [{ hostname: "api.openai.com" }] } },
@@ -336,6 +476,44 @@ describe("revision holds", () => {
         attempt: {
           destination: { ip: "::ffff:203.0.113.9", port: "443", protocol: "tcp" },
           host_observation: hostObservation({ dropped: false }),
+        },
+      },
+      {
+        path: "host_tc_enrolled",
+        policy: { blocked_hosts: ["evil.example"] },
+        attempt: {
+          destination: { ip: "203.0.113.10", port: "443", protocol: "tcp" },
+          redirect: { hops: [{ hostname: "evil.example" }] },
+          host_observation: hostObservation({ dropped: false, saw: ["destination_ip", "port", "protocol", "redirect"] }),
+        },
+      },
+      {
+        policy: { blocked_hosts: ["evil.example"] },
+        attempt: {
+          destination: { ip: "203.0.113.10", port: "443", protocol: "https", in_product_scope: true },
+          redirect: { hops: [{ hostname: "evil.example" }] },
+        },
+      },
+      {
+        path: "host_tc_enrolled",
+        attempt: {
+          destination: { ip: "203.0.113.10", port: "443", protocol: "tcp" },
+          redirect: { hops: [{ hostname: "cdn.example" }, { hostname: "img.example" }] },
+          host_observation: hostObservation({ dropped: false, saw: ["destination_ip", "port", "protocol", "redirect"] }),
+        },
+      },
+      {
+        policy: { allowed_ips: ["203.0.113.9"] },
+        attempt: {
+          destination: { hostname: "api.openai.com", port: "443", protocol: "https", in_product_scope: true },
+          dns: { answers: ["203.0.113.9", "198.51.100.9"], selected: "203.0.113.9" },
+        },
+      },
+      {
+        policy: { allowed_ips: ["203.0.113.9"] },
+        attempt: {
+          destination: { hostname: "api.openai.com", port: "443", protocol: "https", in_product_scope: true },
+          dns: { answers: ["203.0.113.9", "198.51.100.9"] },
         },
       },
     ];

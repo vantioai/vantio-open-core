@@ -33,6 +33,6 @@
   "formal_slsa_claimed": false,
   "merge_authorized": false,
   "test_command": "node --test tests/pe-egress/*.test.cjs",
-  "producer_test_pass_count": 72,
+  "producer_test_pass_count": 76,
   "producer_test_fail_count": 0
 }
