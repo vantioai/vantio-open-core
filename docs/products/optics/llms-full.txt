@@ -1,0 +1,1594 @@
+Vantio Optics public manual — full text
+manual_version: 1
+audience: public
+contract_version: unstable-pre-1.0
+This file concatenates the public manual. It is not a second source of claims.
+If a sentence here and a source page ever diverge, the source page wins.
+
+
+========================================================================
+FILE: README.md
+========================================================================
+
+# Vantio Optics public manual
+
+Manual version 1. Audience: public. Contract: `unstable-pre-1.0`.
+
+This folder is the public manual for **Vantio Optics**: free, local-first observability for supported AI-agent traffic. Optics records destination, process, size, and timing metadata. Prompts and completions are absent from Optics records.
+
+Enforcement is Phantom Engine. This manual does not document Phantom Engine installation, policy, or host protection.
+
+## Version this manual is matched to
+
+Checked against the public registries on 2026-09-27, and against source commit `14249ba84ff1f3d5aa8ad7a7366172f29235c76e`.
+
+| Package | What a fresh install returns | What this source tree contains |
+| --- | --- | --- |
+| `@vantio/cli` (npm) | **0.3.24** | **0.3.24**, frozen. The CLI in this commit is that published package. |
+| `vantio-agent-sdk` (PyPI) | **3.0.14** | **3.1.0**, unpublished. `pip install vantio-agent-sdk` does not install 3.1.0. |
+| `@vantio/agent-sdk` (npm) | **0.2.4** | **0.2.4**. This package does not write `~/.vantio/runs`. |
+| `@vantio/optics-mcp` (npm) | **0.1.2** | **0.1.2**. Read-only local log reader. |
+
+Status of this manual: **draft-honest**. CLI behavior below is the frozen 0.3.24 CLI. Python behavior below is the published 3.0.14 package unless a sentence is explicitly labeled **unpublished 3.1.0 source**.
+
+Machine-readable copy: [VERSION-METADATA.json](VERSION-METADATA.json).
+
+## How to read this set
+
+| Reader | Start here |
+| --- | --- |
+| First-time developer | [QUICKSTART.md](QUICKSTART.md), then [NODE-GUIDE.md](NODE-GUIDE.md) or [PYTHON-GUIDE.md](PYTHON-GUIDE.md) |
+| Install and uninstall | [INSTALLATION.md](INSTALLATION.md), [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md) |
+| Security reviewer | [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md), [TELEMETRY.md](TELEMETRY.md), [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) |
+| Support | [TROUBLESHOOTING.md](TROUBLESHOOTING.md), [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md) |
+| Evaluator | [USER-MANUAL.md](USER-MANUAL.md), [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md) |
+| Upgrade from Python v2 or from 3.0.x | [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md), [PYTHON-GUIDE.md](PYTHON-GUIDE.md) |
+| AI assistant | [AI-GUIDE.md](AI-GUIDE.md) and [llms.txt](llms.txt) |
+
+Full narrative: [USER-MANUAL.md](USER-MANUAL.md).
+
+## Files
+
+| File | Role |
+| --- | --- |
+| [USER-MANUAL.md](USER-MANUAL.md) | Product manual for every audience |
+| [QUICKSTART.md](QUICKSTART.md) | Shortest path to a local record |
+| [INSTALLATION.md](INSTALLATION.md) | Packages, versions, runtimes |
+| [NODE-GUIDE.md](NODE-GUIDE.md) | `vantio run` for Node |
+| [PYTHON-GUIDE.md](PYTHON-GUIDE.md) | Published 3.0.14 and unpublished 3.1.0 |
+| [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) | What can produce a record |
+| [RECORD-REFERENCE.md](RECORD-REFERENCE.md) | On-disk files, fields, read and write |
+| [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md) | Status tokens and what they mean |
+| [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md) | Metadata boundary, files, permissions |
+| [TELEMETRY.md](TELEMETRY.md) | Optional usage ping, including `hosts` |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Empty logs, corrupt files, missed calls |
+| [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md) | v2, mixed versions, removal |
+| [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md) | Absent features and current gaps |
+| [AI-GUIDE.md](AI-GUIDE.md) | Rules for assistants |
+| [CHANGELOG-GUIDE.md](CHANGELOG-GUIDE.md) | How to read package history |
+| [VERSION-METADATA.json](VERSION-METADATA.json) | Machine-readable versions |
+| [llms.txt](llms.txt) | Short index for assistants |
+| [llms-full.txt](llms-full.txt) | Full manual text for assistants |
+
+## Founder topics covered
+
+| Topic | Where |
+| --- | --- |
+| 1 Node record path and shape | NODE-GUIDE, RECORD-REFERENCE |
+| 2 Python record path and shape | PYTHON-GUIDE, RECORD-REFERENCE |
+| 3 Run-log locations | RECORD-REFERENCE, TROUBLESHOOTING |
+| 4 Naming | RECORD-REFERENCE |
+| 5 Write | RECORD-REFERENCE |
+| 6 Read | RECORD-REFERENCE, USER-MANUAL |
+| 7 Tail | USER-MANUAL, NODE-GUIDE |
+| 8 Search | USER-MANUAL, NODE-GUIDE |
+| 9 Diff | USER-MANUAL, NODE-GUIDE |
+| 10 Proof | USER-MANUAL, RECORD-REFERENCE |
+| 11 Locking | RECORD-REFERENCE, KNOWN-LIMITATIONS |
+| 12 Retention | UPGRADE-ROLLBACK-UNINSTALL, KNOWN-LIMITATIONS |
+| 13 Cleanup | UPGRADE-ROLLBACK-UNINSTALL |
+| 14 Permissions | PRIVACY-AND-SECURITY |
+| 15 JSON schema markers | RECORD-REFERENCE, STATUS-AND-OUTCOMES |
+| 16 Run, trace, process, provider, and status fields | RECORD-REFERENCE, STATUS-AND-OUTCOMES |
+| 17 Privacy filters | PRIVACY-AND-SECURITY |
+| 18 Provider detection | SUPPORTED-PATHS, NODE-GUIDE, PYTHON-GUIDE |
+| 19 URL and destination normalization | RECORD-REFERENCE, PRIVACY-AND-SECURITY |
+| 20 Demo and fixture | QUICKSTART, KNOWN-LIMITATIONS |
+| 21 Import and export | USER-MANUAL, KNOWN-LIMITATIONS |
+| 22 Version skew | UPGRADE-ROLLBACK-UNINSTALL, PYTHON-GUIDE |
+| 23 Corrupt records, disk full, and write failure | TROUBLESHOOTING |
+| 24 Process exit, interruption, clock, and duration | TROUBLESHOOTING, KNOWN-LIMITATIONS |
+| 25 Product telemetry and test coverage | TELEMETRY, README example status |
+
+## Examples
+
+Command blocks in the other pages are marked **illustrative** when they are the documented shape of a command, including `npm install -g` and calls to customer LLM providers. This pass did not send a prompt to a customer LLM endpoint.
+
+The following were executed locally on 2026-09-27 against `node packages/vantio-cli/bin/vantio.js` (package version 0.3.24) and, where noted, the PyPI wheel `vantio-agent-sdk==3.0.14` installed with `pip install --target` (not a global install):
+
+| Check | Result |
+| --- | --- |
+| `vantio --version` | `0.3.24` |
+| `vantio --help` | No `login` command |
+| `vantio demo`, `vantio demo --json` | Stub HTTP 200, `schema_status` `unstable-pre-1.0`, `content` null, duration 0 |
+| `vantio status` with telemetry vars unset | Posture `off` |
+| `vantio status` with `VANTIO_TELEMETRY_DISABLED=1` | Posture `disabled`. Provider SDK rows `Unsupported` in an empty directory |
+| `vantio prove --list`, `search`, `tail -n 5`, `tail -n 0`, `diff` | Read the demo files |
+| `vantio tail --json --follow` | Exit 1 |
+| `vantio run --json node -e 'process.exit(0)'` | Stdout `opticsStatus` `SUCCESS`, `applicationStatus` `NOT_OBSERVED`, `schema_status` `unstable-pre-1.0` |
+| `vantio run node` with no in-scope call | Wrote a run file with `calls` `[]`, `schema_version` 2, no `schema_status` |
+| `vantio run node` POST to `127.0.0.1` with `VANTIO_EXTRA_LLM_HOSTS` | Recorded `action` `OBSERVED`, path `/v1/chat/completions`, HTTP 201, provider `local`. The prompt, the query token, and the response body were absent from the file |
+| `vantio run python3` without the SDK | Stderr warning. The process still printed and exited |
+| `vantio discover --local` | Listed hosts from `~/.vantio/runs` only |
+| PyPI `vantio-agent-sdk==3.0.14` | `vantio.__version__` is `3.0.14`. With telemetry variables unset, `is_telemetry_disabled()` is false (the ping is allowed). `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` each make it true. The check did not POST |
+| Unpublished source import | `vantio.__version__` is `3.1.0`. With telemetry variables unset, `is_telemetry_disabled()` is true |
+| `vantio run python3` with 3.0.14 and `VANTIO_HOME` set, urllib POST that returns HTTP 500 | Writer directory received the file. CLI `discover` did not. File has `workflow` `sight_loop`, no `schema_status`, no `pid`, `provider` `other`, `status` 500, `ok` false, `error` `network_error`. Prompt, query, and response body were absent |
+
+`vantio prove --format=md` was also run on the local Node file. It did not contain the prompt canary.
+
+## PDF
+
+No PDF is produced with this manual. This repository has no reviewed, deterministic documentation renderer for Optics, and this change does not add one. A later export can concatenate the Markdown files in the order listed under [Files](#files) and render that text with a tool the docs council has already accepted. The renderer must not add claims.
+
+## Public-safety notes for review
+
+- Optics records supported calls. A path with no record was not observed. It was not blocked by Optics.
+- The published Python 3.0.14 `shield()` usage ping is sent unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. CLI 0.3.24 and unpublished Python 3.1.0 source stay off unless `VANTIO_TELEMETRY=1`. See [TELEMETRY.md](TELEMETRY.md).
+- Any sentence about the telemetry field `hosts` means customer LLM endpoint hostnames. See [TELEMETRY.md](TELEMETRY.md).
+- Published Python run files still contain the string `sight_loop` in `workflow`. That string is leftover storage. It is not the product name. The product name is Vantio Optics.
+- SQLite, a `vantio ui` interface, alerting, an OTLP exporter, a stable schema, and PKG-02 are absent. See [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
+- This tree is ready for a separate docs council. Classification token: `OPTICS_PUBLIC_DOCS_READY_FOR_COUNCIL`.
+
+
+========================================================================
+FILE: USER-MANUAL.md
+========================================================================
+
+# Vantio Optics user manual
+
+Manual version 1. Product name: **Vantio Optics**.
+
+Optics is free, local-first observability for supported AI-agent traffic. It records that a wrapped process called a destination, when, and how large the exchange was. Prompts and completions are absent from the record.
+
+Optics observes. Phantom Engine is the separate product that enforces. This manual stops at Optics.
+
+The installable versions this text describes are `@vantio/cli@0.3.24` and `vantio-agent-sdk==3.0.14`. Python 3.1.0 in the source tree is unpublished. See [VERSION-METADATA.json](VERSION-METADATA.json).
+
+## Who this is for
+
+**First-time developer.** Install the CLI, run `vantio demo`, then prefix the agent with `vantio run`. [QUICKSTART.md](QUICKSTART.md).
+
+**Security reviewer.** Read [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md), [TELEMETRY.md](TELEMETRY.md), and [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) before you write a control statement. A missing row is not a block.
+
+**Support.** Start with `vantio --version` and the Python version print in [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Status tokens are in [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md).
+
+**Evaluator.** The capability below is the whole free product: local metadata on supported paths, plus local commands over those files. SQLite, a UI, alerting, OTLP, and a stable schema are not included. [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
+
+**Upgrade from v2 or from Python 3.0.x.** [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md) and [PYTHON-GUIDE.md](PYTHON-GUIDE.md).
+
+**AI assistant.** [AI-GUIDE.md](AI-GUIDE.md).
+
+## What a run is
+
+You start a process with `vantio run` (Node or Python) or you enter Python `shield()`. The wrapper watches supported HTTP and socket calls to in-scope hosts. At process exit it writes one JSON file.
+
+```bash
+# Example status: illustrative
+npm install -g @vantio/cli@0.3.24
+vantio run node agent.js
+vantio prove
+```
+
+Free Optics needs no account and no API key. The CLI does not load `~/.vantio/config.json` to start a run.
+
+The stderr line `run trace_id=0x…` is the id for that launch. The file name is that id, sanitized. Details: [RECORD-REFERENCE.md](RECORD-REFERENCE.md).
+
+## Node and Python are not the same attach
+
+Node: `vantio run` prepends `--require` of the interceptor for `node`, `npx`, `tsx`, and `ts-node`. The interceptor writes a log even when nothing in-scope was called, if the process reaches the exit hook.
+
+Python: install `vantio-agent-sdk==3.0.14` on that interpreter, then `vantio run python agent.py` or call `shield()`. Without the SDK, the prefix does not intercept. Python writes a log only when at least one call was recorded.
+
+Library lists: [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md).
+
+## Commands
+
+| Command | Role |
+| --- | --- |
+| `vantio run` | Spawn a program under the wrapper. |
+| `vantio demo` | Write one stub call. No network. Host `optics-demo.invalid`. |
+| `vantio status` | Local version, telemetry posture, data size, whether a run exists, which provider packages resolve. |
+| `vantio discover` | Group recent calls by host. This machine only. Default window 24h. |
+| `vantio prove` | HTML, Markdown, or unstable JSON rendered from one run file. |
+| `vantio search` | Substring scan of local run files. |
+| `vantio tail` | Last calls of one run. `--follow` prints after the exit rewrite. |
+| `vantio diff` | Host and byte deltas between two runs. |
+
+```bash
+# Example status: illustrative
+vantio discover --local --since=7d
+vantio search openai
+vantio tail -n 20
+vantio diff 0xabc 0xdef
+vantio prove --format=md --out=report.md
+```
+
+`--json` on these commands adds `"schema_status": "unstable-pre-1.0"`. The shape may change. The Node run file itself does not carry `schema_status`.
+
+Exit status 0 means the command finished, including an empty result. Exit status 1 means bad arguments or a file that could not be read or parsed.
+
+`vantio logout` is hidden from help. It deletes `~/.vantio/config.json` only.
+
+## How to read an outcome
+
+The stored action on a free run is `OBSERVED`.
+
+The CLI then shows two display fields:
+
+- **Optics status** `SUCCESS` / "Successful" means the record exists.
+- **Application outcome** comes from the HTTP status: `SUCCESS` for 200–399, `APPLICATION_ERROR` for 400–599, `UNAVAILABLE` when no status was stored, `PARTIAL` when one run mixes those, `NOT_OBSERVED` when there are no calls.
+
+The stored `ok` flag is not used for that display. Published Python 3.0.14 can store `ok` true on an error status. Use the HTTP status.
+
+`NOT_OBSERVED` means there is no record. It does not mean the call was stopped.
+
+Full table: [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md).
+
+## Privacy
+
+The record keeps destination metadata. It does not keep prompts, completions, or request bodies on the free path. Query strings are dropped. A secret placed in the URL path is stored, because the path is kept. File modes and the telemetry ping are in [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md) and [TELEMETRY.md](TELEMETRY.md).
+
+If you describe the telemetry field `hosts`, say what it is: customer LLM endpoint hostnames (at most 50). The CLI ping sends the hostname of the first recorded call. The Python `shield()` ping sends an empty list because it is sent before any observation.
+
+CLI 0.3.24 does not send the ping unless `VANTIO_TELEMETRY=1`. Published Python 3.0.14 `shield()` sends it unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. Those are different gates. Do not collapse them.
+
+## Local proof
+
+`vantio prove` reads a run log and writes a report. The report is the same evidence, rendered. It has no signature and no content hash. Default HTML is `vantio-proof-<id>.html` in the current directory. `--from` can render a JSON file you supply, including one Optics did not write.
+
+`vantio demo` creates a real file in `runs/` with no origin marker. Filter `optics-demo.invalid` when you want production calls only.
+
+## Read-only MCP
+
+`@vantio/optics-mcp@0.1.2` lists and renders local logs over the Model Context Protocol. It does not block or redact. Its tools are `optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_explain`, and `optics_upgrade_path`. The last tool points at Phantom Engine. This manual does not document Phantom Engine.
+
+The MCP reader follows `VANTIO_HOME`. The CLI reader does not.
+
+## Limits that belong in every evaluation
+
+- Only wrapped processes and in-scope hosts produce rows.
+- No database, no UI, no alerts, no OTLP exporter, no stable schema.
+- No retention command. Disk grows until you delete files.
+- No cross-process lock. The same trace id overwrites one file.
+- Write failures are silent.
+- Node and Python files differ.
+- The string `sight_loop` inside a Python file is leftover storage, not the product name.
+
+[KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md) is the full list.
+
+## Where to go next
+
+| Question | Page |
+| --- | --- |
+| Install pins | [INSTALLATION.md](INSTALLATION.md) |
+| Node flags and commands | [NODE-GUIDE.md](NODE-GUIDE.md) |
+| Python 3.0.14 versus unpublished 3.1.0 | [PYTHON-GUIDE.md](PYTHON-GUIDE.md) |
+| Field-by-field file layout | [RECORD-REFERENCE.md](RECORD-REFERENCE.md) |
+| Remove data | [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md) |
+| Package history | [CHANGELOG-GUIDE.md](CHANGELOG-GUIDE.md) |
+
+
+========================================================================
+FILE: QUICKSTART.md
+========================================================================
+
+# Quickstart
+
+Optics is local. A fresh CLI install needs no account and no API key. The record is metadata: host, size, timing, and process. Prompts and completions are absent from the record.
+
+Versions: install `@vantio/cli@0.3.24` and, for Python, `vantio-agent-sdk==3.0.14`. Python 3.1.0 in this git tree is unpublished. Details: [INSTALLATION.md](INSTALLATION.md).
+
+## 1. Install the CLI
+
+```bash
+# Example status: illustrative
+npm install -g @vantio/cli
+vantio --version
+```
+
+`vantio --version` prints the installed CLI version. For this manual that version is `0.3.24`.
+
+There is no `https://vantio.ai/install.sh` installer. Node.js 18.3 or newer is required by the CLI package.
+
+## 2. See one local demo record
+
+`vantio demo` writes one stub call and does not use the network. The stub host is `optics-demo.invalid`. Later `discover`, `search`, `tail`, `diff`, and `prove` treat that file like any other run. The file has no separate origin marker.
+
+```bash
+# Example status: illustrative
+vantio demo
+vantio status
+```
+
+`vantio status` reads this machine. It contacts the network only when you pass `--check-registry`.
+
+## 3. Wrap a Node agent
+
+```bash
+# Example status: illustrative
+vantio run node agent.js
+vantio run --summary node agent.js
+```
+
+`vantio run` attaches the interceptor for `node`, `npx`, `tsx`, and `ts-node`. A Node process started without `vantio run` is not attached.
+
+When the child exits, the CLI writes `~/.vantio/runs/<trace-id>.json`, including when no in-scope call happened. Commands that read logs use `~/.vantio/runs` from the home directory. They do not read `VANTIO_HOME`. If you set `VANTIO_HOME`, the writer and the reader can diverge. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+## 4. Wrap a Python agent
+
+Install the published SDK on the same interpreter you run:
+
+```bash
+# Example status: illustrative
+pip install 'vantio-agent-sdk==3.0.14'
+vantio run python agent.py
+```
+
+`vantio run python` without that package prints a warning and does not intercept. Python 3.10 or newer is required by the published package.
+
+`shield()` inside the process is the other entry point. On published 3.0.14, `shield()` sends the usage ping unless you opt out. Set `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` before you rely on silence. See [TELEMETRY.md](TELEMETRY.md).
+
+A Python run log is written only when at least one in-scope call was recorded. A silent Python process can leave no file.
+
+## 5. Read what was recorded
+
+```bash
+# Example status: illustrative
+vantio discover --local
+vantio prove
+vantio search openai
+vantio tail -n 20
+vantio diff 0xabc 0xdef
+```
+
+`discover` looks back 24 hours unless you set `--since` to `7d` or `30d`. It lists this machine's run logs. It is not a fleet inventory.
+
+`prove` writes an HTML file in the current directory by default (`vantio-proof-<id>.html`). `--format=md` writes Markdown to stdout unless you set `--out`.
+
+Replace `0xabc` and `0xdef` with trace id prefixes from `vantio prove --list`.
+
+## What you should see
+
+A supported call shows action `OBSERVED` in a free Optics run. Display lines separate **Optics status** from **Application outcome**. Optics status `Successful` means the record exists. Application outcome comes from the HTTP status. See [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md).
+
+A call that never hit a wrapped library, or a host outside the catalog, produces no row. That absence is not protection. See [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md).
+
+## Next
+
+- Node details: [NODE-GUIDE.md](NODE-GUIDE.md)
+- Python 3.0.14 versus unpublished 3.1.0: [PYTHON-GUIDE.md](PYTHON-GUIDE.md)
+- Privacy: [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md)
+
+
+========================================================================
+FILE: INSTALLATION.md
+========================================================================
+
+# Installation
+
+Free Optics needs no account and no API key. The CLI does not read a saved key from `~/.vantio/config.json` when it starts a run.
+
+## CLI
+
+| Item | Value |
+| --- | --- |
+| Package | `@vantio/cli` |
+| Public version | `0.3.24` (npm latest on 2026-09-27) |
+| Source in this commit | `0.3.24`, frozen |
+| Command | `vantio` |
+| Engine | Node.js `>=18.3.0` |
+| License | MIT |
+
+```bash
+# Example status: illustrative
+npm install -g @vantio/cli@0.3.24
+vantio --version
+```
+
+The package bins `vantio` to `bin/vantio.js`. Works on macOS, Linux, and Windows (WSL) as stated by the CLI README. The run-file mode bits below are Unix modes. The writers do not set a Windows ACL. See [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md).
+
+There is no curl installer at `https://vantio.ai/install.sh`.
+
+`vantio status --check-registry` asks the npm registry for the latest `@vantio/cli` version. Plain `vantio status` does not.
+
+## Python SDK
+
+| Item | Value |
+| --- | --- |
+| Package | `vantio-agent-sdk` |
+| Public version | `3.0.14` (PyPI latest on 2026-09-27) |
+| Source in this commit | `3.1.0`, not published |
+| Interpreter | Python `>=3.10` |
+| License | MIT |
+
+```bash
+# Example status: illustrative
+pip install 'vantio-agent-sdk==3.0.14'
+python -c 'import vantio; print(vantio.__version__)'
+```
+
+The printed version on a fresh PyPI install is `3.0.14`. If you are working from this git tree without publishing, `vantio.__version__` is `3.1.0`. Those are different packages of behavior. Read [PYTHON-GUIDE.md](PYTHON-GUIDE.md) before you describe HTTP outcomes or telemetry.
+
+Pin `==3.0.14` when you need the published package. An unpinned `pip install vantio-agent-sdk` also resolved to 3.0.14 on the registry check for this manual. It will follow PyPI whenever a later release is published.
+
+## Node SDK
+
+| Item | Value |
+| --- | --- |
+| Package | `@vantio/agent-sdk` |
+| Public version | `0.2.4` |
+| Engine | Node.js `>=18.0.0` |
+
+```bash
+# Example status: illustrative
+npm install @vantio/agent-sdk@0.2.4
+```
+
+This package does not write `~/.vantio/runs`. Recording for Node is the CLI interceptor started by `vantio run`. Use the Node SDK only when you need its trace helper. Control-plane helpers in that package are outside free Optics and are not documented here.
+
+## Read-only MCP
+
+| Item | Value |
+| --- | --- |
+| Package | `@vantio/optics-mcp` |
+| Public version | `0.1.2` |
+| Role | Read local run logs. No enforcement tools. |
+
+```bash
+# Example status: illustrative
+npx -y @vantio/optics-mcp@0.1.2
+```
+
+The npm description text still contains an older product phrase. This manual's name for the product is Vantio Optics. Tools in the 0.1.2 server include `optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_explain`, and `optics_upgrade_path`. The upgrade tool points at Phantom Engine. This manual does not reproduce Phantom Engine setup.
+
+The MCP reader honors `VANTIO_HOME`. The CLI reader does not. See [RECORD-REFERENCE.md](RECORD-REFERENCE.md).
+
+The package version is 0.1.2. The server constructor in this source tree reports version `0.1.0` on the MCP server object. Use the package version when you talk about what npm installed.
+
+## What install does not do
+
+- It does not start a daemon.
+- It does not create a SQLite database.
+- It does not enroll a host in Phantom Engine.
+- It does not turn on telemetry for the CLI. CLI telemetry stays off until `VANTIO_TELEMETRY=1`.
+- It does not by itself silence Python 3.0.14 `shield()` telemetry. See [TELEMETRY.md](TELEMETRY.md).
+
+Removal steps: [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md).
+
+
+========================================================================
+FILE: NODE-GUIDE.md
+========================================================================
+
+# Node guide
+
+This page is `@vantio/cli@0.3.24`. The CLI in this source tree is that frozen version.
+
+## Attach
+
+```bash
+# Example status: illustrative
+vantio run node agent.js
+vantio run --summary tsx agent.ts
+vantio run --json node agent.js
+```
+
+`vantio run` splits its own flags from the child program at the first argument that does not start with `-`. Flags after the program name belong to the child (`vantio run node --experimental-strip-types agent.ts`).
+
+Node runtimes are `node`, `npx`, `tsx`, and `ts-node` (and the `.exe` / `.cmd` forms the CLI recognizes). For those names the CLI prepends `--require <interceptor.cjs>` onto `NODE_OPTIONS`. Other programs are spawned with no Node interceptor.
+
+The CLI sets `VANTIO_TRACE_ID` to the parent's value, or to `0x` plus 16 hex characters. One id covers that `vantio run` process. There is no per-call span id.
+
+`--summary` sets `VANTIO_SUMMARY=1` for the child and prints a summary on exit. `--json` sets `VANTIO_JSON=1` and, when the child exits, prints one JSON object on the CLI's stdout with `schema_status` `unstable-pre-1.0`. A signal sets `opticsStatus` to `OPTICS_ERROR` on that stdout object. That field is not written inside the run file.
+
+`--audit` sets `VANTIO_AUDIT_MODE=1` on the child. It is not a column in the local proof.
+
+The child inherits the parent environment. The CLI does not inject a key or ingest URL from `~/.vantio/config.json`.
+
+## What the interceptor patches
+
+Inside the wrapped Node process the interceptor patches:
+
+- `globalThis.fetch`
+- `undici` `fetch`, `request`, `stream`, `pipeline`, `dispatch`, `connect`, `upgrade`, and `Client` / `Pool` / `Agent` request paths
+- Node `http` / `https` `request`, `get`, and `ClientRequest`
+- Node `http2.connect` and session `request`
+- `net.Socket.connect` and `tls.connect` to in-scope hosts
+- `globalThis.WebSocket` and undici `WebSocket` for host scope and outbound frame size (payloads are not parsed)
+- bytes after `undici.upgrade` / CONNECT
+- `child_process` spawn/exec of `curl`, `wget`, `httpie`, and `aria2c`, including `env` / `timeout` / `nice` prefixes, `curl -K` `url=`, `curl -F` size from stat, `wget -i` URL lists, and stdin size when stdin is a file
+
+Browsers stay outside this wrap. A library that opens a socket from a native addon, or a child that drops `NODE_OPTIONS`, is outside the wrap. Those calls are not observed. Optics does not block them.
+
+In-scope hosts: [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md).
+
+## Local record
+
+On process exit the interceptor writes one JSON file. It writes that file even when `calls` is empty, so a wrapped Node process that made no in-scope call still leaves a log when the exit hook runs. `SIGKILL` skips the hook. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+Free Optics (`free_mode` true, which is the default when no control-plane API key is loaded) stores `action` `OBSERVED` for an in-scope call. The response body is not stored. Response size uses `Content-Length` when that header is present.
+
+The Node file's envelope fields are listed in [RECORD-REFERENCE.md](RECORD-REFERENCE.md). The file sets `vantio_run_log` to `"1"` and `schema_version` to `2`. It does not set `schema_status`.
+
+Provider labels on Node are a substring guess (`guessProvider`). A hostname that merely contains `openai` can be labeled `openai`. Python 3.0.14 does not use that guess. See [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md).
+
+## Commands that read Node logs
+
+These commands read `~/.vantio/runs`. They also read Python logs in that directory. They do not honor `VANTIO_HOME`.
+
+```bash
+# Example status: illustrative
+vantio discover --local --since=7d
+vantio discover --host=api.openai.com
+vantio prove --list
+vantio prove --run=0x1a2b3c4d --format=md
+vantio search --host=api.anthropic.com --since=7d
+vantio tail --run=0x1a2b3c4d -n 20
+vantio tail --all
+vantio diff 0xabc 0xdef
+```
+
+`vantio tail --follow` watches the file and prints when `calls.length` grows. The writer replaces the whole file at exit, so follow stays quiet during the run and shows calls after exit. `--json` and `--follow` together are a usage error. `--all` and `--lines` together are a usage error. `-n 0` prints zero calls.
+
+`vantio search` scans every `.json` file in the reader directory. The query is a substring, not a regular expression. Filters: `--host`, `--provider`, `--action`, `--run`, `--since=24h|7d|30d`. Default is all time, unlike `discover`, whose default is 24 hours.
+
+`vantio diff` compares two runs: call-count delta, byte delta, hosts added, hosts removed, and hosts whose call or byte counts changed. It prefers `summary.by_host` when present. Python 3.0.14 logs omit `by_host`, so diff sums call rows.
+
+Exit status for these commands: 0 when the command finished, including an empty result. 1 for bad arguments, or for a file that exists but cannot be read or parsed.
+
+## Real-time lines
+
+Intercepted calls can print to the terminal while the process runs. The run file is still the exit write. A crash before exit can leave the terminal line without a finished file.
+
+## Node SDK
+
+`@vantio/agent-sdk@0.2.4` does not write the run log. `vantio run` does. Do not expect `shield()` from the Node SDK, used alone, to create `~/.vantio/runs`.
+
+
+========================================================================
+FILE: PYTHON-GUIDE.md
+========================================================================
+
+# Python guide
+
+Two Python versions matter. Only one is on PyPI.
+
+| | Published install | This git tree |
+| --- | --- | --- |
+| Package | `vantio-agent-sdk` | `vantio-agent-sdk` |
+| Version | **3.0.14** | **3.1.0 unpublished** |
+| `pip install vantio-agent-sdk` | Installs this | Does not install this |
+| Telemetry gate | `shield()` sends unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` | Off unless `VANTIO_TELEMETRY=1` |
+| HTTP 4xx/5xx `ok` | urllib `urlopen` in a local 3.0.14 check stored `ok` false and `error` `network_error` with the status still set. The return path in that source can store `ok` true. CLI display ignores `ok` | Source stores `ok` false for 400–599 and does not label an HTTP status as `network_error` |
+| Customer outcome lines on the file | Absent | Present in source (`opticsStatus`, `applicationOutcomeLabel`, and related fields) |
+| `schema_status` on the run file | Absent | `unstable-pre-1.0` in source |
+
+CLI 0.3.24 is the reader for both. Its display rules are in [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md). Those rules already derive Optics status and application outcome when you `tail`, `search`, or `prove`. They do not require the unpublished file fields.
+
+## Install the published SDK
+
+```bash
+# Example status: illustrative
+pip install 'vantio-agent-sdk==3.0.14'
+```
+
+Requires Python 3.10 or newer. Core observe uses the standard library. `requests`, `httpx`, `aiohttp`, `urllib3`, and `pycurl` are observed when they are already installed. They are not required dependencies.
+
+## `vantio run python`
+
+```bash
+# Example status: illustrative
+vantio run python agent.py
+vantio run python3 agent.py
+```
+
+The CLI treats `python`, `python3`, `py`, and `python3.N` as Python. It puts `bin/python-wrap` on `PYTHONPATH` so `sitecustomize` can load the SDK. If the SDK is missing, the process prints a warning and continues without interception.
+
+`sitecustomize` prefers `install_process_wrap`, which calls `install(trace_id)` and writes the log on interpreter exit. That path does not call the telemetry ping. `shield()` does. See [TELEMETRY.md](TELEMETRY.md).
+
+Prefixing `vantio run python` without the SDK does not intercept.
+
+## `shield()` on 3.0.14
+
+```python
+# Example status: illustrative
+from vantio import shield
+
+@shield
+async def run_agent():
+    return await call_provider()
+
+async with shield() as ctx:
+    print(ctx.trace_id)
+```
+
+`get_current_trace_id()` returns the active id inside `shield()`, and `None` outside it.
+
+On 3.0.14, entering `shield()` sends the usage ping unless you set `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. Set one of those when you need the published SDK to stay silent.
+
+While `shield()` or the process wrap is active, 3.0.14 observes in-scope calls made through:
+
+- `urllib.request.urlopen` and custom opener `open`
+- `requests`, `httpx` (sync and async), `aiohttp`, when installed
+- `urllib3`, when installed
+- `pycurl`, when installed
+- `http.client`
+- `socket.connect`, `connect_ex`, and `create_connection`
+- subprocess `curl`, `wget`, `httpie`, and `aria2c`
+
+Browsers stay outside. A client you did not patch, or a host outside the catalog and outside `VANTIO_EXTRA_LLM_HOSTS`, is not observed.
+
+## What 3.0.14 writes
+
+A run file is written only when there is at least one recorded call and a trace id. Zero calls leave no Python file.
+
+The file is JSON with `vantio_run_log` `"1"`, `schema_version` 2, `plane` `"optics"`, `runtime` `"python"`, timestamps, `calls`, and a `summary` of `total_calls` and `hosts`. The summary `hosts` array is the hostnames stored on those calls. That file field is the run log, not the telemetry ping. The telemetry field of the same name is defined in [TELEMETRY.md](TELEMETRY.md).
+
+Each call stores `hostname`, `provider`, `action`, `mediation`, and `ts`, plus extras the hook passed (`path`, `ok`, `duration_ms`, `error`, `error_class`, and similar). Published 3.0.14 sets `provider` to `"other"` unless a caller passed another value. No in-tree call site passes one, so published logs label `provider` as `other`. The hostname is still stored. Node's substring provider guess does not run on these files.
+
+The file also contains `"workflow": "sight_loop"`. That value is leftover storage from an older name. It is not the product name. Vantio Optics is the product name. The string does not turn a feature on. CLI 0.3.24 Node files do not write `workflow`.
+
+The file does not include `pid`, `ppid`, `free_mode`, `duration_ms` on the envelope, `by_host`, or `schema_status`.
+
+`http.client` and `pycurl` success paths in this generation do not store an HTTP status. CLI display then shows application outcome `Unavailable`.
+
+A local check of the published 3.0.14 wheel, using `urllib.request.urlopen` against HTTP 500, stored `status` 500, `ok` false, and `error` `network_error` (`error_class` `HTTPError`). urllib raises for that status, so this path is the exception path. The return path in the 3.0.14 source (a `requests` / `httpx` / `aiohttp` call that returns a response object) sets `ok` true together with the status code. That return path was read from the 3.0.14 sources and was not re-executed in this manual's command check. CLI display ignores `ok` and uses the HTTP status, so a stored 500 is application outcome `APPLICATION_ERROR` either way. The stored `error` string `network_error` on the urllib path is what 3.0.14 wrote. Unpublished 3.1.0 source stops labeling that HTTP status as `network_error`.
+
+## Unpublished 3.1.0 source
+
+Do not describe the following as what `pip install` does today.
+
+In this repository's Python 3.1.0 source:
+
+- HTTP 200–399 stores `ok` true. HTTP 400–599 stores `ok` false. A 4xx or 5xx is not labeled `network_error`. DNS, connection, TLS, and timeout failures use `network_error` and have no HTTP status. A wrapped application exception stores the exception class name, with no HTTP status, and is not labeled `network_error`.
+- Classification walks `__cause__`, `__context__`, exception `.reason`, and exception `args`, with an internal depth cap. A final HTTP status on an attempt wins over a nested transport error.
+- Recorded calls and the summary add `opticsStatus`, `applicationStatus`, and customer lines (`applicationOutcomeLabel`, `providerResponse`, and related keys). `schema_status` on the run file is `unstable-pre-1.0`. Mixed application outcomes in one run roll up to `PARTIAL`.
+- `socket.connect`, `connect_ex`, `create_connection`, and a distinct `SSLSocket.connect` store `duration_ms` measured around the real connect.
+- Catalog hostnames can replace provider `"other"`. Other hosts stay upstream wording in those customer lines.
+- `http.client` and `pycurl` still do not store an HTTP status on the success path. Outcome stays `UNAVAILABLE` with the line `Provider outcome unavailable`.
+- Telemetry matches the CLI opt-in rule.
+
+CLI customer-line text for those outcomes is deferred. `@vantio/cli@0.3.24` still says "Application outcome" and "Application error". It was not reopened for the 3.1.0 wording.
+
+## Upgrade from Python v2
+
+v3.0.0 replaced the v2 API. `VantioSession` and `VANTIO_PROXY_ENDPOINT` are gone. There is no proxy hop.
+
+```python
+# v2 — removed
+# from vantio.session import VantioSession
+# with VantioSession(agent_name="my-agent") as session:
+#     ...
+
+# v3.0.14 published API
+from vantio import shield
+
+@shield
+async def run_agent():
+    ...
+```
+
+Run logs written by v3 use `schema_version` 2. The CLI does not migrate old files and does not refuse newer files. See [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md).
+
+## Names that are not free Optics
+
+`fetch_policy`, `redact_pii`, and `report_anomaly` are exported by the package. They belong to a separately provisioned control plane. This manual does not document them. Free Optics does not require them, and Optics does not enforce policy.
+
+
+========================================================================
+FILE: SUPPORTED-PATHS.md
+========================================================================
+
+# Supported paths
+
+A path is supported when a wrapped process records it. Anything else produces no Optics row. No row means not observed. It does not mean Optics blocked the call, allowed it, or made it safe.
+
+Phantom Engine is the product that enforces on enrolled hosts. This page does not describe Phantom Engine coverage.
+
+## When a process is wrapped
+
+| How you start it | What gets attached |
+| --- | --- |
+| `vantio run node\|npx\|tsx\|ts-node …` | Node interceptor via `NODE_OPTIONS --require` |
+| `vantio run python\|python3\|py\|python3.N …` with `vantio-agent-sdk` installed | Python `sitecustomize` → `install()` |
+| `shield()` in a Python 3.0.14 process | Same Python hooks for that `shield()` scope |
+| Any other launch | Nothing. No record for that process. |
+
+A child that starts without the injected `NODE_OPTIONS` or `PYTHONPATH` is a new, unwrapped process.
+
+## Node 0.3.24 libraries
+
+Recorded when the call's destination is in scope:
+
+- `fetch` and undici `fetch` / `request` / `stream` / `pipeline` / `dispatch` / `connect` / `upgrade`
+- Node `http` and `https`, including `ClientRequest`
+- Node `http2`
+- `net` and `tls` connects to in-scope hosts
+- WebSocket outbound frame size (frame payloads are not parsed)
+- Spawned `curl`, `wget`, `httpie`, and `aria2c`, including the argv forms listed in [NODE-GUIDE.md](NODE-GUIDE.md)
+
+## Python 3.0.14 libraries
+
+Recorded when the destination is in scope and the SDK is installed and wrapped:
+
+- urllib `urlopen` and custom openers
+- `requests`, `httpx` sync and async, `aiohttp`, when those packages are installed
+- `urllib3` and `pycurl`, when installed
+- `http.client`
+- `socket.connect`, `connect_ex`, `create_connection`
+- subprocess `curl`, `wget`, `httpie`, `aria2c`
+
+Unpublished 3.1.0 source keeps this set and changes outcome fields and socket timing. It does not add a new public client family beyond what 3.0.14 already patches. See [PYTHON-GUIDE.md](PYTHON-GUIDE.md).
+
+## Destinations that are in scope
+
+Exact hostnames in the CLI catalog (`packages/vantio-cli/bin/llm-hosts.cjs`), kept in parallel with the Python set:
+
+`api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com`, `api.cohere.ai`, `api.cohere.com`, `api.mistral.ai`, `api.groq.com`, `api.together.xyz`, `api.perplexity.ai`, `inference.ai.azure.com`, `openai.azure.com`, `api.x.ai`, `api.deepseek.com`, `api.fireworks.ai`, `openrouter.ai`, `api.cerebras.ai`, `api.voyageai.com`, `api.sambanova.ai`, `api.deepinfra.com`, `router.huggingface.co`, `api-inference.huggingface.co`, `api.replicate.com`, `ollama.com`, `integrate.api.nvidia.com`.
+
+Also in scope:
+
+- A DNS suffix of a listed name (`api.openai.com` matches `foo.api.openai.com`). A listed token must contain a dot, so a bare word cannot match every host.
+- Regional Amazon Bedrock runtime, Mantle, and agents runtime hostnames; Google Vertex AI hostnames; Hugging Face Inference Endpoints (`*.endpoints.huggingface.cloud`). The matchers are specific patterns, not all of `amazonaws.com` or `googleapis.com`.
+- Ollama on `localhost`, `127.0.0.1`, or `::1` port `11434`.
+- Hosts you add with `VANTIO_EXTRA_LLM_HOSTS` (comma-separated).
+
+`vantio status` reports whether seven Node provider packages resolve from the current working directory: `openai`, `@anthropic-ai/sdk`, `@google/genai`, `@google/generative-ai`, `cohere-ai`, `groq-sdk`, `@mistralai/mistralai`. `UNSUPPORTED` there means that package did not resolve. It does not mean the host catalog excluded the provider, and it does not mean traffic is blocked.
+
+## Provider label
+
+Node writes `provider` with `guessProvider`, a substring test. `api.openai.com` becomes `openai`. A hostname that contains `openai`, `anthropic`, `azure`, or the other substrings in that function is labeled the same way, including hosts that are not in the catalog if they were recorded through an extra-host or similar in-scope path. Unknown hosts become `other`. Localhost outside the Ollama port check becomes `local`.
+
+Published Python 3.0.14 writes `provider` `"other"` for the hooks in this tree. Use `hostname` to see the destination. Unpublished 3.1.0 source can replace `"other"` from the catalog. The same hostname can therefore be `openai` in a Node 0.3.24 file and `other` in a Python 3.0.14 file.
+
+## Paths that stay unobserved
+
+These do not get an Optics record. Optics does not describe them as protected:
+
+- Browser pages and browser extensions
+- A process not started with `vantio run` or Python `shield()`
+- `vantio run python` when `vantio-agent-sdk` is not installed on that interpreter
+- Ruby, Go, Java, Rust, and other runtimes
+- A Node or Python HTTP client the interceptor does not patch
+- A native addon socket that never calls the patched Node APIs
+- A grandchild process that does not inherit the wrapper
+- A host that is outside the catalog, outside the regional patterns, and outside `VANTIO_EXTRA_LLM_HOSTS`
+- Traffic after the process is killed with `SIGKILL`, before the exit hook
+
+Redirects are recorded only when the follow-up request is itself in scope. Optics does not rewrite a proxy or an IPv6 address into a single canonical destination.
+
+## Checking a claim of coverage
+
+Run the agent under the wrapper, then `vantio search` or `vantio tail` for that trace id. A row with `action` `OBSERVED` is a record of that call. No row is `NOT_OBSERVED` for that call. Do not upgrade either result into an enforcement result.
+
+
+========================================================================
+FILE: RECORD-REFERENCE.md
+========================================================================
+
+# Record reference
+
+Optics keeps one JSON object per trace id. The shape is `unstable-pre-1.0`. Node 0.3.24 and published Python 3.0.14 both set `schema_version` to `2` and `vantio_run_log` to `"1"`. The rest of the object is not the same. There is no SQLite database, no migration tool, and no JSON Schema file shipped as a validator.
+
+## Where files are
+
+| Writer | Directory |
+| --- | --- |
+| Node interceptor | `$VANTIO_HOME/runs` if `VANTIO_HOME` is set, otherwise `~/.vantio/runs` |
+| Python SDK | Same rule: `VANTIO_HOME` or `~/.vantio`, then `runs` |
+| CLI reader (`prove`, `search`, `tail`, `diff`, `discover`, `status`) | `~/.vantio/runs` only. `VANTIO_HOME` is ignored. |
+| `@vantio/optics-mcp@0.1.2` | Honors `VANTIO_HOME`, otherwise `~/.vantio/runs` |
+
+File name: the trace id, characters outside `[A-Za-z0-9_-]` replaced with `_`, truncated to 80 characters, plus `.json`. Writing the same trace id again replaces the file.
+
+`trace_id` is the id for that `vantio run` or that Python install. It is not a W3C trace id and not a per-call span. The CLI parent uses `0x` plus 16 hex digits when `VANTIO_TRACE_ID` is unset. If the Node interceptor starts without that variable, it falls back to `randomUUID()` with no `0x` prefix. Python uses `uuid4` when the variable is missing.
+
+## Write
+
+Calls sit in memory for the life of the process. Python appends under a thread lock. Node relies on the single thread of the event loop and hooks `Array.push` so the telemetry gate can see the first call. Nothing writes the run file per call.
+
+At exit (Node `process` exit, Python `atexit` / `uninstall`) the process serializes the full list once.
+
+- Node uses `writeFileSync` with mode `0o600` and creates the directory at `0o700`.
+- Python opens the file with `"w"`, then `chmod` `0o600`, and ignores chmod errors. Directory create uses `0o700`.
+- Neither write uses a temporary file plus rename.
+- Neither write takes a cross-process file lock. Two processes can replace the same path.
+- Any write exception is discarded. The agent exit continues. A full disk drops the file silently.
+
+Node writes on every exit hook, including zero calls. Python returns without writing when `calls` is empty or the trace id is missing.
+
+## Read
+
+`vantio prove`, `search`, `tail`, `diff`, and `discover` parse JSON files in the CLI runs directory.
+
+| Result | Behavior |
+| --- | --- |
+| Unreadable or invalid JSON | `search`, `discover`, and `prove --list` exit 1. `status` sets runs to `OPTICS_ERROR` and continues. MCP skips the file. |
+| `vantio_run_log` is not `"1"` | CLI `loadRunLog` exits 1. Listings skip it. |
+| `schema_version` differs | Readers do not check it. A future file with the same marker is accepted. |
+
+`vantio prove --from <file>` renders a JSON object from that path. It does not require `vantio_run_log` on that render path, and it does not copy the file into `runs/`.
+
+There is no import command, no JSONL export, and no OTLP exporter. `vantio prove` is the export: HTML (default, file `vantio-proof-<id>.html` in the current directory), Markdown (`--format=md`), or `--json` with `schema_status` `unstable-pre-1.0`.
+
+Search, tail, and diff behavior: [NODE-GUIDE.md](NODE-GUIDE.md).
+
+## Node 0.3.24 envelope
+
+Written by the interceptor. Field set from the exit object:
+
+| Field | Value |
+| --- | --- |
+| `vantio_run_log` | `"1"` |
+| `schema_version` | `2` |
+| `plane` | `"optics"` |
+| `data_note` | Metadata-only note. Prompts and completions are named as never stored. |
+| `trace_id` | Run id |
+| `pid`, `ppid` | Process ids. `ppid` null when unavailable. |
+| `node_version`, `platform`, `arch` | From the Node process |
+| `started_at`, `generated_at` | UTC ISO with `Z` |
+| `duration_ms` | Wall clock, `Date.now` difference. Not clamped. |
+| `cli_version` | CLI package version |
+| `free_mode` | True when no control-plane API key is loaded |
+| `calls` | Array mapped below |
+| `summary` | `total_calls`, `total_bytes`, `hosts`, `providers`, `errors`, `by_host`, `by_provider`, `redacted`, `blocked`, `est_spend_usd` (`null` in free mode) |
+| `residual.note` | Short metadata note |
+
+`schema_status` is absent on this file. CLI stdout JSON adds `schema_status` `unstable-pre-1.0` via `withSchema`. That marker is the command output, not the run file.
+
+`summary.hosts` is the list of hostnames in the run. It is not the telemetry payload. Telemetry `hosts` is defined in [TELEMETRY.md](TELEMETRY.md).
+
+### Node call object
+
+`hostname`, `provider` (guess at write time), `method`, `path` (pathname, no query), `scheme`, `request_bytes`, `bytes`, `status`, `ok`, `content_type`, `duration_ms`, `action`, `ts`, `redactions`, `error`, `error_class`.
+
+Missing values become null or zero in this mapper. Free-mode `action` is `OBSERVED`. Network failure sets `ok` false, `error` `network_error`, and `error_class` from the error name. The body is not a field.
+
+The envelope has no `machine`, no span id, no session id, and no evidence-origin field.
+
+## Published Python 3.0.14 envelope
+
+| Field | Value |
+| --- | --- |
+| `vantio_run_log` | `"1"` |
+| `schema_version` | `2` |
+| `plane` | `"optics"` |
+| `workflow` | The string `sight_loop`. Leftover storage. Not the product name. Node files do not have this field. |
+| `data_note` | Metadata-only note |
+| `trace_id` | Run id |
+| `runtime` | `"python"` |
+| `mediation` | Comma-joined mediation labels from the calls |
+| `started_at`, `generated_at` | UTC timestamps from `datetime` (`+00:00` offset form) |
+| `calls` | In-memory call list |
+| `summary` | `total_calls`, `hosts` |
+| `residual.note` | Describes the Python wrap. The sentence that mentions a Phantom Engine API key is describing a control-plane branch, not free Optics. This manual does not document that branch. |
+
+No `schema_status`, `pid`, `ppid`, `free_mode`, envelope `duration_ms`, `by_host`, or `est_spend_usd`.
+
+### Python 3.0.14 call object
+
+`hostname`, `provider` (`"other"` from this tree's hooks), `action`, `mediation`, `ts`, plus extras such as `path`, `status`, `ok`, `duration_ms`, `error`, `error_class`.
+
+## Unpublished Python 3.1.0 source
+
+Same write path, plus file fields that 3.0.14 does not have: `schema_status` `unstable-pre-1.0`, `status_labels`, and summary fields `opticsStatus`, `applicationStatus`, `opticsLabel`, and customer summary fields. Calls gain `opticsStatus`, `applicationStatus`, `applicationOutcomeLabel`, `providerResponse`, and related lines. `workflow` is still the leftover string `sight_loop` in that source. Do not treat a PyPI install as this shape.
+
+## Schema markers
+
+| Emitter | `vantio_run_log` | `schema_version` | `schema_status` |
+| --- | --- | --- | --- |
+| Node run file 0.3.24 | `"1"` | `2` | absent |
+| Python run file 3.0.14 | `"1"` | `2` | absent |
+| Python run file 3.1.0 source | `"1"` | `2` | `unstable-pre-1.0` |
+| CLI command `--json` | depends on the command | depends | always `unstable-pre-1.0` |
+
+`vantio demo` writes `vantio_run_log`, `schema_version` 2, `plane` `"optics"`, one call, and a small summary. It omits several Node envelope fields (`pid`, `free_mode`, `data_note`). Readers still accept it because the marker is `"1"`.
+
+## URL storage
+
+Hostname comes from URL parsing. Catalog checks lowercase the host. The stored call does not add a separate canonical-host field. Default ports are used for scope checks on Node (`destFromHref`) and are not a guaranteed field on the free-tier call record. Query strings are not stored. IPv6, proxies, and redirects are not folded into one destination. A redirect is a later request, recorded only if that request is in scope.
+
+## Demo and hand-written files
+
+`vantio demo` is an in-process stub: `POST /v1/chat/completions`, HTTP 200, host `optics-demo.invalid`, provider `openai`, bytes 0, action `OBSERVED`, duration 0, no network. The file is a normal run. There is no fixture flag.
+
+Tests in the repository write the same kind of file. Those tests are not part of the installed CLI.
+
+## Version skew
+
+Node 0.3.24 and Python 3.0.14 or 3.1.0 source can share one directory. Envelopes differ. No command migrates them. No command refuses a newer `schema_version`. Rollback of the CLI is best-effort parse of whatever JSON is there.
+
+`@vantio/agent-sdk` (Node) 0.2.4 does not write this directory.
+
+
+========================================================================
+FILE: STATUS-AND-OUTCOMES.md
+========================================================================
+
+# Status and outcomes
+
+CLI 0.3.24 prints two different ideas. Keep the tokens.
+
+| Token | Human label in CLI 0.3.24 | Use |
+| --- | --- | --- |
+| `OBSERVED` | Observed | Stored `action` on a free Optics call. The call was recorded. |
+| `SUCCESS` | Successful | Optics status when a call record exists, or a single application outcome for HTTP 200–399. |
+| `NOT_OBSERVED` | Not observed | No call records in the rollup, or the CLI `--json` run object has not read a provider outcome. |
+| `UNSUPPORTED` | Unsupported | `vantio status` when a provider package does not resolve from the current directory. |
+| `UNAVAILABLE` | Unavailable | Application outcome when no usable HTTP status was stored. Also registry lookup failure. |
+| `APPLICATION_ERROR` | Application error | Application outcome for HTTP 400–599. |
+| `OPTICS_ERROR` | Optics error | CLI `--json` when the child dies on a signal. Also `vantio status` when local data or a run file cannot be read. |
+| `PARTIAL` | Partial | Application rollup when the calls in one run do not share one application status. |
+| `UNKNOWN` | (no separate CLI human label) | Keep this token if you already have it from an older file or a reviewer note. Do not relabel it as success or as a block. |
+
+JSON values are the tokens. Human words are labels. Unpublished Python 3.1.0 source uses more specific customer sentences ("Provider authentication failed", and similar). CLI 0.3.24 was not updated to those sentences. On 0.3.24 the human application label stays "Application error", "Successful", "Unavailable", "Partial", or "Not observed".
+
+## How the CLI derives display fields
+
+For each stored call, `displayCall` sets:
+
+- `opticsStatus` = `SUCCESS` whenever the call object is being displayed. Optics status means "a record exists", not "the provider returned 200".
+- `applicationStatus` from the HTTP status only. The stored `ok` boolean is ignored.
+  - 200–399 → `SUCCESS`
+  - 400–599 → `APPLICATION_ERROR`
+  - missing or non-integer → `UNAVAILABLE`
+
+An empty call list rolls up to `NOT_OBSERVED` for both.
+
+If the calls in one run produce more than one application status, the rollup `applicationStatus` is `PARTIAL`. Optics status on that rollup stays `SUCCESS`.
+
+Published Python 3.0.14 can store `ok` true on a 4xx or 5xx response when the client returns the response object (`requests`, `httpx`, `aiohttp` in the 3.0.14 source). urllib is different: a local check of the 3.0.14 wheel recorded HTTP 500 from `urlopen` with `ok` false and `error` `network_error`. Trust the HTTP status and the derived application token. The `error` string on that urllib file says `network_error` even though `status` is 500. Unpublished 3.1.0 source stores `ok` false for 400–599 and does not label that HTTP status as `network_error`. The CLI rule is the same either way: it does not read `ok`.
+
+## Where the tokens show up
+
+| Surface | What you get |
+| --- | --- |
+| Run file `action` | `OBSERVED` for free Optics. The file is not rewritten into the display tokens. |
+| `vantio tail`, `search`, `prove`, `demo` | Optics status and application outcome columns or JSON fields. |
+| `vantio run --json` | CLI stdout object: `opticsStatus` is `SUCCESS`, or `OPTICS_ERROR` on a signal. `applicationStatus` on that object is `NOT_OBSERVED` because the CLI parent does not copy provider outcomes into it. Read the run file for call outcomes. |
+| `vantio status` | Install, telemetry posture, data directory, run scan, and provider-SDK resolve. `--json` includes `schema_status` `unstable-pre-1.0` and the vocabulary list. |
+| `vantio demo` | One stub HTTP 200. Optics status Successful. Application outcome Successful. Duration 0. No network. |
+
+## `vantio status` lines
+
+| Line | Meaning |
+| --- | --- |
+| Install version | `vantio --version` from the installed package. |
+| Registry latest | Filled only with `--check-registry`. Otherwise "not checked". A failed lookup is `UNAVAILABLE`. |
+| Telemetry | `off`, `opt-in`, or `disabled` for the CLI environment. See [TELEMETRY.md](TELEMETRY.md). This line does not describe Python 3.0.14 `shield()` behavior. |
+| Local data | Byte size of `~/.vantio`, skipping symbolic links. Unreadable data is `OPTICS_ERROR`. A missing directory is `NOT_OBSERVED`. |
+| Run logs | `SUCCESS` when at least one valid run file exists and none scanned as corrupt. `OPTICS_ERROR` if any file is unreadable or invalid JSON. `NOT_OBSERVED` when the directory is missing or has no valid runs. |
+| Provider SDKs | `SUCCESS` if that package resolves from the current directory, otherwise `UNSUPPORTED`. |
+
+## What the tokens exclude
+
+`SUCCESS` is not an allow decision. `APPLICATION_ERROR` is not an Optics block. `NOT_OBSERVED` is not proof the call was prevented. `OPTICS_ERROR` on a signal means the CLI parent saw a signal; it does not repair a missing run file.
+
+There is no stored lifecycle of `COMPLETE`, `INTERRUPTED`, `ABANDONED`, or `RECOVERED`.
+
+Enforcement actions (`BLOCKED_HOST`, `REDACTED`, and similar) can appear in files produced when a control-plane key was loaded. That path is not free Optics. This manual does not document how to turn it on. If you see those actions, you are outside the free observe description, and you should treat them as control-plane records rather than as Optics protection claims.
+
+
+========================================================================
+FILE: PRIVACY-AND-SECURITY.md
+========================================================================
+
+# Privacy and security
+
+Optics stores structural metadata about supported outbound calls. The design goal is to show where an agent called, when, and how large the exchange was, without storing the conversation.
+
+## Stored on the free path
+
+For a recorded call, the Node 0.3.24 file can contain hostname, provider guess, method, URL path, scheme, request size, response size, HTTP status, `ok`, content-type media type, duration, action `OBSERVED`, timestamp, a redaction count (zero in free mode), and an error class name on network failure. The envelope adds trace id, pid, ppid, Node version, platform, arch, start and end times, duration, CLI version, and summary counts.
+
+Published Python 3.0.14 stores a smaller call object: hostname, provider `"other"`, action, mediation, timestamp, and the extras that hook recorded (path, status, ok, duration, error name). The envelope has no pid. See [RECORD-REFERENCE.md](RECORD-REFERENCE.md).
+
+Response size on Node is `Content-Length` when the header exists. A missing header leaves the size empty or zero depending on the path. Streaming byte totals in a control-plane branch are outside free Optics.
+
+A local check on 2026-09-27 posted a prompt canary and a query token to a loopback server through `vantio run node` (CLI 0.3.24) and through `vantio run python3` with published `vantio-agent-sdk==3.0.14`. The run files contained the path and the host. They did not contain the prompt, the query token, or the response body.
+
+## Absent from the free record
+
+- Prompt text
+- Model completions and response bodies
+- A stored copy of request bodies
+- Query strings (`?` and everything after). The stored path is the URL pathname
+- Header maps
+- API keys and `Authorization` values, unless the application placed them inside the URL path that is stored
+
+The content-type field keeps the media type before `;`.
+
+## Path segments
+
+The query string is dropped. The path is not. A secret, token, or identifier placed in the path is stored with the call. Put secrets in headers or in bodies, which the free record does not keep, and treat path design as part of review.
+
+Exception text on the unpublished 3.1.0 transport classifier is reduced to a fixed phrase. That behavior is not the published 3.0.14 package. Do not assume 3.0.14 dropped every exception string until you inspect the file.
+
+## Redaction
+
+Free mode does not rewrite request bodies. A `redactions` count on a Node free-mode call stays zero. Body rewrite and blocking run only when a non-public control plane and API key are loaded inside the process. That mode is not free Optics, and this manual does not document it. Optics itself does not redact and does not block.
+
+`redact_pii` in the Python and Node SDKs is a library function for a control-plane policy. It is not the free Optics recorder. This manual does not document it.
+
+## Files on disk
+
+| Path | Contents | Mode when the writer creates it |
+| --- | --- | --- |
+| `~/.vantio/runs/<trace>.json` | Run log | File `0600`. Directory `0700` if that writer created it. |
+| `~/.vantio/telemetry-id` | Random telemetry id | `0600` when creation succeeds. |
+| `~/.vantio/config.json` | Leftover from older builds, if present | The current CLI does not read it for `run`. `vantio logout` deletes this file only. |
+| `./vantio-proof-<id>.html` | `vantio prove` HTML default | The HTML writer does not pass mode `0600`. |
+
+Unix modes are subject to umask and are not reapplied when the directory already exists. Python chmod errors are ignored. Windows ACLs are not set by these writers. A `~/.vantio` directory created earlier by telemetry can be wider than `0700` while a newly created `runs` directory is `0700`.
+
+Writers do not test whether `runs` is a symbolic link before writing. `vantio status` skips symbolic links when it sums directory size.
+
+Reviewers should treat `~/.vantio` as local operational data, readable by the user account that ran the agent.
+
+## Demo files
+
+`vantio demo` writes a normal run file for host `optics-demo.invalid`. Discover, search, tail, diff, and prove include it. There is no origin field that excludes fixtures. A security review of "all production calls" must filter that hostname, or any other fixture you wrote by hand.
+
+## Proof export
+
+`vantio prove` re-renders the run file as HTML, Markdown, or unstable JSON. It does not add a content hash, signature, or completeness manifest. `--from` reads a path you choose and renders a JSON object. That path does not have to carry `vantio_run_log`. Rendering a file does not copy it into `runs/` and does not prove Optics produced it.
+
+The HTML table uses host, Optics status, application outcome, HTTP status, bytes, and time. It does not print a `machine` field. Current writers do not set `machine`. Older prose that expects `machine` in the report does not match CLI 0.3.24 HTML.
+
+MCP `optics_prove` Markdown can include action, method, and path, and can print `machine` as a dash when the field is missing. CLI proof and MCP proof are not the same columns.
+
+## Telemetry
+
+The usage ping is a separate channel. Read [TELEMETRY.md](TELEMETRY.md) before you answer "does Optics phone home?"
+
+Short form: CLI 0.3.24 does not send unless `VANTIO_TELEMETRY=1`. Published Python 3.0.14 `shield()` does send unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. The field `hosts` on that ping lists customer LLM endpoint hostnames, not prompts.
+
+## Control plane
+
+If the environment already has `VANTIO_API_KEY` and `VANTIO_INGEST_URL` pointing at a host other than the public site, the process can load policy. The public host does not receive that key for configuration. This manual does not document the policy client. Do not describe those branches as free Optics features, and do not describe unobserved traffic as enforced.
+
+
+========================================================================
+FILE: TELEMETRY.md
+========================================================================
+
+# Telemetry
+
+Optics can send one optional usage ping to Vantio. The ping is separate from the local run log. The local run log stays on the machine. The ping is product telemetry, not customer evidence.
+
+Two published packages implement the gate differently. Use the row for the package you installed.
+
+| Package | When a ping is sent |
+| --- | --- |
+| `@vantio/cli@0.3.24` | Only when `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` keeps it off, including when opt-in is set. |
+| `vantio-agent-sdk==3.0.14` (PyPI) | `shield()` sends unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. The published module does not consult `VANTIO_TELEMETRY`. |
+| Python 3.1.0 source in this repository | Unpublished. Same opt-in rule as the CLI: off unless `VANTIO_TELEMETRY=1`, with the same two overrides. |
+
+`vantio status` prints the CLI posture for the current environment: `off`, `opt-in`, or `disabled`. It does not show whether a previous ping succeeded.
+
+## CLI 0.3.24
+
+Default is off. Nothing is sent for `vantio --help`, `vantio --version`, `vantio status`, `vantio demo`, or a run that records no call.
+
+```bash
+# Example status: illustrative
+VANTIO_TELEMETRY=1 vantio run node agent.js
+```
+
+```bash
+# Example status: illustrative
+VANTIO_TELEMETRY_DISABLED=1 vantio run node agent.js
+DO_NOT_TRACK=1 vantio run node agent.js
+```
+
+The ping fires once, after the first recorded in-scope call, because a request started inside the process exit hook does not flush. Later calls in that process do not send again.
+
+Destination: `POST {VANTIO_INGEST_URL or https://vantio.ai}/api/v1/telemetry`.
+
+Timeout: 3 seconds. Errors are discarded. The agent is not failed when the ping fails. The CLI captures `fetch` before it patches `globalThis.fetch`, so the ping is not recorded as an agent call.
+
+## Published Python 3.0.14
+
+This is the package `pip install vantio-agent-sdk` returns today.
+
+`shield()` (decorator or `async with`) calls `send_run_telemetry_once` on entry. That function sends when `is_telemetry_disabled()` is false. In 3.0.14 that function is false unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`.
+
+To keep the published SDK from sending:
+
+```bash
+# Example status: illustrative
+VANTIO_TELEMETRY_DISABLED=1 python agent.py
+DO_NOT_TRACK=1 python agent.py
+```
+
+`vantio run python` uses `install_process_wrap`, which installs observation and does not call `send_run_telemetry_once`. A process started only that way does not send the Python usage ping. Entering `shield()` does.
+
+The automatic `shield()` ping is one `run` event per process. It is sent before HTTP observations are recorded, so `callCount` is 0 and `hosts` is empty.
+
+## Unpublished Python 3.1.0 source
+
+The same `shield()` call site exists. The gate matches the CLI: the ping stays off unless `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` still force it off. This behavior is in the git tree. It is not what PyPI served on 2026-09-27.
+
+Git also contains an unpublished 3.0.15 change that introduces this opt-in gate. PyPI latest on that check was 3.0.14. Do not assume 3.0.15 is installed.
+
+## Payload
+
+The sender builds a fixed allowlist. Fields outside the list are not added.
+
+| Field | Meaning |
+| --- | --- |
+| `anonymousId` | Random id. Read from `~/.vantio/telemetry-id` when that file exists, otherwise created. Mode `0600` when the create succeeds. A filesystem failure uses an in-memory id for that process. The file is not under `runs/`. The JSON name `anonymousId` is the wire name. |
+| `runtime` | `node` from the CLI, `python` from the SDK. |
+| `runtimeVersion` | Node version string, or `platform.python_version()`. |
+| `os` | `process.platform` or `sys.platform`. |
+| `event` | `run` for this automatic ping. Other values are sent as `summary` if a caller passes them. |
+| `hosts` | Customer LLM endpoint hostnames the event includes, at most 50 strings. CLI 0.3.24 sends the hostname of the first recorded in-scope call, as a one-element list. The Python `shield()` ping sends an empty list because it runs before observations. These are the API hostnames the agent contacted, such as `api.openai.com`. They are not prompts. |
+| `callCount` | CLI: number of completed in-scope call records at send time. The first completed call reports 1. Python `shield()` ping: 0. |
+
+Optional fields, included only when the caller sets them: `sdkVersion`, `cliVersion`, `redactedCount`, `blockedCount`, `framework`. The CLI automatic ping sets `cliVersion`. The Python automatic ping sets `sdkVersion` when import succeeds.
+
+The request has `Content-Type: application/json`. It has no API key and no authorization header.
+
+The ping does not include prompts, completions, request or response bodies, API keys, environment dumps, source code, local paths, or the run-log file.
+
+## What telemetry is not
+
+A successful ping does not prove a run log was written. A missing ping does not prove a call was blocked. `vantio status` reports posture only.
+
+Setting `VANTIO_INGEST_URL` changes the ping's base URL when a ping is sent. On the CLI, a `VANTIO_INGEST_URL` that points at the public host does not turn on policy loading. Policy loading is outside this manual. See [PRIVACY-AND-SECURITY.md](PRIVACY-AND-SECURITY.md).
+
+
+========================================================================
+FILE: TROUBLESHOOTING.md
+========================================================================
+
+# Troubleshooting
+
+Support answers should name the installed versions first.
+
+```bash
+# Example status: illustrative
+vantio --version
+python -c 'import vantio; print(vantio.__version__)'
+```
+
+Expect CLI `0.3.24`. Expect Python `3.0.14` on a PyPI install. Python `3.1.0` means this git tree, not the published package.
+
+## No run file
+
+| What you ran | What happened |
+| --- | --- |
+| `node agent.js` without `vantio run` | The interceptor was not attached. |
+| `vantio run python` without `vantio-agent-sdk` on that interpreter | Warning on stderr. The agent continues. No calls are recorded. |
+| Python wrap with zero in-scope calls | Python writes nothing. An empty result is expected. |
+| Node wrap with zero in-scope calls | Node still writes a file with `calls: []` when the exit hook runs. |
+| `VANTIO_HOME` set | Writers use `$VANTIO_HOME/runs`. `vantio search`, `prove`, `tail`, `diff`, and `discover` read `~/.vantio/runs` only. The MCP reader uses `VANTIO_HOME`. Look in the directory the writer used. |
+| Process killed with `SIGKILL`, or the machine lost power | The exit hook did not run. There is no partial-recovery record. A missing file looks the same as a process that was never attached, except that a Node hook which did run writes even for zero calls. |
+| Host outside the catalog | The call is ignored. Add the host only if you intend to observe it: `VANTIO_EXTRA_LLM_HOSTS`. |
+
+`vantio tail --follow` stays quiet until exit, because the file is replaced once at the end, not appended per call.
+
+## A call you expected is missing
+
+Confirm the client is in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md). Then confirm the hostname. Then confirm the process was the wrapped one (`trace_id` printed on stderr at `vantio run` start: `run trace_id=…`).
+
+Browser traffic, a second language runtime, and a subprocess that drops the wrapper will not appear. Say `NOT_OBSERVED`. Do not say the call was blocked.
+
+## Commands exit 1 on a bad file
+
+`vantio search`, `vantio discover`, and `vantio prove --list` exit 1 when a `.json` file in the reader directory is unreadable or is not valid JSON. One corrupt file blocks those commands. `vantio status` keeps scanning and sets run optics status to `OPTICS_ERROR`. The MCP reader skips corrupt files. The same directory does not have one error policy.
+
+Move the bad file aside, or fix the JSON, and retry. Optics does not rebuild an empty store for you.
+
+`loadRunLog` also exits 1 when `vantio_run_log` is not `"1"`. Readers do not check `schema_version`.
+
+## Disk full and write errors
+
+Run-log write errors, including a full disk, are caught and discarded. The agent still exits. No health record is stored. If a file you expected is missing after a full disk, the write was dropped.
+
+`vantio prove` write failure exits 1 and prints the first line of the error. It does not label a half-written proof.
+
+## Wrong run selected
+
+The file name is the trace id with characters outside `A-Za-z0-9_-` replaced by `_`, cut at 80 characters, plus `.json`. The same trace id overwrites that file. There is no cross-process lock. Two writers with the same id replace one file.
+
+`find` by prefix uses `filename.includes(prefix)`. A short prefix can match more than one id. Pass a longer prefix.
+
+## Provider shows `other` on Python
+
+Published 3.0.14 stores `provider` `"other"`. Use `hostname`. Node may show `openai` for the same host because it guesses from substrings. Both can be correct for their writers.
+
+## `ok` and `network_error` on an HTTP error
+
+CLI display ignores `ok` and uses the status code. Application outcome for 400–599 is `APPLICATION_ERROR`.
+
+Published Python 3.0.14 urllib `urlopen` raises `HTTPError` for an HTTP error status. A local check of that wheel stored HTTP 500 as `ok` false and `error` `network_error`. The return path for `requests`, `httpx`, and `aiohttp` in that same source sets `ok` true when the call returns a response object, including a 4xx or 5xx. Unpublished 3.1.0 source stores `ok` false for 400–599 and does not use `network_error` for an HTTP status. You only have that 3.1.0 storage when you are running the unpublished tree.
+
+## Duration looks wrong
+
+Durations use the wall clock (`Date.now` on Node, `time.time` on Python). A step backward of the clock can store a negative Node duration. Python clamps at zero. Timestamps are UTC. Node uses a `Z` suffix. Python 3.0.14 uses an offset form from `datetime.isoformat()`. There is no sequence number when two timestamps tie. Order of timestamps is not a causality proof.
+
+`vantio demo` duration is fixed at 0 ms.
+
+## Telemetry surprised you
+
+CLI: the ping is off until `VANTIO_TELEMETRY=1`.
+
+Published Python `shield()`: the ping is on until `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`.
+
+`vantio run python` without entering `shield()` does not send the Python ping. Details: [TELEMETRY.md](TELEMETRY.md).
+
+## `vantio discover` is not every process
+
+It reads run logs on this machine for the time window (`24h` default, or `7d`, `30d`). curl typed in a terminal, a browser, and any unwrapped process are outside the list.
+
+## Login and keys
+
+`vantio login` is not a help command in 0.3.24. Free Optics does not ask for a key. If an old `~/.vantio/config.json` is still on disk, `vantio logout` deletes that file and does not delete `runs/`. The command is omitted from `vantio --help`.
+
+
+========================================================================
+FILE: UPGRADE-ROLLBACK-UNINSTALL.md
+========================================================================
+
+# Upgrade, rollback, and uninstall
+
+## Versions you can install today
+
+| Package | Install | Published | In this git tree |
+| --- | --- | --- | --- |
+| CLI | `npm install -g @vantio/cli@0.3.24` | 0.3.24 | 0.3.24 frozen |
+| Python | `pip install 'vantio-agent-sdk==3.0.14'` | 3.0.14 | 3.1.0 unpublished |
+
+Do not bump package versions as part of reading this manual. This manual does not publish anything.
+
+Unpublished Python 3.0.15 exists only in git history. It is not the PyPI package. Unpublished 3.1.0 is the version string in this commit's `pyproject.toml`. Behavior differences: [PYTHON-GUIDE.md](PYTHON-GUIDE.md).
+
+## From Python v2
+
+v3.0.0 removed `VantioSession` and `VANTIO_PROXY_ENDPOINT`. Observe runs inside the process. There is no proxy endpoint to configure.
+
+```python
+# Example status: illustrative
+from vantio import shield
+
+@shield
+async def run_agent():
+    ...
+```
+
+Or keep the script unchanged and start it with `vantio run python agent.py` after installing 3.0.14. Confirm a supported call appears in `vantio tail` before you treat the process as covered.
+
+v2 files, if you still have them, are not migrated. The CLI accepts JSON objects that carry `vantio_run_log` `"1"` and does not convert older shapes.
+
+## From Python 3.0.x to a future 3.1.0
+
+When 3.1.0 is published, read its changelog before you upgrade. Until then, production installs stay on 3.0.14. Expect these storage differences after a real 3.1.0 release, based on unpublished source, not on a promise that the published diff will be identical:
+
+- `ok` follows HTTP status (false for 400–599)
+- Extra outcome fields and `schema_status` on the Python run file
+- Telemetry becomes opt-in (`VANTIO_TELEMETRY=1`), matching the CLI
+- Socket connect duration is measured around the real connect
+
+CLI 0.3.24 will still display application outcome from the HTTP status and will still ignore `ok`. You do not need a CLI upgrade to read a 3.1.0 file's status code. You do need to avoid assuming 3.1.0 fields exist on a 3.0.14 file.
+
+The CLI is frozen at 0.3.24. Customer sentences such as "Provider rate-limited the request" are in unpublished Python source. They are not CLI 0.3.24 labels.
+
+## Mixed files in one directory
+
+Node and Python files share `~/.vantio/runs` and share `schema_version` 2. Their envelopes differ (pid, `by_host`, `workflow`, provider label). `vantio diff` uses `summary.by_host` when it is present and otherwise sums `calls`. A Python 3.0.14 file takes the second path.
+
+There is no negotiation and no refusal of a newer file. Restoring an older CLI keeps best-effort parsing.
+
+## Rollback
+
+```bash
+# Example status: illustrative
+npm install -g @vantio/cli@0.3.24
+pip install 'vantio-agent-sdk==3.0.14'
+```
+
+Rollback does not rewrite run files. Old and new files remain side by side until you delete them. There is no downgrade migration.
+
+## Retention
+
+No command prunes by age or size. Files remain until you delete them. Disk use is unbounded. That is the current behavior. It is not a retention policy you can configure.
+
+## Cleanup
+
+| Action | Effect |
+| --- | --- |
+| `vantio logout` | Deletes `~/.vantio/config.json` if it exists. Does not read the file. Does not delete `runs/`. Omitted from help. |
+| Delete `~/.vantio/runs/*.json` | Removes local run logs you choose. There is no dry-run and no deletion manifest. |
+| Delete `~/.vantio/telemetry-id` | The next opted-in ping creates a new random id. |
+| Delete a proof HTML/Markdown file you wrote | Removes that export only. |
+
+There is no command to delete one run by trace id. Remove the matching file under `runs/`. Remember prefix collisions if you delete by a short prefix. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+## Uninstall
+
+```bash
+# Example status: illustrative
+npm uninstall -g @vantio/cli
+pip uninstall vantio-agent-sdk
+```
+
+Uninstalling the packages leaves `~/.vantio` in place, including run logs and `telemetry-id`. Remove that directory yourself when you want the local data gone.
+
+The Node SDK and the MCP package are separate:
+
+```bash
+# Example status: illustrative
+npm uninstall @vantio/agent-sdk
+npm uninstall -g @vantio/optics-mcp
+```
+
+Uninstall does not unenroll a Phantom Engine host. This manual does not cover that product.
+
+## Accounts
+
+Free Optics 0.3.24 does not use `vantio login`. Older docs that tell you to log in before `vantio run` are stale. A leftover config file is removed with `vantio logout` or by deleting the file.
+
+
+========================================================================
+FILE: KNOWN-LIMITATIONS.md
+========================================================================
+
+# Known limitations
+
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: CLI 0.3.24, published Python 3.0.14, unpublished Python 3.1.0 source as labeled.
+
+## Absent on purpose in the current products
+
+| Item | State |
+| --- | --- |
+| Enforcement, blocking, redaction, spend caps | Phantom Engine. Free Optics records `OBSERVED` and does not apply those controls. |
+| SQLite or any other database | Absent. One JSON file per trace id. |
+| `vantio ui`, `vantio doctor`, a resident daemon | Absent. |
+| Alerting | Absent. |
+| OTLP export | Absent. A mapping sketch may exist elsewhere in the repository. Optics does not export OTLP. |
+| Stable schema | Absent. Contract is `unstable-pre-1.0`. |
+| PKG-02 and any shared record vocabulary shipped as a runtime | Future work. Not in the CLI or the published SDK. |
+| Retention, prune, max size | Absent. Files stay until you delete them. |
+| Cross-process file lock | Absent. In-process, Python locks its memory list only. |
+| Import into `runs/` | Absent. `prove --from` renders a file and leaves it where it is. |
+| Evidence origin, content hash, signature | Absent. Demo files look like other runs. |
+| Per-call span id, session id, `machine` | Writers do not set them. |
+| Lifecycle `INTERRUPTED` / `ABANDONED` / `RECOVERED` | Absent. |
+| Monotonic clock | Durations use the wall clock. |
+| Windows ACL | Not set. Unix modes `0700` / `0600` only, and only when the writer creates the path. |
+| Fleet inventory | `discover` is this machine's run logs. |
+
+Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. They are not protected by Optics.
+
+## Record gaps
+
+- Node writes a file for zero calls. Python writes only when at least one call was stored. "No file" means different things.
+- CLI readers ignore `VANTIO_HOME`. Writers and the MCP reader honor it.
+- Node provider labels are substring guesses. Published Python labels are `"other"`.
+- The same trace id overwrites one file. Prefix search can hit the wrong file.
+- A crash during the single write can leave a partial file. Write errors are swallowed.
+- `SIGKILL` skips the flush.
+- Query strings are dropped. Path segments are stored and can hold secrets.
+- Published Python 3.0.14 urllib records an HTTP error status with `error` `network_error`. The return path in that source can store `ok` true on a 4xx or 5xx. Display uses the status code.
+- Python files contain `"workflow": "sight_loop"`. That string is not current product terminology.
+- The published PyPI summary and the MCP package description still contain that older phrase. This manual does not adopt it.
+- `vantio prove` HTML and MCP Markdown do not show the same columns.
+- `prove --from` can render JSON that Optics did not write.
+- One corrupt JSON file fails `search`, `discover`, and `prove --list`, is flagged by `status`, and is skipped by MCP.
+- Node and Python envelopes differ under the same `schema_version`. Nothing migrates them.
+
+## Telemetry gap between published packages
+
+CLI 0.3.24 is opt-in. Published Python 3.0.14 `shield()` sends unless disabled with `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. Unpublished 3.1.0 source is opt-in. Describe the package the person installed. See [TELEMETRY.md](TELEMETRY.md).
+
+The telemetry field `hosts` means customer LLM endpoint hostnames. On the CLI ping it is the first recorded call's hostname. On the Python `shield()` ping it is empty.
+
+## Coverage of tests
+
+Repository tests exercise CLI commands, the Node interceptor on supported clients, telemetry allowlists, and the Python observe hooks. They are unit and integration tests in this repo. They are not a customer deployment, not a stranger-host proof, and not a certificate. This manual does not claim an external proof tier.
+
+Not covered by those tests as a product guarantee: SQLite, retention, cross-process locking, symlink confinement of `runs/`, disk-full evidence, `SIGKILL` flush, monotonic duration, automatic exclusion of demo files, or identical Node and Python envelopes.
+
+## Unpublished source is not the product
+
+Reading `packages/vantio-agent-sdk-py` at this commit shows version 3.1.0. The PyPI project JSON on 2026-09-27 reported latest version 3.0.14, and `pip install --target … vantio-agent-sdk==3.0.14` printed `3.0.14`. This manual did not upload a package. Features that exist only in 3.1.0 source are documented as unpublished. They are not in the manual's install instructions.
+
+
+========================================================================
+FILE: AI-GUIDE.md
+========================================================================
+
+# AI guide — Vantio Optics
+
+Use this file before answering questions about Vantio Optics. The version-matched manual is `docs/products/optics/` at manual version 1.
+
+## Version you must use
+
+| Install command people actually run | Version you may describe as installed |
+| --- | --- |
+| `npm install -g @vantio/cli` | `@vantio/cli@0.3.24` |
+| `pip install vantio-agent-sdk` | `vantio-agent-sdk==3.0.14` |
+
+This git tree also contains Python package version **3.1.0**. That version is **unpublished**. `pip install` does not install it. Describe 3.1.0 only with the label unpublished source. CLI 0.3.24 is frozen: do not invent later CLI flags or a newer CLI version.
+
+`contract_version` is `unstable-pre-1.0`. Command `--json` output carries `schema_status` `unstable-pre-1.0` and may change. There is no stable public schema.
+
+Read [VERSION-METADATA.json](VERSION-METADATA.json) and the page that matches the question. If this manual and an older README disagree, follow this manual for public claims and say which file you used.
+
+## Commands
+
+Describe a command only when it appears in this manual or in `vantio --help` for CLI 0.3.24. The help commands are:
+
+`run`, `demo`, `status`, `discover`, `prove`, `search`, `tail`, `diff`.
+
+`vantio logout` exists and is omitted from help. It deletes `~/.vantio/config.json` only. It does not delete run logs.
+
+Do not invent `vantio ui`, `vantio doctor`, a daemon, a prune command, an import command, or an OTLP export command.
+
+## What Optics does
+
+Optics observes supported calls and writes local metadata. Say that.
+
+Enforcement, blocking, redaction, and spend caps are Phantom Engine. Point to Phantom Engine documentation for those. Do not claim Optics blocks, redacts, or caps spend. Do not document Phantom Engine setup in this tree.
+
+## Coverage
+
+A missing record means the call was not observed. It does not mean the call was blocked, allowed, or safe. Do not infer coverage for browsers, unwrapped processes, or hosts outside the catalog. Use [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md).
+
+Preserve these tokens when they are the product's status. Do not paraphrase them into a different outcome:
+
+`UNKNOWN`, `UNAVAILABLE`, `PARTIAL`, `NOT_OBSERVED`, `OBSERVED`, `UNSUPPORTED`, `APPLICATION_ERROR`, `OPTICS_ERROR`, `SUCCESS`.
+
+`SUCCESS` on Optics status means a call record exists. It does not mean the provider succeeded. Provider outcome is `applicationStatus`, derived from the HTTP status.
+
+If a field is absent, say it is absent. Do not fill `machine`, span id, or evidence origin.
+
+## Telemetry
+
+CLI 0.3.24 sends a usage ping only when `VANTIO_TELEMETRY=1`, and stays silent when `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`.
+
+Published Python 3.0.14 is different. `shield()` sends the ping unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. `VANTIO_TELEMETRY=1` is not required on that published package. Unpublished 3.1.0 source uses the CLI opt-in rule. Do not tell a person on 3.0.14 that the ping is off by default.
+
+When you mention the payload field `hosts`, say it lists customer LLM endpoint hostnames (at most 50). On the CLI ping it is the hostname of the first recorded call. On the Python `shield()` ping it is empty because that ping is sent before observations.
+
+## Records and privacy
+
+Do not claim Optics stores prompts, completions, or request bodies on the free path. Query strings are dropped. Path segments can still contain secrets if the application put them there.
+
+Do not claim SQLite, alerting, a stable schema, PKG-02, or an OTLP exporter.
+
+Python files may contain `"workflow": "sight_loop"`. That stored string is not current product terminology. The product name is Vantio Optics. Do not explain the product as Sight Loop.
+
+## Examples
+
+If an example is marked illustrative, do not present it as a transcript from this manual's command check. Do not invent command output.
+
+## When you are unsure
+
+Say what the manual states, name the version, and stop. Do not guess a flag, a field, or a coverage claim.
+
+
+========================================================================
+FILE: CHANGELOG-GUIDE.md
+========================================================================
+
+# Changelog guide
+
+This manual is version 1. It is a docs set. It does not bump `@vantio/cli`, `vantio-agent-sdk`, or any other package.
+
+## Which history to read
+
+| You installed | Read |
+| --- | --- |
+| `@vantio/cli@0.3.24` | The CLI is frozen at 0.3.24. Behavior in this manual's Node pages matches that package. Later customer-wording ideas are backlog only and are not in 0.3.24. |
+| `vantio-agent-sdk==3.0.14` | [PYTHON-GUIDE.md](PYTHON-GUIDE.md) sections marked published. The package changelog inside the git tree also has 3.0.15 and 3.1.0 headings. Those headings describe commits that were not the PyPI release on 2026-09-27. |
+| A checkout of this repository | `pyproject.toml` says 3.1.0. That string is source. It is not a release you can pip install from PyPI until it is published. |
+
+Package changelogs live next to the packages (`packages/vantio-agent-sdk-py/CHANGELOG.md` and the CLI README). When a changelog line and the source of the published tag disagree, the published tag wins for "what did 3.0.14 do?" The 3.0.14 tag in this repository is commit `6f76dd84f52a1c3d02c6cef6c23be41aa3c4d35c`.
+
+## How to read the Python changelog without over-claiming
+
+`3.0.14` is a packaging-metadata release. SDK behavior relative to 3.0.13 is unchanged. The telemetry gate in that tag sends from `shield()` unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`.
+
+`3.0.15` in git is a documentation and gate correction that makes Python telemetry opt-in. Its changelog text says the payload schema is unchanged and also says telemetry stays off unless `VANTIO_TELEMETRY=1`. The gate change is real in that commit. The release was not what PyPI served. Do not tell operators that 3.0.15 is installed.
+
+`3.1.0` in git records HTTP outcome fields, `ok` aligned to status, socket timing, and the opt-in telemetry gate. It is unpublished. CLI 0.3.24 was not reopened to match its customer sentences.
+
+## CLI history that still affects support
+
+`0.3.24` is the current public CLI. It is free, local, and account-free. `vantio login` is not part of the help surface. `vantio logout` only deletes a leftover `config.json`.
+
+Command `--json` output includes `schema_status` `unstable-pre-1.0`. That line means the JSON may change. It does not mean the Node run file contains `schema_status`. The Node run file does not.
+
+## Manual changes
+
+| Manual version | Meaning |
+| --- | --- |
+| 1 | First public manual set under `docs/products/optics/`, matched to CLI 0.3.24 and PyPI Python 3.0.14, with unpublished 3.1.0 called out. |
+
+When a later manual version is cut, it should name the registry versions it was checked against and the source commit. Until PyPI serves 3.1.0, manuals must keep the split.
+
+## Words that changed
+
+The product name in this manual is Vantio Optics. Older package summaries contain the phrase Sight Loop. Published Python run files still store `workflow` `sight_loop`. Support should recognize the string and should not use it as the name of the product.
+
+Gate is an internal name for enforcement functions inside Phantom Engine. It is not a current standalone public SKU. This manual does not document it as something to install.
+
+
+========================================================================
+FILE: VERSION-METADATA.json
+========================================================================
+
+{
+  "product": "optics",
+  "manual_version": 1,
+  "audience": "public",
+  "status": "draft-honest",
+  "status_detail": "CLI 0.3.24 matches the frozen published npm package and this source tree. PyPI vantio-agent-sdk is 3.0.14. This source tree's Python package version is 3.1.0 and is not published. The manual describes pip-install behavior as 3.0.14 and labels 3.1.0 behavior as unpublished source.",
+  "council": "OPTICS_PUBLIC_DOCS_READY_FOR_COUNCIL",
+  "contract_version": "unstable-pre-1.0",
+  "source_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
+  "generated_at_utc": "2026-09-27T05:26:05Z",
+  "command_check_utc": "2026-09-27T05:36:00Z",
+  "registry_checked_utc": "2026-09-27T05:24:00Z",
+  "products": {
+    "cli": {
+      "package": "@vantio/cli",
+      "registry": "npm",
+      "public_version": "0.3.24",
+      "source_version": "0.3.24",
+      "frozen": true,
+      "source_matches_public": true
+    },
+    "python": {
+      "package": "vantio-agent-sdk",
+      "registry": "pypi",
+      "public_version": "3.0.14",
+      "source_version": "3.1.0",
+      "source_published": false,
+      "public_release_commit": "6f76dd84f52a1c3d02c6cef6c23be41aa3c4d35c",
+      "unpublished_intermediate": {
+        "version": "3.0.15",
+        "published": false,
+        "note": "Present in git history. PyPI latest on the registry check was 3.0.14. Do not document 3.0.15 as the installable package."
+      }
+    }
+  },
+  "related_public_packages": {
+    "node_sdk": {
+      "package": "@vantio/agent-sdk",
+      "registry": "npm",
+      "public_version": "0.2.4",
+      "writes_run_log": false
+    },
+    "optics_mcp": {
+      "package": "@vantio/optics-mcp",
+      "registry": "npm",
+      "public_version": "0.1.2",
+      "role": "read-only local run-log reader"
+    }
+  },
+  "pdf": {
+    "generated": false,
+    "reason": "No reviewed deterministic documentation renderer is in this repository. No doc-gen dependency was added."
+  },
+  "examples": {
+    "policy": "tested or illustrative",
+    "live_llm_provider_calls": "illustrative",
+    "command_transcript": "local CLI 0.3.24 and PyPI vantio-agent-sdk 3.0.14 checks recorded in README.md on 2026-09-27",
+    "global_npm_install": "not executed",
+    "pypi_install_method": "pip install --target, package version 3.0.14",
+    "telemetry_post": "not sent"
+  }
+}

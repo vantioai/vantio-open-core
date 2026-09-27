@@ -1,0 +1,62 @@
+{
+  "product": "optics",
+  "manual_version": 1,
+  "audience": "public",
+  "status": "draft-honest",
+  "status_detail": "CLI 0.3.24 matches the frozen published npm package and this source tree. PyPI vantio-agent-sdk is 3.0.14. This source tree's Python package version is 3.1.0 and is not published. The manual describes pip-install behavior as 3.0.14 and labels 3.1.0 behavior as unpublished source.",
+  "council": "OPTICS_PUBLIC_DOCS_READY_FOR_COUNCIL",
+  "contract_version": "unstable-pre-1.0",
+  "source_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
+  "generated_at_utc": "2026-09-27T05:26:05Z",
+  "command_check_utc": "2026-09-27T05:36:00Z",
+  "registry_checked_utc": "2026-09-27T05:24:00Z",
+  "products": {
+    "cli": {
+      "package": "@vantio/cli",
+      "registry": "npm",
+      "public_version": "0.3.24",
+      "source_version": "0.3.24",
+      "frozen": true,
+      "source_matches_public": true
+    },
+    "python": {
+      "package": "vantio-agent-sdk",
+      "registry": "pypi",
+      "public_version": "3.0.14",
+      "source_version": "3.1.0",
+      "source_published": false,
+      "public_release_commit": "6f76dd84f52a1c3d02c6cef6c23be41aa3c4d35c",
+      "unpublished_intermediate": {
+        "version": "3.0.15",
+        "published": false,
+        "note": "Present in git history. PyPI latest on the registry check was 3.0.14. Do not document 3.0.15 as the installable package."
+      }
+    }
+  },
+  "related_public_packages": {
+    "node_sdk": {
+      "package": "@vantio/agent-sdk",
+      "registry": "npm",
+      "public_version": "0.2.4",
+      "writes_run_log": false
+    },
+    "optics_mcp": {
+      "package": "@vantio/optics-mcp",
+      "registry": "npm",
+      "public_version": "0.1.2",
+      "role": "read-only local run-log reader"
+    }
+  },
+  "pdf": {
+    "generated": false,
+    "reason": "No reviewed deterministic documentation renderer is in this repository. No doc-gen dependency was added."
+  },
+  "examples": {
+    "policy": "tested or illustrative",
+    "live_llm_provider_calls": "illustrative",
+    "command_transcript": "local CLI 0.3.24 and PyPI vantio-agent-sdk 3.0.14 checks recorded in README.md on 2026-09-27",
+    "global_npm_install": "not executed",
+    "pypi_install_method": "pip install --target, package version 3.0.14",
+    "telemetry_post": "not sent"
+  }
+}
