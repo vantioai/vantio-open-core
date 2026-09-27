@@ -1,0 +1,113 @@
+{
+  "document": "CLEAN_HOST_LAB_MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "CLEAN_HOST_LAB_DESIGN_READY_FOR_COUNCIL",
+  "producer_role": "PLANNING_PRODUCER_ONLY",
+  "self_certified_council_pass": false,
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "environment_class": "CLEAN_HOST_INTERNAL_PROOF",
+  "evidence_tier": "UNSET",
+  "stranger_host": "NOT_RUN",
+  "phantom_box": "EXCLUDED",
+  "customer_validation": "UNSET",
+  "independent_verifier": "UNSET",
+  "requirement_status_label": "INTERNAL_PROOF",
+  "source_commit": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "branch": "cursor/clean-host-lifecycle-lab-5885",
+  "scaffold_self_check": {
+    "status": "RECORDED",
+    "command": "docs/planning/clean-host-lifecycle/scripts/check-guards.sh",
+    "ran_on_commit": "319c74e064a394bb2e64999c723b028d52b4574a",
+    "exit_code": 0,
+    "check_guards": "PASS",
+    "evidence_tier": "UNSET",
+    "stranger_host": "NOT_RUN",
+    "phantom_box": "EXCLUDED",
+    "temporary_lab_removed_on_exit": true,
+    "assigns_evidence_tier": false
+  },
+  "producer": {
+    "agent": "bc-696d1176-5194-564e-a77c-9001563d5885",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-696d1176-5194-564e-a77c-9001563d5885"
+  },
+  "files_sha256": [
+    {
+      "path": "docs/planning/clean-host-lifecycle/00-PROGRAM-BOUNDARY.md",
+      "sha256": "60be8fdeefc03ec1a1e42ef4e23cae3868d9e0627ce1b742243d3ff52dbc65f7"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/01-ARCHITECTURE.md",
+      "sha256": "b20dd9c3e3c75a51911a4abdfeeb4707d5e9963d7d57dd5b8ac37f8c20a5dd5c"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/02-RESET-AUTOMATION-PLAN.md",
+      "sha256": "d1724e814a1b4de27b9d627ab74ba02674e6517c1bc457ec83b7aa8339dc43db"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/03-LIFECYCLE-SCRIPT-INVENTORY.md",
+      "sha256": "ff8a962446a243b1099ba533bf62a3566ffe9458e11dda03808386a280c75918"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/04-STOP-CONDITIONS.md",
+      "sha256": "03d95e9aacbb445e8a9374a894324611b2226f7065a8495aa43d1921bdf8ecec"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/05-EVIDENCE-RETENTION.md",
+      "sha256": "df0ee6b91affb2f27cbbc5c942ca0cb3ae5355859a1b05681489a1055a03b226"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/06-INDEPENDENT-COUNCIL.md",
+      "sha256": "ba12a6e1f0b09fdd722047966bbe507a4f7570f3fa74d4800b31f9d0bf7f11f4"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/capture.sh",
+      "sha256": "32c7284d6a7da9e9c144d82ea994c953667f15199252ad6e83cbf9e7da5f57e1"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/check-guards.sh",
+      "sha256": "7b87cb8aa83779778f59fabeb4cbec10eb07a808d29316ddc352721021ac1714"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/emit-cycle-manifest.mjs",
+      "sha256": "b6e55e6b1510bafd88bd27f593941db164c9172111e64d81015d6952d0ff0963"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/expire.sh",
+      "sha256": "ba9c49067a1f17bc96348edee6f3ed5a10e3ab5f6de80b45f0d08fbbd7058b19"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/inspect-run.mjs",
+      "sha256": "a4b013a712c806343330e52d09ac59e2a17f22fbdb19306ab8d910b1c6a11cb7"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/lib.sh",
+      "sha256": "b5271ea05b373b1d20d5b7d8f66db1b2e988e8577a018860e0dc3936234c2efc"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/lifecycle.sh",
+      "sha256": "578d445ef54b2e881bde4a6f697a2e18297e6517511c8633e34001374e35d09d"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/preflight.sh",
+      "sha256": "01b53590e0f62386f4d50a28f8664461111daaf238caf62e0a43427866f96f9e"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/reset.sh",
+      "sha256": "16badcef868b6a17964925415cceeaa69885c65f1f0bbefbd4728afbbae0090d"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/retain.sh",
+      "sha256": "d6d62da53d96bfb09b3cdbfdd12465d52e1ff4d16402573b9aaad06c554f7ade"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/status.sh",
+      "sha256": "3e89876125729d45a744758b8b67a56fda2d968ba6c96dfc0c995e0d3130f324"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/scripts/stop.sh",
+      "sha256": "50c6954fe5884136cd21da1a9771085f2f71d811f9d88eeb0fa57e2d674b8e7f"
+    }
+  ]
+}
