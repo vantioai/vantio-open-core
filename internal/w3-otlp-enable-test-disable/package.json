@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/w3-otlp-enable-test-disable",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "INTERNAL_RESTRICTED harness that enables the default-disabled WS7 I3 traces adapter for one in-process proof, records the export attempt, and leaves the adapter disabled. No public OTLP support.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/w3-otlp-enable-test-disable/*.test.cjs"
+  }
+}
