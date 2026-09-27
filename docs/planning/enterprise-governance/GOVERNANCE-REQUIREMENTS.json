@@ -1,0 +1,243 @@
+{
+  "document": "GOVERNANCE-REQUIREMENTS",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "stable_schema": false,
+  "producer_classification": "ENTERPRISE_GOVERNANCE_E1_E3_PLAN_READY_FOR_COUNCIL",
+  "evidence_tier": "UNSET",
+  "customer_validation": "UNSET",
+  "note": "Planning ids only. PLANNED means specified in this packet. UNSATISFIED means the packet requires a property the cited sources do not show as passed. Neither token means implemented.",
+  "requirements": [
+    {
+      "id": "EG-E1-1",
+      "group": "E1",
+      "statement": "Customer root holds title to customer authority. Vantio is not a member of the root set.",
+      "status": "PLANNED",
+      "source": "01-E1-OWNERSHIP.md"
+    },
+    {
+      "id": "EG-E1-2",
+      "group": "E1",
+      "statement": "Host title stays with the customer. Enterprise stores enroll and retire intent. Phantom Engine on that host is the enroll mechanism.",
+      "status": "PLANNED",
+      "source": "01-E1-OWNERSHIP.md"
+    },
+    {
+      "id": "EG-E1-3",
+      "group": "E1",
+      "statement": "Policy intent is a versioned customer decision. Host attachment is a separate state.",
+      "status": "PLANNED",
+      "source": "01-E1-OWNERSHIP.md"
+    },
+    {
+      "id": "EG-E1-4",
+      "group": "E1",
+      "statement": "Export, hash, rollback, and uninstall remain customer-sufficient. The only recoverable evidence copy is not Vantio-only.",
+      "status": "PLANNED",
+      "source": "01-E1-OWNERSHIP.md"
+    },
+    {
+      "id": "EG-E1-5",
+      "group": "E1",
+      "statement": "Grants and approvals are customer-owned records. A missing Vantio copy does not erase them.",
+      "status": "PLANNED",
+      "source": "01-E1-OWNERSHIP.md"
+    },
+    {
+      "id": "EG-E1-6",
+      "group": "E1",
+      "statement": "Kernel enforcement, Optics observation, and billing stay outside Enterprise title.",
+      "status": "PLANNED",
+      "source": "01-E1-OWNERSHIP.md"
+    },
+    {
+      "id": "EG-E2-1",
+      "group": "E2",
+      "statement": "Grant scope is a subset of the delegator's envelope at approval time.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-2",
+      "group": "E2",
+      "statement": "not_before and not_after are required. Duration numbers stay NOT_SET.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-3",
+      "group": "E2",
+      "statement": "Workloads do not hold or receive security or recovery authority.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-4",
+      "group": "E2",
+      "statement": "Process spawn does not mint a grant.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-5",
+      "group": "E2",
+      "statement": "Redelegation is forbidden until EG-D1 is decided otherwise.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-6",
+      "group": "E2",
+      "statement": "ACTIVE is a host report. APPROVED is not attachment.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-7",
+      "group": "E2",
+      "statement": "Revocation returns exercise and leaves title with the customer root.",
+      "status": "PLANNED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E2-8",
+      "group": "E2",
+      "statement": "Expiry and revocation leave no expanded authority.",
+      "status": "UNSATISFIED",
+      "source": "02-E2-DELEGATED-AUTHORITY.md"
+    },
+    {
+      "id": "EG-E3-1",
+      "group": "E3",
+      "statement": "Every proposal has one approval class. A missing class is refused.",
+      "status": "PLANNED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-2",
+      "group": "E3",
+      "statement": "WIDEN requires two distinct customer identities. Same-person approval is refused.",
+      "status": "PLANNED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-3",
+      "group": "E3",
+      "statement": "RECOVERY completes with the customer party and without Vantio.",
+      "status": "PLANNED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-4",
+      "group": "E3",
+      "statement": "NARROW cannot appoint Vantio, erase evidence, or mark a host protected.",
+      "status": "PLANNED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-5",
+      "group": "E3",
+      "statement": "Root-set, recovery-party, and Vantio-witness removal stay at ROOT.",
+      "status": "PLANNED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-6",
+      "group": "E3",
+      "statement": "Vantio-only freeze, revoke, and recover, unsigned loosening, console attachment, workload self-approval, same-person dual control, wider-than-ceiling restore, dry-run-as-activation, and a second enforcement engine are REJECTED.",
+      "status": "PLANNED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-7",
+      "group": "E3",
+      "statement": "Recovery stays inside last-known, observe-only, and stay-quarantined, and does not restore a wider envelope.",
+      "status": "UNSATISFIED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-E3-8",
+      "group": "E3",
+      "statement": "Customer one-shot freeze on a host Vantio does not operate.",
+      "status": "UNSATISFIED",
+      "source": "03-E3-APPROVAL-CLASSES.md"
+    },
+    {
+      "id": "EG-SUB-1",
+      "group": "SUBORDINATION",
+      "statement": "An Enterprise approval is a proposal until the host reports a matching active version.",
+      "status": "PLANNED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SUB-2",
+      "group": "SUBORDINATION",
+      "statement": "Enterprise does not mark a host protected, enrolled, or enforced.",
+      "status": "PLANNED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SUB-3",
+      "group": "SUBORDINATION",
+      "statement": "If the Enterprise record store is unavailable, last-known host enforcement continues and the envelope is not widened.",
+      "status": "PLANNED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SUB-4",
+      "group": "SUBORDINATION",
+      "statement": "Open-core does not gain a second enforcement engine, a host loader, or an enroll command.",
+      "status": "PLANNED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SUB-5",
+      "group": "SUBORDINATION",
+      "statement": "Free Optics stays observe-only and account-free.",
+      "status": "PLANNED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SUB-6",
+      "group": "SUBORDINATION",
+      "statement": "A customer-owned on-host channel presents an approved record to Phantom Engine. The hosted store is not that channel.",
+      "status": "UNSATISFIED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SP-1",
+      "group": "CUSTOMER_SUFFICIENCY",
+      "statement": "Customer recovery party can freeze on a host Vantio does not operate, with Vantio unreachable and no Vantio credential.",
+      "status": "UNSATISFIED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SP-2",
+      "group": "CUSTOMER_SUFFICIENCY",
+      "statement": "Customer root can revoke a delegate and Vantio's witness role with every Vantio credential absent.",
+      "status": "UNSATISFIED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SP-3",
+      "group": "CUSTOMER_SUFFICIENCY",
+      "statement": "Recover with Vantio absent ends in last-known, observe-only, or stay-quarantined, inside the pre-containment envelope.",
+      "status": "UNSATISFIED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SP-4",
+      "group": "CUSTOMER_SUFFICIENCY",
+      "statement": "A Vantio-only credential attempting freeze, revoke, or recover is refused and host authority is unchanged.",
+      "status": "UNSATISFIED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    },
+    {
+      "id": "EG-SP-5",
+      "group": "CUSTOMER_SUFFICIENCY",
+      "statement": "Export, hash, rollback, and uninstall complete with Vantio absent, and the customer keeps the exported evidence.",
+      "status": "UNSATISFIED",
+      "source": "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md"
+    }
+  ]
+}
