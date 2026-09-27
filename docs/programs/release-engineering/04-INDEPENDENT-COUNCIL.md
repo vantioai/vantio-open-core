@@ -6,9 +6,11 @@ Status: `PENDING_INDEPENDENT_COUNCIL`
 
 `council_pass`: false
 
-Producer classification under review: `WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL`
+Producer classification under review: `WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL`
 
-The producer wrote this packet and the verifier. The producer does not sit this council and does not fill the verdict below.
+Prior council `bc-6ad40712-8957-5742-b9a4-b42fecf3b115` returned `WS11_RELEASE_ENGINEERING_NEEDS_REVISION` on tip `2e20cb018590dff720e2c209ad2b41ee2b9a0035`. That return is not the verdict of this revision. The verdict below stays pending.
+
+The producer wrote this packet and the verifier. The revision producer does not sit this council and does not fill the verdict below.
 
 ## Packet
 

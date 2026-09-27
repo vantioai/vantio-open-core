@@ -62,7 +62,7 @@ R11 `PROVED` requires a client identity different from the publisher and a hash 
 
 R12 names a retention class, a location, and a positive minimum. Private classes keep `customer_body_in_public_repo` false. `demonstrated: false` is a gap. The policy file says the retention archive was not operated in this force.
 
-R13 rejects customer manual text, `body_class: customer-manual`, and a public distribution flag on Phantom Engine or the private customer package. Optics must keep the customer-manual flags closed. The test double may be characterized. It cannot authorize a customer release. Phantom Engine in this packet was not re-fetched.
+R13 rejects customer manual text, `body_class: customer-manual`, and a public distribution flag on Phantom Engine or the private customer package. A Phantom Engine dossier is rejected unless `public_distribution` is false and the subject, every unit, and every artifact are `private` and agree with that flag and with each other. Optics must keep the customer-manual flags closed. The test double may be characterized. It cannot authorize a customer release. Phantom Engine in this packet was not re-fetched.
 
 R14 compares each unit's manifest version and docs version with the unit version. When the package is in `VERSION-METADATA.json`, the evaluator also reads the manifest and the `also` snippets. `MISMATCH` is a rejection. The existing `packageVersionProblems` check remains the tree-wide docs gate. This force calls it from the WS11 tests.
 

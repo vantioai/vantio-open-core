@@ -6,9 +6,9 @@ Producer: Cursor cloud agent `bc-b0d40632-9601-5475-9941-b2aab0f4b75d`, model Gr
 
 Producer URL: https://cursor.com/agents/bc-b0d40632-9601-5475-9941-b2aab0f4b75d
 
-Producer classification: `WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL`
+Producer classification: `WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL`
 
-That classification means this packet is ready for a separate council. `council_pass` is false. `04-INDEPENDENT-COUNCIL.md` stays `PENDING_INDEPENDENT_COUNCIL`.
+Council `bc-6ad40712-8957-5742-b9a4-b42fecf3b115` returned `WS11_RELEASE_ENGINEERING_NEEDS_REVISION` on tip `2e20cb018590dff720e2c209ad2b41ee2b9a0035`. This revision closes the Phantom R13 distribution hole and is ready for a separate council. `council_pass` is false. `04-INDEPENDENT-COUNCIL.md` stays `PENDING_INDEPENDENT_COUNCIL`.
 
 ## What this force implements
 

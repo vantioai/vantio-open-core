@@ -420,6 +420,20 @@ function evalRetention(dossier) {
   return { id: "R12", ...gap("retention policy named; retention not demonstrated") };
 }
 
+function phantomDistributionAgrees(dossier, record) {
+  if (record.public_distribution !== false) return false;
+  if (!isObject(dossier.subject) || dossier.subject.distribution !== "private") return false;
+  if (!Array.isArray(dossier.units) || dossier.units.length === 0) return false;
+  for (const unit of dossier.units) {
+    if (!isObject(unit) || unit.distribution !== "private") return false;
+    if (!Array.isArray(unit.artifacts) || unit.artifacts.length === 0) return false;
+    for (const artifact of unit.artifacts) {
+      if (!isObject(artifact) || artifact.distribution !== "private") return false;
+    }
+  }
+  return true;
+}
+
 function evalPrivateDistribution(dossier) {
   const record = dossier.private_distribution;
   if (typeof record.manual_text === "string" && record.manual_text.length > 0) {
@@ -452,6 +466,9 @@ function evalPrivateDistribution(dossier) {
     return { id: "R13", ...sat("test double stays private and version-matched") };
   }
   if (record.body_class !== "absent") return { id: "R13", ...rej("phantom dossier body class is not absent") };
+  if (!phantomDistributionAgrees(dossier, record)) {
+    return { id: "R13", ...rej("phantom subject, units, and artifacts do not agree on private distribution") };
+  }
   return { id: "R13", ...sat("phantom distribution stays private") };
 }
 

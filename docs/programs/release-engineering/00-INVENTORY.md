@@ -4,7 +4,9 @@ Audience: INTERNAL_RESTRICTED
 
 Base commit: `89f95099d0dce463307eb75d78e7fcf2ef99feb2`
 
-Producer classification: `WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL`
+Producer classification: `WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL`
+
+Council `bc-6ad40712-8957-5742-b9a4-b42fecf3b115` returned `WS11_RELEASE_ENGINEERING_NEEDS_REVISION` on tip `2e20cb018590dff720e2c209ad2b41ee2b9a0035`. This revision closes the Phantom R13 distribution hole. The classification is not a council verdict.
 
 This inventory is the tree this force read. The machine-readable copy is `generated/pin-report.json`. A later edit that changes a pin, a hash, or a workflow trigger fails `scripts/release/ws11/ws11.test.mjs` until the generated files are emitted again.
 

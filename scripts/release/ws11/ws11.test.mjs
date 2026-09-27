@@ -146,6 +146,27 @@ function authorized() {
   };
 }
 
+function phantomPublishCandidate(distribution) {
+  const dossier = authorized();
+  dossier.subject = {
+    product: "phantom-engine",
+    package: "vantio-phantom-engine",
+    distribution,
+  };
+  dossier.units[0].package = "ghcr.io/vantioai/vantio-phantom-engine";
+  dossier.units[0].distribution = distribution;
+  dossier.units[0].artifacts[0].distribution = distribution;
+  dossier.private_distribution = {
+    applicable: true,
+    public_distribution: false,
+    channel: "private",
+    body_class: "absent",
+    customer_body_in_public_repo: false,
+  };
+  dossier.retention.class = "phantom-private";
+  return dossier;
+}
+
 function runVerifier(args, dossier) {
   const dir = mkdtempSync(join(tmpdir(), "ws11-"));
   const dossierPath = join(dir, "dossier.json");
@@ -159,7 +180,9 @@ test("requirement catalog is R1 through R18", () => {
   const catalog = loadRequirements(ROOT);
   assert.deepEqual(catalog.ids, ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "R16", "R17", "R18"]);
   const manifest = readJson(`${PROGRAM}/WS11-MANIFEST.json`);
-  assert.equal(manifest.producer_classification, "WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL");
+  assert.equal(manifest.producer_classification, "WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL");
+  assert.equal(manifest.prior_council, "WS11_RELEASE_ENGINEERING_NEEDS_REVISION");
+  assert.equal(manifest.prior_council_tip, "2e20cb018590dff720e2c209ad2b41ee2b9a0035");
   assert.equal(manifest.council_status, "PENDING_INDEPENDENT_COUNCIL");
   assert.equal(manifest.council_pass, false);
   assert.equal(manifest.release_success, false);
@@ -214,6 +237,10 @@ test("current surfaces characterize with gaps and withhold release success", () 
   assert.equal(phantom.private_distribution.public_distribution, false);
   assert.equal(phantom.private_distribution.this_force_refetched, false);
   assert.equal(phantom.subject.distribution, "private");
+  assert.equal(phantom.units.every((unit) => unit.distribution === "private"), true);
+  assert.equal(phantom.units.every((unit) => unit.artifacts.every((artifact) => artifact.distribution === "private")), true);
+  assert.equal(requirement(evaluateDossier(phantom, { root: ROOT }), "R13").status, "SATISFIED");
+  assert.equal(requirement(evaluateDossier(phantom, { root: ROOT }), "R13").detail, "phantom distribution stays private");
 });
 
 test("workspace SBOM and license scan stay bounded to what the tree shows", () => {
@@ -284,6 +311,76 @@ test("a complete dossier can authorize a release while claim tokens stay unclaim
   const held = evaluateDossier(characterized, { root: ROOT });
   assert.equal(held.disposition, "CHARACTERIZED");
   assert.equal(held.release_success, false);
+});
+
+test("public Phantom subject, unit, and artifact with a false public flag do not authorize release", () => {
+  const opened = phantomPublishCandidate("public");
+  const openedResult = evaluateDossier(opened, { root: ROOT });
+  assert.notEqual(openedResult.disposition, "RELEASE_AUTHORIZED");
+  assert.equal(requirement(openedResult, "R13").status, "REJECTED");
+  assert.match(requirement(openedResult, "R13").detail, /do not agree on private distribution/);
+  assert.equal(openedResult.release_success, false);
+  assert.equal(openedResult.council_pass, false);
+  for (const key of ["formal_slsa_level", "formal_certification", "formal_reproducibility", "hardware_backed_provenance"]) {
+    assert.equal(openedResult[key], "NOT_CLAIMED");
+  }
+
+  const openLayer = {
+    subject(dossier) { dossier.subject.distribution = "public"; },
+    unit(dossier) { dossier.units[0].distribution = "public"; },
+    artifact(dossier) { dossier.units[0].artifacts[0].distribution = "public"; },
+  };
+  for (const [layer, open] of Object.entries(openLayer)) {
+    const dossier = phantomPublishCandidate("private");
+    open(dossier);
+    const result = evaluateDossier(dossier, { root: ROOT });
+    assert.notEqual(result.disposition, "RELEASE_AUTHORIZED", layer);
+    assert.equal(requirement(result, "R13").status, "REJECTED", layer);
+    assert.match(requirement(result, "R13").detail, /do not agree on private distribution/, layer);
+    assert.equal(result.release_success, false, layer);
+    assert.equal(result.council_pass, false, layer);
+  }
+
+  const mixed = phantomPublishCandidate("private");
+  mixed.subject.distribution = "mixed";
+  const mixedResult = evaluateDossier(mixed, { root: ROOT });
+  assert.notEqual(mixedResult.disposition, "RELEASE_AUTHORIZED");
+  assert.equal(requirement(mixedResult, "R13").status, "REJECTED");
+  assert.equal(mixedResult.release_success, false);
+  assert.equal(mixedResult.council_pass, false);
+
+  const split = phantomPublishCandidate("private");
+  const publicArtifact = JSON.parse(JSON.stringify(split.units[0].artifacts[0]));
+  publicArtifact.filename = "vantio-phantom-engine-public.bin";
+  publicArtifact.distribution = "public";
+  split.units[0].artifacts.push(publicArtifact);
+  const splitResult = evaluateDossier(split, { root: ROOT });
+  assert.notEqual(splitResult.disposition, "RELEASE_AUTHORIZED");
+  assert.equal(requirement(splitResult, "R13").status, "REJECTED");
+  assert.equal(splitResult.release_success, false);
+  assert.equal(splitResult.council_pass, false);
+
+  const extraUnitDossier = phantomPublishCandidate("private");
+  const extraUnit = JSON.parse(JSON.stringify(extraUnitDossier.units[0]));
+  extraUnit.package = "ghcr.io/vantioai/vantio-phantom-engine-extra";
+  extraUnit.distribution = "public";
+  extraUnitDossier.units.push(extraUnit);
+  const extraUnitResult = evaluateDossier(extraUnitDossier, { root: ROOT });
+  assert.notEqual(extraUnitResult.disposition, "RELEASE_AUTHORIZED");
+  assert.equal(requirement(extraUnitResult, "R13").status, "REJECTED");
+  assert.equal(extraUnitResult.release_success, false);
+  assert.equal(extraUnitResult.council_pass, false);
+
+  const closed = phantomPublishCandidate("private");
+  const closedResult = evaluateDossier(closed, { root: ROOT });
+  assert.equal(closedResult.disposition, "RELEASE_AUTHORIZED");
+  assert.equal(requirement(closedResult, "R13").status, "SATISFIED");
+  assert.equal(requirement(closedResult, "R13").detail, "phantom distribution stays private");
+  assert.equal(closedResult.release_success, true);
+  assert.equal(closedResult.council_pass, false);
+  for (const key of ["formal_slsa_level", "formal_certification", "formal_reproducibility", "hardware_backed_provenance"]) {
+    assert.equal(closedResult[key], "NOT_CLAIMED");
+  }
 });
 
 test("program prose and generated records avoid forbidden claim phrases", () => {
@@ -386,6 +483,7 @@ test("adversarial dossiers are rejected or withheld", () => {
     ["self-assigned release success", (dossier) => { dossier.release_success = true; }, "REJECTED"],
     ["self-assigned council pass", (dossier) => { dossier.council_pass = true; }, "REJECTED"],
     ["program classification on a package dossier", (dossier) => { dossier.program_classification = "WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL"; }, "REJECTED"],
+    ["revision classification on a package dossier", (dossier) => { dossier.program_classification = "WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL"; }, "REJECTED"],
     ["replacement bytes for an existing version", (dossier) => { dossier.partial.recovery = "REUPLOAD_DIFFERENT_BYTES"; }, "REJECTED"],
     ["customer manual text", (dossier) => { dossier.private_distribution.manual_text = "manual body"; }, "REJECTED"],
     ["customer manual class", (dossier) => { dossier.private_distribution.body_class = "customer-manual"; }, "REJECTED"],

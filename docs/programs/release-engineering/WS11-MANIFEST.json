@@ -1,7 +1,11 @@
 {
   "schema": "vantio.ws11.program/v1",
   "audience": "INTERNAL_RESTRICTED",
-  "producer_classification": "WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL",
+  "producer_classification": "WS11_RELEASE_ENGINEERING_REVISION_READY_FOR_COUNCIL",
+  "prior_producer_classification": "WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL",
+  "prior_council": "WS11_RELEASE_ENGINEERING_NEEDS_REVISION",
+  "prior_council_tip": "2e20cb018590dff720e2c209ad2b41ee2b9a0035",
+  "prior_council_agent": "bc-6ad40712-8957-5742-b9a4-b42fecf3b115",
   "council_status": "PENDING_INDEPENDENT_COUNCIL",
   "council_pass": false,
   "release_success": false,
@@ -16,6 +20,11 @@
   "producer": {
     "agent": "bc-b0d40632-9601-5475-9941-b2aab0f4b75d",
     "url": "https://cursor.com/agents/bc-b0d40632-9601-5475-9941-b2aab0f4b75d",
+    "model": "grok-4.7"
+  },
+  "revision_producer": {
+    "agent": "bc-704011d3-67f8-5bb7-93fa-3824550cba5c",
+    "url": "https://cursor.com/agents/bc-704011d3-67f8-5bb7-93fa-3824550cba5c",
     "model": "grok-4.7"
   },
   "verifier": "scripts/release/ws11/verify.mjs",

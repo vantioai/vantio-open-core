@@ -18,7 +18,7 @@ The catalog is `REQUIREMENTS.json`. The evaluator in `scripts/release/ws11/evalu
 | R10 | Registry-byte verification | Gap. `NOT_FETCHED`, including Python, whose historical register label is only a citation. | Gap. | Gap. |
 | R11 | Ordinary-client proof | Gap. Not run. | Gap. | Gap. |
 | R12 | Evidence retention | Gap. Class and location are named. `demonstrated` is false. | Gap. Class `phantom-private`. | Gap. Class `private-customer`. |
-| R13 | Private Phantom Engine and customer distribution | Satisfied. Customer-manual flags are closed. | Satisfied. `public_distribution` false, channel `private`, body absent. | Satisfied for characterization. The test double cannot authorize a release. |
+| R13 | Private Phantom Engine and customer distribution | Satisfied. Customer-manual flags are closed. | Satisfied. `public_distribution` false agrees with private subject, unit, and artifact distribution. Channel `private`. Body absent. | Satisfied for characterization. The test double cannot authorize a release. |
 | R14 | Version-matched docs gates | Satisfied against `VERSION-METADATA.json` and the manifests. | Satisfied as not applicable. | Satisfied as not applicable. |
 | R15 | Emergency release and revocation | Satisfied. Path not invoked. | Satisfied. Path not invoked. | Satisfied. Path not invoked. |
 | R16 | Partial-publication recovery | Gap. Not assessed. Recovery value remains `DO_NOT_REPLACE_BYTES`. | Gap. | Gap. |
