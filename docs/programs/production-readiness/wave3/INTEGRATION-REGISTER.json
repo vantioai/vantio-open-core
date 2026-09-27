@@ -30,6 +30,19 @@
   "decision_reported_as_enforcement": false,
   "contract_reported_as_kernel_enforcement": false,
   "unattached_mechanism_reported_as_active_protection": false,
+  "healthy_enforcing_reported_as_host_enforcement": false,
+  "blocked_host_reported_as_host_enforcement": false,
+  "enforce_stage_reported_as_host_enforcement": false,
+  "promoted_match_reported_as_host_enforcement": false,
+  "missing_evidence_collapsed_to_success": false,
+  "unknown_evidence_collapsed_to_success": false,
+  "unavailable_evidence_collapsed_to_success": false,
+  "optimistic_success": false,
+  "eligible_plane": "NONE",
+  "named_eligible_plane": false,
+  "infra_requirement": "W3-INFRA-REQ-1",
+  "execution_ceiling": "HOST_ATTACHMENT_FALSE",
+  "product_health_failure_truth": "W3_PRODUCT_HEALTH_FAILURE_TRUTH_READY_FOR_COUNCIL",
   "independent_verification_status": "NOT_INDEPENDENTLY_VERIFIED",
   "preferred_execution": [
     "CONTRACT_ONLY",
@@ -216,6 +229,18 @@
       "planes_recorded": ["DECISION", "EVIDENCE"],
       "planes_not_applied": ["HOST_ENFORCEMENT", "APPLICATION_ENFORCEMENT"],
       "note": "Uninstall is recorded and not performed. No files are removed. A request to mark it performed is refused."
+    },
+    {
+      "id": "product_health_failure_truth",
+      "module": "internal/pe-integrated-runtime",
+      "wave2_state": "COMPOSED_ON_MERGED_PE_RUNTIME",
+      "execution": "HOST_ATTACHMENT_FALSE",
+      "host_attachment": false,
+      "kernel_executed": false,
+      "active_protection": false,
+      "planes_recorded": ["OBSERVATION", "DECISION"],
+      "planes_not_applied": ["HOST_ENFORCEMENT", "APPLICATION_ENFORCEMENT"],
+      "note": "Product health uses the shared health states. HEALTHY_ENFORCING stays on OBSERVATION. BLOCKED_HOST, ENFORCE, and PROMOTED_MATCH stay on DECISION. Missing, unavailable, and unknown evidence stay visible. Eligible plane is NONE under W3-INFRA-REQ-1."
     }
   ]
 }
