@@ -1,0 +1,99 @@
+{
+  "document": "OPTICS_OPTION_C_REVALIDATION_MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "OPTICS_OPTION_C_REVALIDATED_READY_FOR_COUNCIL",
+  "amendment": "NOT_REQUIRED",
+  "producer_role": "REVALIDATION_PRODUCER_ONLY",
+  "producer_identity": {
+    "agent": "bc-6c7884b7-0d3c-5c54-84f7-8a5e7bca41fe",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-6c7884b7-0d3c-5c54-84f7-8a5e7bca41fe",
+    "self_certified_council_pass": false
+  },
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "repository": "vantioai/vantio-open-core",
+  "revalidation_base": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "revalidation_base_subject": "Merge pull request #83 from vantioai/cursor/pe-ws4-vocabulary-binding-f9f5",
+  "merged_plan": {
+    "founder_brief_label": "OPTICS_STORE_OPTION_C_PLAN_MERGED_NO_IMPLEMENTATION",
+    "pull_request": 69,
+    "merge": "79b53e0e29df047aabb1863b62609ffd7b4dcff7",
+    "plan_tip": "f6e90c148ec07b9e0d019dc89e852284d26a7cbf",
+    "in_repo_producer_classification": "OPTICS_STORE_OPTION_C_VERIFIED_PLAN_READY_FOR_COUNCIL",
+    "in_file_council_status": "PENDING_COUNCIL",
+    "control_plane_status": "MERGED_PLAN_COUNCIL_PENDING",
+    "ancestor_of_base": true
+  },
+  "decision": {
+    "token": "STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+    "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+    "verification": "STORE_OPTION_C_VERIFIED_ARCHITECTURE_ONLY",
+    "engine_source": "CITED_FROM_RATIFIED_TEXT",
+    "engine_citation_path": "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md",
+    "engine_citation_section": "12",
+    "engine_sentence": "Embedded SQLite, WAL, application-owned schema, path `~/.vantio/optics/store.sqlite` under the evidence root.",
+    "a2_section": "4",
+    "a2_sentence": "Option C is ratified architecture: embedded SQLite with WAL and an application-owned schema.",
+    "rejected_long_term_index": [
+      "A",
+      "B",
+      "D",
+      "E"
+    ],
+    "node_binding": "UNSELECTED",
+    "founder_decision_9": "UNRESOLVED",
+    "decisions_2_through_13": "UNRESOLVED",
+    "gate_8": "CLOSED",
+    "schema_status": "unstable-pre-1.0"
+  },
+  "o7": {
+    "status": "NOT_AUTHORIZED",
+    "store_write": "NOT_ACTIVATED",
+    "predecessors": [
+      "O2",
+      "O6",
+      "O12"
+    ],
+    "entry_steps": {
+      "pkg01_private_contract_present_unwired": true,
+      "o2_contract_accepted": false,
+      "o1_health_code_accepted": false,
+      "o11_then_o12_accepted": false,
+      "founder_decision_9_then_o6": false,
+      "o7_force_opened": false
+    }
+  },
+  "hard_stops": {
+    "database_created": false,
+    "sqlite_file_present": false,
+    "sqlite_dependency_present": false,
+    "node_binding_selected": false,
+    "schema_implemented": false,
+    "migration_executed": false,
+    "record_conversion": false,
+    "package_change": false,
+    "cli_reopened": false,
+    "cli_version": "0.3.24",
+    "gate_8_opened_in_architecture_file": false,
+    "customer_migration": false,
+    "evidence_tier": "UNSET",
+    "production_plan_council_filled_by_this_force": false
+  },
+  "checks": {
+    "input_sha256_recheck": "MATCH_ALL",
+    "plan_files_sha256_recheck": "MATCH_ALL",
+    "dependency_graph_sha256": "c9702d2dbb4f75f0f9c668efc144a080935e0d950ceb107d12d3455b8f9e66ce",
+    "golden_vector": {
+      "byte_length": 428,
+      "sha256": "a12adfa5f7b59aa3c4c8c98a52d36a50dcf861c3f8aea9bee7ee2eac70fd263a"
+    }
+  },
+  "files_sha256": {
+    "docs/planning/optics-option-c-revalidation/00-REVALIDATION.md": "ed2c8be7a0d601116d145a0ffb311389b2c066f72bb13c67694c99aa9cd76f6a",
+    "docs/planning/optics-option-c-revalidation/10-INDEPENDENT-COUNCIL.md": "c0ad7e7d074a631dcf44774a83263f983ce313a91f3bd9c16deb61241e00580f",
+    "tests/optics-option-c-revalidation/direct.test.cjs": "f334a519929b153850beb41b581dc560311ae8cf9d36be1d0c09af46770d81b9",
+    "tests/optics-option-c-revalidation/adversarial.test.cjs": "6e8569307a7c128dd5b6b64d8706c78986a0a690f8ed52f090866caff73d10c9"
+  },
+  "files_sha256_note": "This manifest is excluded because writing its own hash would change the bytes."
+}
