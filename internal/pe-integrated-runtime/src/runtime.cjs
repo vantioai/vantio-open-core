@@ -19,6 +19,7 @@ const {
   projectSequential,
   projectUninstall,
 } = require("./project.cjs");
+const { composeProductHealth } = require("./product-health.cjs");
 
 const VERSION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -195,6 +196,9 @@ function quoteHealth(record) {
   return {
     state: record.state,
     freshness: record.freshness,
+    failure_classification: record.failure_classification,
+    failure_classification_basis: record.audit ? record.audit.failure_classification_basis : null,
+    evidence_source: record.evidence_source,
     independent_verification_status: record.independent_verification_status,
     green: record.audit ? record.audit.green : null,
     proved: record.audit ? record.audit.proved : null,
@@ -720,10 +724,23 @@ function aggregatePlane(name, contributions) {
   };
 }
 
+function productHealth(runtime, request) {
+  if (!runtime || runtime.kind !== "PE_INTEGRATED_RUNTIME") {
+    throw new Error("productHealth requires a runtime from createRuntime");
+  }
+  const view = snapshot(runtime);
+  if (request == null) return view.product_health;
+  if (typeof request !== "object" || Array.isArray(request)) {
+    return composeProductHealth(runtime, { planes: view.planes, request: null, request_shape: "invalid" });
+  }
+  if (Object.keys(request).length === 0) return view.product_health;
+  return composeProductHealth(runtime, { planes: view.planes, request });
+}
+
 function snapshot(runtime) {
   const planes = {};
   for (const name of PLANES) planes[name] = aggregatePlane(name, runtime.contributions);
-  return {
+  const view = {
     kind: "PE_INTEGRATED_RUNTIME_SNAPSHOT",
     producer_classification: "W3_PE_INTEGRATED_RUNTIME_READY_FOR_COUNCIL",
     council_status: "PENDING_INDEPENDENT_COUNCIL",
@@ -752,6 +769,8 @@ function snapshot(runtime) {
     proved_external: false,
     independent_verification_status: "NOT_INDEPENDENTLY_VERIFIED",
   };
+  view.product_health = composeProductHealth(runtime, { planes: view.planes, request: {} });
+  return view;
 }
 
 function createRuntime(options = {}) {
@@ -783,5 +802,6 @@ module.exports = {
   createRuntime,
   integrate,
   integrateAll,
+  productHealth,
   snapshot,
 };

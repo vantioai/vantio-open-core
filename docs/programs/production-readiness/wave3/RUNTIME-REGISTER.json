@@ -40,6 +40,19 @@
   "decision_reported_as_enforcement": false,
   "contract_reported_as_kernel_enforcement": false,
   "unattached_mechanism_reported_as_active_protection": false,
+  "healthy_enforcing_reported_as_host_enforcement": false,
+  "blocked_host_reported_as_host_enforcement": false,
+  "enforce_stage_reported_as_host_enforcement": false,
+  "promoted_match_reported_as_host_enforcement": false,
+  "missing_evidence_collapsed_to_success": false,
+  "unknown_evidence_collapsed_to_success": false,
+  "unavailable_evidence_collapsed_to_success": false,
+  "optimistic_success": false,
+  "eligible_plane": "NONE",
+  "named_eligible_plane": false,
+  "infra_requirement": "W3-INFRA-REQ-1",
+  "execution_ceiling": "HOST_ATTACHMENT_FALSE",
+  "product_health_failure_truth": "W3_PRODUCT_HEALTH_FAILURE_TRUTH_READY_FOR_COUNCIL",
   "independent_verification_status": "NOT_INDEPENDENTLY_VERIFIED",
   "preferred_execution": [
     "CONTRACT_ONLY",
@@ -55,5 +68,6 @@
     "ebpf_loaded": false,
     "active_protection": false
   },
-  "reading": "A decision, a contract row, an in-process stage, and a shared-health token stay on their own planes. None of them is host enforcement, application enforcement, or active protection in this runtime."
+  "reading": "A decision, a contract row, an in-process stage, and a shared-health token stay on their own planes. None of them is host enforcement, application enforcement, or active protection in this runtime.",
+  "product_health_reading": "Product health uses the shared health states on the observation plane. BLOCKED_HOST, ENFORCE, and PROMOTED_MATCH stay on the decision plane. Host attachment status is HOST_ATTACHMENT_FALSE. The eligible plane is NONE and the infrastructure requirement is W3-INFRA-REQ-1. EVIDENCE_UNAVAILABLE and ENFORCEMENT_UNKNOWN remain visible."
 }
