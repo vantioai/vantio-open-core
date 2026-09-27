@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/optics-record-reader",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE | INERT | NOT SHIPPED | READ_AND_EXPLAIN | NO_WRITE_BACK | NO_LIVE_WRITER | NO_MIGRATION | NO_STABLE_SCHEMA. PKG-02 Unit F inert reader. Not inside @vantio/cli 0.3.24. Not a stable schema.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-pkg02-unit-f/*.test.cjs"
+  }
+}
