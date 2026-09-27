@@ -1,0 +1,160 @@
+{
+  "document": "CLEAN_HOST_SEQUENCE",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "CLEAN_HOST_BLOCKED_INFRA_READY_FOR_COUNCIL",
+  "environment_class": "CLEAN_HOST_INTERNAL_PROOF",
+  "evidence_tier": "UNSET",
+  "stranger_host": "NOT_RUN",
+  "phantom_box": "EXCLUDED",
+  "customer_validation": "UNSET",
+  "independent_verifier": "UNSET",
+  "source_commit": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "probed_at_utc": "2026-09-27T11:18:58Z",
+  "rows": [
+    {
+      "order": 1,
+      "step": "clean_baseline",
+      "result": "BLOCKED_INFRA",
+      "missing": "Resettable host image with a recorded before-digest. This pod cgroup is 0::/system.slice/pod-gaa3lai7yrhjnlcigqmih3fb4q-4c8e13b4/init. The merged design does not provision a second machine, VM image, container build, or Kubernetes job."
+    },
+    {
+      "order": 2,
+      "step": "compatibility",
+      "result": "BLOCKED_INFRA",
+      "missing": "/sys/kernel/btf/vmlinux absent as root. /lib/modules/6.12.94+ absent. /proc/config.gz and /boot/config-6.12.94+ absent. bpftool absent. unprivileged_bpf_disabled=2. P2 treats missing BTF as REQUIRED_DEPENDENCY_MISSING."
+    },
+    {
+      "order": 3,
+      "step": "artifact_verify",
+      "result": "BLOCKED_INFRA",
+      "missing": "gh repo view vantioai/vantio-phantom-engine could not resolve the repository. No local loader, image digest, chart, or embedded eBPF object. GHCR_TOKEN and GITHUB_TOKEN unset. GHCR was not queried."
+    },
+    {
+      "order": 4,
+      "step": "install",
+      "result": "BLOCKED_INFRA",
+      "missing": "No verified artifact and no BTF. Open-core has no host loader. Nothing was installed."
+    },
+    {
+      "order": 5,
+      "step": "observe",
+      "result": "BLOCKED_INFRA",
+      "missing": "Host observe follows install. The check-guards.sh loopback fixture is a separate process result and does not fill this row."
+    },
+    {
+      "order": 6,
+      "step": "ingress",
+      "result": "BLOCKED_INFRA",
+      "missing": "No loader, no BTF, ip command absent, bpffs entry count 0."
+    },
+    {
+      "order": 7,
+      "step": "egress",
+      "result": "BLOCKED_INFRA",
+      "missing": "No cgroup_skb/egress attachment and no cluster. Packaging plan records that Kubernetes --enroll-watch does not auto-attach that program."
+    },
+    {
+      "order": 8,
+      "step": "allowed",
+      "result": "BLOCKED_INFRA",
+      "missing": "No enrolled policy attachment. The free-path shape check accepts only action OBSERVED."
+    },
+    {
+      "order": 9,
+      "step": "denied",
+      "result": "BLOCKED_INFRA",
+      "missing": "No drop path loaded. bpffs is empty."
+    },
+    {
+      "order": 10,
+      "step": "app_host_correlation",
+      "result": "BLOCKED_INFRA",
+      "missing": "Loader PID-offset file absent. /run/vantio absent."
+    },
+    {
+      "order": 11,
+      "step": "proposal",
+      "result": "BLOCKED_INFRA",
+      "missing": "Enterprise activation sequence is PLANNED and unimplemented. EG-SUB-6 customer-owned channel is UNSATISFIED."
+    },
+    {
+      "order": 12,
+      "step": "simulation",
+      "result": "BLOCKED_INFRA",
+      "missing": "No installed engine simulation mode. The investor-demo scaffold was not run."
+    },
+    {
+      "order": 13,
+      "step": "canary",
+      "result": "BLOCKED_INFRA",
+      "missing": "No installed version and no second host."
+    },
+    {
+      "order": 14,
+      "step": "enforcement",
+      "result": "BLOCKED_INFRA",
+      "missing": "BTF absent, loader absent, bpffs empty. No program was loaded."
+    },
+    {
+      "order": 15,
+      "step": "restart",
+      "result": "BLOCKED_INFRA",
+      "missing": "No vantio or phantom systemd unit."
+    },
+    {
+      "order": 16,
+      "step": "reboot",
+      "result": "BLOCKED_INFRA",
+      "missing": "No dedicated lab host whose reboot is in charter. Reboot was not issued."
+    },
+    {
+      "order": 17,
+      "step": "degradation",
+      "result": "BLOCKED_INFRA",
+      "missing": "No running enforcer. libssl.so.3 and libgnutls.so.30 are both present."
+    },
+    {
+      "order": 18,
+      "step": "recovery",
+      "result": "BLOCKED_INFRA",
+      "missing": "EG-SP-3 is UNSATISFIED. python/pe_customer_pack.py is not in this repository. No pre-containment snapshot."
+    },
+    {
+      "order": 19,
+      "step": "evidence_export",
+      "result": "BLOCKED_INFRA",
+      "missing": "EG-SP-5 customer-held export needs an installed host product. The exerciser deletes its retention bundle on exit."
+    },
+    {
+      "order": 20,
+      "step": "revocation",
+      "result": "BLOCKED_INFRA",
+      "missing": "EG-SP-2 needs a customer root and a grant. No grant exists. No API key was created."
+    },
+    {
+      "order": 21,
+      "step": "rollback",
+      "result": "BLOCKED_INFRA",
+      "missing": "No installed digest and no previous digest."
+    },
+    {
+      "order": 22,
+      "step": "upgrade",
+      "result": "BLOCKED_INFRA",
+      "missing": "No pair of pinned artifact versions. CLI 0.3.24 was not reopened."
+    },
+    {
+      "order": 23,
+      "step": "uninstall",
+      "result": "BLOCKED_INFRA",
+      "missing": "No install was performed."
+    },
+    {
+      "order": 24,
+      "step": "residual_inspection",
+      "result": "BLOCKED_INFRA",
+      "missing": "Post-uninstall map, unit, and package inventory requires an install. bpffs stayed empty. /usr/local/bin/vantio is absent."
+    }
+  ]
+}

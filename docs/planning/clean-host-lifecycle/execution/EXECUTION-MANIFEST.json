@@ -1,0 +1,74 @@
+{
+  "document": "CLEAN_HOST_EXECUTION_MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "CLEAN_HOST_BLOCKED_INFRA_READY_FOR_COUNCIL",
+  "producer_role": "EXECUTION_PRODUCER_ONLY",
+  "self_certified_council_pass": false,
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "environment_class": "CLEAN_HOST_INTERNAL_PROOF",
+  "evidence_tier": "UNSET",
+  "stranger_host": "NOT_RUN",
+  "phantom_box": "EXCLUDED",
+  "customer_validation": "UNSET",
+  "independent_verifier": "UNSET",
+  "requirement_status_label": "INTERNAL_PROOF",
+  "classifications_assigned": [
+    "CLEAN_HOST_BLOCKED_INFRA_READY_FOR_COUNCIL"
+  ],
+  "evidence_tiers_assigned": [],
+  "source_commit": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "merged_design_commit": "2bff8ceb6ba0e3d5a3083c51f14051de72e5fd2c",
+  "merged_design_pull_request": 76,
+  "branch": "cursor/clean-host-lab-execution-62cc",
+  "sequence_result": "BLOCKED_INFRA",
+  "sequence_row_count": 24,
+  "exerciser": {
+    "command": "docs/planning/clean-host-lifecycle/scripts/check-guards.sh",
+    "source_commit": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+    "started_at_utc": "2026-09-27T11:18:58Z",
+    "exit_code": 0,
+    "check_guards": "PASS",
+    "evidence_tier": "UNSET",
+    "stranger_host": "NOT_RUN",
+    "phantom_box": "EXCLUDED",
+    "temporary_lab_removed_on_exit": true,
+    "assigns_evidence_tier": false,
+    "fills_sequence_row": false
+  },
+  "producer": {
+    "agent": "bc-36ae62af-00aa-561d-ba4e-e99dd8ea62cc",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-36ae62af-00aa-561d-ba4e-e99dd8ea62cc"
+  },
+  "files_sha256": [
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/00-EXECUTION-BOUNDARY.md",
+      "sha256": "83431f4f8b0211484202836ff80e6fe98921d1cf014d998f9bbd767460d92025"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/01-HOST-PROBE.md",
+      "sha256": "ee6ccdcbf0d775ff4d03008b1effb2cdd18b877ff6f7f6f7238f499ff121de15"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/02-SEQUENCE-MATRIX.md",
+      "sha256": "527c8249c0c5405724c215beb194456a0033c6c420b6797d4853ed21d0259932"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/03-MERGED-DESIGN-EXERCISER.md",
+      "sha256": "ff2cf08bee18fdb247772660bd03eff2ad7dd7ab075d0032c795c25f9337e00f"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/04-MISSING-PREREQUISITES.md",
+      "sha256": "861016f191e710c750eedcb5190832269211395f01b53767e2ace769ae9ae8b1"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/05-INDEPENDENT-COUNCIL.md",
+      "sha256": "724c7a42552b4d739a2f6e378e7ed44a9cdac9815ae740027229520fab2be7eb"
+    },
+    {
+      "path": "docs/planning/clean-host-lifecycle/execution/SEQUENCE.json",
+      "sha256": "faab30cb8ed177a4d3ee667b3a2bfefa00535c57bcbf1f1a8865ba3816744040"
+    }
+  ]
+}
