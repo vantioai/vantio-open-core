@@ -592,5 +592,13 @@
       "title": "Product system audit",
       "state": "OPEN_DRAFT"
     }
-  ]
+  ],
+  "superseding_authority": {
+    "id": "AUTH-WAVE2-2026-09-27",
+    "classification": "WAVE2_AUTHORITY_RECONCILED_READY_FOR_COUNCIL",
+    "authority_date": "2026-09-27",
+    "record": "docs/programs/production-readiness/authority/WAVE2-AUTHORITY.json",
+    "historical_packet_rewritten": false,
+    "reading_rule": "On a conflict, docs/programs/production-readiness/authority/WAVE2-AUTHORITY.json is the current authority. Earlier fields in this file remain the 2026-09-27T07:44:14Z refresh observation."
+  }
 }
