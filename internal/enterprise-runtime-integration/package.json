@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/enterprise-runtime-integration",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "INTERNAL_RESTRICTED composition of Enterprise E1-E3 records with the Phantom Engine integrated runtime. Record layer only. No live customer authority.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/enterprise-runtime-integration/*.test.cjs"
+  }
+}
