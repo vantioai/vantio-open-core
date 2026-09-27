@@ -1,0 +1,216 @@
+{
+  "document": "OPTICS_PRODUCTION_PACKAGES",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "OPTICS_STORE_OPTION_C_VERIFIED_PLAN_READY_FOR_COUNCIL",
+  "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+  "external_predecessor": {
+    "id": "PKG-01",
+    "role": "allowlist_and_denylist",
+    "on_this_commit": "private contract @vantio/optics-evidence-contract 0.0.0-unstable-pre-1.0",
+    "live_import": false
+  },
+  "identity_note": "O-numbers are identities. Execution order is dependency_graph. Satisfaction owners are existing PKG ids or existing architecture sections. O11 and O14 are ordering constraints inside their satisfaction owners, not second builds.",
+  "packages": [
+    {
+      "id": "O1",
+      "name": "Self-health and diagnostic event model",
+      "status": "DESIGN_SKETCH_ONLY",
+      "satisfaction_owner": "PKG-03",
+      "sketch": "02-O1-SELF-HEALTH-BOUNDARIES.md",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O2",
+      "name": "Application store contract",
+      "status": "CONSTRAINT_VERIFIED_NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-05",
+      "isolation": "future database sits behind this contract",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O3",
+      "name": "Writer vocabulary consumption",
+      "status": "SOURCE_PRESENT_INERT",
+      "satisfaction_owner": "PKG-02",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O4",
+      "name": "Portable proof",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-04",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O5",
+      "name": "Correlation identity",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-09",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O6",
+      "name": "Node binding selection",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "satisfaction_owner": "PKG-06",
+      "founder_decision": 9,
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O7",
+      "name": "Transactional persistence behind the contract",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-07",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O8",
+      "name": "Legacy JSON compatibility and explicit copy",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-08",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O9",
+      "name": "Retention, pruning, deletion, and restore",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-11",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O10",
+      "name": "Bounded query",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-10",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O11",
+      "name": "Cardinality and overload caps",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-12",
+      "ordering_constraint_only": true,
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O12",
+      "name": "Fail-open, crash, and recovery behavior",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-12",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O13",
+      "name": "Coverage transparency",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-13",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O14",
+      "name": "Freshness and completeness emission",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-10",
+      "ordering_constraint_only": true,
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O15",
+      "name": "Trends, baselines, and indicators",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "PKG-15",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O16",
+      "name": "Local read-only UI",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "satisfaction_owner": "PKG-14",
+      "founder_decision": 13,
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O17",
+      "name": "Alerting",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "satisfaction_owner": "PKG-16",
+      "founder_decision": 3,
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O18",
+      "name": "Network export",
+      "status": "NEEDS_FOUNDER_DECISION",
+      "satisfaction_owner": "PKG-17",
+      "founder_decision": 12,
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O19",
+      "name": "Customer annotations",
+      "status": "NOT_AUTHORIZED",
+      "satisfaction_owner": "architecture decision-pack section 6 and roadmap section 22",
+      "evidence_tier": "UNSET"
+    },
+    {
+      "id": "O20",
+      "name": "Release, upgrade, and customer-validation posture",
+      "status": "DEFERRED",
+      "satisfaction_owner": "roadmap sections 7 and 21; OF-50, OF-51, OF-52 on PKG-13",
+      "evidence_tier": "UNSET"
+    }
+  ],
+  "dependency_graph": {
+    "edges": [
+      ["PKG-01", "O1"],
+      ["PKG-01", "O2"],
+      ["PKG-01", "O3"],
+      ["PKG-01", "O4"],
+      ["PKG-01", "O5"],
+      ["PKG-01", "O12"],
+      ["PKG-01", "O13"],
+      ["PKG-01", "O15"],
+      ["PKG-01", "O18"],
+      ["PKG-01", "O19"],
+      ["PKG-01", "O20"],
+      ["O1", "O10"],
+      ["O1", "O12"],
+      ["O1", "O13"],
+      ["O2", "O6"],
+      ["O2", "O7"],
+      ["O2", "O10"],
+      ["O2", "O11"],
+      ["O2", "O12"],
+      ["O2", "O19"],
+      ["O3", "O5"],
+      ["O4", "O8"],
+      ["O4", "O18"],
+      ["O5", "O10"],
+      ["O6", "O7"],
+      ["O11", "O12"],
+      ["O12", "O7"],
+      ["O7", "O8"],
+      ["O7", "O9"],
+      ["O7", "O10"],
+      ["O7", "O20"],
+      ["O8", "O20"],
+      ["O10", "O14"],
+      ["O10", "O15"],
+      ["O10", "O16"],
+      ["O10", "O17"],
+      ["O12", "O17"],
+      ["O15", "O17"],
+      ["O16", "O19"]
+    ],
+    "file_backed_query_note": "The O7 to O10 edge applies to file-backed query mode. Memory-adapter query does not wait on O7."
+  },
+  "status_counts": {
+    "DESIGN_SKETCH_ONLY": 1,
+    "CONSTRAINT_VERIFIED_NOT_AUTHORIZED": 1,
+    "SOURCE_PRESENT_INERT": 1,
+    "NOT_AUTHORIZED": 12,
+    "NEEDS_FOUNDER_DECISION": 4,
+    "DEFERRED": 1
+  }
+}
