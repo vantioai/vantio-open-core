@@ -93,7 +93,7 @@
     "docs/planning/optics-option-c-revalidation/00-REVALIDATION.md": "ed2c8be7a0d601116d145a0ffb311389b2c066f72bb13c67694c99aa9cd76f6a",
     "docs/planning/optics-option-c-revalidation/10-INDEPENDENT-COUNCIL.md": "c0ad7e7d074a631dcf44774a83263f983ce313a91f3bd9c16deb61241e00580f",
     "tests/optics-option-c-revalidation/direct.test.cjs": "f334a519929b153850beb41b581dc560311ae8cf9d36be1d0c09af46770d81b9",
-    "tests/optics-option-c-revalidation/adversarial.test.cjs": "6e8569307a7c128dd5b6b64d8706c78986a0a690f8ed52f090866caff73d10c9"
+    "tests/optics-option-c-revalidation/adversarial.test.cjs": "acaff4152cb848592c4119df04f7d7b59948040466add7e50a43135783113598"
   },
   "files_sha256_note": "This manifest is excluded because writing its own hash would change the bytes."
 }

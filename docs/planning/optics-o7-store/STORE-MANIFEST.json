@@ -1,0 +1,61 @@
+{
+  "document": "OPTICS_O7_STORE_MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_READY_FOR_COUNCIL",
+  "producer_role": "IMPLEMENTATION_PRODUCER_ONLY",
+  "producer_identity": {
+    "agent": "bc-4b9b153e-e636-58b6-a894-7de8dd2cd819",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-4b9b153e-e636-58b6-a894-7de8dd2cd819",
+    "self_certified_council_pass": false
+  },
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "repository": "vantioai/vantio-open-core",
+  "starting_commit": "6d409eb73b8875b1c525348a92e9db42a74291b9",
+  "engine": {
+    "source": "CITED_FROM_RATIFIED_TEXT",
+    "sentence": "Embedded SQLite, WAL, application-owned schema, path `~/.vantio/optics/store.sqlite` under the evidence root.",
+    "python_mechanism": "stdlib_sqlite3",
+    "node_binding": "UNSELECTED"
+  },
+  "node_binding": "UNSELECTED",
+  "founder_decision_9": "UNRESOLVED",
+  "evidence_tier": "UNSET",
+  "default_write_path": false,
+  "operational_schema_version": 1,
+  "privacy_generation": 1,
+  "catalog_o7_status_left_untouched": "NOT_AUTHORIZED",
+  "blocked_reason": "NODE_BINDING_UNSELECTED",
+  "unmet_not_closed": ["O1", "O2", "O6", "O11", "O12", "O8", "O10"],
+  "hard_stops": {
+    "node_binding_selected": false,
+    "sqlite_package_dependency": false,
+    "tracked_sqlite_file": false,
+    "cli_reopened": false,
+    "cli_version": "0.3.24",
+    "python_sdk_version": "3.1.0",
+    "gate_8_opened_in_architecture_file": false,
+    "customer_migration": false,
+    "legacy_copy": false,
+    "default_write_path": false,
+    "evidence_tier": "UNSET",
+    "decisions_2_through_13_resolved_by_this_force": false
+  },
+  "files_sha256": {
+    "docs/planning/optics-o7-store/00-STORE.md": "67c64a10f8bfe4197ef35e98093cf8542e323cc0b527ee3871897282bf5a611c",
+    "docs/planning/optics-o7-store/10-INDEPENDENT-COUNCIL.md": "1fd8e196f7f8dfe444bae7256bc2a965e125bcada92036368f2e46ecf7d7caa7",
+    "packages/optics-operational-store/src/optics_operational_store/store.py": "645c07287ea94686540cad03420de9a877e1be03dec6aad45c116e2eb5f6feef",
+    "packages/optics-operational-store/src/optics_operational_store/posture.py": "5b93aba1b3669ffa5297bbee10b06e9859cb3982cc880907a97b82fd044c49e6",
+    "packages/optics-operational-store/src/optics_operational_store/__init__.py": "87bac557e1c456493af0d2b1d9855a4715af18454bba6187820f3e0a824145b2",
+    "packages/optics-operational-store/src/open.cjs": "a5eed36ea38b923c69be5305123786e8f20675c0b168b425a311296e838a0c61",
+    "packages/optics-operational-store/src/boundary.cjs": "d84de57d5a85ef65aecfee78321af0a47cf6a24a10c667a324468d5f39bdb3ba",
+    "packages/optics-operational-store/src/index.cjs": "c2e4d07820e148fb85d825eb76f88ab8bd38b251c1d73acef5a7fbf5228d685b",
+    "tests/optics-o7-store/direct_test.py": "358e61ce9738b08c51df9cf7af897c19d7bedf23a25886b2ca69f22b40bd6e0b",
+    "tests/optics-o7-store/adversarial_test.py": "3ea2ad06af0def867015bc7174b6c8a5fabdef1c68cbce7fa5d8175f92a4b33c",
+    "tests/optics-o7-store/direct.test.cjs": "d4cf74db5ab850a080c4f2b70a3c1940a1cdf2698a30557e0f40482ea53f6766",
+    "tests/optics-o7-store/adversarial.test.cjs": "7c23bab11ce605b3762de3620aaeccdf0a8195e575c07917925edd4f9e43ecb9",
+    "tests/optics-o7-store/support.py": "5c401fc0c805062d6ab299bb0fc72304a7b0a0b6a7109ad02455e5ad018b6d31"
+  },
+  "files_sha256_note": "This manifest is excluded because writing its own hash would change the bytes."
+}
