@@ -21,7 +21,7 @@
   "brief_sha256": "465814bcb72d78bb9f119b065eb4f63f975a127b0d7111987ddb391ab99d2381",
   "files_sha256": [
     {
-      "path": "docs/programs/production-readiness/wave3/00-BOUNDARY.md",
+      "path": "docs/programs/production-readiness/wave3/04-BOUNDARY.md",
       "sha256": "d048ca7d49c40b13255ce2cff1b58bfe75343788d80627066fc283645abf5efc"
     },
     {

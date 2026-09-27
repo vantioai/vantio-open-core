@@ -1,64 +1,32 @@
-# Wave 3 Track 4 — eligible host-attachment plane
+# Wave 3 Track 1 boundary
 
 Audience: INTERNAL_RESTRICTED
 
-Producer role: inventory producer only. This agent does not sit the independent council, does not self-assign a council pass, and does not assign an evidence tier.
+Force: independent council for Founder decision 9, the Node SQLite binding.
 
-Producer identity: Cursor cloud agent `bc-dabadb29-fac1-59b2-a2d5-2baee8da6403`, model Grok 4.7.
+Starting commit: `0620f10ee52d3abcea18c1c988df02f687f51b36`.
 
-Producer URL: https://cursor.com/agents/bc-dabadb29-fac1-59b2-a2d5-2baee8da6403
+The ratified engine stays embedded SQLite with WAL and an application-owned schema. This track selects the Node binding. It does not implement it.
 
-Producer classification: `W3_ELIGIBLE_PLANE_NONE_BLOCKED_INFRA_PACKET_READY`
+## In scope
 
-That classification means the inventory found no eligible plane, the blocked-infrastructure packet is written, and the packet is ready for a separate council. It is not a council verdict. It is not `STRANGER_HOST_PROVED`. It is not `PROVED_EXTERNAL`. It is not `CUSTOMER_VALIDATED`.
+- Compare repository-compatible Node bindings against the store contract.
+- Record the selection, the version pin, the fallback, rollback, platforms, and the release impact.
+- Leave a verdict in this directory and the decision packet under `docs/internal/optics-o7/`.
 
-## 1. Locked input
+## Out of scope
 
-| Item | Value |
-| --- | --- |
-| Repository | `vantioai/vantio-open-core` |
-| Starting commit | `0620f10ee52d3abcea18c1c988df02f687f51b36` |
-| Commit subject | Merge Enterprise E1-E3 onto main. Source-only. Internal. Record layer only. |
-| `origin/main` | Same commit. Fetched before this packet was written. |
-| Branch | `cursor/wave3-eligible-plane-inventory` |
-| Brief | `uploads/w3-t4-eligible-plane-inventory.md` |
-| Brief sha256 | `465814bcb72d78bb9f119b065eb4f63f975a127b0d7111987ddb391ab99d2381` |
-| Writable paths | `docs/programs/production-readiness/wave3/` and `docs/internal/wave3/clean-host/` |
-| Selected plane | `NONE` |
-| Lifecycle | `BLOCKED_INFRA` |
-| Evidence tier | `UNSET` |
-| Stranger-host | `NOT_RUN` |
-| Host attachment | `NOT_PERFORMED` |
-| eBPF load | `NOT_PERFORMED` |
+- Editing `@vantio/cli` `0.3.24`, `@vantio/agent-sdk` `0.2.4`, or `vantio-agent-sdk` `3.1.0`.
+- Adding an npm dependency, a native addon, or a `node:sqlite` import.
+- Creating `store.sqlite`, migrating customer data, or copying legacy JSON.
+- Opening Gate 8, assigning an evidence tier, or claiming a host proof.
+- Publishing, tagging, announcing, issuing credentials, or spending money.
+- Rewriting `docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md`, `docs/planning/optics-o7-store/STORE-MANIFEST.json`, or `docs/planning/optics-production/PACKAGES.json`. Those files keep the sentences their tests already lock. This track's record is the selection those sentences do not yet carry.
 
-## 2. What this force does
+## Verdict location
 
-- Inventories environments this producer can name without attaching to them.
-- Applies the eligibility bar in `CLEAN-HOST-REGISTER.md`.
-- Records one infrastructure requirement in `BLOCKED-INFRA.json` because no plane passed.
-- Leaves `02-INDEPENDENT-COUNCIL.md` as `PENDING_INDEPENDENT_COUNCIL`.
+`docs/programs/production-readiness/wave3/10-COUNCIL.md`
 
-## 3. What this force keeps closed
+Machine-readable copy: `docs/programs/production-readiness/wave3/O7-NODE-BINDING-DECISION.json`
 
-- Host attachment, eBPF load, host enroll, and loader edits.
-- Credential issuance, money movement, and new machine provisioning.
-- Customer deployment and announcements.
-- `@vantio/cli` `0.3.24` and the published Python package.
-- Evidence-tier assignment.
-- Use of Phantom-Box availability as clean-host proof.
-
-## 4. Classification rules
-
-| Field | Value this packet writes |
-| --- | --- |
-| `plane_id` | `NONE` |
-| `lifecycle` | `BLOCKED_INFRA` |
-| `evidence_tier` | `UNSET` |
-| `stranger_host` | `NOT_RUN` |
-| `host_attachment` | `NOT_PERFORMED` |
-| `ebpf_load` | `NOT_PERFORMED` |
-| `customer_validation` | `UNSET` |
-| `independent_verifier` | `UNSET` |
-| `self_certified_council_pass` | false |
-
-Track 5 may run no host-attachment lifecycle on the strength of this packet. The lifecycle stays `BLOCKED_INFRA`.
+Packet: `docs/internal/optics-o7/00-BINDING-DECISION.md`
