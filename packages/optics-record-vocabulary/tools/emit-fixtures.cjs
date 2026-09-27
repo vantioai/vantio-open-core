@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { POSTURE } = require("../src/boundary.cjs");
+const { resolveInside } = require("../src/sandbox-path.cjs");
 
 const cli = {
   identity: "cli_interceptor",
@@ -133,6 +134,7 @@ const fixtures = [
       platform: "linux",
       arch: "x64",
       cli_or_sdk_version: "0.3.24",
+      schema_version: 0,
       started_at: "2026-07-01T00:00:00.000Z",
       duration_ms: 1000,
       destination_host: "api.example.com",
@@ -145,12 +147,13 @@ const fixtures = [
       optics_status: "UNAVAILABLE",
       action: "OBSERVED",
     },
-    derived_fields: ["run_id", "process_id", "parent_process_id", "runtime_version", "cli_or_sdk_version", "destination_host", "http_status", "response_bytes", "application_status", "optics_status"],
+    derived_fields: ["run_id", "process_id", "parent_process_id", "runtime_version", "cli_or_sdk_version", "schema_version", "destination_host", "http_status", "response_bytes", "application_status", "optics_status"],
     readings: separatedLegacy,
     rule_ids: ["cli_frozen_shape", "missing_optics_status", "missing_evidence_origin", "successful_http", "alias_canonical_names_only", "provider_guess_not_promoted", "status_dimensions_separated"],
     prohibited: [{ path: "ok", forbidden_value: true }, { path: "canonical.trace_id", forbidden_value: "0xabc123" }],
     diagnostic_limitations: [
       "CLI 0.3.24 stores no optics_status, so the reading is UNAVAILABLE and not SUCCESS.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
       "Legacy trace_id is run_id. It is not canonical trace_id.",
       "generated_at is file-write time. This fixture does not store it as ended_at.",
       "Live provider string openai is not an allowlisted provider_id.",
@@ -191,6 +194,7 @@ const fixtures = [
       run_id: "6f1d7a2e-3c4b-4d5e-8f90-a1b2c3d4e5f6",
       runtime: "python",
       schema_status: "unstable-pre-1.0",
+      schema_version: 0,
       destination_host: "api.example.com",
       method: "POST",
       path: "/v1/messages",
@@ -201,11 +205,12 @@ const fixtures = [
       action: "OBSERVED",
       started_at: "2026-07-01T00:00:00.100Z",
     },
-    derived_fields: ["run_id", "destination_host", "http_status", "application_status", "optics_status", "started_at"],
+    derived_fields: ["run_id", "destination_host", "http_status", "application_status", "optics_status", "schema_version", "started_at"],
     readings: separatedLegacy,
     rule_ids: ["python_frozen_shape", "live_success_default_refused", "missing_evidence_origin", "successful_http", "alias_canonical_names_only", "provider_guess_not_promoted", "status_dimensions_separated"],
     diagnostic_limitations: [
       "Python 3.1.0 stores opticsStatus SUCCESS. That token is refused: OPTIMISTIC_DEFAULT_FORBIDDEN. Canonical optics_status is UNAVAILABLE.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
       "failure_kind none is not workload SUCCESS and is not copied forward as proof.",
       "Comma-joined mediation is not one closed token.",
       "Live provider string other is not an allowlisted provider_id.",
@@ -280,12 +285,14 @@ const fixtures = [
     producer: cli,
     compatibility_classification: "PARTIAL",
     input_record: input({ vantio_run_log: "1", schema_version: 2, calls: [] }, null, null),
-    expected_canonical: { optics_status: "NOT_OBSERVED", call_count: 0 },
+    expected_canonical: { optics_status: "NOT_OBSERVED", call_count: 0, schema_version: 0 },
+    derived_fields: ["schema_version"],
     record_emitted: true,
     readings: { optics_health: "NOT_OBSERVED", workload_outcome: "NOT_OBSERVED", coverage: "EMPTY_CALL_LIST" },
     rule_ids: ["empty_cli_file", "cli_frozen_shape", "missing_evidence_origin", "status_dimensions_separated"],
     diagnostic_limitations: [
       "The CLI file exists and its call list is empty.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
       "NOT_OBSERVED means the wrap ran and stored no supported call. It is not SUCCESS.",
       "This is a different fact from a missing file.",
     ],
@@ -499,7 +506,7 @@ const fixtures = [
       workload_outcome: "UNAVAILABLE",
       timestamps_duration: "NOT_MEASURED_ZERO",
     },
-    rule_ids: ["interrupted_run", "ambiguous_duration_zero", "legacy_bytes_zero", "null_http_status_is_absent", "status_dimensions_separated"],
+    rule_ids: ["interrupted_run", "ambiguous_duration_zero", "legacy_bytes_zero", "null_http_status_is_absent", "missing_optics_status", "status_dimensions_separated"],
     diagnostic_limitations: [
       "duration_ms 0 with null status is pre-completion. It is not a measured zero.",
       "lifecycle INTERRUPTED is not optics SUCCESS and not application SUCCESS.",
@@ -752,12 +759,13 @@ const fixtures = [
     producer: cli,
     compatibility_classification: "REQUIRES_ADAPTER",
     input_record: input(null, { sampling: "SAMPLED", status: 200 }, null),
-    expected_canonical: { sampling: "UNSAMPLED", http_status: 200, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
-    derived_fields: ["sampling"],
+    fields_not_promoted: ["SAMPLED"],
+    expected_canonical: { http_status: 200, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
-    readings: { sampling: "UNSAMPLED", optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS" },
+    readings: { sampling: "INVALID_OMITTED", optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS" },
     rule_ids: ["sampling_not_success", "successful_http", "missing_optics_status"],
-    diagnostic_limitations: ["Invalid sampling is stored as UNSAMPLED and is not optics success."],
+    prohibited: [{ path: "sampling", forbidden_value: "UNSAMPLED" }],
+    diagnostic_limitations: ["Invalid sampling token SAMPLED is not stored as UNSAMPLED and is not optics success."],
   }),
   fixture({
     id: "claimed-local-without-provenance",
@@ -846,13 +854,21 @@ const fixtures = [
 ];
 
 function writeFixtures(targetPath) {
-  fs.writeFileSync(targetPath, JSON.stringify(fixtures, null, 2) + "\n");
+  const target = resolveInside(path.join(__dirname, "..", "fixtures"), targetPath);
+  fs.writeFileSync(target, JSON.stringify(fixtures, null, 2) + "\n");
 }
 
 if (require.main === module) {
-  const target = path.join(__dirname, "..", "fixtures", "conformance-fixtures.json");
-  writeFixtures(target);
-  process.stdout.write("wrote " + fixtures.length + " fixtures\n");
+  const target = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.join(__dirname, "..", "fixtures", "conformance-fixtures.json");
+  try {
+    writeFixtures(target);
+    process.stdout.write("wrote " + fixtures.length + " fixtures\n");
+  } catch (error) {
+    process.stderr.write(String(error.code || error.message) + "\n");
+    process.exitCode = 1;
+  }
 }
 
 module.exports = { fixtures, writeFixtures };

@@ -48,7 +48,7 @@ These lock the same rules. They are not later units.
 | `cli-empty-call-file` | A CLI file with `calls: []` is `NOT_OBSERVED`. A missing file is not. |
 | `unreadable-record` | Unreadable bytes are `OPTICS_ERROR`, not `NOT_OBSERVED`. |
 | `timeout-failure` | `failure_kind` `timeout` is the same network rule as DNS, connection, and TLS. |
-| `sampling-not-success` | A non-`UNSAMPLED` token normalizes to `UNSAMPLED` and is not optics success. |
+| `sampling-not-success` | Invalid token `SAMPLED` is omitted. It is not stored as `UNSAMPLED` and it is not optics success. |
 | `claimed-local-without-provenance` | Claimed `LOCAL_OBSERVATION` without producer and version stays `LEGACY_UNMARKED`. |
 | `redirect-3xx` | HTTP 302 is workload `SUCCESS`. No hop is invented. |
 | `witnessed-trace` | Basis `OPTICS_GENERATED` only with the witness present on input and absent on output. Placeholder version `PKG02-FUTURE-CLI-UNASSIGNED`. Not a writer authorization. |

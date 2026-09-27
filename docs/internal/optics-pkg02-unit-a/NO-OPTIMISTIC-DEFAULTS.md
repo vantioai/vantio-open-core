@@ -26,7 +26,7 @@ Audience: INTERNAL_RESTRICTED
 | Absent file | `UNAVAILABLE`, not `NOT_OBSERVED` | `no-file`, `empty-shield` |
 | Corrupt JSON | No record. Not `{}` | `corrupt-record` |
 | Pre-completion `duration_ms` `0` | Omitted. Not a measured zero | `interrupted-run` |
-| `sampling` other than `UNSAMPLED` | `UNSAMPLED`. Not optics success | `sampling-not-success` |
+| `sampling` other than `UNSAMPLED` | Omitted. Not rewritten to `UNSAMPLED`. Not optics success | `sampling-not-success` |
 | `ok` | Not stored | `cli-0-3-24` |
 | `failure_kind` `none` | Not copied as workload proof | `python-3-1-0` |
 

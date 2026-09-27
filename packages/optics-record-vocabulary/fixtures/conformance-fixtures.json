@@ -22,6 +22,7 @@
       "parent_process_id",
       "runtime_version",
       "cli_or_sdk_version",
+      "schema_version",
       "destination_host",
       "http_status",
       "response_bytes",
@@ -30,6 +31,7 @@
     ],
     "diagnostic_limitations": [
       "CLI 0.3.24 stores no optics_status, so the reading is UNAVAILABLE and not SUCCESS.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
       "Legacy trace_id is run_id. It is not canonical trace_id.",
       "generated_at is file-write time. This fixture does not store it as ended_at.",
       "Live provider string openai is not an allowlisted provider_id.",
@@ -44,6 +46,7 @@
       "platform": "linux",
       "arch": "x64",
       "cli_or_sdk_version": "0.3.24",
+      "schema_version": 0,
       "started_at": "2026-07-01T00:00:00.000Z",
       "duration_ms": 1000,
       "destination_host": "api.example.com",
@@ -159,10 +162,12 @@
       "http_status",
       "application_status",
       "optics_status",
+      "schema_version",
       "started_at"
     ],
     "diagnostic_limitations": [
       "Python 3.1.0 stores opticsStatus SUCCESS. That token is refused: OPTIMISTIC_DEFAULT_FORBIDDEN. Canonical optics_status is UNAVAILABLE.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
       "failure_kind none is not workload SUCCESS and is not copied forward as proof.",
       "Comma-joined mediation is not one closed token.",
       "Live provider string other is not an allowlisted provider_id.",
@@ -174,6 +179,7 @@
       "run_id": "6f1d7a2e-3c4b-4d5e-8f90-a1b2c3d4e5f6",
       "runtime": "python",
       "schema_status": "unstable-pre-1.0",
+      "schema_version": 0,
       "destination_host": "api.example.com",
       "method": "POST",
       "path": "/v1/messages",
@@ -460,16 +466,20 @@
     "aliases_used": [],
     "audience": "INTERNAL_RESTRICTED",
     "compatibility_classification": "PARTIAL",
-    "derived_fields": [],
+    "derived_fields": [
+      "schema_version"
+    ],
     "diagnostic_limitations": [
       "The CLI file exists and its call list is empty.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
       "NOT_OBSERVED means the wrap ran and stored no supported call. It is not SUCCESS.",
       "This is a different fact from a missing file."
     ],
     "evidence_origin": "LEGACY_UNMARKED",
     "expected_canonical": {
       "optics_status": "NOT_OBSERVED",
-      "call_count": 0
+      "call_count": 0,
+      "schema_version": 0
     },
     "expected_events": null,
     "expected_unsupported_state": null,
@@ -1375,6 +1385,7 @@
       "ambiguous_duration_zero",
       "legacy_bytes_zero",
       "null_http_status_is_absent",
+      "missing_optics_status",
       "status_dimensions_separated"
     ],
     "scenario": "interrupted-run",
@@ -2260,22 +2271,21 @@
     "aliases_used": [],
     "audience": "INTERNAL_RESTRICTED",
     "compatibility_classification": "REQUIRES_ADAPTER",
-    "derived_fields": [
-      "sampling"
-    ],
+    "derived_fields": [],
     "diagnostic_limitations": [
-      "Invalid sampling is stored as UNSAMPLED and is not optics success."
+      "Invalid sampling token SAMPLED is not stored as UNSAMPLED and is not optics success."
     ],
     "evidence_origin": "LEGACY_UNMARKED",
     "expected_canonical": {
-      "sampling": "UNSAMPLED",
       "http_status": 200,
       "application_status": "SUCCESS",
       "optics_status": "UNAVAILABLE"
     },
     "expected_events": null,
     "expected_unsupported_state": null,
-    "fields_not_promoted": [],
+    "fields_not_promoted": [
+      "SAMPLED"
+    ],
     "id": "sampling-not-success",
     "input_parse": "OK",
     "input_record": {
@@ -2305,6 +2315,10 @@
       {
         "path": "optics_status",
         "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "sampling",
+        "forbidden_value": "UNSAMPLED"
       }
     ],
     "raw_input_note": "",
@@ -2316,7 +2330,7 @@
     ],
     "scenario": "sampling-not-success",
     "semantic_dimension_readings": {
-      "sampling": "UNSAMPLED",
+      "sampling": "INVALID_OMITTED",
       "optics_health": "UNAVAILABLE",
       "workload_outcome": "SUCCESS"
     },

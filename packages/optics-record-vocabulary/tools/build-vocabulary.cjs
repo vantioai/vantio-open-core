@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const boundary = require("../src/boundary.cjs");
+const { resolveInside } = require("../src/sandbox-path.cjs");
 const assignments = require("../vocabulary/assignments.cjs");
 
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
@@ -300,26 +301,34 @@ function buildVocabulary() {
 }
 
 function writeVocabulary(targetPath) {
+  const target = resolveInside(path.join(PACKAGE_ROOT, "vocabulary"), targetPath);
   const vocabulary = buildVocabulary();
   const json = JSON.stringify(vocabulary, null, 2) + "\n";
-  fs.writeFileSync(targetPath, json);
+  fs.writeFileSync(target, json);
   return vocabulary;
 }
 
 if (require.main === module) {
-  const target = path.join(PACKAGE_ROOT, "vocabulary", "record-vocabulary.json");
-  const vocabulary = writeVocabulary(target);
-  process.stdout.write(
-    "wrote " +
-      target +
-      " canonical=" +
-      vocabulary.counts.canonical_rows +
-      " unique=" +
-      vocabulary.counts.unique_canonical_names +
-      " compatibility=" +
-      vocabulary.counts.compatibility_rows +
-      "\n",
-  );
+  const target = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.join(PACKAGE_ROOT, "vocabulary", "record-vocabulary.json");
+  try {
+    const vocabulary = writeVocabulary(target);
+    process.stdout.write(
+      "wrote " +
+        target +
+        " canonical=" +
+        vocabulary.counts.canonical_rows +
+        " unique=" +
+        vocabulary.counts.unique_canonical_names +
+        " compatibility=" +
+        vocabulary.counts.compatibility_rows +
+        "\n",
+    );
+  } catch (error) {
+    process.stderr.write(String(error.code || error.message) + "\n");
+    process.exitCode = 1;
+  }
 }
 
 module.exports = { buildVocabulary, writeVocabulary };

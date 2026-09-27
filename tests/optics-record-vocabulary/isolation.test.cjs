@@ -1,12 +1,15 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
 const api = require("../../packages/optics-record-vocabulary/src/index.cjs");
+const { writeVocabulary } = require("../../packages/optics-record-vocabulary/tools/build-vocabulary.cjs");
+const { writeFixtures } = require("../../packages/optics-record-vocabulary/tools/emit-fixtures.cjs");
 
 const ROOT = path.resolve(__dirname, "../..");
 const PACKAGE_ROOT = path.join(ROOT, "packages/optics-record-vocabulary");
@@ -25,6 +28,7 @@ const ALLOWED_PREFIXES = [
   "tests/optics-record-vocabulary/",
   "docs/internal/optics-pkg02-unit-a/",
 ];
+const BASE = "14249ba84ff1f3d5aa8ad7a7366172f29235c76e";
 
 function walk(directory, files) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -110,19 +114,131 @@ test("frozen package versions are unchanged", () => {
   assert.equal(workspace.includes("optics-record-vocabulary"), false);
 });
 
-test("the worktree stays inside Unit A paths", () => {
-  const output = execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf8" });
-  const files = output
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => line.slice(3).trim());
-  assert.ok(files.length > 0);
-  for (const file of files) {
-    assert.equal(
-      ALLOWED_PREFIXES.some((prefix) => file.startsWith(prefix)),
-      true,
-      file,
+function normalizeGitPath(file) {
+  return String(file).replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function scopeViolation(file) {
+  const normalized = normalizeGitPath(file);
+  if (normalized.length === 0) return null;
+  if (ALLOWED_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return null;
+  return normalized;
+}
+
+function parseDiffZ(text) {
+  return text.split("\0").map((part) => part.trim()).filter((part) => part.length > 0);
+}
+
+function parseStatusZ(text) {
+  const parts = text.split("\0");
+  if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
+  const paths = [];
+  let index = 0;
+  while (index < parts.length) {
+    const entry = parts[index];
+    if (entry.length < 4) {
+      index += 1;
+      continue;
+    }
+    const xy = entry.slice(0, 2);
+    paths.push(entry.slice(3));
+    index += 1;
+    if (xy.includes("R") || xy.includes("C")) {
+      if (index < parts.length) {
+        paths.push(parts[index]);
+        index += 1;
+      }
+    }
+  }
+  return paths;
+}
+
+function assertScoped(paths) {
+  const outside = [];
+  for (const file of paths) {
+    const violation = scopeViolation(file);
+    if (violation) outside.push(violation);
+  }
+  assert.deepEqual(outside, [], "out-of-scope path: " + outside.join(", "));
+}
+
+function gitZ(args) {
+  return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" });
+}
+
+test("committed and uncommitted paths stay inside Unit A", () => {
+  assert.deepEqual(parseStatusZ(""), []);
+  assertScoped([]);
+  const renamed = parseStatusZ("R  packages/vantio-cli/package.json\0packages/optics-record-vocabulary/src/index.cjs\0");
+  assert.deepEqual(renamed, [
+    "packages/vantio-cli/package.json",
+    "packages/optics-record-vocabulary/src/index.cjs",
+  ]);
+  assert.equal(scopeViolation(renamed[0]), renamed[0]);
+  assert.equal(scopeViolation(renamed[1]), null);
+
+  const committed = parseDiffZ(gitZ(["diff", "-z", "--name-only", BASE, "HEAD"]));
+  const uncommitted = parseStatusZ(gitZ(["status", "--porcelain=v1", "-z"]));
+  assert.ok(committed.includes("packages/optics-record-vocabulary/vocabulary/record-vocabulary.json"));
+  assertScoped(committed);
+  assertScoped(uncommitted);
+});
+
+test("an out-of-scope path is named without reading the file", () => {
+  const outside = "packages/vantio-cli/package.json";
+  assert.throws(
+    () => assertScoped([outside]),
+    (error) => error.message.includes("out-of-scope path: " + outside),
+  );
+  assert.equal(scopeViolation("docs/internal/optics-pkg02-unit-a/BOUNDARY.md"), null);
+  assert.equal(scopeViolation("tests/optics-record-vocabulary/isolation.test.cjs"), null);
+});
+
+test("direct builder invocation cannot write outside the sandbox", () => {
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "unit-a-scope-"));
+  const outside = path.join(outsideDir, "escape.json");
+  const link = path.join(PACKAGE_ROOT, "vocabulary", "sandbox-link-probe");
+  const originalWrite = fs.writeFileSync;
+  try {
+    assert.throws(() => writeVocabulary(outside), (error) => error.code === "PATH_OUTSIDE_SANDBOX");
+    assert.throws(() => writeFixtures(outside), (error) => error.code === "PATH_OUTSIDE_SANDBOX");
+    assert.equal(fs.existsSync(outside), false);
+
+    fs.symlinkSync(outsideDir, link, "dir");
+    assert.throws(
+      () => writeVocabulary(path.join(link, "escape.json")),
+      (error) => error.code === "PATH_OUTSIDE_SANDBOX",
     );
+    assert.equal(fs.existsSync(outside), false);
+
+    const calls = [];
+    fs.writeFileSync = (file) => {
+      calls.push(String(file));
+    };
+    writeVocabulary(path.join(PACKAGE_ROOT, "vocabulary", "sandbox-probe.json"));
+    writeFixtures(path.join(PACKAGE_ROOT, "fixtures", "sandbox-probe.json"));
+    fs.writeFileSync = originalWrite;
+    assert.equal(calls.length, 2);
+    for (const file of calls) {
+      const relative = path.relative(PACKAGE_ROOT, file).replace(/\\/g, "/");
+      assert.equal(relative.startsWith("vocabulary/") || relative.startsWith("fixtures/"), true, relative);
+    }
+
+    const build = spawnSync(process.execPath, [path.join(PACKAGE_ROOT, "tools", "build-vocabulary.cjs"), outside], {
+      encoding: "utf8",
+    });
+    const emit = spawnSync(process.execPath, [path.join(PACKAGE_ROOT, "tools", "emit-fixtures.cjs"), outside], {
+      encoding: "utf8",
+    });
+    assert.notEqual(build.status, 0);
+    assert.notEqual(emit.status, 0);
+    assert.match(build.stderr, /PATH_OUTSIDE_SANDBOX/);
+    assert.match(emit.stderr, /PATH_OUTSIDE_SANDBOX/);
+    assert.equal(fs.existsSync(outside), false);
+  } finally {
+    fs.writeFileSync = originalWrite;
+    if (fs.existsSync(link)) fs.unlinkSync(link);
+    fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 });
 

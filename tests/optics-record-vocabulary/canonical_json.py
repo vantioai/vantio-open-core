@@ -2,13 +2,15 @@
 
 UTF-8, sorted keys, no insignificant whitespace.
 Controls use the same short escapes as the Node encoder.
-Non-ASCII is left unescaped. This file does not import a Vantio product.
+Non-ASCII is left unescaped. Integers outside -9007199254740991
+through 9007199254740991 are rejected. This file does not import a Vantio product.
 """
 
 import json
 import sys
 
 MAX_DEPTH = 32
+MAX_SAFE_INTEGER = 9007199254740991
 
 
 class CanonicalError(Exception):
@@ -27,6 +29,8 @@ def _stringify(value, depth, seen):
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int) and not isinstance(value, bool):
+        if value > MAX_SAFE_INTEGER or value < -MAX_SAFE_INTEGER:
+            raise CanonicalError("UNSAFE_INTEGER_REJECTED")
         if value == 0:
             return "0"
         return str(value)
@@ -83,10 +87,15 @@ def _quote(text):
 
 
 def main():
-    documents = json.load(sys.stdin)
-    for document in documents:
-        sys.stdout.write(canonical(document) + "\n")
+    try:
+        documents = json.load(sys.stdin)
+        for document in documents:
+            sys.stdout.write(canonical(document) + "\n")
+    except CanonicalError as error:
+        sys.stderr.write(str(error) + "\n")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

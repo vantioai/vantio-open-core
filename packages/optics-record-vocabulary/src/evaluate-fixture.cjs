@@ -376,9 +376,16 @@ const RULES = {
   sampling_not_success(fixture, errors, vocabulary) {
     const call = callOf(fixture);
     const allowed = enumValues(vocabulary, "observation_event", "sampling");
-    if (!call || allowed.includes(call.sampling)) errors.push("sampling input");
-    if (!fixture.expected_canonical || fixture.expected_canonical.sampling !== "UNSAMPLED") errors.push("sampling canonical");
-    if (fixture.expected_canonical.optics_status === "SUCCESS") errors.push("sampling success");
+    if (!call || !allowed || allowed.includes(call.sampling)) errors.push("sampling input");
+    const expected = fixture.expected_canonical;
+    if (!expected || Object.prototype.hasOwnProperty.call(expected, "sampling")) errors.push("invalid sampling stored");
+    if (expected && expected.sampling === "UNSAMPLED") errors.push("invalid sampling became UNSAMPLED");
+    if (expected && expected.optics_status === "SUCCESS") errors.push("sampling success");
+    if (!fixture.fields_not_promoted.includes(String(call && call.sampling))) errors.push("invalid sampling promoted");
+    const text = fixture.diagnostic_limitations.join(" ");
+    if (!text.includes(String(call && call.sampling)) || !text.includes("not stored as UNSAMPLED")) {
+      errors.push("invalid sampling diagnostic");
+    }
   },
   claimed_local_without_provenance(fixture, errors) {
     const envelope = envelopeOf(fixture);
@@ -392,14 +399,27 @@ const RULES = {
     const envelope = envelopeOf(fixture);
     if (fixture.producer.version !== "0.3.24" || fixture.producer.surface !== "cli_0_3_24") errors.push("cli producer");
     if (!envelope || envelope.vantio_run_log !== "1" || envelope.schema_version !== 2) errors.push("cli envelope");
-    if ("schema_status" in envelope || "record_type" in envelope) errors.push("cli canonical markers");
+    if (envelope && ("schema_status" in envelope || "record_type" in envelope)) errors.push("cli canonical markers");
     if ("ended_at" in (fixture.expected_canonical || {})) errors.push("generated_at stored as ended_at");
+    if (!fixture.expected_canonical || fixture.expected_canonical.schema_version !== boundary.SCHEMA_VERSION) {
+      errors.push("canonical schema_version");
+    }
+    if (!fixture.diagnostic_limitations.join(" ").includes("compatibility.legacy_schema_version")) {
+      errors.push("legacy schema_version not preserved");
+    }
   },
   python_frozen_shape(fixture, errors) {
     const envelope = envelopeOf(fixture);
     const call = callOf(fixture);
     if (fixture.producer.version !== "3.1.0" || fixture.producer.surface !== "python_3_1_0") errors.push("python producer");
     if (!envelope || envelope.runtime !== "python" || envelope.schema_status !== boundary.SCHEMA_STATUS) errors.push("python envelope");
+    if (!envelope || envelope.schema_version !== 2) errors.push("python legacy schema_version");
+    if (!fixture.expected_canonical || fixture.expected_canonical.schema_version !== boundary.SCHEMA_VERSION) {
+      errors.push("python canonical schema_version");
+    }
+    if (!fixture.diagnostic_limitations.join(" ").includes("compatibility.legacy_schema_version")) {
+      errors.push("python legacy schema_version not preserved");
+    }
     if (!call || call.opticsStatus !== "SUCCESS") errors.push("python live success");
     if (!fixture.expected_canonical || fixture.expected_canonical.optics_status !== "UNAVAILABLE") errors.push("python canonical optics");
     if (call.ts !== "2026-07-01T00:00:00.100000+00:00") errors.push("python ts fixture drifted");
@@ -460,6 +480,108 @@ const RULES = {
     if (!fixture.diagnostic_limitations.join(" ").includes("not an allowlisted provider_id")) errors.push("provider diagnostic");
   },
 };
+
+function producerSurface(fixture) {
+  return plainObject(fixture.producer) ? fixture.producer.surface : null;
+}
+
+function requiredProtectiveRules(fixture, vocabulary) {
+  const required = [];
+  if (!plainObject(fixture)) return required;
+  const call = plainObject(callOf(fixture)) ? callOf(fixture) : null;
+  const envelope = plainObject(envelopeOf(fixture)) ? envelopeOf(fixture) : null;
+  const extra = plainObject(extraOf(fixture)) ? extraOf(fixture) : null;
+  const surface = producerSurface(fixture);
+
+  if (fixture.input_parse === "ABSENT_FILE") required.push("absent_file");
+  if (fixture.input_parse === "UNREADABLE") required.push("unreadable_record");
+  if (fixture.input_parse === "MALFORMED_JSON") required.push("corrupt_record");
+  if (surface === "python_3_1_0" && fixture.input_parse === "ABSENT_FILE") required.push("empty_shield");
+  if (surface === "node_sdk_0_2_4") required.push("node_sdk_not_local_record");
+  if (surface === "cli_0_3_24" && envelope && Array.isArray(envelope.calls) && envelope.calls.length === 0) {
+    required.push("empty_cli_file");
+  }
+  if (envelope && envelope.schema_version === 2 && surface === "cli_0_3_24") required.push("cli_frozen_shape");
+  if (envelope && envelope.schema_version === 2 && surface === "python_3_1_0") required.push("python_frozen_shape");
+  if (call && call.opticsStatus === "SUCCESS") required.push("live_success_default_refused");
+  if (call && call.bytes === 0 && !Object.prototype.hasOwnProperty.call(call, "response_bytes")) {
+    required.push("legacy_bytes_zero");
+  }
+  if (call && call.response_bytes === 0 && !Object.prototype.hasOwnProperty.call(call, "bytes")) {
+    required.push("explicit_response_bytes_zero");
+  }
+  if (
+    call &&
+    fixture.record_emitted === true &&
+    !Object.prototype.hasOwnProperty.call(call, "optics_status") &&
+    !Object.prototype.hasOwnProperty.call(call, "opticsStatus")
+  ) {
+    required.push("missing_optics_status");
+  }
+  if (call && (Object.prototype.hasOwnProperty.call(call, "opticsStatus") || Object.prototype.hasOwnProperty.call(call, "optics_status"))) {
+    const allowed = enumValues(vocabulary, "observation_event", "optics_status") || [];
+    const raw = call.opticsStatus || call.optics_status;
+    if (!allowed.includes(raw)) required.push("unknown_status");
+  }
+  if (call && Object.prototype.hasOwnProperty.call(call, "sampling")) {
+    const allowed = enumValues(vocabulary, "observation_event", "sampling") || [];
+    if (!allowed.includes(call.sampling)) required.push("sampling_not_success");
+  }
+  if (call && Object.prototype.hasOwnProperty.call(call, "method")) {
+    const allowed = enumValues(vocabulary, "observation_event", "method") || [];
+    if (!allowed.includes(call.method)) required.push("unknown_enum");
+  }
+  if (envelope && envelope.evidence_origin === "LOCAL_OBSERVATION" && !Object.prototype.hasOwnProperty.call(envelope, "producer")) {
+    required.push("claimed_local_without_provenance");
+  }
+  if (envelope && envelope.evidence_origin === "IMPORTED") required.push("imported_evidence");
+  if (
+    envelope &&
+    typeof envelope.trace_id === "string" &&
+    !Object.prototype.hasOwnProperty.call(envelope, "optics_trace_witness") &&
+    surface === "cli_0_3_24" &&
+    call === null
+  ) {
+    required.push("inherited_trace");
+  }
+  if (call && vocabulary && call.hostname === vocabulary.demo_host) required.push("simulated_evidence");
+  if (extra && extra.summary_applicationStatus === "PARTIAL") required.push("partial_run");
+  if (call && call.duration_ms === 0 && call.status === null) {
+    required.push("interrupted_run");
+    required.push("ambiguous_duration_zero");
+  }
+  if (call && call.status === null) required.push("null_http_status_is_absent");
+  if (extra && extra.freshness === "CURRENT" && Object.prototype.hasOwnProperty.call(extra, "cost")) {
+    required.push("future_field");
+  }
+  if (call && call.status === 500) required.push("provider_http_error");
+  if (call && TRANSPORT.has(call.failure_kind) && !Object.prototype.hasOwnProperty.call(call, "status")) {
+    required.push("transport_failure");
+  }
+  if (call && call.failure_kind === "wrapped") required.push("customer_exception");
+  if (call && typeof call.status === "number" && call.status >= 200 && call.status <= 399) required.push("successful_http");
+  if (call && typeof call.status === "number" && call.status >= 300 && call.status <= 399) required.push("redirect_3xx");
+  if (envelope && Object.prototype.hasOwnProperty.call(envelope, "optics_trace_witness")) required.push("witnessed_trace");
+  if (call && (call.optics_status === "OBSERVED" || call.opticsStatus === "OBSERVED") && surface === "future_not_shipped") {
+    required.push("explicit_observed_not_default");
+  }
+  if (call && typeof call.provider === "string" && !Object.prototype.hasOwnProperty.call(call, "provider_id")) {
+    required.push("provider_guess_not_promoted");
+  }
+  if (Array.isArray(fixture.aliases_used) && fixture.aliases_used.length >= 3 && fixture.record_emitted === true) {
+    required.push("alias_canonical_names_only");
+  }
+  if (
+    call &&
+    fixture.record_emitted === true &&
+    !Object.prototype.hasOwnProperty.call(call, "status") &&
+    !Object.prototype.hasOwnProperty.call(call, "http_status") &&
+    !Object.prototype.hasOwnProperty.call(call, "httpStatus")
+  ) {
+    required.push("missing_http_status");
+  }
+  return [...new Set(required)];
+}
 
 function checkStructure(fixture, vocabulary, errors) {
   if (!plainObject(fixture)) {
@@ -524,10 +646,23 @@ function checkStructure(fixture, vocabulary, errors) {
       if (FORBIDDEN_EXPECTED_KEYS.has(key)) errors.push("forbidden key " + key);
     }
     if (object.optics_status === "SUCCESS") errors.push("optics SUCCESS");
+    const samplingCall = callOf(fixture);
+    const samplingAllowed = enumValues(vocabulary, "observation_event", "sampling") || [];
+    if (
+      samplingCall &&
+      Object.prototype.hasOwnProperty.call(samplingCall, "sampling") &&
+      !samplingAllowed.includes(samplingCall.sampling) &&
+      object.sampling === "UNSAMPLED"
+    ) {
+      errors.push("invalid sampling became UNSAMPLED");
+    }
     if (object.application_status === "PARTIAL") errors.push("application PARTIAL");
     if (object.evidence_origin === "LOCAL_OBSERVATION") errors.push("stored LOCAL_OBSERVATION");
     if ("http_status" in object && (object.http_status === 0 || object.http_status < 100 || object.http_status > 599)) {
       errors.push("http_status range");
+    }
+    if ("schema_version" in object && object.schema_version !== boundary.SCHEMA_VERSION) {
+      errors.push("schema_version must stay 0");
     }
     if ("http_status" in object && "application_status" in object && object.application_status !== workloadForHttp(object.http_status)) {
       errors.push("http workload mismatch");
@@ -570,6 +705,11 @@ function checkStructure(fixture, vocabulary, errors) {
     if (seenRules.has(ruleId)) errors.push("duplicate rule " + ruleId);
     seenRules.add(ruleId);
     if (!Object.prototype.hasOwnProperty.call(RULES, ruleId)) errors.push("unknown rule " + ruleId);
+  }
+  if (plainObject(fixture) && vocabulary) {
+    for (const ruleId of requiredProtectiveRules(fixture, vocabulary)) {
+      if (!ruleIds.includes(ruleId)) errors.push("dropped protective rule " + ruleId);
+    }
   }
 }
 
@@ -618,4 +758,4 @@ function evaluateFixtures(fixtures, vocabulary) {
   return { ok: errors.length === 0, errors, comparisons };
 }
 
-module.exports = { RULES, evaluateFixture, evaluateFixtures };
+module.exports = { RULES, evaluateFixture, evaluateFixtures, requiredProtectiveRules };

@@ -12,6 +12,7 @@ const {
   loadFixtures,
   loadVocabulary,
 } = require("../../packages/optics-record-vocabulary/src/index.cjs");
+const { requiredProtectiveRules } = require("../../packages/optics-record-vocabulary/src/evaluate-fixture.cjs");
 const { REQUIRED_SCENARIOS } = require("../../packages/optics-record-vocabulary/src/fixture-contract.cjs");
 const { fixtures: authoredFixtures } = require("../../packages/optics-record-vocabulary/tools/emit-fixtures.cjs");
 
@@ -117,6 +118,25 @@ test("no fixture stores an optimistic default", () => {
   forced.expected_canonical.optics_status = "SUCCESS";
   const rejected = evaluateFixture(forced, vocabulary);
   assert.equal(rejected.ok, false);
+
+  const sampling = fixtures.find((fixture) => fixture.id === "sampling-not-success");
+  assert.equal("sampling" in sampling.expected_canonical, false);
+  assert.notEqual(sampling.semantic_dimension_readings.sampling, "UNSAMPLED");
+  const rewritten = clone(sampling);
+  rewritten.expected_canonical.sampling = "UNSAMPLED";
+  const samplingRejected = evaluateFixture(rewritten, vocabulary);
+  assert.equal(samplingRejected.ok, false);
+
+  for (const id of ["cli-0-3-24", "python-3-1-0", "cli-empty-call-file"]) {
+    const fixture = fixtures.find((item) => item.id === id);
+    assert.equal(fixture.input_record.envelope.schema_version, 2);
+    assert.equal(fixture.expected_canonical.schema_version, 0);
+    assert.match(fixture.diagnostic_limitations.join(" "), /compatibility\.legacy_schema_version/);
+    const copied = clone(fixture);
+    copied.expected_canonical.schema_version = 2;
+    const versionRejected = evaluateFixture(copied, vocabulary);
+    assert.equal(versionRejected.ok, false, id);
+  }
 });
 
 test("status readings do not collapse workload success into optics success", () => {
@@ -173,4 +193,56 @@ test("canonical comparison bytes match the Python encoder", () => {
   assert.equal(canonicalJson(-0), "0");
   assert.throws(() => canonicalJson(1.5), /NON_INTEGER_REJECTED/);
   assert.throws(() => canonicalJson(Number.MAX_SAFE_INTEGER + 2), /UNSAFE_INTEGER_REJECTED/);
+  const maxSafe = 9007199254740991;
+  assert.equal(canonicalJson(maxSafe), String(maxSafe));
+  assert.equal(canonicalJson(-maxSafe), String(-maxSafe));
+  const bounds = spawnSync("python3", [PYTHON], {
+    input: JSON.stringify([maxSafe, -maxSafe, 0]),
+    encoding: "utf8",
+  });
+  assert.equal(bounds.status, 0, bounds.stderr);
+  assert.equal(bounds.stdout, [String(maxSafe), String(-maxSafe), "0"].join("\n") + "\n");
+  const unsafe = spawnSync("python3", [PYTHON], {
+    input: "[9007199254740993]",
+    encoding: "utf8",
+  });
+  assert.notEqual(unsafe.status, 0);
+  assert.match(unsafe.stderr, /UNSAFE_INTEGER_REJECTED/);
+  const fraction = spawnSync("python3", [PYTHON], {
+    input: "[1.5]",
+    encoding: "utf8",
+  });
+  assert.notEqual(fraction.status, 0);
+  assert.match(fraction.stderr, /NON_INTEGER_REJECTED/);
+});
+
+test("mutated fixtures cannot drop protective rules", () => {
+  const vocabulary = loadVocabulary();
+  const fixtures = loadFixtures();
+  let drops = 0;
+  for (const fixture of fixtures) {
+    const required = requiredProtectiveRules(fixture, vocabulary);
+    assert.ok(required.length > 0, fixture.id);
+    for (const ruleId of required) {
+      assert.equal(fixture.rule_ids.includes(ruleId), true, fixture.id + " " + ruleId);
+      const mutated = clone(fixture);
+      mutated.rule_ids = mutated.rule_ids.filter((id) => id !== ruleId);
+      const result = evaluateFixture(mutated, vocabulary);
+      assert.equal(result.ok, false, fixture.id + " dropped " + ruleId);
+      assert.equal(
+        result.errors.some((error) => error.includes("dropped protective rule " + ruleId)),
+        true,
+        fixture.id + " " + result.errors.join("; "),
+      );
+      drops += 1;
+    }
+    const stripped = clone(fixture);
+    stripped.prohibited_optimistic_interpretations = stripped.prohibited_optimistic_interpretations.filter(
+      (item) => !(item.path === "optics_status" && item.forbidden_value === "SUCCESS"),
+    );
+    const banned = evaluateFixture(stripped, vocabulary);
+    assert.equal(banned.ok, false, fixture.id);
+    drops += 1;
+  }
+  assert.ok(drops >= fixtures.length);
 });

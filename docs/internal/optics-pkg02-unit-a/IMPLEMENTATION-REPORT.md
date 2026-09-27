@@ -37,15 +37,19 @@ From the repository root:
 node --test tests/optics-record-vocabulary/*.test.cjs
 ```
 
-The producer run of that command reported 23 tests and 0 failures. The suite covers vocabulary parse, unique row keys, alias fan-out, cycles, ownership, enum and absent behavior, dimension separation, optimistic defaults, fixture determinism, Node/Python canonical bytes, PKG-01 field equality, source hashes, export surface, filesystem writes, frozen versions, and the Unit A path limit.
+The producer run of that command reported 26 tests and 0 failures. The suite covers vocabulary parse, unique row keys, alias fan-out, cycles, ownership, enum and absent behavior, dimension separation, optimistic defaults, fixture determinism, Node/Python canonical bytes, safe-integer bounds, PKG-01 field equality, source hashes, export surface, filesystem writes, frozen versions, protective-rule retention, builder sandbox paths, and the Unit A path limit on a clean or dirty checkout.
 
-Optimistic-default proof: no fixture stores `optics_status` `SUCCESS`; missing status is `UNAVAILABLE`; legacy `bytes` 0 is null; explicit `response_bytes` 0 stays 0; inherited trace is `ASSERTED_CONTEXT`; corrupt input has `expected_canonical` null; unreadable and absent paths are not `NOT_OBSERVED`. Forcing `SUCCESS` on the HTTP 200 fixture fails evaluation.
+Optimistic-default proof: no fixture stores `optics_status` `SUCCESS`; missing status is `UNAVAILABLE`; legacy `bytes` 0 is null; explicit `response_bytes` 0 stays 0; inherited trace is `ASSERTED_CONTEXT`; corrupt input has `expected_canonical` null; unreadable and absent paths are not `NOT_OBSERVED`. Invalid `sampling` `SAMPLED` is omitted and is not stored as `UNSAMPLED`. Forcing `SUCCESS` on the HTTP 200 fixture fails evaluation. Removing a shape-required protective rule, or the `optics_status` `SUCCESS` prohibition, fails evaluation.
 
 Dimension-separation proof: the six separated dimensions have disjoint canonical fields. HTTP 200 stores workload `SUCCESS` and optics `UNAVAILABLE`. HTTP 500 stores `APPLICATION_ERROR` and `PROVIDER_INTERACTION`. `lifecycle` `PARTIAL` is not `application_status`.
 
 PKG-01 proof: all 120 catalog fields match type, invalid disposition, privacy class, and metric, export, and proof eligibility. Enum samples match `enums.json`. Unicode profile id is `PKG01-UCD-16.0.0`. No second profile was added. Prohibited names match the PKG-01 list. Detector source is not imported.
 
-Live-import proof: `src/` has no product `require`, no `writeFile`, no `sqlite`, and no `child_process`. Evaluation of the fixture list performs no `writeFileSync`. The public API has no convert, migrate, or write function.
+Live-import proof: `src/` has no product `require`, no `writeFile`, no `sqlite`, and no `child_process`. Evaluation of the fixture list performs no `writeFileSync`. The public API has no convert, migrate, or write function. Direct builder invocation writes only inside `vocabulary/` or `fixtures/`. A path outside those directories is refused before a write.
+
+Schema-version proof: CLI `0.3.24`, Python `3.1.0`, and the empty CLI file keep live `schema_version` `2` on the declared input. Canonical `schema_version` is `0`. The diagnostics name `compatibility.legacy_schema_version`. Copying `2` into the canonical field fails evaluation.
+
+Path proof: committed paths are the diff of this tip against `14249ba84ff1f3d5aa8ad7a7366172f29235c76e`. Uncommitted paths are included separately. An empty `git status` is valid. An out-of-scope path is named in the failure. The check does not require a dirty worktree.
 
 ## Hard-stop attestations
 
