@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/pe-ingress-authority",
+  "private": true,
+  "version": "0.0.0-internal",
+  "description": "INTERNAL_RESTRICTED in-process workload ingress authority. Not a live loader. Not shipped. Not a packet filter.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/pe-ingress/*.test.cjs"
+  }
+}
