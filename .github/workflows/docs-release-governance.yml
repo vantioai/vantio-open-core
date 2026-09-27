@@ -23,4 +23,4 @@ jobs:
           node-version: "22"
 
       - name: Check documentation release manifests
-        run: node --test docs/scripts/check-docs-release.test.mjs
+        run: node --test docs/scripts/check-docs-release.test.mjs tests/disclosure-governance-cleanup/direct.test.mjs tests/disclosure-governance-cleanup/adversarial.test.mjs

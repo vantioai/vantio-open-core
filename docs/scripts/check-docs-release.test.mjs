@@ -47,6 +47,7 @@ const CHECK_IDS = [
   "stale-product-names-rejected",
   "roadmap-features-not-current",
   "legacy-stale-name-inventory-frozen",
+  "collision-test-inventory-reviewed",
 ];
 
 test("repository documentation release checks pass", () => {
