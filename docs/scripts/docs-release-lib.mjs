@@ -671,6 +671,49 @@ export function opticsLeftoverRuleProblems(legacy, readPath) {
   return problems.join("; ");
 }
 
+export const COLLISION_TEST_INVENTORY_PATH = "tests/shared-health-vocabulary/collision.test.cjs";
+
+function prefixHidesPath(rel, prefix) {
+  const normalized = prefix.replace(/\/$/, "");
+  return rel === normalized || rel.startsWith(prefix);
+}
+
+export function collisionTestInventoryProblems({ manifest, legacy, liveHits }) {
+  const problems = [];
+  const rel = COLLISION_TEST_INVENTORY_PATH;
+  const updates = Array.isArray(legacy?.reviewed_updates) ? legacy.reviewed_updates : [];
+  const matches = updates.filter((item) => item && item.path === rel);
+  if (matches.length !== 1) {
+    problems.push(`collision test reviewed_updates count ${matches.length} != 1`);
+  }
+  const review = matches[0];
+  if (review && review.disposition !== "FROZEN_DEBT") {
+    problems.push(`collision test disposition ${review.disposition} is not FROZEN_DEBT`);
+  }
+  if (review && (typeof review.reason !== "string" || review.reason.trim() === "")) {
+    problems.push("collision test review has no reason");
+  }
+  const hit = (legacy?.hits || []).find((item) => item.path === rel);
+  if (!hit) problems.push("collision test is missing from hits");
+  if (hit && review && hit.count !== review.count) {
+    problems.push(`collision test hits count ${hit.count} != reviewed count ${review.count}`);
+  }
+  const leftovers = legacy?.intentional_leftovers?.hits || [];
+  if (leftovers.some((item) => item.path === rel)) {
+    problems.push("collision test is an intentional leftover");
+  }
+  const prefixes = manifest?.legacy_scan?.exclude_prefixes || [];
+  for (const prefix of prefixes) {
+    if (prefixHidesPath(rel, prefix)) problems.push(`collision test hidden by exclude prefix ${prefix}`);
+  }
+  const live = (liveHits || []).find((item) => item.path === rel);
+  if (!live) problems.push("legacy scan does not see the collision test");
+  else if (hit && live.count !== hit.count) {
+    problems.push(`collision test live count ${live.count} != hits count ${hit.count}`);
+  }
+  return problems.join("; ");
+}
+
 function staleProblems(root, canonicalDocs, patterns) {
   const problems = [];
   for (const rel of canonicalDocs) {
@@ -814,11 +857,11 @@ export function checkRelease(root) {
     }
     return problems.join("; ");
   })());
+  const legacyActual = collectLegacyHits(root, manifest.legacy_scan, staleSpec.patterns);
   record(checks, "legacy-stale-name-inventory-frozen", (() => {
-    const actual = collectLegacyHits(root, manifest.legacy_scan, staleSpec.patterns);
     const leftoverHits = legacy.intentional_leftovers?.hits || [];
     const problems = [
-      ...diffLegacyInventory(actual, legacyDebtHitsForTree(root, legacy.hits), leftoverHits),
+      ...diffLegacyInventory(legacyActual, legacyDebtHitsForTree(root, legacy.hits), leftoverHits),
       opticsLeftoverRuleProblems(legacy, (rel) => readText(root, rel)),
     ];
     for (const rel of manifest.canonical_docs) {
@@ -827,6 +870,11 @@ export function checkRelease(root) {
     }
     return problems.filter(Boolean).join("; ");
   })());
+  record(checks, "collision-test-inventory-reviewed", collisionTestInventoryProblems({
+    manifest,
+    legacy,
+    liveHits: legacyActual,
+  }));
 
   const failures = checks.filter((check) => !check.ok);
   return { ok: failures.length === 0, checks, failures };

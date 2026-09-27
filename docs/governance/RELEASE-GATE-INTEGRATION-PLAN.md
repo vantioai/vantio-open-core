@@ -68,6 +68,7 @@ Report: `node docs/scripts/check-docs-release.mjs`
 | `stale-product-names-rejected` | Canonical docs contain none of the retired-name patterns. |
 | `roadmap-features-not-current` | Canonical docs do not present unimplemented roadmap items as current. A line may say there is no OTLP exporter. |
 | `legacy-stale-name-inventory-frozen` | Non-canonical matches stay exactly the committed debt inventory, including `.txt`. Optics intentional leftovers stay on their own list. New matches fail. Canonical paths cannot be listed as debt or as leftovers. |
+| `collision-test-inventory-reviewed` | `tests/shared-health-vocabulary/collision.test.cjs` stays visible frozen debt. One `reviewed_updates` entry uses disposition `FROZEN_DEBT`, `hits` carries the same count, and the live scan still sees the file. Hiding that path in `exclude_prefixes`, or listing it as an intentional leftover, fails. |
 
 Packaging tests build temporary npm and Python trees that include `CUSTOMER-MANUAL` and `docs/internal/` and assert those paths are hits. They do not upload anywhere.
 
@@ -92,6 +93,8 @@ Canonical docs were chosen so they do not contain the retired-name patterns in `
 `intentional_leftovers` records that manual. The seven markdown pages and the two text exports name `Sight Loop` / `sight_loop` as leftover storage. The rule states that the product name is Vantio Optics. Those sentences are not new debt. A count change on those paths fails until the rule is updated. A retired name in any other file, including another `.txt`, is still new debt.
 
 This change does not rewrite product source, package descriptions, historical docs, or the Optics public manual.
+
+`tests/shared-health-vocabulary/collision.test.cjs` was added later, under `reviewed_updates`, as frozen debt at count 2. The review does not move that file into `intentional_leftovers` and does not add its directory to `exclude_prefixes`. Check `collision-test-inventory-reviewed` keeps that choice.
 
 ## Proposed CI job (not added)
 
