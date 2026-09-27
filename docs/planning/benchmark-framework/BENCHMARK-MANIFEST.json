@@ -1,0 +1,46 @@
+{
+  "schema": "vantio.planning.benchmark-framework.manifest/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "document": "BENCHMARK-MANIFEST",
+  "producer_classification": "BENCHMARK_FRAMEWORK_READY_FOR_COUNCIL",
+  "producer_role": "PLANNING_PRODUCER_ONLY",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "council_verdict": null,
+  "recorded_at_utc": "2026-09-27T11:30:48.764Z",
+  "base_sha": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "base_subject": "Merge pull request #83 from vantioai/cursor/pe-ws4-vocabulary-binding-f9f5",
+  "branch": "cursor/benchmark-framework-b6b6",
+  "repository": "vantioai/vantio-open-core",
+  "producer": {
+    "agent": "bc-e0913dd4-07fa-5610-a4fe-8178e8f2b6b6",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-e0913dd4-07fa-5610-a4fe-8178e8f2b6b6"
+  },
+  "merge": false,
+  "closed": {
+    "customer_deploy": false,
+    "stranger_host_execution": false,
+    "announcement": false,
+    "credential_use": false,
+    "money_movement": false,
+    "cli_reopen": false,
+    "python_byte_mutation": false,
+    "pe_confidential_copied": false
+  },
+  "files_sha256": {
+    "00-PROGRAM-BOUNDARY.md": "7d8642af6a61d9eb7e3531443bed9c10ef0ae24f856319c0a5a71d57bcba2fae",
+    "01-CLAIM-STAGE-LADDER.md": "6c5c22d9fb9ee1cdff7d6c19fc5aa84b7a30488377797099dee5e1abc8c96657",
+    "02-COMPARATOR-RULES.md": "56fcad44881d67ab9bbdf6896e0654f29fa9c84dfc9c3de869243179adb0c55b",
+    "03-SCORE.md": "e0758ba433ff0186b09bc7d6085eb2d90312c938e75e888daa9e3bf781dbd2bd",
+    "04-PERFORMANCE-QUALIFICATION.md": "a72d062760f9b972dad6dbded3ebf08056e6c211c257ea79a591c7484af3c8cb",
+    "05-INDEPENDENT-COUNCIL.md": "ec5c7c689ea9493864cedc4325df8ecae4214780152d27b672065e084ba925e2",
+    "CLAIM-LADDER.json": "36a18ddeabdee79f6c42898a659b3b23673f71d833e2df8d226712bd879c46e7",
+    "COMPARATOR-MATRIX.json": "bba1e4e305739e35e198dbeaec099dbcd3d8434e43ce76b84199209645725da0",
+    "PERFORMANCE-SCAFFOLD.json": "674b8616f720e67826e1cbb367b198db82d3b755ed8d2d6a77979f70c97255d3",
+    "scripts/cell-notes.mjs": "e600d1c99bd0018188da61878bf2b839d04d3eddf26d079f5aca892b050f527f",
+    "scripts/framework-lib.mjs": "6532b7258d39ab3ea7ec5d39123e198bf4e1b2866eb0ea5e295d73ac7a90b1cb",
+    "scripts/check-framework.mjs": "ca0802a14d8cee34670f07d6caa0075b36ed70540a9cd4533f589ad85f08d5b4",
+    "scripts/check-framework.test.mjs": "b7f07362986e407278736ed97645db602d5c1f4195e7ee10eb4cfeb2bfc48cf1",
+    "scripts/emit-pack.mjs": "7473a4701c53e239502c195d75869560ad06a38d34ab5328805e943717b137c7"
+  }
+}
