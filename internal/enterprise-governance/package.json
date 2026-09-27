@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/enterprise-governance-internal",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "INTERNAL record evaluator for Enterprise E1-E3. Not shipped. Not a host agent. Not an identity provider. Not Phantom Engine.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/enterprise-e1-e3/*.test.cjs"
+  }
+}
