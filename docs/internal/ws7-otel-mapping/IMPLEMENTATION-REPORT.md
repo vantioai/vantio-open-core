@@ -40,7 +40,7 @@ From the repository root:
 node --test tests/optics-otel-mapping/*.test.cjs
 ```
 
-The producer run of that command reported 22 tests and 0 failures. The first revision run reported 24 tests and 0 failures. Those tests cover `PRODUCT_HEALTH`, `DERIVED_DIAGNOSTIC`, `TEST_FIXTURE`, and `IMPORTED` empty candidate sets on `canonical_observation`, and the HTTP and URL citations. The second revision adds `live display with each blocked evidence origin returns an empty candidate set`, covering `PRODUCT_HEALTH`, `DERIVED_DIAGNOSTIC`, `SIMULATED_DEMO`, `TEST_FIXTURE`, and `IMPORTED` on `live_display`. `node docs/scripts/check-docs-release.mjs` reported ok on the first revision, including `legacy-stale-name-inventory-frozen`.
+The producer run of that command reported 22 tests and 0 failures. The first revision run reported 24 tests and 0 failures. Those tests cover `PRODUCT_HEALTH`, `DERIVED_DIAGNOSTIC`, `TEST_FIXTURE`, and `IMPORTED` empty candidate sets on `canonical_observation`, and the HTTP and URL citations. The second revision adds `live display with each blocked evidence origin returns an empty candidate set`, covering `PRODUCT_HEALTH`, `DERIVED_DIAGNOSTIC`, `SIMULATED_DEMO`, `TEST_FIXTURE`, and `IMPORTED` on `live_display`. That run reported 25 tests and 0 failures. `node docs/scripts/check-docs-release.mjs` reported ok, including `legacy-stale-name-inventory-frozen`.
 
 ## Hard-stop attestations
 
