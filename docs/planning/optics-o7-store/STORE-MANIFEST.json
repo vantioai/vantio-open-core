@@ -48,13 +48,13 @@
     "packages/optics-operational-store/src/optics_operational_store/store.py": "9ed8999b34499eea286d770f96c25ef879e3651c6980cf2aadd5b561d8397488",
     "packages/optics-operational-store/src/optics_operational_store/posture.py": "5b93aba1b3669ffa5297bbee10b06e9859cb3982cc880907a97b82fd044c49e6",
     "packages/optics-operational-store/src/optics_operational_store/__init__.py": "87bac557e1c456493af0d2b1d9855a4715af18454bba6187820f3e0a824145b2",
-    "packages/optics-operational-store/src/open.cjs": "a5eed36ea38b923c69be5305123786e8f20675c0b168b425a311296e838a0c61",
-    "packages/optics-operational-store/src/boundary.cjs": "d84de57d5a85ef65aecfee78321af0a47cf6a24a10c667a324468d5f39bdb3ba",
-    "packages/optics-operational-store/src/index.cjs": "c2e4d07820e148fb85d825eb76f88ab8bd38b251c1d73acef5a7fbf5228d685b",
+    "packages/optics-operational-store/src/open.cjs": "a231ce3322fcf5fcec8dbea64c1abee3d43200706c649bcb1240765cb6f94373",
+    "packages/optics-operational-store/src/boundary.cjs": "2bfe1d1d6989e79c74dd498d7cc3aafccc6de646c1ccf02d82f9acecb646a842",
+    "packages/optics-operational-store/src/index.cjs": "6707a2b3956eb65599611e19d6b1d6ea23e54f69ace5091fc5731a31c6471703",
     "tests/optics-o7-store/direct_test.py": "358e61ce9738b08c51df9cf7af897c19d7bedf23a25886b2ca69f22b40bd6e0b",
     "tests/optics-o7-store/adversarial_test.py": "62e9f881800f780c472f62ccc0bb53a539edfda6dc0fc2f3d9b6712498cfc5a9",
-    "tests/optics-o7-store/direct.test.cjs": "d62c64896195a1658a004fef37d52a5ebe1da1558093066a8dddbaa1976301ae",
-    "tests/optics-o7-store/adversarial.test.cjs": "7c23bab11ce605b3762de3620aaeccdf0a8195e575c07917925edd4f9e43ecb9",
+    "tests/optics-o7-store/direct.test.cjs": "051fe9288fd582b7a7584b251a29d8dc4da69b5f46b84f146e602ad6f40dc7c0",
+    "tests/optics-o7-store/adversarial.test.cjs": "9c6b1d0dd2265a4845c29e6854cc64282dbbcbba63a6cbb502d999c8145165a8",
     "tests/optics-o7-store/support.py": "5c401fc0c805062d6ab299bb0fc72304a7b0a0b6a7109ad02455e5ad018b6d31"
   },
   "files_sha256_note": "This manifest is excluded because writing its own hash would change the bytes."

@@ -5,6 +5,7 @@ const store = require("./open.cjs");
 
 module.exports = {
   AUDIENCE: boundary.AUDIENCE,
+  CLASSIFICATION: boundary.CLASSIFICATION,
   EVIDENCE_TIER: boundary.EVIDENCE_TIER,
   FOUNDER_DECISION_9: boundary.FOUNDER_DECISION_9,
   NODE_BINDING: boundary.NODE_BINDING,
@@ -19,4 +20,5 @@ module.exports = {
   openStore: store.openStore,
   put: store.put,
   query: store.query,
+  salvage: store.salvage,
 };

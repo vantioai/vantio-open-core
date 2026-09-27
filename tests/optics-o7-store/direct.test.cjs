@@ -9,6 +9,7 @@ const test = require("node:test");
 
 const store = require("../../packages/optics-operational-store/src/index.cjs");
 const reader = require("../../packages/optics-record-reader/src/boundary.cjs");
+const { selectedBindingSupported } = require("../../packages/optics-operational-store/src/runtime-gate.cjs");
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -16,23 +17,30 @@ function readJson(rel) {
   return JSON.parse(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 }
 
-test("node open does not create a store file", () => {
+test("node open follows the selected binding floor", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o7-node-"));
   const previous = process.env.VANTIO_HOME;
   process.env.VANTIO_HOME = dir;
   try {
     const opened = store.openStore({ create: true, sqlite: true, migrate: true, write: true, activate: true });
-    assert.equal(opened.opened, false);
-    assert.equal(opened.file_created, false);
-    assert.equal(opened.writes_enabled, false);
     assert.equal(opened.application_continues, true);
     assert.equal(opened.default_write_path, false);
-    assert.equal(opened.reason_code, "NODE_BINDING_UNSELECTED");
-    assert.equal(opened.node_binding, "UNSELECTED");
-    assert.equal(opened.founder_decision_9, "UNRESOLVED");
+    assert.equal(opened.node_binding, "node:sqlite@24.15.0");
+    assert.equal(opened.founder_decision_9, "SELECTED");
     assert.equal(opened.evidence_tier, "UNSET");
     assert.equal(opened.schema_status, "unstable-pre-1.0");
-    assert.equal(fs.existsSync(path.join(dir, "optics", "store.sqlite")), false);
+    if (selectedBindingSupported(process.versions.node)) {
+      assert.equal(opened.opened, true);
+      assert.equal(opened.reason_code, "OK");
+      assert.equal(fs.existsSync(path.join(dir, "optics", "store.sqlite")), true);
+      opened.close();
+    } else {
+      assert.equal(opened.opened, false);
+      assert.equal(opened.file_created, false);
+      assert.equal(opened.writes_enabled, false);
+      assert.equal(opened.reason_code, "NODE_BINDING_CANNOT_LOAD");
+      assert.equal(fs.existsSync(path.join(dir, "optics", "store.sqlite")), false);
+    }
     const homeStore = path.join(os.homedir(), ".vantio", "optics", "store.sqlite");
     assert.equal(opened.store_path, path.join(dir, "optics", "store.sqlite"));
     assert.notEqual(opened.store_path, homeStore);
@@ -71,6 +79,12 @@ test("writer flags match PKG-02 data and the store does not import that package"
   assert.equal(source.includes("vantio-cli"), false);
   assert.equal(source.includes("node:sqlite"), false);
   assert.equal(source.includes("better-sqlite"), false);
+  const session = fs.readFileSync(
+    path.join(ROOT, "packages/optics-operational-store/src/node-sqlite-session.cjs"),
+    "utf8",
+  );
+  assert.match(session, /require\("node:sqlite"\)/);
+  assert.equal(session.includes("better-sqlite"), false);
 });
 
 test("frozen product versions and the closed architecture gate stay in place", () => {
@@ -87,6 +101,8 @@ test("frozen product versions and the closed architecture gate stay in place", (
   assert.match(decision, /9\. Node SQLite binding\. Not selected\./);
   assert.equal(readJson("packages/optics-operational-store/package.json").private, true);
   assert.equal(readJson("packages/optics-operational-store/package.json").version, "0.0.0-unstable-pre-1.0");
+  assert.equal(readJson("packages/optics-operational-store/package.json").engines.node, ">=24.15.0");
+  assert.equal(readJson("packages/vantio-cli/package.json").engines.node, ">=18.3.0");
   assert.equal(store.SCHEMA_STATUS, "unstable-pre-1.0");
   assert.equal(store.OPERATIONAL_SCHEMA_VERSION, 1);
   assert.equal(store.PRIVACY_GENERATION, 1);

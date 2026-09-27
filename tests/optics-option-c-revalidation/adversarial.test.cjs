@@ -29,11 +29,15 @@ const DEPENDENCY_NAMES = new Set(["sqlite3", "better-sqlite3", "better-sqlite", 
 const IMPORT_RE =
   /^\s*(?:import\s+sqlite3\b|from\s+sqlite3\b|require\(\s*["'](?:sqlite3|better-sqlite3|better-sqlite|node:sqlite)["']|import\s+.*\s+from\s+["'](?:sqlite3|better-sqlite3|better-sqlite|node:sqlite)["'])/u;
 const STDLIB_SQLITE_IMPORT = /^\s*(?:import\s+sqlite3\b|from\s+sqlite3\b)/u;
-// Successor exception for the O7 store force. Python stdlib sqlite3 is the
-// mechanism A2 already names. Node bindings stay banned in every file.
+const NODE_SQLITE_IMPORT = /^\s*require\(\s*["']node:sqlite["']\)/;
+// Python stdlib sqlite3 is the mechanism A2 already names.
+// Track 2 lifts the import ban only for the selected node:sqlite builtin.
 const STDLIB_SQLITE_PREFIXES = [
   "packages/optics-operational-store/",
   "tests/optics-o7-store/",
+];
+const NODE_SQLITE_PREFIXES = [
+  "packages/optics-operational-store/",
 ];
 
 function relative(full) {
@@ -43,6 +47,11 @@ function relative(full) {
 function stdlibSqliteAllowed(full) {
   const rel = relative(full);
   return STDLIB_SQLITE_PREFIXES.some((prefix) => rel.startsWith(prefix));
+}
+
+function nodeSqliteAllowed(full) {
+  const rel = relative(full);
+  return NODE_SQLITE_PREFIXES.some((prefix) => rel.startsWith(prefix));
 }
 
 function walk(dir, out) {
@@ -143,11 +152,18 @@ test("the working tree has no tracked sqlite file, package dependency, or Node b
   }
 
   const sources = files.filter((full) => /\.(?:js|cjs|mjs|py|ts)$/.test(full));
+  const requireAnywhere = /require\(\s*["'](?:sqlite3|better-sqlite3|better-sqlite|node:sqlite)["']\)/;
+  const nodeSqliteAnywhere = /require\(\s*["']node:sqlite["']\)/;
+  const packageRequire = /require\(\s*["'](?:sqlite3|better-sqlite3|better-sqlite)["']\)|from\s+["'](?:sqlite3|better-sqlite3|better-sqlite)["']/;
   for (const full of sources) {
     const lines = fs.readFileSync(full, "utf8").split("\n");
     for (const line of lines) {
-      if (!IMPORT_RE.test(line)) continue;
-      const allowed = STDLIB_SQLITE_IMPORT.test(line) && stdlibSqliteAllowed(full);
+      if (!IMPORT_RE.test(line) && !requireAnywhere.test(line)) continue;
+      const stdlib = STDLIB_SQLITE_IMPORT.test(line);
+      const nodeSqlite = nodeSqliteAnywhere.test(line) || NODE_SQLITE_IMPORT.test(line);
+      const otherPackage = packageRequire.test(line);
+      const allowed = (stdlib && stdlibSqliteAllowed(full))
+        || (nodeSqlite && !otherPackage && nodeSqliteAllowed(full));
       assert.equal(allowed, true, `${relative(full)}: ${line}`);
     }
   }

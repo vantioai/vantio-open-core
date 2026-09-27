@@ -81,7 +81,7 @@ test("frozen manifests and the historical not-selected sentence stay put", () =>
   assert.equal(manifest.node_binding, "UNSELECTED");
 });
 
-test("no package manifest gained a sqlite dependency and the facade still refuses", () => {
+test("no package manifest gained a sqlite dependency and the live facade uses the selected binding", () => {
   const banned = new Set(["sqlite3", "better-sqlite3", "better-sqlite", "node:sqlite"]);
   const files = [];
   function walk(dir) {
@@ -102,16 +102,28 @@ test("no package manifest gained a sqlite dependency and the facade still refuse
     }
   }
   const source = readText("packages/optics-operational-store/src/open.cjs");
-  assert.equal(source.includes("node:sqlite"), false);
   assert.equal(source.includes("better-sqlite"), false);
+  const session = readText("packages/optics-operational-store/src/node-sqlite-session.cjs");
+  assert.match(session, /require\("node:sqlite"\)/);
+  assert.equal(session.includes("better-sqlite"), false);
+  const { selectedBindingSupported } = require("../../packages/optics-operational-store/src/runtime-gate.cjs");
   const store = require("../../packages/optics-operational-store/src/index.cjs");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o7-binding-council-"));
   try {
     const opened = store.openStore({ evidenceRoot: dir, create: true, sqlite: true });
-    assert.equal(opened.reason_code, "NODE_BINDING_UNSELECTED");
-    assert.equal(opened.file_created, false);
-    assert.equal(opened.founder_decision_9, "UNRESOLVED");
-    assert.equal(fs.existsSync(path.join(dir, "optics", "store.sqlite")), false);
+    assert.equal(opened.node_binding, "node:sqlite@24.15.0");
+    assert.equal(opened.founder_decision_9, "SELECTED");
+    assert.equal(opened.evidence_tier, "UNSET");
+    assert.equal(opened.default_write_path, false);
+    if (selectedBindingSupported(process.versions.node)) {
+      assert.equal(opened.reason_code, "OK");
+      assert.equal(fs.existsSync(path.join(dir, "optics", "store.sqlite")), true);
+      opened.close();
+    } else {
+      assert.equal(opened.reason_code, "NODE_BINDING_CANNOT_LOAD");
+      assert.equal(opened.file_created, false);
+      assert.equal(fs.existsSync(path.join(dir, "optics", "store.sqlite")), false);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

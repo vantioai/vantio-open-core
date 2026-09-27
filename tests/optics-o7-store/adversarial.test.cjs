@@ -24,9 +24,14 @@ function walk(dir, out) {
 test("node sources in this package do not select a binding or create a home store", () => {
   const files = walk(path.join(ROOT, "packages/optics-operational-store"), []);
   const nodeFiles = files.filter((full) => /\.(?:cjs|js|mjs)$/.test(full));
-  const banned = /require\(\s*["'](?:sqlite3|better-sqlite3|better-sqlite|node:sqlite)["']|from\s+["']node:sqlite["']/;
+  const bannedPackages = /require\(\s*["'](?:sqlite3|better-sqlite3|better-sqlite)["']/;
+  const selectedBinding = /require\(\s*["']node:sqlite["']\)|from\s+["']node:sqlite["']/;
   for (const full of nodeFiles) {
-    assert.equal(banned.test(fs.readFileSync(full, "utf8")), false, full);
+    const text = fs.readFileSync(full, "utf8");
+    assert.equal(bannedPackages.test(text), false, full);
+    if (selectedBinding.test(text)) {
+      assert.equal(path.basename(full), "node-sqlite-session.cjs", full);
+    }
   }
   const previous = process.env.VANTIO_HOME;
   delete process.env.VANTIO_HOME;
