@@ -100,6 +100,12 @@ function replayDenial(step, ledger, envelope) {
   };
 }
 
+function revokedRecord(id, envelope, catalog) {
+  const catalogRecord = catalog[id];
+  if (catalogRecord && catalogRecord.state === "REVOKED") return true;
+  return id === envelope.envelope_id && envelope.state === "REVOKED";
+}
+
 function revocationDenial(envelope, catalog, ledger) {
   if (envelope.state === "EXPIRED") {
     return { rule: "LIMIT", reason: "expired_state", axis: "time_window" };
@@ -107,9 +113,7 @@ function revocationDenial(envelope, catalog, ledger) {
   const chain = envelope.lineage.concat([envelope.envelope_id]);
   for (const id of chain) {
     const mark = ledger.revocations[id];
-    const record = id === envelope.envelope_id ? envelope : catalog[id];
-    const recordRevoked = Boolean(record) && record.state === "REVOKED";
-    if (!mark && !recordRevoked) continue;
+    if (!mark && !revokedRecord(id, envelope, catalog)) continue;
     if (envelope.state === "ACTIVE") {
       return {
         invariant: "STALE_DESCENDANT_DOES_NOT_SURVIVE_PARENT_REVOCATION",
@@ -125,11 +129,7 @@ function revocationDenial(envelope, catalog, ledger) {
   }
   if (envelope.parent_envelope_id !== null) {
     const parent = catalog[envelope.parent_envelope_id];
-    if (
-      parent &&
-      parent.state === "ACTIVE" &&
-      envelope.issued_against_parent_generation !== parent.generation
-    ) {
+    if (parent && envelope.issued_against_parent_generation !== parent.generation) {
       return {
         invariant: "STALE_DESCENDANT_DOES_NOT_SURVIVE_PARENT_REVOCATION",
         reason: "parent_generation_drift",

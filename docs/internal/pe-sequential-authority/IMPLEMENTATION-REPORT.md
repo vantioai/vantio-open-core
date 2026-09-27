@@ -8,6 +8,20 @@ Producer classification before council: `PE_SEQUENTIAL_AGGREGATE_AUTHORITY_READY
 
 This classification means the branch is ready for a separate council. It is a producer handoff. It is not a merge and it does not attach enforcement on a host.
 
+## Revision
+
+Council `bc-d04c35dd-3f9d-5599-ab0b-5b238e7c83c7` returned `PE_SEQUENTIAL_AGGREGATE_AUTHORITY_NEEDS_REVISION` on tip `403f4b06d4a2eac9ca98da0573f13674fc982375`.
+
+This revision's classification before the next council is `PE_SEQUENTIAL_AGGREGATE_AUTHORITY_REVISION_READY_FOR_COUNCIL`. That is a producer handoff. It is not a council verdict and it is not a merge.
+
+The catalog entry for the subject envelope is authoritative for revocation. A caller-held `ACTIVE` copy is denied when that catalog entry is `REVOKED`, including when the ledger has no mark. Ancestor `REVOKED` catalog entries and ledger marks still deny.
+
+Parent generation drift denies when `issued_against_parent_generation` differs from the catalog parent generation. The drift check is not limited to parent state `ACTIVE`. A child issued against generation 0 is denied when the catalog parent is `EXPIRED` at generation 4. A `REVOKED` parent still denies through the ancestor revocation check, including when that parent's generation has also moved.
+
+`evaluate` of `revoke_grant` still returns `revoke_transition` only. `revoke` still writes the mark. `host_attachment` stays false. `enforcement` stays `EVALUATE_ONLY`. `doctrine_present` stays false. Shared-family lineage ceilings are unchanged: a different `principal_id` keeps its own `resource_budget` counter, and the lineage ceiling stays shared.
+
+Re-run of `node --test tests/pe-sequential-authority/*.test.cjs` on this revision reports 36 tests and 0 failures. The two adversarial cases cover a stale `ACTIVE` subject against a `REVOKED` catalog entry with an empty ledger, and parent generation drift when the catalog parent is `EXPIRED` at generation 4.
+
 Producer: `bc-9eb86d6c-ac94-528a-8d98-23f58f64ad38`
 
 Producer URL: https://cursor.com/agents/bc-9eb86d6c-ac94-528a-8d98-23f58f64ad38

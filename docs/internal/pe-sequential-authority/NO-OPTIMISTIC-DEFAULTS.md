@@ -14,6 +14,7 @@ The evaluator fills nothing in that would widen authority.
 - An omitted receipt is not a bearer token. Presenting a receipt denies a new step.
 - Reserved rights are absent from a child. They are not inferred from a parent list.
 - A denied step leaves consumption where it was.
+- A caller-held `ACTIVE` envelope does not outrank a `REVOKED` catalog entry for that subject. An empty ledger does not clear that catalog revocation. Parent generation drift is not skipped when the parent is `EXPIRED` or otherwise non-`ACTIVE`.
 - Unknown keys on the envelope, the step, and the evaluate input are rejected, including keys that would claim host attachment or a doctrine verdict.
 
 Omitted optional step fields normalize to null or false. False on `raises_ceiling` means the step does not ask for a raise. It does not grant a raise.

@@ -21,13 +21,13 @@ The ledger holds consumption, single-use receipts, revocation marks, family comp
 1. Reject malformed input.
 2. Authority source `consensus` or `process_count` denies.
 3. A presented receipt denies. A receipt is evidence of a past decision.
-4. Revocation marks and revoked records deny. An `ACTIVE` copy after a revocation mark is stale.
+4. Revocation marks and revoked catalog records deny. The catalog state of the subject wins over a caller-held `ACTIVE` copy, including when the ledger is empty. An `ACTIVE` copy after a revocation mark or a revoked catalog entry is stale. Parent generation drift denies whenever the catalog parent generation differs from the generation the child was issued against, including when that parent is `EXPIRED` or otherwise non-`ACTIVE`.
 5. Child fields must be inside the parent. Lineage longer than one hop is redelegation and denies.
 6. Reserved actions run only for a root that lists them. Any other use denies.
 7. Time window, then tenant, fleet, workload, node, destination, and credential membership.
 8. Composition rules, then ceilings. A step that crosses a cumulative ceiling denies and does not consume.
 
-`proposeDelegation` builds a child from a root only. Cause `grant` is the only cause that can succeed. `process_spawn` and `consensus` deny. The child window, ceilings, and lists are subsets. `revoke` marks the named envelope and every catalog envelope whose lineage contains it, and bumps generation.
+`proposeDelegation` builds a child from a root only. Cause `grant` is the only cause that can succeed. `process_spawn` and `consensus` deny. The child window, ceilings, and lists are subsets. `revoke` marks the named envelope and every catalog envelope whose lineage contains it, and bumps generation. `evaluate` of `revoke_grant` or `revoke_root` returns `revoke_transition` and does not write that mark.
 
 ## Budget keys
 
