@@ -77,4 +77,4 @@ From the repository root, after the tree that will be cited is committed:
 
 `node docs/internal/wave3/performance/scripts/qualify.mjs --write`
 
-The process records `git rev-parse HEAD` before it writes. Cursor environment ids are copied only from `CURSOR_ENVIRONMENT_PUBLIC_ID`, `CURSOR_ENVIRONMENT_VERSION_PUBLIC_ID`, and `CURSOR_ENVIRONMENT_BUILD_ID`. When those variables are absent, the register stores `NOT_OBSERVED`.
+The process records `git rev-parse HEAD` and `uname -srm` before it writes. Cursor environment ids are copied only from `CURSOR_ENVIRONMENT_PUBLIC_ID`, `CURSOR_ENVIRONMENT_VERSION_PUBLIC_ID`, and `CURSOR_ENVIRONMENT_BUILD_ID`. When those variables are absent, the register stores `NOT_OBSERVED`.

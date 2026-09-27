@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { arch, hostname, release, type } from "node:os";
+import { hostname, release } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { validatePerformance } from "../../../../planning/benchmark-framework/scripts/check-framework.mjs";
@@ -271,7 +271,7 @@ function probeEnvironment() {
     pod_id: podId,
     cgroup,
     hostname: hostname(),
-    uname: `${type()} ${release()} ${arch()}`,
+    uname: execFileSync("uname", ["-srm"], { encoding: "utf8" }).trim(),
     os_release: osRelease,
     node: process.version,
     btf_vmlinux: btfPresent,
