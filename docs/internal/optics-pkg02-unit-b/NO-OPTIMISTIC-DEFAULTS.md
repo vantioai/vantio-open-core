@@ -21,10 +21,11 @@ Audience: INTERNAL_RESTRICTED
 | Origin missing | Reader label `LEGACY_UNMARKED`. Not stored as `LOCAL_OBSERVATION` |
 | Claimed local without producer and version | `LEGACY_UNMARKED` |
 | Inherited trace | `ASSERTED_CONTEXT` |
-| Empty `calls` array | `NOT_OBSERVED` |
+| Empty `calls` array | `NOT_OBSERVED` on `optics_health` and on the detached envelope `optics_status` |
+| Inherited trace envelope | `optics_status` `UNAVAILABLE` on the detached record, `trace_id_basis` `ASSERTED_CONTEXT` |
 | Absent file | `UNAVAILABLE`. Not `NOT_OBSERVED` |
 | Corrupt JSON or unreadable bytes | `OPTICS_ERROR`. Not an empty success record |
-| Invalid `sampling` | Omitted. Not stored as `UNSAMPLED` |
+| Invalid `sampling` | Omitted. Not stored as `UNSAMPLED`. The same omission applies to a JSON string and to bytes |
 | HTTP 200–399 | Workload `application_status` `SUCCESS`, including 302. Not copied into `optics_status` |
 | HTTP 500 | `application_status` `APPLICATION_ERROR`, `issue_location` `PROVIDER_INTERACTION`, optics `UNAVAILABLE` |
 

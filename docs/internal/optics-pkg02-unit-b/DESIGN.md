@@ -22,7 +22,7 @@ Absent files and unreadable paths do not open a filesystem path. Malformed text 
 
 ## Detached reading
 
-The mapper result is the mechanism. The detached reading then applies the merged Unit A rules where the mapper output would disagree with those rules:
+A JSON string and a byte buffer are decoded only far enough to take the same Unit A snapshot an object receives. The original text or bytes still go to the mapper. Malformed text and malformed bytes keep an empty snapshot. The detached reading then applies the merged Unit A rules where the mapper output would disagree with those rules:
 
 - `optics_status` `SUCCESS` becomes `UNAVAILABLE`, with `optimistic_default_forbidden` true. Explicit `OBSERVED` stays.
 - An unknown optics token stays `UNAVAILABLE` and sets the same flag. The raw token is not stored.
@@ -36,6 +36,7 @@ The mapper result is the mechanism. The detached reading then applies the merged
 - `generated_at` may appear as `ended_at` because the mapper maps that alias. The diagnostic says that value is file write time.
 - Pre-completion `duration_ms` `0` with null HTTP status omits the duration and sets `lifecycle` `INTERRUPTED`.
 - Two application tokens `SUCCESS` and `APPLICATION_ERROR` set envelope `lifecycle` `PARTIAL`. They do not set `application_status` `PARTIAL`.
-- An explicit empty `calls` array is `optics_health` `NOT_OBSERVED`. A missing file is `UNAVAILABLE`. Corrupt or unreadable input is `OPTICS_ERROR`.
+- An explicit empty `calls` array is `optics_health` `NOT_OBSERVED`, and that token is stored on the detached envelope as `optics_status`. An envelope with no events and no call list stores `optics_status` `UNAVAILABLE` on the detached record. `optics_health` is not a substitute for that field. A missing file is `UNAVAILABLE`. Corrupt or unreadable input is `OPTICS_ERROR`.
+- Own getters and inherited accessors are left unread. The mapper then rejects the copy.
 
 `live_writer_modified` stays false. `schema_version` on the detached record is `0`. Legacy `2` remains `compatibility.legacy_schema_version`.

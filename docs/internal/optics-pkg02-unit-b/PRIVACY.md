@@ -10,6 +10,6 @@ A payload name such as `prompt` on a call drops that observation. The canary val
 
 An enforcement token such as `BLOCKED_EGRESS` is not stored. The observation is not emitted as optics `SUCCESS`.
 
-A filesystem path string is refused before any open. The path text is not copied into the result. An accessor property is rejected by the mapper without calling the getter.
+A filesystem path string is refused before any open. The path text is not copied into the result. An own getter is rejected without calling it. An inherited accessor is also left unread; the prototype getter is not invoked before the mapper rejects the copy.
 
 The application result is a detached copy. A validator rejection does not replace it and does not change the caller object.

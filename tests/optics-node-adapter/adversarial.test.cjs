@@ -91,6 +91,136 @@ test("a mutating getter is not called", () => {
   assert.equal(result.events.length, 0);
 });
 
+test("an inherited accessor is not called", () => {
+  let reads = 0;
+  const proto = {};
+  Object.defineProperty(proto, "calls", {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return [{ prompt: "CANARYINHERITED", status: 200 }];
+    },
+  });
+  const input = Object.create(proto);
+  input.vantio_run_log = "1";
+  const result = adaptNodeCopy(input);
+  assert.equal(reads, 0);
+  assert.equal(JSON.stringify(result).includes("CANARYINHERITED"), false);
+  assert.equal(result.record, null);
+  assert.equal(result.events.length, 0);
+  assert.equal(result.reason_code, "ACCESSOR_PROPERTY_FORBIDDEN");
+});
+
+test("an inherited accessor on a call is not called", () => {
+  let reads = 0;
+  const callProto = {};
+  Object.defineProperty(callProto, "duration_ms", {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return 0;
+    },
+  });
+  Object.defineProperty(callProto, "status", {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return null;
+    },
+  });
+  const call = Object.create(callProto);
+  call.hostname = "api.example.com";
+  const result = adaptNodeCopy({ calls: [call], vantio_run_log: "1" });
+  assert.equal(reads, 0);
+  assert.equal(result.record, null);
+  assert.equal(result.events.length, 0);
+  assert.equal(result.reason_code, "ACCESSOR_PROPERTY_FORBIDDEN");
+});
+
+function projection(result) {
+  return {
+    events: result.events.map((event) => event.record),
+    forbidden: result.optimistic_default_forbidden,
+    health: result.optics_health,
+    record: result.record,
+  };
+}
+
+test("text and byte copies follow the same Unit A snapshot rules as objects", () => {
+  const samples = [
+    {
+      calls: [{ sampling: "SAMPLED", status: 200 }],
+      vantio_run_log: "1",
+    },
+    {
+      calls: [{ method: "FLY", status: 204 }],
+      vantio_run_log: "1",
+    },
+    {
+      calls: [{ duration_ms: 0, status: null }],
+      vantio_run_log: "1",
+    },
+    {
+      record_type: "run_envelope",
+      span_id: null,
+    },
+    {
+      evidence_origin: "IMPORTED",
+      original_evidence_origin: "LEGACY_UNMARKED",
+      record_type: "run_envelope",
+    },
+    {
+      http_status: 204,
+      optics_status: "SUPER_SUCCESS",
+      record_type: "observation_event",
+    },
+    {
+      calls: [],
+      generated_at: "2026-07-01T00:00:00.000Z",
+      schema_version: 2,
+      trace_id: "0xcliempty",
+      vantio_run_log: "1",
+    },
+  ];
+  for (const sample of samples) {
+    const text = JSON.stringify(sample);
+    const objectResult = adaptNodeCopy(sample);
+    const textResult = adaptNodeCopy(text);
+    const bytesResult = adaptNodeCopy(Buffer.from(text));
+    assert.deepEqual(projection(textResult), projection(objectResult));
+    assert.deepEqual(projection(bytesResult), projection(objectResult));
+  }
+
+  const sampled = adaptNodeCopy(JSON.stringify(samples[0]));
+  assert.equal(hasOwn(sampled.events[0].record, "sampling"), false);
+  assert.notEqual(sampled.events[0].record.sampling, "UNSAMPLED");
+
+  const fly = adaptNodeCopy(Buffer.from(JSON.stringify(samples[1])));
+  assert.equal(hasOwn(fly.events[0].record, "method"), false);
+  assert.notEqual(fly.events[0].record.method, "unknown");
+
+  const pre = adaptNodeCopy(JSON.stringify(samples[2]));
+  assert.equal(pre.events[0].record.lifecycle, "INTERRUPTED");
+  assert.equal(hasOwn(pre.events[0].record, "duration_ms"), false);
+
+  const span = adaptNodeCopy(Buffer.from(JSON.stringify(samples[3])));
+  assert.equal(span.record.span_id, null);
+
+  const imported = adaptNodeCopy(JSON.stringify(samples[4]));
+  assert.equal(imported.record.evidence_origin, "IMPORTED");
+  assert.equal(imported.record.original_evidence_origin, "LEGACY_UNMARKED");
+  assert.notEqual(imported.record.evidence_origin, "LEGACY_UNMARKED");
+
+  const unknown = adaptNodeCopy(Buffer.from(JSON.stringify(samples[5])));
+  assert.equal(unknown.record.optics_status, "UNAVAILABLE");
+  assert.equal(unknown.optimistic_default_forbidden, true);
+
+  const empty = adaptNodeCopy(JSON.stringify(samples[6]));
+  assert.equal(empty.optics_health, "NOT_OBSERVED");
+  assert.equal(empty.record.trace_id_basis, "ASSERTED_CONTEXT");
+  assert.equal(empty.record.optics_status, "NOT_OBSERVED");
+});
+
 test("a filesystem path is not opened", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "unit-b-path-"));
   const file = path.join(directory, "run.json");
@@ -165,10 +295,24 @@ test("a non-zero timestamp offset is not converted", () => {
 });
 
 test("null span and omitted span stay different", () => {
-  const omitted = adaptNodeCopy({ record_type: "run_envelope" });
-  const nulled = adaptNodeCopy({ record_type: "run_envelope", span_id: null });
-  assert.equal(hasOwn(omitted.record, "span_id"), false);
-  assert.equal(nulled.record.span_id, null);
+  const omittedObject = { record_type: "run_envelope" };
+  const nulledObject = { record_type: "run_envelope", span_id: null };
+  const copies = [
+    omittedObject,
+    JSON.stringify(omittedObject),
+    Buffer.from(JSON.stringify(omittedObject)),
+  ];
+  const nulledCopies = [
+    nulledObject,
+    JSON.stringify(nulledObject),
+    Buffer.from(JSON.stringify(nulledObject)),
+  ];
+  for (const copy of copies) {
+    assert.equal(hasOwn(adaptNodeCopy(copy).record, "span_id"), false);
+  }
+  for (const copy of nulledCopies) {
+    assert.equal(adaptNodeCopy(copy).record.span_id, null);
+  }
 });
 
 test("a real CLI 0.3.24 run file is byte-identical with the adapter present", () => {
@@ -194,6 +338,8 @@ test("a real CLI 0.3.24 run file is byte-identical with the adapter present", ()
     const beforeHash = crypto.createHash("sha256").update(before).digest("hex");
     const parsed = JSON.parse(before.toString("utf8"));
     const adapted = adaptNodeCopy(parsed);
+    const asText = adaptNodeCopy(before.toString("utf8"));
+    const asBytes = adaptNodeCopy(Buffer.from(before));
     const after = fs.readFileSync(file);
     const afterHash = crypto.createHash("sha256").update(after).digest("hex");
     assert.equal(afterHash, beforeHash);
@@ -206,6 +352,11 @@ test("a real CLI 0.3.24 run file is byte-identical with the adapter present", ()
     assert.equal(parsed.schema_version, 2);
     assert.equal(adapted.compatibility.legacy_schema_version, 2);
     assert.equal(adapted.schema_version, 0);
+    assert.equal(adapted.optics_health, "NOT_OBSERVED");
+    assert.equal(adapted.record.trace_id_basis, "ASSERTED_CONTEXT");
+    assert.equal(adapted.record.optics_status, "NOT_OBSERVED");
+    assert.deepEqual(projection(asText), projection(adapted));
+    assert.deepEqual(projection(asBytes), projection(adapted));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

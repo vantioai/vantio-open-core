@@ -7,7 +7,7 @@ Audience: INTERNAL_RESTRICTED
 - This unit does not activate a writer. Units D and E stay closed. `PKG02-FUTURE-CLI-UNASSIGNED` is not a release.
 - The adapter is not on the `vantio run` exit path. A real CLI `0.3.24` run file stays byte-identical when this package is loaded and when a copy of that file is adapted.
 - The Unit A runner still does not convert records. This package is the converter of copies. It does not rewrite the source file.
-- The mapper stores invalid `sampling` as `UNSAMPLED`. The detached reading omits that key. The mapper maps `generated_at` to `ended_at`. The detached note says that is write time. The mapper fills a null span when the source omitted span. The detached reading removes that null. The mapper drops `IMPORTED` without provenance. The detached reading writes `IMPORTED` back and does not upgrade it.
+- The mapper stores invalid `sampling` as `UNSAMPLED`. The detached reading omits that key for an object, a JSON string, and a byte buffer. The mapper maps `generated_at` to `ended_at`. The detached note says that is write time. The mapper fills a null span when the source omitted span. The detached reading removes that null and keeps an explicit null. The mapper drops `IMPORTED` without provenance. The detached reading writes `IMPORTED` back and does not upgrade it.
 - An explicit canonical `optics_status` `SUCCESS` is refused here even though the catalog allows the token when the caller sent it. This inert adapter does not store that token.
 - Calls longer than 64 hit the contract copy bound `INPUT_BOUND`. The result has no envelope and no partial list of 64 events. This unit does not raise the bound.
 - Node SDK `0.2.4` ingest is `UNSUPPORTED`. It is not turned into a local run log.

@@ -33,3 +33,5 @@ The package is not a pnpm workspace member. Nothing in the live CLI, Python SDK,
 - It does not mark a pull request ready, and it does not merge.
 
 Producer classification before council: `OPTICS_PKG02_UNIT_B_READY_FOR_COUNCIL`.
+
+Revision after `OPTICS_PKG02_UNIT_B_NEEDS_REVISION` on `56ec23c3dd4c80d52596767eb557931768824d48`: `OPTICS_PKG02_UNIT_B_REVISION_READY_FOR_COUNCIL`. That revision classification is not a council verdict.

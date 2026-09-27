@@ -6,7 +6,7 @@ Audience: INTERNAL_RESTRICTED
 
 The adapter scores the 34 Unit A fixtures in `packages/optics-record-vocabulary/fixtures/conformance-fixtures.json`. It does not add a second fixture corpus and it does not edit those declarations.
 
-Each expected canonical key must appear with the same value on the detached envelope or on a detached event. Alias keys and `fields_not_promoted` tokens are absent from those records. `record_emitted` matches the fixture. Reader origin matches `evidence_origin` when the fixture names one.
+Each expected canonical key must appear with the same value on the detached envelope or on a detached event. `optics_health` is not counted as `optics_status`. `cli-empty-call-file` stores `optics_status` `NOT_OBSERVED` on the envelope. `inherited-trace` stores `optics_status` `UNAVAILABLE` on the envelope. Alias keys and `fields_not_promoted` tokens are absent from those records. `record_emitted` matches the fixture. Reader origin matches `evidence_origin` when the fixture names one.
 
 Python-shaped fixtures are scored here so the Node adapter and a later Python adapter can be compared on the same declarations. Scoring them does not import `vantio-agent-sdk` and does not change `3.1.0`.
 

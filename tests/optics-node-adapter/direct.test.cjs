@@ -22,7 +22,6 @@ function valuesFor(result, key) {
   }
   take(result.record);
   for (const event of result.events) take(event.record);
-  if (key === "optics_status") values.push(result.optics_health);
   if (key === "reader_origin_label") {
     if (result.reader_origin_label) values.push(result.reader_origin_label);
     for (const event of result.events) {
@@ -143,6 +142,7 @@ test("absent, null, unknown, and byte distinctions stay apart", () => {
   assert.equal(byId["unknown-status"].optimistic_default_forbidden, true);
   assert.equal(byId["no-file"].optics_health, "UNAVAILABLE");
   assert.equal(byId["cli-empty-call-file"].optics_health, "NOT_OBSERVED");
+  assert.equal(byId["cli-empty-call-file"].record.optics_status, "NOT_OBSERVED");
   assert.equal(byId["corrupt-record"].optics_health, "OPTICS_ERROR");
   assert.equal(byId["corrupt-record"].record, null);
   assert.equal(byId["unreadable-record"].optics_health, "OPTICS_ERROR");
@@ -172,6 +172,7 @@ test("status dimensions and origin stay on their own fields", () => {
   const inherited = adaptFixture(fixtures.find((item) => item.id === "inherited-trace"));
   assert.equal(inherited.record.run_id, "0xinherited");
   assert.equal(inherited.record.trace_id_basis, "ASSERTED_CONTEXT");
+  assert.equal(inherited.record.optics_status, "UNAVAILABLE");
   assert.equal(hasOwn(inherited.record, "trace_id"), false);
 
   const witnessed = adaptFixture(fixtures.find((item) => item.id === "witnessed-trace"));

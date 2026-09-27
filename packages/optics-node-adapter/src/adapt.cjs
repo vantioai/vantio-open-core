@@ -1,5 +1,7 @@
 "use strict";
 
+const { types } = require("util");
+
 const { validateBytes, validateEvidence } = require("../../optics-evidence-contract/src/validate.cjs");
 const boundary = require("./boundary.cjs");
 
@@ -103,11 +105,37 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+function readOwn(object, key) {
+  if (!object || typeof object !== "object" || !hasOwn(object, key)) return { present: false, value: undefined };
+  const descriptor = Object.getOwnPropertyDescriptor(object, key);
+  if (!descriptor || !hasOwn(descriptor, "value")) return { present: false, value: undefined };
+  return { present: true, value: descriptor.value };
+}
+
+function prototypeHasAccessor(value, seen, depth) {
+  let proto = Object.getPrototypeOf(value);
+  const protos = new Set();
+  while (proto && proto !== Object.prototype && proto !== Array.prototype && !protos.has(proto)) {
+    protos.add(proto);
+    const descriptors = Object.getOwnPropertyDescriptors(proto);
+    const keys = Object.keys(descriptors);
+    for (let i = 0; i < keys.length; i += 1) {
+      const descriptor = descriptors[keys[i]];
+      if (descriptor.get || descriptor.set) return true;
+      if (hasOwn(descriptor, "value") && hasAccessor(descriptor.value, seen, depth + 1)) return true;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
+}
+
 function hasAccessor(value, seen, depth) {
   if (!value || typeof value !== "object") return false;
   if (depth > 8) return false;
   if (seen.has(value)) return false;
   seen.add(value);
+  if (types.isProxy(value)) return true;
+  if (prototypeHasAccessor(value, seen, depth)) return true;
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Object.keys(descriptors);
   for (let i = 0; i < keys.length; i += 1) {
@@ -120,38 +148,38 @@ function hasAccessor(value, seen, depth) {
 }
 
 function methodAction(call) {
-  if (!call || typeof call !== "object" || !hasOwn(call, "method")) return "absent";
-  const method = call.method;
-  if (typeof method !== "string" || !/^[A-Za-z]{1,16}$/.test(method)) return "omit";
-  if (method === "unknown" || boundary.METHODS.has(method.toUpperCase())) return "keep";
+  const method = readOwn(call, "method");
+  if (!method.present) return "absent";
+  if (typeof method.value !== "string" || !/^[A-Za-z]{1,16}$/.test(method.value)) return "omit";
+  if (method.value === "unknown" || boundary.METHODS.has(method.value.toUpperCase())) return "keep";
   return "omit";
 }
 
 function samplingAction(call) {
-  if (!call || typeof call !== "object" || !hasOwn(call, "sampling")) return "absent";
-  return call.sampling === "UNSAMPLED" ? "keep" : "omit";
+  const sampling = readOwn(call, "sampling");
+  if (!sampling.present) return "absent";
+  return sampling.value === "UNSAMPLED" ? "keep" : "omit";
 }
 
 function opticsFlags(call) {
-  if (!call || typeof call !== "object") return { present: false, forbidden: false };
-  const value = hasOwn(call, "optics_status")
-    ? call.optics_status
-    : hasOwn(call, "opticsStatus")
-      ? call.opticsStatus
-      : undefined;
-  if (value === undefined) return { present: false, forbidden: false };
-  const forbidden = value === "SUCCESS" || !boundary.OPTICS_STATUS.has(value);
+  const canonical = readOwn(call, "optics_status");
+  const token = canonical.present ? canonical : readOwn(call, "opticsStatus");
+  if (!token.present || token.value === undefined) return { present: false, forbidden: false };
+  const forbidden = token.value === "SUCCESS" || !boundary.OPTICS_STATUS.has(token.value);
   return { present: true, forbidden };
 }
 
 function callContext(call) {
   const optics = opticsFlags(call);
+  const failure = readOwn(call, "failure_kind");
+  const duration = readOwn(call, "duration_ms");
+  const status = readOwn(call, "status");
   return {
-    failureNone: Boolean(call && call.failure_kind === "none"),
+    failureNone: failure.present && failure.value === "none",
     methodAction: methodAction(call),
     opticsForbidden: optics.forbidden,
     opticsPresent: optics.present,
-    preCompletion: Boolean(call && call.duration_ms === 0 && call.status === null),
+    preCompletion: duration.present && duration.value === 0 && status.present && status.value === null,
     samplingAction: samplingAction(call),
   };
 }
@@ -161,22 +189,32 @@ function emptyContext() {
 }
 
 function snapshotNode(input) {
-  const calls = Array.isArray(input.calls) ? input.calls : [];
+  const callsField = readOwn(input, "calls");
+  const calls = Array.isArray(callsField.value) ? callsField.value : [];
+  const generated = readOwn(input, "generated_at");
+  const trace = readOwn(input, "trace_id");
+  const mediation = readOwn(input, "mediation");
+  const origin = readOwn(input, "evidence_origin");
+  const originalOrigin = readOwn(input, "original_evidence_origin");
+  const witness = readOwn(input, "optics_trace_witness");
   return {
     callContexts: calls.map(callContext),
     callsExplicit: hasOwn(input, "calls"),
-    generatedAt: typeof input.generated_at === "string" && !hasOwn(input, "ended_at"),
+    generatedAt: generated.present && typeof generated.value === "string" && !hasOwn(input, "ended_at"),
     kind: "node",
-    legacyTrace: typeof input.trace_id === "string" && !hasOwn(input, "run_id"),
-    mediationJoined: typeof input.mediation === "string" && input.mediation.includes(","),
-    origin: typeof input.evidence_origin === "string" ? input.evidence_origin : null,
-    originalOrigin: typeof input.original_evidence_origin === "string" ? input.original_evidence_origin : null,
+    legacyTrace: trace.present && typeof trace.value === "string" && !hasOwn(input, "run_id"),
+    mediationJoined: mediation.present && typeof mediation.value === "string" && mediation.value.includes(","),
+    origin: origin.present && typeof origin.value === "string" ? origin.value : null,
+    originalOrigin: originalOrigin.present && typeof originalOrigin.value === "string" ? originalOrigin.value : null,
     spanPresent: hasOwn(input, "span_id"),
-    witness: input.optics_trace_witness === boundary.WITNESS_VALUE,
+    witness: witness.present && witness.value === boundary.WITNESS_VALUE,
   };
 }
 
 function snapshotBare(input) {
+  const origin = readOwn(input, "evidence_origin");
+  const originalOrigin = readOwn(input, "original_evidence_origin");
+  const witness = readOwn(input, "optics_trace_witness");
   return {
     callContexts: [callContext(input)],
     callsExplicit: false,
@@ -184,11 +222,55 @@ function snapshotBare(input) {
     kind: "call",
     legacyTrace: false,
     mediationJoined: false,
-    origin: typeof input.evidence_origin === "string" ? input.evidence_origin : null,
-    originalOrigin: typeof input.original_evidence_origin === "string" ? input.original_evidence_origin : null,
+    origin: origin.present && typeof origin.value === "string" ? origin.value : null,
+    originalOrigin: originalOrigin.present && typeof originalOrigin.value === "string" ? originalOrigin.value : null,
     spanPresent: hasOwn(input, "span_id"),
-    witness: input.optics_trace_witness === boundary.WITNESS_VALUE,
+    witness: witness.present && witness.value === boundary.WITNESS_VALUE,
   };
+}
+
+function blankSnapshot(kind) {
+  return {
+    callContexts: [],
+    callsExplicit: false,
+    generatedAt: false,
+    kind,
+    legacyTrace: false,
+    mediationJoined: false,
+    origin: null,
+    originalOrigin: null,
+    spanPresent: false,
+    witness: false,
+  };
+}
+
+function snapshotValue(value, fallbackKind) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return blankSnapshot(fallbackKind);
+  if (hasAccessor(value, new Set(), 0)) return blankSnapshot(fallbackKind);
+  const marker = readOwn(value, "vantio_run_log");
+  return marker.value === "1" ? snapshotNode(value) : snapshotBare(value);
+}
+
+function snapshotText(text) {
+  try {
+    return snapshotValue(JSON.parse(text), "text");
+  } catch {
+    return blankSnapshot("text");
+  }
+}
+
+function snapshotBytes(buffer) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return blankSnapshot("bytes");
+  }
+  try {
+    return snapshotValue(JSON.parse(text), "bytes");
+  } catch {
+    return blankSnapshot("bytes");
+  }
 }
 
 function deleteKey(record, key) {
@@ -429,18 +511,7 @@ function adaptPrepared(prepared, options) {
   if (prepared.kind === "text") mapper = validateEvidence(prepared.text, mapperOptions);
   else if (prepared.kind === "bytes") mapper = validateBytes(prepared.buffer, mapperOptions);
   else mapper = validateEvidence(prepared.value, mapperOptions);
-  const snapshot = prepared.snapshot || {
-    callContexts: [],
-    callsExplicit: false,
-    generatedAt: false,
-    kind: prepared.kind,
-    legacyTrace: false,
-    mediationJoined: false,
-    origin: null,
-    originalOrigin: null,
-    spanPresent: false,
-    witness: false,
-  };
+  const snapshot = prepared.snapshot || blankSnapshot(prepared.kind);
   const result = applyMapper(mapper, snapshot);
   if (result.optics_health === "NOT_OBSERVED" && snapshot.kind === "text") result.optics_health = "OPTICS_ERROR";
   if (mapper.reason_code === "MALFORMED_JSON" || mapper.reason_code === "MALFORMED_UTF8") {
@@ -449,6 +520,10 @@ function adaptPrepared(prepared, options) {
     result.events = [];
     result.record_emitted = false;
     result.diagnostics.issue_location = "OPTICS";
+  }
+  if (result.record && result.record.record_type === "run_envelope" && result.events.length === 0
+    && (result.optics_health === "NOT_OBSERVED" || result.optics_health === "UNAVAILABLE")) {
+    result.record.optics_status = result.optics_health;
   }
   return result;
 }
@@ -468,22 +543,19 @@ function adaptNodeCopy(input, options) {
   if (writerRequested(options)) return adaptPrepared({ kind: "writer" }, options);
   if (typeof input === "string") {
     if (pathLike(input)) return adaptPrepared({ kind: "path" }, options);
-    return adaptPrepared({ kind: "text", text: input, snapshot: { kind: "text", callContexts: [], callsExplicit: false } }, options);
+    return adaptPrepared({ kind: "text", text: input, snapshot: snapshotText(input) }, options);
   }
   if (Buffer.isBuffer(input)) {
-    return adaptPrepared({ kind: "bytes", buffer: input, snapshot: { kind: "unreadable", callContexts: [], callsExplicit: false } }, options);
+    return adaptPrepared({ kind: "bytes", buffer: input, snapshot: snapshotBytes(input) }, options);
   }
   if (input == null || typeof input !== "object" || Array.isArray(input)) {
-    return adaptPrepared({ kind: "text", text: input, snapshot: { kind: "text", callContexts: [], callsExplicit: false } }, options);
+    return adaptPrepared({ kind: "text", text: input, snapshot: blankSnapshot("text") }, options);
   }
   if (hasAccessor(input, new Set(), 0)) {
-    return adaptPrepared({
-      kind: "node",
-      snapshot: { kind: "node", callContexts: [], callsExplicit: false, spanPresent: false, legacyTrace: false, witness: false, mediationJoined: false, origin: null, originalOrigin: null, generatedAt: false },
-      value: input,
-    }, options);
+    return adaptPrepared({ kind: "node", snapshot: blankSnapshot("node"), value: input }, options);
   }
-  const snapshot = input.vantio_run_log === "1" ? snapshotNode(input) : snapshotBare(input);
+  const marker = readOwn(input, "vantio_run_log");
+  const snapshot = marker.value === "1" ? snapshotNode(input) : snapshotBare(input);
   return adaptPrepared({ kind: "node", snapshot, value: input }, options);
 }
 
