@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/optics-otel-mapping",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE | INERT | NOT SHIPPED | ADAPTERS DISABLED | NO OTLP EXPORTER | NO STABLE SCHEMA. WS7 I2 OpenTelemetry semantic mapping. Not loaded by live products.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-otel-mapping/*.test.cjs"
+  }
+}
