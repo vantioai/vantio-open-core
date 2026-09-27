@@ -1,0 +1,502 @@
+{
+  "mapping_id": "WS7-I2",
+  "mapping_version": 0,
+  "schema_status": "unstable-pre-1.0",
+  "stable_schema": false,
+  "audience": "INTERNAL_RESTRICTED",
+  "producer_classification": "OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL",
+  "public_shipped_support": false,
+  "otlp_export_authorized": false,
+  "adapters_default_enabled": false,
+  "i3_status": "NOT_AUTHORIZED",
+  "founder_decision_12": "unresolved",
+  "schema_url": null,
+  "checked_on": "2026-09-27",
+  "starting_main": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "upstream": {
+    "genai_attribute_pin": {
+      "repository": "open-telemetry/semantic-conventions",
+      "tag": "v1.37.0",
+      "published": "2025-08-25",
+      "document": "docs/gen-ai/gen-ai-spans.md",
+      "stability": "Development",
+      "notes": [
+        "v1.37.0 renamed gen_ai.system to gen_ai.provider.name.",
+        "gen_ai.input.messages, gen_ai.output.messages, and gen_ai.system_instructions are Opt-In and are prohibited here."
+      ]
+    },
+    "genai_move": {
+      "repository": "open-telemetry/semantic-conventions",
+      "tag": "v1.42.0",
+      "published": "2026-06-12",
+      "effect": "gen_ai attributes were deprecated in the core repository and moved to open-telemetry/semantic-conventions-genai."
+    },
+    "genai_dedicated_repo": {
+      "repository": "open-telemetry/semantic-conventions-genai",
+      "release": null,
+      "schema_url": null,
+      "reason": "On 2026-09-27 the dedicated repository README still left Schema URL as TODO. This mapping does not pin an unreleased commit."
+    },
+    "attribute_citations": {
+      "checked_on": "2026-09-27",
+      "repository": "open-telemetry/semantic-conventions",
+      "tag": "v1.37.0",
+      "genai_client_span": {
+        "document": "docs/gen-ai/gen-ai-spans.md",
+        "includes": [
+          "gen_ai.operation.name",
+          "gen_ai.provider.name",
+          "error.type",
+          "server.address",
+          "server.port"
+        ],
+        "excludes": [
+          "http.request.method",
+          "http.response.status_code",
+          "url.path",
+          "url.scheme"
+        ]
+      },
+      "definitions": [
+        {
+          "attribute": "http.request.method",
+          "defined_in": "docs/registry/attributes/http.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_client_and_server"
+        },
+        {
+          "attribute": "http.response.status_code",
+          "defined_in": "docs/registry/attributes/http.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_client_and_server"
+        },
+        {
+          "attribute": "url.path",
+          "defined_in": "docs/registry/attributes/url.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_server"
+        },
+        {
+          "attribute": "url.scheme",
+          "defined_in": "docs/registry/attributes/url.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_client_and_server"
+        }
+      ]
+    }
+  },
+  "source_shapes": ["live_display", "canonical_observation"],
+  "canonical_candidate_origins": ["LOCAL_OBSERVATION"],
+  "gen_ai_provider_name_well_known_v1_37_0": [
+    "anthropic",
+    "aws.bedrock",
+    "azure.ai.inference",
+    "azure.ai.openai",
+    "cohere",
+    "deepseek",
+    "gcp.gemini",
+    "gcp.gen_ai",
+    "gcp.vertex_ai",
+    "groq",
+    "ibm.watsonx.ai",
+    "mistral_ai",
+    "openai",
+    "perplexity",
+    "x_ai"
+  ],
+  "provider_crosswalk": [
+    {"optics_provider_id": "openai", "gen_ai_provider_name": "openai", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "anthropic", "gen_ai_provider_name": "anthropic", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "vertex", "gen_ai_provider_name": "gcp.vertex_ai", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "azure_openai", "gen_ai_provider_name": "azure.ai.openai", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "xai", "gen_ai_provider_name": "x_ai", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "bedrock", "gen_ai_provider_name": "aws.bedrock", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "cohere", "gen_ai_provider_name": "cohere", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "mistral", "gen_ai_provider_name": "mistral_ai", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "groq", "gen_ai_provider_name": "groq", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "perplexity", "gen_ai_provider_name": "perplexity", "well_known_in": "v1.37.0"},
+    {"optics_provider_id": "deepseek", "gen_ai_provider_name": "deepseek", "well_known_in": "v1.37.0"}
+  ],
+  "unmapped_provider_ids": [
+    "ollama",
+    "google",
+    "together",
+    "fireworks",
+    "openrouter",
+    "cerebras",
+    "voyage",
+    "sambanova",
+    "deepinfra",
+    "huggingface",
+    "replicate",
+    "nvidia",
+    "local",
+    "other",
+    "unknown"
+  ],
+  "provider_confidence_eligible": ["CATALOG", "REGIONAL_PATTERN"],
+  "operation_rules": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "gen_ai_operation_name": "chat",
+      "note": "Exact path metadata only. Other paths stay unmapped in mapping_version 0."
+    }
+  ],
+  "methods": ["GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH", "unknown"],
+  "schemes": ["http", "https", "ws", "wss"],
+  "error_type_tokens": {
+    "APPLICATION_ERROR": "application_error",
+    "OPTICS_ERROR": "optics_error"
+  },
+  "trace_context_eligible_basis": ["APPLICATION_SUPPLIED"],
+  "prohibited_input_names": [
+    "prompt",
+    "prompts",
+    "completion",
+    "completions",
+    "messages",
+    "message",
+    "body",
+    "request_body",
+    "response_body",
+    "headers",
+    "authorization",
+    "baggage",
+    "tracestate"
+  ],
+  "adapters": [
+    {
+      "id": "otlp_traces",
+      "signal": "traces",
+      "default_enabled": false,
+      "implementation": "NOT_PRESENT",
+      "network": false,
+      "i3": "LATER"
+    },
+    {
+      "id": "otlp_metrics",
+      "signal": "metrics",
+      "default_enabled": false,
+      "implementation": "NOT_PRESENT",
+      "network": false,
+      "i3": "LATER"
+    },
+    {
+      "id": "otlp_logs",
+      "signal": "logs",
+      "default_enabled": false,
+      "implementation": "NOT_PRESENT",
+      "network": false,
+      "i3": "LATER"
+    }
+  ],
+  "rows": [
+    {
+      "id": "content.input",
+      "source_shape": "either",
+      "source_field": "prompt",
+      "target": "gen_ai.input.messages",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Prompts are not stored. The attribute is Opt-In in v1.37.0 and is prohibited."
+    },
+    {
+      "id": "content.output",
+      "source_shape": "either",
+      "source_field": "completion",
+      "target": "gen_ai.output.messages",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Completions are not stored."
+    },
+    {
+      "id": "content.system",
+      "source_shape": "either",
+      "source_field": null,
+      "target": "gen_ai.system_instructions",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "System instructions are content. Optics does not store them."
+    },
+    {
+      "id": "usage.input",
+      "source_shape": "either",
+      "source_field": "request_bytes",
+      "target": "gen_ai.usage.input_tokens",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Byte counts are not token counts. Founder decision 2 leaves usage off the allowlist."
+    },
+    {
+      "id": "usage.output",
+      "source_shape": "either",
+      "source_field": "response_bytes",
+      "target": "gen_ai.usage.output_tokens",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Byte counts are not token counts."
+    },
+    {
+      "id": "model.request",
+      "source_shape": "either",
+      "source_field": null,
+      "target": "gen_ai.request.model",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "No model field is stored. Model strings often sit in bodies."
+    },
+    {
+      "id": "model.response",
+      "source_shape": "either",
+      "source_field": null,
+      "target": "gen_ai.response.model",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "No response model field is stored."
+    },
+    {
+      "id": "legacy.system",
+      "source_shape": "either",
+      "source_field": "provider",
+      "target": "gen_ai.system",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "gen_ai.system was renamed in v1.37.0. This mapping does not emit the old name."
+    },
+    {
+      "id": "conversation",
+      "source_shape": "canonical_observation",
+      "source_field": "session_id",
+      "target": "gen_ai.conversation.id",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "session_id is not a conversation id."
+    },
+    {
+      "id": "url.full",
+      "source_shape": "either",
+      "source_field": "path",
+      "target": "url.full",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "A full URL would reassemble query, fragment, or userinfo."
+    },
+    {
+      "id": "host.name",
+      "source_shape": "either",
+      "source_field": null,
+      "target": "host.name",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Machine hostname stays prohibited. Founder decision 11 is unresolved."
+    },
+    {
+      "id": "process.command",
+      "source_shape": "either",
+      "source_field": null,
+      "target": "process.command",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Command lines are prohibited record fields."
+    },
+    {
+      "id": "process.command_line",
+      "source_shape": "either",
+      "source_field": null,
+      "target": "process.command_line",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Command lines are prohibited record fields."
+    },
+    {
+      "id": "live.provider",
+      "source_shape": "live_display",
+      "source_field": "provider",
+      "target": "gen_ai.provider.name",
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "Live provider is a writer-specific label. Node guessProvider uses substrings. The contract does not promote that string to provider_id."
+    },
+    {
+      "id": "canonical.provider_id",
+      "source_shape": "canonical_observation",
+      "source_field": "provider_id",
+      "target": "gen_ai.provider.name",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Candidate only when evidence_origin is LOCAL_OBSERVATION, provider_confidence is CATALOG or REGIONAL_PATTERN, and provider_id is in the closed crosswalk. PRODUCT_HEALTH and DERIVED_DIAGNOSTIC do not fill this attribute. This package does not emit it."
+    },
+    {
+      "id": "operation.chat",
+      "source_shape": "either",
+      "source_field": "path",
+      "target": "gen_ai.operation.name",
+      "disposition": "MAP_ENUM",
+      "emitted_by_this_package": false,
+      "reason": "POST and exact path /v1/chat/completions map to chat. Other paths stay unmapped. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes. Canonical rows also stay empty when the origin is missing."
+    },
+    {
+      "id": "http.method",
+      "source_shape": "either",
+      "source_field": "method",
+      "target": "http.request.method",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Copied only when the token is in the method enum and is not unknown. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
+    },
+    {
+      "id": "http.status",
+      "source_shape": "either",
+      "source_field": "http_status",
+      "target": "http.response.status_code",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Integer 100-599 only. Strings are not coerced. The stored ok boolean is ignored. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
+    },
+    {
+      "id": "url.path",
+      "source_shape": "either",
+      "source_field": "path",
+      "target": "url.path",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/url.md. Cited on the HTTP server span table in docs/http/http-spans.md, not on the HTTP client span table and not on the v1.37.0 GenAI span page. Path metadata only, max 512 characters, no query, fragment, or userinfo. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
+    },
+    {
+      "id": "url.scheme",
+      "source_shape": "canonical_observation",
+      "source_field": "scheme",
+      "target": "url.scheme",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/url.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. http, https, ws, or wss. unknown is omitted."
+    },
+    {
+      "id": "server.address",
+      "source_shape": "either",
+      "source_field": "destination_host",
+      "target": "server.address",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/server.md. Destination host, lowercased. Not the machine hostname. Live display reads hostname. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
+    },
+    {
+      "id": "server.port",
+      "source_shape": "canonical_observation",
+      "source_field": "destination_port",
+      "target": "server.port",
+      "disposition": "MAP_WHEN_PRESENT",
+      "emitted_by_this_package": false,
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/server.md. Explicit stored port only. Default 443 or 80 is not invented."
+    },
+    {
+      "id": "error.application",
+      "source_shape": "either",
+      "source_field": "application_status",
+      "target": "error.type",
+      "disposition": "MAP_ENUM",
+      "emitted_by_this_package": false,
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/error.md. application_error when application status is APPLICATION_ERROR and HTTP status is 400-599."
+    },
+    {
+      "id": "error.optics",
+      "source_shape": "either",
+      "source_field": "optics_status",
+      "target": "error.type",
+      "disposition": "MAP_ENUM",
+      "emitted_by_this_package": false,
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/error.md. optics_error when optics status is OPTICS_ERROR. Both error classes together are a conflict and neither type is chosen."
+    },
+    {
+      "id": "span.optics_success",
+      "source_shape": "either",
+      "source_field": "optics_status",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "optics status SUCCESS is not instrumentation span status OK. PKG-02 forbids that optimistic default. Live display still stores SUCCESS for a recorded call."
+    },
+    {
+      "id": "span.unavailable",
+      "source_shape": "either",
+      "source_field": "optics_status",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "UNAVAILABLE does not choose span status ERROR or UNSET. The public sketch left that choice open. This version omits it."
+    },
+    {
+      "id": "span.partial",
+      "source_shape": "either",
+      "source_field": "application_status",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "PARTIAL is not collapsed into one HTTP code or one child span."
+    },
+    {
+      "id": "span.not_observed",
+      "source_shape": "either",
+      "source_field": "optics_status",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "NOT_OBSERVED and UNSUPPORTED do not create an empty span."
+    },
+    {
+      "id": "identity.live_trace",
+      "source_shape": "live_display",
+      "source_field": "trace_id",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "The live trace_id is one process-run boundary. It is not a W3C trace id, even when the characters happen to be 32 hex digits."
+    },
+    {
+      "id": "identity.canonical_trace",
+      "source_shape": "canonical_observation",
+      "source_field": "trace_id",
+      "target": null,
+      "disposition": "TRACE_CONTEXT_CANDIDATE",
+      "emitted_by_this_package": false,
+      "reason": "Trace context is a candidate only for basis APPLICATION_SUPPLIED with a W3C trace id and span id. It is not an attribute, and this package does not emit a traceparent. ASSERTED_CONTEXT stays unresolved."
+    },
+    {
+      "id": "identity.run",
+      "source_shape": "either",
+      "source_field": "run_id",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "run_id is not an OTel trace id."
+    },
+    {
+      "id": "identity.process",
+      "source_shape": "canonical_observation",
+      "source_field": "process_id",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "process.pid is not emitted in mapping_version 0. Resource identity is a later decision."
+    },
+    {
+      "id": "duration",
+      "source_shape": "either",
+      "source_field": "duration_ms",
+      "target": null,
+      "disposition": "CORRESPONDENCE_ONLY",
+      "emitted_by_this_package": false,
+      "reason": "Span duration is a correspondence, not an attribute. Demo duration 0 is not a measurement. clock_quality UNAVAILABLE is not a span."
+    },
+    {
+      "id": "origin.demo",
+      "source_shape": "either",
+      "source_field": "evidence_origin",
+      "target": null,
+      "disposition": "DO_NOT_MAP",
+      "emitted_by_this_package": false,
+      "reason": "A present evidence_origin other than LOCAL_OBSERVATION produces an empty candidate set on both live_display and canonical_observation. That includes SIMULATED_DEMO, TEST_FIXTURE, IMPORTED, PRODUCT_HEALTH, DERIVED_DIAGNOSTIC, and any other non-local origin. Client span status stays null. emitted stays false. would_be_operational_if_i3_enabled stays false. PRODUCT_HEALTH does not fill gen_ai.provider.name, gen_ai.operation.name, http.request.method, url.path, server.address, or http.response.status_code, and it does not set client span status OK. DERIVED_DIAGNOSTIC does not fill gen_ai.provider.name. A missing origin on canonical_observation is not treated as local. A live_display row with no evidence_origin keeps its non-operational field candidates."
+    }
+  ]
+}

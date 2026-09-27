@@ -1,0 +1,17 @@
+{
+  "mapping_id": "WS7-I2",
+  "mapping_version": 0,
+  "schema_status": "unstable-pre-1.0",
+  "stable_schema": false,
+  "schema_url": null,
+  "audience": "INTERNAL_RESTRICTED",
+  "producer_classification": "OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL",
+  "public_shipped_support": false,
+  "otlp_export_authorized": false,
+  "adapters_default_enabled": false,
+  "i3_status": "NOT_AUTHORIZED",
+  "founder_decision_12": "unresolved",
+  "source": "packages/optics-otel-mapping/mapping/otel-semantic-mapping.json",
+  "council": "PENDING_COUNCIL",
+  "starting_main": "5064f32f1cdfcb840dfd100e2ce5c712d046550d"
+}
