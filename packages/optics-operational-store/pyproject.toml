@@ -1,0 +1,9 @@
+[project]
+name = "optics-operational-store"
+version = "0.0.0-unstable-pre-1.0"
+description = "PRIVATE Optics operational store. Not the Python SDK. schema_status unstable-pre-1.0. Not published."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

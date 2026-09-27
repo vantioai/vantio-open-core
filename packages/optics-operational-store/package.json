@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/optics-operational-store",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE Optics operational store. Python stdlib sqlite3 implements the file. Node binding is unselected. Not a default write path. schema_status unstable-pre-1.0. Not published.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-o7-store/*.test.cjs && python3 ../../tests/optics-o7-store/direct_test.py && python3 ../../tests/optics-o7-store/adversarial_test.py"
+  }
+}
