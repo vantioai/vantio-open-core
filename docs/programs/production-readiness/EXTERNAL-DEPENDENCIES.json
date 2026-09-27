@@ -1,0 +1,67 @@
+{
+  "schema": "vantio.program.production-readiness.external-dependencies/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "dependencies": [
+    {
+      "id": "EXT-001",
+      "name": "origin/main",
+      "state": "RETRIEVED",
+      "detail": "5064f32f1cdfcb840dfd100e2ce5c712d046550d"
+    },
+    {
+      "id": "EXT-002",
+      "name": "npm @vantio/cli",
+      "state": "OBSERVED",
+      "detail": "dist-tag latest 0.3.24 on 2026-09-27. This program does not publish."
+    },
+    {
+      "id": "EXT-003",
+      "name": "PyPI vantio-agent-sdk",
+      "state": "OBSERVED",
+      "detail": "info.version 3.0.14 on 2026-09-27. 3.1.0 was not in the release list. This program does not publish."
+    },
+    {
+      "id": "EXT-004",
+      "name": "GitHub pull request #66",
+      "state": "OPEN_DRAFT",
+      "detail": "Public draft of Phantom Engine customer docs. Placement owner is WS9. Private-repo creation may require Founder permissions."
+    },
+    {
+      "id": "EXT-005",
+      "name": "vantio-phantom-engine",
+      "state": "OUTSIDE_THIS_WORKSPACE",
+      "detail": "Named by docs/PRODUCT_LINEUP.md. This force did not read that repository."
+    },
+    {
+      "id": "EXT-006",
+      "name": "Founder Master Program body",
+      "state": "NOT_RETRIEVED",
+      "detail": "Required by the control-plane upload for category wording, WS titles, and Wave 1 items A–V. Absent from the upload and from this main."
+    },
+    {
+      "id": "EXT-007",
+      "name": "Stranger-host execution authorization",
+      "state": "ABSENT",
+      "detail": "WS3 P34 may prepare a packet. Execution stays unauthorized."
+    },
+    {
+      "id": "EXT-008",
+      "name": "Independent councils for in-flight implementation forces",
+      "state": "SEPARATE",
+      "detail": "WS1, WS2, WS3, WS5, WS7, and WS10 briefs stop at council or planning. This control plane does not sit those councils."
+    },
+    {
+      "id": "EXT-009",
+      "name": "Documentation governance tree",
+      "state": "ON_MAIN",
+      "detail": "docs/governance/ is on the recorded main via pull request #65. WS10 owns the CI workflow. This program does not add it."
+    },
+    {
+      "id": "EXT-010",
+      "name": "Repository checks on the governance pull request",
+      "state": "PENDING_PULL_REQUEST",
+      "detail": "Standing authorization uses green checks plus the docs-only path check."
+    }
+  ]
+}

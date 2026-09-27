@@ -1,0 +1,63 @@
+{
+  "schema": "vantio.program.production-readiness.release-register/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "program_cuts_a_release": false,
+  "releases": [
+    {
+      "id": "REL-CLI-0.3.24",
+      "package": "@vantio/cli",
+      "version": "0.3.24",
+      "channel": "npm",
+      "state": "FROZEN_PUBLISHED",
+      "tag": "v0.3.24",
+      "tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
+      "observation": "npm dist-tag latest was 0.3.24 on 2026-09-27"
+    },
+    {
+      "id": "REL-PY-3.0.14",
+      "package": "vantio-agent-sdk",
+      "version": "3.0.14",
+      "channel": "pypi",
+      "state": "PUBLISHED_OBSERVED",
+      "commit": "6f76dd84f52a1c3d02c6cef6c23be41aa3c4d35c",
+      "observation": "PyPI info.version was 3.0.14 on 2026-09-27"
+    },
+    {
+      "id": "REL-PY-3.1.0-SOURCE",
+      "package": "vantio-agent-sdk",
+      "version": "3.1.0",
+      "channel": "git_source",
+      "state": "AUTHORIZED_NOT_PUBLISHED_BY_THIS_PROGRAM",
+      "source_manifest": "packages/vantio-agent-sdk-py/pyproject.toml",
+      "publisher_workflow_merge": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
+      "publisher_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
+      "registry_observation": "3.1.0 was absent from the PyPI release list on 2026-09-27"
+    },
+    {
+      "id": "REL-PKG01",
+      "package": "@vantio/optics-evidence-contract",
+      "version": "0.0.0-unstable-pre-1.0",
+      "channel": "git_source",
+      "state": "MERGED_PRIVATE_UNPUBLISHED",
+      "merge": "dc212bca61fe80b65bb2cbab8e8f812c035ff2e0"
+    },
+    {
+      "id": "REL-UNIT-A",
+      "package": "@vantio/optics-record-vocabulary",
+      "version": "0.0.0-unstable-pre-1.0",
+      "channel": "git_source",
+      "state": "MERGED_PRIVATE_UNPUBLISHED",
+      "merge": "587f3b94d47ea958f91d3a99125cd55931d995f1"
+    }
+  ],
+  "misleading_refs": [
+    {
+      "id": "TAG-CUSTODY-PY-3.1.0",
+      "ref": "refs/tags/custody-py-3.1.0",
+      "target": "620c68fd6fb10960194bbefb25bbfb2036d6d435",
+      "target_subject": "Merge pull request #60 from vantioai/planning/optics-pkg02-record-conformance",
+      "register_treatment": "Not a 3.1.0 release tag in this register."
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "vantio.program.production-readiness.pilot-readiness/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "readiness": "NOT_READY",
+  "design_partner": "UNREGISTERED",
+  "customer_host": "UNAUTHORIZED",
+  "stranger_host_execution": "UNAUTHORIZED",
+  "clean_host_internal_proof": "DESIGN_ONLY",
+  "this_commit_contains_a_pilot": false,
+  "related_forces": [
+    {
+      "id": "WS5",
+      "relation": "Clean-host lifecycle design. Internal proof classification. Separate from stranger-host."
+    },
+    {
+      "id": "WS3-P34",
+      "relation": "Stranger-host packet preparation. Execution authorization is absent."
+    }
+  ],
+  "skeleton_sections": [
+    "design_partner",
+    "environment",
+    "entry_criteria",
+    "exit_criteria",
+    "evidence",
+    "rollback",
+    "customer_communication"
+  ],
+  "blocked_by": [
+    "No pilot force was in the retrieved launch list",
+    "C6 private channel for Phantom Engine customer material",
+    "C7 publish closed"
+  ]
+}

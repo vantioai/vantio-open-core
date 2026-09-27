@@ -1,0 +1,93 @@
+{
+  "schema": "vantio.program.production-readiness.decision-register/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "state": "LOCKED",
+      "decision": "CLI 0.3.24 stays frozen for this program.",
+      "source": "Control-plane upload and COMPANY-GATES.json C3"
+    },
+    {
+      "id": "DEC-002",
+      "state": "LOCKED",
+      "decision": "Python 3.0.14 toward source 3.1.0 is the authorized line. This program does not publish it.",
+      "source": "Control-plane upload and COMPANY-GATES.json C4"
+    },
+    {
+      "id": "DEC-003",
+      "state": "LOCKED",
+      "decision": "PKG-01 and Unit A remain merged source with live integration outside this program.",
+      "source": "Control-plane upload, pull requests #58 and #63, COMPANY-GATES.json C5"
+    },
+    {
+      "id": "DEC-004",
+      "state": "LOCKED",
+      "decision": "Phantom Engine customer documents require a private channel.",
+      "source": "Control-plane upload, WS9 brief, COMPANY-GATES.json C6"
+    },
+    {
+      "id": "DEC-005",
+      "state": "LOCKED",
+      "decision": "Reversible docs under docs/programs/production-readiness/ may merge when the path check and repository checks pass.",
+      "source": "Control-plane upload standing authorization"
+    },
+    {
+      "id": "DEC-006",
+      "state": "INHERITED",
+      "decision": "STORE_OPTION_C remains FOUNDER_RATIFIED_ARCHITECTURE_ONLY. Ratification is not a database authorization.",
+      "source": "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md sections 12 and 35 item 1"
+    },
+    {
+      "id": "DEC-007",
+      "state": "INHERITED",
+      "decision": "Architecture Gate 8 stays closed in the gate file. This program does not edit that file.",
+      "source": "docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md"
+    },
+    {
+      "id": "DEC-008",
+      "state": "OPEN",
+      "decision": "Wave 1 items A–V stay UNREGISTERED until a retrieved program source names them.",
+      "source": "WORKSTREAM-REGISTRY.json wave_1"
+    },
+    {
+      "id": "DEC-009",
+      "state": "OPEN",
+      "decision": "WS0 and WS11 stay untitled. WS4 is only the cross-reference 'shared health vocabulary' from the WS3 brief.",
+      "source": "WORKSTREAM-REGISTRY.json"
+    },
+    {
+      "id": "DEC-010",
+      "state": "INHERITED_UNRESOLVED",
+      "decision": "Architecture decision-pack items 2–13 stay unresolved. This program does not ratify them.",
+      "source": "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md section 35",
+      "items": [
+        "2 Usage and cost metadata (OF-05)",
+        "3 Alerting mode (OF-45)",
+        "4 Numeric NFR-* budgets (OF-32)",
+        "5 At-rest encryption",
+        "6 Customer-run promote of LEGACY_UNMARKED",
+        "7 Seventh annotation origin",
+        "8 Windows ACL specifics",
+        "9 Node SQLite binding",
+        "10 Freshness window for CURRENT",
+        "11 Persisted machine hostname",
+        "12 OTLP or SIEM export",
+        "13 Local UI charter (OF-06) and accessibility (OF-37)"
+      ]
+    },
+    {
+      "id": "DEC-011",
+      "state": "LOCKED",
+      "decision": "The Head of Product package, when written by WS13, is not a founder role and is not a CTO appointment.",
+      "source": "WS13 Founder Force brief"
+    },
+    {
+      "id": "DEC-012",
+      "state": "LOCKED",
+      "decision": "Investor-demo implementation is Wave 2. WS6 is design and scaffolding.",
+      "source": "WS6 Founder Force brief"
+    }
+  ]
+}

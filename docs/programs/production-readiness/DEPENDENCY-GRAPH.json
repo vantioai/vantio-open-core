@@ -1,0 +1,229 @@
+{
+  "schema": "vantio.program.production-readiness.dependency-graph/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "execution_enum": [
+    "SATISFIED_ON_MAIN",
+    "IN_FLIGHT_SEPARATE_FORCE",
+    "CLOSED",
+    "UNREGISTERED"
+  ],
+  "nodes": [
+    {"id": "git-main", "kind": "git_commit", "sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d"},
+    {"id": "cli-0.3.24", "kind": "locked_product", "state": "FROZEN"},
+    {"id": "python-pypi-3.0.14", "kind": "registry_observation", "state": "PUBLISHED_OBSERVED"},
+    {"id": "python-source-3.1.0", "kind": "source_version", "state": "TRANSITION_AUTHORIZED"},
+    {"id": "pkg01-merged", "kind": "merged_source", "sha": "dc212bca61fe80b65bb2cbab8e8f812c035ff2e0"},
+    {"id": "unit-a-merged", "kind": "merged_source", "sha": "587f3b94d47ea958f91d3a99125cd55931d995f1"},
+    {"id": "store-option-c", "kind": "architecture_decision", "state": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY"},
+    {"id": "gate-8-architecture", "kind": "architecture_gate", "state": "CLOSED"},
+    {"id": "docs-governance-main", "kind": "merged_source", "sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d"},
+    {"id": "pr-66-pe-docs", "kind": "pull_request", "state": "OPEN_DRAFT"},
+    {"id": "program-control", "kind": "this_force"},
+    {"id": "WS0", "kind": "workstream", "status": "NOT_RETRIEVED"},
+    {"id": "WS1", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS2", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS3", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS4", "kind": "workstream", "status": "PARTIAL_CROSS_REFERENCE"},
+    {"id": "WS5", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS6", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS7", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS8", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS9", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS10", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS11", "kind": "workstream", "status": "NOT_RETRIEVED"},
+    {"id": "WS12", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "WS13", "kind": "workstream", "status": "IN_FLIGHT"},
+    {"id": "wave-1-items", "kind": "checklist", "status": "UNREGISTERED"},
+    {"id": "unit-d-writer", "kind": "future_unit", "state": "CLOSED"},
+    {"id": "unit-e-writer", "kind": "future_unit", "state": "CLOSED"},
+    {"id": "unit-f-reader", "kind": "future_unit", "state": "CLOSED"},
+    {"id": "demo-readiness", "kind": "readiness", "state": "NOT_READY"},
+    {"id": "pilot-readiness", "kind": "readiness", "state": "NOT_READY"},
+    {"id": "investor-readiness", "kind": "readiness", "state": "NOT_READY"}
+  ],
+  "edges": [
+    {
+      "from": "program-control",
+      "to": "git-main",
+      "relation": "records",
+      "execution": "SATISFIED_ON_MAIN",
+      "source": "git rev-parse origin/main after fetch"
+    },
+    {
+      "from": "WS1",
+      "to": "unit-a-merged",
+      "relation": "depends_on",
+      "execution": "SATISFIED_ON_MAIN",
+      "source": "WS1 briefs require the merged Unit A vocabulary"
+    },
+    {
+      "from": "WS1",
+      "to": "pkg01-merged",
+      "relation": "depends_on",
+      "execution": "SATISFIED_ON_MAIN",
+      "source": "Unit A proof compares the PKG-01 catalog; live import stays closed"
+    },
+    {
+      "from": "WS1",
+      "to": "cli-0.3.24",
+      "relation": "must_leave_unchanged",
+      "execution": "CLOSED",
+      "source": "WS1 briefs forbid CLI changes"
+    },
+    {
+      "from": "WS1",
+      "to": "python-source-3.1.0",
+      "relation": "must_leave_unchanged",
+      "execution": "CLOSED",
+      "source": "WS1 briefs forbid CLI and published or sealed Python 3.1.0 mutation"
+    },
+    {
+      "from": "unit-d-writer",
+      "to": "WS1",
+      "relation": "depends_on",
+      "execution": "CLOSED",
+      "source": "docs/planning/optics-pkg02/05-INTEGRATION-SEQUENCING.md places Unit D after inert Unit B and Unit F, on a future CLI version"
+    },
+    {
+      "from": "unit-e-writer",
+      "to": "WS1",
+      "relation": "depends_on",
+      "execution": "CLOSED",
+      "source": "The same sequencing file places Unit E after inert Unit C and Unit F, on a future Python version"
+    },
+    {
+      "from": "unit-f-reader",
+      "to": "unit-a-merged",
+      "relation": "depends_on",
+      "execution": "CLOSED",
+      "source": "docs/planning/optics-pkg02/06-RELEASE-AND-ROLLBACK-BOUNDARY.md Unit F depends on Unit A and is not authorized by this control plane"
+    },
+    {
+      "from": "WS2",
+      "to": "store-option-c",
+      "relation": "verifies",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY in docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md section 12"
+    },
+    {
+      "from": "WS2",
+      "to": "gate-8-architecture",
+      "relation": "does_not_open",
+      "execution": "CLOSED",
+      "source": "docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md Gate 8 closed"
+    },
+    {
+      "from": "WS3",
+      "to": "WS4",
+      "relation": "references",
+      "execution": "UNREGISTERED",
+      "source": "WS3 packaging brief: shared health vocabulary from Workstream 4"
+    },
+    {
+      "from": "WS3",
+      "to": "pr-66-pe-docs",
+      "relation": "must_not_copy_bodies_from",
+      "execution": "CLOSED",
+      "source": "WS3 brief forbids confidential customer-manual bodies in the public repo"
+    },
+    {
+      "from": "WS5",
+      "to": "WS3",
+      "relation": "does_not_satisfy",
+      "execution": "CLOSED",
+      "source": "WS5 brief: internal proof, separate from stranger-host"
+    },
+    {
+      "from": "WS6",
+      "to": "demo-readiness",
+      "relation": "designs",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "WS6 brief paths docs/programs/production-readiness/demo/ and defers implementation to Wave 2"
+    },
+    {
+      "from": "WS7",
+      "to": "docs-governance-main",
+      "relation": "must_keep_consistent_with",
+      "execution": "SATISFIED_ON_MAIN",
+      "source": "docs/governance/canonical/product-boundary.md states there is no OTLP exporter"
+    },
+    {
+      "from": "WS8",
+      "to": "WS3",
+      "relation": "subordinate_to_authority_boundary",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "WS8 brief: Enterprise subordinate to the Phantom Engine authority boundary"
+    },
+    {
+      "from": "WS9",
+      "to": "pr-66-pe-docs",
+      "relation": "relocates_off_public_main",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "WS9 brief and pull request #66 open draft"
+    },
+    {
+      "from": "WS10",
+      "to": "docs-governance-main",
+      "relation": "depends_on",
+      "execution": "SATISFIED_ON_MAIN",
+      "source": "WS10 brief wires checks from merged Track E governance. docs/governance/ exists on the recorded main"
+    },
+    {
+      "from": "WS12",
+      "to": "investor-readiness",
+      "relation": "scaffolds",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "WS12 brief"
+    },
+    {
+      "from": "WS12",
+      "to": "pr-66-pe-docs",
+      "relation": "must_not_copy_bodies_from",
+      "execution": "CLOSED",
+      "source": "WS12 brief hard-excludes PE customer-confidential bodies"
+    },
+    {
+      "from": "demo-readiness",
+      "to": "WS6",
+      "relation": "blocked_pending",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "DEMO-READINESS.json"
+    },
+    {
+      "from": "pilot-readiness",
+      "to": "program-control",
+      "relation": "recorded_not_ready",
+      "execution": "CLOSED",
+      "source": "No pilot force was in the retrieved launch list"
+    },
+    {
+      "from": "investor-readiness",
+      "to": "WS12",
+      "relation": "blocked_pending",
+      "execution": "IN_FLIGHT_SEPARATE_FORCE",
+      "source": "INVESTOR-READINESS.json"
+    },
+    {
+      "from": "wave-1-items",
+      "to": "program-control",
+      "relation": "slots_reserved",
+      "execution": "UNREGISTERED",
+      "source": "WORKSTREAM-REGISTRY.json wave_1"
+    },
+    {
+      "from": "WS0",
+      "to": "program-control",
+      "relation": "unnumbered",
+      "execution": "UNREGISTERED",
+      "source": "WORKSTREAM-REGISTRY.json WS0"
+    },
+    {
+      "from": "WS11",
+      "to": "program-control",
+      "relation": "slot_reserved",
+      "execution": "UNREGISTERED",
+      "source": "WORKSTREAM-REGISTRY.json WS11"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "schema": "vantio.program.production-readiness.investor-readiness/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "readiness": "NOT_READY",
+  "external_publish": false,
+  "owner_force": "WS12",
+  "owner_path": "docs/programs/production-readiness/diligence/",
+  "this_commit_contains_diligence_bodies": false,
+  "tiers_named_by_ws12_brief": [
+    "PUBLIC",
+    "INVESTOR_UNDER_NDA",
+    "INTERNAL_RESTRICTED",
+    "CUSTOMER_CONFIDENTIAL"
+  ],
+  "skeleton_sections_named_by_ws12_brief": [
+    "category_thesis",
+    "product_ladder",
+    "architecture",
+    "threat_privacy_models",
+    "claim_ledger",
+    "proof_taxonomy",
+    "capabilities",
+    "target_architecture",
+    "build_status",
+    "demo_guide",
+    "technical_appendix",
+    "release_discipline",
+    "deployment",
+    "pilot",
+    "design_partner",
+    "stranger_host_gate",
+    "roadmap",
+    "differentiation",
+    "use_of_funds",
+    "hiring_plan",
+    "evidence_index",
+    "limitations",
+    "risks"
+  ],
+  "excluded_from_public_tree": [
+    "kernel bypass detail",
+    "exploit material",
+    "credentials",
+    "customer information",
+    "private prompts",
+    "company-ops instructions",
+    "Phantom Engine customer-confidential bodies"
+  ],
+  "use_of_funds": "UNREGISTERED",
+  "hiring_plan_owner": "WS13",
+  "blocked_by": [
+    "WS12 scaffold was in flight and is not in this commit",
+    "DEMO-READINESS.json is NOT_READY",
+    "PILOT-READINESS.json is NOT_READY",
+    "CLAIM-LEDGER.json CL-015 and CL-016"
+  ]
+}
