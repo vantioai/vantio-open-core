@@ -8,15 +8,18 @@ Producer classification: `WS17_GOVERNANCE_ASSURANCE_READY_FOR_COUNCIL`
 
 That classification is a producer handoff. It is not a council verdict. `council_status` stays `PENDING_INDEPENDENT_COUNCIL`. Reviewers of the independent council are not this producer.
 
+Release class: `NON-NORMATIVE`. `NOT_LEGAL_ADVICE`. `NO_COMPLIANCE_GUARANTEE`.
+
 ## Locked input
 
 | Item | Value |
 | --- | --- |
 | Repository | `vantioai/vantio-open-core` |
-| Starting commit | `98ecaf6e9dd6fb831e7d2728379e2f785f41804f` |
+| First-packet start | `98ecaf6e9dd6fb831e7d2728379e2f785f41804f` |
+| Revision currency | `a80fd4288df4983bf294aa219511ef60d86fa87c` |
 | Branch | `cursor/ws17-governance-assurance-0.1.0-internal` |
 
-`origin/main` later moved to `eb34662c120199c6e58b9cb01011c54363ea3f91` with an ingress merge. This branch does not rebase onto that tip and does not absorb ingress, egress, O7, Enterprise, or Unit E work.
+The revision rebases onto that main tip so the merged ingress, egress, and Unit E files can be cited. Those citations do not count toward satisfaction. O7 and Enterprise stay unresolved. This revision does not self-council.
 
 ## What this force contains
 
@@ -42,3 +45,9 @@ Vantio is the runtime authority, enforcement, revocation, recovery, and independ
 ## Report sections
 
 The force names the report files and the conclusions they must refuse. No separate founder addendum file was in the starting tree. The generated reports use the sections named by the force: provenance, role, claim ceiling, separated states, control rows, Wave 2 bindings, responsibilities, framework versions, unsupported and external controls, procurement index, and verification instructions. They do not contain a compliance score.
+
+## Revision holds
+
+`EB-T1` binds GA-20 only. It is custody, version, and artifact identity. It does not satisfy GA-12 or GA-19.
+
+GA-24 does not take satisfaction from `packages/vantio-cli/package.json`. The public manual states that a secret placed in the URL path is stored, because the path is kept. That exception is on the control record. The row is not a pass.

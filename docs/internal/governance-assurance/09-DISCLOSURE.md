@@ -10,7 +10,7 @@ Distribution of the reports is `INTERNAL_RESTRICTED`. The public disclosure obje
 
 ## What was kept generic
 
-Framework rows use identifiers, dates, and source URLs. ISO/IEC 42001 clause text is `SOURCE_ACCESS_REQUIRED`. No clause number is invented. EU rows are a technical crosswalk and do not classify a system. Federal rows point at OMB memoranda and do not copy a procurement strategy.
+Framework rows use identifiers, dates, and source URLs. ISO/IEC 42001 clause text is `SOURCE_ACCESS_REQUIRED`. No clause number is invented. Every control row is present with that reference, so the current-document unmapped list is empty. An empty list is not a clause map. EU rows are a technical crosswalk and do not classify a system. Federal rows point at OMB memoranda and do not copy a procurement strategy. Superseded OMB rows set `source_url` to the successor PDF. This register did not retrieve a separate copy of the rescinded memorandum.
 
 Host-authority evidence cites the contract-only manifest already in this tree. It does not add loader behavior or enforcement parameters.
 

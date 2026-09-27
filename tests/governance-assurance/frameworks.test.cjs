@@ -47,6 +47,11 @@ test("every mapping carries provenance and does not copy clause text", () => {
   assert.equal(iso.length, 40);
   assert.equal(iso.every((mapping) => mapping.reference === "SOURCE_ACCESS_REQUIRED"), true);
   assert.equal(iso.every((mapping) => mapping.source_access === "SOURCE_ACCESS_REQUIRED"), true);
+  const controlIds = api.CONTROLS.map((control) => control.control_id);
+  assert.deepEqual(api.unmappedControls("ISO-IEC-42001", "2023", controlIds), []);
+  const isoDoc = api.FRAMEWORKS.find((framework) => framework.framework_id === "ISO-IEC-42001").documents[0];
+  assert.match(isoDoc.notes, /unmapped list is empty/);
+  assert.match(isoDoc.notes, /not a clause map/);
 });
 
 test("superseded federal memoranda stay visible and inactive", () => {
@@ -58,6 +63,13 @@ test("superseded federal memoranda stay visible and inactive", () => {
   assert.equal(old.mappings.length, 1);
   const current = api.selectMappings("US-FEDERAL-AI-ACQUISITION", "M-25-21");
   assert.equal(current.active, true);
+  const federal = api.FRAMEWORKS.find((framework) => framework.framework_id === "US-FEDERAL-AI-ACQUISITION");
+  const memo2410 = federal.documents.find((document) => document.version === "M-24-10");
+  const memo2418 = federal.documents.find((document) => document.version === "M-24-18");
+  assert.match(memo2410.source_url, /M-25-21/);
+  assert.match(memo2418.source_url, /M-25-22/);
+  assert.match(memo2410.notes, /successor PDF/);
+  assert.match(memo2418.notes, /successor PDF/);
 });
 
 test("mapping walk is bounded", () => {

@@ -6,7 +6,7 @@ const CATALOG_VERSION = "0.1.0-internal";
 const MAPPING_VERSION = "0.1.0-internal";
 const AUDIENCE = "INTERNAL_RESTRICTED";
 const SOURCE_REPOSITORY = "vantioai/vantio-open-core";
-const SOURCE_BASE_COMMIT = "98ecaf6e9dd6fb831e7d2728379e2f785f41804f";
+const SOURCE_BASE_COMMIT = "a80fd4288df4983bf294aa219511ef60d86fa87c";
 const MAPPING_COMMIT = "NOT_SELF_HASHED";
 const REVIEWER = "PENDING_INDEPENDENT_COUNCIL";
 const REVIEW_DATE = "2026-09-27";
@@ -17,7 +17,7 @@ const ROLE_STATEMENT =
   "Vantio is the runtime authority, enforcement, revocation, recovery, and independently verifiable evidence layer for AI governance on customer-controlled Linux infrastructure. Vantio supports governance programs; Vantio does not independently make an AI system lawful, compliant, certified, regulator-approved, unbiased, appropriate for a regulated use, safe for every environment, or conformant with every framework.";
 
 const CLAIM_CEILING =
-  "Governance Assurance 0.1.0-internal is a private mapping layer. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.";
+  "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.";
 
 const CAPABILITY_STATES = Object.freeze([
   "NOT_IMPLEMENTED",
@@ -183,6 +183,8 @@ const PROHIBITED_INTERPRETATIONS = Object.freeze([
   "Do not treat the producer as the independent verifier.",
   "Do not assign legal classification, conformity, registration, or incident submission to Vantio by default.",
   "Do not read a framework crosswalk as certification, regulator approval, or a statement that Vantio fulfills the framework.",
+  "Do not treat the Python 3.1.0 release-close as runtime observation or as observation evidence capture.",
+  "Do not treat a package version file as proof that credentials are not collected.",
 ]);
 
 module.exports = {

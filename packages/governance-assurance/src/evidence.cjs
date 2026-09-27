@@ -26,6 +26,26 @@ function rejectedSoleProof(binding) {
   return kinds.every((kind) => !soleProofAdmissible(kind));
 }
 
+function artifactPaths(binding) {
+  if (Array.isArray(binding.artifacts) && binding.artifacts.every((item) => typeof item === "string")) {
+    return binding.artifacts;
+  }
+  if (Array.isArray(binding.artifact_records)) {
+    return binding.artifact_records.map((record) => record.path);
+  }
+  return [];
+}
+
+function versionFileOnly(binding) {
+  const paths = artifactPaths(binding);
+  if (paths.length === 0) return false;
+  return paths.every((item) => /(?:^|\/)(?:package\.json|pyproject\.toml)$/.test(item));
+}
+
+function custodyOnlyReleaseClose(binding) {
+  return binding.binding_id === "EB-T1" || (binding.track_id === "T1" && binding.proof_class === "RELEASE_CLOSE_PACKET");
+}
+
 function bindingCountsFor(binding, control) {
   if (!binding.counts_toward_satisfaction) return false;
   if (rejectedSoleProof(binding)) return false;
@@ -37,6 +57,8 @@ function bindingCountsFor(binding, control) {
   }
   if (control.implementation_state === "NOT_IMPLEMENTED" || control.implementation_state === "DESIGNED") return false;
   if (binding.independent_verifier === binding.producer && control.verification_state === "INDEPENDENTLY_TESTED") return false;
+  if (custodyOnlyReleaseClose(binding) && control.control_id !== "GA-20") return false;
+  if (control.control_id === "GA-24" && versionFileOnly(binding)) return false;
   return true;
 }
 
@@ -77,9 +99,11 @@ function loadEvidence(root = repoRoot()) {
 
 module.exports = {
   bindingCountsFor,
+  custodyOnlyReleaseClose,
   hydrateBinding,
   loadEvidence,
   rejectedSoleProof,
   repoRoot,
   soleProofAdmissible,
+  versionFileOnly,
 };

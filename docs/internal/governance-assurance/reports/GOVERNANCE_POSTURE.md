@@ -8,7 +8,7 @@ Audience: INTERNAL_RESTRICTED
 - Catalog: 0.1.0-internal
 - Mapping: 0.1.0-internal
 - Mapping commit: NOT_SELF_HASHED
-- Source: vantioai/vantio-open-core @ 98ecaf6e9dd6fb831e7d2728379e2f785f41804f
+- Source: vantioai/vantio-open-core @ a80fd4288df4983bf294aa219511ef60d86fa87c
 - Reviewer: PENDING_INDEPENDENT_COUNCIL
 - Council: PENDING_INDEPENDENT_COUNCIL
 
@@ -18,7 +18,7 @@ Vantio is the runtime authority, enforcement, revocation, recovery, and independ
 
 ## Claim ceiling
 
-Governance Assurance 0.1.0-internal is a private mapping layer. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.
+Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.
 
 ## State separation
 
@@ -29,7 +29,7 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - Controls: 40
 - Frameworks: 6
 - Mappings: 144
-- Evidence bindings: 20
+- Evidence bindings: 22
 - Customer responsibility assignments: 62
 - Unsupported controls: 14
 - External controls: 9
@@ -186,9 +186,9 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - Runtime: UNKNOWN
 - Verification: NOT_TESTED
 - Support: UNVERIFIED
-- Satisfaction: NOT_SATISFIED (STALE)
-- Stale: true
-- Ceiling: This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.
+- Satisfaction: NOT_SATISFIED (NOT_A_PASS)
+- Stale: false
+- Ceiling: This row is not satisfied. The observe-only merge is not a pass.
 
 ### GA-15 Egress enforcement
 
@@ -197,9 +197,9 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - Runtime: UNKNOWN
 - Verification: NOT_TESTED
 - Support: UNVERIFIED
-- Satisfaction: NOT_SATISFIED (STALE)
-- Stale: true
-- Ceiling: This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.
+- Satisfaction: NOT_SATISFIED (NOT_A_PASS)
+- Stale: false
+- Ceiling: This row is not satisfied. The contract-only merge is not a pass.
 
 ### GA-16 Process attribution on supported paths
 
@@ -294,11 +294,11 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - Capability: AVAILABLE
 - Configuration: NOT_APPLICABLE
 - Runtime: NOT_APPLICABLE
-- Verification: PRODUCER_TESTED
+- Verification: NOT_TESTED
 - Support: VANTIO_PARTIALLY_SUPPORTS
-- Satisfaction: BOUND_WITH_LIMITS (EVIDENCE_BOUND_NOT_A_COMPLIANCE_PASS)
+- Satisfaction: NOT_SATISFIED (NO_COUNTING_EVIDENCE)
 - Stale: false
-- Ceiling: This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.
+- Ceiling: Partial. A secret placed in the URL path is stored because the path is kept. The CLI version file does not prove non-collection. This row is not certification, legal conformity, or external proof.
 
 ### GA-25 Content non-retention on supported paths
 
@@ -481,8 +481,8 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - T1 EB-T1: RELEASE_CLOSED_REGISTRY_VERIFIED / REGISTRY_HASHES_MATCH_AUTHORIZED_PINS_CLIENT_NOT_REEXECUTED
 - T3 EB-T3: NOT_IMPLEMENTED_UNVERIFIED_BLOCKED_NODE / O7_NOT_AUTHORIZED_DECISION_9_UNRESOLVED_BLOCKED_NODE
 - T4 EB-T4: IMPLEMENTED_INTERNAL / IMPLEMENTED_INTERNAL_GREEN_FALSE_NO_PE_INTEGRATION
-- T5 EB-T5: IMPLEMENTATION_IN_REVISION / ABSENT_FROM_BOUND_TREE
-- T6 EB-T6: IMPLEMENTATION_IN_REVISION / ABSENT_FROM_BOUND_TREE
+- T5 EB-T5: MERGED_OBSERVE_ONLY_LOADER_UNTOUCHED / MERGED_OBSERVE_ONLY_NOT_COUNTED
+- T6 EB-T6: MERGED_CONTRACT_ONLY_HOST_NETWORK_NOT_EXECUTED / MERGED_CONTRACT_ONLY_NOT_COUNTED
 - T7 EB-T7: CONTRACT_ONLY / CONTRACT_ONLY_KERNEL_NOT_EXECUTED
 - T8 EB-T8: MERGED_EVALUATE_ONLY_HOST_ATTACHMENT_FALSE / EVALUATE_ONLY_HOST_ATTACHMENT_FALSE
 - T9 EB-T9: MERGED_IN_PROCESS_HOST_ATTACHMENT_NOT_PERFORMED / IN_PROCESS_HOST_ATTACHMENT_NOT_PERFORMED
@@ -494,7 +494,9 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - T16 EB-T16: READINESS_ONLY_EXECUTION_NOT_AUTHORIZED / EXECUTION_NOT_AUTHORIZED
 - BENCHMARK EB-BENCH: DESIGN_TARGET / NO_EVIDENCE_BACKED_CLAIM
 - UNIT-D EB-UNIT-D: MERGED_FUTURE_CLI_NOT_SHIPPED / UNIT_D_PROVED_NOT_SHIPPED
+- UNIT-E EB-UNIT-E: MERGED_NO_LIVE_INTEGRATION / MERGED_NO_LIVE_INTEGRATION_NOT_A_SHIPPED_WRITER
 - CLI EB-CLI-0324: FROZEN_PUBLISHED / FROZEN_CLI_0_3_24_UNCHANGED
+- OPTICS-PRIVACY EB-OPTICS-PRIVACY: DOCUMENTED_EXCEPTION_NOT_REEXECUTED / URL_PATH_SECRET_RETAINED_NOT_REEXECUTED
 - WS17 EB-ROLE: PRIVATE_MAPPING_LAYER / DISCLOSURE_ONLY
 - WS17 EB-STALENESS: IMPLEMENTED_INTERNAL / STALENESS_FUNCTION_PRESENT
 - WS17 EB-PROCUREMENT: PRIVATE_NOT_SUBMITTED / INDEX_GENERATED_NOT_SUBMITTED
@@ -508,5 +510,7 @@ Capability, configuration, runtime, and verification stay separate fields on eve
 - Do not treat the producer as the independent verifier.
 - Do not assign legal classification, conformity, registration, or incident submission to Vantio by default.
 - Do not read a framework crosswalk as certification, regulator approval, or a statement that Vantio fulfills the framework.
+- Do not treat the Python 3.1.0 release-close as runtime observation or as observation evidence capture.
+- Do not treat a package version file as proof that credentials are not collected.
 
 This report has no compliance score and no legal conclusion.

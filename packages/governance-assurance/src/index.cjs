@@ -7,7 +7,7 @@ const { CONTROLS } = require("./data/controls.cjs");
 const { FRAMEWORKS } = require("./data/frameworks.cjs");
 const { MAPPINGS } = require("./data/mappings.cjs");
 const { EVIDENCE_BINDINGS } = require("./data/evidence.cjs");
-const { bindingCountsFor, hydrateBinding, loadEvidence, soleProofAdmissible } = require("./evidence.cjs");
+const { bindingCountsFor, custodyOnlyReleaseClose, hydrateBinding, loadEvidence, soleProofAdmissible, versionFileOnly } = require("./evidence.cjs");
 const { selectMappings, unmappedControls, walkMappings } = require("./mappings.cjs");
 const { applyOverrides, buildMatrix, customerResponsibilityCount } = require("./responsibility.cjs");
 const { isExternal, isUnsupported, satisfactionFor } = require("./satisfaction.cjs");
@@ -30,6 +30,7 @@ module.exports = {
   assertReportsSafe,
   bindingCountsFor,
   canonicalize,
+  custodyOnlyReleaseClose,
   claimProblems,
   assessStaleness,
   buildMatrix,
@@ -50,6 +51,7 @@ module.exports = {
   selectMappings,
   soleProofAdmissible,
   unmappedControls,
+  versionFileOnly,
   walkMappings,
   writeReports,
 };

@@ -17,14 +17,21 @@ function byTrack(bindings, track) {
 
 test("wave 2 bindings keep unresolved tracks off the satisfied set", () => {
   const bindings = api.loadEvidence(root);
-  assert.equal(bindings.length, 20);
+  assert.equal(bindings.length, 22);
   const ingress = byTrack(bindings, "T5");
   const egress = byTrack(bindings, "T6");
-  assert.equal(ingress.wave2_state, "IMPLEMENTATION_IN_REVISION");
-  assert.equal(ingress.artifact_status, "NO_ARTIFACT");
+  assert.equal(ingress.wave2_state, "MERGED_OBSERVE_ONLY_LOADER_UNTOUCHED");
+  assert.equal(ingress.artifact_status, "PRESENT");
   assert.equal(ingress.counts_toward_satisfaction, false);
-  assert.equal(egress.wave2_state, "IMPLEMENTATION_IN_REVISION");
+  assert.deepEqual(ingress.count_control_ids, []);
+  assert.equal(egress.wave2_state, "MERGED_CONTRACT_ONLY_HOST_NETWORK_NOT_EXECUTED");
+  assert.equal(egress.artifact_status, "PRESENT");
   assert.equal(egress.counts_toward_satisfaction, false);
+  assert.deepEqual(egress.count_control_ids, []);
+  const unitE = byTrack(bindings, "UNIT-E");
+  assert.equal(unitE.wave2_state, "MERGED_NO_LIVE_INTEGRATION");
+  assert.equal(unitE.counts_toward_satisfaction, false);
+  assert.deepEqual(unitE.count_control_ids, []);
   const o7 = byTrack(bindings, "T3");
   assert.equal(o7.verification_result, "O7_NOT_AUTHORIZED_DECISION_9_UNRESOLVED_BLOCKED_NODE");
   assert.equal(o7.counts_toward_satisfaction, false);
@@ -67,7 +74,10 @@ test("wave 2 bindings keep unresolved tracks off the satisfied set", () => {
   const python = byTrack(bindings, "T1");
   assert.equal(python.counts_toward_satisfaction, true);
   assert.equal(python.independent_verifier, "UNSET");
+  assert.deepEqual(python.control_ids, ["GA-20"]);
+  assert.deepEqual(python.count_control_ids, ["GA-20"]);
   assert.equal(python.limitations.some((line) => line.includes("NOT_REEXECUTED")), true);
+  assert.equal(python.limitations.some((line) => line.includes("formal_slsa_claim is false")), true);
 });
 
 test("present artifacts are hashed and a missing file does not count", () => {

@@ -1,5 +1,5 @@
 {
-  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
+  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
   "controls": [
     {
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
@@ -302,11 +302,10 @@
       "lifecycle_order": 12,
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
-      "proof_class": "RELEASE_CLOSE_PACKET",
+      "proof_class": "PRODUCER_TEST",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
-          "EB-T1",
           "EB-CLI-0324"
         ],
         "pass": false,
@@ -350,10 +349,10 @@
       "verification_state": "NOT_TESTED"
     },
     {
-      "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
+      "claim_ceiling": "This row is not satisfied. The observe-only merge is not a pass.",
       "configuration_state": "UNKNOWN",
       "control_id": "GA-14",
-      "evidence_freshness": "UNSET",
+      "evidence_freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "implementation_state": "NOT_IMPLEMENTED",
       "lifecycle_order": 14,
       "primary_support": "UNVERIFIED",
@@ -362,14 +361,12 @@
       "runtime_state": "UNKNOWN",
       "satisfaction": {
         "pass": false,
-        "prior_pass": "CLEARED",
-        "reason": "STALE",
+        "prior_pass": "NOT_PROMOTED",
+        "reason": "NOT_A_PASS",
         "staleness": {
-          "clears_prior_pass": true,
-          "reasons": [
-            "EVIDENCE_UNSET"
-          ],
-          "stale": true
+          "clears_prior_pass": false,
+          "reasons": [],
+          "stale": false
         },
         "status": "NOT_SATISFIED"
       },
@@ -377,10 +374,10 @@
       "verification_state": "NOT_TESTED"
     },
     {
-      "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
+      "claim_ceiling": "This row is not satisfied. The contract-only merge is not a pass.",
       "configuration_state": "UNKNOWN",
       "control_id": "GA-15",
-      "evidence_freshness": "UNSET",
+      "evidence_freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "implementation_state": "NOT_IMPLEMENTED",
       "lifecycle_order": 15,
       "primary_support": "UNVERIFIED",
@@ -389,14 +386,12 @@
       "runtime_state": "UNKNOWN",
       "satisfaction": {
         "pass": false,
-        "prior_pass": "CLEARED",
-        "reason": "STALE",
+        "prior_pass": "NOT_PROMOTED",
+        "reason": "NOT_A_PASS",
         "staleness": {
-          "clears_prior_pass": true,
-          "reasons": [
-            "EVIDENCE_UNSET"
-          ],
-          "stale": true
+          "clears_prior_pass": false,
+          "reasons": [],
+          "stale": false
         },
         "status": "NOT_SATISFIED"
       },
@@ -495,11 +490,10 @@
       "lifecycle_order": 19,
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
-      "proof_class": "RELEASE_CLOSE_PACKET",
+      "proof_class": "PRODUCER_TEST",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
-          "EB-T1",
           "EB-CLI-0324"
         ],
         "pass": false,
@@ -624,7 +618,7 @@
       "verification_state": "NOT_TESTED"
     },
     {
-      "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
+      "claim_ceiling": "Partial. A secret placed in the URL path is stored because the path is kept. The CLI version file does not prove non-collection. This row is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-24",
       "evidence_freshness": "CURRENT_FOR_CATALOG_REVIEW",
@@ -632,24 +626,21 @@
       "lifecycle_order": 24,
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
-      "proof_class": "PRODUCER_TEST",
+      "proof_class": "DESIGN_RECORD",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
-        "binding_ids": [
-          "EB-CLI-0324"
-        ],
         "pass": false,
         "prior_pass": "NOT_PROMOTED",
-        "reason": "EVIDENCE_BOUND_NOT_A_COMPLIANCE_PASS",
+        "reason": "NO_COUNTING_EVIDENCE",
         "staleness": {
           "clears_prior_pass": false,
           "reasons": [],
           "stale": false
         },
-        "status": "BOUND_WITH_LIMITS"
+        "status": "NOT_SATISFIED"
       },
       "title": "Credential and secret non-collection on supported paths",
-      "verification_state": "PRODUCER_TESTED"
+      "verification_state": "NOT_TESTED"
     },
     {
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
@@ -1086,7 +1077,7 @@
   "counts": {
     "controls": 40,
     "customer_responsibility_assignments": 62,
-    "evidence_bindings": 20,
+    "evidence_bindings": 22,
     "external_controls": 9,
     "frameworks": 6,
     "mappings": 144,
@@ -1100,7 +1091,9 @@
     "Do not treat a dashboard, an HTTP 200, process existence, exit 0, or a generated report as sole proof.",
     "Do not treat the producer as the independent verifier.",
     "Do not assign legal classification, conformity, registration, or incident submission to Vantio by default.",
-    "Do not read a framework crosswalk as certification, regulator approval, or a statement that Vantio fulfills the framework."
+    "Do not read a framework crosswalk as certification, regulator approval, or a statement that Vantio fulfills the framework.",
+    "Do not treat the Python 3.1.0 release-close as runtime observation or as observation evidence capture.",
+    "Do not treat a package version file as proof that credentials are not collected."
   ],
   "provenance": {
     "audience": "INTERNAL_RESTRICTED",
@@ -1117,7 +1110,7 @@
     "retrieved_at": "2026-09-27T12:46:00Z",
     "reviewer": "PENDING_INDEPENDENT_COUNCIL",
     "self_certified_council_pass": false,
-    "source_base_commit": "98ecaf6e9dd6fb831e7d2728379e2f785f41804f",
+    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
     "source_repository": "vantioai/vantio-open-core"
   },
   "refuses": [
@@ -1179,8 +1172,6 @@
     {
       "binding_id": "EB-T1",
       "count_control_ids": [
-        "GA-12",
-        "GA-19",
         "GA-20"
       ],
       "counts_toward_satisfaction": true,
@@ -1219,23 +1210,23 @@
       "binding_id": "EB-T5",
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "freshness": "UNSET",
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
-      "proof_class": "NONE",
+      "proof_class": "DESIGN_RECORD",
       "track_id": "T5",
-      "verification_result": "ABSENT_FROM_BOUND_TREE",
-      "wave2_state": "IMPLEMENTATION_IN_REVISION"
+      "verification_result": "MERGED_OBSERVE_ONLY_NOT_COUNTED",
+      "wave2_state": "MERGED_OBSERVE_ONLY_LOADER_UNTOUCHED"
     },
     {
       "binding_id": "EB-T6",
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "freshness": "UNSET",
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
-      "proof_class": "NONE",
+      "proof_class": "DESIGN_RECORD",
       "track_id": "T6",
-      "verification_result": "ABSENT_FROM_BOUND_TREE",
-      "wave2_state": "IMPLEMENTATION_IN_REVISION"
+      "verification_result": "MERGED_CONTRACT_ONLY_NOT_COUNTED",
+      "wave2_state": "MERGED_CONTRACT_ONLY_HOST_NETWORK_NOT_EXECUTED"
     },
     {
       "binding_id": "EB-T7",
@@ -1367,6 +1358,17 @@
       "wave2_state": "MERGED_FUTURE_CLI_NOT_SHIPPED"
     },
     {
+      "binding_id": "EB-UNIT-E",
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "proof_class": "DESIGN_RECORD",
+      "track_id": "UNIT-E",
+      "verification_result": "MERGED_NO_LIVE_INTEGRATION_NOT_A_SHIPPED_WRITER",
+      "wave2_state": "MERGED_NO_LIVE_INTEGRATION"
+    },
+    {
       "binding_id": "EB-CLI-0324",
       "count_control_ids": [
         "GA-01",
@@ -1374,7 +1376,6 @@
         "GA-12",
         "GA-16",
         "GA-19",
-        "GA-24",
         "GA-25"
       ],
       "counts_toward_satisfaction": true,
@@ -1384,6 +1385,17 @@
       "track_id": "CLI",
       "verification_result": "FROZEN_CLI_0_3_24_UNCHANGED",
       "wave2_state": "FROZEN_PUBLISHED"
+    },
+    {
+      "binding_id": "EB-OPTICS-PRIVACY",
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "proof_class": "DESIGN_RECORD",
+      "track_id": "OPTICS-PRIVACY",
+      "verification_result": "URL_PATH_SECRET_RETAINED_NOT_REEXECUTED",
+      "wave2_state": "DOCUMENTED_EXCEPTION_NOT_REEXECUTED"
     },
     {
       "binding_id": "EB-ROLE",

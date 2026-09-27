@@ -1,6 +1,6 @@
 # Governance Assurance 0.1.0-internal
 
-PRIVATE | INTERNAL_RESTRICTED | NOT A CUSTOMER RELEASE | NOT A CERTIFICATION
+PRIVATE | INTERNAL_RESTRICTED | NOT A CUSTOMER RELEASE | NOT A CERTIFICATION | NON-NORMATIVE | NOT_LEGAL_ADVICE | NO_COMPLIANCE_GUARANTEE
 
 This package maps controls and evidence that already exist. It is not a fourth product. Optics, Phantom Engine, and Enterprise stay the product line. Governance Assurance is the private mapping layer.
 

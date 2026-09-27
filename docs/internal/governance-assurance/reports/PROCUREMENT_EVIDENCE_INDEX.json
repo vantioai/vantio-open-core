@@ -49,7 +49,7 @@
       "proof_class_elevated": false
     }
   ],
-  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
+  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
   "customer_confidential_on_public": false,
   "distribution": "INTERNAL_RESTRICTED",
   "distribution_classes": [
@@ -76,7 +76,7 @@
     "retrieved_at": "2026-09-27T12:46:00Z",
     "reviewer": "PENDING_INDEPENDENT_COUNCIL",
     "self_certified_council_pass": false,
-    "source_base_commit": "98ecaf6e9dd6fb831e7d2728379e2f785f41804f",
+    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
     "source_repository": "vantioai/vantio-open-core"
   },
   "refuses": [

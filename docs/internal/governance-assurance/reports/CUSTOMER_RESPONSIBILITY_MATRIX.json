@@ -17,7 +17,7 @@
     "retrieved_at": "2026-09-27T12:46:00Z",
     "reviewer": "PENDING_INDEPENDENT_COUNCIL",
     "self_certified_council_pass": false,
-    "source_base_commit": "98ecaf6e9dd6fb831e7d2728379e2f785f41804f",
+    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
     "source_repository": "vantioai/vantio-open-core"
   },
   "raci_values": [
