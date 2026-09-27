@@ -17,4 +17,4 @@ The register is [PUBLIC-SURFACE-INVENTORY.json](../../../programs/production-rea
 | [06-OTHER-SURFACES.md](06-OTHER-SURFACES.md) | LinkedIn, X, directories, and what was not found |
 | [07-DRIFT.md](07-DRIFT.md) | Places the public copy does not match itself |
 
-Every disposition is `UNREVIEWED`. Track 15 decides keep, rewrite, or remove.
+Every disposition in this register stays `UNREVIEWED`. Track 15 records recommended dispositions on the claim ledger and does not edit these fields.

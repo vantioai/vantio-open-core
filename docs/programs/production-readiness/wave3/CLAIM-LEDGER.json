@@ -1,0 +1,3109 @@
+{
+  "schema": "vantio.program.production-readiness.wave3.claim-ledger/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "track": "W3-T15",
+  "classification": "W3_PUBLIC_CLAIM_CONTENT_INVENTORY_READY_FOR_COUNCIL",
+  "status": "FROZEN_INVENTORY",
+  "purpose": "Internal inventory of public claims and recommended dispositions. The freeze records the inventory. It does not rewrite public copy, publish, announce, or authorize Tracks 16 through 21.",
+  "source_inventory": {
+    "path": "docs/programs/production-readiness/wave3/PUBLIC-SURFACE-INVENTORY.json",
+    "classification": "W3_PUBLIC_ESTATE_INVENTORY_READY_FOR_COUNCIL",
+    "merged_disposition": "W3_PUBLIC_ESTATE_INVENTORY_MERGED_DISPOSITIONS_UNREVIEWED",
+    "inventory_source_sha": "03995835c88a4ebcca2ee3b8c1ae7fa490d21653",
+    "observation_window_utc": {
+      "start": "2026-09-27T14:33:28Z",
+      "end": "2026-09-27T14:42:53Z"
+    },
+    "refetched_public_http": false
+  },
+  "t14_dispositions_mutated": false,
+  "t14_disposition_note": "Recommended dispositions live on this ledger. PUBLIC-SURFACE-INVENTORY.json disposition fields stay UNREVIEWED. This freeze does not authorize a public rewrite, so it does not write those fields.",
+  "public_surfaces_mutated": false,
+  "frozen_packages_reopened": false,
+  "reading_guide": "docs/internal/wave3/claim-inventory/README.md",
+  "freeze": {
+    "kind": "INVENTORY_ONLY",
+    "status": "FROZEN_INVENTORY",
+    "frozen_on_et": "2026-09-27",
+    "frozen_at_et": "2026-09-27T11:30:25-04:00",
+    "timezone": "America/New_York",
+    "inventory_source_sha": "03995835c88a4ebcca2ee3b8c1ae7fa490d21653",
+    "content_commit_sha": null,
+    "tip_sha_note": "A commit cannot store its own SHA. content_commit_sha is null until the seal commit records the commit that introduced these claim rows. The seal commit does not change claim rows or authorization flags. FROZEN_INVENTORY is not the tip SHA of a publish.",
+    "authorizes_public_rewrite": false,
+    "authorizes_publish": false,
+    "authorizes_announce": false,
+    "authorizes_registry_mutation": false,
+    "authorizes_external_account_edit": false,
+    "authorizes_track_16": false,
+    "authorizes_track_17": false,
+    "authorizes_tracks_18_through_21": false,
+    "public_ship_authorization": false,
+    "clean_host_internal_proof": false,
+    "proved_external": false
+  },
+  "enums": {
+    "evidence_status": [
+      "SUPPORTED",
+      "UNSUPPORTED",
+      "UNKNOWN",
+      "CONFLICTING"
+    ],
+    "recommended_disposition": [
+      "KEEP",
+      "REWRITE",
+      "HOLD",
+      "RETIRE",
+      "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "DEFER_TO_T16"
+    ],
+    "claim_class": [
+      "product",
+      "capability",
+      "security",
+      "performance",
+      "compliance",
+      "version",
+      "partnership",
+      "other"
+    ]
+  },
+  "disposition_meanings": {
+    "KEEP": "Leave the public sentence. Not permission to republish it.",
+    "REWRITE": "A later public-copy change is recommended. Not performed.",
+    "HOLD": "Do not change the surface. Used when evidence is thin or the change would reopen a frozen version, yank a release, or add a file.",
+    "RETIRE": "A later removal is the content recommendation. This ledger does not use RETIRE as an executing disposition. Where removal would yank or unpublish, the executing disposition is HOLD and RETIRE is later_action_not_authorized.",
+    "EXTERNAL_ACCOUNT_ACTION_REQUIRED": "The surface is outside this repository or is an account setting. Not permission to log in.",
+    "DEFER_TO_T16": "Canonical public language is Track 16. This force does not write that language."
+  },
+  "evidence_method": {
+    "refetched_public_http": false,
+    "rule": "Evidence is the T14 register plus files on inventory source 03995835c88a4ebcca2ee3b8c1ae7fa490d21653. Missing proof stays UNKNOWN or UNSUPPORTED. CONFLICTING means the public surfaces or the in-repo files disagree. SUPPORTED is not a runtime pass.",
+    "not_evidence": [
+      "CLEAN_HOST_INTERNAL_PROOF",
+      "PROVED_EXTERNAL",
+      "A roadmap item treated as shipped",
+      "Optics observation treated as Phantom Engine enforcement",
+      "An HTTP 404 treated as proof a repository does not exist"
+    ]
+  },
+  "closed_actions": [
+    "Rewrite website, README, release-note, npm, or PyPI copy.",
+    "Publish, yank, deprecate, or announce.",
+    "Reopen @vantio/cli 0.3.24, @vantio/agent-sdk 0.2.4, or vantio-agent-sdk 3.1.0.",
+    "Execute Track 16 canonical language, Track 17 rewrite staging, or Tracks 18 through 21.",
+    "Contact GitHub Support.",
+    "Edit LinkedIn, X, the Vercel project, or the GitHub org description.",
+    "Issue credentials, move money, or deploy to a customer.",
+    "Claim CLEAN_HOST_INTERNAL_PROOF or PROVED_EXTERNAL."
+  ],
+  "out_of_scope_tracks": {
+    "16": "Canonical public language. Not written here.",
+    "17": "Public rewrite staging. Not staged here.",
+    "18_through_21": "Not executed. This force does not assign their titles."
+  },
+  "frozen_packages_left_untouched": {
+    "cli": "@vantio/cli@0.3.24",
+    "node_sdk": "@vantio/agent-sdk@0.2.4",
+    "python_sdk": "vantio-agent-sdk@3.1.0"
+  },
+  "gaps_not_promoted": [
+    {
+      "id": "G-01",
+      "inventory_id": "G-01",
+      "item": "Website source repository",
+      "state": "NOT_IN_PUBLIC_ORG_LIST",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-02",
+      "inventory_id": "G-02",
+      "item": "Form and help-assistant submission hosts",
+      "state": "NOT_IN_STATIC_HTML",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-03",
+      "inventory_id": "G-03",
+      "item": "Visual mobile layout",
+      "state": "NOT_SCREENSHOTTED",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-04",
+      "inventory_id": "G-04",
+      "item": "Official MCP registry publication of server.json",
+      "state": "HOST_TIMEOUT",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-05",
+      "inventory_id": "G-05",
+      "item": "cursor.directory listing",
+      "state": "HTTP_429",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-06",
+      "inventory_id": "G-06",
+      "item": "Crunchbase, Product Hunt, and Wellfound page bodies",
+      "state": "HTTP_403",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-07",
+      "inventory_id": "G-07",
+      "item": "Investor deck, handouts, business cards, email signatures, job posts, demo videos",
+      "state": "NOT_OBSERVED_ON_PUBLIC_WEB_OR_PUBLIC_REPOS",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-08",
+      "inventory_id": "G-08",
+      "item": "Historical npm README diff for every CLI version",
+      "state": "NOT_PERFORMED",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-09",
+      "inventory_id": "G-09",
+      "item": "Exhaustive quote of code comments",
+      "state": "COUNTED_NOT_QUOTED",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    },
+    {
+      "id": "G-10",
+      "inventory_id": "G-10",
+      "item": "Private repository names and bodies",
+      "state": "OUT_OF_SCOPE",
+      "evidence_status": "UNKNOWN",
+      "promoted_to_claim": false,
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "note": "T14 left this unobserved or unconfirmed. Track 15 does not promote it to a success claim."
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "CL-W3-T15-001",
+      "text_form": "verbatim",
+      "claim_class": "product",
+      "claim_text": "Gate is not a current SKU. Enforce is a function inside Phantom Engine. There is no Gate product, no separate Enforce SKU, and no four-product model.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "CONTROLLED_CEILING_CONTRADICTED_ELSEWHERE",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-01",
+        "D-02",
+        "D-06",
+        "D-12"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/phantom-engine"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-draws-the-line-between-capability-and-authority"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/phantom-engine-protection-on-linux-hosts"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/llms.txt"
+        },
+        {
+          "kind": "website.form",
+          "id": "gate-welcome"
+        },
+        {
+          "kind": "website.redirect",
+          "from": "https://vantio.ai/gate"
+        },
+        {
+          "kind": "website.redirect",
+          "from": "https://vantio.ai/pro"
+        },
+        {
+          "kind": "in_repo",
+          "path": "docs/PRODUCT_LINEUP.md"
+        },
+        {
+          "kind": "github.repository",
+          "name": "vantio-optics-cursor-plugin"
+        },
+        {
+          "kind": "drift",
+          "id": "D-01"
+        },
+        {
+          "kind": "drift",
+          "id": "D-02"
+        },
+        {
+          "kind": "drift",
+          "id": "D-06"
+        },
+        {
+          "kind": "drift",
+          "id": "D-12"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.claim_ceiling_on_llms_txt.product_count_sentence",
+          "role": "supports",
+          "note": "T14 recorded this sentence from https://vantio.ai/llms.txt."
+        },
+        {
+          "source": "docs/PRODUCT_LINEUP.md",
+          "role": "supports",
+          "note": "The public lineup file says Gate is the internal name for the Enforce function set and is not a current standalone public SKU."
+        },
+        {
+          "source": "packages/vantio-gate-mcp/package.json",
+          "role": "supports",
+          "note": "Current source says Gate is not a separate product or subscription."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.org.description and other_surfaces LinkedIn claim_drift",
+          "role": "contradicts",
+          "note": "The org description and LinkedIn text still present Gate as a product. See D-01 and D-06."
+        }
+      ],
+      "notes": "KEEP applies to the ceiling sentence. It does not authorize a rewrite of the contradicting surfaces, and it does not upgrade Enforce into a proven deployment. Track 15 did not edit llms.txt."
+    },
+    {
+      "claim_id": "CL-W3-T15-002",
+      "text_form": "verbatim",
+      "claim_class": "product",
+      "claim_text": "Pittsburgh, 2026. Optics helps you see. Gate applies the rules you set. Phantom Engine protects the machines you own. Blind by design. Not a proxy.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "PUBLIC_TEXT",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-01"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.org_description"
+        },
+        {
+          "kind": "drift",
+          "id": "D-01"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.org.description",
+          "role": "observation",
+          "note": "T14 recorded the org description. description_edit_channel is EXTERNAL_ACCOUNT_ACTION_REQUIRED."
+        },
+        {
+          "source": "CL-W3-T15-001",
+          "role": "contradicts",
+          "note": "The same day's llms.txt ceiling says Gate is not a current SKU."
+        }
+      ],
+      "notes": "The org description is a GitHub setting. This freeze does not change it. 'Protects the machines you own' is not recorded here as enforcement proof."
+    },
+    {
+      "claim_id": "CL-W3-T15-003",
+      "text_form": "verbatim",
+      "claim_class": "product",
+      "claim_text": "Latest npm text still offers an upgrade path to Gate or Pro. The agent SDK README links github.com/vantioai/vantio-pro. @vantio/optics-mcp tells the reader to upgrade to Vantio Gate to block, redact, or cap spend. @vantio/gate-mcp describes Policy Latch dry-run and says live latch is vantio run plus Pro policy.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "REGISTRY_TEXT",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-02"
+      ],
+      "surfaces": [
+        {
+          "kind": "npm.package",
+          "name": "@vantio/agent-sdk"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/optics-mcp"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/gate-mcp"
+        },
+        {
+          "kind": "github.named_repo_http_404",
+          "name": "vantio-pro"
+        },
+        {
+          "kind": "drift",
+          "id": "D-02"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json npm.packages descriptions and readme_note fields",
+          "role": "observation",
+          "note": "T14 recorded the registry text. No npm publish, deprecate, or yank was performed then or now."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.named_repos_http_404",
+          "role": "observation",
+          "note": "vantio-pro returned HTTP 404. That status does not distinguish missing from inaccessible."
+        },
+        {
+          "source": "CL-W3-T15-001",
+          "role": "contradicts",
+          "note": "The ceiling says Gate is not a current SKU."
+        }
+      ],
+      "notes": "HOLD because changing the published text of @vantio/agent-sdk@0.2.4 would reopen a frozen version, and this freeze does not authorize any npm publish. The vantio-pro URL is not evidence the repository is absent."
+    },
+    {
+      "claim_id": "CL-W3-T15-004",
+      "text_form": "verbatim",
+      "claim_class": "version",
+      "claim_text": "Vantio Optics — free observe for LLM/agent egress. Sight Loop. Blind by design. Not a proxy. @vantio/cli 0.3.2 · vantio-agent-sdk 3.0.2",
+      "evidence_status": "UNSUPPORTED",
+      "evidence_scope": "VERSION_NUMBERS_IN_THE_DESCRIPTION",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-03"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.repository",
+          "name": "vantio-open-core"
+        },
+        {
+          "kind": "drift",
+          "id": "D-03"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.repositories vantio-open-core description",
+          "role": "observation",
+          "note": "T14 recorded the description."
+        },
+        {
+          "source": "packages/vantio-cli/package.json and packages/vantio-agent-sdk-py/pyproject.toml",
+          "role": "contradicts",
+          "note": "Source on this tip declares CLI 0.3.24 and Python 3.1.0."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json frozen_packages_observed_not_mutated",
+          "role": "contradicts",
+          "note": "npm latest observed for the CLI was 0.3.24. PyPI latest observed was 3.1.0."
+        }
+      ],
+      "notes": "UNSUPPORTED applies to the version numbers as a statement of what is current. The description is GitHub metadata. This freeze does not edit it and does not reopen 0.3.24 or 3.1.0. The retired observe name in the description is a quotation."
+    },
+    {
+      "claim_id": "CL-W3-T15-005",
+      "text_form": "paraphrase",
+      "claim_class": "version",
+      "claim_text": "The public Optics manual on this tip says PyPI vantio-agent-sdk is 3.0.14 and that 3.1.0 is unpublished source.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "MANUAL_VERSUS_REGISTRY",
+      "recommended_disposition": "REWRITE",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [
+        "D-04"
+      ],
+      "surfaces": [
+        {
+          "kind": "in_repo",
+          "path": "docs/products/optics/"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "3.1.0"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "3.0.14"
+        },
+        {
+          "kind": "drift",
+          "id": "D-04"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.repositories vantio-open-core public_optics_manual",
+          "role": "observation",
+          "note": "manual_says_pypi is 3.0.14 and manual_says_3_1_0 is unpublished source. The manual's own registry timestamp is 2026-09-27T05:24:00Z."
+        },
+        {
+          "source": "docs/products/optics/CHANGELOG-GUIDE.md",
+          "role": "observation",
+          "note": "The file still says 3.1.0 is unpublished. Track 15 did not edit it."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json pypi.project.latest and latest_files",
+          "role": "contradicts",
+          "note": "T14's later read the same day found latest 3.1.0, not yanked, and the wheel and sdist SHA-256 matched the GitHub custody release assets."
+        }
+      ],
+      "notes": "REWRITE is a recommendation for a later public-copy pass. It is not performed here. Track 17 is out of scope. The frozen 3.1.0 bytes are not republished to make the manual true."
+    },
+    {
+      "claim_id": "CL-W3-T15-006",
+      "text_form": "paraphrase",
+      "claim_class": "product",
+      "claim_text": "PyPI 1.0.0, 2.0.0, and 3.0.0 remain installable and not yanked. Their public summaries describe a session SDK, a zero-trust execution interceptor with a proxy endpoint and an API key, and SDK-side governance telemetry. 3.1.0 describes metadata-only observe.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "INSTALLABLE_OLD_RELEASES",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": "RETIRE",
+      "edit_channel": "REGISTRY_FROZEN_FOR_3_1_0_BYTES",
+      "drift_ids": [
+        "D-05"
+      ],
+      "surfaces": [
+        {
+          "kind": "pypi.version",
+          "version": "1.0.0"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "2.0.0"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "3.0.0"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "3.1.0"
+        },
+        {
+          "kind": "drift",
+          "id": "D-05"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json pypi.project.sampled_older_versions and versions_none_yanked",
+          "role": "observation",
+          "note": "Eighteen versions, none yanked. T14 sampled 1.0.0, 2.0.0, 3.0.0, 3.0.14, and 3.1.0."
+        },
+        {
+          "source": "docs/governance/canonical/product-boundary.md",
+          "role": "contradicts",
+          "note": "Current boundary says free Optics needs no account and no API key, and Optics does not block actions or retain prompts or completions."
+        }
+      ],
+      "notes": "HOLD withholds a yank. RETIRE is recorded only as a later action this freeze does not authorize. Old releases stay installable."
+    },
+    {
+      "claim_id": "CL-W3-T15-007",
+      "text_form": "paraphrase",
+      "claim_class": "product",
+      "claim_text": "LinkedIn company posts and the indexed about text still describe Gate as an Enforce product and a four-plane model.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "EXTERNAL_ACCOUNT_TEXT",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-06"
+      ],
+      "surfaces": [
+        {
+          "kind": "other_surface",
+          "id": "linkedin-company"
+        },
+        {
+          "kind": "drift",
+          "id": "D-06"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json other_surfaces.controlled_or_likely_controlled linkedin-company.claim_drift",
+          "role": "observation",
+          "note": "T14 recorded the drift and did not adopt the posts as product truth."
+        },
+        {
+          "source": "CL-W3-T15-001",
+          "role": "contradicts",
+          "note": "llms.txt says there is no four-product model and Gate is not a current SKU."
+        }
+      ],
+      "notes": "No LinkedIn edit, message, or post was made. Follower counts and about text are not product proof."
+    },
+    {
+      "claim_id": "CL-W3-T15-008",
+      "text_form": "paraphrase",
+      "claim_class": "product",
+      "claim_text": "The org profile README and docs/PRODUCT_LINEUP.md link https://github.com/vantioai/vantio-phantom-engine. That URL is not in the public repository list and returned HTTP 404 to the T14 token.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "HTTP_404_DOES_NOT_PROVE_ABSENCE",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "REPO_PUBLIC_OTHER",
+      "drift_ids": [
+        "D-07"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.profile_readme"
+        },
+        {
+          "kind": "github.named_repo_http_404",
+          "name": "vantio-phantom-engine"
+        },
+        {
+          "kind": "in_repo",
+          "path": "docs/PRODUCT_LINEUP.md"
+        },
+        {
+          "kind": "drift",
+          "id": "D-07"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.profile_readme.links_phantom_engine_repo and named_repos_http_404",
+          "role": "observation",
+          "note": "T14's named_repo_404_note says HTTP 404 does not distinguish missing from inaccessible."
+        },
+        {
+          "source": "docs/PRODUCT_LINEUP.md",
+          "role": "observation",
+          "note": "The lineup table links the same repository name and says this repo does not ship Phantom Engine."
+        }
+      ],
+      "notes": "UNKNOWN is whether a private repository exists. UNSUPPORTED would be the wrong status for non-existence. This freeze does not push to vantioai/.github and does not edit PRODUCT_LINEUP.md."
+    },
+    {
+      "claim_id": "CL-W3-T15-009",
+      "text_form": "paraphrase",
+      "claim_class": "partnership",
+      "claim_text": "Phantom Engine: $799 per enrolled node, per month, with a 14-day trial. Enterprise: talk to sales. Optics: free. The design-partner page states $600 per governed node per month.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "TWO_PUBLIC_PRICES",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-08"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/pricing"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/start/design-partner"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/phantom-engine-protection-on-linux-hosts"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/llms.txt"
+        },
+        {
+          "kind": "website.form",
+          "id": "pricing-phantom-trial"
+        },
+        {
+          "kind": "website.form",
+          "id": "design-partner"
+        },
+        {
+          "kind": "in_repo",
+          "path": "docs/governance/canonical/product-boundary.md"
+        },
+        {
+          "kind": "drift",
+          "id": "D-08"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.claim_ceiling_on_llms_txt.pricing_sentence",
+          "role": "observation",
+          "note": "llms.txt states $799, a 14-day trial, Enterprise talk to sales, and Optics free."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.forms_and_ctas pricing-phantom-trial and design-partner",
+          "role": "observation",
+          "note": "Pricing shows $799 and a 14-day trial. Design-partner shows $600."
+        },
+        {
+          "source": "docs/governance/canonical/product-boundary.md",
+          "role": "supports",
+          "note": "The boundary states Phantom Engine at $799/node/mo and Enterprise as talk-to-sales. It does not state the $600 design-partner price."
+        }
+      ],
+      "notes": "Both numbers were public on the observation day. This ledger does not pick a winner and does not rewrite either page. Canonical pricing language is Track 16. Card checkout is a separate claim."
+    },
+    {
+      "claim_id": "CL-W3-T15-010",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "Four /updates URLs returned HTTP 200 and are absent from sitemap.xml, including the Show HN title and the slug vantio-runs-company-ops-on-optics-gate-phantom-engine.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_HTTP_AND_SITEMAP_COMPARISON",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-09"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/updates"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/agi-planning-horizon-host-control"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/asi-superintelligence-host-floor"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/show-hn-i-m-16-y-o-and-built-the-only-ai-agent-for-hardware-and-software"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-runs-company-ops-on-optics-gate-phantom-engine"
+        },
+        {
+          "kind": "website.sitemap",
+          "url": "https://vantio.ai/sitemap.xml"
+        },
+        {
+          "kind": "drift",
+          "id": "D-09"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.update_posts where in_sitemap is false",
+          "role": "supports",
+          "note": "Four posts are marked in_sitemap false with HTTP 200. counts.update_posts_live_not_in_sitemap is 4."
+        }
+      ],
+      "notes": "SUPPORTED is the sitemap omission, not the truth of the post titles. The site source is not in the public org list. This freeze does not edit the sitemap."
+    },
+    {
+      "claim_id": "CL-W3-T15-011",
+      "text_form": "verbatim",
+      "claim_class": "capability",
+      "claim_text": "packages/vantio-gate-mcp/server.json documents a default API base of https://api.vantio.ai.",
+      "evidence_status": "UNSUPPORTED",
+      "evidence_scope": "DOCUMENTED_HOST_DID_NOT_RESOLVE",
+      "recommended_disposition": "REWRITE",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [
+        "D-10"
+      ],
+      "surfaces": [
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-gate-mcp/server.json"
+        },
+        {
+          "kind": "website.unresolved_host",
+          "host": "api.vantio.ai"
+        },
+        {
+          "kind": "drift",
+          "id": "D-10"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "packages/vantio-gate-mcp/server.json",
+          "role": "observation",
+          "note": "The environment variable description says the default is https://api.vantio.ai. Track 15 did not edit the file."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.unresolved_hosts",
+          "role": "contradicts",
+          "note": "api.vantio.ai result was NXDOMAIN during the T14 window."
+        }
+      ],
+      "notes": "UNSUPPORTED means the documented default was not a resolving host in that window. REWRITE is not performed. Creating the DNS name was not attempted and is not authorized. Publishing a new @vantio/gate-mcp is not authorized."
+    },
+    {
+      "claim_id": "CL-W3-T15-012",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "The website names @vantioai. X has @VantioAI with an empty follower count and a September 2026 join date. The GitHub org twitter_username field is null.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_PUBLIC_METADATA",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-11"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/humans.txt"
+        },
+        {
+          "kind": "other_surface",
+          "id": "x"
+        },
+        {
+          "kind": "github.org_twitter_username"
+        },
+        {
+          "kind": "drift",
+          "id": "D-11"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.machine_readable humans.txt, chrome twitter, github.org.twitter_username, other_surfaces x",
+          "role": "supports",
+          "note": "T14 recorded @vantioai on humans.txt and twitter:site, null on the org, and the X profile description with 0 followers."
+        }
+      ],
+      "notes": "SUPPORTED is the disagreement among the handles and fields. It is not evidence of an audience. This freeze does not post to X and does not set the GitHub Twitter field."
+    },
+    {
+      "claim_id": "CL-W3-T15-013",
+      "text_form": "paraphrase",
+      "claim_class": "product",
+      "claim_text": "Open issues on vantioai/.github include Gate · Policy Latch — P0 complete / P1 backlog and Optics · Sight Loop — P0 complete / P1 backlog.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "PUBLIC_ISSUE_TITLES",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "REPO_PUBLIC_OTHER",
+      "drift_ids": [
+        "D-12"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.repository",
+          "name": ".github"
+        },
+        {
+          "kind": "drift",
+          "id": "D-12"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.repositories .github open_issue_titles",
+          "role": "observation",
+          "note": "T14 recorded four open issue titles, including Gate as Policy Latch and Phantom Engine as Bypass Reconciliation."
+        },
+        {
+          "source": "CL-W3-T15-001",
+          "role": "contradicts",
+          "note": "The ceiling says Gate is not a current SKU."
+        }
+      ],
+      "notes": "Issue titles are not a shipped-status record. This freeze does not close or retitle issues. The retired observe name in the Optics issue title is a quotation."
+    },
+    {
+      "claim_id": "CL-W3-T15-014",
+      "text_form": "paraphrase",
+      "claim_class": "product",
+      "claim_text": "autonomous-ops-framework is public. Its README title is Phantom Box and it says the skeleton is not yet announced.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "PUBLIC_REPO_VERSUS_NOT_ANNOUNCED",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "HOLD",
+      "edit_channel": "REPO_PUBLIC_OTHER",
+      "drift_ids": [
+        "D-13"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.repository",
+          "name": "autonomous-ops-framework"
+        },
+        {
+          "kind": "drift",
+          "id": "D-13"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.repositories autonomous-ops-framework",
+          "role": "observation",
+          "note": "T14 recorded readme_title and readme_status_sentence. The repository is in the public list of four."
+        }
+      ],
+      "notes": "Public visibility and 'not yet announced' disagree. This freeze does not push to that repository, does not unpublish it, and does not announce it."
+    },
+    {
+      "claim_id": "CL-W3-T15-015",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "The PyPI project URL for Phantom Engine is https://vantio.ai/phantom, which redirects to /phantom-engine.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_REDIRECT",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "REGISTRY_FROZEN_FOR_3_1_0_BYTES",
+      "drift_ids": [
+        "D-14"
+      ],
+      "surfaces": [
+        {
+          "kind": "pypi.project_url",
+          "name": "Phantom Engine"
+        },
+        {
+          "kind": "website.redirect",
+          "from": "https://vantio.ai/phantom"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-gate-mcp/server.json"
+        },
+        {
+          "kind": "drift",
+          "id": "D-14"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json pypi.project.project_urls and website.redirects",
+          "role": "supports",
+          "note": "T14 recorded the project URL and the /phantom redirect to /phantom-engine."
+        },
+        {
+          "source": "packages/vantio-gate-mcp/server.json websiteUrl",
+          "role": "observation",
+          "note": "The in-repo manifest also uses https://vantio.ai/phantom. Track 15 did not edit it."
+        }
+      ],
+      "notes": "The redirect answers. Changing the PyPI URL would be a registry metadata change. HOLD withholds that change. 3.1.0 is not republished."
+    },
+    {
+      "claim_id": "CL-W3-T15-016",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "Optics is free, local-first observability for supported AI-agent traffic. It does not store prompts or completions, and it does not block, redact, or cap spend on its own.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "PRODUCT_DEFINITION_NOT_A_TRAFFIC_MEASUREMENT",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/optics"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions/enterprise-agents"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/start"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-draws-the-line-between-capability-and-authority"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/autonomous-agents-egress-blind-spots"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/optics-observe-egress"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/cli"
+        },
+        {
+          "kind": "in_repo",
+          "path": "docs/governance/canonical/product-boundary.md"
+        },
+        {
+          "kind": "in_repo",
+          "path": "docs/governance/canonical/known-limitations.md"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "docs/governance/canonical/product-boundary.md",
+          "role": "supports",
+          "note": "Optics is free local-first observability for AI agent egress. It does not block actions or retain prompts or completions."
+        },
+        {
+          "source": "docs/governance/canonical/known-limitations.md",
+          "role": "supports",
+          "note": "Optics does not block actions or retain prompts or completions. A call that never hits the interceptor is not recorded."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /optics description and npm @vantio/cli description",
+          "role": "observation",
+          "note": "The public page and the CLI registry description match that definition. T14 did not replay agent traffic."
+        }
+      ],
+      "notes": "SUPPORTED is the product definition in open-core canonical docs, matched by the public Optics sentences T14 recorded. It is not clean-host proof, stranger-host proof, or a measurement that every agent path is covered."
+    },
+    {
+      "claim_id": "CL-W3-T15-017",
+      "text_form": "verbatim",
+      "claim_class": "capability",
+      "claim_text": "Vantio helps organizations define, enforce, revoke, and verify what autonomous AI agents are allowed to do on customer-controlled Linux infrastructure.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "PRESENT_TENSE_CAPABILITY_WITHOUT_PUBLIC_PROOF",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.primary_routes / description",
+          "role": "observation",
+          "note": "T14 recorded the homepage description."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.claim_ceiling_on_llms_txt.named_claim_labels",
+          "role": "limits",
+          "note": "The same site labels stranger-host validation not complete, customer validation none, and swarm-scale protection no proof."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/STATUS.json",
+          "role": "limits",
+          "note": "This program's flags customer_deployed, stranger_host_executed, clean_host_internal_proof, and proved_external are false. Those flags are not a denial that a separate engine exists, and they are not proof of the homepage sentence."
+        }
+      ],
+      "notes": "UNKNOWN leaves the present-tense enforce-and-verify sentence unproven. Track 16 owns canonical wording. This freeze does not rewrite the homepage."
+    },
+    {
+      "claim_id": "CL-W3-T15-018",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "Phantom Engine applies customer-defined authority across supported application and host paths on enrolled Linux infrastructure, and adds enforceable policy and host-level authority as one product.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "NO_PUBLIC_PROOF_ARTIFACT",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/phantom-engine"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions/enterprise-agents"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/start"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-draws-the-line-between-capability-and-authority"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/phantom-engine-protection-on-linux-hosts"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/production-agents-need-control-planes"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /phantom-engine and /solutions/enterprise-agents descriptions",
+          "role": "observation",
+          "note": "T14 recorded the present-tense sentences."
+        },
+        {
+          "source": "docs/PRODUCT_LINEUP.md",
+          "role": "limits",
+          "note": "The lineup states Enforce and Control as the Phantom Engine job and says this repository does not ship Phantom Engine."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /product-evidence description",
+          "role": "limits",
+          "note": "No public evidence artifact currently satisfies the publication standard."
+        }
+      ],
+      "notes": "Optics observation is not Phantom Engine enforcement. UNKNOWN does not mean the sentence is false. It means this evidence set does not prove it. Do not promote it to shipped or to cluster-verified."
+    },
+    {
+      "claim_id": "CL-W3-T15-019",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "Vantio Enterprise adds ownership, delegation, approvals, dual control, exceptions, and durable governance evidence to Phantom Engine deployments.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "NO_CUSTOMER_DEPLOYMENT_RECORD",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/enterprise"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions/enterprise-agents"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/start"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-draws-the-line-between-capability-and-authority"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/enterprise-ai-governance-beyond-prompt-policy"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /enterprise description",
+          "role": "observation",
+          "note": "T14 recorded the sentence. Enterprise is talk to sales on the pricing ceiling."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/STATUS.json",
+          "role": "limits",
+          "note": "customer_deployed is false for this program. That is not a census of Enterprise contracts."
+        }
+      ],
+      "notes": "UNKNOWN. No customer deployment, credential, or announcement is authorized or claimed."
+    },
+    {
+      "claim_id": "CL-W3-T15-020",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "llms.txt labels Necessity Objective as a strategic objective, Agent Capability Invariance, two-direction hostile-agent defence, and lineage sequential aggregate authority as target design, swarm-scale protection as no proof, stranger-host validation as not complete, and customer validation as none.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "SITE_OWN_LABELS",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/security"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/singularity-recursive-ai-host-oversight"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/agi-planning-horizon-host-control"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/asi-superintelligence-host-floor"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/llms.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.claim_ceiling_on_llms_txt.named_claim_labels",
+          "role": "supports",
+          "note": "T14 recorded the labels and did not re-adjudicate them."
+        }
+      ],
+      "notes": "KEEP means do not upgrade target design, no proof, not complete, or none into a success claim. These labels are not independent laboratory results."
+    },
+    {
+      "claim_id": "CL-W3-T15-021",
+      "text_form": "verbatim",
+      "claim_class": "capability",
+      "claim_text": "The Helm DaemonSet and Linux daemon install paths are real, and per-pod scoped egress control is implemented. Multi-node and multi-cluster operation has not been proven on a cluster Vantio does not run.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "POSITIVE_HALF_UNPROVEN_IN_THIS_SET",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions/cloud-and-kubernetes"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /solutions/cloud-and-kubernetes description",
+          "role": "observation",
+          "note": "T14 recorded both the positive sentence and the caveat."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/STATUS.json and BLOCKED-INFRA.json",
+          "role": "limits",
+          "note": "This program records host_attachment false, kernel_executed false, and stranger_host NOT_RUN. That does not by itself prove the website sentence false, and it does not prove per-pod egress control."
+        }
+      ],
+      "notes": "UNKNOWN applies to 'implemented'. The caveat that multi-node and multi-cluster operation is not proven on a cluster Vantio does not run stays in the claim. HOLD means do not delete the caveat and do not promote the positive half. WSL2 verification is not in this inventory and is not a cluster proof."
+    },
+    {
+      "claim_id": "CL-W3-T15-022",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "The solutions page says there is no robotics, drone, or industrial deployment, and that the authority model is aimed at the Linux companion computer, never the flight controller, motor controller, or brakes. Several update posts say Vantio protects humanoid, drone, warehouse, medical, vehicle, or factory hosts.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "SOLUTIONS_PAGE_VERSUS_UPDATE_POSTS",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions/robotics-and-drones"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/brain-computer-interfaces-neural-data-pipeline"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/humanoid-robots-onboard-vla-hosts"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/autonomous-vehicles-compute-behind-self-driving-fleets"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/drones-companion-computer-security"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/healthcare-medical-robotics-regulated-edge-ai"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/industrial-automation-factory-floor-ai"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/logistics-warehouse-amr-fleet-servers"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/robotics-linux-hosts-behind-every-robot"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /solutions/robotics-and-drones description",
+          "role": "observation",
+          "note": "T14 recorded the no-deployment sentence."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update post descriptions for humanoid, drone, warehouse, medical, vehicle, factory, and robot-planner posts",
+          "role": "contradicts",
+          "note": "Those descriptions use present-tense protection sentences. T14 did not verify the incidents or the deployments."
+        }
+      ],
+      "notes": "The no-deployment sentence is the tighter public ceiling on this point. Update-post protection sentences are not evidence of a robotics, drone, or industrial deployment. Canonical wording waits for Track 16."
+    },
+    {
+      "claim_id": "CL-W3-T15-023",
+      "text_form": "verbatim",
+      "claim_class": "compliance",
+      "claim_text": "Vantio does not currently hold SOC 2, ISO 42001, FedRAMP, StateRAMP, CMMC, or comparable certifications.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "SITE_NEGATIVE_CLAIM_NO_CERTIFICATE_IN_T14",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/compliance"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/defense-aerospace-mission-critical-autonomy"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-maps-framework-readiness-without-certification-seals"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/llms.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.claim_ceiling_on_llms_txt.certification_sentence_on_compliance_page",
+          "role": "supports",
+          "note": "T14 recorded the sentence. The compliance page description maps frameworks and says some authorizations are still open programs."
+        },
+        {
+          "source": "docs/PRODUCT_LINEUP.md honest gaps",
+          "role": "supports",
+          "note": "The lineup says certifications are not held for Enterprise."
+        }
+      ],
+      "notes": "KEEP the negative sentence. Mapping a framework is not a certification. This ledger does not claim SOC 2, ISO 42001, FedRAMP, StateRAMP, or CMMC."
+    },
+    {
+      "claim_id": "CL-W3-T15-024",
+      "text_form": "paraphrase",
+      "claim_class": "compliance",
+      "claim_text": "An update post says Vantio published assessment-ready evidence for ISO 42001, the EU AI Act, GDPR, SOC 2, and NIST AI RMF. The product-evidence page says no public evidence artifact currently satisfies the publication standard.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "UPDATE_POST_VERSUS_PRODUCT_EVIDENCE_PAGE",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/compliance"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/product-evidence"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-maps-framework-readiness-without-certification-seals"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update vantio-maps-framework-readiness-without-certification-seals",
+          "role": "observation",
+          "note": "T14 recorded the assessment-ready description."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /product-evidence description",
+          "role": "contradicts",
+          "note": "No public evidence artifact currently satisfies that publication standard."
+        }
+      ],
+      "notes": "Do not read assessment-ready as certified, and do not read the matrix post as the publication standard being met. Track 16 owns the canonical sentence."
+    },
+    {
+      "claim_id": "CL-W3-T15-025",
+      "text_form": "verbatim",
+      "claim_class": "compliance",
+      "claim_text": "No public evidence artifact currently satisfies that publication standard. Internal testing and internal Mission Control measurements are not customer proof.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "SITE_PUBLICATION_STANDARD",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/trust"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/product-evidence"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/continuous-assurance"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/llms.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /product-evidence description",
+          "role": "supports",
+          "note": "T14 recorded the sentence."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/STATUS.json",
+          "role": "supports",
+          "note": "clean_host_internal_proof and proved_external are false. This ledger does not flip them."
+        }
+      ],
+      "notes": "KEEP. This claim is the opposite of CLEAN_HOST_INTERNAL_PROOF and the opposite of PROVED_EXTERNAL. Internal measurements stay internal."
+    },
+    {
+      "claim_id": "CL-W3-T15-026",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "Stranger-host validation is not complete. The public page describes requirements for independently validating Phantom Engine on Linux infrastructure Vantio does not operate.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "SITE_LABEL_PLUS_REQUIREMENTS_PAGE",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs/stranger-host"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json named_claim_labels.stranger_host_validation and /docs/stranger-host description",
+          "role": "supports",
+          "note": "The label is not complete. The page description is a requirements statement, not a completion statement."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/BLOCKED-INFRA.json",
+          "role": "supports",
+          "note": "stranger_host is NOT_RUN in this program."
+        }
+      ],
+      "notes": "KEEP the not-complete label. Do not record stranger-host as proved."
+    },
+    {
+      "claim_id": "CL-W3-T15-027",
+      "text_form": "verbatim",
+      "claim_class": "other",
+      "claim_text": "Phantom Engine — patent pending.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "FOOTER_SENTENCE_NO_FILING_RECORD",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.footer"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.chrome.footer_sentence",
+          "role": "observation",
+          "note": "T14 recorded the footer sentence. This evidence set has no patent filing, application number, or office record."
+        }
+      ],
+      "notes": "UNKNOWN. HOLD means do not repeat the footer as a granted patent and do not invent a filing status."
+    },
+    {
+      "claim_id": "CL-W3-T15-028",
+      "text_form": "verbatim",
+      "claim_class": "partnership",
+      "claim_text": "Design-partner outreach is paused. No partners are enrolled. Card checkout is not live. Approved partners bill by invoice.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "PAGE_TEXT_STRIPE_NOT_QUERIED",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-08"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/start/design-partner"
+        },
+        {
+          "kind": "drift",
+          "id": "D-08"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.forms_and_ctas design-partner.visible_state",
+          "role": "supports",
+          "note": "T14 recorded the visible state. Stripe was not queried by T14 or by this force."
+        }
+      ],
+      "notes": "SUPPORTED is the public page text. It is not a CRM export and not a Stripe API result. KEEP these limits. Do not describe card checkout as live."
+    },
+    {
+      "claim_id": "CL-W3-T15-029",
+      "text_form": "paraphrase",
+      "claim_class": "version",
+      "claim_text": "@vantio/cli 0.3.24 is the npm dist-tag latest and the version in packages/vantio-cli/package.json. The integrity string T14 recorded matches the frozen package note. The version was not reopened.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "FROZEN_VERSION_OBSERVED",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REGISTRY_FROZEN",
+      "drift_ids": [
+        "D-03"
+      ],
+      "surfaces": [
+        {
+          "kind": "npm.package",
+          "name": "@vantio/cli"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-cli/package.json"
+        },
+        {
+          "kind": "drift",
+          "id": "D-03"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "packages/vantio-cli/package.json",
+          "role": "supports",
+          "note": "version is 0.3.24 on this tip."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json frozen_packages_observed_not_mutated.cli",
+          "role": "supports",
+          "note": "dist_tag_latest 0.3.24, state FROZEN_DO_NOT_REOPEN, mutation not performed."
+        }
+      ],
+      "notes": "HOLD. This force does not reopen @vantio/cli@0.3.24, does not add a changelog heading, and does not publish."
+    },
+    {
+      "claim_id": "CL-W3-T15-030",
+      "text_form": "paraphrase",
+      "claim_class": "version",
+      "claim_text": "PyPI vantio-agent-sdk latest is 3.1.0, not yanked, requires Python >=3.10, and the wheel and sdist SHA-256 match the GitHub Release custody-py-3.1.0 assets. Source declares 3.1.0. The bytes were not republished.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "REGISTRY_AND_SOURCE_VERSION",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REGISTRY_FROZEN_FOR_3_1_0_BYTES",
+      "drift_ids": [
+        "D-04",
+        "D-05"
+      ],
+      "surfaces": [
+        {
+          "kind": "pypi.version",
+          "version": "3.1.0"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "3.0.14"
+        },
+        {
+          "kind": "github.release",
+          "tag": "custody-py-3.1.0"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-agent-sdk-py/pyproject.toml"
+        },
+        {
+          "kind": "drift",
+          "id": "D-04"
+        },
+        {
+          "kind": "drift",
+          "id": "D-05"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json frozen_packages_observed_not_mutated.python and pypi.project.latest_files",
+          "role": "supports",
+          "note": "Wheel sha256 dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb and sdist sha256 9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f. github_release_asset_sha256_matches_pypi is true."
+        },
+        {
+          "source": "packages/vantio-agent-sdk-py/pyproject.toml",
+          "role": "supports",
+          "note": "version is 3.1.0. Track 15 did not edit it."
+        }
+      ],
+      "notes": "HOLD. The public summary also uses the retired observe name. Scrubbing that name would be a new publish. This freeze does not republish 3.1.0. 3.0.14's summary matches the 3.1.0 observe summary and remains installable."
+    },
+    {
+      "claim_id": "CL-W3-T15-031",
+      "text_form": "paraphrase",
+      "claim_class": "version",
+      "claim_text": "@vantio/agent-sdk 0.2.4 is the npm dist-tag latest and the version in source. It was not reopened.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "FROZEN_VERSION_OBSERVED",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-02"
+      ],
+      "surfaces": [
+        {
+          "kind": "npm.package",
+          "name": "@vantio/agent-sdk"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-agent-sdk/package.json"
+        },
+        {
+          "kind": "drift",
+          "id": "D-02"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "packages/vantio-agent-sdk/package.json",
+          "role": "supports",
+          "note": "version is 0.2.4 on this tip."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json npm.packages @vantio/agent-sdk dist_tags.latest",
+          "role": "supports",
+          "note": "latest is 0.2.4. mutation is NOT_PERFORMED. deprecated is null."
+        }
+      ],
+      "notes": "HOLD. Do not reopen @vantio/agent-sdk@0.2.4. Registry description drift is CL-W3-T15-032."
+    },
+    {
+      "claim_id": "CL-W3-T15-032",
+      "text_form": "verbatim",
+      "claim_class": "product",
+      "claim_text": "The npm latest description for @vantio/agent-sdk says shield() for Sight Loop observe and an upgrade path to Gate and Phantom Engine. The npm latest description for @vantio/optics-mcp says Sight Loop via Model Context Protocol and an upgrade path to Gate and Phantom Engine. Current source for those two packages says the upgrade path is Phantom Engine and Enterprise.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "SOURCE_VERSUS_PUBLISHED_LATEST",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-02"
+      ],
+      "surfaces": [
+        {
+          "kind": "npm.package",
+          "name": "@vantio/agent-sdk"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/optics-mcp"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/gate-mcp"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-agent-sdk/package.json"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-optics-mcp/package.json"
+        },
+        {
+          "kind": "in_repo",
+          "path": "packages/vantio-gate-mcp/package.json"
+        },
+        {
+          "kind": "drift",
+          "id": "D-02"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json npm.packages descriptions",
+          "role": "observation",
+          "note": "T14 recorded the registry descriptions."
+        },
+        {
+          "source": "packages/vantio-agent-sdk/package.json and packages/vantio-optics-mcp/package.json",
+          "role": "contradicts",
+          "note": "Source descriptions name Phantom Engine and Enterprise, not Gate. Track 15 did not edit them and did not publish."
+        },
+        {
+          "source": "packages/vantio-gate-mcp/package.json versus npm @vantio/gate-mcp description",
+          "role": "contradicts",
+          "note": "Source says Gate is not a separate product. The registry description T14 recorded still says Policy Latch dry-run."
+        }
+      ],
+      "notes": "CONFLICTING is source versus the registry documents T14 read. HOLD withholds a publish. The retired observe name is quoted from the registry text."
+    },
+    {
+      "claim_id": "CL-W3-T15-033",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "The Cursor plugin README says the plugin is observe only and does not block, redact, or cap spend. It also says @vantio/gate-mcp is a legacy compatibility package and Gate is not a separate product.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "PRODUCT_DEFINITION",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OTHER",
+      "drift_ids": [
+        "D-02"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/optics"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/optics-observe-egress"
+        },
+        {
+          "kind": "github.repository",
+          "name": "vantio-optics-cursor-plugin"
+        },
+        {
+          "kind": "drift",
+          "id": "D-02"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.repositories vantio-optics-cursor-plugin.readme_claims",
+          "role": "supports",
+          "note": "T14 recorded the observe-only and legacy-package sentences."
+        },
+        {
+          "source": "docs/governance/canonical/known-limitations.md",
+          "role": "supports",
+          "note": "Optics does not block actions or retain prompts or completions."
+        }
+      ],
+      "notes": "KEEP the observe-only sentence. The plugin's marketplace-submit instructions are not proof of a listing. See CL-W3-T15-044. This freeze does not push to that repository."
+    },
+    {
+      "claim_id": "CL-W3-T15-034",
+      "text_form": "verbatim",
+      "claim_class": "product",
+      "claim_text": "This repo does not ship Phantom Engine.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "IN_REPO_LINEUP",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [
+        "D-07"
+      ],
+      "surfaces": [
+        {
+          "kind": "in_repo",
+          "path": "docs/PRODUCT_LINEUP.md"
+        },
+        {
+          "kind": "github.repository",
+          "name": "vantio-open-core"
+        },
+        {
+          "kind": "drift",
+          "id": "D-07"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "docs/PRODUCT_LINEUP.md",
+          "role": "supports",
+          "note": "The Enforce and Control section says this repo does not ship Phantom Engine."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.public_repos",
+          "role": "observation",
+          "note": "The public org list has four repositories. Phantom Engine is not one of them. HTTP 404 does not prove a private repository is absent."
+        }
+      ],
+      "notes": "SUPPORTED for this open-core repository. It is not a statement that no Phantom Engine source exists anywhere."
+    },
+    {
+      "claim_id": "CL-W3-T15-035",
+      "text_form": "paraphrase",
+      "claim_class": "product",
+      "claim_text": "The GitHub org description and the open-core repository description say the product is not a proxy. PyPI 2.0.0 remains installable and its README documents VANTIO_PROXY_ENDPOINT.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "CURRENT_COPY_VERSUS_OLD_RELEASE",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": "RETIRE",
+      "edit_channel": "REGISTRY_FROZEN_FOR_3_1_0_BYTES",
+      "drift_ids": [
+        "D-05"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.org_description"
+        },
+        {
+          "kind": "github.repository",
+          "name": "vantio-open-core"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "2.0.0"
+        },
+        {
+          "kind": "drift",
+          "id": "D-05"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.org.description and vantio-open-core description",
+          "role": "observation",
+          "note": "Both public descriptions include not a proxy."
+        },
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json pypi sampled 2.0.0 readme_head",
+          "role": "contradicts",
+          "note": "2.0.0 documents VANTIO_API_KEY and VANTIO_PROXY_ENDPOINT and is not yanked."
+        }
+      ],
+      "notes": "The current canonical boundary does not describe Optics as a network proxy. The old release still says otherwise. HOLD withholds a yank."
+    },
+    {
+      "claim_id": "CL-W3-T15-036",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "Update posts say that on enrolled Linux hosts Phantom Engine can refuse unauthorized commands, files, and destinations, can stop unauthorized work, and applies destination, sensitive-data, and spending policies on supported application paths.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "UPDATE_POST_PRESENT_TENSE",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/how-host-level-security-changes-developer-workflows"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/prompt-wrappers-vs-host-level-security"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/protecting-cloud-budgets-from-runaway-agent-loops"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update descriptions for host-level security, prompt wrappers, and cloud-budget posts",
+          "role": "observation",
+          "note": "T14 recorded the sentences. It did not run those paths."
+        },
+        {
+          "source": "CL-W3-T15-020 and CL-W3-T15-025",
+          "role": "limits",
+          "note": "The site's own labels withhold swarm proof, completed stranger-host validation, customer validation, and a public evidence artifact."
+        }
+      ],
+      "notes": "UNKNOWN. Do not treat an update post as kernel enforcement or as a spend-cap measurement."
+    },
+    {
+      "claim_id": "CL-W3-T15-037",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "An update post says Vantio runs Optics and Phantom Engine against its own autonomous agents every day and calls that Continuous Assurance with real load. The build journal says the products get stronger every week.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "DOGFOOD_SENTENCE_NOT_CUSTOMER_PROOF",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-build-journal-ai-agent-cybersecurity"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/continuous-assurance"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json updates continuous-assurance and vantio-build-journal-ai-agent-cybersecurity",
+          "role": "observation",
+          "note": "T14 recorded the descriptions."
+        },
+        {
+          "source": "CL-W3-T15-025",
+          "role": "limits",
+          "note": "The product-evidence page says internal measurements are not customer proof."
+        }
+      ],
+      "notes": "UNKNOWN as a measured daily run. It is not PROVED_EXTERNAL and it is not clean-host proof."
+    },
+    {
+      "claim_id": "CL-W3-T15-038",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "Vantio AI, Inc. is a Delaware C corporation founded in 2026 and based in Pittsburgh.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "CONSISTENT_PUBLIC_TEXT_NO_REGISTRY_FILING_READ",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/company"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /company description, github.org location, LinkedIn indexes",
+          "role": "observation",
+          "note": "The company page, GitHub location, and LinkedIn indexes agree on Pittsburgh and 2026. The company page states a Delaware C corporation. No government registry was read."
+        }
+      ],
+      "notes": "UNKNOWN for the legal-formation fact. HOLD avoids rewriting a consistent public identity sentence and avoids inventing a filing."
+    },
+    {
+      "claim_id": "CL-W3-T15-039",
+      "text_form": "verbatim",
+      "claim_class": "other",
+      "claim_text": "Show HN: I'm 16 y/o and Built the only AI Agent for Hardware and Software Dev | Vantio",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "TITLE_NOT_A_BIOGRAPHICAL_RECORD",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-09"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/show-hn-i-m-16-y-o-and-built-the-only-ai-agent-for-hardware-and-software"
+        },
+        {
+          "kind": "drift",
+          "id": "D-09"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update show-hn title and docs/internal/wave3/public-inventory/02-WEBSITE.md",
+          "role": "observation",
+          "note": "T14 recorded the title and said the age in that title is not treated as a verified biographical fact."
+        }
+      ],
+      "notes": "UNKNOWN. HOLD. This ledger does not verify, repeat as fact, or rewrite the age or the uniqueness sentence."
+    },
+    {
+      "claim_id": "CL-W3-T15-040",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "A live update title says Vantio runs company ops on Optics and Phantom Engine. The slug still says optics-gate-phantom-engine. The post is not in the sitemap.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "TITLE_ONLY",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-09",
+        "D-01"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/vantio-runs-company-ops-on-optics-gate-phantom-engine"
+        },
+        {
+          "kind": "drift",
+          "id": "D-09"
+        },
+        {
+          "kind": "drift",
+          "id": "D-01"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update vantio-runs-company-ops-on-optics-gate-phantom-engine",
+          "role": "observation",
+          "note": "T14 recorded HTTP 200, in_sitemap false, and the title. Description and h1 were null."
+        }
+      ],
+      "notes": "UNKNOWN whether company operations run on those products. The slug still uses Gate, which conflicts with the ceiling. Title-only: T14 did not store a body."
+    },
+    {
+      "claim_id": "CL-W3-T15-041",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": "Vulnerability reports go to security@vantio.ai. security.txt names that contact and an expiry of 2027-12-31. The disclosure page names the same contact for Optics, Phantom Engine, Enterprise, and vantio.ai.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "CONTACT_CONSISTENCY_NOT_A_RESPONSE_DRILL",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/security-disclosure"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/.well-known/security.txt"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json security.txt body and /security-disclosure description",
+          "role": "supports",
+          "note": "T14 recorded both. No report was sent."
+        }
+      ],
+      "notes": "SUPPORTED is agreement on the contact address. It is not evidence that a disclosure was handled or that a program was tested."
+    },
+    {
+      "claim_id": "CL-W3-T15-042",
+      "text_form": "paraphrase",
+      "claim_class": "compliance",
+      "claim_text": "Privacy and terms pages exist and describe themselves as plain-language policies for vantio.ai and related services. T14 stored titles and meta descriptions, not the full policy bodies.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "META_ONLY",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/privacy"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/terms"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /privacy and /terms descriptions",
+          "role": "observation",
+          "note": "Only the meta descriptions were stored. This force does not infer clauses that were not quoted."
+        }
+      ],
+      "notes": "UNKNOWN for any specific legal effect. HOLD. Do not treat the meta description as the policy."
+    },
+    {
+      "claim_id": "CL-W3-T15-043",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "Contact, support, design-partner, and portal forms render in static HTML. Form actions were empty. The help-assistant backend host was not in the HTML.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "STATIC_HTML_ONLY",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/contact"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/support"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json method.limits and forms_and_ctas",
+          "role": "observation",
+          "note": "T14 recorded empty actions and said submission hosts were not present as form actions. Gap G-02."
+        }
+      ],
+      "notes": "UNKNOWN whether the forms submit successfully. This freeze does not submit them and does not claim they are down."
+    },
+    {
+      "claim_id": "CL-W3-T15-044",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "Publication of the MCP server manifests, a Cursor marketplace listing, a cursor.directory listing, and listings on Smithery or Glama was not confirmed. Open issue 3 on open-core is still titled MCP marketplace listings — Optics. The plugin README tells a publisher how to submit. That instruction is not a live listing.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "NOT_CONFIRMED",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "github.repository",
+          "name": "vantio-open-core"
+        },
+        {
+          "kind": "github.repository",
+          "name": "vantio-optics-cursor-plugin"
+        },
+        {
+          "kind": "other_surface",
+          "id": "mcp-registry"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json other_surfaces.not_confirmed and gaps G-04 and G-05",
+          "role": "observation",
+          "note": "MCP registry timed out. cursor.directory returned HTTP 429. Cursor marketplace HTML had zero occurrences of vantio, which T14 said is not proof the listing is unpublished. Smithery and Glama did not show a Vantio server card."
+        }
+      ],
+      "notes": "UNKNOWN. HOLD. A hosted-directory name in the plugin README is a quotation of a poor-fit note, not a statement that a hosted listing ships."
+    },
+    {
+      "claim_id": "CL-W3-T15-045",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "linkedin.com/company/vantioai describes other portfolio software, and linkedin.com/company/vantio describes procurement software. Neither is Vantio AI, Inc.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_AFFILIATION_NOT_VANTIO_AI_INC",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "NOT_CONTROLLED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "other_surface",
+          "id": "linkedin-name-collision-vantioai"
+        },
+        {
+          "kind": "other_surface",
+          "id": "linkedin-name-collision-vantio"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json other_surfaces.name_collisions_not_controlled",
+          "role": "supports",
+          "note": "T14 set affiliation NOT_VANTIO_AI_INC from the public Open Graph text."
+        }
+      ],
+      "notes": "KEEP means do not adopt those pages as Vantio product copy and do not try to edit them from this repository."
+    },
+    {
+      "claim_id": "CL-W3-T15-046",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "The GitHub Release custody-py-3.1.0 calls itself an internal custody placement. It is not a customer announcement.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "RELEASE_BODY",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "github.release",
+          "tag": "custody-py-3.1.0"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github vantio-open-core releases custody-py-3.1.0 body_calls_itself",
+          "role": "supports",
+          "note": "T14 recorded internal custody placement. Asset hashes matched PyPI. This force did not edit the release."
+        }
+      ],
+      "notes": "KEEP the internal label. Do not announce the release as a launch."
+    },
+    {
+      "claim_id": "CL-W3-T15-047",
+      "text_form": "verbatim",
+      "claim_class": "capability",
+      "claim_text": "Vantio provides infrastructure-level enforcement for autonomous AI. Optics, Phantom Engine, and Vantio Enterprise.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "MANIFEST_DESCRIPTION",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai"
+        },
+        {
+          "kind": "website.machine_readable",
+          "url": "https://vantio.ai/site.webmanifest"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.machine_readable site.webmanifest description",
+          "role": "observation",
+          "note": "T14 recorded the manifest description."
+        },
+        {
+          "source": "CL-W3-T15-018 and CL-W3-T15-025",
+          "role": "limits",
+          "note": "Enforcement is not a public proof artifact."
+        }
+      ],
+      "notes": "The three names match the ceiling. The enforcement clause is UNKNOWN as a proven capability. Track 16."
+    },
+    {
+      "claim_id": "CL-W3-T15-048",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "The install page says Phantom Engine is deployed on customer-controlled Linux infrastructure using a pinned customer package and a documented installation process, and that a first deployment should be a narrow, non-safety-critical workload.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "INSTALL_PAGE_NO_CUSTOMER_DEPLOY_IN_THIS_PROGRAM",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs/install"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /docs/install description",
+          "role": "observation",
+          "note": "T14 recorded the sentence. install.sh was HTTP 404."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/STATUS.json",
+          "role": "limits",
+          "note": "customer_deployed is false. credentials_issued is false."
+        }
+      ],
+      "notes": "UNKNOWN as a statement that customers are deployed. The narrow, non-safety-critical limit is part of the public sentence and is not dropped. No customer deploy is performed."
+    },
+    {
+      "claim_id": "CL-W3-T15-049",
+      "text_form": "verbatim",
+      "claim_class": "other",
+      "claim_text": "Supported means tested at a defined scope. Vantio publishes supported environments and paths based on validated behavior.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "DEFINITION_NOT_A_TEST_CATALOG",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs/compatibility"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /docs/compatibility description",
+          "role": "supports",
+          "note": "T14 recorded the definition. It did not attach a test log to that page."
+        }
+      ],
+      "notes": "KEEP the definition. SUPPORTED means the page states this rule. It does not mean every public 'supported' adjective has a test record in this ledger."
+    },
+    {
+      "claim_id": "CL-W3-T15-050",
+      "text_form": "paraphrase",
+      "claim_class": "capability",
+      "claim_text": "The architecture page says Vantio separates autonomous workloads from the authority boundary that governs them.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "PAGE_DESCRIPTION",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/architecture"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /architecture description",
+          "role": "observation",
+          "note": "T14 recorded the meta description. The page body was not quoted line by line."
+        }
+      ],
+      "notes": "UNKNOWN as an implemented separation. DEFER_TO_T16."
+    },
+    {
+      "claim_id": "CL-W3-T15-051",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": "The security page invites a review of a threat model for compromised workloads, external agents, agent swarms, and authority enforcement. Swarm-scale protection is labeled no proof on llms.txt.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "THREAT_MODEL_PAGE_NOT_SWARM_PROOF",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/security"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /security description",
+          "role": "observation",
+          "note": "The description is an invitation to review a threat model."
+        },
+        {
+          "source": "CL-W3-T15-020",
+          "role": "limits",
+          "note": "swarm_scale_protection is no proof."
+        }
+      ],
+      "notes": "HOLD so the page is not read as proof that swarms are stopped. UNKNOWN for any enforcement result."
+    },
+    {
+      "claim_id": "CL-W3-T15-052",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "Public contact addresses are sales@vantio.ai for Phantom Engine and Enterprise, hello@vantio.ai for Optics, and security@vantio.ai for disclosures. Homepage JSON-LD lists the same three addresses.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "ADDRESS_CONSISTENCY",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/contact"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/support"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json organization_jsonld.contactPoint and /contact description",
+          "role": "supports",
+          "note": "T14 recorded the three addresses on the homepage JSON-LD and the contact description. Mailboxes were not probed."
+        }
+      ],
+      "notes": "SUPPORTED is that the public pages name the same addresses. It is not evidence that mail is staffed. No mail was sent."
+    },
+    {
+      "claim_id": "CL-W3-T15-053",
+      "text_form": "verbatim",
+      "claim_class": "product",
+      "claim_text": "Gate is not a current SKU. Enforce is a function inside Phantom Engine.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "GATE_WELCOME_PAGE",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-01"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.form",
+          "id": "gate-welcome"
+        },
+        {
+          "kind": "drift",
+          "id": "D-01"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json forms_and_ctas gate-welcome",
+          "role": "supports",
+          "note": "HTTP 200, title Checkout return, robots disallow /gate/welcome. /gate and /pro redirect to /phantom-engine#enforce."
+        },
+        {
+          "source": "CL-W3-T15-002",
+          "role": "contradicts",
+          "note": "The org description still says Gate applies the rules you set."
+        }
+      ],
+      "notes": "KEEP this page sentence as part of the ceiling. CONFLICTING because other public surfaces still name Gate as a product. The checkout-return page is not evidence that card checkout is live."
+    },
+    {
+      "claim_id": "CL-W3-T15-054",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": "T14 recorded registry signatures on each of the four latest @vantio npm documents and recorded npm provenance attestations as absent. PyPI 3.1.0 files have has_sig true and a null provenance field.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_REGISTRY_FIELDS",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REGISTRY_FROZEN",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "npm.package",
+          "name": "@vantio/cli"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/agent-sdk"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/optics-mcp"
+        },
+        {
+          "kind": "npm.package",
+          "name": "@vantio/gate-mcp"
+        },
+        {
+          "kind": "pypi.version",
+          "version": "3.1.0"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json npm.packages registry_signatures and npm_provenance_attestations, pypi has_sig_on_3_1_0_files and provenance_on_3_1_0_files",
+          "role": "supports",
+          "note": "Track 15 did not re-fetch the registries. The observation is the T14 record."
+        }
+      ],
+      "notes": "SUPPORTED as a record of those fields on that day. Absence of a provenance attestation is not a vulnerability finding and is not fixed by republishing. HOLD."
+    },
+    {
+      "claim_id": "CL-W3-T15-055",
+      "text_form": "paraphrase",
+      "claim_class": "compliance",
+      "claim_text": "PyPI 3.1.0 classifiers include Development Status Beta and Topic Security. A topic classifier is not a certification and not a security proof.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "CLASSIFIER_IS_NOT_PROOF",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REGISTRY_FROZEN_FOR_3_1_0_BYTES",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "pypi.version",
+          "version": "3.1.0"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json pypi.project.classifiers",
+          "role": "supports",
+          "note": "T14 recorded Development Status :: 4 - Beta and Topic :: Security."
+        }
+      ],
+      "notes": "KEEP the reading that Beta and a topic classifier do not certify the package. Do not republish to change classifiers."
+    },
+    {
+      "claim_id": "CL-W3-T15-056",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "A third-party index names a Hong Kong company VANTIO AI TECHNOLOGY LIMITED. Affiliation with Vantio AI, Inc. was not confirmed. The company page says Vantio AI, Inc. is a Delaware C corporation.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "NOT_CONFIRMED",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "NOT_CONTROLLED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/company"
+        },
+        {
+          "kind": "other_surface",
+          "id": "third-party-hong-kong-index"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json other_surfaces.not_confirmed third-party Hong Kong company index",
+          "role": "observation",
+          "note": "T14 set affiliation NOT_CONFIRMED and did not copy the third-party address."
+        }
+      ],
+      "notes": "UNKNOWN. This ledger does not assert a relationship and does not copy the third-party address."
+    },
+    {
+      "claim_id": "CL-W3-T15-057",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "https://vantio.ai/install.sh, /download, and /downloads returned HTTP 404.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_HTTP_404",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs/install"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json website.media.install_sh and probe_404",
+          "role": "supports",
+          "note": "install.sh, /download, and /downloads are recorded as 404."
+        }
+      ],
+      "notes": "KEEP the fact that those URLs were absent. Do not publish an install script from this force."
+    },
+    {
+      "claim_id": "CL-W3-T15-058",
+      "text_form": "paraphrase",
+      "claim_class": "performance",
+      "claim_text": "LinkedIn company posts and the founder profile state latency sentences that llms.txt does not claim.",
+      "evidence_status": "UNSUPPORTED",
+      "evidence_scope": "NO_MEASUREMENT_IN_THIS_SET",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-06"
+      ],
+      "surfaces": [
+        {
+          "kind": "other_surface",
+          "id": "linkedin-company"
+        },
+        {
+          "kind": "other_surface",
+          "id": "linkedin-founder"
+        },
+        {
+          "kind": "drift",
+          "id": "D-06"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json linkedin-company.claim_drift and linkedin-founder.claim_drift",
+          "role": "observation",
+          "note": "T14 recorded that latency sentences are public and did not adopt them. No latency number was stored, and this ledger does not invent one."
+        }
+      ],
+      "notes": "UNSUPPORTED as product performance. No number, benchmark, or host measurement is in the T14 register. Do not add one."
+    },
+    {
+      "claim_id": "CL-W3-T15-059",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": "The founder profile's public about text states kernel interception and cryptographic isolation. LinkedIn company posts state kernel sentences. llms.txt does not claim them. T14 did not adopt them as product truth.",
+      "evidence_status": "UNSUPPORTED",
+      "evidence_scope": "NOT_ADOPTED_NO_KERNEL_PROOF_IN_THIS_SET",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-06"
+      ],
+      "surfaces": [
+        {
+          "kind": "other_surface",
+          "id": "linkedin-company"
+        },
+        {
+          "kind": "other_surface",
+          "id": "linkedin-founder"
+        },
+        {
+          "kind": "drift",
+          "id": "D-06"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json linkedin-founder.claim_drift and linkedin-company.claim_drift",
+          "role": "observation",
+          "note": "T14 recorded the sentences as public text and refused them as product truth."
+        },
+        {
+          "source": "docs/programs/production-readiness/wave3/STATUS.json",
+          "role": "limits",
+          "note": "kernel_executed, ebpf_loaded, and active_protection are false for the open-core integrated runtime. That is not a measurement of a proprietary engine, and it is not permission to treat the LinkedIn sentences as true."
+        }
+      ],
+      "notes": "UNSUPPORTED as product truth. Optics observation is not kernel enforcement. This freeze does not edit LinkedIn."
+    },
+    {
+      "claim_id": "CL-W3-T15-060",
+      "text_form": "paraphrase",
+      "claim_class": "compliance",
+      "claim_text": "LinkedIn company posts and the founder profile use compliance-proof language. The website ceiling says comparable certifications are not held, and the product-evidence page says no public evidence artifact meets the publication standard.",
+      "evidence_status": "UNSUPPORTED",
+      "evidence_scope": "CONTRADICTS_SITE_CEILING",
+      "recommended_disposition": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "executes_now": false,
+      "later_action_not_authorized": "REWRITE",
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-06"
+      ],
+      "surfaces": [
+        {
+          "kind": "other_surface",
+          "id": "linkedin-company"
+        },
+        {
+          "kind": "other_surface",
+          "id": "linkedin-founder"
+        },
+        {
+          "kind": "drift",
+          "id": "D-06"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json LinkedIn claim_drift fields",
+          "role": "observation",
+          "note": "T14 recorded compliance-proof language without quoting a certificate."
+        },
+        {
+          "source": "CL-W3-T15-023 and CL-W3-T15-025",
+          "role": "contradicts",
+          "note": "Certifications are not held, and internal measurements are not customer proof."
+        }
+      ],
+      "notes": "UNSUPPORTED. Do not convert compliance-proof wording into a certification."
+    },
+    {
+      "claim_id": "CL-W3-T15-061",
+      "text_form": "paraphrase",
+      "claim_class": "partnership",
+      "claim_text": "Pricing shows a 14-day trial and a Start your trial control. Contact and support buttons say Phantom Engine trials are currently provisioned through the Vantio team. The design-partner page says card checkout is not live.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "TRIAL_CONTROL_VERSUS_TEAM_PROVISIONING",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-08"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/pricing"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/contact"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/support"
+        },
+        {
+          "kind": "drift",
+          "id": "D-08"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json forms_and_ctas pricing-phantom-trial, contact, and support button text",
+          "role": "observation",
+          "note": "T14 recorded Start your trial, 14-day trial, and team provisioning on the contact and support buttons."
+        },
+        {
+          "source": "CL-W3-T15-028",
+          "role": "limits",
+          "note": "Card checkout is not live on the design-partner page."
+        }
+      ],
+      "notes": "CONFLICTING as a self-serve checkout claim. DEFER_TO_T16 for how the trial is described. No checkout was attempted."
+    },
+    {
+      "claim_id": "CL-W3-T15-062",
+      "text_form": "paraphrase",
+      "claim_class": "partnership",
+      "claim_text": "The public org profile README describes three products and prices Phantom Engine at $799 per node per month, with Enterprise as talk to sales.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "MATCHES_LIST_PRICE_NOT_THE_DESIGN_PARTNER_PRICE",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OTHER",
+      "drift_ids": [
+        "D-08",
+        "D-07"
+      ],
+      "surfaces": [
+        {
+          "kind": "github.profile_readme"
+        },
+        {
+          "kind": "drift",
+          "id": "D-08"
+        },
+        {
+          "kind": "drift",
+          "id": "D-07"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json github.profile_readme.observed_products",
+          "role": "supports",
+          "note": "T14 recorded Vantio Optics free observe, Phantom Engine $799/node/mo, and Enterprise talk to sales."
+        },
+        {
+          "source": "CL-W3-T15-009",
+          "role": "limits",
+          "note": "A second public price of $600 exists on the design-partner page."
+        }
+      ],
+      "notes": "KEEP the $799 sentence as the list price that matches llms.txt. The Phantom Engine repository link on that README is CL-W3-T15-008. This freeze does not push to vantioai/.github."
+    },
+    {
+      "claim_id": "CL-W3-T15-063",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "The open-core license field from the GitHub API is null and there is no root LICENSE file. Package files declare MIT. This ledger does not resolve that into a legal conclusion.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "METADATA_GAP",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "github.repository",
+          "name": "vantio-open-core"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json vantio-open-core license_spdx_from_api and root_license_file",
+          "role": "observation",
+          "note": "API field null, root LICENSE absent. npm and PyPI license fields T14 recorded are MIT."
+        }
+      ],
+      "notes": "UNKNOWN as a license-completeness judgment. HOLD. This force does not add a LICENSE file."
+    },
+    {
+      "claim_id": "CL-W3-T15-064",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": ".env.example is public and names third-party integration variables. T14 recorded the values as placeholders and not as live credentials.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "T14_PLACEHOLDER_NOTE",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "in_repo",
+          "path": ".env.example"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json env_example_note",
+          "role": "supports",
+          "note": "T14 said the values are placeholders and did not treat them as live credentials. This force does not copy values and does not rotate anything."
+        }
+      ],
+      "notes": "KEEP that reading. No credential is issued, read for use, or rotated."
+    },
+    {
+      "claim_id": "CL-W3-T15-065",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": "Several update posts recount third-party vulnerability reports and then point at egress or agent hosts. T14 stored titles and descriptions. Those posts are not measurements taken by Vantio.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "THIRD_PARTY_COMMENTARY",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/os-x-networkd-effective-audit-token-xpc-type-confusion-sandbox-escape"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/ff-sandbox-escape-cve-2020-12388"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/forcedentry-sandbox-escapes-emerge-on-hugging-face-platform"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/analyzing-cve-2025-31191-a-macos-security-scoped-bookmarks-based-sandbox"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/data-exfiltration-from-slack-ai-via-indirect-prompt-injection"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/openai-sol-escapes-eval-sandbox-hits-hugging-face"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update posts on networkd, CVE-2020-12388, FORCEDENTRY, CVE-2025-31191, Slack AI, and OpenAI Sol",
+          "role": "observation",
+          "note": "T14 recorded the descriptions. It did not verify the upstream reports."
+        }
+      ],
+      "notes": "UNKNOWN as Vantio results. DEFER_TO_T16 before any rewrite. This force does not edit the posts."
+    },
+    {
+      "claim_id": "CL-W3-T15-066",
+      "text_form": "verbatim",
+      "claim_class": "capability",
+      "claim_text": "Enterprise agents running on customer-controlled Linux are what Vantio supports today.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "SUPPORTS_TODAY_SENTENCE",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/solutions/enterprise-agents"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /solutions/enterprise-agents description",
+          "role": "observation",
+          "note": "T14 recorded the sentence."
+        },
+        {
+          "source": "CL-W3-T15-020",
+          "role": "limits",
+          "note": "Customer validation is labeled none. Stranger-host validation is not complete."
+        }
+      ],
+      "notes": "UNKNOWN. 'Supports today' is not a customer-validation record."
+    },
+    {
+      "claim_id": "CL-W3-T15-067",
+      "text_form": "paraphrase",
+      "claim_class": "partnership",
+      "claim_text": "The design-partners page says Vantio works with design partners to prove one authority boundary on one narrow, authorized, non-safety-critical Linux workload. The application page says outreach is paused and no partners are enrolled.",
+      "evidence_status": "CONFLICTING",
+      "evidence_scope": "INVITATION_VERSUS_PAUSED",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [
+        "D-08"
+      ],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/docs/design-partners"
+        },
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/start/design-partner"
+        },
+        {
+          "kind": "drift",
+          "id": "D-08"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /docs/design-partners description and design-partner visible_state",
+          "role": "observation",
+          "note": "Both sentences are public. T14 did not enroll a partner."
+        }
+      ],
+      "notes": "CONFLICTING as a statement that partners are in progress. The paused and none-enrolled sentences are CL-W3-T15-028 and stay. No partner was enrolled."
+    },
+    {
+      "claim_id": "CL-W3-T15-068",
+      "text_form": "paraphrase",
+      "claim_class": "compliance",
+      "claim_text": "Update descriptions about CMMC, FDA premarket cybersecurity, IEC 62443, and UNECE R155 are regulatory commentary. T14 did not verify those legal statements, and the compliance ceiling says CMMC is not held.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "COMMENTARY_NOT_A_LEGAL_OPINION",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/autonomous-vehicles-compute-behind-self-driving-fleets"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/defense-aerospace-mission-critical-autonomy"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/healthcare-medical-robotics-regulated-edge-ai"
+        },
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/industrial-automation-factory-floor-ai"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update descriptions for defense, healthcare, industrial automation, and autonomous-vehicle posts",
+          "role": "observation",
+          "note": "T14 recorded the descriptions. No statute text was compared."
+        },
+        {
+          "source": "CL-W3-T15-023",
+          "role": "limits",
+          "note": "CMMC is in the not-held list."
+        }
+      ],
+      "notes": "UNKNOWN as legal conclusions. HOLD. Do not turn commentary into a certification or a deployment."
+    },
+    {
+      "claim_id": "CL-W3-T15-069",
+      "text_form": "paraphrase",
+      "claim_class": "other",
+      "claim_text": "An update description says Vantio is not a quantum or cryptography company, and that data it never stored cannot be decrypted later. The benefit sentence is not a measurement.",
+      "evidence_status": "UNKNOWN",
+      "evidence_scope": "MIXED_NEGATIVE_IDENTITY_AND_BENEFIT",
+      "recommended_disposition": "DEFER_TO_T16",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.update_post",
+          "url": "https://vantio.ai/updates/quantum-computing-data-minimization"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json update quantum-computing-data-minimization description",
+          "role": "observation",
+          "note": "T14 recorded both sentences. No cryptography review was done."
+        }
+      ],
+      "notes": "UNKNOWN for the benefit. The negative identity sentence is page text, not a charter document. DEFER_TO_T16."
+    },
+    {
+      "claim_id": "CL-W3-T15-070",
+      "text_form": "paraphrase",
+      "claim_class": "security",
+      "claim_text": "The public .env.example names are not live secrets. Separately, the open-core repository has no SECURITY.md. That absence is a file gap, not a finding that a vulnerability was disclosed.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "ABSENT_SECURITY_MD",
+      "recommended_disposition": "HOLD",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "REPO_PUBLIC_OPEN_CORE",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "github.repository",
+          "name": "vantio-open-core"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json vantio-open-core security_policy ABSENT",
+          "role": "supports",
+          "note": "T14 recorded security_policy ABSENT. The website security.txt contact is CL-W3-T15-041."
+        }
+      ],
+      "notes": "HOLD. This force does not add SECURITY.md. Disclosure contact on the website is a different surface."
+    },
+    {
+      "claim_id": "CL-W3-T15-071",
+      "text_form": "verbatim",
+      "claim_class": "compliance",
+      "claim_text": "Show what the authority boundary actually proved. Vantio’s assurance model distinguishes collection, verification, publication, retrieval, freshness, and current limitations.",
+      "evidence_status": "SUPPORTED",
+      "evidence_scope": "PAGE_DESCRIBES_A_MODEL_NOT_A_COMPLETED_PROOF",
+      "recommended_disposition": "KEEP",
+      "executes_now": false,
+      "later_action_not_authorized": null,
+      "edit_channel": "EXTERNAL_ACCOUNT_ACTION_REQUIRED",
+      "drift_ids": [],
+      "surfaces": [
+        {
+          "kind": "website.primary_route",
+          "url": "https://vantio.ai/trust"
+        }
+      ],
+      "evidence": [
+        {
+          "source": "PUBLIC-SURFACE-INVENTORY.json /trust description",
+          "role": "supports",
+          "note": "T14 recorded the description. The page distinguishes stages and names current limitations. It does not say every stage is complete."
+        },
+        {
+          "source": "CL-W3-T15-025",
+          "role": "limits",
+          "note": "The product-evidence page says no public evidence artifact meets the publication standard."
+        }
+      ],
+      "notes": "SUPPORTED as the page's own description of a model with limitations. KEEP that reading. It is not proof that publication or verification is complete."
+    }
+  ]
+}

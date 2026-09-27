@@ -1,6 +1,6 @@
 {
   "schema": "vantio.docs-release.legacy-stale-names/v1",
-  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits. packages/optics-record-vocabulary/vocabulary/record-vocabulary.json is frozen at count 2 for sight_loop. That Unit A file is on main and may be absent on this branch; the freeze applies when the file is present. tests/shared-health-vocabulary/collision.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. tests/optics-pkg02-reader-compat-gates/isolation.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the isolation test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. docs/internal/optics-pkg02-unit-e/DESIGN.md, packages/vantio-agent-sdk-py-future/src/vantio_future/writer.py, and tests/optics-pkg02-unit-e/test_04_rollback.py are reviewed 2026-09-27 additions at count 1. Those matches name the sealed 3.1.0 workflow field as a rollback compatibility value. Each path stays in this hits list and in the legacy scan. None is an intentional leftover and none is hidden by legacy_scan.exclude_prefixes. docs/internal/wave3/public-inventory/03-GITHUB.md is a reviewed 2026-09-27 addition at count 2. docs/internal/wave3/public-inventory/05-PYPI.md is a reviewed 2026-09-27 addition at count 1. docs/programs/production-readiness/wave3/PUBLIC-SURFACE-INVENTORY.json is a reviewed 2026-09-27 addition at count 11. Those matches quote public GitHub and registry text inside the Wave 3 public-estate inventory. Each path stays in this hits list and in the legacy scan. None is an intentional leftover and none is hidden by legacy_scan.exclude_prefixes. The inventory dispositions stay UNREVIEWED.",
+  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits. packages/optics-record-vocabulary/vocabulary/record-vocabulary.json is frozen at count 2 for sight_loop. That Unit A file is on main and may be absent on this branch; the freeze applies when the file is present. tests/shared-health-vocabulary/collision.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. tests/optics-pkg02-reader-compat-gates/isolation.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the isolation test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. docs/internal/optics-pkg02-unit-e/DESIGN.md, packages/vantio-agent-sdk-py-future/src/vantio_future/writer.py, and tests/optics-pkg02-unit-e/test_04_rollback.py are reviewed 2026-09-27 additions at count 1. Those matches name the sealed 3.1.0 workflow field as a rollback compatibility value. Each path stays in this hits list and in the legacy scan. None is an intentional leftover and none is hidden by legacy_scan.exclude_prefixes. docs/internal/wave3/public-inventory/03-GITHUB.md is a reviewed 2026-09-27 addition at count 2. docs/internal/wave3/public-inventory/05-PYPI.md is a reviewed 2026-09-27 addition at count 1. docs/programs/production-readiness/wave3/PUBLIC-SURFACE-INVENTORY.json is a reviewed 2026-09-27 addition at count 11. Those matches quote public GitHub and registry text inside the Wave 3 public-estate inventory. Each path stays in this hits list and in the legacy scan. None is an intentional leftover and none is hidden by legacy_scan.exclude_prefixes. The inventory dispositions stay UNREVIEWED. docs/programs/production-readiness/wave3/CLAIM-LEDGER.json is a reviewed 2026-09-27 addition at count 4. Those matches quote public registry text, the open-core repository description, and a public issue title inside the Wave 3 claim ledger. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. Recommended dispositions do not execute. T14 dispositions stay UNREVIEWED.",
   "reviewed_updates": [
     {
       "path": "tests/shared-health-vocabulary/collision.test.cjs",
@@ -57,6 +57,13 @@
       "disposition": "FROZEN_DEBT",
       "reviewed_on": "2026-09-27",
       "reason": "The public-estate register quotes live GitHub, npm, and PyPI text. The matches are quotations, not a product-name adoption. Public-surface dispositions stay UNREVIEWED. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
+    },
+    {
+      "path": "docs/programs/production-readiness/wave3/CLAIM-LEDGER.json",
+      "count": 4,
+      "disposition": "FROZEN_DEBT",
+      "reviewed_on": "2026-09-27",
+      "reason": "The claim ledger quotes live registry descriptions, the open-core repository description, and a public issue title. The matches are quotations, not a product-name adoption. Recommended dispositions do not execute. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes. T14 dispositions stay UNREVIEWED."
     }
   ],
   "intentional_leftovers": {
@@ -408,6 +415,10 @@
     {
       "path": "tests/shared-health-vocabulary/collision.test.cjs",
       "count": 2
+    },
+    {
+      "path": "docs/programs/production-readiness/wave3/CLAIM-LEDGER.json",
+      "count": 4
     }
   ]
 }
