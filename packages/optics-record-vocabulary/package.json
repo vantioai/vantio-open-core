@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/optics-record-vocabulary",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE | INERT | NOT SHIPPED | NO LIVE WRITER | NO LIVE READER | NO MIGRATION | NO STABLE SCHEMA. PKG-02 Unit A shared record vocabulary. Not a stable schema and not loaded by live products.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-record-vocabulary/*.test.cjs"
+  }
+}

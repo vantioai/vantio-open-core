@@ -1,0 +1,2678 @@
+[
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "trace_id",
+      "pid",
+      "ppid",
+      "node_version",
+      "cli_version",
+      "hostname",
+      "provider",
+      "status",
+      "bytes",
+      "ts",
+      "generated_at"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [
+      "run_id",
+      "process_id",
+      "parent_process_id",
+      "runtime_version",
+      "cli_or_sdk_version",
+      "schema_version",
+      "destination_host",
+      "http_status",
+      "response_bytes",
+      "application_status",
+      "optics_status"
+    ],
+    "diagnostic_limitations": [
+      "CLI 0.3.24 stores no optics_status, so the reading is UNAVAILABLE and not SUCCESS.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
+      "Legacy trace_id is run_id. It is not canonical trace_id.",
+      "generated_at is file-write time. This fixture does not store it as ended_at.",
+      "Live provider string openai is not an allowlisted provider_id.",
+      "ok true is not application_status."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "run_id": "0xabc123",
+      "process_id": 10,
+      "parent_process_id": 9,
+      "runtime_version": "v18.20.0",
+      "platform": "linux",
+      "arch": "x64",
+      "cli_or_sdk_version": "0.3.24",
+      "schema_version": 0,
+      "started_at": "2026-07-01T00:00:00.000Z",
+      "duration_ms": 1000,
+      "destination_host": "api.example.com",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "scheme": "https",
+      "http_status": 200,
+      "response_bytes": 12,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE",
+      "action": "OBSERVED"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "cli-0-3-24",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "hostname": "api.example.com",
+        "provider": "openai",
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "scheme": "https",
+        "status": 200,
+        "bytes": 12,
+        "ok": true,
+        "action": "OBSERVED",
+        "ts": "2026-07-01T00:00:00.100Z"
+      },
+      "envelope": {
+        "vantio_run_log": "1",
+        "schema_version": 2,
+        "trace_id": "0xabc123",
+        "pid": 10,
+        "ppid": 9,
+        "node_version": "v18.20.0",
+        "platform": "linux",
+        "arch": "x64",
+        "started_at": "2026-07-01T00:00:00.000Z",
+        "generated_at": "2026-07-01T00:00:01.000Z",
+        "duration_ms": 1000,
+        "cli_version": "0.3.24"
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "ok",
+        "forbidden_value": true
+      },
+      {
+        "path": "canonical.trace_id",
+        "forbidden_value": "0xabc123"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "cli_frozen_shape",
+      "missing_optics_status",
+      "missing_evidence_origin",
+      "successful_http",
+      "alias_canonical_names_only",
+      "provider_guess_not_promoted",
+      "status_dimensions_separated"
+    ],
+    "scenario": "cli-0-3-24",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_2XX"
+    },
+    "stable_schema": false,
+    "title": "CLI 0.3.24 recorded call shape",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "trace_id",
+      "hostname",
+      "provider",
+      "status",
+      "ts",
+      "opticsStatus",
+      "applicationStatus"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [
+      "run_id",
+      "destination_host",
+      "http_status",
+      "application_status",
+      "optics_status",
+      "schema_version",
+      "started_at"
+    ],
+    "diagnostic_limitations": [
+      "Python 3.1.0 stores opticsStatus SUCCESS. That token is refused: OPTIMISTIC_DEFAULT_FORBIDDEN. Canonical optics_status is UNAVAILABLE.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
+      "failure_kind none is not workload SUCCESS and is not copied forward as proof.",
+      "Comma-joined mediation is not one closed token.",
+      "Live provider string other is not an allowlisted provider_id.",
+      "The +00:00 timestamp is declared as Z with three fractional digits. This fixture does not rewrite a file.",
+      "Response size is omitted. It is not zero."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "run_id": "6f1d7a2e-3c4b-4d5e-8f90-a1b2c3d4e5f6",
+      "runtime": "python",
+      "schema_status": "unstable-pre-1.0",
+      "schema_version": 0,
+      "destination_host": "api.example.com",
+      "method": "POST",
+      "path": "/v1/messages",
+      "scheme": "https",
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE",
+      "action": "OBSERVED",
+      "started_at": "2026-07-01T00:00:00.100Z"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "mediation",
+      "failure_kind"
+    ],
+    "id": "python-3-1-0",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "hostname": "api.example.com",
+        "provider": "other",
+        "method": "POST",
+        "path": "/v1/messages",
+        "scheme": "https",
+        "status": 200,
+        "action": "OBSERVED",
+        "opticsStatus": "SUCCESS",
+        "applicationStatus": "SUCCESS",
+        "failure_kind": "none",
+        "ts": "2026-07-01T00:00:00.100000+00:00"
+      },
+      "envelope": {
+        "vantio_run_log": "1",
+        "schema_version": 2,
+        "schema_status": "unstable-pre-1.0",
+        "runtime": "python",
+        "trace_id": "6f1d7a2e-3c4b-4d5e-8f90-a1b2c3d4e5f6",
+        "mediation": "python_urllib,python_requests"
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "python_frozen_shape",
+      "live_success_default_refused",
+      "missing_evidence_origin",
+      "successful_http",
+      "alias_canonical_names_only",
+      "provider_guess_not_promoted",
+      "status_dimensions_separated",
+      "missing_byte_count"
+    ],
+    "scenario": "python-3-1-0",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_2XX"
+    },
+    "stable_schema": false,
+    "title": "Python 3.1.0 recorded call shape",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "traceId",
+      "timestamp_ns",
+      "action_taken",
+      "target_host"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "UNSUPPORTED",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Node SDK 0.2.4 does not write a local run log.",
+      "timestamp_ns is not RFC3339 and is not a safe neutral JSON integer in this fixture.",
+      "action_taken overlaps the enforcement vocabulary and is not an Optics observation."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": null,
+    "expected_events": null,
+    "expected_unsupported_state": "UNSUPPORTED",
+    "fields_not_promoted": [
+      "traceId",
+      "timestamp_ns",
+      "action_taken",
+      "eventPayload"
+    ],
+    "id": "node-sdk-0-2-4",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": null,
+      "extra": {
+        "traceId": "6f1d7a2e-3c4b-4d5e-8f90-a1b2c3d4e5f6",
+        "auditMode": true,
+        "eventPayload": {
+          "bytes_severed": 1,
+          "pid": 4,
+          "timestamp_ns_decimal": "1700000000000000000",
+          "target_host": "example.com",
+          "action_taken": "SEVERED"
+        }
+      }
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "node_sdk_ingest",
+      "package_name": "@vantio/agent-sdk",
+      "surface": "node_sdk_0_2_4",
+      "version": "0.2.4"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": false,
+    "rule_ids": [
+      "node_sdk_not_local_record",
+      "status_dimensions_separated"
+    ],
+    "scenario": "node-sdk-0-2-4",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "coverage": "NO_LOCAL_RECORD"
+    },
+    "stable_schema": false,
+    "title": "Node SDK 0.2.4 ingest payload is not a local record",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "UNSUPPORTED",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Python empty shield writes no file because the call list is empty.",
+      "No file is UNAVAILABLE. It is not NOT_OBSERVED and not SUCCESS."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": null,
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "empty-shield",
+    "input_parse": "ABSENT_FILE",
+    "input_record": null,
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "reading.optics_health",
+        "forbidden_value": "NOT_OBSERVED"
+      },
+      {
+        "path": "reading.optics_health",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": false,
+    "rule_ids": [
+      "empty_shield",
+      "absent_file",
+      "status_dimensions_separated"
+    ],
+    "scenario": "empty-shield",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "coverage": "NO_FILE"
+    },
+    "stable_schema": false,
+    "title": "Python empty shield writes no file",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "UNSUPPORTED",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "The reader path is absent. UNAVAILABLE is not NOT_OBSERVED.",
+      "A missing path is not an empty valid record and not SUCCESS."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": null,
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "no-file",
+    "input_parse": "ABSENT_FILE",
+    "input_record": null,
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "reader",
+      "package_name": "none",
+      "surface": "reader",
+      "version": null
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "reading.optics_health",
+        "forbidden_value": "NOT_OBSERVED"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": false,
+    "rule_ids": [
+      "absent_file",
+      "status_dimensions_separated"
+    ],
+    "scenario": "no-file",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "coverage": "NO_FILE"
+    },
+    "stable_schema": false,
+    "title": "Reader path is absent",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "PARTIAL",
+    "derived_fields": [
+      "schema_version"
+    ],
+    "diagnostic_limitations": [
+      "The CLI file exists and its call list is empty.",
+      "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
+      "NOT_OBSERVED means the wrap ran and stored no supported call. It is not SUCCESS.",
+      "This is a different fact from a missing file."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "optics_status": "NOT_OBSERVED",
+      "call_count": 0,
+      "schema_version": 0
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "cli-empty-call-file",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": {
+        "vantio_run_log": "1",
+        "schema_version": 2,
+        "calls": []
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "empty_cli_file",
+      "cli_frozen_shape",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "cli-empty-call-file",
+    "semantic_dimension_readings": {
+      "optics_health": "NOT_OBSERVED",
+      "workload_outcome": "NOT_OBSERVED",
+      "coverage": "EMPTY_CALL_LIST"
+    },
+    "stable_schema": false,
+    "title": "CLI empty calls file is a file, not a missing file",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "hostname"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [
+      "optics_status",
+      "destination_host"
+    ],
+    "diagnostic_limitations": [
+      "Missing optics_status is UNAVAILABLE, not SUCCESS and not OBSERVED.",
+      "Missing action stays absent. It is not filled with OBSERVED.",
+      "Missing HTTP status stays absent. It is not 200 and not 0.",
+      "Missing bytes stay absent. application_status is not implied SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "optics_status": "UNAVAILABLE",
+      "destination_host": "api.example.com"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "missing-status",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "hostname": "api.example.com"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "application_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "http_status",
+        "forbidden_value": 200
+      },
+      {
+        "path": "http_status",
+        "forbidden_value": 0
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "missing_optics_status",
+      "missing_action",
+      "missing_http_status",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "missing-status",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "ABSENT",
+      "dependency_outcome": "ABSENT",
+      "http_network_outcomes": "ABSENT"
+    },
+    "stable_schema": false,
+    "title": "Missing optics, action, HTTP status, and bytes",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "opticsStatus",
+      "status"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REJECT_WITH_EXPLANATION",
+    "derived_fields": [
+      "optics_status",
+      "http_status",
+      "application_status"
+    ],
+    "diagnostic_limitations": [
+      "SUPER_SUCCESS is not an optics_status token.",
+      "The canonical optics health is UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN.",
+      "HTTP 200 still supports workload SUCCESS. That token is not copied into optics_status."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "optics_status": "UNAVAILABLE",
+      "http_status": 200,
+      "application_status": "SUCCESS"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "SUPER_SUCCESS"
+    ],
+    "id": "unknown-status",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "opticsStatus": "SUPER_SUCCESS",
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "unknown_status",
+      "successful_http",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "unknown-status",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "completeness": "MISSING_REQUIRED_STATUS"
+    },
+    "stable_schema": false,
+    "title": "Unknown optics status is not success",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "status"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Missing action is omitted. It is not stored as OBSERVED."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "missing-action",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "missing_action",
+      "missing_optics_status",
+      "successful_http",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "missing-action",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "observation_action": "ABSENT"
+    },
+    "stable_schema": false,
+    "title": "Missing action stays absent",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Missing bytes omit response_bytes. They are not stored as 0 or null."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 204,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "bytes-missing",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "status": 204
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "response_bytes",
+        "forbidden_value": 0
+      },
+      {
+        "path": "response_bytes",
+        "forbidden_value": null
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "missing_byte_count",
+      "successful_http",
+      "missing_optics_status",
+      "missing_action",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "bytes-missing",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "http_network_outcomes": "BYTES_ABSENT"
+    },
+    "stable_schema": false,
+    "title": "Missing byte count stays absent",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "bytes",
+      "status"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [
+      "response_bytes"
+    ],
+    "diagnostic_limitations": [
+      "Legacy bytes 0 becomes response_bytes null. It is not a measured zero."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "response_bytes": null,
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "legacy-bytes-zero",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "bytes": 0,
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "response_bytes",
+        "forbidden_value": 0
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "legacy_bytes_zero",
+      "successful_http",
+      "missing_optics_status",
+      "missing_action",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "legacy-bytes-zero",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "http_network_outcomes": "LEGACY_ZERO"
+    },
+    "stable_schema": false,
+    "title": "Legacy bytes zero is not a measured zero",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "NOT_YET_DECIDED",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Explicit canonical response_bytes 0 stays 0.",
+      "This declared input is not a shipped writer. A frozen reader is UNSUPPORTED."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": {
+      "response_bytes": 0,
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": "UNSUPPORTED",
+    "fields_not_promoted": [],
+    "id": "explicit-response-bytes-zero",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "response_bytes": 0,
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "declared_vocabulary_input",
+      "package_name": "none",
+      "surface": "future_not_shipped",
+      "version": "PKG02-FUTURE-CLI-UNASSIGNED"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "explicit_response_bytes_zero",
+      "successful_http",
+      "missing_optics_status",
+      "missing_action",
+      "status_dimensions_separated"
+    ],
+    "scenario": "explicit-response-bytes-zero",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "http_network_outcomes": "MEASURED_ZERO"
+    },
+    "stable_schema": false,
+    "title": "Explicit response_bytes zero stays zero",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "trace_id",
+      "pid",
+      "ppid"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ALIAS",
+    "derived_fields": [
+      "run_id",
+      "process_id",
+      "parent_process_id",
+      "trace_id_basis",
+      "optics_status"
+    ],
+    "diagnostic_limitations": [
+      "The live trace string is inherited context. trace_id_basis is ASSERTED_CONTEXT, not OPTICS_GENERATED.",
+      "No PKG01_OPTICS_GENERATED_WITNESS is present, and the witness is not invented."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "run_id": "0xinherited",
+      "process_id": 7,
+      "parent_process_id": 6,
+      "trace_id_basis": "ASSERTED_CONTEXT",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "inherited-trace",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": {
+        "trace_id": "0xinherited",
+        "pid": 7,
+        "ppid": 6
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "trace_id_basis",
+        "forbidden_value": "OPTICS_GENERATED"
+      },
+      {
+        "path": "canonical.trace_id",
+        "forbidden_value": "0xinherited"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "inherited_trace",
+      "missing_evidence_origin",
+      "alias_canonical_names_only"
+    ],
+    "scenario": "inherited-trace",
+    "semantic_dimension_readings": {
+      "evidence_origin_basis": "ASSERTED_CONTEXT",
+      "optics_health": "UNAVAILABLE",
+      "execution_identity": "RUN_ONLY"
+    },
+    "stable_schema": false,
+    "title": "Inherited trace is not Optics-generated",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "READ_ONLY",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "IMPORTED stays IMPORTED. original_evidence_origin stays LEGACY_UNMARKED. Origin is not upgraded."
+    ],
+    "evidence_origin": "IMPORTED",
+    "expected_canonical": {
+      "evidence_origin": "IMPORTED",
+      "original_evidence_origin": "LEGACY_UNMARKED"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "imported-evidence",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": {
+        "evidence_origin": "IMPORTED",
+        "original_evidence_origin": "LEGACY_UNMARKED"
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "reader",
+      "package_name": "none",
+      "surface": "reader",
+      "version": null
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "evidence_origin",
+        "forbidden_value": "LOCAL_OBSERVATION"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "imported_evidence",
+      "status_dimensions_separated"
+    ],
+    "scenario": "imported-evidence",
+    "semantic_dimension_readings": {
+      "evidence_origin_basis": "IMPORTED",
+      "optics_health": "UNAVAILABLE",
+      "integrity": "UNKNOWN"
+    },
+    "stable_schema": false,
+    "title": "Imported evidence is not upgraded",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "hostname",
+      "status"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [
+      "destination_host",
+      "evidence_origin",
+      "http_status",
+      "application_status",
+      "optics_status"
+    ],
+    "diagnostic_limitations": [
+      "Host optics-demo.invalid marks this observation SIMULATED_DEMO.",
+      "The same host does not by itself mark the envelope as a local observation.",
+      "Workload SUCCESS from HTTP 200 is not optics SUCCESS."
+    ],
+    "evidence_origin": "SIMULATED_DEMO",
+    "expected_canonical": {
+      "destination_host": "optics-demo.invalid",
+      "evidence_origin": "SIMULATED_DEMO",
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE",
+      "action": "OBSERVED"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "simulated-evidence",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "hostname": "optics-demo.invalid",
+        "status": 200,
+        "action": "OBSERVED"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "evidence_origin",
+        "forbidden_value": "LOCAL_OBSERVATION"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "simulated_evidence",
+      "successful_http",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_byte_count"
+    ],
+    "scenario": "simulated-evidence",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_2XX"
+    },
+    "stable_schema": false,
+    "title": "Demo host marks the observation simulated",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "PARTIAL",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "The live rollup token PARTIAL is not application_status. application_status has no PARTIAL token.",
+      "The attempt is lifecycle PARTIAL. Per-call workload tokens stay SUCCESS and APPLICATION_ERROR.",
+      "Neither call is optics SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "lifecycle": "PARTIAL"
+    },
+    "expected_events": [
+      {
+        "http_status": 200,
+        "application_status": "SUCCESS",
+        "optics_status": "UNAVAILABLE"
+      },
+      {
+        "http_status": 500,
+        "application_status": "APPLICATION_ERROR",
+        "optics_status": "UNAVAILABLE",
+        "issue_location": "PROVIDER_INTERACTION"
+      }
+    ],
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "partial-run",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": {
+        "calls": [
+          {
+            "status": 200
+          },
+          {
+            "status": 500
+          }
+        ]
+      },
+      "extra": {
+        "summary_applicationStatus": "PARTIAL"
+      }
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "application_status",
+        "forbidden_value": "PARTIAL"
+      },
+      {
+        "path": "optics_status",
+        "forbidden_value": "PARTIAL"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "partial_run",
+      "status_dimensions_separated",
+      "missing_evidence_origin"
+    ],
+    "scenario": "partial-run",
+    "semantic_dimension_readings": {
+      "attempt_lifecycle": "PARTIAL",
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "MIXED",
+      "coverage": "MIXED_CALLS"
+    },
+    "stable_schema": false,
+    "title": "Mixed application tokens use lifecycle PARTIAL",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "bytes"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [
+      "lifecycle",
+      "optics_status",
+      "application_status",
+      "response_bytes"
+    ],
+    "diagnostic_limitations": [
+      "duration_ms 0 with null status is pre-completion. It is not a measured zero.",
+      "lifecycle INTERRUPTED is not optics SUCCESS and not application SUCCESS.",
+      "Legacy bytes 0 on that row is response_bytes null."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "lifecycle": "INTERRUPTED",
+      "optics_status": "UNAVAILABLE",
+      "application_status": "UNAVAILABLE",
+      "response_bytes": null
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "interrupted-run",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "duration_ms": 0,
+        "status": null,
+        "bytes": 0
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "interrupted_run",
+      "ambiguous_duration_zero",
+      "legacy_bytes_zero",
+      "null_http_status_is_absent",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_evidence_origin"
+    ],
+    "scenario": "interrupted-run",
+    "semantic_dimension_readings": {
+      "attempt_lifecycle": "INTERRUPTED",
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "UNAVAILABLE",
+      "timestamps_duration": "NOT_MEASURED_ZERO"
+    },
+    "stable_schema": false,
+    "title": "Interrupted pre-completion row is not success",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REJECT_WITH_EXPLANATION",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Malformed JSON rejects the record. It is not an empty valid record.",
+      "The reader outcome is OPTICS_ERROR, not NOT_OBSERVED.",
+      "Issue location is OPTICS. Integrity stays UNKNOWN because this package has no store."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": null,
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "corrupt-record",
+    "input_parse": "MALFORMED_JSON",
+    "input_record": null,
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "reader",
+      "package_name": "none",
+      "surface": "reader",
+      "version": null
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "reading.optics_health",
+        "forbidden_value": "NOT_OBSERVED"
+      },
+      {
+        "path": "reading.integrity",
+        "forbidden_value": "OK"
+      }
+    ],
+    "raw_input_note": "{not-json",
+    "record_emitted": false,
+    "rule_ids": [
+      "corrupt_record",
+      "status_dimensions_separated"
+    ],
+    "scenario": "corrupt-record",
+    "semantic_dimension_readings": {
+      "optics_health": "OPTICS_ERROR",
+      "issue_location": "OPTICS",
+      "integrity": "UNKNOWN"
+    },
+    "stable_schema": false,
+    "title": "Corrupt JSON is not an empty valid record",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REJECT_WITH_EXPLANATION",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Unreadable bytes are OPTICS_ERROR, not NOT_OBSERVED.",
+      "The failure is not reported as an empty successful record."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": null,
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "unreadable-record",
+    "input_parse": "UNREADABLE",
+    "input_record": null,
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "reader",
+      "package_name": "none",
+      "surface": "reader",
+      "version": null
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "reading.optics_health",
+        "forbidden_value": "NOT_OBSERVED"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": false,
+    "rule_ids": [
+      "unreadable_record",
+      "status_dimensions_separated"
+    ],
+    "scenario": "unreadable-record",
+    "semantic_dimension_readings": {
+      "optics_health": "OPTICS_ERROR",
+      "issue_location": "OPTICS",
+      "integrity": "UNKNOWN"
+    },
+    "stable_schema": false,
+    "title": "Unreadable bytes are not NOT_OBSERVED",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REJECT_WITH_EXPLANATION",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Method FLY is not in the closed method set. The raw token stays in this diagnostic and is not stored.",
+      "Rejecting the method does not invent optics SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 204,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "method"
+    ],
+    "id": "unknown-enum",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "method": "FLY",
+        "status": 204
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "unknown_enum",
+      "successful_http",
+      "missing_optics_status",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "unknown-enum",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "destination_provider_identity": "METHOD_REJECTED"
+    },
+    "stable_schema": false,
+    "title": "Unknown method is rejected, not rewritten as success",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REJECT_WITH_EXPLANATION",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "freshness CURRENT is not a catalog token and is not emitted.",
+      "cost is prohibited. widget_hint is unknown.",
+      "These keys do not synthesize an empty valid record."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": null,
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "freshness",
+      "widget_hint",
+      "cost"
+    ],
+    "id": "future-field",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": null,
+      "extra": {
+        "freshness": "CURRENT",
+        "widget_hint": "later",
+        "cost": 1
+      }
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "reader",
+      "package_name": "none",
+      "surface": "reader",
+      "version": null
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": false,
+    "rule_ids": [
+      "future_field",
+      "status_dimensions_separated"
+    ],
+    "scenario": "future-field",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "completeness": "FIELD_NOT_PROMOTED"
+    },
+    "stable_schema": false,
+    "title": "Future and prohibited fields are not promoted",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "trace_id",
+      "pid",
+      "ppid",
+      "ts",
+      "applicationStatus",
+      "hostname",
+      "status",
+      "bytes"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ALIAS",
+    "derived_fields": [
+      "run_id",
+      "process_id",
+      "parent_process_id",
+      "started_at",
+      "destination_host",
+      "http_status",
+      "response_bytes",
+      "application_status",
+      "optics_status"
+    ],
+    "diagnostic_limitations": [
+      "Alias keys are not stored beside canonical keys.",
+      "applicationStatus is workload application_status. It does not set optics_status.",
+      "Legacy trace_id maps to run_id only."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "run_id": "0xalias",
+      "process_id": 3,
+      "parent_process_id": 2,
+      "started_at": "2026-07-01T00:00:00.000Z",
+      "destination_host": "api.example.com",
+      "http_status": 200,
+      "response_bytes": 4,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "compatibility-alias",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "applicationStatus": "SUCCESS",
+        "hostname": "api.example.com",
+        "status": 200,
+        "bytes": 4
+      },
+      "envelope": {
+        "trace_id": "0xalias",
+        "pid": 3,
+        "ppid": 2,
+        "ts": "2026-07-01T00:00:00.000Z"
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "canonical.trace_id",
+        "forbidden_value": "0xalias"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "alias_canonical_names_only",
+      "missing_optics_status",
+      "successful_http",
+      "missing_evidence_origin",
+      "missing_action",
+      "status_dimensions_separated"
+    ],
+    "scenario": "compatibility-alias",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_2XX"
+    },
+    "stable_schema": false,
+    "title": "Aliases rename into canonical fields without a second copy",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "HTTP 500 is application_status APPLICATION_ERROR and issue_location PROVIDER_INTERACTION.",
+      "It is not optics SUCCESS. ok is not stored."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 500,
+      "application_status": "APPLICATION_ERROR",
+      "optics_status": "UNAVAILABLE",
+      "issue_location": "PROVIDER_INTERACTION"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "provider-http-error",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "status": 500,
+        "ok": false
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "ok",
+        "forbidden_value": false
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "provider_http_error",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "provider-http-error",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "APPLICATION_ERROR",
+      "dependency_outcome": "HTTP_5XX",
+      "issue_location": "PROVIDER_INTERACTION"
+    },
+    "stable_schema": false,
+    "title": "HTTP 500 is a provider interaction, not optics success",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "The string network_error is not failure_kind. DNS with no HTTP status is issue_location NETWORK, not workload SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "failure_kind": "dns",
+      "issue_location": "NETWORK",
+      "application_status": "UNAVAILABLE",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "error"
+    ],
+    "id": "dns-failure",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "failure_kind": "dns",
+        "error": "network_error",
+        "error_class": "ENOTFOUND"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "transport_failure",
+      "missing_http_status",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "dns-failure",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "UNAVAILABLE",
+      "dependency_outcome": "DNS",
+      "issue_location": "NETWORK"
+    },
+    "stable_schema": false,
+    "title": "DNS failure is a network outcome",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Connection failure keeps failure_kind connection. The string network_error is not the enum."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "failure_kind": "connection",
+      "issue_location": "NETWORK",
+      "application_status": "UNAVAILABLE",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "error"
+    ],
+    "id": "connection-failure",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "failure_kind": "connection",
+        "error": "network_error"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "transport_failure",
+      "missing_http_status",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "connection-failure",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "UNAVAILABLE",
+      "dependency_outcome": "CONNECTION",
+      "issue_location": "NETWORK"
+    },
+    "stable_schema": false,
+    "title": "Connection failure is a network outcome",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "TLS failure keeps failure_kind tls. It is not workload SUCCESS and not optics SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "failure_kind": "tls",
+      "issue_location": "NETWORK",
+      "application_status": "UNAVAILABLE",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "error"
+    ],
+    "id": "tls-failure",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "failure_kind": "tls",
+        "error": "network_error"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "transport_failure",
+      "missing_http_status",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "tls-failure",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "UNAVAILABLE",
+      "dependency_outcome": "TLS",
+      "issue_location": "NETWORK"
+    },
+    "stable_schema": false,
+    "title": "TLS failure is a network outcome",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Timeout keeps failure_kind timeout. It is not a success token."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "failure_kind": "timeout",
+      "issue_location": "NETWORK",
+      "application_status": "UNAVAILABLE",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "error"
+    ],
+    "id": "timeout-failure",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "failure_kind": "timeout",
+        "error": "network_error"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "transport_failure",
+      "missing_http_status",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "timeout-failure",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "UNAVAILABLE",
+      "dependency_outcome": "TIMEOUT",
+      "issue_location": "NETWORK"
+    },
+    "stable_schema": false,
+    "title": "Timeout is a network outcome",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "failure_kind wrapped with error_class and no HTTP status is issue_location CUSTOMER_APPLICATION.",
+      "It is not workload SUCCESS and failure_kind is not filled as none."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "failure_kind": "wrapped",
+      "error_class": "ValueError",
+      "issue_location": "CUSTOMER_APPLICATION",
+      "application_status": "UNAVAILABLE",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "customer-application-exception",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "failure_kind": "wrapped",
+        "error_class": "ValueError"
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "python_observe",
+      "package_name": "vantio-agent-sdk",
+      "surface": "python_3_1_0",
+      "version": "3.1.0"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "failure_kind",
+        "forbidden_value": "none"
+      },
+      {
+        "path": "application_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "customer_exception",
+      "missing_http_status",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "customer-application-exception",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "UNAVAILABLE",
+      "dependency_outcome": "ABSENT",
+      "issue_location": "CUSTOMER_APPLICATION"
+    },
+    "stable_schema": false,
+    "title": "Wrapped customer exception is not a provider HTTP error",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [
+      "status"
+    ],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "HTTP 200 maps to workload application_status SUCCESS.",
+      "Missing optics_status stays UNAVAILABLE. Workload SUCCESS is not optics SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "successful-http-response",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "successful_http",
+      "missing_optics_status",
+      "missing_action",
+      "status_dimensions_separated",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "successful-http-response",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_2XX"
+    },
+    "stable_schema": false,
+    "title": "HTTP 200 workload success is not optics success",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "Invalid sampling token SAMPLED is not stored as UNSAMPLED and is not optics success."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 200,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [
+      "SAMPLED"
+    ],
+    "id": "sampling-not-success",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "sampling": "SAMPLED",
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "sampling",
+        "forbidden_value": "UNSAMPLED"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "sampling_not_success",
+      "successful_http",
+      "missing_optics_status",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
+    ],
+    "scenario": "sampling-not-success",
+    "semantic_dimension_readings": {
+      "sampling": "INVALID_OMITTED",
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS"
+    },
+    "stable_schema": false,
+    "title": "Invalid sampling normalizes to UNSAMPLED and is not success",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "READ_ONLY",
+    "derived_fields": [
+      "reader_origin_label"
+    ],
+    "diagnostic_limitations": [
+      "LOCAL_OBSERVATION without a recognized producer and version is PROVENANCE_INSUFFICIENT.",
+      "The reader label is LEGACY_UNMARKED. The claim is not stored as local observation."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "reader_origin_label": "LEGACY_UNMARKED"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "claimed-local-without-provenance",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": {
+        "evidence_origin": "LOCAL_OBSERVATION"
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "reader",
+      "package_name": "none",
+      "surface": "reader",
+      "version": null
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      },
+      {
+        "path": "evidence_origin",
+        "forbidden_value": "LOCAL_OBSERVATION"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "claimed_local_without_provenance",
+      "status_dimensions_separated"
+    ],
+    "scenario": "claimed-local-without-provenance",
+    "semantic_dimension_readings": {
+      "evidence_origin_basis": "LEGACY_UNMARKED",
+      "optics_health": "UNAVAILABLE",
+      "integrity": "UNKNOWN"
+    },
+    "stable_schema": false,
+    "title": "Claimed local observation without provenance stays unmarked",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "REQUIRES_ADAPTER",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "A 3xx final status is workload SUCCESS. No redirect hop is invented.",
+      "It is not optics SUCCESS."
+    ],
+    "evidence_origin": "LEGACY_UNMARKED",
+    "expected_canonical": {
+      "http_status": 302,
+      "application_status": "SUCCESS",
+      "optics_status": "UNAVAILABLE"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": null,
+    "fields_not_promoted": [],
+    "id": "redirect-3xx",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "status": 302
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "cli_interceptor",
+      "package_name": "@vantio/cli",
+      "surface": "cli_0_3_24",
+      "version": "0.3.24"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "redirect_3xx",
+      "successful_http",
+      "missing_optics_status",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
+    ],
+    "scenario": "redirect-3xx",
+    "semantic_dimension_readings": {
+      "optics_health": "UNAVAILABLE",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_3XX"
+    },
+    "stable_schema": false,
+    "title": "HTTP 3xx is workload success and not a invented hop",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "NOT_YET_DECIDED",
+    "derived_fields": [
+      "trace_id_basis"
+    ],
+    "diagnostic_limitations": [
+      "The witness is required on the declared input and is absent from the canonical record.",
+      "run_id and trace_id stay different fields.",
+      "This declared input is not a shipped writer and does not authorize a later unit. A frozen reader is UNSUPPORTED."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": {
+      "producer": "node_interceptor",
+      "run_id": "0xseparate",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "trace_id_basis": "OPTICS_GENERATED"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": "UNSUPPORTED",
+    "fields_not_promoted": [
+      "optics_trace_witness"
+    ],
+    "id": "witnessed-trace",
+    "input_parse": "OK",
+    "input_record": {
+      "call": null,
+      "envelope": {
+        "producer": "node_interceptor",
+        "run_id": "0xseparate",
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "optics_trace_witness": "PKG01_OPTICS_GENERATED_WITNESS"
+      },
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "declared_vocabulary_input",
+      "package_name": "none",
+      "surface": "future_not_shipped",
+      "version": "PKG02-FUTURE-CLI-UNASSIGNED"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "witnessed_trace"
+    ],
+    "scenario": "witnessed-trace",
+    "semantic_dimension_readings": {
+      "evidence_origin_basis": "OPTICS_GENERATED",
+      "execution_identity": "RUN_AND_TRACE"
+    },
+    "stable_schema": false,
+    "title": "Witnessed trace basis is OPTICS_GENERATED and the witness is not stored",
+    "writes_live_run_directory": false
+  },
+  {
+    "achievement": "NOT_SHIPPED",
+    "aliases_used": [],
+    "audience": "INTERNAL_RESTRICTED",
+    "compatibility_classification": "NOT_YET_DECIDED",
+    "derived_fields": [],
+    "diagnostic_limitations": [
+      "OBSERVED on this declared input is an explicit token, not a default.",
+      "Missing optics_status does not become OBSERVED. This fixture is not a live writer.",
+      "A frozen CLI reader of a future record is UNSUPPORTED."
+    ],
+    "evidence_origin": null,
+    "expected_canonical": {
+      "optics_status": "OBSERVED",
+      "http_status": 200,
+      "application_status": "SUCCESS"
+    },
+    "expected_events": null,
+    "expected_unsupported_state": "UNSUPPORTED",
+    "fields_not_promoted": [],
+    "id": "explicit-observed-not-default",
+    "input_parse": "OK",
+    "input_record": {
+      "call": {
+        "optics_status": "OBSERVED",
+        "status": 200
+      },
+      "envelope": null,
+      "extra": null
+    },
+    "posture": [
+      "PRIVATE",
+      "INERT",
+      "NOT_SHIPPED",
+      "NO_LIVE_WRITER",
+      "NO_LIVE_READER",
+      "NO_MIGRATION",
+      "NO_STABLE_SCHEMA"
+    ],
+    "producer": {
+      "identity": "declared_vocabulary_input",
+      "package_name": "none",
+      "surface": "future_not_shipped",
+      "version": "PKG02-FUTURE-CLI-UNASSIGNED"
+    },
+    "prohibited_optimistic_interpretations": [
+      {
+        "path": "optics_status",
+        "forbidden_value": "SUCCESS"
+      }
+    ],
+    "raw_input_note": "",
+    "record_emitted": true,
+    "rule_ids": [
+      "explicit_observed_not_default",
+      "successful_http",
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count"
+    ],
+    "scenario": "explicit-observed-not-default",
+    "semantic_dimension_readings": {
+      "optics_health": "OBSERVED",
+      "workload_outcome": "SUCCESS",
+      "dependency_outcome": "HTTP_2XX"
+    },
+    "stable_schema": false,
+    "title": "Explicit OBSERVED is preserved and is not the missing-status default",
+    "writes_live_run_directory": false
+  }
+]
