@@ -22,6 +22,8 @@ Starting commit: `89f95099d0dce463307eb75d78e7fcf2ef99feb2`
 
 The template in `07-FUTURE-FORCE.md` says an implementation force should stop without `ENTERPRISE_GOVERNANCE_E1_E3_PLAN_COUNCIL_PASSED`. That token is not in this tree. The Founder standing authorization dated 2026-09-27 names Enterprise E1–E3 internal work and stops before merge. This force follows that authorization. It does not record the plan council as passed, and it does not edit the plan packet.
 
+A later revision on draft pull request #100 closed `not_before`, sticky `ENDED`, and a later `NARROW`. A composition revision after `ENTERPRISE_E1_E3_INTERNAL_NEEDS_REVISION` on `db70e93bca42d7d5be56b2afaed4d1c95a24cf24` closed deferred-widen holds A–E. The handoff token is `ENTERPRISE_E1_E3_INTERNAL_REVISION_READY_FOR_COUNCIL`. The plan council stays pending.
+
 ## What this force adds
 
 | Path | Role |

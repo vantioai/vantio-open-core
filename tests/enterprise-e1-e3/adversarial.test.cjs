@@ -628,6 +628,194 @@ test("a later root narrow bounds spawn under an existing workload grant", () => 
   assert.equal(insideCap.grant_minted, false);
 });
 
+function policyWiden(extra) {
+  return Object.assign({
+    class: "WIDEN",
+    parties: ["root-a", "cust-b"],
+    not_after: "2099-01-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"], spend_cap: 80 }),
+    rollback_target: envelope(),
+  }, extra || {});
+}
+
+function connectSpendChild() {
+  return envelope({
+    domains: ["workload"],
+    actions: ["connect"],
+    destinations: ["d1"],
+    spend_cap: 50,
+    size_cap: 50,
+  });
+}
+
+test("a deferred widen composes onto a later narrow", () => {
+  const { eg, store } = world();
+  const granted = eg.proposeGrant(store, grantInput());
+  const widened = eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2035-01-01T00:00:00.000Z",
+    not_after: "2035-02-01T00:00:00.000Z",
+  }));
+  assert.equal(widened.reason, "POLICY_WIDEN_DEFERRED");
+  assert.equal(widened.policy_applied, false);
+  assert.equal(widened.verified_on_host, false);
+  const narrowed = eg.recordPolicyDecision(store, {
+    class: "ROOT",
+    parties: ["root-a"],
+    next_policy: envelope({ actions: ["read"], spend_cap: 15, path_constraints: ["p1", "p2"] }),
+  });
+  assert.equal(narrowed.reason, "POLICY_NARROWED");
+  assert.equal(eg.snapshot(store).policy.spend_cap, 15);
+  eg.noteClock(store, { now: "2034-12-15T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 15);
+  assert.deepEqual(eg.snapshot(store).policy.path_constraints, ["p1", "p2"]);
+  const before = eg.noteSpawn(store, {
+    parent_grant_id: granted.grant_id,
+    now: "2034-12-15T00:00:00.000Z",
+    child_envelope: connectSpendChild(),
+  });
+  assert.equal(before.within_subset, false);
+  assert.equal(before.grant_minted, false);
+
+  eg.noteClock(store, { now: "2035-01-15T00:00:00.000Z" });
+  const during = eg.snapshot(store).policy;
+  assert.deepEqual(during.actions, ["read"]);
+  assert.equal(during.spend_cap, 15);
+  assert.deepEqual(during.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(during.destinations, ["d1", "d2"]);
+  const child = eg.noteSpawn(store, {
+    parent_grant_id: granted.grant_id,
+    now: "2035-01-15T00:00:00.000Z",
+    child_envelope: connectSpendChild(),
+  });
+  assert.equal(child.within_subset, false);
+  assert.equal(child.outcome, "REFUSED");
+  assert.equal(child.grant_minted, false);
+  assert.ok(child.violations.includes("action:connect"));
+  assert.ok(child.violations.includes("spend_cap_raised"));
+  assert.ok(child.violations.includes("path_constraint_removed:p2"));
+  assert.equal(child.verified_on_host, false);
+
+  eg.noteClock(store, { now: "2035-03-01T00:00:00.000Z" });
+  const after = eg.snapshot(store).policy;
+  assert.deepEqual(after.actions, ["read"]);
+  assert.equal(after.spend_cap, 15);
+  assert.deepEqual(after.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(after.destinations, ["d1"]);
+  const later = eg.noteSpawn(store, {
+    parent_grant_id: granted.grant_id,
+    now: "2035-03-01T00:00:00.000Z",
+    child_envelope: connectSpendChild(),
+  });
+  assert.equal(later.within_subset, false);
+  assert.equal(later.grant_minted, false);
+  assert.equal(eg.snapshot(store).title_holder, "customer_root");
+});
+
+test("deferred widens from the same baseline both apply", () => {
+  const { eg, store } = world();
+  const window = {
+    not_before: "2036-01-01T00:00:00.000Z",
+    not_after: "2036-02-01T00:00:00.000Z",
+  };
+  const added = eg.recordPolicyDecision(store, policyWiden(Object.assign({
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }, window)));
+  const raised = eg.recordPolicyDecision(store, policyWiden(Object.assign({
+    next_policy: envelope({ spend_cap: 80 }),
+  }, window)));
+  assert.equal(added.reason, "POLICY_WIDEN_DEFERRED");
+  assert.equal(added.policy_applied, false);
+  assert.equal(raised.reason, "POLICY_WIDEN_DEFERRED");
+  assert.equal(raised.policy_applied, false);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  eg.noteClock(store, { now: "2036-01-15T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  assert.deepEqual(eg.snapshot(store).policy.actions, ["connect", "read"]);
+  assert.deepEqual(eg.snapshot(store).policy.path_constraints, ["p1"]);
+  eg.noteClock(store, { now: "2036-03-01T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+
+  const contrast = world();
+  const first = contrast.eg.recordPolicyDecision(contrast.store, policyWiden({
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  assert.equal(first.reason, "POLICY_WIDENED");
+  assert.equal(first.policy_applied, true);
+  const second = contrast.eg.recordPolicyDecision(contrast.store, policyWiden({
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  assert.equal(second.reason, "NOT_A_PURE_WIDEN");
+  assert.deepEqual(contrast.eg.snapshot(contrast.store).policy.destinations, ["d1", "d2"]);
+  assert.equal(contrast.eg.snapshot(contrast.store).policy.spend_cap, 50);
+});
+
+test("a recorded freeze blocks deferred widen apply", () => {
+  const { eg, store } = world();
+  const widened = eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2037-01-01T00:00:00.000Z",
+    not_after: "2037-02-01T00:00:00.000Z",
+  }));
+  assert.equal(widened.reason, "POLICY_WIDEN_DEFERRED");
+  eg.recordFreeze({ store, parties: ["root-a"] });
+  const later = eg.proposeGrant(store, grantInput());
+  assert.equal(later.reason, "FREEZE_RECORDED");
+  const version = eg.snapshot(store).policy_version;
+  eg.noteClock(store, { now: "2037-01-15T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy_version, version);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(store.root.open_widens[0].applied, false);
+  assert.equal(eg.snapshot(store).freeze.host_action_status, "UNSATISFIED");
+});
+
+test("a store outage blocks deferred widen apply", () => {
+  const { eg, store } = world();
+  const widened = eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2038-01-01T00:00:00.000Z",
+    not_after: "2038-02-01T00:00:00.000Z",
+  }));
+  assert.equal(widened.reason, "POLICY_WIDEN_DEFERRED");
+  const version = eg.snapshot(store).policy_version;
+  eg.setRecordStoreAvailable(store, false);
+  const grant = eg.proposeGrant(store, grantInput());
+  assert.equal(grant.reason, "STORE_UNAVAILABLE_NO_WIDEN");
+  eg.noteClock(store, { now: "2038-01-15T00:00:00.000Z" });
+  assert.equal(store.available, false);
+  assert.equal(eg.snapshot(store).policy_version, version);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(store.root.open_widens[0].applied, false);
+  assert.equal(eg.snapshot(store).grant_count, 0);
+});
+
+test("a policy widen whose window has already ended does not apply", () => {
+  const { eg, store } = world();
+  const version = eg.snapshot(store).policy_version;
+  const widened = eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2020-01-01T00:00:00.000Z",
+    not_after: "2020-02-01T00:00:00.000Z",
+  }));
+  assert.equal(widened.outcome, "APPROVED");
+  assert.equal(widened.reason, "POLICY_WIDEN_ENDED");
+  assert.equal(widened.policy_applied, false);
+  assert.notEqual(widened.reason, "POLICY_WIDENED");
+  assert.equal(widened.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy_version, version);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(store.root.open_widens.length, 0);
+  eg.noteClock(store, { now: "2020-01-15T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy_version, version);
+  eg.noteClock(store, { now: "2020-03-01T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+});
+
 test("a policy exception reverts inside the record layer and does not claim host clearance", () => {
   const { eg, store } = world();
   eg.recordPolicyDecision(store, {

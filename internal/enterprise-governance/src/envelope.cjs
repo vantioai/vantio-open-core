@@ -115,7 +115,56 @@ function tightenTo(current, bound) {
   });
 }
 
+function unionAdded(current, baseline, widened) {
+  const merged = current.slice();
+  for (const item of widened) {
+    if (baseline.includes(item) || merged.includes(item)) continue;
+    merged.push(item);
+  }
+  merged.sort();
+  return merged;
+}
+
+function composePaths(current, baseline, widened) {
+  const kept = [];
+  for (const item of current) {
+    if (baseline.includes(item) && !widened.includes(item)) continue;
+    kept.push(item);
+  }
+  kept.sort();
+  return kept;
+}
+
+function capIsNarrower(current, baseline) {
+  if (current === null) return false;
+  if (baseline === null) return true;
+  return current < baseline;
+}
+
+function widerCap(current, widened) {
+  if (current === null || widened === null) return null;
+  return Math.max(current, widened);
+}
+
+function composeCap(current, baseline, widened) {
+  if (capIsNarrower(current, baseline)) return current;
+  return widerCap(current, widened);
+}
+
+function composeWiden(current, baseline, widened) {
+  return Object.freeze({
+    hosts: Object.freeze(unionAdded(current.hosts, baseline.hosts, widened.hosts)),
+    destinations: Object.freeze(unionAdded(current.destinations, baseline.destinations, widened.destinations)),
+    path_constraints: Object.freeze(composePaths(current.path_constraints, baseline.path_constraints, widened.path_constraints)),
+    actions: Object.freeze(unionAdded(current.actions, baseline.actions, widened.actions)),
+    domains: Object.freeze(unionAdded(current.domains, baseline.domains, widened.domains)),
+    spend_cap: composeCap(current.spend_cap, baseline.spend_cap, widened.spend_cap),
+    size_cap: composeCap(current.size_cap, baseline.size_cap, widened.size_cap),
+  });
+}
+
 module.exports = {
+  composeWiden,
   envelopesEqual,
   normalizeEnvelope,
   removed,

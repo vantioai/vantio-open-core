@@ -37,6 +37,20 @@ Record-layer changes:
 
 The revision run of `node --test tests/enterprise-e1-e3/*.test.cjs` reported 35 tests and 0 failures. The three new adversarial tests cover those holds. EG-D1 through EG-D10 stay unresolved. EG-E3-7, EG-E3-8, EG-SUB-6, and EG-SP-1 through EG-SP-5 stay host-unsatisfied. `verified_on_host` stays false. No live customer authority was created.
 
+## Composition revision
+
+Council `bc-fb458789-7599-5abb-a10f-ccc17f25ead3` returned `ENTERPRISE_E1_E3_INTERNAL_NEEDS_REVISION` on tip `db70e93bca42d7d5be56b2afaed4d1c95a24cf24`. Revision producer: `bc-03d7917b-2c1d-55c3-bbe9-33637a05f4f7` at https://cursor.com/agents/bc-03d7917b-2c1d-55c3-bbe9-33637a05f4f7. This revision stays on draft pull request #100. Handoff token: `ENTERPRISE_E1_E3_INTERNAL_REVISION_READY_FOR_COUNCIL`. That token is not a council verdict and not host proof.
+
+Record-layer changes:
+
+- A deferred widen applies by composing the authority it added, relative to the policy at approval, onto the policy in force. A later root narrow to `read`, spend 15, and path constraints `p1` and `p2` stays in force when the window opens. The child `connect` / spend 50 stays `within_subset: false`. After the widen window, that narrow is still the policy.
+- Two deferred widens from the same baseline, one adding destination `d2` and one raising spend to 80, both apply at window entry. The same second widen issued after an immediate first widen stays `NOT_A_PURE_WIDEN`.
+- A recorded freeze still returns `FREEZE_RECORDED` for a later grant, and `noteClock` into the deferred window leaves spend and destinations unexpanded.
+- While the store is unavailable, `proposeGrant` returns `STORE_UNAVAILABLE_NO_WIDEN`, and `noteClock` into the deferred window leaves policy version, spend, and destinations unchanged.
+- A policy widen whose `not_after` is already past is `POLICY_WIDEN_ENDED` with `policy_applied: false`. Spend and destinations stay at the current policy, including when a later clock is placed inside that past window.
+
+The isolated `not_before`, sticky `ENDED`, and later-`NARROW` holds stay closed. The composition run of `node --test tests/enterprise-e1-e3/*.test.cjs` reported 40 tests and 0 failures. EG-D1 through EG-D10 stay unresolved. EG-E2-8 stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED`. `verified_on_host` stays false. No live customer authority was created. CLI `0.3.24` and Python `3.1.0` are unchanged.
+
 `node docs/scripts/check-docs-release.mjs` fails `legacy-stale-name-inventory-frozen` on this branch and on starting commit `89f95099d0dce463307eb75d78e7fcf2ef99feb2`. The only named file is `tests/shared-health-vocabulary/collision.test.cjs`, which this force does not edit. The other release checks passed. This branch adds no stale-name file.
 
 ## Hard-stop attestations

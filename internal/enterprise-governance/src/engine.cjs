@@ -1,7 +1,7 @@
 "use strict";
 
 const boundary = require("./boundary.cjs");
-const { envelopesEqual, normalizeEnvelope, removed, subsetViolations, tightenTo } = require("./envelope.cjs");
+const { composeWiden, envelopesEqual, normalizeEnvelope, removed, subsetViolations, tightenTo } = require("./envelope.cjs");
 const {
   distinct,
   hasConsensusSignal,
@@ -579,19 +579,9 @@ function recordPolicyDecision(store, input) {
       return base(store, "REFUSED", "ROLLBACK_WIDER_THAN_CURRENT");
     }
     parties = distinct(input.parties);
-    const deferred = notBefore != null && notBefore > Date.now();
-    if (!deferred) {
-      store.root.policy = next.envelope;
-      store.root.policy_version += 1;
-    }
-    store.root.open_widens.push({
-      version: store.root.policy_version,
-      not_before_ms: notBefore,
-      not_after_ms: notAfter,
-      next_policy: next.envelope,
-      rollback_target: rollback.envelope,
-      applied: !deferred,
-    });
+    const nowMs = Date.now();
+    const windowEnded = notAfter <= nowMs;
+    const deferred = !windowEnded && notBefore != null && notBefore > nowMs;
     const approval = pushApproval(store, {
       className: "WIDEN",
       subject: "policy",
@@ -600,6 +590,28 @@ function recordPolicyDecision(store, input) {
       scope: next.envelope,
       rollback: rollback.envelope,
       notAfter: input.not_after,
+    });
+    if (windowEnded) {
+      return base(store, "APPROVED", "POLICY_WIDEN_ENDED", {
+        policy_version: store.root.policy_version,
+        enterprise_state: "APPROVED",
+        host_state: null,
+        approval_id: approval.approval_id,
+        policy_applied: false,
+      });
+    }
+    if (!deferred) {
+      store.root.policy = next.envelope;
+      store.root.policy_version += 1;
+    }
+    store.root.open_widens.push({
+      version: store.root.policy_version,
+      not_before_ms: notBefore,
+      not_after_ms: notAfter,
+      baseline: current,
+      next_policy: next.envelope,
+      rollback_target: rollback.envelope,
+      applied: !deferred,
     });
     return base(store, "APPROVED", deferred ? "POLICY_WIDEN_DEFERRED" : "POLICY_WIDENED", {
       policy_version: store.root.policy_version,
@@ -921,37 +933,45 @@ function noteClock(store, input) {
   let policyReverted = false;
   let policy = store.root.policy;
   const remaining = [];
-  for (const open of store.root.open_widens) {
-    if (nowMs >= open.not_after_ms) {
-      if (open.applied) {
-        const tightened = tightenTo(policy, open.rollback_target);
-        if (!envelopesEqual(policy, tightened)) policyReverted = true;
-        policy = tightened;
+  if (store.available !== false) {
+    for (const open of store.root.open_widens) {
+      if (nowMs >= open.not_after_ms) {
+        if (open.applied) {
+          const tightened = tightenTo(policy, open.rollback_target);
+          if (!envelopesEqual(policy, tightened)) policyReverted = true;
+          policy = tightened;
+        }
+        continue;
       }
-      continue;
-    }
-    if (open.not_before_ms != null && nowMs < open.not_before_ms) {
-      if (open.applied) {
-        const tightened = tightenTo(policy, open.rollback_target);
-        if (!envelopesEqual(policy, tightened)) policyReverted = true;
-        policy = tightened;
-        open.applied = false;
+      if (open.not_before_ms != null && nowMs < open.not_before_ms) {
+        if (open.applied) {
+          const tightened = tightenTo(policy, open.rollback_target);
+          if (!envelopesEqual(policy, tightened)) policyReverted = true;
+          policy = tightened;
+          open.applied = false;
+        }
+        remaining.push(open);
+        continue;
+      }
+      if (!open.applied) {
+        if (store.freeze) {
+          remaining.push(open);
+          continue;
+        }
+        const baseline = open.baseline || open.rollback_target;
+        const composed = composeWiden(policy, baseline, open.next_policy);
+        if (!envelopesEqual(policy, composed)) {
+          policy = composed;
+          store.root.policy_version += 1;
+          open.version = store.root.policy_version;
+        }
+        open.applied = true;
       }
       remaining.push(open);
-      continue;
     }
-    if (!open.applied) {
-      if (!envelopesEqual(policy, open.next_policy)) {
-        policy = open.next_policy;
-        store.root.policy_version += 1;
-        open.version = store.root.policy_version;
-      }
-      open.applied = true;
-    }
-    remaining.push(open);
+    store.root.policy = policy;
+    store.root.open_widens = remaining;
   }
-  store.root.policy = policy;
-  store.root.open_widens = remaining;
   if (policyReverted) store.root.policy_host_check = "UNSATISFIED";
   return base(store, "RECORDED", "CLOCK_NOTED", {
     ended_grant_ids: ended,

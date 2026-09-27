@@ -50,7 +50,11 @@ Approval compares `not_before` and `not_after` to the process clock. Before `not
 
 `ENDED` stays ended. A later `noteClock` before `not_before` does not write `NOT_YET`, and a later `noteClock` inside the old window does not write `OPEN` or set `can_exercise` true. The grant state is not set to `EXPIRED`, and `host_expanded_authority_cleared` stays `UNSATISFIED`. That is the record half of EG-E2-8. The host half stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED` because host maps are not read.
 
-A policy `WIDEN` whose `not_before` is still in the future is stored on `open_widens` with that start time and is not written onto `root.policy` until a clock reaches the window. A clock that moves back before the start tightens policy to the rollback and leaves the entry deferred. After `not_after`, an applied widen is tightened back toward its rollback by intersection of authority and the entry is dropped, so a later clock does not restore it. The tighten step does not add a destination, host, action, or domain, does not drop a path constraint, and does not raise a cap. Host clearance stays `UNSATISFIED`.
+A policy `WIDEN` whose `not_before` is still in the future is stored on `open_widens` with that start time, the policy at approval (`baseline`), and the approved envelope. It stays off `root.policy` until a clock reaches the window. At that clock the evaluator composes the authority the approval added, measured against `baseline`, onto the policy then in force. A later narrow that cut an action, lowered a cap, or added a path constraint stays in force. A destination, host, action, or domain the approval added, and that the narrow left in place, is applied. Two deferred widens approved from the same baseline both contribute when the window opens, so a spend approval and a destination approval survive together.
+
+A recorded freeze leaves that entry unapplied. `noteClock` while `available` is false leaves policy version, spend, and destinations where they are. A widen whose `not_after` is already past at approval is `POLICY_WIDEN_ENDED` with `policy_applied: false`. It is omitted from `open_widens`, so a later clock inside that past window does not expand policy.
+
+A clock that moves back before the start tightens policy to the rollback and leaves the entry deferred. After `not_after`, an applied widen is tightened back toward its rollback by intersection of authority and the entry is dropped, so a later clock does not restore it. The tighten step does not add a destination, host, action, or domain, does not drop a path constraint, and does not raise a cap. Host clearance stays `UNSATISFIED`.
 
 ## 6. Approval classes
 
@@ -64,7 +68,7 @@ A policy `WIDEN` whose `not_before` is still in the future is stored on `open_wi
 | Missing class | None | `REFUSED` / `MISSING_CLASS` |
 | Rejected acts | None | `REJECTED`. No approval record is stored |
 
-A recorded freeze uses `RECOVERY` and then blocks later grants and policy widens in this store. Narrowing still works. `host_freeze_performed` stays false. EG-E3-8 stays `HOST_UNSATISFIED`.
+A recorded freeze uses `RECOVERY` and then blocks later grants and policy widens in this store, including apply of a deferred widen whose window a later clock enters. Narrowing still works. `host_freeze_performed` stays false. EG-E3-8 stays `HOST_UNSATISFIED`.
 
 `stay-quarantined` does not thaw. A proposed envelope outside the pre-containment snapshot is `WIDER_THAN_CEILING`. A fourth mode is rejected. That comparison is the record rule for EG-E3-7. It does not clear the Phantom Engine residual, so the requirement stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED`.
 
@@ -76,7 +80,7 @@ This is a caller-supplied quote inside a unit test or a later adapter. It is not
 
 ## 8. Store outage
 
-`setRecordStoreAvailable(false)` blocks widening writes, including new grants and new `ACTIVE` quotes. A customer root can still record a freeze on the customer-held object; after the flag is turned back on, the freeze still blocks widening. `recover` and `leaveFromCustomerHeldMaterial` read the material argument and do not require the hosted flag. A `vantio_only` holder is rejected. No bytes of prompts, completions, or credentials are stored. Those keys are refused.
+`setRecordStoreAvailable(false)` blocks widening writes, including new grants and new `ACTIVE` quotes. A clock into an already approved deferred-widen window does not change policy version, spend, or destinations while the flag is false. A customer root can still record a freeze on the customer-held object; after the flag is turned back on, the freeze still blocks widening. `recover` and `leaveFromCustomerHeldMaterial` read the material argument and do not require the hosted flag. A `vantio_only` holder is rejected. No bytes of prompts, completions, or credentials are stored. Those keys are refused.
 
 ## 9. What a passing test does not prove
 
