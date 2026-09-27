@@ -1,0 +1,10 @@
+{
+  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
+  "customer_confidential": false,
+  "detail": "CONTROL_DETAIL_WITHHELD",
+  "distribution": "PUBLIC",
+  "document": "GOVERNANCE_PUBLIC_DISCLOSURE",
+  "procurement_submitted": false,
+  "proof_class_elevated": false,
+  "role_statement": "Vantio is the runtime authority, enforcement, revocation, recovery, and independently verifiable evidence layer for AI governance on customer-controlled Linux infrastructure. Vantio supports governance programs; Vantio does not independently make an AI system lawful, compliant, certified, regulator-approved, unbiased, appropriate for a regulated use, safe for every environment, or conformant with every framework."
+}

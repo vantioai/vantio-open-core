@@ -1,0 +1,90 @@
+{
+  "artifacts": [
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "GOVERNANCE_POSTURE.json",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "GOVERNANCE_POSTURE.md",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "CUSTOMER_RESPONSIBILITY_MATRIX.json",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "CONTROL_EVIDENCE_INDEX.json",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "FRAMEWORK_VERSION_REGISTER.json",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "UNSUPPORTED_AND_EXTERNAL_CONTROLS.json",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "PROCUREMENT_EVIDENCE_INDEX.json",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    },
+    {
+      "distribution": "INTERNAL_RESTRICTED",
+      "name": "VERIFICATION_INSTRUCTIONS.md",
+      "proof_class": "PRODUCER_TEST",
+      "proof_class_elevated": false
+    }
+  ],
+  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
+  "customer_confidential_on_public": false,
+  "distribution": "INTERNAL_RESTRICTED",
+  "distribution_classes": [
+    "PUBLIC",
+    "INVESTOR_UNDER_NDA",
+    "CUSTOMER_CONFIDENTIAL",
+    "INTERNAL_RESTRICTED",
+    "ASSESSOR_CONFIDENTIAL"
+  ],
+  "document": "PROCUREMENT_EVIDENCE_INDEX",
+  "proof_class_elevated": false,
+  "provenance": {
+    "audience": "INTERNAL_RESTRICTED",
+    "catalog_version": "0.1.0-internal",
+    "council_status": "PENDING_INDEPENDENT_COUNCIL",
+    "distribution": "INTERNAL_RESTRICTED",
+    "generated_at": "2026-09-27T12:46:00Z",
+    "generator": "@vantio/governance-assurance",
+    "mapping_commit": "NOT_SELF_HASHED",
+    "mapping_version": "0.1.0-internal",
+    "package_name": "@vantio/governance-assurance",
+    "package_version": "0.1.0-internal",
+    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_READY_FOR_COUNCIL",
+    "retrieved_at": "2026-09-27T12:46:00Z",
+    "reviewer": "PENDING_INDEPENDENT_COUNCIL",
+    "self_certified_council_pass": false,
+    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+    "source_repository": "vantioai/vantio-open-core"
+  },
+  "refuses": [
+    "ATO",
+    "FedRAMP authorization",
+    "agency acceptance",
+    "procurement approval"
+  ],
+  "schema": "vantio.governance-assurance.procurement/v1",
+  "submission_status": "NOT_SUBMITTED"
+}
