@@ -1,0 +1,98 @@
+{
+  "schema": "vantio.investor-demo.limitation-ledger/v0",
+  "audience": "INTERNAL_RESTRICTED",
+  "base_commit": "1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
+  "note": "Limitations the room must say. Closing one of them is Wave 2 or a different force, and Wave 2 is not authorized by this directory.",
+  "limitations": [
+    {
+      "id": "L-FOUNDER-BEATS-ABSENT",
+      "statement": "Numbered founder story-beat text is not in this repository. Beats B01–B18 are a design sequence with founder_text ABSENT.",
+      "beat": "B18",
+      "source": "00-BOUNDARY.md"
+    },
+    {
+      "id": "L-DEMO-FILE-UNLABELED",
+      "statement": "CLI 0.3.24 demo writes a run file with action OBSERVED and hostname optics-demo.invalid and writes no evidence_origin and no producer. The public manual records that evidence origin is absent and that demo files look like other runs.",
+      "beat": "B08",
+      "source": "packages/vantio-cli/bin/vantio.js demoCommand; docs/products/optics/KNOWN-LIMITATIONS.md"
+    },
+    {
+      "id": "L-PROVE-OMITS-LABEL",
+      "statement": "prove Markdown and prove JSON for the demo file omit any simulation label. Process id renders as an em dash because pid is absent. The operator banner is the label.",
+      "beat": "B09",
+      "source": "06-EXPECTED-OUTPUTS.md"
+    },
+    {
+      "id": "L-DISCOVER-COUNTS-DEMO",
+      "statement": "discover includes optics-demo.invalid in the observed-locally count. CLI 0.3.24 does not exclude demo files. The manual says automatic exclusion of demo files is not a product guarantee.",
+      "beat": "B15",
+      "source": "06-EXPECTED-OUTPUTS.md; docs/products/optics/KNOWN-LIMITATIONS.md"
+    },
+    {
+      "id": "L-NOT-DETERMINISTIC-IDS",
+      "statement": "trace_id and timestamps come from a random UUID slice and the wall clock. Two demo runs do not match byte for byte. Expected outputs are invariants.",
+      "beat": "B07",
+      "source": "packages/vantio-cli/bin/vantio.js demoCommand"
+    },
+    {
+      "id": "L-ZERO-BYTE-STUB",
+      "statement": "The stub records 0 bytes and duration_ms 0. It is not a provider round trip.",
+      "beat": "B07",
+      "source": "06-EXPECTED-OUTPUTS.md"
+    },
+    {
+      "id": "L-NO-LIVE-OBSERVE",
+      "statement": "The script does not run vantio run against an agent. The require-injection mechanism is spoken from the product-boundary doc and is not exercised in the room.",
+      "beat": "B05",
+      "source": "02-STORY-BEATS.md"
+    },
+    {
+      "id": "L-PYPI-NOT-RECHECKED",
+      "statement": "This force did not query PyPI or npm. The public manual records PyPI vantio-agent-sdk 3.0.14 and source 3.1.0 as unpublished at its 2026-09-27 check. The script does not install Python.",
+      "beat": "B06",
+      "source": "docs/products/optics/VERSION-METADATA.json"
+    },
+    {
+      "id": "L-PE-NOT-RUN",
+      "statement": "Phantom Engine is not in this repository and is not executed. Host enforcement, kernel programs, and cluster behavior are outside the room.",
+      "beat": "B13",
+      "source": "docs/PRODUCT_LINEUP.md"
+    },
+    {
+      "id": "L-NO-ENFORCE-EVENTS",
+      "statement": "The script creates no block, redact, allow, or dry-run event. SDK action tokens for those outcomes exist in the type list and are not the Observe outcome of this demo.",
+      "beat": "B16",
+      "source": "docs/governance/STATUS-TOKENS.json"
+    },
+    {
+      "id": "L-SCHEMA-UNSTABLE",
+      "statement": "Command JSON is schema_status unstable-pre-1.0 and may change without notice.",
+      "beat": "B12",
+      "source": "docs/governance/canonical/status-tokens.md"
+    },
+    {
+      "id": "L-PROVE-FROM-ANY-JSON",
+      "statement": "prove --from can render JSON that Optics did not write. The script forbids that flag.",
+      "beat": "B15",
+      "source": "docs/products/optics/KNOWN-LIMITATIONS.md"
+    },
+    {
+      "id": "L-VANTIO-HOME-READERS",
+      "statement": "The public manual records that CLI readers ignore VANTIO_HOME while writers and the MCP reader honor it. This script isolates with HOME, not with VANTIO_HOME.",
+      "beat": "B17",
+      "source": "docs/products/optics/KNOWN-LIMITATIONS.md"
+    },
+    {
+      "id": "L-DESIGN-NOT-IMPLEMENTATION",
+      "statement": "This directory does not change the CLI. Wave 2 scaffolding is not authorization to implement a labeled writer, a deterministic id, or an executable reset.",
+      "beat": "B18",
+      "source": "10-WAVE2-SCAFFOLD.md"
+    },
+    {
+      "id": "L-COUNCIL-OPEN",
+      "statement": "Revision classification INVESTOR_DEMO_DESIGN_REVISION_READY_FOR_COUNCIL is not a council verdict. The prior tip received INVESTOR_DEMO_DESIGN_NEEDS_REVISION.",
+      "beat": "B18",
+      "source": "11-COUNCIL-SLOT.md"
+    }
+  ]
+}
