@@ -28,7 +28,7 @@
     "frozen_at_et": "2026-09-27T11:30:25-04:00",
     "timezone": "America/New_York",
     "inventory_source_sha": "03995835c88a4ebcca2ee3b8c1ae7fa490d21653",
-    "content_commit_sha": null,
+    "content_commit_sha": "affcc1012c3b68be89dcd8e107dec31cc3389d83",
     "tip_sha_note": "A commit cannot store its own SHA. content_commit_sha is null until the seal commit records the commit that introduced these claim rows. The seal commit does not change claim rows or authorization flags. FROZEN_INVENTORY is not the tip SHA of a publish.",
     "authorizes_public_rewrite": false,
     "authorizes_publish": false,
