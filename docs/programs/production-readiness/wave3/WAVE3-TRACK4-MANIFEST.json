@@ -1,0 +1,52 @@
+{
+  "document": "W3_TRACK4_ELIGIBLE_PLANE_MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "W3_ELIGIBLE_PLANE_NONE_BLOCKED_INFRA_PACKET_READY",
+  "success_token": "W3_ELIGIBLE_PLANE_NONE_BLOCKED_INFRA_PACKET_READY",
+  "plane_id": "NONE",
+  "lifecycle": "BLOCKED_INFRA",
+  "evidence_tier": "UNSET",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "self_certified_council_pass": false,
+  "source_commit": "0620f10ee52d3abcea18c1c988df02f687f51b36",
+  "origin_main": "0620f10ee52d3abcea18c1c988df02f687f51b36",
+  "branch": "cursor/wave3-eligible-plane-inventory",
+  "requirement_id": "W3-INFRA-REQ-1",
+  "producer": {
+    "agent": "bc-dabadb29-fac1-59b2-a2d5-2baee8da6403",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-dabadb29-fac1-59b2-a2d5-2baee8da6403"
+  },
+  "brief_sha256": "465814bcb72d78bb9f119b065eb4f63f975a127b0d7111987ddb391ab99d2381",
+  "files_sha256": [
+    {
+      "path": "docs/programs/production-readiness/wave3/00-BOUNDARY.md",
+      "sha256": "d048ca7d49c40b13255ce2cff1b58bfe75343788d80627066fc283645abf5efc"
+    },
+    {
+      "path": "docs/programs/production-readiness/wave3/CLEAN-HOST-REGISTER.md",
+      "sha256": "6ec17c5dda0aaa3320abe61ffeeb2b7baecc97dc3c22e046faf46e09837fff6a"
+    },
+    {
+      "path": "docs/programs/production-readiness/wave3/ELIGIBILITY-PACKET.md",
+      "sha256": "64f123f5b94ce06f9a107f0f5ad7cc2070affa74de46a755c78279b8346bf8d1"
+    },
+    {
+      "path": "docs/programs/production-readiness/wave3/BLOCKED-INFRA.json",
+      "sha256": "f53be3b5b78212b57fcc227dec69feca5e20529a4ed6ad8259d6a60e276316b6"
+    },
+    {
+      "path": "docs/programs/production-readiness/wave3/02-INDEPENDENT-COUNCIL.md",
+      "sha256": "9e7694249b80852688fbcf17d801d0100bf2c26c29cf6bcce7848308155cc7fb"
+    },
+    {
+      "path": "docs/internal/wave3/clean-host/00-POD-PROBE.md",
+      "sha256": "6493df16faf5ea063aef624159889c04036ec2adec6314e4865873ee863e79e6"
+    },
+    {
+      "path": "docs/internal/wave3/clean-host/01-CANDIDATE-PLANES.md",
+      "sha256": "7302ab0b1fc68d9a79676cf6ba115c36b63f200ea8122264d5e21aa5cb78c937"
+    }
+  ]
+}
