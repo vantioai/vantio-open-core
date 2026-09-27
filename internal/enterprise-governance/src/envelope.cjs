@@ -148,7 +148,7 @@ function widerCap(current, widened) {
 }
 
 function composeCap(current, baseline, widened, ceiling) {
-  if (ceiling != null && capRaised(current, ceiling)) return widerCap(current, widened);
+  if (ceiling != null && capRaised(current, ceiling)) return current;
   const target = ceiling == null ? widened : tighterCap(widened, ceiling);
   if (capIsNarrower(current, baseline)) return current;
   if (ceiling != null && current !== baseline && capIsNarrower(current, widened)) return current;

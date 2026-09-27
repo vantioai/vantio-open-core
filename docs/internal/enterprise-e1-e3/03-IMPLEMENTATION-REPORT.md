@@ -65,6 +65,18 @@ Holds C–E stay closed. A freeze still leaves pending widens unapplied after a 
 
 The sibling run of `node --test tests/enterprise-e1-e3/*.test.cjs` reported 48 tests and 0 failures. EG-D1 through EG-D10 stay unresolved. EG-E2-8 stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED`. `verified_on_host` stays false. No live customer authority was created. CLI `0.3.24` and Python `3.1.0` are unchanged.
 
+## Ceiling revision
+
+Council `bc-3cc20d59-8923-5424-b1ba-ac17db02854a` returned `ENTERPRISE_E1_E3_INTERNAL_NEEDS_REVISION` on tip `34a1d2ad1007e573cc1fac137f334b2acb5c3a33`. Revision producer: `bc-d63660c7-e8e6-55e6-96dd-3d7f69c3241b` at https://cursor.com/agents/bc-d63660c7-e8e6-55e6-96dd-3d7f69c3241b. This revision stays on draft pull request #100. Handoff token: `ENTERPRISE_E1_E3_INTERNAL_REVISION_READY_FOR_COUNCIL`. That token is not a council verdict and not host proof.
+
+Record-layer change:
+
+- `composeCap` keeps a live cap that is already above the ceiling recorded on an older open widen. It does not restore that widen's stored target. An immediate widen to spend 90, a root narrow to 70, and a later immediate widen to 85 stay at 85 on `noteClock`. The same shape for size stays at 75. With a deferred spend-80 window still open, a later approval of 75 survives the January clock. A March clock that drops an expired `d2` leaves spend at 75. The recorded ceiling on the older widen stays 70.
+
+Holds A–E stay closed. The isolated `not_before`, sticky `ENDED`, and later-`NARROW` holds stay closed. A cap equal to the recorded ceiling still stays there, including the scripted narrow to spend 70 and the sibling expiry that keeps spend 80 after `d2` drops.
+
+The ceiling run of `node --test tests/enterprise-e1-e3/*.test.cjs` reported 52 tests and 0 failures. EG-D1 through EG-D10 stay unresolved. EG-E2-8 stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED`. `verified_on_host` stays false. No live customer authority was created. CLI `0.3.24` and Python `3.1.0` are unchanged.
+
 `node docs/scripts/check-docs-release.mjs` fails `legacy-stale-name-inventory-frozen` on this branch and on starting commit `89f95099d0dce463307eb75d78e7fcf2ef99feb2`. The only named file is `tests/shared-health-vocabulary/collision.test.cjs`, which this force does not edit. The other release checks passed. This branch adds no stale-name file.
 
 ## Hard-stop attestations

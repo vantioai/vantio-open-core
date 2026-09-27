@@ -1131,6 +1131,135 @@ test("freeze and store outage still do not apply or roll back widens", () => {
   assert.equal(outage.store.root.open_widens[0].applied, true);
 });
 
+test("an open widen ceiling does not climb spend from 85 to the stored 90", () => {
+  const { eg, store } = world();
+  const widened = eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ spend_cap: 90 }),
+  }));
+  assert.equal(widened.reason, "POLICY_WIDENED");
+  assert.equal(eg.snapshot(store).policy.spend_cap, 90);
+  const narrowed = rootNarrow(eg, store, envelope({ spend_cap: 70 }));
+  assert.equal(narrowed.reason, "POLICY_NARROWED");
+  assert.equal(eg.snapshot(store).policy.spend_cap, 70);
+  const open = store.root.open_widens.find((item) => item.next_policy.spend_cap === 90);
+  assert.equal(open.spend_ceiling, 70);
+  const later = eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ spend_cap: 85 }),
+  }));
+  assert.equal(later.reason, "POLICY_WIDENED");
+  assert.equal(later.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 85);
+  const clock = eg.noteClock(store, { now: "2046-02-01T00:00:00.000Z" });
+  assert.equal(clock.verified_on_host, false);
+  assert.equal(clock.live_customer_authority, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 85);
+  assert.notEqual(eg.snapshot(store).policy.spend_cap, 90);
+  assert.equal(open.spend_ceiling, 70);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  eg.noteClock(store, { now: "2046-02-15T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 85);
+});
+
+test("an open widen ceiling does not climb size from 75 to the stored 90", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2053-01-01T00:00:00.000Z",
+    not_after: "2053-06-01T00:00:00.000Z",
+    next_policy: envelope({ size_cap: 80 }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ size_cap: 90 }),
+  }));
+  assert.equal(eg.snapshot(store).policy.size_cap, 90);
+  rootNarrow(eg, store, envelope({ size_cap: 70 }));
+  assert.equal(eg.snapshot(store).policy.size_cap, 70);
+  const capped = store.root.open_widens.find((item) => item.next_policy.size_cap === 90);
+  assert.equal(capped.size_ceiling, 70);
+  const later = eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ size_cap: 75 }),
+  }));
+  assert.equal(later.reason, "POLICY_WIDENED");
+  assert.equal(eg.snapshot(store).policy.size_cap, 75);
+  const clock = eg.noteClock(store, { now: "2053-02-01T00:00:00.000Z" });
+  assert.equal(clock.verified_on_host, false);
+  assert.equal(clock.live_customer_authority, false);
+  assert.equal(eg.snapshot(store).policy.size_cap, 75);
+  assert.notEqual(eg.snapshot(store).policy.size_cap, 90);
+  assert.notEqual(eg.snapshot(store).policy.size_cap, 80);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.equal(capped.size_ceiling, 70);
+});
+
+test("a live cap above the ceiling survives the deferred window and a later sibling expiry", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2046-01-01T00:00:00.000Z",
+    not_after: "2046-06-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ spend_cap: 90 }),
+  }));
+  rootNarrow(eg, store, envelope({ spend_cap: 70 }));
+  assert.equal(eg.snapshot(store).policy.spend_cap, 70);
+  const later = eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ spend_cap: 75 }),
+  }));
+  assert.equal(later.reason, "POLICY_WIDENED");
+  assert.equal(eg.snapshot(store).policy.spend_cap, 75);
+  const during = eg.noteClock(store, { now: "2046-02-01T00:00:00.000Z" });
+  assert.equal(during.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 75);
+  assert.notEqual(eg.snapshot(store).policy.spend_cap, 90);
+  eg.noteClock(store, { now: "2046-02-15T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 75);
+  const capped = store.root.open_widens.find((item) => item.next_policy.spend_cap === 90);
+  assert.equal(capped.spend_ceiling, 70);
+});
+
+test("a March clock that drops expired d2 does not climb spend from 75 to 90", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-02-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-06-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ spend_cap: 90 }),
+  }));
+  rootNarrow(eg, store, envelope({ spend_cap: 70 }));
+  assert.equal(eg.snapshot(store).policy.spend_cap, 70);
+  const later = eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-06-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 75 }),
+  }));
+  assert.equal(later.reason, "POLICY_WIDEN_DEFERRED");
+  assert.equal(later.policy_applied, false);
+  const january = eg.noteClock(store, { now: "2045-01-15T00:00:00.000Z" });
+  assert.equal(january.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 75);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  const march = eg.noteClock(store, { now: "2045-03-01T00:00:00.000Z" });
+  assert.equal(march.verified_on_host, false);
+  assert.equal(march.live_customer_authority, false);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.destinations.includes("d2"), false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 75);
+  assert.notEqual(eg.snapshot(store).policy.spend_cap, 90);
+  assert.notEqual(eg.snapshot(store).policy.spend_cap, 80);
+  const capped = store.root.open_widens.find((item) => item.next_policy.spend_cap === 90);
+  assert.equal(capped.spend_ceiling, 70);
+  eg.noteClock(store, { now: "2045-03-20T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 75);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+});
+
 test("a policy exception reverts inside the record layer and does not claim host clearance", () => {
   const { eg, store } = world();
   eg.recordPolicyDecision(store, {
