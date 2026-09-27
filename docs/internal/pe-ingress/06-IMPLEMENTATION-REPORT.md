@@ -20,7 +20,7 @@ From the repository root:
 node --test tests/pe-ingress/*.test.cjs
 ```
 
-The producer run of that command reported 55 tests and 0 failures. A later revision on the same branch closed six hold-path gaps found by council `bc-b72399a9-4af2-507e-945d-2ee6a0278c12` (`PE_INGRESS_PROGRAM_NEEDS_REVISION`). Revision classification for that pass: `PE_INGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`. That is not a council verdict.
+The producer run of that command reported 59 tests and 0 failures. A later revision on the same branch closed six hold-path gaps found by council `bc-b72399a9-4af2-507e-945d-2ee6a0278c12` (`PE_INGRESS_PROGRAM_NEEDS_REVISION`). A second council, `bc-f1ef6a5f-d98d-5fd5-9549-7bf00dd7eed2`, returned `PE_INGRESS_PROGRAM_NEEDS_REVISION` on `4ef50ae72c6a463bc1c3d8a72fa48d4c6da31df1`. This revision closes those four paths: a missing or empty later-behavior trace does not join the accept; a `cgroup_escape` or an unauthorized behavior is recorded when `post_accept` is an array or `behaviors` is one object; escape and deny are recorded when `accept` is null; a null `expected_listeners` entry is `stale_policy` and does not throw. An authorized behavior with no `cgroup_id` stays `post_accept_unjoined` in those shapes. The six earlier hold paths stay closed. Revision classification for this pass: `PE_INGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`. That is not a council verdict.
 
 ## Hard-stop attestations
 

@@ -3,7 +3,7 @@
 const { createHash } = require("node:crypto");
 
 const { PRECEDENCE, PROTECTION_STATE_SET } = require("./constants.cjs");
-const { classifyListeners } = require("./classify.cjs");
+const { classifyListeners, usableListenerRow } = require("./classify.cjs");
 const { containmentFor, finishResult } = require("./result.cjs");
 
 const UNSUPPORTED_PROTO = new Set(["unix", "vsock", "unix-domain"]);
@@ -114,6 +114,7 @@ function declaredMissing(workload, envelope) {
   const expected = envelope && Array.isArray(envelope.expected_listeners) ? envelope.expected_listeners : [];
   const name = workload && workload.workload_name ? String(workload.workload_name) : "";
   return expected
+    .filter((row) => usableListenerRow(row))
     .filter((row) => {
       const expectedWorkload = String(row.workload || row.container_name || "");
       return !expectedWorkload || expectedWorkload === name;
@@ -200,6 +201,13 @@ function policyFindings(envelope, session) {
     findings.push("stale_policy");
   }
   if (envelope && envelope.expected_listeners != null && !Array.isArray(envelope.expected_listeners)) {
+    findings.push("stale_policy");
+  }
+  if (
+    envelope &&
+    Array.isArray(envelope.expected_listeners) &&
+    envelope.expected_listeners.some((row) => !usableListenerRow(row))
+  ) {
     findings.push("stale_policy");
   }
   if (session && session.epoch > 0) {
@@ -317,15 +325,33 @@ function credentialFindings(credential, enrollId, integrityResult, authorityClai
   return { findings, credentialResult: authorityClaim === "credential" ? "not_integrity" : "valid_bound" };
 }
 
+function plainRecord(value) {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function behaviorList(postAccept) {
+  if (Array.isArray(postAccept)) return postAccept;
+  if (!plainRecord(postAccept)) return [];
+  const behaviors = postAccept.behaviors;
+  if (Array.isArray(behaviors)) return behaviors;
+  if (plainRecord(behaviors)) return [behaviors];
+  return [];
+}
+
+function sharesAcceptTrace(behavior, identity, accept) {
+  const behaviorTrace = typeof behavior.trace_id === "string" ? behavior.trace_id : "";
+  const identityTrace = identity && typeof identity.trace_id === "string" ? identity.trace_id : "";
+  const acceptTrace = accept && typeof accept.accepting_trace_id === "string" ? accept.accepting_trace_id : "";
+  return behaviorTrace.length > 0 && behaviorTrace === identityTrace && behaviorTrace === acceptTrace;
+}
+
 function postFindings(input, identity, workload) {
-  const behaviors = input.post_accept && Array.isArray(input.post_accept.behaviors) ? input.post_accept.behaviors : [];
-  if (!input.accept) {
-    return { findings: [], postAccept: behaviors.length > 0 ? "unjoined" : "not_applicable" };
-  }
+  const behaviors = behaviorList(input.post_accept);
+  const accept = input.accept;
   const findings = [];
   for (const behavior of behaviors) {
-    if (!behavior || typeof behavior !== "object") {
-      findings.push("post_accept_unjoined");
+    if (!plainRecord(behavior)) {
+      if (accept) findings.push("post_accept_unjoined");
       continue;
     }
     const escaped =
@@ -335,20 +361,23 @@ function postFindings(input, identity, workload) {
       findings.push("child_process_escape");
       continue;
     }
-    if (behavior.trace_id && identity && identity.trace_id && behavior.trace_id !== identity.trace_id) {
-      findings.push("post_accept_unjoined");
-      continue;
-    }
-    if (behavior.cgroup_id == null || !workload || behavior.cgroup_id !== workload.cgroup_id) {
-      findings.push("post_accept_unjoined");
-      continue;
+    if (accept) {
+      if (!sharesAcceptTrace(behavior, identity, accept)) {
+        findings.push("post_accept_unjoined");
+        continue;
+      }
+      if (behavior.cgroup_id == null || !workload || behavior.cgroup_id !== workload.cgroup_id) {
+        findings.push("post_accept_unjoined");
+        continue;
+      }
     }
     if (behavior.authorized !== true) findings.push("post_accept_denied");
   }
   let postAccept = "permitted";
   if (findings.includes("child_process_escape")) postAccept = "child_escape";
   else if (findings.includes("post_accept_denied")) postAccept = "denied";
-  else if (findings.includes("post_accept_unjoined")) postAccept = "unjoined";
+  else if (findings.includes("post_accept_unjoined") || (!accept && behaviors.length > 0)) postAccept = "unjoined";
+  else if (!accept) postAccept = "not_applicable";
   return { findings, postAccept };
 }
 
@@ -447,7 +476,7 @@ function evaluateIngress(input, session) {
   }
 
   const postView = postFindings(
-    { accept, post_accept: asPlainObject(input.post_accept) },
+    { accept, post_accept: input.post_accept },
     identity,
     workload,
   );

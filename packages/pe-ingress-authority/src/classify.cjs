@@ -4,7 +4,12 @@ function bindWild(bind) {
   return bind == null || bind === "*" || bind === "0.0.0.0" || bind === "::" || bind === "";
 }
 
+function usableListenerRow(row) {
+  return row != null && typeof row === "object" && !Array.isArray(row);
+}
+
 function listenerMatches(observed, expected) {
+  if (!usableListenerRow(expected) || !observed || typeof observed !== "object") return false;
   const observedPort = Number(observed.local_port);
   const expectedPort = Number(expected.port);
   if (!Number.isInteger(observedPort) || observedPort !== expectedPort) return false;
@@ -20,7 +25,8 @@ function listenerMatches(observed, expected) {
 }
 
 function classifyListeners(observed, envelope) {
-  const expected = envelope && Array.isArray(envelope.expected_listeners) ? envelope.expected_listeners : [];
+  const raw = envelope && Array.isArray(envelope.expected_listeners) ? envelope.expected_listeners : [];
+  const expected = raw.filter(usableListenerRow);
   const used = new Set();
   const listeners = [];
 
@@ -74,4 +80,5 @@ function classifyListeners(observed, envelope) {
 module.exports = {
   classifyListeners,
   listenerMatches,
+  usableListenerRow,
 };

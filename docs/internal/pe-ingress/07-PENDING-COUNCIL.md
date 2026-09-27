@@ -6,7 +6,7 @@ Status: `PENDING_INDEPENDENT_COUNCIL`
 
 Producer classification under review: `PE_INGRESS_PROGRAM_READY_FOR_COUNCIL`
 
-Prior council `bc-b72399a9-4af2-507e-945d-2ee6a0278c12` returned `PE_INGRESS_PROGRAM_NEEDS_REVISION` on tip `bd9706a085e4b9d87ead9a472ba0406588dc4181`. This revision answers those six hold paths and is classified `PE_INGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL` by the producer. The seats below stay `UNSAT` until a separate council replaces this file.
+Prior council `bc-b72399a9-4af2-507e-945d-2ee6a0278c12` returned `PE_INGRESS_PROGRAM_NEEDS_REVISION` on tip `bd9706a085e4b9d87ead9a472ba0406588dc4181`. Those six hold paths stay closed. Council `bc-f1ef6a5f-d98d-5fd5-9549-7bf00dd7eed2` returned `PE_INGRESS_PROGRAM_NEEDS_REVISION` on tip `4ef50ae72c6a463bc1c3d8a72fa48d4c6da31df1`. This revision answers those four hold paths and is classified `PE_INGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL` by the producer. The seats below stay `UNSAT` until a separate council replaces this file.
 
 This file is the producer stub. The producer does not sit the council and does not write a verdict.
 

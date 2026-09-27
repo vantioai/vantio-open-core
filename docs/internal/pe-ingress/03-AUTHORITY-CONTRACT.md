@@ -21,7 +21,7 @@ Producer classification: `PE_INGRESS_PROGRAM_READY_FOR_COUNCIL`
 - Policy present, version not `missing` / `unversioned` / `unknown` / `none`, and `policy_sha`, `applied_sha`, and `candidate_sha` equal
 - Health loader, evidence, enroll, netns, and trace map all true, coverage exactly `seeing`, protection echo not a withholding state. `coverage_unknown` is a withholding echo
 - Accept mechanism is not `io_uring`, protocol is not UDP, and the accepting pid and start time match the identity
-- Later behaviors, if any, share the trace and the enrolled `cgroup_id` and set `authorized` true. A behavior with no `cgroup_id` does not share that cgroup
+- Later behaviors, if any, share a non-empty trace with the accept and the identity, share the enrolled `cgroup_id`, and set `authorized` true. A missing or empty behavior trace does not join that accept. A behavior with no `cgroup_id` does not share that cgroup. The same rules apply when `behaviors` is one object and when `post_accept` itself is an array
 
 Anything short of that list does not hold.
 
@@ -43,7 +43,7 @@ Anything short of that list does not hold.
 | Session key was revoked, including after an escape or a deny | `revoked` |
 | `replay_grant_id` is in the dead set | `grant_not_carried` |
 
-`post_accept_denied` and `child_process_escape` set `containment.required` true and `effect` `DECISION_RECORDED_ONLY` when that finding is present, including when a higher-precedence reason is primary. The executor stays `NOT_WIRED_IN_LIVE_LOADER`. The effect is a recorded decision. It is not a live quarantine, a cgroup freeze, or a connection isolation.
+`post_accept_denied` and `child_process_escape` set `containment.required` true and `effect` `DECISION_RECORDED_ONLY` when that finding is present, including when a higher-precedence reason is primary, when `accept` is null, and when the same record is a single `behaviors` object or an element of `post_accept` itself. The executor stays `NOT_WIRED_IN_LIVE_LOADER`. The effect is a recorded decision. It is not a live quarantine, a cgroup freeze, or a connection isolation. A null `expected_listeners` entry is `stale_policy`. The evaluator returns that decision and does not throw.
 
 ## 3. Withhold
 
@@ -58,13 +58,13 @@ Anything short of that list does not hold.
 | Cgroup id `0` or empty | `unattributable_cgroup` |
 | Protection echo `quarantined` | `already_quarantined` |
 | Restart or rollback with no last-known digest | `recovery_required` |
-| Policy missing, version empty, or sha mismatch, including after rollback until the new version id is supplied | `stale_policy` |
+| Policy missing, version empty, sha mismatch, a non-array `expected_listeners`, or a null entry in that array, including after rollback until the new version id is supplied | `stale_policy` |
 | Accepting pid is a different process | `unattributed_accept` |
 | Attestation outside the caller window, or protection echo `protection_stale` | `stale_identity` |
 | Window absent, or pid, start time, comm, or trace missing, including a missing or empty accept trace | `identity_unknown` |
 | Executable digest absent, or a required image or version digest absent | `integrity_unknown` |
 | Authority claim is `credential`, or a valid credential has no integrity binding | `credential_is_not_integrity` |
-| Later behavior trace differs, or the behavior has no `cgroup_id` to share with the enrolled cgroup | `post_accept_unjoined` |
+| Later behavior trace is missing, empty, or different from the accept trace, or the behavior has no `cgroup_id` to share with the enrolled cgroup | `post_accept_unjoined` |
 | Authority claim is `reachability` | `reachability_is_not_authority` |
 
 ## 4. Observation only

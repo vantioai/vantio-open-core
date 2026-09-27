@@ -434,3 +434,137 @@ test("child_process_escape still records decision-only containment when it is no
   assert.equal(denyShadow.containment.executor, "NOT_WIRED_IN_LIVE_LOADER");
   assert.equal(denyShadow.containment.cgroup_freeze_applied, false);
 });
+
+test("a later behavior with a missing or empty trace does not join the accept", () => {
+  const missing = permitCase();
+  delete missing.post_accept.behaviors[0].trace_id;
+  assert.equal(missing.post_accept.behaviors[0].authorized, true);
+  assert.equal(missing.post_accept.behaviors[0].cgroup_id, "cg-1");
+  const missingResult = expect(missing, "post_accept_unjoined", "WITHHELD");
+  assert.equal(missingResult.post_accept, "unjoined");
+  assert.equal(missingResult.findings.includes("permitted_after_accept"), false);
+  assert.equal(missingResult.grant_id, null);
+
+  const empty = permitCase();
+  empty.post_accept.behaviors[0].trace_id = "";
+  const emptyResult = expect(empty, "post_accept_unjoined", "WITHHELD");
+  assert.equal(emptyResult.post_accept, "unjoined");
+  assert.equal(emptyResult.findings.includes("permitted_after_accept"), false);
+  assert.equal(emptyResult.grant_id, null);
+});
+
+test("escape and unjoined records outside a behaviors array do not hold", () => {
+  const arrayEscape = permitCase();
+  arrayEscape.post_accept = [
+    { kind: "cgroup_escape", authorized: true, cgroup_id: "cg-other", trace_id: "0xtrace" },
+  ];
+  const arrayEscapeResult = expect(arrayEscape, "child_process_escape", "REFUSED");
+  assert.equal(arrayEscapeResult.post_accept, "child_escape");
+  assert.equal(arrayEscapeResult.findings.includes("child_process_escape"), true);
+  assert.equal(arrayEscapeResult.containment.required, true);
+  assert.equal(arrayEscapeResult.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(arrayEscapeResult.containment.executor, "NOT_WIRED_IN_LIVE_LOADER");
+  assert.equal(arrayEscapeResult.containment.cgroup_freeze_applied, false);
+  assert.equal(arrayEscapeResult.grant_id, null);
+
+  const objectEscape = permitCase();
+  objectEscape.post_accept = {
+    behaviors: { kind: "cgroup_escape", authorized: true, cgroup_id: "cg-other", trace_id: "0xtrace" },
+  };
+  const objectEscapeResult = expect(objectEscape, "child_process_escape", "REFUSED");
+  assert.equal(objectEscapeResult.containment.required, true);
+  assert.equal(objectEscapeResult.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(objectEscapeResult.containment.cgroup_freeze_applied, false);
+  assert.equal(objectEscapeResult.grant_id, null);
+
+  const arrayDeny = permitCase();
+  arrayDeny.post_accept = [
+    {
+      kind: "cred_path",
+      authorized: false,
+      trace_id: "0xtrace",
+      cgroup_id: "cg-1",
+    },
+  ];
+  const arrayDenyResult = expect(arrayDeny, "post_accept_denied", "REFUSED");
+  assert.equal(arrayDenyResult.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(arrayDenyResult.grant_id, null);
+
+  const objectDeny = permitCase();
+  objectDeny.post_accept = {
+    behaviors: {
+      kind: "cred_path",
+      authorized: false,
+      trace_id: "0xtrace",
+      cgroup_id: "cg-1",
+    },
+  };
+  const objectDenyResult = expect(objectDeny, "post_accept_denied", "REFUSED");
+  assert.equal(objectDenyResult.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(objectDenyResult.grant_id, null);
+
+  const arrayNoCgroup = permitCase();
+  arrayNoCgroup.post_accept = [{ authorized: true, trace_id: "0xtrace", kind: "exec" }];
+  const arrayNoCgroupResult = expect(arrayNoCgroup, "post_accept_unjoined", "WITHHELD");
+  assert.equal(arrayNoCgroupResult.post_accept, "unjoined");
+  assert.equal(arrayNoCgroupResult.grant_id, null);
+
+  const objectNoCgroup = permitCase();
+  objectNoCgroup.post_accept = {
+    behaviors: { authorized: true, trace_id: "0xtrace", kind: "exec" },
+  };
+  const objectNoCgroupResult = expect(objectNoCgroup, "post_accept_unjoined", "WITHHELD");
+  assert.equal(objectNoCgroupResult.post_accept, "unjoined");
+  assert.equal(objectNoCgroupResult.grant_id, null);
+
+  const staleListeners = permitCase();
+  staleListeners.envelope.expected_listeners = { port: 5000, protocol: "tcp", workload: "agent" };
+  expect(staleListeners, "stale_policy", "WITHHELD");
+});
+
+test("accept null still records escape and deny containment", () => {
+  const escaped = permitCase();
+  escaped.accept = null;
+  escaped.post_accept.behaviors = [
+    { kind: "cgroup_escape", authorized: true, cgroup_id: "cg-other", trace_id: "0xtrace" },
+  ];
+  const escapeResult = expect(escaped, "child_process_escape", "REFUSED");
+  assert.equal(escapeResult.findings.includes("child_process_escape"), true);
+  assert.equal(escapeResult.post_accept, "child_escape");
+  assert.equal(escapeResult.containment.required, true);
+  assert.equal(escapeResult.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(escapeResult.containment.executor, "NOT_WIRED_IN_LIVE_LOADER");
+  assert.equal(escapeResult.containment.cgroup_freeze_applied, false);
+  assert.notEqual(escapeResult.authority, "OBSERVED_ONLY");
+
+  const denied = permitCase();
+  denied.accept = null;
+  denied.post_accept.behaviors[0].authorized = false;
+  const denyResult = expect(denied, "post_accept_denied", "REFUSED");
+  assert.equal(denyResult.findings.includes("post_accept_denied"), true);
+  assert.equal(denyResult.post_accept, "denied");
+  assert.equal(denyResult.containment.required, true);
+  assert.equal(denyResult.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(denyResult.containment.cgroup_freeze_applied, false);
+  assert.notEqual(denyResult.authority, "OBSERVED_ONLY");
+
+  const session = openSession({ boot_id: "boot-0", last_known_sha: "sha-applied", policy_version: "v3" });
+  const held = evaluateIngress(permitCase(), session);
+  assert.equal(held.authority, "HELD");
+  const stopped = evaluateIngress(escaped, session);
+  assertClosed(stopped);
+  assert.equal(stopped.reason, "child_process_escape");
+  assert.equal(stopped.containment.effect, "DECISION_RECORDED_ONLY");
+  const again = evaluateIngress(permitCase(), session);
+  assertClosed(again);
+  assert.equal(again.reason, "revoked");
+  assert.equal(again.authority, "REFUSED");
+});
+
+test("a null expected listener entry returns a withheld decision", () => {
+  const input = permitCase();
+  input.envelope.expected_listeners = [null];
+  const result = expect(input, "stale_policy", "WITHHELD");
+  assert.equal(result.grant_id, null);
+  assert.notEqual(result.authority, "HELD");
+});
