@@ -1,0 +1,62 @@
+{
+  "schema": "vantio.docs-release/v1",
+  "base_commit": "14249ba84ff1f3d5aa8ad7a7366172f29235c76e",
+  "version_metadata": "docs/governance/VERSION-METADATA.json",
+  "product_boundary": "docs/governance/PRODUCT-BOUNDARY.json",
+  "public_exports": "docs/governance/PUBLIC-EXPORTS.json",
+  "env_vars": "docs/governance/ENV-VARS.json",
+  "status_tokens": "docs/governance/STATUS-TOKENS.json",
+  "supported_paths": "docs/governance/SUPPORTED-PATHS.json",
+  "llm_hosts": "docs/governance/LLM-HOSTS.json",
+  "stale_names": "docs/governance/STALE-NAMES.json",
+  "roadmap_not_current": "docs/governance/ROADMAP-NOT-CURRENT.json",
+  "packaging_exclusion": "docs/governance/PACKAGING-EXCLUSION.json",
+  "pe_customer_bundle": "docs/governance/PE-CUSTOMER-BUNDLE.json",
+  "legacy_stale_names": "docs/governance/LEGACY-STALE-NAMES.json",
+  "known_limitations": "docs/governance/KNOWN-LIMITATIONS.json",
+  "ai_guide": "docs/governance/canonical/ai-guide.md",
+  "llms_txt": "docs/governance/llms.txt",
+  "llms_full_txt": "docs/governance/llms-full.txt",
+  "readme": "README.md",
+  "canonical_docs": [
+    "README.md",
+    "packages/vantio-cli/README.md",
+    "packages/vantio-agent-sdk/README.md",
+    "packages/vantio-agent-sdk-py/README.md",
+    "docs/governance/canonical/product-boundary.md",
+    "docs/governance/canonical/public-exports.md",
+    "docs/governance/canonical/environment.md",
+    "docs/governance/canonical/status-tokens.md",
+    "docs/governance/canonical/supported-paths.md",
+    "docs/governance/canonical/known-limitations.md",
+    "docs/governance/canonical/ai-guide.md"
+  ],
+  "examples": [
+    {
+      "id": "print-boundary",
+      "feasible": true,
+      "run": ["node", "docs/governance/examples/print-boundary.mjs"]
+    },
+    {
+      "id": "minimal-agent-syntax",
+      "feasible": true,
+      "run": ["node", "--check", "scripts/fixtures/minimal-agent.js"]
+    },
+    {
+      "id": "langchain-js-adapter",
+      "feasible": false,
+      "path": "examples/adapters/langchain-js/README.md",
+      "reason": "Adapter note has no runnable agent entrypoint."
+    },
+    {
+      "id": "llamaindex-py-adapter",
+      "feasible": false,
+      "path": "examples/adapters/llamaindex-py/README.md",
+      "reason": "Adapter note has no runnable agent entrypoint."
+    }
+  ],
+  "legacy_scan": {
+    "extensions": [".md", ".js", ".cjs", ".mjs", ".py", ".ts", ".json", ".yml", ".yaml", ".toml"],
+    "exclude_prefixes": ["docs/governance/", "docs/scripts/", ".git/", "node_modules/"]
+  }
+}

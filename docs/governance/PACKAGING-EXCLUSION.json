@@ -1,0 +1,31 @@
+{
+  "schema": "vantio.docs-release.packaging-exclusion/v1",
+  "path_denies": [
+    "docs/internal/",
+    "phantom-engine/customer/",
+    "customer-confidential",
+    "CUSTOMER-MANUAL",
+    "PRIVATE-MANUAL",
+    "LEAVE_ENGINEERING_GAP.md",
+    "pe-customer/"
+  ],
+  "public_packages": [
+    { "id": "cli", "kind": "npm", "path": "packages/vantio-cli" },
+    { "id": "node-sdk", "kind": "npm", "path": "packages/vantio-agent-sdk" },
+    { "id": "optics-mcp", "kind": "npm", "path": "packages/vantio-optics-mcp" },
+    { "id": "gate-mcp", "kind": "npm", "path": "packages/vantio-gate-mcp" },
+    {
+      "id": "python-sdk",
+      "kind": "python",
+      "path": "packages/vantio-agent-sdk-py",
+      "wheel_packages": ["vantio"]
+    }
+  ],
+  "private_packages": [
+    {
+      "id": "evidence-contract",
+      "path": "packages/optics-evidence-contract",
+      "require_private": true
+    }
+  ]
+}

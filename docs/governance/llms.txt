@@ -1,0 +1,13 @@
+# Vantio Optics canonical docs
+
+README.md
+packages/vantio-cli/README.md
+packages/vantio-agent-sdk/README.md
+packages/vantio-agent-sdk-py/README.md
+docs/governance/canonical/product-boundary.md
+docs/governance/canonical/public-exports.md
+docs/governance/canonical/environment.md
+docs/governance/canonical/status-tokens.md
+docs/governance/canonical/supported-paths.md
+docs/governance/canonical/known-limitations.md
+docs/governance/canonical/ai-guide.md

@@ -1,0 +1,28 @@
+{
+  "schema": "vantio.docs-release.product-boundary/v1",
+  "readme": "README.md",
+  "required_phrases": [
+    "Vantio Optics (Open Core)",
+    "Free, local-first observability for AI agent egress",
+    "npm install -g @vantio/cli",
+    "vantio run node agent.js",
+    "pip install vantio-agent-sdk",
+    "@shield",
+    "Optics is the free Observe tier",
+    "Phantom Engine",
+    "NODE_OPTIONS --require",
+    "Browser paths stay outside this wrap.",
+    "Does not block actions or retain prompts or completions.",
+    "Telemetry is disabled by default.",
+    "VANTIO_TELEMETRY=1",
+    "DO_NOT_TRACK=1",
+    "no account and no API key",
+    "$799/node/mo"
+  ],
+  "forbidden_phrases": [
+    "Sight Loop",
+    "sight-loop",
+    "Shadow AI",
+    "vantio login"
+  ]
+}

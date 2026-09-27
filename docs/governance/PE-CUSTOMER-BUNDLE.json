@@ -1,0 +1,9 @@
+{
+  "schema": "vantio.docs-release.pe-customer-bundle/v1",
+  "public_distribution": false,
+  "required_roles": ["manifest", "private-manual"],
+  "version_header": "manual_version:",
+  "fixture": "docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md",
+  "fixture_version": "0.0.0-test",
+  "note": "This repository does not contain a Phantom Engine customer manual. The fixture under docs/scripts is a test double. Public package file lists must not include PRIVATE-MANUAL or CUSTOMER-MANUAL paths. A customer bundle is valid only when it is marked non-public and the private manual header version equals the bundle version."
+}

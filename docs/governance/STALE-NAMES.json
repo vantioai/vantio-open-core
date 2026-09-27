@@ -1,0 +1,11 @@
+{
+  "schema": "vantio.docs-release.stale-names/v1",
+  "note": "Retired public names. Canonical docs must not contain them. Occurrences outside the canonical set are frozen in LEGACY-STALE-NAMES.json.",
+  "patterns": [
+    { "id": "sight-loop-words", "regex": "Sight Loop" },
+    { "id": "sight-loop-slug", "regex": "sight-loop" },
+    { "id": "sight-loop-snake", "regex": "sight_loop" },
+    { "id": "shadow-ai-words", "regex": "Shadow AI" },
+    { "id": "shadow-ai-slug", "regex": "shadow-ai" }
+  ]
+}

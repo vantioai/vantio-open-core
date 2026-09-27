@@ -1,0 +1,266 @@
+{
+  "schema": "vantio.docs-release.legacy-stale-names/v1",
+  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here.",
+  "hits": [
+    {
+      "path": ".github/actions/vantio-prove/action.yml",
+      "count": 1
+    },
+    {
+      "path": "artifacts/OPTICS_CLI_LOGIN_RETIREMENT_PHASE3.md",
+      "count": 8
+    },
+    {
+      "path": "artifacts/OPTICS_CLI_PHASE1_REPORT.md",
+      "count": 13
+    },
+    {
+      "path": "artifacts/OPTICS_CLI_PHASE3_REPORT.md",
+      "count": 15
+    },
+    {
+      "path": "artifacts/optics-cli-closure-phase1/OPTICS_CLI_PHASE1_CLOSURE_INVENTORY.md",
+      "count": 13
+    },
+    {
+      "path": "docs/architecture/optics-foundation/01-CURRENT-STATE-INVENTORY.md",
+      "count": 5
+    },
+    {
+      "path": "docs/architecture/optics-foundation/04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md",
+      "count": 2
+    },
+    {
+      "path": "docs/dogfood-optics.md",
+      "count": 2
+    },
+    {
+      "path": "docs/getting-started-tier01.md",
+      "count": 4
+    },
+    {
+      "path": "docs/internal/claim-scrub-report-2026-09-20.md",
+      "count": 1
+    },
+    {
+      "path": "docs/internal/optics-pkg01/BOUNDARY.md",
+      "count": 1
+    },
+    {
+      "path": "docs/internal/optics-pkg01/COMPATIBILITY.md",
+      "count": 1
+    },
+    {
+      "path": "docs/observe-only.md",
+      "count": 3
+    },
+    {
+      "path": "docs/optics-mcp.md",
+      "count": 2
+    },
+    {
+      "path": "docs/planning/optics-foundation-a8/07-FIRST-SLICE-SPECIFICATION.md",
+      "count": 1
+    },
+    {
+      "path": "docs/planning/optics-pkg02/01-CURRENT-RECORD-INVENTORY.md",
+      "count": 1
+    },
+    {
+      "path": "docs/planning/optics-pkg02/03-NODE-PYTHON-DELTA.md",
+      "count": 1
+    },
+    {
+      "path": "docs/planning/optics-pkg02/RECORD-VOCABULARY.json",
+      "count": 2
+    },
+    {
+      "path": "docs/PRODUCT_LINEUP.md",
+      "count": 2
+    },
+    {
+      "path": "docs/prove.md",
+      "count": 2
+    },
+    {
+      "path": "docs/quickstart.md",
+      "count": 2
+    },
+    {
+      "path": "docs/sight-loop.md",
+      "count": 4
+    },
+    {
+      "path": "docs/specs/OPTICS_CLI_INSPECT_2026-08-15.md",
+      "count": 2
+    },
+    {
+      "path": "docs/specs/WRAP_COMPLETENESS_BATCH_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_CURL_SPAWN_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_INLINE_REDACT_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_NODE_HTTP2_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_NODE_NET_TLS_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_POST_FILE_SIZE_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_PYTHON_CURL_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_PYTHON_SOCKET_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_PYTHON_WGET_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_SPAWN_EXTRAS_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_UNDICI_AIOHTTP_2026-08-14.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_UNDICI_CONNECT_2026-08-14.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_UNDICI_REQUEST_2026-08-14.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_UNDICI_STREAM_2026-08-14.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_UNDICI_WS_FRAMES_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/specs/WRAP_WGET_SPAWN_2026-08-15.md",
+      "count": 1
+    },
+    {
+      "path": "docs/surfaces.md",
+      "count": 1
+    },
+    {
+      "path": "extensions/vantio-optics/extension.js",
+      "count": 1
+    },
+    {
+      "path": "extensions/vantio-optics/package.json",
+      "count": 3
+    },
+    {
+      "path": "extensions/vantio-optics/README.md",
+      "count": 1
+    },
+    {
+      "path": "integrations/hooks/openclaw-plugin.example.md",
+      "count": 1
+    },
+    {
+      "path": "integrations/hooks/README.md",
+      "count": 1
+    },
+    {
+      "path": "packages/optics-evidence-contract/src/validate.cjs",
+      "count": 1
+    },
+    {
+      "path": "packages/optics-evidence-contract/src/validate.py",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-agent-sdk-py/pyproject.toml",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-agent-sdk-py/vantio/__init__.py",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-agent-sdk-py/vantio/sdk.py",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-agent-sdk/package.json",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-cli/bin/interceptor.cjs",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-cli/test/account-retirement.test.js",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-cli/test/inspect.test.js",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-cli/test/interceptor.test.js",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-gate-mcp/src/policy.js",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-optics-mcp/bin/vantio-optics-mcp.js",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-optics-mcp/package.json",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-optics-mcp/README.md",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-optics-mcp/server.json",
+      "count": 1
+    },
+    {
+      "path": "packages/vantio-optics-mcp/src/runs.js",
+      "count": 2
+    },
+    {
+      "path": "packages/vantio-optics-mcp/src/server.js",
+      "count": 4
+    },
+    {
+      "path": "scripts/fixtures/minimal-agent.js",
+      "count": 4
+    },
+    {
+      "path": "tests/optics-evidence-contract/corpus.json",
+      "count": 2
+    }
+  ]
+}
