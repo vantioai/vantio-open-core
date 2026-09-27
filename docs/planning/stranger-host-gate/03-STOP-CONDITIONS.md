@@ -34,7 +34,11 @@ The authorized command list, once a later force exists, is the CI parity list in
 
 ## SH-STOP-08 Telemetry
 
-The later session sets `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1`. `VANTIO_TELEMETRY` stays unset. Published Python 3.0.14 `shield()` sends unless those overrides are set (`docs/products/optics/TELEMETRY.md`). The default matrix does not call `shield()`. A process that would send a ping stops the run.
+The later session sets `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1`. `VANTIO_TELEMETRY` stays unset. Published Python 3.0.14 `shield()` sends unless those overrides are set (`docs/products/optics/TELEMETRY.md`).
+
+Phase 4’s unittest suite calls `shield()`. The call sites include `packages/vantio-agent-sdk-py/tests/test_sdk.py`, `tests/test_http_observe.py`, `tests/test_optics_status.py`, `tests/test_socket_timing.py`, and `tests/test_outcome_clarity.py`. Each `shield()` entry calls `send_run_telemetry_once`. On Python 3.1.0 source in this tree, that function returns immediately when `is_telemetry_disabled()` is true. The two session overrides force that return. An unset `VANTIO_TELEMETRY` also leaves the function disabled unless a test opts in with `VANTIO_TELEMETRY=1`.
+
+`tests/test_telemetry.py` clears `VANTIO_TELEMETRY`, `VANTIO_TELEMETRY_DISABLED`, and `DO_NOT_TRACK` in `setUp`, then restores them. Tests in that file that opt in set `VANTIO_TELEMETRY=1` and set `VANTIO_INGEST_URL` to a local `MockServer` bound to `127.0.0.1` (`tests/mock_server.py`). A process that would send a ping to the public ingest (`https://vantio.ai` when `VANTIO_INGEST_URL` is unset and telemetry is enabled) stops the run. Live telemetry stays unauthorized.
 
 ## SH-STOP-09 Registry write
 
@@ -60,7 +64,7 @@ Enrollment, kernel modules, eBPF, and privileged host enforcement are outside `.
 
 ## SH-STOP-14 Host tools
 
-The default later host class is Linux with `strace` already on `PATH`, Node 22, pnpm from `package.json` `packageManager`, and Python 3.10, 3.11, and 3.12. A missing tool stops the run. The matrix does not install operating-system packages. A non-Linux host is a different matrix; this packet does not define one, and the `strace` tests in `packages/vantio-cli/test/optics-cx.test.js` are part of the CLI test script.
+The default later host class is Linux with `strace` already on `PATH`, Node 22, pnpm from `package.json` `packageManager`, and Python 3.10, 3.11, and 3.12. A missing tool stops the run. The later matrix installs no operating-system packages. `.github/workflows/ci.yml` at the prepared SHA runs `sudo apt-get update && sudo apt-get install -y strace` in `lint-and-test-js`. `05-RUNBOOK.md` cites that line and leaves it out of `later_commands`. A host without `strace` stops here. A non-Linux host is a different matrix; this packet does not define one, and the `strace` tests in `packages/vantio-cli/test/optics-cx.test.js` are part of the CLI test script.
 
 ## SH-STOP-15 Lockfile
 
@@ -76,7 +80,7 @@ Logs may contain test output. Customer prompts, completions, private keys, and r
 
 ## SH-STOP-18 Provider calls
 
-The run does not call a model endpoint. `TARGET_URL`, `VANTIO_INGEST_URL`, and `VANTIO_EXTRA_LLM_HOSTS` stay unset. `vantio status --check-registry` is opt-in network to npm and is outside the matrix. Plain `vantio status` is listed only under the default-off published smoke.
+The run does not call a model endpoint. The operator session leaves `TARGET_URL`, `VANTIO_INGEST_URL`, and `VANTIO_EXTRA_LLM_HOSTS` unset. Phase 4 tests assign `VANTIO_INGEST_URL` inside the test process to a local server on `127.0.0.1`, including telemetry opt-in cases in `packages/vantio-agent-sdk-py/tests/test_telemetry.py`, and restore the previous value in `tearDown`. An operator-set `VANTIO_INGEST_URL` stops the run under SH-STOP-08 when it would aim a ping at the public ingest. `vantio status --check-registry` is opt-in network to npm and is outside the matrix. Plain `vantio status` is listed only under the default-off published smoke.
 
 ## SH-STOP-19 Interpreter mixing
 

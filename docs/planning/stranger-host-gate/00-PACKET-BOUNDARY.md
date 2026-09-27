@@ -16,6 +16,10 @@ Prepared against main: `5064f32f1cdfcb840dfd100e2ce5c712d046550d`
 
 Writable path: `docs/planning/stranger-host-gate/`
 
+## Revision
+
+Council `bc-9f46789b-e2a8-5d01-a1fe-d43ca6b2830f` returned `STRANGER_HOST_PACKET_NEEDS_REVISION` on tip `3b00ea90ce90a85f63c92c28591233aee62830d1`. Revision agent `bc-5f157656-f625-5e20-8cd6-5dafbb0d9368` corrected the `shield()` wording, the CI `run:` citation, and the pip uninstall citation. Prep classification stays `STRANGER_HOST_PACKET_READY_AWAITING_EXECUTION_AUTH`. Execution stays `NOT_AUTHORIZED`. The Founder template stays unfilled.
+
 ## What this classification means
 
 The prep packet is complete, and stranger-host execution remains unauthorized. The local verifier prints `STRANGER_HOST_PACKET_READY_AWAITING_EXECUTION_AUTH` when the packet files, hashes, refusal entrypoints, and unfilled authorization template agree.
@@ -69,9 +73,11 @@ Versions recorded in `docs/governance/VERSION-METADATA.json` on the prepared SHA
 
 Python 3.1.0 in this tree and Python 3.0.14 on PyPI are different packages of behavior. Source-tree unittest exercises 3.1.0. A green source run is silent about the published 3.0.14 wheel.
 
-`docs/products/optics/TELEMETRY.md` distinguishes the gates: CLI 0.3.24 and unpublished Python 3.1.0 stay quiet unless `VANTIO_TELEMETRY=1`. Published Python 3.0.14 `shield()` sends unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. The later session sets both overrides. The default matrix does not call `shield()`.
+`docs/products/optics/TELEMETRY.md` distinguishes the gates: CLI 0.3.24 and unpublished Python 3.1.0 stay quiet unless `VANTIO_TELEMETRY=1`. Published Python 3.0.14 `shield()` sends unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. The later session sets both overrides and leaves `VANTIO_TELEMETRY` unset.
 
-CLI tests in `packages/vantio-cli/test/optics-cx.test.js` invoke `strace`. The default later host class is Linux with `strace` already installed. The matrix contains no operating-system package install.
+Phase 4 runs `python -m unittest discover -s tests -t . -v` in `packages/vantio-agent-sdk-py`. That suite calls `shield()`. The call sites include `tests/test_sdk.py`, `tests/test_http_observe.py`, `tests/test_optics_status.py`, `tests/test_socket_timing.py`, and `tests/test_outcome_clarity.py`. `shield()` calls `send_run_telemetry_once` (`vantio/sdk.py`). In this tree `send_run_telemetry_once` returns immediately when `is_telemetry_disabled()` is true (`vantio/_telemetry.py`): `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` forces that return, and an unset `VANTIO_TELEMETRY` does too, because a send requires `VANTIO_TELEMETRY=1`. `tests/test_telemetry.py` clears `VANTIO_TELEMETRY`, `VANTIO_TELEMETRY_DISABLED`, and `DO_NOT_TRACK` in `setUp`. Cases that opt in set `VANTIO_TELEMETRY=1` and point `VANTIO_INGEST_URL` at a local `MockServer` on `127.0.0.1` (`tests/mock_server.py`). Live telemetry stays unauthorized.
+
+CLI tests in `packages/vantio-cli/test/optics-cx.test.js` invoke `strace`. The default later host class is Linux with `strace` already installed. Job `lint-and-test-js` in `.github/workflows/ci.yml` at the prepared SHA also runs `sudo apt-get update && sudo apt-get install -y strace`. `05-RUNBOOK.md` cites that line. `later_commands` omits it. SH-STOP-14 keeps `strace` as a preinstalled host tool. The later matrix installs no operating-system packages.
 
 CLI interceptor tests bind a local mock on `127.0.0.1`. They are part of `pnpm --filter @vantio/cli run test`. They are not live calls to a model provider.
 

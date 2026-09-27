@@ -61,7 +61,7 @@ A later authorized run writes the bundle only under the disposable directory it 
 | Observation | Allowed statement | Still unset |
 | --- | --- | --- |
 | Source-tree CI parity exits 0 on the named Linux host | These commands passed on that host at that SHA | `STRANGER_HOST_PROVED` until a separate review accepts the bundle. `PROVED_EXTERNAL`. `CUSTOMER_VALIDATED` |
-| Python unittest exits 0 from `packages/vantio-agent-sdk-py` | Repository Python 3.1.0 passed on that interpreter | Behavior of published 3.0.14 |
+| Python unittest exits 0 from `packages/vantio-agent-sdk-py` | Repository Python 3.1.0 passed on that interpreter. The suite calls `shield()`; `send_run_telemetry_once` follows SH-STOP-08 | Behavior of published 3.0.14. A live telemetry send |
 | `npm pack` and `python3 -m build` exit 0 | Local candidate archives were produced in the disposable directory | A publish, a tag, or a release |
 | CLI tests exit 0 | The in-repo tests, including local `127.0.0.1` mocks and the `strace` checks, passed | A live provider call. Coverage of paths listed as unobserved in `docs/products/optics/SUPPORTED-PATHS.md` |
 

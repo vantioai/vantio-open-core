@@ -43,7 +43,10 @@ const LATER_COMMANDS = [
   "node --test scripts/release/governance.test.mjs",
   "python3 scripts/release/test_promote_pypi.py -v",
   "python3 scripts/release/test_pypi_publish_workflow.py -v",
+  "pnpm install --frozen-lockfile",
+  'mkdir -p "$RUNNER_TEMP/candidates"',
   'npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/candidates"',
+  'mkdir -p "$RUNNER_TEMP/candidates-py"',
   "python3 -m pip install --disable-pip-version-check build",
   'python3 -m build --outdir "$RUNNER_TEMP/candidates-py" packages/vantio-agent-sdk-py',
 ];
@@ -320,9 +323,55 @@ for (const command of LATER_COMMANDS.concat(PUBLISHED_COMMANDS)) {
 }
 
 const rollback = readFileSync(join(REPO_ROOT, `${PACKET_PREFIX}06-ROLLBACK.md`), "utf8");
-for (const marker of ["NOT AUTHORIZED", "disposable", "SH-STOP-20"]) {
+for (const marker of ["NOT AUTHORIZED", "disposable", "SH-STOP-20", "pip uninstall vantio-agent-sdk"]) {
   if (!rollback.includes(marker)) {
     fail(`rollback missing ${marker}`);
+  }
+}
+if (rollback.includes("pip uninstall -y")) {
+  fail("rollback attributes pip uninstall -y to the manual");
+}
+
+const CI_STRACE_INSTALL = "sudo apt-get update && sudo apt-get install -y strace";
+if (!runbook.includes(CI_STRACE_INSTALL)) {
+  fail("runbook missing CI strace install citation");
+}
+if (!runbook.includes("Cited and absent from `later_commands`")) {
+  fail("runbook missing later_commands omission citation");
+}
+if (LATER_COMMANDS.includes(CI_STRACE_INSTALL)) {
+  fail("later_commands includes the OS package install");
+}
+const frozenInstalls = LATER_COMMANDS.filter((command) => command === "pnpm install --frozen-lockfile");
+if (frozenInstalls.length !== 2) {
+  fail("later_commands must cite both pnpm install steps");
+}
+
+const SHIELD_FILES = [
+  "test_sdk.py",
+  "test_http_observe.py",
+  "test_optics_status.py",
+  "test_socket_timing.py",
+  "test_outcome_clarity.py",
+  "test_telemetry.py",
+  "send_run_telemetry_once",
+  "MockServer",
+];
+const FALSE_SHIELD_CLAIM = "does not call `shield()`";
+for (const rel of [
+  `${PACKET_PREFIX}00-PACKET-BOUNDARY.md`,
+  `${PACKET_PREFIX}03-STOP-CONDITIONS.md`,
+  `${PACKET_PREFIX}04-FOUNDER-AUTHORIZATION-TEMPLATE.md`,
+  `${PACKET_PREFIX}05-RUNBOOK.md`,
+]) {
+  const text = readFileSync(join(REPO_ROOT, rel), "utf8");
+  if (text.includes(FALSE_SHIELD_CLAIM) || text.includes("The default matrix does not call")) {
+    fail(`${rel} still denies shield() in the default matrix`);
+  }
+}
+for (const marker of SHIELD_FILES) {
+  if (!boundary.includes(marker) || !stops.includes(marker)) {
+    fail(`shield() citation missing ${marker}`);
   }
 }
 

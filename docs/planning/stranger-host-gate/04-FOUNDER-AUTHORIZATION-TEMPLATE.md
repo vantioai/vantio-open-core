@@ -78,6 +78,8 @@ Evidence tier written by the execution force: `UNSET`
 - `DO_NOT_TRACK=1`
 - `VANTIO_TELEMETRY`, `VANTIO_API_KEY`, `VANTIO_INGEST_URL`, `VANTIO_EXTRA_LLM_HOSTS`, `TARGET_URL`, `NPM_TOKEN`, `PYPI_TOKEN`, `TWINE_USERNAME`, `TWINE_PASSWORD`, and `NODE_AUTH_TOKEN` are unset
 
+Phase 4 still runs the Python unittest suite, which calls `shield()`. The session posture above is what makes `send_run_telemetry_once` return before a send, except where `packages/vantio-agent-sdk-py/tests/test_telemetry.py` opts in and points `VANTIO_INGEST_URL` at a local `MockServer`. See SH-STOP-08. This template leaves live telemetry unauthorized.
+
 ## Explicit non-scope
 
 Customer hosts. Credential creation. Live model-provider calls. Phantom Engine enrollment. Kernel or eBPF work. Operating-system package installation. `npm publish`, twine upload, tags, and GitHub releases. Editing product source. Opening Gate 8. Assigning `STRANGER_HOST_PROVED`, `PROVED_EXTERNAL`, or `CUSTOMER_VALIDATED`. Mixing Python 3.1.0 source and published 3.0.14 in one interpreter. Workflows other than `.github/workflows/ci.yml`.

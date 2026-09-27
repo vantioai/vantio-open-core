@@ -23,12 +23,14 @@ The account’s original home stays in place. A pre-existing `~/.vantio` on that
 
 ## Package removal when the published smoke ran
 
-The smoke installs into the disposable `HOME` (global npm prefix under that `HOME`) and the disposable virtualenv. Deleting those directories removes the installs. When a command used a prefix outside those directories, stop under SH-STOP-20 and record the path. The manual commands, for a prefix that really was created by the run, are the ones in `docs/products/optics/UPGRADE-ROLLBACK-UNINSTALL.md`:
+The smoke installs into the disposable `HOME` (global npm prefix under that `HOME`) and the disposable virtualenv. Deleting those directories removes the installs. When a command used a prefix outside those directories, stop under SH-STOP-20 and record the path. For a prefix the run actually created, quote the uninstall lines in `docs/products/optics/UPGRADE-ROLLBACK-UNINSTALL.md`:
 
 ```bash
 npm uninstall -g @vantio/cli
-pip uninstall -y vantio-agent-sdk
+pip uninstall vantio-agent-sdk
 ```
+
+The manual’s pip line is `pip uninstall vantio-agent-sdk`. This packet uses that line. A non-interactive `-y` is a runner-local flag, recorded as the runner’s own addition, and is separate from the manual.
 
 Run them only against the disposable prefix. Then delete the disposable directories. There is no downgrade migration. Run files under the disposable `HOME` disappear with that directory. Optics does not prune `~/.vantio/runs` by age; this rollback does not invent a prune of someone else’s files.
 

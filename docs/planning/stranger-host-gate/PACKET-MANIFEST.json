@@ -22,7 +22,10 @@
     "node --test scripts/release/governance.test.mjs",
     "python3 scripts/release/test_promote_pypi.py -v",
     "python3 scripts/release/test_pypi_publish_workflow.py -v",
+    "pnpm install --frozen-lockfile",
+    "mkdir -p \"$RUNNER_TEMP/candidates\"",
     "npm pack --ignore-scripts --pack-destination \"$RUNNER_TEMP/candidates\"",
+    "mkdir -p \"$RUNNER_TEMP/candidates-py\"",
     "python3 -m pip install --disable-pip-version-check build",
     "python3 -m build --outdir \"$RUNNER_TEMP/candidates-py\" packages/vantio-agent-sdk-py"
   ],
@@ -40,7 +43,7 @@
     },
     {
       "path": "docs/planning/stranger-host-gate/00-PACKET-BOUNDARY.md",
-      "sha256": "09714e8eb089538671a9d85f0cde3efac3f02dd30c09131ec8f7c57f42bd4038"
+      "sha256": "87bf189745716146eecf89b44a60cdbdf460ddfa4d724272a9fc4d87605258fd"
     },
     {
       "path": "docs/planning/stranger-host-gate/01-PACKET-CHECKLIST.md",
@@ -48,23 +51,23 @@
     },
     {
       "path": "docs/planning/stranger-host-gate/02-EVIDENCE-REQUIREMENTS.md",
-      "sha256": "daaada80b5883ae29cee5afcb702000e3e6a5c062f8730da5ca896e0c0b6e525"
+      "sha256": "c1f02b6ec662911352c0067740036b8ddd79fc4d92afcd8b0049c07ea52ef2cd"
     },
     {
       "path": "docs/planning/stranger-host-gate/03-STOP-CONDITIONS.md",
-      "sha256": "720086e410ba6316e2dacfb71bb35f00c37d280e478d0384bd58fb06524562cb"
+      "sha256": "23e297e66fda60d0e103a6644524d959a3740957055b9e3771b268d4cee4dd56"
     },
     {
       "path": "docs/planning/stranger-host-gate/04-FOUNDER-AUTHORIZATION-TEMPLATE.md",
-      "sha256": "78c0d8280f7d055d9ac0567233bd383d16b08af961aafa37a0dda9d07bdd9613"
+      "sha256": "11824172c50cc6e7d4f9c179ffe09237a45823236abd8d00922b81a019f66fdb"
     },
     {
       "path": "docs/planning/stranger-host-gate/05-RUNBOOK.md",
-      "sha256": "6ff2534b6ca3c0f71db26e631b0da9df3d733f49d9b063a7011665ef1fb70739"
+      "sha256": "f18738c156804614885ee3d8bde371e76f0485b303ee65ea871a4b5edce5aa7d"
     },
     {
       "path": "docs/planning/stranger-host-gate/06-ROLLBACK.md",
-      "sha256": "5831c47858f8a2bff5c3e6399af35fe2fc79592d1459140a4b5c018eab7031ff"
+      "sha256": "1d272cb2ac9ee1f36b9c8389eb506c7ca1db1536097d483ff06e5ccd244d44b2"
     },
     {
       "path": "docs/planning/stranger-host-gate/authorization/FOUNDER-AUTHORIZATION.template.json",
@@ -72,7 +75,7 @@
     },
     {
       "path": "docs/planning/stranger-host-gate/scripts/verify-packet-prep.mjs",
-      "sha256": "084080e93008fcac47f1b705b4f9127f0dcb338029658e30b87573a2d23dd4bf"
+      "sha256": "e2585a3a58cd19e37c549f7ad4f252b4743989475cdfa7e45297e52a0ef07bed"
     },
     {
       "path": "docs/planning/stranger-host-gate/scripts/refuse-stranger-host-execution.mjs",
