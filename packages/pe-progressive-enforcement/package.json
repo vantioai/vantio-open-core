@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/pe-progressive-enforcement",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE | INERT | NOT SHIPPED | NO HOST ATTACHMENT | NO AUTO-ENFORCE | NO STABLE SCHEMA. In-process progressive enforcement lifecycle. Not loaded by live products.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/pe-progressive-enforcement/*.test.cjs"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "events": [
+    { "subject_ref": "agent-a", "host": "api.example.com", "byte_count": 120, "at": 10 },
+    { "subject_ref": "agent-b", "host": "api.example.com", "byte_count": 40, "at": 11 },
+    { "subject_ref": "agent-a", "host": "other.example.com", "byte_count": 80, "at": 12 },
+    { "subject_ref": "agent-c", "host": "api.example.com", "byte_count": 200, "at": 13 }
+  ]
+}
