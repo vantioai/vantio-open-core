@@ -22,8 +22,9 @@ test("mapping identity stays unstable and unpublished", () => {
   assert.equal(doc.i3_status, "NOT_AUTHORIZED");
   assert.equal(doc.founder_decision_12, "unresolved");
   assert.equal(doc.schema_url, null);
-  assert.equal(doc.producer_classification, "OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL");
-  assert.equal(api.POSTURE.producer_classification, "OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL");
+  assert.equal(doc.producer_classification, "OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL");
+  assert.equal(api.POSTURE.producer_classification, "OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL");
+  assert.deepEqual(doc.canonical_candidate_origins, ["LOCAL_OBSERVATION"]);
 });
 
 test("every adapter defaults disabled and has no implementation", () => {
@@ -98,12 +99,31 @@ test("internal manifest matches the mapping document", () => {
   assert.equal(manifest.source, "packages/optics-otel-mapping/mapping/otel-semantic-mapping.json");
 });
 
-test("internal notes do not use retired product names", () => {
-  const directory = path.join(ROOT, "docs/internal/ws7-otel-mapping");
-  const retired = [/Sight Loop/, /sight-loop/, /sight_loop/, /Shadow AI/, /shadow-ai/];
-  for (const name of fs.readdirSync(directory)) {
-    const text = fs.readFileSync(path.join(directory, name), "utf8");
-    for (const pattern of retired) assert.equal(pattern.test(text), false, name + " " + pattern);
+test("new otel mapping files match the documentation-release stale-name gate", async () => {
+  const { countPatterns } = await import("../../docs/scripts/docs-release-lib.mjs");
+  const spec = JSON.parse(fs.readFileSync(path.join(ROOT, "docs/governance/STALE-NAMES.json"), "utf8"));
+  assert.ok(Array.isArray(spec.patterns) && spec.patterns.length > 0);
+  const scanned = [];
+  const extensions = [".md", ".txt", ".js", ".cjs", ".mjs", ".py", ".ts", ".json", ".yml", ".yaml", ".toml"];
+  function visit(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(absolute);
+      else if (extensions.some((ext) => entry.name.endsWith(ext))) scanned.push(absolute);
+    }
+  }
+  for (const relative of [
+    "docs/internal/ws7-otel-mapping",
+    "packages/optics-otel-mapping",
+    "tests/optics-otel-mapping",
+  ]) {
+    visit(path.join(ROOT, relative));
+  }
+  const relatives = scanned.map((file) => path.relative(ROOT, file));
+  assert.ok(relatives.includes(path.join("tests", "optics-otel-mapping", "mapping.test.cjs")));
+  for (const file of scanned) {
+    const count = countPatterns(fs.readFileSync(file, "utf8"), spec.patterns);
+    assert.equal(count, 0, path.relative(ROOT, file));
   }
 });
 
@@ -111,7 +131,9 @@ test("public sketch still says Optics does not export OTLP", () => {
   const text = fs.readFileSync(PUBLIC_SKETCH, "utf8");
   assert.match(text, /Optics does not export OTLP/);
   assert.equal(text.includes("OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL"), false);
+  assert.equal(text.includes("OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL"), false);
   assert.equal(text.includes("shipped support"), false);
+  assert.equal(text.includes("public OTLP"), false);
 });
 
 test("canonical chat observation previews candidates and does not emit them", () => {
@@ -249,6 +271,84 @@ test("provider confidence and ambiguous catalog ids stay unmapped", () => {
     destination_host: "generativelanguage.googleapis.com",
   });
   assert.equal(Object.hasOwn(google.candidates, "gen_ai.provider.name"), false);
+});
+
+function filledCanonical(origin) {
+  return {
+    source_shape: "canonical_observation",
+    record_type: "observation_event",
+    evidence_origin: origin,
+    provider_id: "openai",
+    provider_confidence: "CATALOG",
+    destination_host: "api.openai.com",
+    destination_port: 443,
+    scheme: "https",
+    method: "POST",
+    path: "/v1/chat/completions",
+    http_status: 200,
+    application_status: "SUCCESS",
+    optics_status: "UNAVAILABLE",
+  };
+}
+
+test("product health and derived diagnostic produce no GenAI or HTTP candidates", () => {
+  const blocked = [
+    "gen_ai.provider.name",
+    "gen_ai.operation.name",
+    "http.request.method",
+    "url.path",
+    "http.response.status_code",
+  ];
+  const health = api.preview(filledCanonical("PRODUCT_HEALTH"));
+  assert.deepEqual(health.candidates, {});
+  assert.equal(health.span.client, null);
+  assert.equal(health.span.instrumentation, null);
+  assert.equal(health.trace_context, null);
+  assert.equal(health.emitted, false);
+  assert.equal(health.would_be_operational_if_i3_enabled, false);
+  assert.equal(health.operational_block, "ORIGIN_NOT_OPERATIONAL");
+  for (const name of blocked) assert.equal(Object.hasOwn(health.candidates, name), false, name);
+
+  const derived = api.preview(filledCanonical("DERIVED_DIAGNOSTIC"));
+  assert.deepEqual(derived.candidates, {});
+  assert.equal(Object.hasOwn(derived.candidates, "gen_ai.provider.name"), false);
+  assert.equal(derived.span.client, null);
+  assert.equal(derived.emitted, false);
+  assert.equal(derived.would_be_operational_if_i3_enabled, false);
+  assert.equal(derived.operational_block, "ORIGIN_NOT_OPERATIONAL");
+
+  for (const origin of ["TEST_FIXTURE", "IMPORTED"]) {
+    const preview = api.preview(filledCanonical(origin));
+    assert.deepEqual(preview.candidates, {});
+    assert.equal(preview.span.client, null);
+    assert.equal(preview.emitted, false);
+    assert.equal(preview.would_be_operational_if_i3_enabled, false);
+    assert.equal(preview.operational_block, "ORIGIN_NOT_OPERATIONAL");
+  }
+});
+
+test("HTTP and URL names are not cited from the GenAI span page", () => {
+  const doc = api.mappingDocument();
+  const citations = doc.upstream.attribute_citations;
+  const absent = ["http.request.method", "http.response.status_code", "url.path", "url.scheme"];
+  assert.equal(citations.genai_client_span.document, "docs/gen-ai/gen-ai-spans.md");
+  for (const name of absent) {
+    assert.equal(citations.genai_client_span.includes.includes(name), false, name);
+    assert.equal(citations.genai_client_span.excludes.includes(name), true, name);
+    const entry = citations.definitions.find((item) => item.attribute === name);
+    assert.ok(entry, name);
+    assert.equal(entry.defined_in.includes("gen-ai-spans"), false, name);
+    assert.equal(entry.cited_by.includes("docs/gen-ai/gen-ai-spans.md"), false, name);
+    assert.equal(entry.cited_by.includes("docs/http/http-spans.md"), true, name);
+  }
+  assert.equal(citations.definitions.find((item) => item.attribute === "url.path").span_table, "http_server");
+  const note = fs.readFileSync(path.join(ROOT, "docs/internal/ws7-otel-mapping/01-SEMANTIC-MAPPING.md"), "utf8");
+  assert.equal(note.includes("by the v1.37.0 GenAI span table"), false);
+  assert.match(note, /are not on that GenAI span page/);
+  assert.match(note, /docs\/registry\/attributes\/http\.md/);
+  assert.match(note, /docs\/registry\/attributes\/url\.md/);
+  assert.match(note, /docs\/http\/http-spans\.md/);
+  assert.match(note, /Optics does not export OTLP/);
 });
 
 test("simulated demo and missing origin produce no candidates", () => {

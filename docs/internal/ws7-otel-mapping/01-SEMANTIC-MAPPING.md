@@ -12,15 +12,26 @@ This page is the design. The package preview shows the same rules and still sets
 
 ## Upstream pins
 
-Checked on 2026-09-27.
+Checked on 2026-09-27 against `open-telemetry/semantic-conventions` tag `v1.37.0`.
 
 | Pin | What it is |
 | --- | --- |
-| `open-telemetry/semantic-conventions` `v1.37.0` (2025-08-25) | Attribute-name pin for GenAI spans. This release renamed `gen_ai.system` to `gen_ai.provider.name`. Content attributes are Opt-In. Stability of those GenAI attributes is Development. |
+| `docs/gen-ai/gen-ai-spans.md` at `v1.37.0` (2025-08-25) | Attribute-name pin for GenAI spans. This release renamed `gen_ai.system` to `gen_ai.provider.name`. Content attributes are Opt-In. Stability of those GenAI attributes is Development. The client span table on that page includes `gen_ai.provider.name`, `gen_ai.operation.name`, `error.type`, `server.address`, and `server.port`. |
 | `open-telemetry/semantic-conventions` `v1.42.0` (2026-06-12) | Core repository deprecated `gen_ai.*` and moved it to `open-telemetry/semantic-conventions-genai`. |
 | Dedicated GenAI repository | No release tag is pinned. The README schema URL section was still TODO. This mapping does not claim that schema URL. |
 
-HTTP names used here (`http.request.method`, `http.response.status_code`, `url.path`, `url.scheme`, `server.address`, `server.port`, `error.type`) are the names already cited by the public sketch and by the v1.37.0 GenAI span table. They are candidates only. This package does not emit them.
+`http.request.method`, `http.response.status_code`, `url.path`, and `url.scheme` are not on that GenAI span page. This mapping does not cite `docs/gen-ai/gen-ai-spans.md` for them.
+
+| Attribute | Defining document at `v1.37.0` | Span document that cites it |
+| --- | --- | --- |
+| `http.request.method` | `docs/registry/attributes/http.md` | `docs/http/http-spans.md`, HTTP client and server span tables |
+| `http.response.status_code` | `docs/registry/attributes/http.md` | `docs/http/http-spans.md`, HTTP client and server span tables |
+| `url.scheme` | `docs/registry/attributes/url.md` | `docs/http/http-spans.md`, HTTP client span table (Opt-In) and HTTP server span table (Required) |
+| `url.path` | `docs/registry/attributes/url.md` | `docs/http/http-spans.md`, HTTP server span table (Required). It is not on the HTTP client span table. |
+
+`server.address` and `server.port` are defined in `docs/registry/attributes/server.md` and are on the GenAI client span table. `error.type` is defined in `docs/registry/attributes/error.md` and is on the GenAI client span table. Every name in this section is a candidate only. This package does not emit them.
+
+The public sketch `docs/optics-otel-mapping.md` names `http.request.method`, `url.path`, and `http.response.status_code` as display correspondences. It does not cite the v1.37.0 GenAI span page. This design does not treat that sketch as the citation for those names. The sketch still says Optics does not export OTLP. This package does not add public OTLP support.
 
 ## Two source shapes
 
@@ -29,9 +40,9 @@ The mapping does not convert one shape into the other.
 | Shape | Where it comes from | What a preview may consider |
 | --- | --- | --- |
 | `live_display` | CLI display fields in `docs/optics-otel-mapping.md` and `packages/vantio-cli/bin/optics-cx.cjs` | Field candidates only. `would_be_operational_if_i3_enabled` stays false. A live row has no evidence origin, and its `trace_id` is a process-run boundary. |
-| `canonical_observation` | PKG-01 / PKG-02 observation fields | Candidates only when `evidence_origin` is `LOCAL_OBSERVATION`. Missing origin is not treated as local. |
+| `canonical_observation` | PKG-01 / PKG-02 observation fields | Candidates only when `evidence_origin` is `LOCAL_OBSERVATION`. Any other origin yields an empty candidate set. Missing origin is not treated as local. |
 
-`SIMULATED_DEMO`, `TEST_FIXTURE`, and `IMPORTED` produce an empty candidate set.
+`SIMULATED_DEMO`, `TEST_FIXTURE`, `IMPORTED`, `PRODUCT_HEALTH`, and `DERIVED_DIAGNOSTIC` produce an empty candidate set. `PRODUCT_HEALTH` does not fill `gen_ai.provider.name`, `gen_ai.operation.name`, `http.request.method`, `url.path`, or `http.response.status_code`, and it does not set client span status `OK`. `DERIVED_DIAGNOSTIC` does not fill `gen_ai.provider.name`. `would_be_operational_if_i3_enabled` stays false for those origins. `emitted` stays false.
 
 ## Status dimensions
 
@@ -51,7 +62,7 @@ The stored `ok` boolean is ignored. A string HTTP status is not coerced. `action
 
 ## Provider name
 
-`gen_ai.provider.name` is a candidate only for `canonical_observation`, and only when all of these hold:
+`gen_ai.provider.name` is a candidate only for `canonical_observation` whose `evidence_origin` is `LOCAL_OBSERVATION`, and only when all of these hold:
 
 - `provider_confidence` is `CATALOG` or `REGIONAL_PATTERN`
 - `provider_id` is in the closed crosswalk in the mapping JSON

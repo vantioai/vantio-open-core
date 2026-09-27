@@ -12,7 +12,7 @@ const POSTURE = Object.freeze({
   adapters_default_enabled: false,
   i3_status: "NOT_AUTHORIZED",
   founder_decision_12: "unresolved",
-  producer_classification: "OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL",
+  producer_classification: "OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL",
 });
 
 module.exports = { POSTURE };

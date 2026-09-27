@@ -14,9 +14,6 @@ const CANONICAL = Object.freeze({
   host: "destination_host",
 });
 
-const OPERATIONAL_ORIGINS = new Set(["LOCAL_OBSERVATION"]);
-const EXCLUDED_ORIGINS = new Set(["SIMULATED_DEMO", "TEST_FIXTURE", "IMPORTED"]);
-
 function omit(list, code, field) {
   list.push({ code, field });
 }
@@ -103,6 +100,14 @@ function emptyPreview(reason, extra) {
   };
 }
 
+function canonicalOriginBlock(mapping, origin) {
+  if (origin == null || origin === "") return "ORIGIN_ABSENT_NOT_LOCAL";
+  const allowed = mapping.canonical_candidate_origins;
+  if (Array.isArray(allowed) && allowed.includes(origin)) return null;
+  if (origin === "SIMULATED_DEMO") return "SIMULATED_DEMO_EXCLUDED";
+  return "ORIGIN_NOT_OPERATIONAL";
+}
+
 function designPreview(mapping, record) {
   const source = record && typeof record === "object" && !Array.isArray(record) ? record : {};
   const shape = source.source_shape;
@@ -117,12 +122,11 @@ function designPreview(mapping, record) {
   const omitted = [];
   const origin = source.evidence_origin;
 
-  if (shape === "canonical_observation" && (origin == null || origin === "")) {
-    return emptyPreview("ORIGIN_ABSENT_NOT_LOCAL", [{ code: "ORIGIN_ABSENT_NOT_LOCAL", field: "evidence_origin" }]);
-  }
-  if (EXCLUDED_ORIGINS.has(origin)) {
-    const code = origin === "SIMULATED_DEMO" ? "SIMULATED_DEMO_EXCLUDED" : "ORIGIN_NOT_OPERATIONAL";
-    return emptyPreview(code, [{ code, field: "evidence_origin" }]);
+  if (shape === "canonical_observation") {
+    const originBlock = canonicalOriginBlock(mapping, origin);
+    if (originBlock) {
+      return emptyPreview(originBlock, [{ code: originBlock, field: "evidence_origin" }]);
+    }
   }
 
   const prohibitedNames = mapping.prohibited_input_names;
@@ -238,12 +242,6 @@ function designPreview(mapping, record) {
 
   if (prohibited) operationalBlock = operationalBlock || "PROHIBITED_INPUT_IGNORED";
   if (Array.isArray(source.calls)) operationalBlock = operationalBlock || "CALL_LIST_NOT_COLLAPSED";
-  if (shape === "canonical_observation" && origin !== "LOCAL_OBSERVATION") {
-    operationalBlock = operationalBlock || "ORIGIN_NOT_OPERATIONAL";
-  }
-  if (!OPERATIONAL_ORIGINS.has(origin) && shape === "canonical_observation") {
-    operationalBlock = operationalBlock || "ORIGIN_NOT_OPERATIONAL";
-  }
 
   return {
     emitted: false,

@@ -8,9 +8,11 @@ Producer: cloud agent `bc-9df330d5-2a6d-5f71-bf38-2753d0b8261c`.
 
 Producer URL: https://cursor.com/agents/bc-9df330d5-2a6d-5f71-bf38-2753d0b8261c
 
-Producer classification: `OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL`
+Producer classification on the failed tip `dd9359e7c374d21986b3c7ec57d69946328d2252`: `OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL`
 
-That classification means this design is ready for a separate council. It is not a council verdict, not an exporter, and not a public support claim.
+Revision classification: `OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL`
+
+That classification means the revised design is ready for a separate council. It is not a council verdict, not an exporter, and not a public support claim. Council previously returned `OTEL_MAPPING_DESIGN_NEEDS_REVISION`. This revision does not merge, does not enable adapters, and does not authorize I3.
 
 ## Locked input
 

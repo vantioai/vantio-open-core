@@ -4,7 +4,7 @@
   "schema_status": "unstable-pre-1.0",
   "stable_schema": false,
   "audience": "INTERNAL_RESTRICTED",
-  "producer_classification": "OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL",
+  "producer_classification": "OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL",
   "public_shipped_support": false,
   "otlp_export_authorized": false,
   "adapters_default_enabled": false,
@@ -36,9 +36,57 @@
       "release": null,
       "schema_url": null,
       "reason": "On 2026-09-27 the dedicated repository README still left Schema URL as TODO. This mapping does not pin an unreleased commit."
+    },
+    "attribute_citations": {
+      "checked_on": "2026-09-27",
+      "repository": "open-telemetry/semantic-conventions",
+      "tag": "v1.37.0",
+      "genai_client_span": {
+        "document": "docs/gen-ai/gen-ai-spans.md",
+        "includes": [
+          "gen_ai.operation.name",
+          "gen_ai.provider.name",
+          "error.type",
+          "server.address",
+          "server.port"
+        ],
+        "excludes": [
+          "http.request.method",
+          "http.response.status_code",
+          "url.path",
+          "url.scheme"
+        ]
+      },
+      "definitions": [
+        {
+          "attribute": "http.request.method",
+          "defined_in": "docs/registry/attributes/http.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_client_and_server"
+        },
+        {
+          "attribute": "http.response.status_code",
+          "defined_in": "docs/registry/attributes/http.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_client_and_server"
+        },
+        {
+          "attribute": "url.path",
+          "defined_in": "docs/registry/attributes/url.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_server"
+        },
+        {
+          "attribute": "url.scheme",
+          "defined_in": "docs/registry/attributes/url.md",
+          "cited_by": ["docs/http/http-spans.md"],
+          "span_table": "http_client_and_server"
+        }
+      ]
     }
   },
   "source_shapes": ["live_display", "canonical_observation"],
+  "canonical_candidate_origins": ["LOCAL_OBSERVATION"],
   "gen_ai_provider_name_well_known_v1_37_0": [
     "anthropic",
     "aws.bedrock",
@@ -277,7 +325,7 @@
       "target": "gen_ai.provider.name",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Candidate only when provider_confidence is CATALOG or REGIONAL_PATTERN and provider_id is in the closed crosswalk. This package does not emit it."
+      "reason": "Candidate only when evidence_origin is LOCAL_OBSERVATION, provider_confidence is CATALOG or REGIONAL_PATTERN, and provider_id is in the closed crosswalk. PRODUCT_HEALTH and DERIVED_DIAGNOSTIC do not fill this attribute. This package does not emit it."
     },
     {
       "id": "operation.chat",
@@ -286,7 +334,7 @@
       "target": "gen_ai.operation.name",
       "disposition": "MAP_ENUM",
       "emitted_by_this_package": false,
-      "reason": "POST and exact path /v1/chat/completions map to chat. Other paths stay unmapped."
+      "reason": "POST and exact path /v1/chat/completions map to chat. Other paths stay unmapped. Canonical rows fill this only when evidence_origin is LOCAL_OBSERVATION."
     },
     {
       "id": "http.method",
@@ -295,7 +343,7 @@
       "target": "http.request.method",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Copied only when the token is in the method enum and is not unknown."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Copied only when the token is in the method enum and is not unknown."
     },
     {
       "id": "http.status",
@@ -304,7 +352,7 @@
       "target": "http.response.status_code",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Integer 100-599 only. Strings are not coerced. The stored ok boolean is ignored."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Integer 100-599 only. Strings are not coerced. The stored ok boolean is ignored."
     },
     {
       "id": "url.path",
@@ -313,7 +361,7 @@
       "target": "url.path",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Path metadata only, max 512 characters, no query, fragment, or userinfo."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/url.md. Cited on the HTTP server span table in docs/http/http-spans.md, not on the HTTP client span table and not on the v1.37.0 GenAI span page. Path metadata only, max 512 characters, no query, fragment, or userinfo."
     },
     {
       "id": "url.scheme",
@@ -322,7 +370,7 @@
       "target": "url.scheme",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "http, https, ws, or wss. unknown is omitted."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/url.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. http, https, ws, or wss. unknown is omitted."
     },
     {
       "id": "server.address",
@@ -331,7 +379,7 @@
       "target": "server.address",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Destination host, lowercased. Not the machine hostname. Live display reads hostname."
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/server.md. Destination host, lowercased. Not the machine hostname. Live display reads hostname."
     },
     {
       "id": "server.port",
@@ -340,7 +388,7 @@
       "target": "server.port",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Explicit stored port only. Default 443 or 80 is not invented."
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/server.md. Explicit stored port only. Default 443 or 80 is not invented."
     },
     {
       "id": "error.application",
@@ -349,7 +397,7 @@
       "target": "error.type",
       "disposition": "MAP_ENUM",
       "emitted_by_this_package": false,
-      "reason": "application_error when application status is APPLICATION_ERROR and HTTP status is 400-599."
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/error.md. application_error when application status is APPLICATION_ERROR and HTTP status is 400-599."
     },
     {
       "id": "error.optics",
@@ -358,7 +406,7 @@
       "target": "error.type",
       "disposition": "MAP_ENUM",
       "emitted_by_this_package": false,
-      "reason": "optics_error when optics status is OPTICS_ERROR. Both error classes together are a conflict and neither type is chosen."
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/error.md. optics_error when optics status is OPTICS_ERROR. Both error classes together are a conflict and neither type is chosen."
     },
     {
       "id": "span.optics_success",
@@ -448,7 +496,7 @@
       "target": null,
       "disposition": "DO_NOT_MAP",
       "emitted_by_this_package": false,
-      "reason": "SIMULATED_DEMO, TEST_FIXTURE, and IMPORTED produce no operational candidates. Missing origin is not LOCAL_OBSERVATION."
+      "reason": "Canonical candidates are considered only when evidence_origin is LOCAL_OBSERVATION. SIMULATED_DEMO, TEST_FIXTURE, IMPORTED, PRODUCT_HEALTH, DERIVED_DIAGNOSTIC, and a missing origin produce an empty candidate set. PRODUCT_HEALTH does not fill gen_ai.provider.name, gen_ai.operation.name, http.request.method, url.path, or http.response.status_code, and it does not set client span status OK. DERIVED_DIAGNOSTIC does not fill gen_ai.provider.name."
     }
   ]
 }

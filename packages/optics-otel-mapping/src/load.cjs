@@ -51,6 +51,58 @@ function fail(message) {
   throw new Error("optics-otel-mapping: " + message);
 }
 
+const HTTP_URL_ATTRIBUTES = [
+  "http.request.method",
+  "http.response.status_code",
+  "url.path",
+  "url.scheme",
+];
+
+function validateAttributeCitations(doc) {
+  const citations = doc.upstream && doc.upstream.attribute_citations;
+  if (!citations || citations.tag !== "v1.37.0") fail("attribute_citations");
+  const genai = citations.genai_client_span;
+  if (!genai || genai.document !== "docs/gen-ai/gen-ai-spans.md") fail("genai_client_span");
+  const includes = new Set(genai.includes || []);
+  const excludes = new Set(genai.excludes || []);
+  for (const name of HTTP_URL_ATTRIBUTES) {
+    if (includes.has(name)) fail("genai span page lists " + name);
+    if (!excludes.has(name)) fail("genai span page exclude missing " + name);
+  }
+  for (const name of ["server.address", "server.port", "error.type", "gen_ai.provider.name", "gen_ai.operation.name"]) {
+    if (!includes.has(name)) fail("genai span page missing " + name);
+    if (excludes.has(name)) fail("genai span page excludes " + name);
+  }
+  if (!Array.isArray(citations.definitions)) fail("attribute citation definitions");
+  const defined = new Map();
+  for (const entry of citations.definitions) {
+    defined.set(entry.attribute, entry);
+  }
+  for (const name of HTTP_URL_ATTRIBUTES) {
+    const entry = defined.get(name);
+    if (!entry) fail("missing citation " + name);
+    if (entry.defined_in == null || entry.defined_in === genai.document) fail("citation document " + name);
+    if (String(entry.defined_in).includes("gen-ai-spans")) fail("citation document " + name);
+    const citedBy = entry.cited_by || [];
+    for (const document of citedBy) {
+      if (document === genai.document || String(document).includes("gen-ai-spans")) fail("cited by genai span page " + name);
+    }
+    if (!citedBy.includes("docs/http/http-spans.md")) fail("http span citation " + name);
+  }
+  const method = defined.get("http.request.method");
+  const status = defined.get("http.response.status_code");
+  const path = defined.get("url.path");
+  const scheme = defined.get("url.scheme");
+  if (method.defined_in !== "docs/registry/attributes/http.md") fail("http.request.method definition");
+  if (status.defined_in !== "docs/registry/attributes/http.md") fail("http.response.status_code definition");
+  if (path.defined_in !== "docs/registry/attributes/url.md") fail("url.path definition");
+  if (scheme.defined_in !== "docs/registry/attributes/url.md") fail("url.scheme definition");
+  if (path.span_table !== "http_server") fail("url.path span table");
+  if (method.span_table !== "http_client_and_server") fail("http.request.method span table");
+  if (status.span_table !== "http_client_and_server") fail("http.response.status_code span table");
+  if (scheme.span_table !== "http_client_and_server") fail("url.scheme span table");
+}
+
 function validateMapping(doc) {
   if (!doc || typeof doc !== "object") fail("mapping document is not an object");
   if (doc.mapping_id !== POSTURE.mapping_id) fail("mapping_id");
@@ -106,6 +158,11 @@ function validateMapping(doc) {
   for (const id of doc.unmapped_provider_ids) {
     if (seenOptics.has(id)) fail("unmapped id is also mapped " + id);
   }
+  if (!Array.isArray(doc.canonical_candidate_origins) || doc.canonical_candidate_origins.length !== 1) {
+    fail("canonical_candidate_origins");
+  }
+  if (doc.canonical_candidate_origins[0] !== "LOCAL_OBSERVATION") fail("canonical_candidate_origins");
+  validateAttributeCitations(doc);
   if (!Array.isArray(doc.operation_rules) || doc.operation_rules.length !== 1) fail("operation_rules");
   const operation = doc.operation_rules[0];
   if (operation.method !== "POST" || operation.path !== "/v1/chat/completions" || operation.gen_ai_operation_name !== "chat") {

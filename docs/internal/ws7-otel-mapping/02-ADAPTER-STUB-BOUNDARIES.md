@@ -25,7 +25,7 @@ There is no `enableAdapter`, no OTLP client, and no console dump. A local dump w
 These bounds apply before any enable flag exists:
 
 - Default remains disabled. An unset flag is disabled.
-- `SIMULATED_DEMO`, `TEST_FIXTURE`, `IMPORTED`, and a missing origin stay out of operational export.
+- `SIMULATED_DEMO`, `TEST_FIXTURE`, `IMPORTED`, `PRODUCT_HEALTH`, `DERIVED_DIAGNOSTIC`, and a missing origin stay out of the candidate set. `would_be_operational_if_i3_enabled` stays false for those origins.
 - Live display rows stay non-operational until a writer stamps `LOCAL_OBSERVATION` on a canonical observation.
 - Content attributes stay off. Byte counts stay off token attributes.
 - Metric labels, if a metrics adapter is ever built, stay on low-cardinality enums. `provider_id` is not a metric label in the evidence catalog. `run_id`, `trace_id`, `session_id`, `path`, and raw `destination_host` are not metric labels.
@@ -57,4 +57,4 @@ Still closed unless a later force says otherwise:
 - prompt or completion capture
 - token counts derived from bytes
 
-Success token for that later force is not chosen here. This I2 packet stops at `OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL`.
+Success token for that later force is not chosen here. This revision stops at `OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL`. I3 stays `NOT_AUTHORIZED`.
