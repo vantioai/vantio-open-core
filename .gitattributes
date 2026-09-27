@@ -1,4 +1,7 @@
 * text=auto eol=lf
+# Private customer manual. git archive / GitHub source downloads omit this tree.
+# The files stay on the branch for authorized review. They are not a public release asset.
+docs/customer/phantom-engine/** export-ignore
 *.sh text eol=lf
 *.bat text eol=crlf
 *.png binary
