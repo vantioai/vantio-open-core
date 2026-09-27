@@ -252,7 +252,8 @@
       "successful_http",
       "alias_canonical_names_only",
       "provider_guess_not_promoted",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_byte_count"
     ],
     "scenario": "python-3-1-0",
     "semantic_dimension_readings": {
@@ -331,7 +332,8 @@
     "raw_input_note": "",
     "record_emitted": false,
     "rule_ids": [
-      "node_sdk_not_local_record"
+      "node_sdk_not_local_record",
+      "status_dimensions_separated"
     ],
     "scenario": "node-sdk-0-2-4",
     "semantic_dimension_readings": {
@@ -393,7 +395,8 @@
     "record_emitted": false,
     "rule_ids": [
       "empty_shield",
-      "absent_file"
+      "absent_file",
+      "status_dimensions_separated"
     ],
     "scenario": "empty-shield",
     "semantic_dimension_readings": {
@@ -450,7 +453,8 @@
     "raw_input_note": "",
     "record_emitted": false,
     "rule_ids": [
-      "absent_file"
+      "absent_file",
+      "status_dimensions_separated"
     ],
     "scenario": "no-file",
     "semantic_dimension_readings": {
@@ -687,7 +691,10 @@
     "rule_ids": [
       "unknown_status",
       "successful_http",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "unknown-status",
     "semantic_dimension_readings": {
@@ -754,7 +761,10 @@
     "rule_ids": [
       "missing_action",
       "missing_optics_status",
-      "successful_http"
+      "successful_http",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
     ],
     "scenario": "missing-action",
     "semantic_dimension_readings": {
@@ -827,7 +837,10 @@
     "rule_ids": [
       "missing_byte_count",
       "successful_http",
-      "missing_optics_status"
+      "missing_optics_status",
+      "missing_action",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
     ],
     "scenario": "bytes-missing",
     "semantic_dimension_readings": {
@@ -903,7 +916,10 @@
     "rule_ids": [
       "legacy_bytes_zero",
       "successful_http",
-      "missing_optics_status"
+      "missing_optics_status",
+      "missing_action",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
     ],
     "scenario": "legacy-bytes-zero",
     "semantic_dimension_readings": {
@@ -971,7 +987,9 @@
     "rule_ids": [
       "explicit_response_bytes_zero",
       "successful_http",
-      "missing_optics_status"
+      "missing_optics_status",
+      "missing_action",
+      "status_dimensions_separated"
     ],
     "scenario": "explicit-response-bytes-zero",
     "semantic_dimension_readings": {
@@ -1126,7 +1144,8 @@
     "raw_input_note": "",
     "record_emitted": true,
     "rule_ids": [
-      "imported_evidence"
+      "imported_evidence",
+      "status_dimensions_separated"
     ],
     "scenario": "imported-evidence",
     "semantic_dimension_readings": {
@@ -1212,7 +1231,8 @@
       "simulated_evidence",
       "successful_http",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_byte_count"
     ],
     "scenario": "simulated-evidence",
     "semantic_dimension_readings": {
@@ -1305,7 +1325,8 @@
     "record_emitted": true,
     "rule_ids": [
       "partial_run",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_evidence_origin"
     ],
     "scenario": "partial-run",
     "semantic_dimension_readings": {
@@ -1386,7 +1407,9 @@
       "legacy_bytes_zero",
       "null_http_status_is_absent",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_evidence_origin"
     ],
     "scenario": "interrupted-run",
     "semantic_dimension_readings": {
@@ -1450,7 +1473,8 @@
     "raw_input_note": "{not-json",
     "record_emitted": false,
     "rule_ids": [
-      "corrupt_record"
+      "corrupt_record",
+      "status_dimensions_separated"
     ],
     "scenario": "corrupt-record",
     "semantic_dimension_readings": {
@@ -1508,7 +1532,8 @@
     "raw_input_note": "",
     "record_emitted": false,
     "rule_ids": [
-      "unreadable_record"
+      "unreadable_record",
+      "status_dimensions_separated"
     ],
     "scenario": "unreadable-record",
     "semantic_dimension_readings": {
@@ -1577,7 +1602,11 @@
     "rule_ids": [
       "unknown_enum",
       "successful_http",
-      "missing_optics_status"
+      "missing_optics_status",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
     ],
     "scenario": "unknown-enum",
     "semantic_dimension_readings": {
@@ -1644,7 +1673,8 @@
     "raw_input_note": "",
     "record_emitted": false,
     "rule_ids": [
-      "future_field"
+      "future_field",
+      "status_dimensions_separated"
     ],
     "scenario": "future-field",
     "semantic_dimension_readings": {
@@ -1748,7 +1778,9 @@
       "alias_canonical_names_only",
       "missing_optics_status",
       "successful_http",
-      "missing_evidence_origin"
+      "missing_evidence_origin",
+      "missing_action",
+      "status_dimensions_separated"
     ],
     "scenario": "compatibility-alias",
     "semantic_dimension_readings": {
@@ -1820,7 +1852,10 @@
     "rule_ids": [
       "provider_http_error",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "provider-http-error",
     "semantic_dimension_readings": {
@@ -1892,7 +1927,10 @@
       "transport_failure",
       "missing_http_status",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "dns-failure",
     "semantic_dimension_readings": {
@@ -1963,7 +2001,10 @@
       "transport_failure",
       "missing_http_status",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "connection-failure",
     "semantic_dimension_readings": {
@@ -2034,7 +2075,10 @@
       "transport_failure",
       "missing_http_status",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "tls-failure",
     "semantic_dimension_readings": {
@@ -2105,7 +2149,10 @@
       "transport_failure",
       "missing_http_status",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "timeout-failure",
     "semantic_dimension_readings": {
@@ -2184,7 +2231,10 @@
       "customer_exception",
       "missing_http_status",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "customer-application-exception",
     "semantic_dimension_readings": {
@@ -2254,7 +2304,9 @@
       "successful_http",
       "missing_optics_status",
       "missing_action",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "successful-http-response",
     "semantic_dimension_readings": {
@@ -2326,7 +2378,11 @@
     "rule_ids": [
       "sampling_not_success",
       "successful_http",
-      "missing_optics_status"
+      "missing_optics_status",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin",
+      "status_dimensions_separated"
     ],
     "scenario": "sampling-not-success",
     "semantic_dimension_readings": {
@@ -2394,7 +2450,8 @@
     "raw_input_note": "",
     "record_emitted": true,
     "rule_ids": [
-      "claimed_local_without_provenance"
+      "claimed_local_without_provenance",
+      "status_dimensions_separated"
     ],
     "scenario": "claimed-local-without-provenance",
     "semantic_dimension_readings": {
@@ -2461,7 +2518,10 @@
       "redirect_3xx",
       "successful_http",
       "missing_optics_status",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count",
+      "missing_evidence_origin"
     ],
     "scenario": "redirect-3xx",
     "semantic_dimension_readings": {
@@ -2601,7 +2661,9 @@
     "rule_ids": [
       "explicit_observed_not_default",
       "successful_http",
-      "status_dimensions_separated"
+      "status_dimensions_separated",
+      "missing_action",
+      "missing_byte_count"
     ],
     "scenario": "explicit-observed-not-default",
     "semantic_dimension_readings": {

@@ -207,7 +207,7 @@ const fixtures = [
     },
     derived_fields: ["run_id", "destination_host", "http_status", "application_status", "optics_status", "schema_version", "started_at"],
     readings: separatedLegacy,
-    rule_ids: ["python_frozen_shape", "live_success_default_refused", "missing_evidence_origin", "successful_http", "alias_canonical_names_only", "provider_guess_not_promoted", "status_dimensions_separated"],
+    rule_ids: ["python_frozen_shape", "live_success_default_refused", "missing_evidence_origin", "successful_http", "alias_canonical_names_only", "provider_guess_not_promoted", "status_dimensions_separated", "missing_byte_count"],
     diagnostic_limitations: [
       "Python 3.1.0 stores opticsStatus SUCCESS. That token is refused: OPTIMISTIC_DEFAULT_FORBIDDEN. Canonical optics_status is UNAVAILABLE.",
       "Envelope schema_version 2 stays on compatibility.legacy_schema_version. Canonical schema_version is 0.",
@@ -240,7 +240,7 @@ const fixtures = [
     aliases_used: ["traceId", "timestamp_ns", "action_taken", "target_host"],
     fields_not_promoted: ["traceId", "timestamp_ns", "action_taken", "eventPayload"],
     readings: { optics_health: "UNAVAILABLE", coverage: "NO_LOCAL_RECORD" },
-    rule_ids: ["node_sdk_not_local_record"],
+    rule_ids: ["node_sdk_not_local_record", "status_dimensions_separated"],
     diagnostic_limitations: [
       "Node SDK 0.2.4 does not write a local run log.",
       "timestamp_ns is not RFC3339 and is not a safe neutral JSON integer in this fixture.",
@@ -256,7 +256,7 @@ const fixtures = [
     input_parse: "ABSENT_FILE",
     record_emitted: false,
     readings: { optics_health: "UNAVAILABLE", coverage: "NO_FILE" },
-    rule_ids: ["empty_shield", "absent_file"],
+    rule_ids: ["empty_shield", "absent_file", "status_dimensions_separated"],
     prohibited: [{ path: "reading.optics_health", forbidden_value: "NOT_OBSERVED" }, { path: "reading.optics_health", forbidden_value: "SUCCESS" }],
     diagnostic_limitations: [
       "Python empty shield writes no file because the call list is empty.",
@@ -272,7 +272,7 @@ const fixtures = [
     input_parse: "ABSENT_FILE",
     record_emitted: false,
     readings: { optics_health: "UNAVAILABLE", coverage: "NO_FILE" },
-    rule_ids: ["absent_file"],
+    rule_ids: ["absent_file", "status_dimensions_separated"],
     prohibited: [{ path: "reading.optics_health", forbidden_value: "NOT_OBSERVED" }],
     diagnostic_limitations: [
       "The reader path is absent. UNAVAILABLE is not NOT_OBSERVED.",
@@ -334,7 +334,7 @@ const fixtures = [
     record_emitted: true,
     fields_not_promoted: ["SUPER_SUCCESS"],
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", completeness: "MISSING_REQUIRED_STATUS" },
-    rule_ids: ["unknown_status", "successful_http", "status_dimensions_separated"],
+    rule_ids: ["unknown_status", "successful_http", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: [
       "SUPER_SUCCESS is not an optics_status token.",
       "The canonical optics health is UNAVAILABLE with OPTIMISTIC_DEFAULT_FORBIDDEN.",
@@ -351,7 +351,7 @@ const fixtures = [
     expected_canonical: { http_status: 200, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", observation_action: "ABSENT" },
-    rule_ids: ["missing_action", "missing_optics_status", "successful_http"],
+    rule_ids: ["missing_action", "missing_optics_status", "successful_http", "missing_byte_count", "missing_evidence_origin", "status_dimensions_separated"],
     diagnostic_limitations: ["Missing action is omitted. It is not stored as OBSERVED."],
   }),
   fixture({
@@ -363,7 +363,7 @@ const fixtures = [
     expected_canonical: { http_status: 204, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", http_network_outcomes: "BYTES_ABSENT" },
-    rule_ids: ["missing_byte_count", "successful_http", "missing_optics_status"],
+    rule_ids: ["missing_byte_count", "successful_http", "missing_optics_status", "missing_action", "missing_evidence_origin", "status_dimensions_separated"],
     prohibited: [{ path: "response_bytes", forbidden_value: 0 }, { path: "response_bytes", forbidden_value: null }],
     diagnostic_limitations: ["Missing bytes omit response_bytes. They are not stored as 0 or null."],
   }),
@@ -378,7 +378,7 @@ const fixtures = [
     derived_fields: ["response_bytes"],
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", http_network_outcomes: "LEGACY_ZERO" },
-    rule_ids: ["legacy_bytes_zero", "successful_http", "missing_optics_status"],
+    rule_ids: ["legacy_bytes_zero", "successful_http", "missing_optics_status", "missing_action", "missing_evidence_origin", "status_dimensions_separated"],
     prohibited: [{ path: "response_bytes", forbidden_value: 0 }],
     diagnostic_limitations: ["Legacy bytes 0 becomes response_bytes null. It is not a measured zero."],
   }),
@@ -393,7 +393,7 @@ const fixtures = [
     expected_canonical: { response_bytes: 0, http_status: 200, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", http_network_outcomes: "MEASURED_ZERO" },
-    rule_ids: ["explicit_response_bytes_zero", "successful_http", "missing_optics_status"],
+    rule_ids: ["explicit_response_bytes_zero", "successful_http", "missing_optics_status", "missing_action", "status_dimensions_separated"],
     diagnostic_limitations: [
       "Explicit canonical response_bytes 0 stays 0.",
       "This declared input is not a shipped writer. A frozen reader is UNSUPPORTED.",
@@ -433,7 +433,7 @@ const fixtures = [
     expected_canonical: { evidence_origin: "IMPORTED", original_evidence_origin: "LEGACY_UNMARKED" },
     record_emitted: true,
     readings: { evidence_origin_basis: "IMPORTED", optics_health: "UNAVAILABLE", integrity: "UNKNOWN" },
-    rule_ids: ["imported_evidence"],
+    rule_ids: ["imported_evidence", "status_dimensions_separated"],
     prohibited: [{ path: "evidence_origin", forbidden_value: "LOCAL_OBSERVATION" }],
     diagnostic_limitations: ["IMPORTED stays IMPORTED. original_evidence_origin stays LEGACY_UNMARKED. Origin is not upgraded."],
   }),
@@ -456,7 +456,7 @@ const fixtures = [
     derived_fields: ["destination_host", "evidence_origin", "http_status", "application_status", "optics_status"],
     record_emitted: true,
     readings: separatedLegacy,
-    rule_ids: ["simulated_evidence", "successful_http", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["simulated_evidence", "successful_http", "missing_optics_status", "status_dimensions_separated", "missing_byte_count"],
     prohibited: [{ path: "evidence_origin", forbidden_value: "LOCAL_OBSERVATION" }],
     diagnostic_limitations: [
       "Host optics-demo.invalid marks this observation SIMULATED_DEMO.",
@@ -477,7 +477,7 @@ const fixtures = [
     ],
     record_emitted: true,
     readings: { attempt_lifecycle: "PARTIAL", optics_health: "UNAVAILABLE", workload_outcome: "MIXED", coverage: "MIXED_CALLS" },
-    rule_ids: ["partial_run", "status_dimensions_separated"],
+    rule_ids: ["partial_run", "status_dimensions_separated", "missing_evidence_origin"],
     prohibited: [{ path: "application_status", forbidden_value: "PARTIAL" }, { path: "optics_status", forbidden_value: "PARTIAL" }],
     diagnostic_limitations: [
       "The live rollup token PARTIAL is not application_status. application_status has no PARTIAL token.",
@@ -506,7 +506,7 @@ const fixtures = [
       workload_outcome: "UNAVAILABLE",
       timestamps_duration: "NOT_MEASURED_ZERO",
     },
-    rule_ids: ["interrupted_run", "ambiguous_duration_zero", "legacy_bytes_zero", "null_http_status_is_absent", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["interrupted_run", "ambiguous_duration_zero", "legacy_bytes_zero", "null_http_status_is_absent", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_evidence_origin"],
     diagnostic_limitations: [
       "duration_ms 0 with null status is pre-completion. It is not a measured zero.",
       "lifecycle INTERRUPTED is not optics SUCCESS and not application SUCCESS.",
@@ -523,7 +523,7 @@ const fixtures = [
     raw_input_note: "{not-json",
     record_emitted: false,
     readings: { optics_health: "OPTICS_ERROR", issue_location: "OPTICS", integrity: "UNKNOWN" },
-    rule_ids: ["corrupt_record"],
+    rule_ids: ["corrupt_record", "status_dimensions_separated"],
     prohibited: [{ path: "reading.optics_health", forbidden_value: "NOT_OBSERVED" }, { path: "reading.integrity", forbidden_value: "OK" }],
     diagnostic_limitations: [
       "Malformed JSON rejects the record. It is not an empty valid record.",
@@ -540,7 +540,7 @@ const fixtures = [
     input_parse: "UNREADABLE",
     record_emitted: false,
     readings: { optics_health: "OPTICS_ERROR", issue_location: "OPTICS", integrity: "UNKNOWN" },
-    rule_ids: ["unreadable_record"],
+    rule_ids: ["unreadable_record", "status_dimensions_separated"],
     prohibited: [{ path: "reading.optics_health", forbidden_value: "NOT_OBSERVED" }],
     diagnostic_limitations: [
       "Unreadable bytes are OPTICS_ERROR, not NOT_OBSERVED.",
@@ -557,7 +557,7 @@ const fixtures = [
     expected_canonical: { http_status: 204, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", destination_provider_identity: "METHOD_REJECTED" },
-    rule_ids: ["unknown_enum", "successful_http", "missing_optics_status"],
+    rule_ids: ["unknown_enum", "successful_http", "missing_optics_status", "missing_action", "missing_byte_count", "missing_evidence_origin", "status_dimensions_separated"],
     diagnostic_limitations: [
       "Method FLY is not in the closed method set. The raw token stays in this diagnostic and is not stored.",
       "Rejecting the method does not invent optics SUCCESS.",
@@ -573,7 +573,7 @@ const fixtures = [
     fields_not_promoted: ["freshness", "widget_hint", "cost"],
     record_emitted: false,
     readings: { optics_health: "UNAVAILABLE", completeness: "FIELD_NOT_PROMOTED" },
-    rule_ids: ["future_field"],
+    rule_ids: ["future_field", "status_dimensions_separated"],
     diagnostic_limitations: [
       "freshness CURRENT is not a catalog token and is not emitted.",
       "cost is prohibited. widget_hint is unknown.",
@@ -604,7 +604,7 @@ const fixtures = [
     derived_fields: ["run_id", "process_id", "parent_process_id", "started_at", "destination_host", "http_status", "response_bytes", "application_status", "optics_status"],
     record_emitted: true,
     readings: separatedLegacy,
-    rule_ids: ["alias_canonical_names_only", "missing_optics_status", "successful_http", "missing_evidence_origin"],
+    rule_ids: ["alias_canonical_names_only", "missing_optics_status", "successful_http", "missing_evidence_origin", "missing_action", "status_dimensions_separated"],
     prohibited: [{ path: "canonical.trace_id", forbidden_value: "0xalias" }],
     diagnostic_limitations: [
       "Alias keys are not stored beside canonical keys.",
@@ -631,7 +631,7 @@ const fixtures = [
       dependency_outcome: "HTTP_5XX",
       issue_location: "PROVIDER_INTERACTION",
     },
-    rule_ids: ["provider_http_error", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["provider_http_error", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     prohibited: [{ path: "ok", forbidden_value: false }],
     diagnostic_limitations: [
       "HTTP 500 is application_status APPLICATION_ERROR and issue_location PROVIDER_INTERACTION.",
@@ -653,7 +653,7 @@ const fixtures = [
     },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "UNAVAILABLE", dependency_outcome: "DNS", issue_location: "NETWORK" },
-    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: ["The string network_error is not failure_kind. DNS with no HTTP status is issue_location NETWORK, not workload SUCCESS."],
   }),
   fixture({
@@ -671,7 +671,7 @@ const fixtures = [
     },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "UNAVAILABLE", dependency_outcome: "CONNECTION", issue_location: "NETWORK" },
-    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: ["Connection failure keeps failure_kind connection. The string network_error is not the enum."],
   }),
   fixture({
@@ -689,7 +689,7 @@ const fixtures = [
     },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "UNAVAILABLE", dependency_outcome: "TLS", issue_location: "NETWORK" },
-    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: ["TLS failure keeps failure_kind tls. It is not workload SUCCESS and not optics SUCCESS."],
   }),
   fixture({
@@ -707,7 +707,7 @@ const fixtures = [
     },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "UNAVAILABLE", dependency_outcome: "TIMEOUT", issue_location: "NETWORK" },
-    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["transport_failure", "missing_http_status", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: ["Timeout keeps failure_kind timeout. It is not a success token."],
   }),
   fixture({
@@ -730,7 +730,7 @@ const fixtures = [
       dependency_outcome: "ABSENT",
       issue_location: "CUSTOMER_APPLICATION",
     },
-    rule_ids: ["customer_exception", "missing_http_status", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["customer_exception", "missing_http_status", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     prohibited: [{ path: "failure_kind", forbidden_value: "none" }, { path: "application_status", forbidden_value: "SUCCESS" }],
     diagnostic_limitations: [
       "failure_kind wrapped with error_class and no HTTP status is issue_location CUSTOMER_APPLICATION.",
@@ -747,7 +747,7 @@ const fixtures = [
     expected_canonical: { http_status: 200, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: separatedLegacy,
-    rule_ids: ["successful_http", "missing_optics_status", "missing_action", "status_dimensions_separated"],
+    rule_ids: ["successful_http", "missing_optics_status", "missing_action", "status_dimensions_separated", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: [
       "HTTP 200 maps to workload application_status SUCCESS.",
       "Missing optics_status stays UNAVAILABLE. Workload SUCCESS is not optics SUCCESS.",
@@ -763,7 +763,7 @@ const fixtures = [
     expected_canonical: { http_status: 200, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: { sampling: "INVALID_OMITTED", optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS" },
-    rule_ids: ["sampling_not_success", "successful_http", "missing_optics_status"],
+    rule_ids: ["sampling_not_success", "successful_http", "missing_optics_status", "missing_action", "missing_byte_count", "missing_evidence_origin", "status_dimensions_separated"],
     prohibited: [{ path: "sampling", forbidden_value: "UNSAMPLED" }],
     diagnostic_limitations: ["Invalid sampling token SAMPLED is not stored as UNSAMPLED and is not optics success."],
   }),
@@ -777,7 +777,7 @@ const fixtures = [
     derived_fields: ["reader_origin_label"],
     record_emitted: true,
     readings: { evidence_origin_basis: "LEGACY_UNMARKED", optics_health: "UNAVAILABLE", integrity: "UNKNOWN" },
-    rule_ids: ["claimed_local_without_provenance"],
+    rule_ids: ["claimed_local_without_provenance", "status_dimensions_separated"],
     prohibited: [{ path: "evidence_origin", forbidden_value: "LOCAL_OBSERVATION" }],
     diagnostic_limitations: [
       "LOCAL_OBSERVATION without a recognized producer and version is PROVENANCE_INSUFFICIENT.",
@@ -793,7 +793,7 @@ const fixtures = [
     expected_canonical: { http_status: 302, application_status: "SUCCESS", optics_status: "UNAVAILABLE" },
     record_emitted: true,
     readings: { optics_health: "UNAVAILABLE", workload_outcome: "SUCCESS", dependency_outcome: "HTTP_3XX" },
-    rule_ids: ["redirect_3xx", "successful_http", "missing_optics_status", "status_dimensions_separated"],
+    rule_ids: ["redirect_3xx", "successful_http", "missing_optics_status", "status_dimensions_separated", "missing_action", "missing_byte_count", "missing_evidence_origin"],
     diagnostic_limitations: [
       "A 3xx final status is workload SUCCESS. No redirect hop is invented.",
       "It is not optics SUCCESS.",
@@ -844,7 +844,7 @@ const fixtures = [
     expected_canonical: { optics_status: "OBSERVED", http_status: 200, application_status: "SUCCESS" },
     record_emitted: true,
     readings: { optics_health: "OBSERVED", workload_outcome: "SUCCESS", dependency_outcome: "HTTP_2XX" },
-    rule_ids: ["explicit_observed_not_default", "successful_http", "status_dimensions_separated"],
+    rule_ids: ["explicit_observed_not_default", "successful_http", "status_dimensions_separated", "missing_action", "missing_byte_count"],
     diagnostic_limitations: [
       "OBSERVED on this declared input is an explicit token, not a default.",
       "Missing optics_status does not become OBSERVED. This fixture is not a live writer.",

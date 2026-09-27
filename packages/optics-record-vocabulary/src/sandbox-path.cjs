@@ -30,7 +30,15 @@ function resolveInside(rootDirectory, targetPath) {
   if (relative.startsWith("..") || path.isAbsolute(relative)) throw sandboxError();
   const base = path.basename(resolved);
   if (base.length === 0 || base === "." || base === "..") throw sandboxError();
-  return path.join(parentReal, base);
+  const candidate = path.join(parentReal, base);
+  let stat = null;
+  try {
+    stat = fs.lstatSync(candidate);
+  } catch (error) {
+    if (!error || error.code !== "ENOENT") throw sandboxError();
+  }
+  if (stat && stat.isSymbolicLink()) throw sandboxError();
+  return candidate;
 }
 
 module.exports = { resolveInside };

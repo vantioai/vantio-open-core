@@ -485,6 +485,82 @@ function producerSurface(fixture) {
   return plainObject(fixture.producer) ? fixture.producer.surface : null;
 }
 
+function hasOwn(object, key) {
+  return plainObject(object) && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function emittedCall(fixture) {
+  if (!plainObject(fixture) || fixture.record_emitted !== true) return null;
+  const call = callOf(fixture);
+  return plainObject(call) ? call : null;
+}
+
+function callLacksAction(call) {
+  return !Object.prototype.hasOwnProperty.call(call, "action");
+}
+
+function callLacksByteCount(call) {
+  return !Object.prototype.hasOwnProperty.call(call, "bytes") && !Object.prototype.hasOwnProperty.call(call, "response_bytes");
+}
+
+function originKeysAbsent(fixture) {
+  return !hasOwn(envelopeOf(fixture), "evidence_origin") && !hasOwn(callOf(fixture), "evidence_origin");
+}
+
+function demoHostObservation(fixture, vocabulary) {
+  const call = callOf(fixture);
+  return plainObject(call) && vocabulary && call.hostname === vocabulary.demo_host;
+}
+
+function legacyOriginUnmarked(fixture, vocabulary) {
+  if (!plainObject(fixture) || fixture.record_emitted !== true || fixture.input_parse !== "OK") return false;
+  if (producerSurface(fixture) === "future_not_shipped") return false;
+  if (!originKeysAbsent(fixture) || demoHostObservation(fixture, vocabulary)) return false;
+  return true;
+}
+
+function separatedReadings(fixture) {
+  const readings = plainObject(fixture.semantic_dimension_readings) ? fixture.semantic_dimension_readings : null;
+  if (!readings) return [];
+  return boundary.SEPARATED_DIMENSIONS.filter((dimension) => Object.prototype.hasOwnProperty.call(readings, dimension));
+}
+
+function statusSplitLocked(fixture) {
+  if (!plainObject(fixture)) return false;
+  const readings = plainObject(fixture.semantic_dimension_readings) ? fixture.semantic_dimension_readings : null;
+  if (readings && separatedReadings(fixture).length >= 2) return true;
+  if (readings && readings.workload_outcome === "PARTIAL") return true;
+  if (readings && readings.attempt_lifecycle === "PARTIAL") return true;
+  const extra = extraOf(fixture);
+  if (plainObject(extra) && extra.summary_applicationStatus === "PARTIAL") return true;
+  if (plainObject(fixture.expected_canonical) && fixture.expected_canonical.lifecycle === "PARTIAL") return true;
+  return false;
+}
+
+function rejectOptimisticFills(fixture, vocabulary, errors) {
+  const call = emittedCall(fixture);
+  if (call && callLacksAction(call)) {
+    for (const object of collectObjects(fixture)) {
+      if (!hasOwn(object, "action")) continue;
+      errors.push(object.action === "OBSERVED" ? "stored action OBSERVED" : "missing action was stored");
+    }
+  }
+  if (call && callLacksByteCount(call)) {
+    for (const object of collectObjects(fixture)) {
+      if (!hasOwn(object, "response_bytes")) continue;
+      errors.push(object.response_bytes === 0 ? "stored response_bytes 0" : "missing bytes were stored");
+    }
+  }
+  if (originKeysAbsent(fixture) && !demoHostObservation(fixture, vocabulary)) {
+    if (fixture.evidence_origin === "SIMULATED_DEMO") errors.push("reader label drifted to SIMULATED_DEMO");
+    for (const object of collectObjects(fixture)) {
+      if (object.evidence_origin === "SIMULATED_DEMO") errors.push("stored SIMULATED_DEMO");
+    }
+  }
+  const readings = plainObject(fixture.semantic_dimension_readings) ? fixture.semantic_dimension_readings : null;
+  if (readings && readings.workload_outcome === "PARTIAL") errors.push("workload PARTIAL reading");
+}
+
 function requiredProtectiveRules(fixture, vocabulary) {
   const required = [];
   if (!plainObject(fixture)) return required;
@@ -580,6 +656,11 @@ function requiredProtectiveRules(fixture, vocabulary) {
   ) {
     required.push("missing_http_status");
   }
+  const observation = emittedCall(fixture);
+  if (observation && callLacksAction(observation)) required.push("missing_action");
+  if (observation && callLacksByteCount(observation)) required.push("missing_byte_count");
+  if (legacyOriginUnmarked(fixture, vocabulary)) required.push("missing_evidence_origin");
+  if (statusSplitLocked(fixture)) required.push("status_dimensions_separated");
   return [...new Set(required)];
 }
 
@@ -678,6 +759,7 @@ function checkStructure(fixture, vocabulary, errors) {
   }
   const readings = plainObject(fixture.semantic_dimension_readings) ? fixture.semantic_dimension_readings : null;
   if (readings && readings.optics_health === "SUCCESS") errors.push("reading optics SUCCESS");
+  if (plainObject(fixture) && vocabulary) rejectOptimisticFills(fixture, vocabulary, errors);
   if (readings && readings.optics_health === "NOT_OBSERVED" && fixture.id !== "cli-empty-call-file") {
     errors.push("NOT_OBSERVED reading");
   }

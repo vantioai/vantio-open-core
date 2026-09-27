@@ -245,4 +245,40 @@ test("mutated fixtures cannot drop protective rules", () => {
     drops += 1;
   }
   assert.ok(drops >= fixtures.length);
+
+  function withoutRule(fixture, ruleId) {
+    const copy = clone(fixture);
+    copy.rule_ids = copy.rule_ids.filter((id) => id !== ruleId);
+    return copy;
+  }
+
+  const actionFill = withoutRule(fixtures.find((fixture) => fixture.id === "missing-action"), "missing_action");
+  actionFill.expected_canonical.action = "OBSERVED";
+  const actionResult = evaluateFixture(actionFill, vocabulary);
+  assert.equal(actionResult.ok, false);
+  assert.equal(actionResult.errors.some((error) => error.includes("dropped protective rule missing_action")), true);
+  assert.equal(actionResult.errors.some((error) => error.includes("stored action OBSERVED")), true);
+
+  const byteFill = withoutRule(fixtures.find((fixture) => fixture.id === "successful-http-response"), "missing_byte_count");
+  byteFill.expected_canonical.response_bytes = 0;
+  const byteResult = evaluateFixture(byteFill, vocabulary);
+  assert.equal(byteResult.ok, false);
+  assert.equal(byteResult.errors.some((error) => error.includes("dropped protective rule missing_byte_count")), true);
+  assert.equal(byteResult.errors.some((error) => error.includes("stored response_bytes 0")), true);
+
+  const originFill = withoutRule(fixtures.find((fixture) => fixture.id === "cli-0-3-24"), "missing_evidence_origin");
+  originFill.evidence_origin = "SIMULATED_DEMO";
+  originFill.expected_canonical.evidence_origin = "LOCAL_OBSERVATION";
+  const originResult = evaluateFixture(originFill, vocabulary);
+  assert.equal(originResult.ok, false);
+  assert.equal(originResult.errors.some((error) => error.includes("dropped protective rule missing_evidence_origin")), true);
+  assert.equal(originResult.errors.some((error) => error.includes("reader label drifted to SIMULATED_DEMO")), true);
+  assert.equal(originResult.errors.some((error) => error.includes("stored LOCAL_OBSERVATION")), true);
+
+  const partialFill = withoutRule(fixtures.find((fixture) => fixture.id === "partial-run"), "status_dimensions_separated");
+  partialFill.semantic_dimension_readings.workload_outcome = "PARTIAL";
+  const partialResult = evaluateFixture(partialFill, vocabulary);
+  assert.equal(partialResult.ok, false);
+  assert.equal(partialResult.errors.some((error) => error.includes("dropped protective rule status_dimensions_separated")), true);
+  assert.equal(partialResult.errors.some((error) => error.includes("workload PARTIAL")), true);
 });

@@ -197,7 +197,10 @@ test("an out-of-scope path is named without reading the file", () => {
 test("direct builder invocation cannot write outside the sandbox", () => {
   const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "unit-a-scope-"));
   const outside = path.join(outsideDir, "escape.json");
+  const outsideFile = path.join(outsideDir, "file-escape.json");
   const link = path.join(PACKAGE_ROOT, "vocabulary", "sandbox-link-probe");
+  const vocabFileLink = path.join(PACKAGE_ROOT, "vocabulary", "file-symlink-probe.json");
+  const fixtureFileLink = path.join(PACKAGE_ROOT, "fixtures", "file-symlink-probe.json");
   const originalWrite = fs.writeFileSync;
   try {
     assert.throws(() => writeVocabulary(outside), (error) => error.code === "PATH_OUTSIDE_SANDBOX");
@@ -210,6 +213,26 @@ test("direct builder invocation cannot write outside the sandbox", () => {
       (error) => error.code === "PATH_OUTSIDE_SANDBOX",
     );
     assert.equal(fs.existsSync(outside), false);
+
+    fs.writeFileSync(outsideFile, "sealed");
+    fs.symlinkSync(outsideFile, vocabFileLink);
+    fs.symlinkSync(outsideFile, fixtureFileLink);
+    assert.throws(() => writeVocabulary(vocabFileLink), (error) => error.code === "PATH_OUTSIDE_SANDBOX");
+    assert.throws(() => writeFixtures(fixtureFileLink), (error) => error.code === "PATH_OUTSIDE_SANDBOX");
+    assert.equal(fs.readFileSync(outsideFile, "utf8"), "sealed");
+    const buildLink = spawnSync(process.execPath, [path.join(PACKAGE_ROOT, "tools", "build-vocabulary.cjs"), vocabFileLink], {
+      encoding: "utf8",
+    });
+    const emitLink = spawnSync(process.execPath, [path.join(PACKAGE_ROOT, "tools", "emit-fixtures.cjs"), fixtureFileLink], {
+      encoding: "utf8",
+    });
+    assert.notEqual(buildLink.status, 0);
+    assert.notEqual(emitLink.status, 0);
+    assert.match(buildLink.stderr, /PATH_OUTSIDE_SANDBOX/);
+    assert.match(emitLink.stderr, /PATH_OUTSIDE_SANDBOX/);
+    assert.equal(fs.readFileSync(outsideFile, "utf8"), "sealed");
+    assert.equal(fs.lstatSync(vocabFileLink).isSymbolicLink(), true);
+    assert.equal(fs.lstatSync(fixtureFileLink).isSymbolicLink(), true);
 
     const calls = [];
     fs.writeFileSync = (file) => {
@@ -237,7 +260,13 @@ test("direct builder invocation cannot write outside the sandbox", () => {
     assert.equal(fs.existsSync(outside), false);
   } finally {
     fs.writeFileSync = originalWrite;
-    if (fs.existsSync(link)) fs.unlinkSync(link);
+    for (const probe of [link, vocabFileLink, fixtureFileLink]) {
+      try {
+        if (fs.lstatSync(probe).isSymbolicLink()) fs.unlinkSync(probe);
+      } catch (_error) {
+        // The probe was not created.
+      }
+    }
     fs.rmSync(outsideDir, { recursive: true, force: true });
   }
 });

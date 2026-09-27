@@ -14,7 +14,7 @@ Audience: INTERNAL_RESTRICTED
 - The witnessed-trace and explicit-`OBSERVED` fixtures use `PKG02-FUTURE-CLI-UNASSIGNED`. That string is not a version that exists. Those fixtures do not authorize Units B–F.
 - Node SDK `timestamp_ns` is carried as a decimal string because the integer is outside the safe JSON integer range. Node and the Python encoder both reject integers outside `-9007199254740991` through `9007199254740991`.
 - The Python check compares canonical JSON bytes for fixture comparison documents and the safe-integer bounds. It is not a second validator and it does not import `vantio-agent-sdk`.
-- `tools/build-vocabulary.cjs` and `tools/emit-fixtures.cjs` write only inside `vocabulary/` and `fixtures/`. A direct path outside those directories, including a symlink that leaves them, is refused before any write. The suite proves that refusal without leaving a probe file behind.
+- `tools/build-vocabulary.cjs` and `tools/emit-fixtures.cjs` write only inside `vocabulary/` and `fixtures/`. A direct path outside those directories, a directory symlink that leaves them, or a final path that is itself a file symlink, is refused before any write. The suite proves that refusal without leaving a probe file behind and without changing an outside file.
 - The call bound of 64, the frozen writers, and the unresolved Founder decisions 2–13 are unchanged.
 - `proof_manifest` stays out of this slice.
 - No fixture claims matrix class `FULL`.
