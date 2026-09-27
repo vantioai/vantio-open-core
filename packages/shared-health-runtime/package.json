@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/shared-health-runtime",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE | INERT | NOT SHIPPED | NO_LIVE_ENFORCEMENT | NO_OPTIMISTIC_GREEN | NO_STABLE_SCHEMA. Shared health runtime. Not inside @vantio/cli 0.3.24. Not a Phantom Engine enforcement change.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/shared-health-runtime/*.test.cjs"
+  }
+}
