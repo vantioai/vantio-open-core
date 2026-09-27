@@ -1,0 +1,804 @@
+{
+  "document": "COLLISION-MATRIX",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "0.1.0-design",
+  "stable_schema": false,
+  "producer_classification": "SHARED_HEALTH_VOCABULARY_READY_FOR_COUNCIL",
+  "catalog": "docs/planning/shared-health-vocabulary/HEALTH-VOCABULARY.json",
+  "source_section": "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md",
+  "preserved_section_2": true,
+  "collapsed": false,
+  "absent_fields": [
+    "coverage_percent",
+    "customer_validation",
+    "worm"
+  ],
+  "rule_names": [
+    "optics_reader_display",
+    "dual_control_executor_wired",
+    "heartbeat_age_limit_s",
+    "interval_s"
+  ],
+  "p24_named_gaps": [
+    {
+      "gap": "Optics display token OBSERVED offered as protection state protected",
+      "row_id": "OBSERVED"
+    },
+    {
+      "gap": "Verifier result BLOCKED offered as ledger ActionTaken BLOCKED",
+      "row_id": "BLOCKED"
+    },
+    {
+      "gap": "kind rows offered as managed-cloud rows",
+      "row_id": "KIND_LOCAL"
+    },
+    {
+      "gap": "Control-plane heartbeat offered as node liveness",
+      "row_id": "CONTROL_PLANE_NOT_LOADER_LIVENESS"
+    },
+    {
+      "gap": "Image digest not pinned",
+      "row_id": null,
+      "stays_named": "P1",
+      "not_a_token": true
+    }
+  ],
+  "rows": [
+    {
+      "id": "BLOCKED",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "BLOCKED"
+      ],
+      "may_hold": [
+        {
+          "field": "verifier_result",
+          "when": "the test environment is unavailable"
+        },
+        {
+          "field": "ledger_action_taken",
+          "when": "a real drop was attributed"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        },
+        {
+          "field": "optics_display"
+        }
+      ]
+    },
+    {
+      "id": "OBSERVED",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "OBSERVED"
+      ],
+      "may_hold": [
+        {
+          "field": "optics_display"
+        },
+        {
+          "field": "ledger_action_taken",
+          "when": "TLS uprobe pass-through"
+        },
+        {
+          "field": "sdk_action",
+          "when": "Layer A action token. Not a protection state.",
+          "added_by": "WS4"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_mean": [
+        {
+          "field": "protection_state",
+          "value": "protected"
+        }
+      ]
+    },
+    {
+      "id": "ALLOWED",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "ALLOWED"
+      ],
+      "may_hold": [
+        {
+          "field": "pass_through_product_label",
+          "when": "Phantom product label for pass-through, distinguished from wire OBSERVED"
+        },
+        {
+          "field": "sdk_action",
+          "when": "a policy allows a call"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ]
+    },
+    {
+      "id": "PARTIAL",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "PARTIAL"
+      ],
+      "may_hold": [
+        {
+          "field": "optics_display",
+          "when": "mixed-run rollup"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        },
+        {
+          "field": "coverage_percent",
+          "when": "coverage is a named gap, not a percentage"
+        }
+      ]
+    },
+    {
+      "id": "SUCCESS",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "SUCCESS"
+      ],
+      "may_hold": [
+        {
+          "field": "optics_display",
+          "when": "an observation record was stored"
+        },
+        {
+          "field": "application_status",
+          "when": "HTTP 200-399 workload outcome",
+          "added_by": "WS4"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ]
+    },
+    {
+      "id": "UNKNOWN_FAMILY",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "UNKNOWN",
+        "unknown",
+        "coverage_unknown"
+      ],
+      "may_hold": [
+        {
+          "field": "freshness",
+          "when": "honest absence while the freshness window is NOT_SET",
+          "spelling": "UNKNOWN"
+        },
+        {
+          "field": "deployment_profile",
+          "when": "deployment profile unset",
+          "spelling": "unknown"
+        },
+        {
+          "field": "protection_state",
+          "when": "protection fallback or loader not installed",
+          "spelling": "coverage_unknown"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_mean": [
+        {
+          "field": "protection_state",
+          "value": "protected"
+        }
+      ]
+    },
+    {
+      "id": "CURRENT",
+      "origin": "WS3_SECTION_2",
+      "spellings": [
+        "CURRENT"
+      ],
+      "may_hold": [],
+      "must_not_hold": [
+        {
+          "field": "freshness",
+          "when": "a substitute for a heartbeat file younger than 60 seconds"
+        }
+      ],
+      "emitted": false
+    },
+    {
+      "id": "OPTIONAL_COMPONENT_ABSENT",
+      "origin": "WS3_COLLISION_RULE",
+      "spellings": [
+        "OPTIONAL_COMPONENT_ABSENT"
+      ],
+      "may_hold": [
+        {
+          "field": "verifier_result"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_mean": [
+        {
+          "field": "verifier_result",
+          "value": "PASS"
+        }
+      ]
+    },
+    {
+      "id": "INTERNALLY_PROVEN",
+      "origin": "WS3_COLLISION_RULE",
+      "spellings": [
+        "internally_proven"
+      ],
+      "may_hold": [
+        {
+          "field": "compatibility_status"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_mean": [
+        {
+          "field": "platform_scope",
+          "value": "STRANGER_HOST"
+        }
+      ]
+    },
+    {
+      "id": "KIND_LOCAL",
+      "origin": "WS3_COLLISION_RULE",
+      "spellings": [
+        "KIND_LOCAL"
+      ],
+      "may_hold": [
+        {
+          "field": "platform_scope"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_mean": [
+        {
+          "field": "platform_scope",
+          "value": "MANAGED_CLOUD"
+        }
+      ]
+    },
+    {
+      "id": "TESTED_LOCAL",
+      "origin": "WS3_COLLISION_RULE",
+      "spellings": [
+        "TESTED_LOCAL"
+      ],
+      "may_hold": [
+        {
+          "field": "platform_status"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "customer_validation"
+        }
+      ]
+    },
+    {
+      "id": "CONTROL_PLANE_NOT_LOADER_LIVENESS",
+      "origin": "P24_SECTION_4",
+      "spellings": [],
+      "may_hold": [],
+      "must_not_hold": [],
+      "channels": [
+        "CONTROL_PLANE_HEARTBEAT",
+        "LOADER_LIVENESS"
+      ],
+      "must_not_collapse_fields": [
+        "heartbeat_age_limit_s",
+        "interval_s"
+      ],
+      "note": "The 60 second file age is the loader channel. The control-plane interval is NOT_COPIED."
+    },
+    {
+      "id": "BLOCKED_NOT_SDK_BLOCKED_STAR",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "BLOCKED"
+      ],
+      "may_hold": [],
+      "must_not_hold": [
+        {
+          "field": "sdk_action",
+          "when": "SDK tokens are BLOCKED_HOST, BLOCKED_SIZE, BLOCKED_SPEND, and the DRY_RUN_ forms"
+        }
+      ]
+    },
+    {
+      "id": "SUCCESS_UNIT_F_READER",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "SUCCESS"
+      ],
+      "may_hold": [],
+      "must_not_hold": [
+        {
+          "field": "optics_reader_display",
+          "when": "Unit F never renders optics SUCCESS. Stored SUCCESS becomes UNAVAILABLE."
+        }
+      ],
+      "note": "This row does not remove SUCCESS from optics_display or application_status."
+    },
+    {
+      "id": "PARTIAL_OPTICS_SUBFIELDS",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "PARTIAL"
+      ],
+      "may_hold": [
+        {
+          "field": "query_completeness",
+          "when": "A4 query completeness"
+        },
+        {
+          "field": "run_lifecycle",
+          "when": "A5 run lifecycle"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        },
+        {
+          "field": "coverage_percent"
+        }
+      ],
+      "must_not_collapse_into": [
+        "optics_display"
+      ]
+    },
+    {
+      "id": "NO_PROMOTION_TO_PROVED",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNVERIFIED",
+        "NOT_EXECUTED",
+        "NOT_EXECUTED_IN_THIS_PASS",
+        "NOT_INDEPENDENTLY_VERIFIED",
+        "STRANGER_HOST",
+        "TARGET_DESIGN"
+      ],
+      "may_hold": [
+        {
+          "field": "platform_status",
+          "spelling": "UNVERIFIED"
+        },
+        {
+          "field": "platform_status",
+          "spelling": "TARGET_DESIGN"
+        },
+        {
+          "field": "evidence_class",
+          "spelling": "NOT_EXECUTED_IN_THIS_PASS"
+        },
+        {
+          "field": "evidence_class",
+          "spelling": "NOT_INDEPENDENTLY_VERIFIED"
+        },
+        {
+          "field": "platform_scope",
+          "spelling": "STRANGER_HOST"
+        },
+        {
+          "field": "coverage_matrix_this_force",
+          "when": "coverage matrix this_force label",
+          "spelling": "NOT_EXECUTED"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_rewrite_to": [
+        "protected",
+        "PASS",
+        "VERIFIED_ON_REFERENCE_HOST",
+        "internally_proven",
+        "EXECUTED_IN_THIS_REMEDIATION"
+      ],
+      "note": "NOT_EXECUTED stays the coverage-matrix this_force label. It is not evidence_class and it is not a proved state."
+    },
+    {
+      "id": "INTEGRITY_UNKNOWN",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNKNOWN"
+      ],
+      "may_hold": [
+        {
+          "field": "integrity_state",
+          "when": "Optics PRODUCT_HEALTH and A4 integrityState"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_collapse_into": [
+        "freshness",
+        "protection_state",
+        "deployment_profile",
+        "issue_location",
+        "query_completeness",
+        "sampling_state",
+        "drop_state"
+      ]
+    },
+    {
+      "id": "ISSUE_LOCATION_UNKNOWN",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNKNOWN"
+      ],
+      "may_hold": [
+        {
+          "field": "issue_location",
+          "when": "Optics issue location when the layer is not determined"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_collapse_into": [
+        "freshness",
+        "protection_state",
+        "deployment_profile",
+        "integrity_state"
+      ]
+    },
+    {
+      "id": "QUERY_COMPLETENESS_UNKNOWN",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNKNOWN"
+      ],
+      "may_hold": [
+        {
+          "field": "query_completeness",
+          "when": "A4 completeness when the evaluator cannot tell"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_collapse_into": [
+        "freshness",
+        "integrity_state",
+        "issue_location",
+        "protection_state"
+      ]
+    },
+    {
+      "id": "SAMPLING_STATE_UNKNOWN",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNKNOWN"
+      ],
+      "may_hold": [
+        {
+          "field": "sampling_state",
+          "when": "A4 samplingState"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_collapse_into": [
+        "freshness",
+        "query_completeness"
+      ]
+    },
+    {
+      "id": "DROP_STATE_UNKNOWN",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNKNOWN"
+      ],
+      "may_hold": [
+        {
+          "field": "drop_state",
+          "when": "A4 dropState"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_collapse_into": [
+        "freshness",
+        "query_completeness"
+      ]
+    },
+    {
+      "id": "ISSUE_LOCATION_COVERAGE",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "COVERAGE"
+      ],
+      "may_hold": [
+        {
+          "field": "subject"
+        },
+        {
+          "field": "issue_location",
+          "when": "unsupported client, gap evidenced"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "subject",
+        "issue_location"
+      ]
+    },
+    {
+      "id": "NOT_APPLICABLE",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "NOT_APPLICABLE"
+      ],
+      "may_hold": [
+        {
+          "field": "verifier_result"
+        },
+        {
+          "field": "migration_state"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "verifier_result",
+        "migration_state"
+      ]
+    },
+    {
+      "id": "FAILED",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "FAILED"
+      ],
+      "may_hold": [
+        {
+          "field": "integrity_state"
+        },
+        {
+          "field": "migration_state"
+        },
+        {
+          "field": "telemetry_last_result"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "integrity_state",
+        "migration_state",
+        "telemetry_last_result"
+      ]
+    },
+    {
+      "id": "COMPLETE",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "COMPLETE"
+      ],
+      "may_hold": [
+        {
+          "field": "query_completeness",
+          "when": "A4. A corrupt store does not use this value."
+        },
+        {
+          "field": "run_lifecycle",
+          "when": "A5. Not query completeness."
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "query_completeness",
+        "run_lifecycle"
+      ]
+    },
+    {
+      "id": "UNAVAILABLE",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "UNAVAILABLE"
+      ],
+      "may_hold": [
+        {
+          "field": "optics_display"
+        },
+        {
+          "field": "application_status",
+          "when": "HTTP status absent"
+        },
+        {
+          "field": "query_completeness"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "optics_display",
+        "application_status",
+        "query_completeness"
+      ]
+    },
+    {
+      "id": "APPLICATION_ERROR",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "APPLICATION_ERROR"
+      ],
+      "may_hold": [
+        {
+          "field": "optics_display"
+        },
+        {
+          "field": "application_status",
+          "when": "HTTP 400-599"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "optics_display",
+        "application_status"
+      ]
+    },
+    {
+      "id": "HISTORICAL",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "HISTORICAL"
+      ],
+      "may_hold": [],
+      "must_not_hold": [
+        {
+          "field": "freshness",
+          "when": "window is NOT_SET"
+        }
+      ],
+      "emitted": false,
+      "source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md"
+    },
+    {
+      "id": "STALE",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "STALE"
+      ],
+      "may_hold": [],
+      "must_not_hold": [
+        {
+          "field": "freshness",
+          "when": "reserved until the freshness window is set"
+        }
+      ],
+      "emitted": false,
+      "source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md"
+    },
+    {
+      "id": "DROPS_IN_SCOPE",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "DROPS_IN_SCOPE"
+      ],
+      "may_hold": [
+        {
+          "field": "drop_state"
+        },
+        {
+          "field": "completeness_reason"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        },
+        {
+          "field": "coverage_percent"
+        }
+      ],
+      "must_not_collapse_fields": [
+        "drop_state",
+        "completeness_reason"
+      ]
+    },
+    {
+      "id": "QUARANTINE_MARKER_NOT_DUAL_CONTROL",
+      "origin": "P24_SECTION_4",
+      "spellings": [
+        "quarantined"
+      ],
+      "may_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "must_not_hold": [],
+      "must_not_mean": [
+        {
+          "field": "dual_control_executor_wired",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "LOCAL_NDJSON_NOT_WORM",
+      "origin": "P24_SECTION_5",
+      "spellings": [
+        "WORM"
+      ],
+      "may_hold": [],
+      "must_not_hold": [
+        {
+          "field": "ledger_action_taken"
+        },
+        {
+          "field": "protection_state"
+        }
+      ],
+      "emitted": false,
+      "note": "P24: a ledger health fact must not use WORM for the local file."
+    },
+    {
+      "id": "PRODUCT_HEALTH_NOT_PROTECTION",
+      "origin": "WS4_TIGHTEN",
+      "spellings": [
+        "hooks_installed",
+        "events_received",
+        "events_persisted",
+        "events_rejected",
+        "events_dropped",
+        "write_latency_ms",
+        "query_latency_ms",
+        "database_size_bytes",
+        "last_successful_write_at",
+        "integrity_state",
+        "session_id_rejected",
+        "producer_sequence_conflict",
+        "parent_conflict",
+        "formatter_failures",
+        "migration_state",
+        "redaction_failures",
+        "schema_version",
+        "privacy_generation",
+        "rejected_context",
+        "telemetry_last_result"
+      ],
+      "may_hold": [
+        {
+          "field": "product_health_name"
+        }
+      ],
+      "must_not_hold": [
+        {
+          "field": "protection_state"
+        }
+      ],
+      "note": "A5 diagnostic names stay Optics records."
+    }
+  ]
+}
