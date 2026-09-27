@@ -1,0 +1,79 @@
+{
+  "schema": "vantio.planning.benchmark-framework/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "document": "CLAIM-LADDER",
+  "producer_classification": "BENCHMARK_FRAMEWORK_READY_FOR_COUNCIL",
+  "base_sha": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "skip_rule": "A stage may be SATISFIED only when every lower order is SATISFIED. There is no skip status. NOT_REACHED is the status of every stage the evidence does not meet.",
+  "stages": [
+    {
+      "order": 1,
+      "id": "BEST_IN_CLASS_DESIGN_TARGET",
+      "entry": [
+        "The owning product is named.",
+        "Behavior is stated in a source other than a lineup checkmark.",
+        "Non-goals are stated.",
+        "The evidence required to enter PRODUCTION_GRADE_INTERNAL_CANDIDATE is stated.",
+        "Measurement posture is a founder-set target or an explicit NOT_SET or NOT_MEASURED. An example number is not a target.",
+        "For this initial population, an Optics cell also requires OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED on the gate that contains the design. A planning packet whose council is PENDING_INDEPENDENT_COUNCIL is not accepted."
+      ]
+    },
+    {
+      "order": 2,
+      "id": "PRODUCTION_GRADE_INTERNAL_CANDIDATE",
+      "entry": [
+        "Stage 1 is SATISFIED.",
+        "internal_candidate_record is a run of the design's implementation, not NOT_PRESENT.",
+        "Repository unit tests that the known-limitations page says are not a certificate do not fill the slot.",
+        "When measurement_blocks_from_order is 2, every required metric is MEASURED."
+      ]
+    },
+    {
+      "order": 3,
+      "id": "CLEAN_HOST_PROVED_CANDIDATE",
+      "entry": [
+        "Stage 2 is SATISFIED.",
+        "clean_host_record is present. evidence_tier UNSET does not fill the slot.",
+        "A company host, a developer machine, and local kind are not this stage."
+      ]
+    },
+    {
+      "order": 4,
+      "id": "PROVED_EXTERNAL_CANDIDATE",
+      "entry": [
+        "Stage 3 is SATISFIED.",
+        "independent_verifier names a verifier outside the producing team.",
+        "A document council pass does not fill the slot.",
+        "A local prove render does not fill the slot."
+      ]
+    },
+    {
+      "order": 5,
+      "id": "INDEPENDENTLY_BENCHMARKED_CANDIDATE",
+      "entry": [
+        "Stage 4 is SATISFIED.",
+        "benchmark_record is present.",
+        "Every required metric for the dimension is MEASURED, with instrument, workload, and sample count.",
+        "NOT_MEASURED blocks the stage. An estimate blocks the stage."
+      ]
+    },
+    {
+      "order": 6,
+      "id": "CUSTOMER_VALIDATED_CANDIDATE",
+      "entry": [
+        "Stage 5 is SATISFIED.",
+        "customer_window names a customer workload and a window.",
+        "Internal proof and external lab proof do not fill the slot."
+      ]
+    },
+    {
+      "order": 7,
+      "id": "EVIDENCE_BACKED_BEST_IN_CLASS",
+      "entry": [
+        "Stage 6 is SATISFIED.",
+        "A comparator against documented peer capabilities, excluding marketing checkmarks, shows the measured result meets the design target.",
+        "Limitations stay stated beside the result."
+      ]
+    }
+  ]
+}

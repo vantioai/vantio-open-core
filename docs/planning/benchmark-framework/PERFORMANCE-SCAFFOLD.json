@@ -1,0 +1,270 @@
+{
+  "schema": "vantio.planning.benchmark-framework/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "document": "PERFORMANCE-SCAFFOLD",
+  "producer_classification": "BENCHMARK_FRAMEWORK_READY_FOR_COUNCIL",
+  "base_sha": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "rule": "A metric without a measurement record is NOT_MEASURED. This pack estimates nothing.",
+  "result_enum": [
+    "NOT_MEASURED",
+    "MEASURED"
+  ],
+  "measured_record_required_fields": [
+    "instrument",
+    "workload",
+    "started_at_utc",
+    "sample_count",
+    "result_value"
+  ],
+  "metrics": [
+    {
+      "id": "cpu",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "operational_overhead",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "memory",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "operational_overhead",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "disk",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "operational_overhead",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "evidence_growth",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "aggregate_limits",
+        "operational_overhead",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "startup",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "operational_overhead",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "policy_load",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "decision_latency",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "egress",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "connection_latency",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "egress",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "throughput",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "egress",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "event_loss",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "egress",
+        "evidence",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "backpressure",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "reboot_recovery",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "health",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "degradation_recovery",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "health",
+        "performance"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "rollback",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "performance",
+        "rollback"
+      ],
+      "note": "No measurement was taken in this force."
+    },
+    {
+      "id": "uninstall",
+      "result": "NOT_MEASURED",
+      "unit": null,
+      "workload": "NOT_DEFINED",
+      "instrument": "NOT_DEFINED",
+      "sample_count": "NOT_MEASURED",
+      "percentiles": "NOT_MEASURED",
+      "result_value": null,
+      "estimate": "PROHIBITED",
+      "dimensions": [
+        "performance",
+        "removal"
+      ],
+      "note": "No measurement was taken in this force."
+    }
+  ],
+  "rejected_examples": [
+    {
+      "id": "roadmap-per-call-example",
+      "disposition": "NOT_ADOPTED",
+      "source": "docs/internal/optics-best-in-class-roadmap.md section 6 item 14",
+      "architecture_target": "NFR-PER-CALL-OVERHEAD NOT_SET",
+      "result": "NOT_MEASURED"
+    }
+  ]
+}
