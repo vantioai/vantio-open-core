@@ -39,7 +39,7 @@ const policyShape = z
 export function createGateMcpServer() {
   const server = new McpServer({
     name: "vantio-gate",
-    version: "0.1.0",
+    version: "0.1.1",
   });
 
   server.tool(

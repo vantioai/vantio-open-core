@@ -40,8 +40,8 @@ test("package name preserved as @vantio/gate-mcp", () => {
   assert.equal(pkg.name, "@vantio/gate-mcp");
 });
 
-test("version preserved as 0.1.0", () => {
-  assert.equal(pkg.version, "0.1.0");
+test("version preserved as 0.1.1", () => {
+  assert.equal(pkg.version, "0.1.1");
 });
 
 test("package homepage points to /phantom not /gate", () => {
