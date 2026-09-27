@@ -28,6 +28,22 @@ const decisionPack = readText("docs/architecture/optics-foundation/08-ARCHITECTU
 const DEPENDENCY_NAMES = new Set(["sqlite3", "better-sqlite3", "better-sqlite", "node:sqlite"]);
 const IMPORT_RE =
   /^\s*(?:import\s+sqlite3\b|from\s+sqlite3\b|require\(\s*["'](?:sqlite3|better-sqlite3|better-sqlite|node:sqlite)["']|import\s+.*\s+from\s+["'](?:sqlite3|better-sqlite3|better-sqlite|node:sqlite)["'])/u;
+const STDLIB_SQLITE_IMPORT = /^\s*(?:import\s+sqlite3\b|from\s+sqlite3\b)/u;
+// Successor exception for the O7 store force. Python stdlib sqlite3 is the
+// mechanism A2 already names. Node bindings stay banned in every file.
+const STDLIB_SQLITE_PREFIXES = [
+  "packages/optics-operational-store/",
+  "tests/optics-o7-store/",
+];
+
+function relative(full) {
+  return path.relative(ROOT, full).split(path.sep).join("/");
+}
+
+function stdlibSqliteAllowed(full) {
+  const rel = relative(full);
+  return STDLIB_SQLITE_PREFIXES.some((prefix) => rel.startsWith(prefix));
+}
 
 function walk(dir, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -103,7 +119,7 @@ test("one inserted space breaks the golden vector", () => {
   assert.notEqual(sha256(broken), manifest.checks.golden_vector.sha256);
 });
 
-test("the working tree has no sqlite file, dependency, or import", () => {
+test("the working tree has no tracked sqlite file, package dependency, or Node binding import", () => {
   const files = walk(ROOT, []);
   const sqliteNames = files.filter((full) => full.endsWith(".sqlite") || full.endsWith(".sqlite3"));
   assert.deepEqual(sqliteNames, []);
@@ -130,7 +146,9 @@ test("the working tree has no sqlite file, dependency, or import", () => {
   for (const full of sources) {
     const lines = fs.readFileSync(full, "utf8").split("\n");
     for (const line of lines) {
-      assert.equal(IMPORT_RE.test(line), false, full);
+      if (!IMPORT_RE.test(line)) continue;
+      const allowed = STDLIB_SQLITE_IMPORT.test(line) && stdlibSqliteAllowed(full);
+      assert.equal(allowed, true, `${relative(full)}: ${line}`);
     }
   }
 });
