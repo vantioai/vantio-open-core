@@ -2,7 +2,9 @@
 
 Audience: INTERNAL_RESTRICTED
 
-The 104 cells are `RECORD-COMPATIBILITY-MATRIX.json`. Every cell has `achievement` `NOT_SHIPPED`. `FULL` means the planned reading of two conformant future records. It does not mean a release exists.
+The 104 cells are `RECORD-COMPATIBILITY-MATRIX.json`. `FULL` means the planned reading of two conformant future records. It does not mean a release exists.
+
+Unit D sets `achievement` `UNIT_D_PROVED_NOT_SHIPPED` on five `future_cli` cells: `cli_0_3_24`, `future_cli`, `mixed_versions`, `unknown_fields_and_enums`, and `missing_canonical`. That marker means the private `@vantio/cli` line `0.4.0-pkg02-unit-d` proved the cell. It is not a shipped product, not a seal, and not Unit E. `activates_unit_d` on the matrix is true for that proof. `activates_unit_e` stays false. Every other cell stays `achievement` `NOT_SHIPPED`.
 
 Abbreviations in the grid: `ADAPTER` is `REQUIRES_ADAPTER`, `UNSUP` is `UNSUPPORTED`, `REJECT` is `REJECT_WITH_EXPLANATION`, `ALIAS` is `REQUIRES_ALIAS`, `RO` is `READ_ONLY`, `NYD` is `NOT_YET_DECIDED`.
 
