@@ -15,8 +15,18 @@
   "requirement_status_label": "INTERNAL_PROOF",
   "source_commit": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
   "branch": "cursor/clean-host-lifecycle-lab-5885",
-  "scaffold_self_check": "NOT_RECORDED",
-  "scaffold_self_check_assigns_evidence_tier": false,
+  "scaffold_self_check": {
+    "status": "RECORDED",
+    "command": "docs/planning/clean-host-lifecycle/scripts/check-guards.sh",
+    "ran_on_commit": "319c74e064a394bb2e64999c723b028d52b4574a",
+    "exit_code": 0,
+    "check_guards": "PASS",
+    "evidence_tier": "UNSET",
+    "stranger_host": "NOT_RUN",
+    "phantom_box": "EXCLUDED",
+    "temporary_lab_removed_on_exit": true,
+    "assigns_evidence_tier": false
+  },
   "producer": {
     "agent": "bc-696d1176-5194-564e-a77c-9001563d5885",
     "model": "Grok 4.7",
@@ -25,7 +35,7 @@
   "files_sha256": [
     {
       "path": "docs/planning/clean-host-lifecycle/00-PROGRAM-BOUNDARY.md",
-      "sha256": "467b7ba062a4f320acca32e263028dfe495cf17ef410051e16fb4be8f992492a"
+      "sha256": "60be8fdeefc03ec1a1e42ef4e23cae3868d9e0627ce1b742243d3ff52dbc65f7"
     },
     {
       "path": "docs/planning/clean-host-lifecycle/01-ARCHITECTURE.md",

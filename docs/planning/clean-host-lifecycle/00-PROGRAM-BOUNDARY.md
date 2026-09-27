@@ -67,9 +67,31 @@ A later council may accept or reject the design. Acceptance of the design still 
 
 ## 5. Scaffold self-check
 
-Status: `NOT_RECORDED`
+Status: `RECORDED`
 
-`scripts/check-guards.sh` is the exerciser. It is part of this packet. This planning commit does not treat an absent record as a pass. A later commit on this branch records the exit code after the script runs. That record still leaves `evidence_tier` at `UNSET`.
+Command: `docs/planning/clean-host-lifecycle/scripts/check-guards.sh`
+
+Ran on commit: `319c74e064a394bb2e64999c723b028d52b4574a`
+
+That commit is the packet before this record was added. The script bytes exercised there are the bytes in that commit. This section is the record. It is not a new run.
+
+Exit code: `0`
+
+Stdout:
+
+```
+check_guards=PASS
+evidence_tier=UNSET
+stranger_host=NOT_RUN
+phantom_box=EXCLUDED
+temporary_lab_removed_on_exit=true
+```
+
+The script created a temporary lab root under `/tmp`, ran the refusal cases, reset, captured one loopback fixture, retained it, expired it, and deleted the temporary root on exit. The operator data directory snapshot was unchanged. Nothing from that cycle is in git.
+
+`check_guards=PASS` means those assertions held. It does not assign an evidence tier. `evidence_tier` stays `UNSET`. `stranger_host` stays `NOT_RUN`. `phantom_box` stays `EXCLUDED`.
+
+`node docs/scripts/check-docs-release.mjs` also exited 0 on this producer VM after that run. That check is the documentation governance gate. It is not an evidence tier for this lab.
 
 ## 6. Documents
 
