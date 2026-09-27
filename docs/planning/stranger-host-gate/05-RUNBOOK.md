@@ -6,7 +6,7 @@ Audience: INTERNAL_RESTRICTED
 NOT AUTHORIZED
 ```
 
-Phase 0 is the only phase this prep force runs. Phases 1 through 6 are the procedure a later Founder force follows after it replaces `scripts/refuse-stranger-host-execution.mjs`. Running them from this packet hits SH-STOP-01.
+Phase 0 and Phase 0b are the local reads this packet runs. Phases 1 through 6 stay the procedure a later Founder force follows after it copies `09-EXECUTION-AUTH-CHECKLIST.md`, replaces every placeholder with a named value, and replaces `scripts/refuse-stranger-host-execution.mjs`. Running Phases 1 through 6 from this packet hits SH-STOP-01 and SH-STOP-21.
 
 The later shell commands are the `run:` lines of the four jobs in `.github/workflows/ci.yml` on main `5064f32f1cdfcb840dfd100e2ce5c712d046550d`. `PACKET-MANIFEST.json` `later_commands` is that list, with one cited omission.
 
@@ -40,6 +40,26 @@ node docs/planning/stranger-host-gate/scripts/refuse-rollback.mjs
 ```
 
 Pass: each exits 2. Stdout is `STRANGER_HOST_EXECUTION_BLOCKED_AWAITING_AUTH` or `STRANGER_HOST_ROLLBACK_BLOCKED_AWAITING_AUTH`.
+
+## Phase 0b — Readiness update verifier
+
+Run from the repository root:
+
+```bash
+node docs/planning/stranger-host-gate/scripts/verify-readiness-update.mjs
+```
+
+Pass: exit 0, stdout `STRANGER_HOST_READINESS_UPDATED_READY_FOR_COUNCIL`.
+
+This phase reads the packet. It checks the currency SHA, the placeholder matrix, and the unfilled execution auth checklist. It does not install packages or start a host session. `--execute` exits 2 with `STRANGER_HOST_EXECUTION_BLOCKED_READINESS_ONLY`.
+
+The direct and adversarial suite for this phase:
+
+```bash
+node --test docs/planning/stranger-host-gate/scripts/readiness.test.mjs
+```
+
+That suite is outside `.github/workflows/ci.yml` and outside `later_commands`.
 
 ## Phase 1 — Host attestation
 

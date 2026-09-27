@@ -24,9 +24,18 @@ const REQUIRED = [
   `${PACKET_PREFIX}06-ROLLBACK.md`,
   MANIFEST_REL,
   `${PACKET_PREFIX}authorization/FOUNDER-AUTHORIZATION.template.json`,
+  `${PACKET_PREFIX}07-READINESS-UPDATE.md`,
+  `${PACKET_PREFIX}08-PLACEHOLDER-MATRIX.md`,
+  `${PACKET_PREFIX}09-EXECUTION-AUTH-CHECKLIST.md`,
+  `${PACKET_PREFIX}10-INDEPENDENT-COUNCIL.md`,
+  `${PACKET_PREFIX}PLACEHOLDER-MATRIX.json`,
+  `${PACKET_PREFIX}authorization/EXECUTION-AUTH-CHECKLIST.template.json`,
   `${PACKET_PREFIX}scripts/verify-packet-prep.mjs`,
   `${PACKET_PREFIX}scripts/refuse-stranger-host-execution.mjs`,
   `${PACKET_PREFIX}scripts/refuse-rollback.mjs`,
+  `${PACKET_PREFIX}scripts/readiness-lib.mjs`,
+  `${PACKET_PREFIX}scripts/verify-readiness-update.mjs`,
+  `${PACKET_PREFIX}scripts/readiness.test.mjs`,
 ];
 
 const LATER_COMMANDS = [
@@ -302,6 +311,9 @@ for (let index = 1; index <= 20; index += 1) {
     fail(`stop conditions missing ${id}`);
   }
 }
+if (!stops.includes("SH-STOP-21")) {
+  fail("stop conditions missing SH-STOP-21");
+}
 
 const template = readFileSync(join(REPO_ROOT, `${PACKET_PREFIX}04-FOUNDER-AUTHORIZATION-TEMPLATE.md`), "utf8");
 for (const marker of ["NOT AUTHORIZED", "{{FOUNDER_LOCKED_MAIN_SHA}}", "{{FOUNDER_NAMED_HOST_CLASS}}", "{{FOUNDER_NAMED_HOST_OWNER}}"]) {
@@ -386,6 +398,66 @@ for (const [key, value] of Object.entries(AUTH_FIELDS)) {
   if (auth[key] !== value) {
     fail(`authorization field ${key}`);
   }
+}
+if (auth.execution_auth_checklist !== "UNFILLED") {
+  fail("authorization execution_auth_checklist");
+}
+if (auth.in_place_checklist_completion !== "FORBIDDEN") {
+  fail("authorization in_place_checklist_completion");
+}
+
+const readinessUpdate = readFileSync(join(REPO_ROOT, `${PACKET_PREFIX}07-READINESS-UPDATE.md`), "utf8");
+for (const marker of [
+  "STRANGER_HOST_READINESS_UPDATED_READY_FOR_COUNCIL",
+  "NOT_AUTHORIZED",
+  "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "PENDING_INDEPENDENT_COUNCIL",
+]) {
+  if (!readinessUpdate.includes(marker)) {
+    fail(`readiness update missing ${marker}`);
+  }
+}
+const checklistDoc = readFileSync(join(REPO_ROOT, `${PACKET_PREFIX}09-EXECUTION-AUTH-CHECKLIST.md`), "utf8");
+for (const marker of [
+  "{{NAMED_HOST}}",
+  "{{OWNER_OPERATOR}}",
+  "{{DISTRO}}",
+  "{{KERNEL}}",
+  "{{ARCH}}",
+  "{{CONTAINER_RUNTIME_PROFILE}}",
+  "{{CONFIDENTIALITY_BOUNDARY}}",
+  "{{ARTIFACT_ROUTE}}",
+  "{{MAINTENANCE_WINDOW}}",
+  "{{ROLLBACK_AUTHORITY}}",
+  "{{INDEPENDENT_VERIFIER}}",
+  "{{STOP_CONDITIONS}}",
+  "{{FOUNDER_EXECUTION_AUTHORIZATION}}",
+  "UNFILLED",
+]) {
+  if (!checklistDoc.includes(marker)) {
+    fail(`execution checklist missing ${marker}`);
+  }
+}
+const placeholderDoc = readFileSync(join(REPO_ROOT, `${PACKET_PREFIX}08-PLACEHOLDER-MATRIX.md`), "utf8");
+for (const marker of [
+  "ingress",
+  "egress",
+  "host-authority",
+  "sequential-authority",
+  "health",
+  "progressive-enforcement",
+  "NOT_EXECUTED",
+]) {
+  if (!placeholderDoc.includes(marker)) {
+    fail(`placeholder matrix missing ${marker}`);
+  }
+}
+const councilDoc = readFileSync(join(REPO_ROOT, `${PACKET_PREFIX}10-INDEPENDENT-COUNCIL.md`), "utf8");
+if (!councilDoc.includes("PENDING_INDEPENDENT_COUNCIL") || !councilDoc.includes("UNSAT")) {
+  fail("council stub missing status");
+}
+if (councilDoc.includes("COUNCIL_PASSED")) {
+  fail("council file records a pass");
 }
 
 for (const path of present) {

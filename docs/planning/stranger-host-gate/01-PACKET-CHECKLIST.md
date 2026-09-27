@@ -22,6 +22,10 @@ The local verifier is the check for this table. A row in the prep section is sat
 | P10 | Local verifier | `scripts/verify-packet-prep.mjs` | The prep command |
 | P11 | Manifest hashes for every packet file except the manifest | `PACKET-MANIFEST.json` | Required for the classification |
 | P12 | Packet bytes contain no credential material | Verifier secret scan | Required for the classification |
+| P13 | Readiness update at the currency SHA | `07-READINESS-UPDATE.md` | `STRANGER_HOST_READINESS_UPDATED_READY_FOR_COUNCIL` |
+| P14 | Placeholder families left `NOT_EXECUTED` | `08-PLACEHOLDER-MATRIX.md` and `PLACEHOLDER-MATRIX.json` | Required for the readiness classification |
+| P15 | Named host and operator checklist left `UNFILLED` | `09-EXECUTION-AUTH-CHECKLIST.md` and `authorization/EXECUTION-AUTH-CHECKLIST.template.json` | Required for the readiness classification |
+| P16 | Readiness verifier and direct/adversarial tests | `scripts/verify-readiness-update.mjs`, `scripts/readiness-lib.mjs`, `scripts/readiness.test.mjs` | Local packet reads |
 
 ## Later execution (unauthorized)
 
@@ -36,11 +40,12 @@ The local verifier is the check for this table. A row in the prep section is sat
 | L7 | Independent reviewer on the evidence bundle | LATER. `PROVED_EXTERNAL` stays unset here |
 | L8 | Confirmation that customer validation stays unset | LATER record. A customer host is forbidden |
 | L9 | Rollback of the disposable directories recorded for that run | LATER, and only if that run created them |
+| L10 | Copied execution auth checklist with every field named, then replacement of the refuse script | LATER. In-place completion is forbidden |
 
 ## Closed by this prep
 
-P1 through P12 are the prep contract. The verifier fails the packet when a required file, marker, hash, authorization field, or refuse behavior drifts.
+P1 through P12 are the prep contract. The prep verifier fails the packet when a required file, marker, hash, authorization field, or refuse behavior drifts. P13 through P16 are the readiness contract. The readiness verifier fails the packet when those rows drift.
 
 ## Left open on purpose
 
-L1 through L9 require a host, a Founder authorization, or both. This force stops before those rows.
+L1 through L10 require a host, a Founder authorization, or both. This force stops before those rows. L10 names the host, the owner/operator, distro, kernel, arch, container/runtime profile, confidentiality boundary, artifact route, maintenance window, rollback authority, independent verifier, stop conditions, and Founder execution authorization.
