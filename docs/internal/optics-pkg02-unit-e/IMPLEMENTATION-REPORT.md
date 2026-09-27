@@ -18,7 +18,7 @@ Empty `shield()` on this line writes an explicit `NOT_OBSERVED` bundle. Sealed `
 python3 -m unittest discover -s tests/optics-pkg02-unit-e -v
 ```
 
-The producer run of that command reported 21 tests and 0 failures on CPython 3.12.3.
+The producer run of that command reported 21 tests and 0 failures on CPython 3.12.3. The revision run reported 22 tests and 0 failures on CPython 3.12.3. `node docs/scripts/check-docs-release.mjs` reported ok, including `legacy-stale-name-inventory-frozen`.
 
 ## Hard stops
 

@@ -4,9 +4,11 @@ The default mode writes contract records. `legacy` mode writes the previous
 3.1.0 shape for the next shield only. An existing file is left in place.
 """
 
+import importlib.util
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from vantio_future.clock import duration_ms, format_utc, now_utc
 from vantio_future.contract_bridge import canonical_json, validate_evidence
@@ -225,6 +227,91 @@ def assemble_canonical(trace_id, started_at, ended_at, duration, events, attempt
     return bundle
 
 
+_LEGACY_STATUS_HUMAN = {
+    "APPLICATION_ERROR": "Application error",
+    "NOT_OBSERVED": "Not observed",
+    "OBSERVED": "Observed",
+    "OPTICS_ERROR": "Optics error",
+    "PARTIAL": "Partial",
+    "SUCCESS": "Successful",
+    "UNAVAILABLE": "Unavailable",
+    "UNSUPPORTED": "Unsupported",
+}
+
+_sealed_outcome_module = None
+_sealed_outcome_loaded = False
+
+
+def _load_sealed_outcome():
+    """Read sealed 3.1.0 customer lines. The sealed tree is not modified."""
+    global _sealed_outcome_loaded, _sealed_outcome_module
+    if _sealed_outcome_loaded:
+        return _sealed_outcome_module
+    _sealed_outcome_loaded = True
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "packages" / "vantio-agent-sdk-py" / "vantio" / "_outcome.py"
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location("vantio_future_sealed_outcome", candidate)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _sealed_outcome_module = module
+        return module
+    return None
+
+
+def _legacy_path(raw_path):
+    """Sealed 3.1.0 stores urlparse().path. The query and fragment are absent."""
+    if not isinstance(raw_path, str) or raw_path == "":
+        return None
+    if "://" in raw_path or raw_path.startswith("//"):
+        path = urlsplit(raw_path).path
+    else:
+        path = raw_path.split("#", 1)[0].split("?", 1)[0]
+    if path == "":
+        return "/"
+    return path
+
+
+def _legacy_rollup(calls):
+    if not calls:
+        return "NOT_OBSERVED", "NOT_OBSERVED"
+    apps = set()
+    for call in calls:
+        code = _http_code(call.get("status"))
+        if code is None:
+            apps.add("UNAVAILABLE")
+        else:
+            apps.add(_application_from_http(code) or "UNAVAILABLE")
+    application = next(iter(apps)) if len(apps) == 1 else "PARTIAL"
+    return "SUCCESS", application
+
+
+def _legacy_summary(calls):
+    optics, application = _legacy_rollup(calls)
+    outcome = _load_sealed_outcome()
+    if outcome is None:
+        raise RuntimeError("sealed outcome lines unavailable")
+    decorated = []
+    for call in calls:
+        copy = dict(call)
+        outcome.apply_customer_outcome(copy)
+        decorated.append(copy)
+    customer = outcome.summarize_customer_fields(decorated, application)
+    if not isinstance(customer, dict):
+        raise RuntimeError("sealed summary lines unavailable")
+    return {
+        "total_calls": len(calls),
+        "hosts": sorted({call.get("hostname") or "unknown" for call in calls}),
+        "opticsStatus": optics,
+        "applicationStatus": application,
+        "opticsLabel": _LEGACY_STATUS_HUMAN.get(optics, "Unavailable"),
+        **customer,
+    }
+
+
 def _legacy_timestamp(raw, fallback):
     stamp = raw.get("started_at")
     if isinstance(stamp, str) and stamp.endswith("Z") and "T" in stamp:
@@ -259,8 +346,9 @@ def _legacy_call(raw, fallback_ts):
         call["error_class"] = raw["error_class"]
     if raw.get("method"):
         call["method"] = raw["method"]
-    if raw.get("path"):
-        call["path"] = raw["path"]
+    path = _legacy_path(raw.get("path"))
+    if path:
+        call["path"] = path
     if raw.get("scheme"):
         call["scheme"] = raw["scheme"]
     if "response_bytes" in raw and raw["response_bytes"] is not None:
@@ -288,6 +376,7 @@ def assemble_legacy(trace_id, started_at, ended_at, events):
         "schema_status": SCHEMA_STATUS,
         "schema_version": LEGACY_SCHEMA_VERSION,
         "started_at": started_at,
+        "summary": _legacy_summary(calls),
         "status_labels": {
             "applicationStatus": "Observed outcome",
             "opticsStatus": "Optics status",

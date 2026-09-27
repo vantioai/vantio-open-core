@@ -2,12 +2,15 @@
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 import urllib.request
 from pathlib import Path
 
-from support import LoopbackServer
+from support import LoopbackServer, ROOT, SDK_31
 
 from vantio_future import force_reset, read_rolled_back, reset_writer_mode, set_writer_mode, shield
 from vantio_future import writer as writer_module
@@ -99,6 +102,119 @@ class RollbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, sentinel)
         self.assertFalse(self._path("unit-e-fail-open").exists())
         self.assertNotIn("validator down", json.dumps(sentinel))
+
+    def _sealed_canary_file(self):
+        script = textwrap.dedent(
+            """
+            import asyncio
+            import json
+            import os
+            import threading
+            import urllib.request
+            from http.server import BaseHTTPRequestHandler, HTTPServer
+            from vantio import shield
+
+            class Handler(BaseHTTPRequestHandler):
+                protocol_version = "HTTP/1.0"
+
+                def do_GET(self):
+                    body = b"{}"
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, fmt, *args):
+                    return
+
+            server = HTTPServer(("127.0.0.1", 0), Handler)
+            port = server.server_address[1]
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            query = "prompt=CANARY_PROMPT_TEXT&api_key=CANARY_API_KEY&token=sk-proj-abcdefghijklmnop"
+
+            async def main():
+                url = "http://127.0.0.1:%d/v1/messages?%s" % (port, query)
+                async with shield(trace_id="sealed-canary"):
+                    response = urllib.request.urlopen(url, timeout=5)
+                    response.read()
+                    response.close()
+
+            try:
+                asyncio.run(main())
+            finally:
+                server.shutdown()
+            path = os.path.join(os.environ["VANTIO_HOME"], "runs", "sealed-canary.json")
+            print(open(path, encoding="utf-8").read())
+            """
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            home.mkdir()
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(SDK_31)
+            env["VANTIO_HOME"] = str(home)
+            env["VANTIO_EXTRA_LLM_HOSTS"] = "127.0.0.1"
+            env["VANTIO_TELEMETRY_DISABLED"] = "1"
+            env["DO_NOT_TRACK"] = "1"
+            env.pop("VANTIO_TELEMETRY", None)
+            env.pop("VANTIO_API_KEY", None)
+            env.pop("VANTIO_PKG02_PYTHON_WRITER", None)
+            completed = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=str(ROOT),
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+        return json.loads(completed.stdout)
+
+    async def test_legacy_canary_query_matches_sealed_path_and_summary(self):
+        query = "prompt=CANARY_PROMPT_TEXT&api_key=CANARY_API_KEY&token=sk-proj-abcdefghijklmnop"
+        needles = (
+            "CANARY_PROMPT_TEXT",
+            "CANARY_API_KEY",
+            "sk-proj-abcdefghijklmnop",
+            "prompt=",
+            "api_key=",
+            "token=",
+        )
+        with LoopbackServer(200) as base:
+            url = base + "/v1/messages?" + query
+            async with shield(trace_id="unit-e-canary-canonical"):
+                response = urllib.request.urlopen(url, timeout=2)
+                response.read()
+                response.close()
+            async with shield(trace_id="unit-e-benign-canonical"):
+                response = urllib.request.urlopen(base + "/v1/messages?foo=1", timeout=2)
+                response.read()
+                response.close()
+            set_writer_mode("legacy")
+            async with shield(trace_id="unit-e-canary-legacy"):
+                response = urllib.request.urlopen(url, timeout=2)
+                response.read()
+                response.close()
+        canonical_text = self._path("unit-e-canary-canonical").read_text(encoding="utf-8")
+        canonical = json.loads(canonical_text)
+        # A secret in the query makes the contract drop path. A query without a secret stays the path only.
+        self.assertNotIn("path", canonical["events"][0])
+        benign = json.loads(self._path("unit-e-benign-canonical").read_text(encoding="utf-8"))
+        self.assertEqual(benign["events"][0]["path"], "/v1/messages")
+        legacy_text = self._path("unit-e-canary-legacy").read_text(encoding="utf-8")
+        legacy = json.loads(legacy_text)
+        self.assertEqual(legacy["calls"][0]["path"], "/v1/messages")
+        self.assertNotIn("?", legacy["calls"][0]["path"])
+        for needle in needles:
+            self.assertNotIn(needle, legacy_text)
+            self.assertNotIn(needle, canonical_text)
+        sealed = self._sealed_canary_file()
+        self.assertEqual(sealed["calls"][0]["path"], "/v1/messages")
+        self.assertEqual(legacy["calls"][0]["path"], sealed["calls"][0]["path"])
+        self.assertEqual(legacy["summary"], sealed["summary"])
+        self.assertNotIn("?", sealed["calls"][0]["path"])
 
 
 if __name__ == "__main__":

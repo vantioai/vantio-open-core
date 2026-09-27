@@ -27,6 +27,6 @@ Empty `shield()` writes a file. Bundle `optics_status` is `NOT_OBSERVED`. `event
 
 ## Rollback
 
-`set_writer_mode("legacy")` or `VANTIO_PKG02_PYTHON_WRITER=legacy` makes the next `shield()` write the previous shape: `vantio_run_log` `"1"`, `schema_version` `2`, `workflow` `sight_loop`, `opticsStatus` `SUCCESS`, and `+00:00` timestamps. An empty shield in that mode writes no file, which is the previous empty behavior. An existing canonical file is not replaced. `read_rolled_back` reports `UNSUPPORTED`, shows `schema_status`, and leaves the bytes in place.
+`set_writer_mode("legacy")` or `VANTIO_PKG02_PYTHON_WRITER=legacy` makes the next `shield()` write the previous shape: `vantio_run_log` `"1"`, `schema_version` `2`, `workflow` `sight_loop`, `opticsStatus` `SUCCESS`, and `+00:00` timestamps. The stored call path is the URL path with the query removed, the same path sealed `3.1.0` stores. The file includes `summary` with the same fields sealed `3.1.0` writes for that call. An empty shield in that mode writes no file, which is the previous empty behavior. An existing canonical file is not replaced. `read_rolled_back` reports `UNSUPPORTED`, shows `schema_status`, and leaves the bytes in place.
 
 A validator exception is caught inside the writer. The wrapped function's return value is unchanged, and no success file is written.
