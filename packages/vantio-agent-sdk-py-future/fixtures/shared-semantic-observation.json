@@ -1,0 +1,18 @@
+{
+  "action": "OBSERVED",
+  "cli_or_sdk_version": "PKG02-FUTURE-PYTHON-UNASSIGNED",
+  "destination_host": "api.example.com",
+  "evidence_origin": "LOCAL_OBSERVATION",
+  "http_status": 404,
+  "mediation": "python_urllib",
+  "method": "GET",
+  "optics_status": "OBSERVED",
+  "path": "/v1/messages",
+  "producer": "python_observe",
+  "record_type": "observation_event",
+  "runtime": "python",
+  "schema_status": "unstable-pre-1.0",
+  "schema_version": 0,
+  "scheme": "https",
+  "started_at": "2026-07-01T00:00:00.100Z"
+}

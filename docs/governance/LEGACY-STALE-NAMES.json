@@ -1,6 +1,6 @@
 {
   "schema": "vantio.docs-release.legacy-stale-names/v1",
-  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits. packages/optics-record-vocabulary/vocabulary/record-vocabulary.json is frozen at count 2 for sight_loop. That Unit A file is on main and may be absent on this branch; the freeze applies when the file is present. tests/shared-health-vocabulary/collision.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. tests/optics-pkg02-reader-compat-gates/isolation.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the isolation test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes.",
+  "note": "Frozen debt outside the canonical set. A new path or a changed count fails the documentation release check. Canonical docs must not appear here. Optics manual leftovers are listed under intentional_leftovers, not in hits. packages/optics-record-vocabulary/vocabulary/record-vocabulary.json is frozen at count 2 for sight_loop. That Unit A file is on main and may be absent on this branch; the freeze applies when the file is present. tests/shared-health-vocabulary/collision.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. tests/optics-pkg02-reader-compat-gates/isolation.test.cjs is a reviewed 2026-09-27 addition at count 2. Those matches are prohibition needles in the isolation test. The path stays in this hits list and in the legacy scan. It is not an intentional leftover and it is not hidden by legacy_scan.exclude_prefixes. docs/internal/optics-pkg02-unit-e/DESIGN.md, packages/vantio-agent-sdk-py-future/src/vantio_future/writer.py, and tests/optics-pkg02-unit-e/test_04_rollback.py are reviewed 2026-09-27 additions at count 1. Those matches name the sealed 3.1.0 workflow field as a rollback compatibility value. Each path stays in this hits list and in the legacy scan. None is an intentional leftover and none is hidden by legacy_scan.exclude_prefixes.",
   "reviewed_updates": [
     {
       "path": "tests/shared-health-vocabulary/collision.test.cjs",
@@ -15,6 +15,27 @@
       "disposition": "FROZEN_DEBT",
       "reviewed_on": "2026-09-27",
       "reason": "The isolation test names retired public strings only to assert that the reader-compat gate docs do not contain them. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
+    },
+    {
+      "path": "docs/internal/optics-pkg02-unit-e/DESIGN.md",
+      "count": 1,
+      "disposition": "FROZEN_DEBT",
+      "reviewed_on": "2026-09-27",
+      "reason": "Unit E rollback design names the sealed 3.1.0 workflow field as a compatibility mention of the previous writer shape. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
+    },
+    {
+      "path": "packages/vantio-agent-sdk-py-future/src/vantio_future/writer.py",
+      "count": 1,
+      "disposition": "FROZEN_DEBT",
+      "reviewed_on": "2026-09-27",
+      "reason": "The legacy rollback writer stores the sealed 3.1.0 workflow field. That string is a compatibility value. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
+    },
+    {
+      "path": "tests/optics-pkg02-unit-e/test_04_rollback.py",
+      "count": 1,
+      "disposition": "FROZEN_DEBT",
+      "reviewed_on": "2026-09-27",
+      "reason": "The rollback test asserts the sealed 3.1.0 workflow field on the legacy file. The match is a compatibility needle. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
     }
   ],
   "intentional_leftovers": {
@@ -117,6 +138,10 @@
     },
     {
       "path": "docs/internal/optics-pkg01/COMPATIBILITY.md",
+      "count": 1
+    },
+    {
+      "path": "docs/internal/optics-pkg02-unit-e/DESIGN.md",
       "count": 1
     },
     {
@@ -264,6 +289,10 @@
       "count": 2
     },
     {
+      "path": "packages/vantio-agent-sdk-py-future/src/vantio_future/writer.py",
+      "count": 1
+    },
+    {
       "path": "packages/vantio-agent-sdk-py/pyproject.toml",
       "count": 2
     },
@@ -338,6 +367,10 @@
     {
       "path": "tests/optics-pkg02-reader-compat-gates/isolation.test.cjs",
       "count": 2
+    },
+    {
+      "path": "tests/optics-pkg02-unit-e/test_04_rollback.py",
+      "count": 1
     },
     {
       "path": "tests/shared-health-vocabulary/collision.test.cjs",
