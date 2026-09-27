@@ -53,7 +53,7 @@
     "docs/planning/shared-health-vocabulary/COLLISION-MATRIX.json": "70d8f4455fe08415041021ca632acbb4551b765cd198811c21e3e58e675f35d2",
     "docs/planning/shared-health-vocabulary/HEALTH-VOCABULARY.json": "8cb66208a8cbf6d12801353247b99ed0c9323419af5cdf1b27acee813d7ea531",
     "docs/planning/shared-health-vocabulary/INDEPENDENT-COUNCIL.md": "3f87449c855e5e1fa1a9599b31eb0c588daa67a8f9918ea3efaf5fbf6c877a2c",
-    "tests/shared-health-vocabulary/catalog.test.cjs": "1b2257ee489b9e9b3ffb7c34f6f1c52817b723e42735533aa396ddabbf13fe8e",
+    "tests/shared-health-vocabulary/catalog.test.cjs": "ed5fe6764561a053d0f87d36436b2f08ce56b84112ef43983478af41e49eb373",
     "tests/shared-health-vocabulary/collision.test.cjs": "6c4833c0a9f5f14b5bae0d73e0de008c6af034c68f82337f6108e52e5d47dc76"
   }
 }

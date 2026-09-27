@@ -96,11 +96,44 @@ test("subjects and layer enums match the PE packet already on main", () => {
   assert.deepEqual(catalog.fields.deployment_profile.values, pe.deployment_profile);
   assert.equal(catalog.heartbeat.age_limit_s, pe.heartbeat_age_limit_s);
   assert.equal(catalog.heartbeat.path_in_manifests, pe.heartbeat_path_in_manifests);
-  assert.equal(pe.vocabulary_status, "PENDING_WS4");
-  assert.equal(pe.workstream_4, "DEFINITION_NOT_RETRIEVED");
+  assert.equal(pe.vocabulary_status, "c1de02538f66df94d58aef58bf0ec8459ae797ad");
+  assert.equal(pe.workstream_4, pe.vocabulary_status);
+  assert.equal(pe.binding_classification, "PE_WS4_VOCABULARY_BINDING_READY_FOR_COUNCIL");
+  assert.equal(pe.binding.vocabulary_status_meaning, "BOUND_TO_WS4_CATALOG");
+  assert.equal(pe.binding.workstream_4_meaning, "RETRIEVED_AND_BOUND");
+  assert.equal(pe.binding.catalog_path, "docs/planning/shared-health-vocabulary/");
+  assert.equal(pe.binding.catalog_commit, pe.vocabulary_status);
+  assert.equal(pe.binding.catalog_merge_commit, "52274708e2620cbd37b0d10d67561eac642e2aee");
+  assert.equal(pe.binding.catalog_pull_request, 82);
+  assert.equal(pe.binding.catalog_council, "SHARED_HEALTH_VOCABULARY_COUNCIL_PASSED");
+  assert.equal(pe.binding.catalog_council_agent, "bc-84572b17");
+  assert.equal(pe.binding.catalog_merge_classification, "SHARED_HEALTH_VOCABULARY_MERGED_CATALOG_ONLY");
+  assert.equal(pe.binding.bound_into_pe_packet_at_cited_commit, false);
+  assert.equal(pe.binding.freshness_rule, "FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN");
   assert.equal(pe.freshness, "UNKNOWN");
+  assert.deepEqual(pe.collision_rules.slice(0, 6), [
+    "verifier_result BLOCKED is a separate field from ledger ActionTaken BLOCKED",
+    "wire ActionTaken OBSERVED is not protection_state protected",
+    "OPTIONAL_COMPONENT_ABSENT is not verifier_result PASS",
+    "coverage_unknown is not protection_state protected",
+    "KIND_LOCAL is not MANAGED_CLOUD",
+    "internally_proven is not STRANGER_HOST",
+  ]);
+  assert.equal(
+    pe.collision_rules[6],
+    "freshness stays UNKNOWN under FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN",
+  );
+  const peManifest = readJson("docs/planning/phantom-engine-production/PLANNING-MANIFEST.json");
+  assert.equal(peManifest.vocabulary_status, pe.vocabulary_status);
+  assert.equal(peManifest.workstream_4, pe.workstream_4);
+  for (const [rel, expected] of Object.entries(peManifest.files_sha256)) {
+    const digest = crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, rel))).digest("hex");
+    assert.equal(digest, expected, rel);
+  }
   const peHash = crypto.createHash("sha256").update(fs.readFileSync(path.join(ROOT, catalog.pe_packet_path))).digest("hex");
-  assert.equal(peHash, catalog.pe_packet_sha256);
+  assert.equal(catalog.pe_packet_sha256, "a2592a2496f65897c3258106f3bc187d8efb16e9b3d6c53a54c099163e8e3cd1");
+  assert.notEqual(peHash, catalog.pe_packet_sha256);
+  execFileSync("git", ["merge-base", "--is-ancestor", pe.vocabulary_status, "HEAD"], { cwd: ROOT, stdio: "ignore" });
 });
 
 test("Layer A display and action tokens stay the status-token file", () => {
@@ -205,6 +238,10 @@ test("cited open-core tokens appear in the source files", () => {
   for (const name of catalog.fields.issue_location.values) assert.ok(decision.includes(name), name);
   for (const name of catalog.fields.compatibility_status.values) assert.ok(prose.includes(name), name);
   assert.ok(prose.includes("PENDING_WS4"));
+  assert.ok(prose.includes("docs/planning/shared-health-vocabulary/"));
+  assert.ok(prose.includes("FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN"));
+  assert.ok(prose.includes("c1de02538f66df94d58aef58bf0ec8459ae797ad"));
+  assert.ok(prose.includes("COLLISION-MATRIX.json"));
   assert.ok(a5.includes("NOT_SET"));
 });
 

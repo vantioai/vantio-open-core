@@ -4,8 +4,23 @@
   "schema_status": "unstable-pre-1.0",
   "producer_classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
   "vocabulary_owner": "WORKSTREAM_4",
-  "vocabulary_status": "PENDING_WS4",
-  "workstream_4": "DEFINITION_NOT_RETRIEVED",
+  "vocabulary_status": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
+  "workstream_4": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
+  "binding_classification": "PE_WS4_VOCABULARY_BINDING_READY_FOR_COUNCIL",
+  "binding": {
+    "procedure": "docs/planning/shared-health-vocabulary/BINDINGS.md",
+    "vocabulary_status_meaning": "BOUND_TO_WS4_CATALOG",
+    "workstream_4_meaning": "RETRIEVED_AND_BOUND",
+    "catalog_path": "docs/planning/shared-health-vocabulary/",
+    "catalog_commit": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
+    "catalog_merge_commit": "52274708e2620cbd37b0d10d67561eac642e2aee",
+    "catalog_pull_request": 82,
+    "catalog_council": "SHARED_HEALTH_VOCABULARY_COUNCIL_PASSED",
+    "catalog_council_agent": "bc-84572b17",
+    "catalog_merge_classification": "SHARED_HEALTH_VOCABULARY_MERGED_CATALOG_ONLY",
+    "bound_into_pe_packet_at_cited_commit": false,
+    "freshness_rule": "FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN"
+  },
   "consumer": "P24",
   "record_type": "SHARED_HEALTH_FACT",
   "subjects": [
@@ -90,6 +105,6 @@
     "coverage_unknown is not protection_state protected",
     "KIND_LOCAL is not MANAGED_CLOUD",
     "internally_proven is not STRANGER_HOST",
-    "freshness stays UNKNOWN until Workstream 4 sets a window"
+    "freshness stays UNKNOWN under FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN"
   ]
 }

@@ -16,8 +16,8 @@
   "open_core_base": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
   "private_phantom_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
   "enterprise_tip": "2df2d1f2d2e5a8e65c6d3021b20b94f179e485b7",
-  "workstream_4": "DEFINITION_NOT_RETRIEVED",
-  "vocabulary_status": "PENDING_WS4",
+  "workstream_4": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
+  "vocabulary_status": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
   "live_ebpf_load": false,
   "stranger_host": false,
   "customer_deploy": false,
@@ -33,9 +33,9 @@
     "docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md": "a14f5c3863ffa92abe6869ed312a496e557874b497f36ad21ea4190aa374596b",
     "docs/planning/phantom-engine-production/03-P2-PREREQUISITE-COMPATIBILITY.md": "d69b94473633850b9e3eaae30aed1dd53e55e264f36002770595e420807799a6",
     "docs/planning/phantom-engine-production/04-P24-HEALTH-AND-COVERAGE.md": "75657ed3c82c6f0d3ea2edf009e24e357fe3da72cf2a2f62ad5270e63eda4b84",
-    "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md": "11c674ff3f44b41f6e99b8bc83b3c7736485f7849801381e2981d0680c5367d0",
+    "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md": "3f1cb8adbaa36b9e365d065658b67006ead065d6daaa97d22202703b19cb7894",
     "docs/planning/phantom-engine-production/06-INDEPENDENT-COUNCIL.md": "b2d906ea5250eb89ce4b44d2870cae5a8c1c3a62a764b5928d63d9909e1a0350",
     "docs/planning/phantom-engine-production/COVERAGE-MATRIX.json": "e5013a599550e0f272279952ce05bb6d70eace49b4a82f618b3cf45e4ce478a4",
-    "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json": "a2592a2496f65897c3258106f3bc187d8efb16e9b3d6c53a54c099163e8e3cd1"
+    "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json": "d87665d13c345826cabdfd55f573bfcf8b1e9fd13416157e724ce1e3a7380b00"
   }
 }
