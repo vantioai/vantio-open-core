@@ -1,0 +1,26 @@
+{
+  "adapter_id": "WS7-I3",
+  "producer_classification": "OTEL_I3_ADAPTER_READY_FOR_COUNCIL_DEFAULT_DISABLED",
+  "mapping_id": "WS7-I2",
+  "mapping_version": 0,
+  "schema_status": "unstable-pre-1.0",
+  "stable_schema": false,
+  "schema_url": null,
+  "audience": "INTERNAL_RESTRICTED",
+  "public_shipped_support": false,
+  "product_otlp_export_authorized": false,
+  "founder_decision_12": "unresolved",
+  "default_enabled": false,
+  "reads_environment": false,
+  "otlp_json": true,
+  "otlp_protobuf": false,
+  "council": "PENDING_COUNCIL",
+  "signals": {
+    "otlp_traces": "EXPLICIT_ENABLE_ONLY",
+    "otlp_metrics": "NOT_AUTHORIZED",
+    "otlp_logs": "NOT_AUTHORIZED"
+  },
+  "starting_main": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "source": "packages/optics-otel-i3/src/index.cjs",
+  "mapping_source": "packages/optics-otel-mapping/mapping/otel-semantic-mapping.json"
+}
