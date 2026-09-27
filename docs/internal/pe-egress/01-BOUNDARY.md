@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Producer classification: `PE_EGRESS_PROGRAM_READY_FOR_COUNCIL`
+Producer classification: `PE_EGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`
 
 That classification means the branch is ready for a separate council. It is not a council verdict, not a merge, and not a customer proof.
 

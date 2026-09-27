@@ -106,26 +106,52 @@ function classifyIp(value) {
   return null;
 }
 
+function dottedFromInt(n) {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+}
+
+// Exact and CIDR checks share one integer address. Leading zeros and an
+// IPv4-mapped IPv6 form compare as the embedded IPv4 address.
+function canonicalAddress(value) {
+  const classified = classifyIp(value);
+  if (!classified) return null;
+  if (classified.family === 4) {
+    const n = ipv4ToInt(classified.text);
+    if (n == null) return null;
+    return { kind: "v4", int: n };
+  }
+  const words = parseIpv6(classified.text);
+  if (!words) return null;
+  const v4Mapped = words[0] === 0 && words[1] === 0 && words[2] === 0 && words[3] === 0 && words[4] === 0 && words[5] === 0xffff;
+  if (v4Mapped) return { kind: "v4", int: ((words[6] << 16) | words[7]) >>> 0 };
+  return { kind: "v6", words };
+}
+
 function entryMatchesIp(ip, entry) {
   if (typeof entry !== "string") return { ok: false };
   const raw = entry.trim().toLowerCase();
   if (!raw) return { ok: true, match: false };
   if (raw.includes("/")) {
-    const family = classifyIp(ip);
-    if (!family) return { ok: true, match: false };
-    const hit = family.family === 4 ? inCidr4(family.text, raw) : inCidr6(family.text, raw);
+    const slash = raw.indexOf("/");
+    const want = canonicalAddress(raw.slice(0, slash));
+    const got = canonicalAddress(ip);
+    if (!want || !got) return { ok: false };
+    if (want.kind !== got.kind) return { ok: true, match: false };
+    if (want.kind === "v4") {
+      const hit = inCidr4(dottedFromInt(got.int), dottedFromInt(want.int) + "/" + raw.slice(slash + 1));
+      if (hit == null) return { ok: false };
+      return { ok: true, match: hit };
+    }
+    const hit = inCidr6(ip, raw);
     if (hit == null) return { ok: false };
     return { ok: true, match: hit };
   }
-  const want = classifyIp(raw);
-  const got = classifyIp(ip);
+  const want = canonicalAddress(raw);
+  const got = canonicalAddress(ip);
   if (!want || !got) return { ok: false };
-  if (want.family !== got.family) return { ok: true, match: false };
-  if (want.family === 4) return { ok: true, match: want.text === got.text };
-  const a = parseIpv6(want.text);
-  const b = parseIpv6(got.text);
-  if (!a || !b) return { ok: false };
-  for (let i = 0; i < 8; i++) if (a[i] !== b[i]) return { ok: true, match: false };
+  if (want.kind !== got.kind) return { ok: true, match: false };
+  if (want.kind === "v4") return { ok: true, match: want.int === got.int };
+  for (let i = 0; i < 8; i++) if (want.words[i] !== got.words[i]) return { ok: true, match: false };
   return { ok: true, match: true };
 }
 

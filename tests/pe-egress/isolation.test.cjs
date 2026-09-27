@@ -65,7 +65,7 @@ describe("isolation", () => {
   it("matches the manifest vocabulary and keeps the council verdict empty", () => {
     const manifest = JSON.parse(read("docs/internal/pe-egress/EGRESS-MANIFEST.json"));
     assert.deepEqual(manifest.results, RESULT_LIST);
-    assert.equal(manifest.producer_classification, "PE_EGRESS_PROGRAM_READY_FOR_COUNCIL");
+    assert.equal(manifest.producer_classification, "PE_EGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL");
     assert.equal(manifest.council_status, "PENDING_INDEPENDENT_COUNCIL");
     assert.equal(manifest.council_verdict, null);
     assert.equal(manifest.merge_authorized, false);

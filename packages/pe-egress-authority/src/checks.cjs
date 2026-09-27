@@ -199,6 +199,11 @@ function checkDestination(ctx) {
       return emit(ctx, "DENIED", "not_in_allowed_hosts", { authority: "DENIED" });
     }
   }
+  if (!ctx.path.seesResolvedIp && (policy.blocked_ips.length > 0 || policy.allowed_ips.length > 0)) {
+    mark(ctx, "destination", "gap", "ip_not_visible");
+    if (own(ctx.attempt, "dns")) return null;
+    return emit(ctx, "ENFORCEMENT_GAP", "destination_ip_not_visible", { authority: "DENIED", would: "DENIED" });
+  }
   mark(ctx, "destination", "clear", dest.hostname || dest.ip);
   return null;
 }
@@ -219,15 +224,13 @@ function checkProtocolPort(ctx) {
     const denied = protocolListed(dest.protocol, policy.denied_protocols);
     if (denied.bad) return emit(ctx, "UNKNOWN", "protocol_policy_unclassifiable");
     if (denied.listed) {
-      mark(ctx, "protocol_port", "triggered", "denied_protocols");
-      return emit(ctx, "DENIED", "protocol_not_permitted", { authority: "DENIED" });
+      return deniedObserved(ctx, "protocol_port", "denied_protocols", "protocol_not_permitted");
     }
     if (policy.allowed_protocols.length > 0) {
       const allowed = protocolListed(dest.protocol, policy.allowed_protocols);
       if (allowed.bad) return emit(ctx, "UNKNOWN", "protocol_policy_unclassifiable");
       if (!allowed.listed) {
-        mark(ctx, "protocol_port", "triggered", "allowed_protocols");
-        return emit(ctx, "DENIED", "protocol_not_permitted", { authority: "DENIED" });
+        return deniedObserved(ctx, "protocol_port", "allowed_protocols", "protocol_not_permitted");
       }
     }
   }
@@ -239,15 +242,13 @@ function checkProtocolPort(ctx) {
     const deniedPort = portListed(dest.port, policy.denied_ports);
     if (deniedPort.bad) return emit(ctx, "UNKNOWN", "port_policy_unclassifiable");
     if (deniedPort.listed) {
-      mark(ctx, "protocol_port", "triggered", "denied_ports");
-      return emit(ctx, "DENIED", "port_not_permitted", { authority: "DENIED" });
+      return deniedObserved(ctx, "protocol_port", "denied_ports", "port_not_permitted");
     }
     if (policy.allowed_ports.length > 0) {
       const allowedPort = portListed(dest.port, policy.allowed_ports);
       if (allowedPort.bad) return emit(ctx, "UNKNOWN", "port_policy_unclassifiable");
       if (!allowedPort.listed) {
-        mark(ctx, "protocol_port", "triggered", "allowed_ports");
-        return emit(ctx, "DENIED", "port_not_permitted", { authority: "DENIED" });
+        return deniedObserved(ctx, "protocol_port", "allowed_ports", "port_not_permitted");
       }
     }
   }
@@ -426,13 +427,29 @@ function checkDescendant(ctx, attempt) {
   return null;
 }
 
-function hopDenied(policy, hop) {
+function hopHost(hop) {
   if (!isPlain(hop)) return { bad: true };
-  const host = typeof hop.hostname === "string" ? hop.hostname.trim().toLowerCase() : "";
+  if (typeof hop.hostname !== "string") return { unavailable: true };
+  const host = hop.hostname.trim().toLowerCase().replace(/\.$/, "");
   if (!host) return { unavailable: true };
+  return { host };
+}
+
+function hopDenied(policy, hop) {
+  const parsed = hopHost(hop);
+  if (parsed.bad || parsed.unavailable) return parsed;
+  const host = parsed.host;
   if (hostListed(host, policy.blocked_hosts)) return { denied: true, reason: "host_not_permitted" };
   if (policy.allowed_hosts.length > 0 && !hostListed(host, policy.allowed_hosts)) return { denied: true, reason: "not_in_allowed_hosts" };
   return { denied: false };
+}
+
+function chainMismatch(ctx, hops) {
+  const destHost = ctx.dest && ctx.dest.hostname ? ctx.dest.hostname : "";
+  if (!destHost || hops.length === 0) return false;
+  const first = hopHost(hops[0]);
+  if (first.bad || first.unavailable) return false;
+  return first.host !== destHost;
 }
 
 function checkRedirect(ctx, attempt) {
@@ -445,7 +462,21 @@ function checkRedirect(ctx, attempt) {
     mark(ctx, "redirect", "unavailable", "hops");
     return emit(ctx, "EVIDENCE_UNAVAILABLE", "redirect_evidence_absent");
   }
+  if (redirect.hops.length === 0) {
+    mark(ctx, "redirect", "unavailable", "hops");
+    return emit(ctx, "EVIDENCE_UNAVAILABLE", "redirect_evidence_absent");
+  }
+  if (chainMismatch(ctx, redirect.hops)) {
+    mark(ctx, "redirect", "unknown", "chain_mismatch");
+    return emit(ctx, "UNKNOWN", "redirect_unclassifiable");
+  }
   if (redirect.hops.length < 2) {
+    const single = hopDenied(ctx.policy, redirect.hops[0]);
+    if (single.bad) return emit(ctx, "UNKNOWN", "redirect_unclassifiable");
+    if (single.unavailable) {
+      mark(ctx, "redirect", "unavailable", "hop");
+      return emit(ctx, "EVIDENCE_UNAVAILABLE", "redirect_evidence_absent");
+    }
     mark(ctx, "redirect", "clear", "single_hop");
     return null;
   }
@@ -468,8 +499,7 @@ function checkRedirect(ctx, attempt) {
     });
   }
   if (anyDenied) {
-    mark(ctx, "redirect", "triggered", "hop");
-    return emit(ctx, "DENIED", "redirect_hop_denied", { authority: "DENIED" });
+    return deniedObserved(ctx, "redirect", "hop", "redirect_hop_denied");
   }
   mark(ctx, "redirect", "clear", "reevaluated");
   return null;
@@ -521,12 +551,25 @@ function checkDns(ctx, attempt) {
     return emit(ctx, "ENFORCEMENT_GAP", "dns_change_not_rechecked", { authority: "DENIED", would: "DENIED" });
   }
   if (denied) {
-    if (ctx.path.plane === "host" && ctx.observation && ctx.observation.dropped === false) {
+    if (hostDidNotDrop(ctx)) {
       mark(ctx, "dns", "gap", "host_did_not_drop");
       return emit(ctx, "ENFORCEMENT_GAP", "host_did_not_drop", { authority: "DENIED", would: "DENIED" });
     }
     mark(ctx, "dns", "triggered", used);
     return emit(ctx, "DENIED", "dns_answer_denied", { authority: "DENIED" });
+  }
+  if (!ctx.path.seesResolvedIp && (ctx.policy.blocked_ips.length > 0 || ctx.policy.allowed_ips.length > 0)) {
+    let blockedAnswer = false;
+    for (const answer of dns.answers) {
+      const hit = ipListed(answer, ctx.policy.blocked_ips);
+      if (hit.bad) return emit(ctx, "UNKNOWN", "ip_policy_unclassifiable");
+      if (hit.listed) blockedAnswer = true;
+    }
+    mark(ctx, "dns", "gap", blockedAnswer ? "blocked_answer_not_selected" : "ip_not_visible");
+    return emit(ctx, "ENFORCEMENT_GAP", blockedAnswer ? "dns_answer_not_visible" : "destination_ip_not_visible", {
+      authority: "DENIED",
+      would: "DENIED",
+    });
   }
   mark(ctx, "dns", "clear", used);
   return null;
@@ -552,17 +595,22 @@ function checkTls(ctx, attempt) {
     return emit(ctx, "EVIDENCE_UNAVAILABLE", "tls_evidence_absent");
   }
   const host = ctx.dest && ctx.dest.hostname ? ctx.dest.hostname : "";
+  const verified = ctx.path.tlsPeerVerified === true || tlsControlApplied(attempt.tls);
   if (host && peer !== host) {
-    if (!ctx.path.tlsPeerVerified && ctx.path.plane !== "host") {
+    if (hostDidNotDrop(ctx)) {
+      mark(ctx, "tls", "gap", "host_did_not_drop");
+      return emit(ctx, "ENFORCEMENT_GAP", "host_did_not_drop", { authority: "DENIED", would: "DENIED" });
+    }
+    if (!verified) {
       mark(ctx, "tls", "gap", "mismatch_not_visible");
       return emit(ctx, "ENFORCEMENT_GAP", "tls_peer_not_visible", { authority: "DENIED", would: "DENIED" });
     }
     mark(ctx, "tls", "triggered", "mismatch");
     return emit(ctx, "DENIED", "tls_destination_mismatch", { authority: "DENIED" });
   }
-  if (!ctx.path.tlsPeerVerified && ctx.path.plane !== "host") {
-    mark(ctx, "tls", "clear", "supplied_not_path_observed");
-    return null;
+  if (required && !verified) {
+    mark(ctx, "tls", "gap", "supplied_not_path_observed");
+    return emit(ctx, "ENFORCEMENT_GAP", "tls_peer_not_visible", { authority: "EVIDENCE_UNAVAILABLE", would: "EVIDENCE_UNAVAILABLE" });
   }
   mark(ctx, "tls", "clear", peer);
   return null;
@@ -739,6 +787,19 @@ function markUnsetClear(ctx) {
 
 function hostDidNotDrop(ctx) {
   return ctx.path.plane === "host" && ctx.observation && ctx.observation.dropped === false;
+}
+
+function tlsControlApplied(tls) {
+  return isPlain(tls) && tls.control_applied === true && controlEvidence(tls);
+}
+
+function deniedObserved(ctx, dimension, detail, reason) {
+  if (hostDidNotDrop(ctx)) {
+    mark(ctx, dimension, "gap", "host_did_not_drop");
+    return emit(ctx, "ENFORCEMENT_GAP", "host_did_not_drop", { authority: "DENIED", would: "DENIED" });
+  }
+  mark(ctx, dimension, "triggered", detail);
+  return emit(ctx, "DENIED", reason, { authority: "DENIED" });
 }
 
 function finishDestination(ctx, dest, policy) {

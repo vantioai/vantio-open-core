@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Producer classification: `PE_EGRESS_PROGRAM_READY_FOR_COUNCIL`
+Producer classification: `PE_EGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`
 
 Starting commit: `89f95099d0dce463307eb75d78e7fcf2ef99feb2`
 

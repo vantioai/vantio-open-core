@@ -2,7 +2,7 @@
   "document": "EGRESS-MANIFEST",
   "audience": "INTERNAL_RESTRICTED",
   "schema_status": "unstable-pre-1.0",
-  "producer_classification": "PE_EGRESS_PROGRAM_READY_FOR_COUNCIL",
+  "producer_classification": "PE_EGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL",
   "producer_role": "IMPLEMENTATION_PRODUCER",
   "council_status": "PENDING_INDEPENDENT_COUNCIL",
   "council_verdict": null,
@@ -33,6 +33,6 @@
   "formal_slsa_claimed": false,
   "merge_authorized": false,
   "test_command": "node --test tests/pe-egress/*.test.cjs",
-  "producer_test_pass_count": 57,
+  "producer_test_pass_count": 72,
   "producer_test_fail_count": 0
 }

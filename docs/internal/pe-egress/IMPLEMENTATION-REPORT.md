@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Producer classification before council: `PE_EGRESS_PROGRAM_READY_FOR_COUNCIL`
+Producer classification before council: `PE_EGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`
 
 This classification means the branch is ready for a separate council. It is not a council verdict, not a merge, and not a statement that a host was enrolled.
 
@@ -20,7 +20,9 @@ From the repository root:
 node --test tests/pe-egress/*.test.cjs
 ```
 
-The producer run reported 57 tests, 3 suites, and 0 failures.
+The producer run reported 72 tests, 4 suites, and 0 failures.
+
+The revision closes six council holds. An unverified TLS peer stays `ENFORCEMENT_GAP`. An application path that cannot see the resolved address returns `ENFORCEMENT_GAP` for IP-list membership and for a DNS answer set constrained by that list. An empty redirect list is `EVIDENCE_UNAVAILABLE`, and a hop list that does not start at the destination is `UNKNOWN`. Exact IP blocks use the same integer address as CIDR blocks, including a leading-zero spelling and an IPv4-mapped form. A host observation with `dropped: false` returns `ENFORCEMENT_GAP` (`host_did_not_drop`) for a redirect hop, a port, or a TLS name mismatch. The new tests assert the result token. `optimistic_allow` stays false.
 
 ## Hard-stop attestations
 

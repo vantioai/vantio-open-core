@@ -2,7 +2,7 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Producer classification: `PE_EGRESS_PROGRAM_READY_FOR_COUNCIL`
+Producer classification: `PE_EGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`
 
 These notes are the producer's architecture record for an independent council. They are not a council finding.
 
@@ -31,6 +31,12 @@ The first proved condition wins.
 9. A cgroup path with no attach, or forwarded cgroup id 0, becomes `ENFORCEMENT_GAP` (`cgroup_skb_not_attached`) after the policy outcome is known. The uprobe path becomes `ENFORCEMENT_GAP` (`uprobe_observe_only`). Missing evidence is not replaced by that gap.
 
 `DENIED` on an application path is limited to what that path can see. An IP list, a TLS peer name, a sensitive-text deny, and credential revocation are not interceptor behaviors. Those stay `ENFORCEMENT_GAP` unless the case supplies `evidence: "supplied"` and a `control_id` for a control that actually applied. Redaction of materialized text is a path capability on fetch, undici, Node HTTP, HTTP/2 writes, Python HTTP, and inline child-tool argv. Streams, files, and pipes are `ENFORCEMENT_GAP` (`unscanned_body`).
+
+Exact IP entries and CIDR entries compare one integer address. `203.0.113.009` and `::ffff:203.0.113.9` match an exact block of `203.0.113.9`. An application path that does not see the resolved address returns `ENFORCEMENT_GAP` when a supplied IP is absent from `blocked_ips`, present on `allowed_ips`, or named as a safe DNS answer while the policy constrains addresses.
+
+A redirect record with no hops is `EVIDENCE_UNAVAILABLE`. A hop list whose first hostname is not the destination hostname is `UNKNOWN`. A longer chain is re-evaluated only when the path observed the redirect.
+
+`require_tls_peer` stays `ENFORCEMENT_GAP` when the path did not verify the peer. The dimension detail `supplied_not_path_observed` records that gap. A supplied `control_applied: true` together with `evidence: "supplied"` and a `control_id` is the exception that lets the verified peer proceed. A TLS name mismatch on a path that cannot see the peer name stays `ENFORCEMENT_GAP`. On a host path, a blocked redirect hop, a denied port or protocol, and a TLS name mismatch are `ENFORCEMENT_GAP` (`host_did_not_drop`) when the observation says `dropped: false`. A recognized blocked address uses that same observation rule, including the normalized spellings above.
 
 Application scope `llm_and_named` leaves a destination that is neither catalog-scoped nor list-named as `UNSUPPORTED`. Scope `all_egress` on that same path is `ENFORCEMENT_GAP` (`out_of_scope_pass_through`), because the wrap does not see general traffic. A host observation is not filtered by the LLM catalog.
 
