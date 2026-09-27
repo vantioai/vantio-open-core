@@ -108,6 +108,26 @@ Exactly one of:
 
 This prep force’s classification stays `STRANGER_HOST_PACKET_READY_AWAITING_EXECUTION_AUTH`. The later classifications are names for a force that does not yet exist.
 
+## Execution auth checklist required before that copy
+
+`09-EXECUTION-AUTH-CHECKLIST.md` lists the names a later execution force writes into a copy of `authorization/EXECUTION-AUTH-CHECKLIST.template.json`. This packet keeps each one as a placeholder:
+
+- `{{NAMED_HOST}}`
+- `{{OWNER_OPERATOR}}`
+- `{{DISTRO}}`
+- `{{KERNEL}}`
+- `{{ARCH}}`
+- `{{CONTAINER_RUNTIME_PROFILE}}`
+- `{{CONFIDENTIALITY_BOUNDARY}}`
+- `{{ARTIFACT_ROUTE}}`
+- `{{MAINTENANCE_WINDOW}}`
+- `{{ROLLBACK_AUTHORITY}}`
+- `{{INDEPENDENT_VERIFIER}}`
+- `{{STOP_CONDITIONS}}`
+- `{{FOUNDER_EXECUTION_AUTHORIZATION}}`
+
+`execution_auth_checklist` on the machine template stays `UNFILLED`. `in_place_checklist_completion` stays `FORBIDDEN`. SH-STOP-21 is the stop when a run starts with any of those fields still unnamed.
+
 ---
 
 End of template. Not authorized. Do not execute.

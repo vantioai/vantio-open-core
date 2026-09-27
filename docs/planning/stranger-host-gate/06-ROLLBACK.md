@@ -50,4 +50,4 @@ When a stop fires after disposable directories exist, write the stop id into the
 
 ## Prep
 
-This force has no disposable host directory to remove. The rollback artifact is this document plus the refuse script.
+This force has no disposable host directory to remove. The readiness update creates none. The rollback artifact is this document plus the refuse script. A later run still needs `rollback_authority` named in a copied execution auth checklist before it may delete disposable paths.

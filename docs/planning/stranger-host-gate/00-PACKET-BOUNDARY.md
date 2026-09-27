@@ -92,3 +92,9 @@ node docs/planning/stranger-host-gate/scripts/verify-packet-prep.mjs
 ```
 
 The verifier reads this directory, checks hashes in `PACKET-MANIFEST.json`, checks git paths stay inside this directory, runs the two refuse scripts, and prints the classification. It does not install packages, open a network connection, or create a credential.
+
+## Readiness update
+
+Wave 2 Track 16 keeps this prep packet and records currency main `89f95099d0dce463307eb75d78e7fcf2ef99feb2`. Producer of the update: Cursor cloud agent `bc-ad6e7ae1-4de4-5416-bc9d-a6971c7717f4`, model Grok 4.7. Mode: `READINESS_UPDATE_ONLY`. Classification of the update: `STRANGER_HOST_READINESS_UPDATED_READY_FOR_COUNCIL`. Council status: `PENDING_INDEPENDENT_COUNCIL`.
+
+The update adds placeholder sections for ingress, egress, host-authority, sequential-authority, health, and progressive-enforcement. Each placeholder is `NOT_EXECUTED`. It adds an unfilled named host and operator checklist. Future execution authorization requires that checklist copied and named, plus Founder execution authorization, and replacement of the refuse script by that later force. This update leaves execution `NOT_AUTHORIZED`. `07-READINESS-UPDATE.md` is the record.

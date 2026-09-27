@@ -72,3 +72,15 @@ Customer prompts, completions, private keys, registry tokens, and `VANTIO_API_KE
 ## Published pins
 
 `docs/products/optics/INSTALLATION.md` and `docs/products/optics/UPGRADE-ROLLBACK-UNINSTALL.md` record `@vantio/cli@0.3.24` and `vantio-agent-sdk==3.0.14` as the published packages observed on 2026-09-27. This prep did not repeat that query. If a later force turns `published_install_smoke` on, that force records a fresh registry observation and stops when the resolved version differs from the pin written in its authorization. The smoke uses a separate virtualenv from the 3.1.0 source tests. Its evidence file names the package under test as `published`, separate from `git-sha.txt`.
+
+## Readiness update record
+
+Command:
+
+```bash
+node docs/planning/stranger-host-gate/scripts/verify-readiness-update.mjs
+```
+
+Pass condition: exit 0 and stdout exactly `STRANGER_HOST_READINESS_UPDATED_READY_FOR_COUNCIL`.
+
+That line is the producer handoff for council. The readiness manifest block records `evidence_tiers_assigned` as an empty array. Placeholder families in `PLACEHOLDER-MATRIX.json` stay `NOT_EXECUTED` with tier `UNSET`. The execution auth checklist stays `UNFILLED`.

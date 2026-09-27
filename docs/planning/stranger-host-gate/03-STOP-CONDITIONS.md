@@ -89,3 +89,7 @@ Source-tree Python tests import the repository at 3.1.0. A later published 3.0.1
 ## SH-STOP-20 Rollback scope
 
 Cleanup deletes only the disposable `HOME`, the disposable `RUNNER_TEMP`, and the disposable git worktree recorded in that run’s bundle. Any other path stops the rollback. During prep, `scripts/refuse-rollback.mjs` exits 2 and deletes nothing.
+
+## SH-STOP-21 Execution checklist unnamed
+
+Future execution authorization requires a copied checklist in which every field of `authorization/EXECUTION-AUTH-CHECKLIST.template.json` is a named value: named host, owner/operator, distro, kernel, arch, container/runtime profile, confidentiality boundary, artifact route, maintenance window, rollback authority, independent verifier, stop conditions, and Founder execution authorization. This packet keeps those fields as placeholders. Completing them in place stops the readiness verifier. A later force that starts a host while any field is still a placeholder, or while `scripts/refuse-stranger-host-execution.mjs` is still the entrypoint, stops under SH-STOP-21 and SH-STOP-01. This readiness update creates no host directory.

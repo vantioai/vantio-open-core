@@ -15,5 +15,8 @@
   "assigns_evidence_tier": false,
   "assigns_stranger_host_proved": false,
   "gate_8": "CLOSED",
-  "note": "Filling this template does not authorize execution. scripts/refuse-stranger-host-execution.mjs refuses every invocation. A later Founder force copies this template, completes every placeholder, and replaces that refuse script. Until that force exists, status stays NOT_AUTHORIZED."
+  "execution_auth_checklist": "UNFILLED",
+  "execution_auth_checklist_path": "docs/planning/stranger-host-gate/authorization/EXECUTION-AUTH-CHECKLIST.template.json",
+  "in_place_checklist_completion": "FORBIDDEN",
+  "note": "Filling this template does not authorize execution. scripts/refuse-stranger-host-execution.mjs refuses every invocation. A later Founder force copies this template and authorization/EXECUTION-AUTH-CHECKLIST.template.json, replaces every placeholder with a named value, and replaces that refuse script. Completing either file inside this packet is forbidden. Until that force exists, status stays NOT_AUTHORIZED."
 }

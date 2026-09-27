@@ -1,0 +1,103 @@
+{
+  "schema": "vantio.stranger-host-gate.placeholder-matrix/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "force": "WAVE2-TRACK-16",
+  "execution": "NOT_EXECUTED",
+  "evidence_tier": "UNSET",
+  "in_later_commands": false,
+  "currency_main_sha": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "prepared_against_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "scan_roots": [
+    "tests",
+    ".github/workflows",
+    "packages",
+    "scripts"
+  ],
+  "families": [
+    {
+      "id": "ingress",
+      "heading": "Ingress",
+      "named_suite": "ABSENT",
+      "status": "NOT_EXECUTED",
+      "in_ci_yml": false,
+      "in_later_commands": false,
+      "evidence_tier": "UNSET",
+      "repository_test_paths": []
+    },
+    {
+      "id": "egress",
+      "heading": "Egress",
+      "named_suite": "ABSENT",
+      "status": "NOT_EXECUTED",
+      "in_ci_yml": false,
+      "in_later_commands": false,
+      "evidence_tier": "UNSET",
+      "repository_test_paths": []
+    },
+    {
+      "id": "host-authority",
+      "heading": "Host authority",
+      "named_suite": "ABSENT",
+      "status": "NOT_EXECUTED",
+      "in_ci_yml": false,
+      "in_later_commands": false,
+      "evidence_tier": "UNSET",
+      "repository_test_paths": []
+    },
+    {
+      "id": "sequential-authority",
+      "heading": "Sequential authority",
+      "named_suite": "ABSENT",
+      "status": "NOT_EXECUTED",
+      "in_ci_yml": false,
+      "in_later_commands": false,
+      "evidence_tier": "UNSET",
+      "repository_test_paths": []
+    },
+    {
+      "id": "health",
+      "heading": "Health",
+      "named_suite": "NOT_THIS_GATE",
+      "status": "NOT_EXECUTED",
+      "in_ci_yml": false,
+      "in_later_commands": false,
+      "evidence_tier": "UNSET",
+      "repository_test_paths": [
+        "tests/shared-health-vocabulary/catalog.test.cjs",
+        "tests/shared-health-vocabulary/collision.test.cjs"
+      ],
+      "note": "Filename scan hits are the shared health vocabulary catalog tests. They sit outside .github/workflows/ci.yml and outside later_commands. This row leaves them unrun. A later execution authorization that wants a health probe names that probe in a copied checklist."
+    },
+    {
+      "id": "progressive-enforcement",
+      "heading": "Progressive enforcement",
+      "named_suite": "ABSENT",
+      "status": "NOT_EXECUTED",
+      "in_ci_yml": false,
+      "in_later_commands": false,
+      "evidence_tier": "UNSET",
+      "repository_test_paths": []
+    }
+  ],
+  "tests_added_since_prepared_sha": [
+    "tests/optics-node-adapter/adversarial.test.cjs",
+    "tests/optics-node-adapter/direct.test.cjs",
+    "tests/optics-node-adapter/isolation.test.cjs",
+    "tests/optics-otel-mapping/isolation.test.cjs",
+    "tests/optics-otel-mapping/mapping.test.cjs",
+    "tests/optics-pkg02-unit-f/adversarial.test.cjs",
+    "tests/optics-pkg02-unit-f/direct.test.cjs",
+    "tests/optics-pkg02-unit-f/isolation.test.cjs",
+    "tests/optics-pkg02-unit-f/ordinary-client.test.cjs",
+    "tests/optics-python-adapter/test_adapter.py",
+    "tests/optics-python-adapter/test_isolation.py",
+    "tests/shared-health-vocabulary/catalog.test.cjs",
+    "tests/shared-health-vocabulary/collision.test.cjs"
+  ],
+  "tests_modified_since_prepared_sha": [
+    "tests/optics-record-vocabulary/isolation.test.cjs"
+  ],
+  "workflows_added_since_prepared_sha": [
+    ".github/workflows/docs-release-governance.yml"
+  ]
+}
