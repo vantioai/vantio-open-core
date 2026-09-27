@@ -51,6 +51,20 @@ Record-layer changes:
 
 The isolated `not_before`, sticky `ENDED`, and later-`NARROW` holds stay closed. The composition run of `node --test tests/enterprise-e1-e3/*.test.cjs` reported 40 tests and 0 failures. EG-D1 through EG-D10 stay unresolved. EG-E2-8 stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED`. `verified_on_host` stays false. No live customer authority was created. CLI `0.3.24` and Python `3.1.0` are unchanged.
 
+## Sibling revision
+
+Council `bc-9e4306a5-2874-5ae1-ba2e-c6aadfd1ba5b` returned `ENTERPRISE_E1_E3_INTERNAL_NEEDS_REVISION` on tip `73f291b009f4b0d223c5003385f38973a3a5e8b1`. Revision producer: `bc-80600242-87e1-5cba-b975-527b8c52e798` at https://cursor.com/agents/bc-80600242-87e1-5cba-b975-527b8c52e798. This revision stays on draft pull request #100. Handoff token: `ENTERPRISE_E1_E3_INTERNAL_REVISION_READY_FOR_COUNCIL`. That token is not a council verdict and not host proof.
+
+Record-layer changes:
+
+- A later narrow that sets spend or size between the approval baseline and the stored widen target stays. `noteClock` inside the deferred window does not raise that cap to the stored target.
+- A destination a later narrow removes is not treated as an addition still owed by an earlier deferred widen. The cut holds when the narrow lands before the window, and when it lands while the window is open, including clock-back before `not_before` and re-entry. The scripted narrow (`read`, spend 15, paths `p1` and `p2`) still holds through entry, clock-back, and expiry. `d2` still returns on re-entry when that narrow did not remove it.
+- When one deferred widen expires, or a clock moves before its start, siblings whose windows still contain the clock are composed again. The leaving entry's rollback is not applied as the whole policy. A spend approval that runs longer than a destination approval stays at 80 after the destination window ends, and the symmetric case keeps `d2`. A clock from April back to February drops a spend widen that has not started and leaves `d2` in place.
+
+Holds C–E stay closed. A freeze still leaves pending widens unapplied after a later narrow. A store outage still leaves policy version, spend, and destinations unchanged, including an already-applied widen. A widen whose window has already ended stays `POLICY_WIDEN_ENDED` with `policy_applied: false`.
+
+The sibling run of `node --test tests/enterprise-e1-e3/*.test.cjs` reported 48 tests and 0 failures. EG-D1 through EG-D10 stay unresolved. EG-E2-8 stays `RECORD_LAYER_ONLY_HOST_UNSATISFIED`. `verified_on_host` stays false. No live customer authority was created. CLI `0.3.24` and Python `3.1.0` are unchanged.
+
 `node docs/scripts/check-docs-release.mjs` fails `legacy-stale-name-inventory-frozen` on this branch and on starting commit `89f95099d0dce463307eb75d78e7fcf2ef99feb2`. The only named file is `tests/shared-health-vocabulary/collision.test.cjs`, which this force does not edit. The other release checks passed. This branch adds no stale-name file.
 
 ## Hard-stop attestations

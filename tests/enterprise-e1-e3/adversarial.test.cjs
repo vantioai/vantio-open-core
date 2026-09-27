@@ -816,6 +816,321 @@ test("a policy widen whose window has already ended does not apply", () => {
   assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
 });
 
+function rootNarrow(eg, store, next) {
+  return eg.recordPolicyDecision(store, {
+    class: "ROOT",
+    parties: ["root-a"],
+    next_policy: next,
+  });
+}
+
+test("a cap between the approval baseline and the stored widen stays put", () => {
+  const spend = world();
+  const deferred = spend.eg.recordPolicyDecision(spend.store, policyWiden({
+    not_before: "2046-01-01T00:00:00.000Z",
+    not_after: "2046-02-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  assert.equal(deferred.reason, "POLICY_WIDEN_DEFERRED");
+  assert.equal(deferred.policy_applied, false);
+  const immediate = spend.eg.recordPolicyDecision(spend.store, policyWiden({
+    next_policy: envelope({ spend_cap: 90 }),
+  }));
+  assert.equal(immediate.reason, "POLICY_WIDENED");
+  assert.equal(spend.eg.snapshot(spend.store).policy.spend_cap, 90);
+  const narrowed = rootNarrow(spend.eg, spend.store, envelope({ spend_cap: 70 }));
+  assert.equal(narrowed.reason, "POLICY_NARROWED");
+  assert.equal(spend.eg.snapshot(spend.store).policy.spend_cap, 70);
+  const during = spend.eg.noteClock(spend.store, { now: "2046-01-15T00:00:00.000Z" });
+  assert.equal(during.verified_on_host, false);
+  assert.equal(during.policy_reverted, false);
+  assert.equal(spend.eg.snapshot(spend.store).policy.spend_cap, 70);
+  assert.notEqual(spend.eg.snapshot(spend.store).policy.spend_cap, 80);
+  assert.equal(spend.eg.snapshot(spend.store).policy.size_cap, 50);
+  spend.eg.noteClock(spend.store, { now: "2046-01-20T00:00:00.000Z" });
+  assert.equal(spend.eg.snapshot(spend.store).policy.spend_cap, 70);
+
+  const size = world();
+  size.eg.recordPolicyDecision(size.store, policyWiden({
+    not_before: "2046-01-01T00:00:00.000Z",
+    not_after: "2046-02-01T00:00:00.000Z",
+    next_policy: envelope({ size_cap: 80 }),
+  }));
+  size.eg.recordPolicyDecision(size.store, policyWiden({
+    next_policy: envelope({ size_cap: 90 }),
+  }));
+  assert.equal(size.eg.snapshot(size.store).policy.size_cap, 90);
+  rootNarrow(size.eg, size.store, envelope({ size_cap: 70 }));
+  assert.equal(size.eg.snapshot(size.store).policy.size_cap, 70);
+  size.eg.noteClock(size.store, { now: "2046-01-15T00:00:00.000Z" });
+  assert.equal(size.eg.snapshot(size.store).policy.size_cap, 70);
+  assert.notEqual(size.eg.snapshot(size.store).policy.size_cap, 80);
+  assert.equal(size.eg.snapshot(size.store).policy.spend_cap, 50);
+});
+
+test("a destination cut after a deferred add is not restored inside the window", () => {
+  const { eg, store } = world();
+  const deferred = eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2046-03-01T00:00:00.000Z",
+    not_after: "2046-04-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  assert.equal(deferred.reason, "POLICY_WIDEN_DEFERRED");
+  const immediate = eg.recordPolicyDecision(store, policyWiden({
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  assert.equal(immediate.reason, "POLICY_WIDENED");
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  const narrowed = rootNarrow(eg, store, envelope({ destinations: ["d1"] }));
+  assert.equal(narrowed.reason, "POLICY_NARROWED");
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  const during = eg.noteClock(store, { now: "2046-03-15T00:00:00.000Z" });
+  assert.equal(during.verified_on_host, false);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.destinations.includes("d2"), false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  eg.noteClock(store, { now: "2046-03-20T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+});
+
+test("a destination cut while the window is open survives clock-back and re-entry", () => {
+  const cut = world();
+  cut.eg.recordPolicyDecision(cut.store, policyWiden({
+    not_before: "2047-01-01T00:00:00.000Z",
+    not_after: "2047-06-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  cut.eg.noteClock(cut.store, { now: "2047-02-01T00:00:00.000Z" });
+  assert.deepEqual(cut.eg.snapshot(cut.store).policy.destinations, ["d1", "d2"]);
+  rootNarrow(cut.eg, cut.store, envelope({ destinations: ["d1"] }));
+  assert.deepEqual(cut.eg.snapshot(cut.store).policy.destinations, ["d1"]);
+  cut.eg.noteClock(cut.store, { now: "2046-12-01T00:00:00.000Z" });
+  assert.deepEqual(cut.eg.snapshot(cut.store).policy.destinations, ["d1"]);
+  assert.equal(cut.eg.snapshot(cut.store).policy.spend_cap, 50);
+  const reentered = cut.eg.noteClock(cut.store, { now: "2047-03-01T00:00:00.000Z" });
+  assert.equal(reentered.verified_on_host, false);
+  assert.deepEqual(cut.eg.snapshot(cut.store).policy.destinations, ["d1"]);
+  assert.equal(cut.eg.snapshot(cut.store).policy.destinations.includes("d2"), false);
+
+  const scripted = world();
+  scripted.eg.recordPolicyDecision(scripted.store, policyWiden({
+    not_before: "2047-01-01T00:00:00.000Z",
+    not_after: "2047-06-01T00:00:00.000Z",
+  }));
+  scripted.eg.noteClock(scripted.store, { now: "2047-02-01T00:00:00.000Z" });
+  assert.deepEqual(scripted.eg.snapshot(scripted.store).policy.destinations, ["d1", "d2"]);
+  assert.equal(scripted.eg.snapshot(scripted.store).policy.spend_cap, 80);
+  rootNarrow(scripted.eg, scripted.store, envelope({
+    actions: ["read"],
+    spend_cap: 15,
+    path_constraints: ["p1", "p2"],
+    destinations: ["d1"],
+  }));
+  scripted.eg.noteClock(scripted.store, { now: "2046-12-15T00:00:00.000Z" });
+  const backed = scripted.eg.snapshot(scripted.store).policy;
+  assert.deepEqual(backed.actions, ["read"]);
+  assert.equal(backed.spend_cap, 15);
+  assert.deepEqual(backed.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(backed.destinations, ["d1"]);
+  scripted.eg.noteClock(scripted.store, { now: "2047-03-01T00:00:00.000Z" });
+  const again = scripted.eg.snapshot(scripted.store).policy;
+  assert.deepEqual(again.actions, ["read"]);
+  assert.equal(again.spend_cap, 15);
+  assert.deepEqual(again.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(again.destinations, ["d1"]);
+  assert.equal(again.destinations.includes("d2"), false);
+  assert.equal(scripted.eg.snapshot(scripted.store).title_holder, "customer_root");
+});
+
+test("scripted narrow survives deferred entry, clock-back, and expiry", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2035-01-01T00:00:00.000Z",
+    not_after: "2035-02-01T00:00:00.000Z",
+  }));
+  rootNarrow(eg, store, envelope({
+    actions: ["read"],
+    spend_cap: 15,
+    path_constraints: ["p1", "p2"],
+  }));
+  eg.noteClock(store, { now: "2034-12-15T00:00:00.000Z" });
+  const before = eg.snapshot(store).policy;
+  assert.deepEqual(before.actions, ["read"]);
+  assert.equal(before.spend_cap, 15);
+  assert.deepEqual(before.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(before.destinations, ["d1"]);
+  eg.noteClock(store, { now: "2035-01-15T00:00:00.000Z" });
+  const during = eg.snapshot(store).policy;
+  assert.deepEqual(during.actions, ["read"]);
+  assert.equal(during.spend_cap, 15);
+  assert.deepEqual(during.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(during.destinations, ["d1", "d2"]);
+  eg.noteClock(store, { now: "2034-12-01T00:00:00.000Z" });
+  const backed = eg.snapshot(store).policy;
+  assert.deepEqual(backed.actions, ["read"]);
+  assert.equal(backed.spend_cap, 15);
+  assert.deepEqual(backed.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(backed.destinations, ["d1"]);
+  eg.noteClock(store, { now: "2035-01-20T00:00:00.000Z" });
+  const reentered = eg.snapshot(store).policy;
+  assert.deepEqual(reentered.destinations, ["d1", "d2"]);
+  assert.equal(reentered.spend_cap, 15);
+  assert.deepEqual(reentered.actions, ["read"]);
+  assert.deepEqual(reentered.path_constraints, ["p1", "p2"]);
+  eg.noteClock(store, { now: "2035-03-01T00:00:00.000Z" });
+  const after = eg.snapshot(store).policy;
+  assert.deepEqual(after.actions, ["read"]);
+  assert.equal(after.spend_cap, 15);
+  assert.deepEqual(after.path_constraints, ["p1", "p2"]);
+  assert.deepEqual(after.destinations, ["d1"]);
+  eg.noteClock(store, { now: "2035-01-25T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 15);
+});
+
+test("staggered deferred widens keep the sibling that is still open", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-02-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-04-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  eg.noteClock(store, { now: "2045-01-15T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  const expired = eg.noteClock(store, { now: "2045-03-01T00:00:00.000Z" });
+  assert.equal(expired.verified_on_host, false);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  assert.notEqual(eg.snapshot(store).policy.spend_cap, 50);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(store.root.open_widens.length, 1);
+  assert.equal(store.root.open_widens[0].applied, true);
+  assert.equal(store.root.open_widens[0].next_policy.spend_cap, 80);
+  eg.noteClock(store, { now: "2045-03-20T00:00:00.000Z" });
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+
+  const flipped = world();
+  flipped.eg.recordPolicyDecision(flipped.store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-02-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  flipped.eg.recordPolicyDecision(flipped.store, policyWiden({
+    not_before: "2045-01-01T00:00:00.000Z",
+    not_after: "2045-04-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  flipped.eg.noteClock(flipped.store, { now: "2045-01-15T00:00:00.000Z" });
+  assert.deepEqual(flipped.eg.snapshot(flipped.store).policy.destinations, ["d1", "d2"]);
+  assert.equal(flipped.eg.snapshot(flipped.store).policy.spend_cap, 80);
+  flipped.eg.noteClock(flipped.store, { now: "2045-03-01T00:00:00.000Z" });
+  assert.deepEqual(flipped.eg.snapshot(flipped.store).policy.destinations, ["d1", "d2"]);
+  assert.equal(flipped.eg.snapshot(flipped.store).policy.spend_cap, 50);
+  flipped.eg.noteClock(flipped.store, { now: "2045-03-20T00:00:00.000Z" });
+  assert.deepEqual(flipped.eg.snapshot(flipped.store).policy.destinations, ["d1", "d2"]);
+  assert.equal(flipped.eg.snapshot(flipped.store).policy.spend_cap, 50);
+});
+
+test("a destination cut stays cut while a sibling spend window remains", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2049-01-01T00:00:00.000Z",
+    not_after: "2049-06-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2049-03-01T00:00:00.000Z",
+    not_after: "2049-06-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  eg.noteClock(store, { now: "2049-04-01T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  rootNarrow(eg, store, envelope({ destinations: ["d1"], spend_cap: 80 }));
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  eg.noteClock(store, { now: "2049-02-01T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  eg.noteClock(store, { now: "2049-04-15T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  assert.equal(eg.snapshot(store).policy.destinations.includes("d2"), false);
+});
+
+test("clock-back unapplies only the widen whose window has not started", () => {
+  const { eg, store } = world();
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2048-01-01T00:00:00.000Z",
+    not_after: "2048-06-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  eg.recordPolicyDecision(store, policyWiden({
+    not_before: "2048-03-01T00:00:00.000Z",
+    not_after: "2048-06-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  eg.noteClock(store, { now: "2048-04-01T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  const backed = eg.noteClock(store, { now: "2048-02-01T00:00:00.000Z" });
+  assert.equal(backed.verified_on_host, false);
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 50);
+  assert.equal(store.root.open_widens.length, 2);
+  const destination = store.root.open_widens.find((open) => open.next_policy.destinations.includes("d2"));
+  const spend = store.root.open_widens.find((open) => open.next_policy.spend_cap === 80);
+  assert.equal(destination.applied, true);
+  assert.equal(spend.applied, false);
+  eg.noteClock(store, { now: "2048-04-15T00:00:00.000Z" });
+  assert.deepEqual(eg.snapshot(store).policy.destinations, ["d1", "d2"]);
+  assert.equal(eg.snapshot(store).policy.spend_cap, 80);
+  assert.equal(spend.applied, true);
+});
+
+test("freeze and store outage still do not apply or roll back widens", () => {
+  const frozen = world();
+  frozen.eg.recordPolicyDecision(frozen.store, policyWiden({
+    not_before: "2039-01-01T00:00:00.000Z",
+    not_after: "2039-02-01T00:00:00.000Z",
+    next_policy: envelope({ destinations: ["d1", "d2"] }),
+  }));
+  frozen.eg.recordPolicyDecision(frozen.store, policyWiden({
+    not_before: "2039-01-01T00:00:00.000Z",
+    not_after: "2039-02-01T00:00:00.000Z",
+    next_policy: envelope({ spend_cap: 80 }),
+  }));
+  rootNarrow(frozen.eg, frozen.store, envelope({ spend_cap: 40 }));
+  frozen.eg.recordFreeze({ store: frozen.store, parties: ["root-a"] });
+  const version = frozen.eg.snapshot(frozen.store).policy_version;
+  frozen.eg.noteClock(frozen.store, { now: "2039-01-15T00:00:00.000Z" });
+  assert.equal(frozen.eg.snapshot(frozen.store).policy_version, version);
+  assert.equal(frozen.eg.snapshot(frozen.store).policy.spend_cap, 40);
+  assert.deepEqual(frozen.eg.snapshot(frozen.store).policy.destinations, ["d1"]);
+  assert.equal(frozen.store.root.open_widens.every((open) => open.applied === false), true);
+
+  const outage = world();
+  const widened = outage.eg.recordPolicyDecision(outage.store, policyWiden({
+    not_after: "2040-02-01T00:00:00.000Z",
+  }));
+  assert.equal(widened.reason, "POLICY_WIDENED");
+  assert.equal(widened.policy_applied, true);
+  const appliedVersion = outage.eg.snapshot(outage.store).policy_version;
+  outage.eg.setRecordStoreAvailable(outage.store, false);
+  outage.eg.noteClock(outage.store, { now: "2040-03-01T00:00:00.000Z" });
+  assert.equal(outage.store.available, false);
+  assert.equal(outage.eg.snapshot(outage.store).policy_version, appliedVersion);
+  assert.equal(outage.eg.snapshot(outage.store).policy.spend_cap, 80);
+  assert.deepEqual(outage.eg.snapshot(outage.store).policy.destinations, ["d1", "d2"]);
+  assert.equal(outage.store.root.open_widens[0].applied, true);
+});
+
 test("a policy exception reverts inside the record layer and does not claim host clearance", () => {
   const { eg, store } = world();
   eg.recordPolicyDecision(store, {
