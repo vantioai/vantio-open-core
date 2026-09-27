@@ -39,10 +39,10 @@ The mapping does not convert one shape into the other.
 
 | Shape | Where it comes from | What a preview may consider |
 | --- | --- | --- |
-| `live_display` | CLI display fields in `docs/optics-otel-mapping.md` and `packages/vantio-cli/bin/optics-cx.cjs` | Field candidates only. `would_be_operational_if_i3_enabled` stays false. A live row has no evidence origin, and its `trace_id` is a process-run boundary. |
-| `canonical_observation` | PKG-01 / PKG-02 observation fields | Candidates only when `evidence_origin` is `LOCAL_OBSERVATION`. Any other origin yields an empty candidate set. Missing origin is not treated as local. |
+| `live_display` | CLI display fields in `docs/optics-otel-mapping.md` and `packages/vantio-cli/bin/optics-cx.cjs` | Non-operational field candidates when `evidence_origin` is absent or `LOCAL_OBSERVATION`. `would_be_operational_if_i3_enabled` stays false. A present origin other than `LOCAL_OBSERVATION` yields an empty candidate set and a null client span status. Its `trace_id` is a process-run boundary. |
+| `canonical_observation` | PKG-01 / PKG-02 observation fields | Candidates only when `evidence_origin` is `LOCAL_OBSERVATION`. Any other present origin yields an empty candidate set. Missing origin is not treated as local. |
 
-`SIMULATED_DEMO`, `TEST_FIXTURE`, `IMPORTED`, `PRODUCT_HEALTH`, and `DERIVED_DIAGNOSTIC` produce an empty candidate set. `PRODUCT_HEALTH` does not fill `gen_ai.provider.name`, `gen_ai.operation.name`, `http.request.method`, `url.path`, or `http.response.status_code`, and it does not set client span status `OK`. `DERIVED_DIAGNOSTIC` does not fill `gen_ai.provider.name`. `would_be_operational_if_i3_enabled` stays false for those origins. `emitted` stays false.
+A present `evidence_origin` other than `LOCAL_OBSERVATION` produces an empty candidate set on both `live_display` and `canonical_observation`. That includes `PRODUCT_HEALTH`, `DERIVED_DIAGNOSTIC`, `SIMULATED_DEMO`, `TEST_FIXTURE`, `IMPORTED`, and any other non-local origin. Those previews leave client span status null, `emitted` false, and `would_be_operational_if_i3_enabled` false. `PRODUCT_HEALTH` does not fill `gen_ai.provider.name`, `gen_ai.operation.name`, `http.request.method`, `url.path`, `server.address`, or `http.response.status_code`, and it does not set client span status `OK`, on either source shape. `DERIVED_DIAGNOSTIC` does not fill `gen_ai.provider.name` on either source shape. A `live_display` row with no `evidence_origin` keeps its non-operational field candidates. A missing origin on `canonical_observation` stays empty.
 
 ## Status dimensions
 

@@ -334,7 +334,7 @@
       "target": "gen_ai.operation.name",
       "disposition": "MAP_ENUM",
       "emitted_by_this_package": false,
-      "reason": "POST and exact path /v1/chat/completions map to chat. Other paths stay unmapped. Canonical rows fill this only when evidence_origin is LOCAL_OBSERVATION."
+      "reason": "POST and exact path /v1/chat/completions map to chat. Other paths stay unmapped. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes. Canonical rows also stay empty when the origin is missing."
     },
     {
       "id": "http.method",
@@ -343,7 +343,7 @@
       "target": "http.request.method",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Copied only when the token is in the method enum and is not unknown."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Copied only when the token is in the method enum and is not unknown. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
     },
     {
       "id": "http.status",
@@ -352,7 +352,7 @@
       "target": "http.response.status_code",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Integer 100-599 only. Strings are not coerced. The stored ok boolean is ignored."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/http.md and cited by docs/http/http-spans.md. Not on the v1.37.0 GenAI span page. Integer 100-599 only. Strings are not coerced. The stored ok boolean is ignored. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
     },
     {
       "id": "url.path",
@@ -361,7 +361,7 @@
       "target": "url.path",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/url.md. Cited on the HTTP server span table in docs/http/http-spans.md, not on the HTTP client span table and not on the v1.37.0 GenAI span page. Path metadata only, max 512 characters, no query, fragment, or userinfo."
+      "reason": "Defined in semantic-conventions v1.37.0 docs/registry/attributes/url.md. Cited on the HTTP server span table in docs/http/http-spans.md, not on the HTTP client span table and not on the v1.37.0 GenAI span page. Path metadata only, max 512 characters, no query, fragment, or userinfo. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
     },
     {
       "id": "url.scheme",
@@ -379,7 +379,7 @@
       "target": "server.address",
       "disposition": "MAP_WHEN_PRESENT",
       "emitted_by_this_package": false,
-      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/server.md. Destination host, lowercased. Not the machine hostname. Live display reads hostname."
+      "reason": "Cited on the v1.37.0 GenAI span table. Defined in docs/registry/attributes/server.md. Destination host, lowercased. Not the machine hostname. Live display reads hostname. A present evidence_origin other than LOCAL_OBSERVATION leaves this empty on both source shapes."
     },
     {
       "id": "server.port",
@@ -491,12 +491,12 @@
     },
     {
       "id": "origin.demo",
-      "source_shape": "canonical_observation",
+      "source_shape": "either",
       "source_field": "evidence_origin",
       "target": null,
       "disposition": "DO_NOT_MAP",
       "emitted_by_this_package": false,
-      "reason": "Canonical candidates are considered only when evidence_origin is LOCAL_OBSERVATION. SIMULATED_DEMO, TEST_FIXTURE, IMPORTED, PRODUCT_HEALTH, DERIVED_DIAGNOSTIC, and a missing origin produce an empty candidate set. PRODUCT_HEALTH does not fill gen_ai.provider.name, gen_ai.operation.name, http.request.method, url.path, or http.response.status_code, and it does not set client span status OK. DERIVED_DIAGNOSTIC does not fill gen_ai.provider.name."
+      "reason": "A present evidence_origin other than LOCAL_OBSERVATION produces an empty candidate set on both live_display and canonical_observation. That includes SIMULATED_DEMO, TEST_FIXTURE, IMPORTED, PRODUCT_HEALTH, DERIVED_DIAGNOSTIC, and any other non-local origin. Client span status stays null. emitted stays false. would_be_operational_if_i3_enabled stays false. PRODUCT_HEALTH does not fill gen_ai.provider.name, gen_ai.operation.name, http.request.method, url.path, server.address, or http.response.status_code, and it does not set client span status OK. DERIVED_DIAGNOSTIC does not fill gen_ai.provider.name. A missing origin on canonical_observation is not treated as local. A live_display row with no evidence_origin keeps its non-operational field candidates."
     }
   ]
 }

@@ -100,8 +100,12 @@ function emptyPreview(reason, extra) {
   };
 }
 
-function canonicalOriginBlock(mapping, origin) {
-  if (origin == null || origin === "") return "ORIGIN_ABSENT_NOT_LOCAL";
+function originBlock(mapping, shape, origin) {
+  const absent = origin == null || origin === "";
+  if (absent) {
+    if (shape === "canonical_observation") return "ORIGIN_ABSENT_NOT_LOCAL";
+    return null;
+  }
   const allowed = mapping.canonical_candidate_origins;
   if (Array.isArray(allowed) && allowed.includes(origin)) return null;
   if (origin === "SIMULATED_DEMO") return "SIMULATED_DEMO_EXCLUDED";
@@ -121,12 +125,9 @@ function designPreview(mapping, record) {
   const names = shape === "live_display" ? LIVE : CANONICAL;
   const omitted = [];
   const origin = source.evidence_origin;
-
-  if (shape === "canonical_observation") {
-    const originBlock = canonicalOriginBlock(mapping, origin);
-    if (originBlock) {
-      return emptyPreview(originBlock, [{ code: originBlock, field: "evidence_origin" }]);
-    }
+  const blockedOrigin = originBlock(mapping, shape, origin);
+  if (blockedOrigin) {
+    return emptyPreview(blockedOrigin, [{ code: blockedOrigin, field: "evidence_origin" }]);
   }
 
   const prohibitedNames = mapping.prohibited_input_names;

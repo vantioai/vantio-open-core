@@ -351,6 +351,87 @@ test("HTTP and URL names are not cited from the GenAI span page", () => {
   assert.match(note, /Optics does not export OTLP/);
 });
 
+test("live display with each blocked evidence origin returns an empty candidate set", () => {
+  const blockedNames = [
+    "gen_ai.provider.name",
+    "gen_ai.operation.name",
+    "http.request.method",
+    "url.path",
+    "server.address",
+    "http.response.status_code",
+  ];
+  const origins = [
+    "PRODUCT_HEALTH",
+    "DERIVED_DIAGNOSTIC",
+    "SIMULATED_DEMO",
+    "TEST_FIXTURE",
+    "IMPORTED",
+    "OTHER_ORIGIN",
+  ];
+  for (const origin of origins) {
+    const preview = api.preview({
+      source_shape: "live_display",
+      evidence_origin: origin,
+      provider: "openai",
+      hostname: "api.openai.com",
+      method: "POST",
+      path: "/v1/chat/completions",
+      httpStatus: 200,
+      applicationStatus: "SUCCESS",
+      opticsStatus: "SUCCESS",
+    });
+    assert.deepEqual(preview.candidates, {}, origin);
+    assert.equal(preview.span.client, null, origin);
+    assert.equal(preview.span.instrumentation, null, origin);
+    assert.equal(preview.emitted, false, origin);
+    assert.equal(preview.would_be_operational_if_i3_enabled, false, origin);
+    assert.equal(preview.trace_context, null, origin);
+    const expectedBlock = origin === "SIMULATED_DEMO" ? "SIMULATED_DEMO_EXCLUDED" : "ORIGIN_NOT_OPERATIONAL";
+    assert.equal(preview.operational_block, expectedBlock, origin);
+    for (const name of blockedNames) {
+      assert.equal(Object.hasOwn(preview.candidates, name), false, origin + " " + name);
+    }
+  }
+
+  const unmarked = api.preview({
+    source_shape: "live_display",
+    hostname: "api.openai.com",
+    method: "POST",
+    path: "/v1/chat/completions",
+    httpStatus: 200,
+    applicationStatus: "SUCCESS",
+  });
+  assert.equal(unmarked.candidates["http.request.method"], "POST");
+  assert.equal(unmarked.candidates["url.path"], "/v1/chat/completions");
+  assert.equal(unmarked.candidates["gen_ai.operation.name"], "chat");
+  assert.equal(unmarked.candidates["server.address"], "api.openai.com");
+  assert.equal(unmarked.candidates["http.response.status_code"], 200);
+  assert.equal(unmarked.span.client, "OK");
+  assert.equal(unmarked.emitted, false);
+  assert.equal(unmarked.would_be_operational_if_i3_enabled, false);
+  assert.equal(unmarked.operational_block, "LIVE_DISPLAY_IS_NOT_PROVENANCE");
+
+  const local = api.preview({
+    source_shape: "live_display",
+    evidence_origin: "LOCAL_OBSERVATION",
+    hostname: "api.openai.com",
+    method: "POST",
+    path: "/v1/chat/completions",
+    httpStatus: 200,
+    applicationStatus: "SUCCESS",
+  });
+  assert.equal(local.candidates["http.request.method"], "POST");
+  assert.equal(local.candidates["server.address"], "api.openai.com");
+  assert.equal(local.span.client, "OK");
+  assert.equal(local.emitted, false);
+  assert.equal(local.would_be_operational_if_i3_enabled, false);
+  assert.equal(local.operational_block, "LIVE_DISPLAY_IS_NOT_PROVENANCE");
+
+  const note = fs.readFileSync(path.join(ROOT, "docs/internal/ws7-otel-mapping/01-SEMANTIC-MAPPING.md"), "utf8");
+  assert.match(note, /both `live_display` and `canonical_observation`/);
+  assert.match(note, /keeps its non-operational field candidates/);
+});
+
 test("simulated demo and missing origin produce no candidates", () => {
   const demo = api.preview({
     source_shape: "canonical_observation",

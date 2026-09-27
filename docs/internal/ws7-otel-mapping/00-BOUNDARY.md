@@ -12,7 +12,7 @@ Producer classification on the failed tip `dd9359e7c374d21986b3c7ec57d69946328d2
 
 Revision classification: `OTEL_MAPPING_DESIGN_REVISION_READY_FOR_COUNCIL`
 
-That classification means the revised design is ready for a separate council. It is not a council verdict, not an exporter, and not a public support claim. Council previously returned `OTEL_MAPPING_DESIGN_NEEDS_REVISION`. This revision does not merge, does not enable adapters, and does not authorize I3.
+That classification means the revised design is ready for a separate council. It is not a council verdict, not an exporter, and not a public support claim. Council previously returned `OTEL_MAPPING_DESIGN_NEEDS_REVISION`. Re-council of tip `58225c64c51a9ada5b51170cf3ff5b553573877f` returned `OTEL_MAPPING_DESIGN_NEEDS_REVISION` again. This second revision applies the origin gate to both `canonical_observation` and `live_display`. It does not merge, does not enable adapters, and does not authorize I3.
 
 ## Locked input
 
