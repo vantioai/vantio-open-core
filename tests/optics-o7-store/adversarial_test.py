@@ -525,6 +525,109 @@ class AdversarialStoreTest(unittest.TestCase):
         finally:
             handle.close()
 
+    def test_missing_lifecycle_is_not_scope_complete(self):
+        handle = self._create()
+        try:
+            self.assertTrue(handle.put(clean_record())["stored"])
+            stored = handle.put(
+                {
+                    "record_type": "run_envelope",
+                    "schema_status": "unstable-pre-1.0",
+                    "schema_version": 0,
+                    "producer": "node_interceptor",
+                    "cli_or_sdk_version": "0.3.24",
+                    "evidence_origin": "LOCAL_OBSERVATION",
+                    "producer_id": "prod_clean_1",
+                    "run_id": "run_clean_1",
+                    "started_at": "2026-07-01T00:00:03.000Z",
+                    "identity_conflict": "NONE",
+                }
+            )
+            self.assertTrue(stored["stored"], stored["reason_code"])
+            self.assertEqual(stored["record"]["record_type"], "run_envelope")
+            self.assertNotIn("lifecycle", stored["record"])
+            column = handle.conn.execute(
+                "SELECT lifecycle FROM records WHERE record_type = 'run_envelope'"
+            ).fetchone()
+            self.assertIsNone(column[0])
+            self._assert_off_page_scope(handle, "RUN_LIFECYCLE_NOT_COMPLETE")
+        finally:
+            handle.close()
+
+    def test_unsearchable_optics_directory_fails_open(self):
+        handle = self._create()
+        self.assertTrue(handle.put(clean_record())["stored"])
+        handle.close()
+        optics = self.root / "optics"
+        target = optics / "store.sqlite"
+        original = target.read_bytes()
+        before = target.stat()
+        os.chmod(optics, 0)
+        opened = None
+        try:
+            try:
+                opened = open_store(self.root)
+            except PermissionError as exc:
+                self.fail("open_store raised PermissionError: %s" % exc)
+            self.assertFalse(opened.writes_enabled)
+            self.assertTrue(opened.application_continues)
+            self.assertFalse(opened.file_created)
+            self.assertEqual(opened.reason_code, "INTEGRITY_FAILED")
+            self.assertEqual(opened.integrity, "UNREADABLE")
+            self.assertEqual(opened.recovery_state, "STOPPED_PRESERVED")
+            self.assertEqual(stat.S_IMODE(optics.stat().st_mode), 0)
+            envelope = opened.recovery
+            self.assertIsNotNone(envelope)
+            self.assertEqual(envelope["record_type"], "recovery_envelope")
+            self.assertEqual(envelope["recovery_state"], "STOPPED_PRESERVED")
+            self.assertEqual(envelope["integrity_result"], "UNREADABLE")
+            self.assertEqual(envelope["remediation_code"], "INTEGRITY_FAILED")
+            self.assertEqual(envelope["safe_store_id"], "store-id-unreadable")
+            self.assertIsNone(envelope["preserved_bytes_sha256"])
+            self.assertIsNone(envelope["replacement_store_id"])
+            self.assertNotIn("prompt", envelope)
+            self.assertNotIn(CANARY, json_text(envelope))
+            recovery = opened.recovery_path
+            self.assertIsNotNone(recovery)
+            self.assertEqual(recovery.parent.name, "optics-recovery")
+            self.assertEqual(recovery.name, "store-id-unreadable.recovery.json")
+            self.assertEqual(recovery.resolve().parent, (self.root / "optics-recovery").resolve())
+            self.assertEqual(stat.S_IMODE(recovery.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(recovery.parent.stat().st_mode), 0o700)
+            self.assertNotIn(b"hostname", recovery.read_bytes())
+            page = opened.query(self._window())
+            self.assertEqual(page["completeness"], "UNAVAILABLE")
+            self.assertNotEqual(page["completeness"], "COMPLETE")
+            self.assertEqual(page["rows"], [])
+            try:
+                salvaged = opened.salvage()
+            except PermissionError as exc:
+                self.fail("salvage raised PermissionError: %s" % exc)
+            self.assertNotEqual(salvaged["completeness"], "COMPLETE")
+            self.assertEqual(salvaged["rows"], [])
+            self.assertEqual(stat.S_IMODE(optics.stat().st_mode), 0)
+            try:
+                again = open_store(self.root, create=True)
+            except PermissionError as exc:
+                self.fail("open_store create=True raised PermissionError: %s" % exc)
+            try:
+                self.assertEqual(again.recovery_state, "STOPPED_PRESERVED")
+                self.assertFalse(again.file_created)
+                self.assertFalse(again.writes_enabled)
+            finally:
+                again.close()
+        finally:
+            if opened is not None:
+                opened.close()
+            os.chmod(optics, 0o700)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode) & 0o777, 0o600)
+        preserved = target.stat()
+        self.assertEqual(preserved.st_ino, before.st_ino)
+        self.assertEqual(preserved.st_size, before.st_size)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertFalse((optics / "store.sqlite.new").exists())
+        self.assertFalse((optics / "recovery").exists())
+
 
 def json_text(value):
     return json.dumps(value)

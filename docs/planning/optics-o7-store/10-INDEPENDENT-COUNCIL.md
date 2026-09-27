@@ -66,6 +66,8 @@ The previous council returned `OPTICS_O7_STORE_NEEDS_REVISION`. The producer cla
 
 The revision evaluates coverage, run lifecycle, and parent conflict on the declared scope, including rows that are not on the current page. An unreadable open writes `STOPPED_PRESERVED` instead of raising `PermissionError`. A duplicate put whose stored `body_json` is not JSON returns `REQUIRED_EVIDENCE_CORRUPT` instead of raising `JSONDecodeError`.
 
+Revision 2 treats a missing or NULL `run_envelope` lifecycle as `RUN_LIFECYCLE_NOT_COMPLETE` on page 1 and on the full scope. An unsearchable `optics/` directory fails open: `open_store` returns `STOPPED_PRESERVED` and writes the recovery envelope at `{evidence_root}/optics-recovery/<safe-store-id>.recovery.json` when that sibling can be created. `PermissionError` does not escape `open_store`.
+
 Node binding stays `UNSELECTED`. This stub still does not contain a council verdict.
 
 ## 5. Notes for the council

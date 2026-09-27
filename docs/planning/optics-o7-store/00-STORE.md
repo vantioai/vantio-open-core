@@ -47,7 +47,7 @@ This force leaves these surfaces untouched:
 - Callers use put, get, and the A4 query request. A caller-supplied SQL string is rejected. A caller regular expression is rejected. Allowlist enforcement calls the private PKG-01 validator before insert. Prohibited fields are not written.
 - Unix create mode is `0600` for the store, the id sidecar, the backup, and the recovery envelope. Directories this force creates are `0700`. Windows ACL detail stays Founder decision 8. No ACL is invented.
 - A symlink on `optics`, the store path, the id sidecar, the backup, the recovery directory, or a WAL sidecar is refused. The store does not follow it.
-- A corrupt or unreadable file stays in place. Disclosure is `optics/recovery/<safe-store-id>.recovery.json`. The first corruption state is `STOPPED_PRESERVED`. A mode `000` file, or any open that raises `PermissionError` before the database handler, takes that same path and writes the recovery envelope. It does not leave an uncaught `PermissionError`. Salvage after that classification returns `UNAVAILABLE` for a torn or unreadable file and is never `COMPLETE`. This force does not add a replacement command and does not write `store.sqlite.new`.
+- A corrupt or unreadable file stays in place. Disclosure is `optics/recovery/<safe-store-id>.recovery.json`. The first corruption state is `STOPPED_PRESERVED`. A mode `000`, `0200`, or `0100` store file takes that path: the bytes stay, the recovery envelope is written, and a query is `UNAVAILABLE`. An unsearchable `optics/` directory (mode `000`, or any `PermissionError` while probing a path under it) also fails open. `open_store` does not raise `PermissionError`. The directory mode is left unchanged. Because `optics/recovery/` cannot be created without search permission, the same envelope is written beside `optics/` at `{evidence_root}/optics-recovery/<safe-store-id>.recovery.json` when that sibling can be created. The id in the file name is `store-id-unreadable` when `optics/store.id` cannot be read. Salvage after `STOPPED_PRESERVED` is never `COMPLETE`. This force does not add a replacement command and does not write `store.sqlite.new`.
 - A duplicate or identity-conflict put whose stored `body_json` is not JSON returns `REQUIRED_EVIDENCE_CORRUPT`. The call does not raise `JSONDecodeError`. The corrupt row stays. A later valid put can still commit.
 - A newer `user_version` is refused with `NEWER_SCHEMA_REFUSED`. A privacy-weaker writer is refused with `WEAKER_WRITER_REFUSED`. Software rollback does not down-migrate the file.
 - An empty database below version 1 is migrated forward after a `0600` backup. A file that already has foreign tables is not replaced. An injected migration fault leaves the original bytes, keeps the backup, and records `MIGRATION_FAILED`.
@@ -55,7 +55,7 @@ This force leaves these surfaces untouched:
 - Busy-timeout and page-size stay `NOT_SET`. Connections use no wait. That is not a selected NFR number. At-rest encryption is not selected.
 - Default retention is unbounded. This force does not prune.
 - Query freshness is `UNKNOWN`. A request for freshness `CURRENT` is rejected. Decision 10 stays unresolved.
-- Completeness is a property of the declared scope. Coverage gaps, non-complete run lifecycles, parent conflicts, producer-sequence conflicts, sampled rows, and corrupt stored bodies are evaluated on every matching row. A page that does not include the later row still returns the same `completeness` and `completenessReasons` as the full scope. `COUNT(*)` and drops were already scope-wide.
+- Completeness is a property of the declared scope. Coverage gaps, run lifecycles, parent conflicts, producer-sequence conflicts, sampled rows, and corrupt stored bodies are evaluated on every matching row. A `run_envelope` counts as complete only when its stored `lifecycle` is `COMPLETE`. A missing or NULL lifecycle is `RUN_LIFECYCLE_NOT_COMPLETE`, in the same family as `PARTIAL`, `INTERRUPTED`, `ABANDONED`, and `RECOVERED`. A page that does not include the later row still returns the same `completeness` and `completenessReasons` as the full scope. `COUNT(*)` and drops were already scope-wide.
 - The store is not a default write path. `O12` is still `NOT_AUTHORIZED`, and the dependency order says fail-open is required before the store is a default write path.
 
 ## 3. What stays blocked
@@ -96,5 +96,14 @@ Council `bc-55359182-f6a6-505c-932b-c55e0904f8ea` returned `OPTICS_O7_STORE_NEED
 
 - Page 1 of a scope that also contains a later coverage gap, a `run_envelope` with `lifecycle` `PARTIAL`, or `identity_conflict` `PARENT` is `PARTIAL` with `COVERAGE_GAP_IN_SCOPE`, `RUN_LIFECYCLE_NOT_COMPLETE`, or `PARENT_CONFLICT`. It is not `COMPLETE` with an empty reason list while `matchingRecords` is 2 and `hasMore` is true.
 - Unreadable open and a duplicate put of corrupt `body_json` fail open. A readable torn file still stays in place and returns `STOPPED_PRESERVED`.
+
+Node `openStore` still returns `NODE_BINDING_UNSELECTED`. No library is selected. No Node file is created. Founder decision 9 stays unresolved. `PACKAGES.json` `O7` stays `NOT_AUTHORIZED`. Gate 8 stays closed. Evidence tier stays `UNSET`. This revision does not claim `O1`, `O2`, `O6`, `O8`, `O10`, `O11`, or `O12` met.
+
+## 7. Revision 2
+
+A second council returned `OPTICS_O7_STORE_NEEDS_REVISION`. This revision closes those two holds and leaves the revision-1 closes in place.
+
+- A public put of a `run_envelope` that omits `lifecycle` stores NULL. Page 1 and the full declared scope are `PARTIAL` with `RUN_LIFECYCLE_NOT_COMPLETE`. They are not `COMPLETE` with an empty reason list while `matchingRecords` is 2 and `hasMore` is true.
+- `open_store` on an `optics/` directory with mode `000` returns `STOPPED_PRESERVED` and writes `{evidence_root}/optics-recovery/store-id-unreadable.recovery.json` when the evidence root can hold that sibling. It does not raise `PermissionError`. Store bytes and the directory mode stay as they were. Query completeness is `UNAVAILABLE`.
 
 Node `openStore` still returns `NODE_BINDING_UNSELECTED`. No library is selected. No Node file is created. Founder decision 9 stays unresolved. `PACKAGES.json` `O7` stays `NOT_AUTHORIZED`. Gate 8 stays closed. Evidence tier stays `UNSET`. This revision does not claim `O1`, `O2`, `O6`, `O8`, `O10`, `O11`, or `O12` met.

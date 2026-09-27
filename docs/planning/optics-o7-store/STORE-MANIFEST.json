@@ -43,16 +43,16 @@
     "decisions_2_through_13_resolved_by_this_force": false
   },
   "files_sha256": {
-    "docs/planning/optics-o7-store/00-STORE.md": "2ae3d98f1ac48fbe18363ba3a10f3c9440987d89fa939fdd15edaac649149368",
-    "docs/planning/optics-o7-store/10-INDEPENDENT-COUNCIL.md": "fc366a263488bb9cdbad7d6ccd8fc8e6643a9a5f983d7997e570ab685042fdb3",
-    "packages/optics-operational-store/src/optics_operational_store/store.py": "dcc554767fe74f46859b9ede15f56157b6051ad13b93746acbebd307c3e92ce4",
+    "docs/planning/optics-o7-store/00-STORE.md": "064fa19c16e5a6bb60dc2d8f76a8a96e04ee824417a901611bfa074a9ea9097a",
+    "docs/planning/optics-o7-store/10-INDEPENDENT-COUNCIL.md": "5ed3c35546b749470123a085c74d43524c042bf41994bd105d5dc6b1e7f13452",
+    "packages/optics-operational-store/src/optics_operational_store/store.py": "9ed8999b34499eea286d770f96c25ef879e3651c6980cf2aadd5b561d8397488",
     "packages/optics-operational-store/src/optics_operational_store/posture.py": "5b93aba1b3669ffa5297bbee10b06e9859cb3982cc880907a97b82fd044c49e6",
     "packages/optics-operational-store/src/optics_operational_store/__init__.py": "87bac557e1c456493af0d2b1d9855a4715af18454bba6187820f3e0a824145b2",
     "packages/optics-operational-store/src/open.cjs": "a5eed36ea38b923c69be5305123786e8f20675c0b168b425a311296e838a0c61",
     "packages/optics-operational-store/src/boundary.cjs": "d84de57d5a85ef65aecfee78321af0a47cf6a24a10c667a324468d5f39bdb3ba",
     "packages/optics-operational-store/src/index.cjs": "c2e4d07820e148fb85d825eb76f88ab8bd38b251c1d73acef5a7fbf5228d685b",
     "tests/optics-o7-store/direct_test.py": "358e61ce9738b08c51df9cf7af897c19d7bedf23a25886b2ca69f22b40bd6e0b",
-    "tests/optics-o7-store/adversarial_test.py": "411a54974d9a626a81e0de13292e5b6f35edfc0ac6af8056b8431c63043c5893",
+    "tests/optics-o7-store/adversarial_test.py": "62e9f881800f780c472f62ccc0bb53a539edfda6dc0fc2f3d9b6712498cfc5a9",
     "tests/optics-o7-store/direct.test.cjs": "d62c64896195a1658a004fef37d52a5ebe1da1558093066a8dddbaa1976301ae",
     "tests/optics-o7-store/adversarial.test.cjs": "7c23bab11ce605b3762de3620aaeccdf0a8195e575c07917925edd4f9e43ecb9",
     "tests/optics-o7-store/support.py": "5c401fc0c805062d6ab299bb0fc72304a7b0a0b6a7109ad02455e5ad018b6d31"

@@ -9,12 +9,14 @@ and it is not a stable schema. Evidence tier stays UNSET.
 """
 
 import base64
+import errno
 import hashlib
 import json
 import os
 import re
 import secrets
 import sqlite3
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +45,9 @@ STORE_NAME = "store.sqlite"
 ID_NAME = "store.id"
 BACKUP_NAME = "store.sqlite.backup"
 UNREADABLE_STORE_ID = "store-id-unreadable"
+RECOVERY_FALLBACK_NAME = "optics-recovery"
+_ABSENT_ERRNOS = frozenset({errno.ENOENT, errno.ENOTDIR, errno.EBADF, errno.ELOOP})
+_DENIED_ERRNOS = frozenset({errno.EACCES, errno.EPERM})
 LIMITATION = "Operational store page. Not a portable proof."
 TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$")
 SAFE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -146,6 +151,23 @@ def _sha256_file(path):
     return digest.hexdigest()
 
 
+def _lstat_kind(path):
+    # pathlib is_symlink/exists re-raise EACCES on Python 3.12. lstat keeps that
+    # as a classified denial so open_store can fail open.
+    try:
+        mode = path.lstat().st_mode
+    except OSError as exc:
+        number = getattr(exc, "errno", None)
+        if number in _ABSENT_ERRNOS:
+            return "absent"
+        if isinstance(exc, PermissionError) or number in _DENIED_ERRNOS:
+            return "denied"
+        raise
+    if stat.S_ISLNK(mode):
+        return "symlink"
+    return "present"
+
+
 def _unreadable_open(paths):
     handle = StoreHandle(paths)
     envelope, target = _write_envelope(
@@ -156,7 +178,7 @@ def _unreadable_open(paths):
         "STOPPED_PRESERVED",
         "INTEGRITY_FAILED",
         None,
-        "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+        _backup_visibility(paths),
         None,
     )
     _note_envelope(handle, envelope, target, "STOPPED_PRESERVED")
@@ -170,13 +192,21 @@ def _mode(path):
 
 
 def _chmod_file(path):
-    if path.exists() and not path.is_symlink():
+    if _lstat_kind(path) != "present":
+        return
+    try:
         os.chmod(path, 0o600)
+    except OSError:
+        return
 
 
 def _chmod_dir(path):
-    if path.exists() and not path.is_symlink():
+    if _lstat_kind(path) != "present":
+        return
+    try:
         os.chmod(path, 0o700)
+    except OSError:
+        return
 
 
 def _write_new(path, data):
@@ -212,12 +242,17 @@ def _paths(root):
     }
 
 
-def _symlink_blocked(paths):
+def _path_probe(paths):
+    denied = False
     for key in ("optics", "store", "store_id", "backup", "recovery_dir", "wal", "shm"):
-        candidate = paths[key]
-        if candidate.is_symlink():
-            return True
-    return False
+        kind = _lstat_kind(paths[key])
+        if kind == "symlink":
+            return "symlink"
+        if kind == "denied":
+            denied = True
+    if denied:
+        return "denied"
+    return "clear"
 
 
 def _ro_uri(path):
@@ -341,7 +376,7 @@ def _install_schema(conn, store_id, checked_at):
 
 
 def _read_store_id(path):
-    if not path.exists() or path.is_symlink():
+    if _lstat_kind(path) != "present":
         return None
     try:
         text = path.read_text(encoding="utf-8").strip()
@@ -353,33 +388,23 @@ def _read_store_id(path):
 
 
 def _write_store_id(path, store_id):
-    if path.exists():
+    kind = _lstat_kind(path)
+    if kind == "present":
         return _read_store_id(path) == store_id
-    if path.is_symlink():
+    if kind != "absent":
         return False
     _write_new(path, (store_id + "\n").encode("ascii"))
     return True
 
 
-def _envelope_path(paths, store_id):
-    safe = store_id if store_id and SAFE_ID_RE.fullmatch(store_id) else UNREADABLE_STORE_ID
-    return paths["recovery_dir"] / f"{safe}.recovery.json", safe
+def _safe_store_id(store_id):
+    if store_id and SAFE_ID_RE.fullmatch(store_id):
+        return store_id
+    return UNREADABLE_STORE_ID
 
 
-def _write_envelope(paths, store_id, schema_version, integrity_result, recovery_state, remediation_code, preserved_hash, backup_availability, last_check):
-    if paths["recovery_dir"].is_symlink() or paths["optics"].is_symlink():
-        return None, None
-    try:
-        paths["recovery_dir"].mkdir(mode=0o700, exist_ok=True)
-    except OSError:
-        return None, None
-    if paths["recovery_dir"].is_symlink():
-        return None, None
-    _chmod_dir(paths["recovery_dir"])
-    target, safe_id = _envelope_path(paths, store_id)
-    if target.is_symlink():
-        return None, None
-    envelope = {
+def _envelope_body(safe_id, schema_version, integrity_result, recovery_state, remediation_code, preserved_hash, backup_availability, last_check):
+    return {
         "record_type": "recovery_envelope",
         "schema_status": SCHEMA_STATUS,
         "safe_store_id": safe_id,
@@ -394,27 +419,108 @@ def _write_envelope(paths, store_id, schema_version, integrity_result, recovery_
         "preserved_bytes_sha256": preserved_hash,
         "replacement_store_id": None,
     }
-    if set(envelope.keys()) != set(ENVELOPE_KEYS):
-        return None, None
-    payload = json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    temporary = paths["recovery_dir"] / f".{safe_id}.recovery.json.tmp"
+
+
+def _write_envelope_dir(directory, store_id, schema_version, integrity_result, recovery_state, remediation_code, preserved_hash, backup_availability, last_check):
+    parent_kind = _lstat_kind(directory.parent)
+    dir_kind = _lstat_kind(directory)
+    if parent_kind == "symlink" or dir_kind == "symlink":
+        return None, None, "refused"
+    if parent_kind == "denied" or dir_kind == "denied":
+        return None, None, "denied"
     try:
-        if temporary.exists() or temporary.is_symlink():
-            return None, None
+        if dir_kind == "absent":
+            directory.mkdir(mode=0o700, exist_ok=True)
+        elif not directory.is_dir():
+            return None, None, "refused"
+    except PermissionError:
+        return None, None, "denied"
+    except OSError as exc:
+        if getattr(exc, "errno", None) in _DENIED_ERRNOS:
+            return None, None, "denied"
+        return None, None, "refused"
+    if _lstat_kind(directory) != "present":
+        return None, None, "denied" if _lstat_kind(directory) == "denied" else "refused"
+    _chmod_dir(directory)
+    safe_id = _safe_store_id(store_id)
+    target = directory / f"{safe_id}.recovery.json"
+    target_kind = _lstat_kind(target)
+    if target_kind == "symlink":
+        return None, None, "refused"
+    if target_kind == "denied":
+        return None, None, "denied"
+    envelope = _envelope_body(
+        safe_id,
+        schema_version,
+        integrity_result,
+        recovery_state,
+        remediation_code,
+        preserved_hash,
+        backup_availability,
+        last_check,
+    )
+    if set(envelope.keys()) != set(ENVELOPE_KEYS):
+        return None, None, "refused"
+    payload = json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    temporary = directory / f".{safe_id}.recovery.json.tmp"
+    temporary_kind = _lstat_kind(temporary)
+    if temporary_kind == "denied":
+        return None, None, "denied"
+    if temporary_kind != "absent":
+        return None, None, "refused"
+    try:
         _write_new(temporary, payload)
         os.replace(temporary, target)
-    except OSError:
-        return None, None
+    except PermissionError:
+        return None, None, "denied"
+    except OSError as exc:
+        if getattr(exc, "errno", None) in _DENIED_ERRNOS:
+            return None, None, "denied"
+        return None, None, "refused"
     _chmod_file(target)
+    return envelope, target, "written"
+
+
+def _write_envelope(paths, store_id, schema_version, integrity_result, recovery_state, remediation_code, preserved_hash, backup_availability, last_check):
+    # Canonical disclosure stays optics/recovery/. An unsearchable optics/
+    # directory cannot hold that file, so the same envelope is written beside
+    # optics/ at {evidence_root}/optics-recovery/.
+    envelope, target, status = _write_envelope_dir(
+        paths["recovery_dir"],
+        store_id,
+        schema_version,
+        integrity_result,
+        recovery_state,
+        remediation_code,
+        preserved_hash,
+        backup_availability,
+        last_check,
+    )
+    if status != "denied":
+        return envelope, target
+    fallback = paths["root"] / RECOVERY_FALLBACK_NAME
+    envelope, target, _status = _write_envelope_dir(
+        fallback,
+        store_id,
+        schema_version,
+        integrity_result,
+        recovery_state,
+        remediation_code,
+        preserved_hash,
+        backup_availability,
+        last_check,
+    )
     return envelope, target
 
 
 def _backup_database(paths):
     source = paths["store"]
     target = paths["backup"]
-    if target.is_symlink() or source.is_symlink():
+    source_kind = _lstat_kind(source)
+    target_kind = _lstat_kind(target)
+    if source_kind != "present" or target_kind in ("symlink", "denied"):
         return "UNKNOWN"
-    if target.exists():
+    if target_kind == "present":
         return "AVAILABLE"
     try:
         _write_new(target, source.read_bytes())
@@ -485,6 +591,79 @@ def _note_envelope(handle, envelope, path, state):
     return handle
 
 
+def _backup_visibility(paths):
+    kind = _lstat_kind(paths["backup"])
+    if kind == "present":
+        return "AVAILABLE"
+    if kind == "absent":
+        return "ABSENT"
+    return "UNKNOWN"
+
+
+def _permission_denied_open(paths):
+    # The store path cannot be searched. Do not chmod it open. Disclose beside
+    # optics/ when the evidence root can hold the envelope.
+    handle = StoreHandle(paths)
+    envelope = None
+    target = None
+    try:
+        envelope, target = _write_envelope(
+            paths,
+            _read_store_id(paths["store_id"]),
+            None,
+            "UNREADABLE",
+            "STOPPED_PRESERVED",
+            "INTEGRITY_FAILED",
+            None,
+            _backup_visibility(paths),
+            None,
+        )
+    except PermissionError:
+        envelope, target = None, None
+    _note_envelope(handle, envelope, target, "STOPPED_PRESERVED")
+    handle.reason_code = "INTEGRITY_FAILED"
+    handle.integrity = "UNREADABLE"
+    return handle
+
+
+def _open_located_store(paths, root, create, writer_privacy_generation, inject_migration_fault):
+    probe = _path_probe(paths)
+    if probe == "symlink":
+        return _stopped(paths, "SYMLINK_REFUSED")
+    if probe == "denied":
+        return _permission_denied_open(paths)
+    store_path = paths["store"]
+    store_kind = _lstat_kind(store_path)
+    if store_kind == "denied":
+        return _permission_denied_open(paths)
+    if store_kind == "absent":
+        if not create:
+            return _stopped(paths, "STORE_ABSENT")
+        root_kind = _lstat_kind(root)
+        if root_kind != "present":
+            return _stopped(paths, "STORE_ROOT_ABSENT")
+        try:
+            if not root.is_dir():
+                return _stopped(paths, "STORE_ROOT_ABSENT")
+        except PermissionError:
+            return _permission_denied_open(paths)
+        return _create_store(paths)
+    if store_kind != "present":
+        return _stopped(paths, "STORE_NOT_A_FILE")
+    try:
+        if not store_path.is_file():
+            return _stopped(paths, "STORE_NOT_A_FILE")
+    except PermissionError:
+        return _permission_denied_open(paths)
+    try:
+        before = _sha256_file(store_path)
+    except PermissionError:
+        return _unreadable_open(paths)
+    except OSError:
+        return _unreadable_open(paths)
+    return _open_existing(paths, before, writer_privacy_generation, inject_migration_fault)
+
+
 def open_store(evidence_root=None, create=False, writer_privacy_generation=WRITER_PRIVACY_GENERATION, inject_migration_fault=False, sql=None, statement=None, **_ignored):
     # PKG-02 writer flags are not this package's create switch. They never open a binding.
     del _ignored
@@ -492,22 +671,10 @@ def open_store(evidence_root=None, create=False, writer_privacy_generation=WRITE
     paths = _paths(root)
     if sql is not None or statement is not None:
         return _stopped(paths, "SQL_REJECTED")
-    if _symlink_blocked(paths):
-        return _stopped(paths, "SYMLINK_REFUSED")
-    store_path = paths["store"]
-    if not store_path.exists():
-        if not create:
-            return _stopped(paths, "STORE_ABSENT")
-        if not root.exists() or not root.is_dir() or root.is_symlink():
-            return _stopped(paths, "STORE_ROOT_ABSENT")
-        return _create_store(paths)
-    if not store_path.is_file():
-        return _stopped(paths, "STORE_NOT_A_FILE")
     try:
-        before = _sha256_file(store_path)
-    except OSError:
-        return _unreadable_open(paths)
-    return _open_existing(paths, before, writer_privacy_generation, inject_migration_fault)
+        return _open_located_store(paths, root, create, writer_privacy_generation, inject_migration_fault)
+    except PermissionError:
+        return _permission_denied_open(paths)
 
 
 def _create_store(paths):
@@ -584,7 +751,7 @@ def _open_existing(paths, before_hash, writer_privacy_generation, inject_migrati
             "STOPPED_PRESERVED",
             "INTEGRITY_FAILED",
             preserved,
-            "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+            _backup_visibility(paths),
             None,
         )
         _note_envelope(handle, envelope, target, "STOPPED_PRESERVED")
@@ -621,7 +788,7 @@ def _open_existing(paths, before_hash, writer_privacy_generation, inject_migrati
             "STOPPED_PRESERVED",
             "INTEGRITY_FAILED",
             before_hash,
-            "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+            _backup_visibility(paths),
             last_check,
         )
         _note_envelope(handle, envelope, target, "STOPPED_PRESERVED")
@@ -638,7 +805,7 @@ def _open_existing(paths, before_hash, writer_privacy_generation, inject_migrati
             "RECOVERY_REQUIRED",
             "NEWER_SCHEMA_REFUSED",
             before_hash,
-            "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+            _backup_visibility(paths),
             last_check,
         )
         _note_envelope(handle, envelope, target, "RECOVERY_REQUIRED")
@@ -665,7 +832,7 @@ def _open_existing(paths, before_hash, writer_privacy_generation, inject_migrati
             "RECOVERY_REQUIRED",
             "NEWER_SCHEMA_REFUSED",
             before_hash,
-            "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+            _backup_visibility(paths),
             last_check,
         )
         _note_envelope(handle, envelope, target, "RECOVERY_REQUIRED")
@@ -682,7 +849,7 @@ def _open_existing(paths, before_hash, writer_privacy_generation, inject_migrati
             "RECOVERY_REQUIRED",
             "WEAKER_WRITER_REFUSED",
             before_hash,
-            "ABSENT" if not paths["backup"].exists() else "AVAILABLE",
+            _backup_visibility(paths),
             last_check,
         )
         _note_envelope(handle, envelope, target, "RECOVERY_REQUIRED")
@@ -844,7 +1011,7 @@ def _migration_failure(paths, handle, before_hash, store_id, last_check):
         "RECOVERY_REQUIRED",
         "MIGRATION_FAILED",
         preserved,
-        "AVAILABLE" if paths["backup"].exists() else "ABSENT",
+        _backup_visibility(paths),
         last_check,
     )
     _note_envelope(handle, envelope, target, "RECOVERY_REQUIRED")
@@ -1237,7 +1404,9 @@ def _scope_completeness(scope_rows):
             sampled = True
             unsampled = False
             reasons.append("SAMPLING_NOT_UNSAMPLED")
-        if record_type == "run_envelope" and lifecycle not in (None, "COMPLETE"):
+        # A4: every run in the declared scope must have lifecycle COMPLETE.
+        # NULL and a missing lifecycle are not complete.
+        if record_type == "run_envelope" and lifecycle != "COMPLETE":
             reasons.append("RUN_LIFECYCLE_NOT_COMPLETE")
         if issue_location == "COVERAGE":
             reasons.append("COVERAGE_GAP_IN_SCOPE")
@@ -1405,7 +1574,7 @@ def salvage(handle):
         return refused
     paths = handle.paths
     before = None
-    if paths["store"].exists() and not paths["store"].is_symlink():
+    if _lstat_kind(paths["store"]) == "present":
         try:
             before = _sha256_file(paths["store"])
         except OSError:
