@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/pe-egress-authority",
+  "private": true,
+  "version": "0.0.0-internal",
+  "description": "PRIVATE | NOT SHIPPED | INTERNAL_PROOF | NO_LIVE_ATTACH | NO_EBPF_LOAD | NO_NETWORK. Phantom Engine egress authority for council review. Not a public package.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/pe-egress/*.test.cjs"
+  }
+}
