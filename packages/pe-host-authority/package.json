@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/pe-host-authority",
+  "private": true,
+  "version": "0.0.0-internal-proof",
+  "description": "INTERNAL_RESTRICTED contract proof of cited Phantom Engine host-authority mechanisms. Not shipped. Not a kernel load. Not universal Linux control.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/pe-host-authority/*.test.cjs"
+  }
+}
