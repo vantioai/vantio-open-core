@@ -4,9 +4,21 @@ Audience: INTERNAL_RESTRICTED
 
 Producer classification: `PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL`
 
-Workstream 4 status: `DEFINITION_NOT_RETRIEVED`
+Binding classification: `PE_WS4_VOCABULARY_BINDING_READY_FOR_COUNCIL`
 
-The founder force names Workstream 4 as the source of the shared health vocabulary. No Workstream 4 document, token list, or path was in `vantio-open-core` at base `5064f32f1cdfcb840dfd100e2ce5c712d046550d`, and no completed Workstream 4 producer output was available to this force. This file binds P24 to vocabularies that already exist in git. It does not ratify a Workstream 4 catalog. Field `vocabulary_status` in `HEALTH-VOCABULARY.json` stays `PENDING_WS4`.
+Workstream 4 status: `c1de02538f66df94d58aef58bf0ec8459ae797ad`
+
+P24 reads the shared health vocabulary from `docs/planning/shared-health-vocabulary/` at commit `c1de02538f66df94d58aef58bf0ec8459ae797ad`. That commit is on main at merge `52274708e2620cbd37b0d10d67561eac642e2aee` (pull request #82). The council result cited here is `SHARED_HEALTH_VOCABULARY_COUNCIL_PASSED` (`bc-84572b17`). The merge classification is `SHARED_HEALTH_VOCABULARY_MERGED_CATALOG_ONLY`.
+
+`HEALTH-VOCABULARY.json` sets `vocabulary_status` and `workstream_4` to that catalog commit, using `docs/planning/shared-health-vocabulary/BINDINGS.md` section 5. The previous `vocabulary_status` was `PENDING_WS4`. The previous `workstream_4` was `DEFINITION_NOT_RETRIEVED`. The commit in `vocabulary_status` means `BOUND_TO_WS4_CATALOG`. The same commit in `workstream_4` means `RETRIEVED_AND_BOUND`.
+
+The cited catalog commit records `bound_into_pe_packet` false, and `docs/planning/shared-health-vocabulary/HEALTH-VOCABULARY.json` on this branch still records that field false. This packet is the binding in `BINDINGS.md` section 5. Vocabulary lists, `COLLISION-MATRIX.json`, and `BINDINGS.md` match that commit. This branch updates `docs/planning/shared-health-vocabulary/PLANNING-MANIFEST.json` only so its SHA-256 of `tests/shared-health-vocabulary/catalog.test.cjs` matches the binding test.
+
+Freshness follows catalog rule `FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN`. The window is `NOT_SET`. The emitted freshness value is `UNKNOWN`.
+
+At open-core base `5064f32f1cdfcb840dfd100e2ce5c712d046550d` this repository had no Workstream 4 catalog. The pointer above is that catalog. Layers A–E stay separate. Section 2 keeps its collision rows. Customer-manual bodies stay uncopied.
+
+`00-PLANNING-BOUNDARY.md` records Workstream 4 as `DEFINITION_NOT_RETRIEVED` in the locked input verified at that planning base. `06-INDEPENDENT-COUNCIL.md` remains the wave-1 producer stub. Its checklist still names the pre-binding `vocabulary_status` `PENDING_WS4`. That stub stays the wave-1 record.
 
 ## 1. Layers that already have owners
 
@@ -60,15 +72,15 @@ These names share spelling across layers and keep separate fields.
 
 `OPTIONAL_COMPONENT_ABSENT` is not `PASS`. `internally_proven` is not `STRANGER_HOST`. `KIND_LOCAL` is not `MANAGED_CLOUD`. `TESTED_LOCAL` is not a customer-validation field.
 
-## 3. Shared fact a later force may emit
+## 3. Shared fact
 
-`HEALTH-VOCABULARY.json` is the shape. One fact has one `subject`:
+`docs/planning/shared-health-vocabulary/HEALTH-VOCABULARY.json` at `c1de02538f66df94d58aef58bf0ec8459ae797ad` is the normative shape. `docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json` keeps the same subjects, protection states, verifier results, evidence classes, platform scope, platform status, and deployment profile. One fact has one `subject`:
 
 `ARTIFACT`, `HOST_PREREQUISITE`, `LOADER`, `COVERAGE`, `CONTROL_PLANE`, `LEDGER`.
 
-`protection_state` is null unless `subject` is `COVERAGE` or `LOADER`. `verifier_result` is null unless the fact is a verifier run. `freshness` stays `UNKNOWN` until Workstream 4 sets a window. The DaemonSet’s 60-second file age is `heartbeat_age_limit_s` on the `LOADER` subject. It is not `freshness: CURRENT`.
+`protection_state` is set on `fact_kind` `PROTECTION_EVALUATION` when `subject` is `COVERAGE` or `LOADER`. `verifier_result` is set on `fact_kind` `VERIFIER_RUN`. `freshness` stays `UNKNOWN` under `FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN`. The DaemonSet’s 60-second file age is `heartbeat_age_limit_s` on the `LOADER` subject. It is not `freshness: CURRENT`.
 
-Workstream 4 may add names. It may not reuse a Layer A token as a Layer B state, and it may not collapse the collision rows in section 2. If Workstream 4 publishes a catalog, a later revision of this packet replaces `PENDING_WS4` with that catalog’s commit. This revision does not invent that commit.
+Normative collision rows are `docs/planning/shared-health-vocabulary/COLLISION-MATRIX.json`. Section 2 of this file stays as written, with those rows unmerged. Layer B names stay out of `docs/governance/STATUS-TOKENS.json`. The catalog commit above replaces the previous `vocabulary_status` `PENDING_WS4`.
 
 ## 4. Open-core status-token file
 
