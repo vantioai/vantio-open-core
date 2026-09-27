@@ -2,67 +2,61 @@
 
 Audience: INTERNAL_RESTRICTED
 
-Classification in this commit: `MASTER_CONTROL_PLANE_READY_FOR_MERGE`
+Classification in this commit: `MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL`
 
 Company readiness: `NOT_READY`
 
-This is the opening skeleton. Later program updates append to the progress log. This commit contains governance records only.
+This refresh registers facts that landed after the opening pin. It does not merge itself. Demo, pilot, and investor send stay `NOT_READY`.
 
 ## Recorded main
 
 | Field | Value |
 | --- | --- |
 | Repository | `vantioai/vantio-open-core` |
-| Branch | `program/vantio-production-readiness` |
-| SHA | `5064f32f1cdfcb840dfd100e2ce5c712d046550d` |
-| Subject | Merge pull request #65 from `vantioai/docs/documentation-release-governance-v1` |
-| Expected prefix | `5064f32` matches |
-| Retrieval | `git fetch origin main` then `git rev-parse origin/main` on 2026-09-27 |
-| Snapshot before fetch | `587f3b94d47ea958f91d3a99125cd55931d995f1` |
+| Branch | `cursor/master-control-plane-refresh-8baa` |
+| SHA | `601342f08a59798ce207840cfb75293c3c22f45c` |
+| Subject | Merge pull request #74 from `vantioai/cursor/phantom-wave1-packaging-health-aa8c` |
+| Retrieval | `git fetch origin main` then `git rev-parse origin/main` |
+| Opening pin | `5064f32f1cdfcb840dfd100e2ce5c712d046550d` is an ancestor |
+| Opening control-plane merge | `c5fd71abfa6bc94800ba156ec2685db7e2e00184` pull request #72 |
 
-## What this program is
+## What changed after the pin
 
-Program governance for production readiness. The writable surface is `docs/programs/production-readiness/`. Product implementation packages, registry publish, and Phantom Engine customer-confidential bodies stay outside it.
-
-Standing authorization from the control-plane upload allows a draft pull request and a merge of reversible docs when the path check passes and repository checks are green.
-
-## Locked states
-
-| Lock | State on this record |
+| Fact | Record |
 | --- | --- |
-| `@vantio/cli` 0.3.24 | Frozen. npm latest observed as 0.3.24. |
-| `vantio-agent-sdk` | PyPI observed as 3.0.14. Source on main is 3.1.0. The transition is authorized. This program does not publish. |
-| PKG-01 and PKG-02 Unit A | Merged source. Live writer integration stays outside this program. |
-| Phantom Engine customer docs | Private channel required. Pull request #66 was an open public draft at record time. |
+| `vantio-agent-sdk` 3.1.0 | On PyPI. Wheel `dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb` and sdist `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f` match the sealed pins and the downloaded bytes. Trusted-publisher run `36302566868` succeeded. A loopback `shield()` client on the index install recorded Optics `SUCCESS` and application `APPLICATION_ERROR` for HTTP 401. |
+| Announcement | No GitHub Release after the upload was listed. This refresh did not announce. |
+| Docs governance CI | Pull request #67 merged at `cc7f7ae4a503b7934f2a4fa37a8159d02de66370`. The workflow does not publish. |
+| Head of Product | Pull request #68 merged at `1df51d29a65a3913f1ef1f29fc00ead1335ef7a0`. CTO consideration is `NOT PROMISED`. |
+| Diligence scaffold | Pull request #70 merged at `2f9fadaa47a73ddbfd0efa2848cf9c4e375e2936`. Investor send is `NOT_CLEARED`. |
+| Control plane | Pull request #72 merged at `c5fd71abfa6bc94800ba156ec2685db7e2e00184`. |
+| Enterprise E1–E3 plan | Pull request #71 merged at `8eb353a94c08c1adaaa36d36e2536ee5619e9eb6`. Council status `PENDING_INDEPENDENT_COUNCIL`. |
+| Store Option C plan | Pull request #69 merged at `79b53e0e29df047aabb1863b62609ffd7b4dcff7`. Council status `PENDING_COUNCIL`. Gate 8 stays closed. |
+| Phantom packaging plan | Pull request #74 merged at `601342f08a59798ce207840cfb75293c3c22f45c`. Council status `PENDING_INDEPENDENT_COUNCIL`. Workstream 4 is `DEFINITION_NOT_RETRIEVED`. |
+| Public customer-doc draft | Pull request #66 closed without a merge at 2026-09-27T07:33:14Z. |
 
-Category boundaries follow `docs/PRODUCT_LINEUP.md` and `docs/governance/canonical/product-boundary.md` on this main: Optics observes, Phantom Engine is Enforce + Control in its own repository, and Enterprise is governance on that protection. The Founder Master Program body that the control plane also names was not in the retrieved sources.
+## Still open at this read
 
-## Gates
+Draft pull requests #73, #75, #76, #77, #78, and #79. Unit B is #79. Unit C is #78. Pull request #73's documentation governance check failed on a new stale-name test file. Wave 1 letters A–V stay `UNREGISTERED`. The Founder Master Program body was not retrieved.
 
-C1–C8 are in `COMPANY-GATES.json`. They encode path, docs merge, CLI freeze, Python transition, merged contract source, the private-doc channel, closed publish, and the category boundary. Architecture Gate 8 in `docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md` stays closed and is a different gate.
-
-## Workstreams
-
-`WORKSTREAM-REGISTRY.json` holds WS0–WS13 and Wave 1 items A–V.
-
-Retrieved in-flight forces: WS1 Unit B and Unit C, WS2, WS3 packaging and P34 preparation, WS5, WS6, WS7, WS8, WS9, WS10, WS12, WS13.
-
-Open retrievals: WS0, WS11, the rest of WS4 beyond the phrase "shared health vocabulary," and every Wave 1 item A–V. Those slots are `UNREGISTERED`. They are not scope.
+`@vantio/cli` 0.3.24 stays frozen. npm latest observed as 0.3.24.
 
 ## Readiness
 
 | Surface | State |
 | --- | --- |
-| Demo | `NOT_READY`. WS6 owns `demo/`. Implementation is Wave 2. |
-| Pilot | `NOT_READY`. No pilot is in this commit. Stranger-host execution is unauthorized. |
-| Investor | `NOT_READY`. WS12 owns `diligence/`. Use of funds is unregistered. |
+| Demo | `NOT_READY`. Pull request #75 is a draft. |
+| Pilot | `NOT_READY`. Stranger-host execution is unauthorized. |
+| Investor | `NOT_READY`. Scaffold is on main. Send is `NOT_CLEARED`. |
 
 ## Progress log
 
 | When (UTC) | Classification | Note |
 | --- | --- | --- |
 | 2026-09-27T07:20:06Z | `MASTER_CONTROL_PLANE_READY_FOR_MERGE` | Opening governance record on main `5064f32f1cdfcb840dfd100e2ce5c712d046550d`. |
+| 2026-09-27T07:28:43Z | `MASTER_CONTROL_PLANE_MERGED` | Pull request #72 merged at `c5fd71abfa6bc94800ba156ec2685db7e2e00184`. |
+| 2026-09-27T07:44:14Z | `MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL` | Ledger refresh against main `601342f08a59798ce207840cfb75293c3c22f45c`. PyPI 3.1.0 client proof recorded. Pull request #74 is included. This commit does not merge. |
 
 ## Hard stops
 
-Implementation packages stay out of this branch. Phantom Engine customer-confidential text stays out of this tree. Publish stays closed.
+Implementation packages stay out of this branch. Phantom Engine customer-confidential text stays out of this tree. Publish and announcement stay closed. Demo, pilot, and investor readiness stay `NOT_READY`.

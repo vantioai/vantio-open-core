@@ -1,7 +1,7 @@
 {
   "schema": "vantio.program.production-readiness.demo-readiness/v1",
   "audience": "INTERNAL_RESTRICTED",
-  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
   "readiness": "NOT_READY",
   "owner_force": "WS6",
   "owner_path": "docs/programs/production-readiness/demo/",
@@ -13,9 +13,9 @@
     "Unlabeled synthetic events stay out of the demo."
   ],
   "blocked_by": [
-    "WS6 design force still in flight at observation time",
-    "Wave 2 implementation is outside this force",
-    "Claim ledger CL-015"
+    "Pull request #75 is an open draft",
+    "Wave 2 implementation is outside this refresh",
+    "Claim ledger CL-027"
   ],
   "skeleton_sections": [
     "demo_script",
@@ -26,5 +26,20 @@
     "claim_ledger_stub",
     "limitation_ledger",
     "simulation_labels"
-  ]
+  ],
+  "refresh": {
+    "classification": "MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL",
+    "observed_at_utc": "2026-09-27T07:44:14Z",
+    "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "prior_recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+    "merges_under_this_refresh": false
+  },
+  "open_draft": {
+    "pull_request": 75,
+    "state": "OPEN",
+    "is_draft": true,
+    "head": "c2026a9c8d42130705f434faa0f79d922f473d31",
+    "producer_classification": "INVESTOR_DEMO_DESIGN_READY_FOR_COUNCIL",
+    "council": "PENDING_INDEPENDENT_COUNCIL"
+  }
 }

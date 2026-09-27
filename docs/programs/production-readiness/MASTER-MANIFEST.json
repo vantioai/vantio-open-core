@@ -3,17 +3,17 @@
   "audience": "INTERNAL_RESTRICTED",
   "program_id": "vantio-production-readiness",
   "repository": "vantioai/vantio-open-core",
-  "branch": "program/vantio-production-readiness",
+  "branch": "cursor/master-control-plane-refresh-8baa",
   "base_branch": "main",
-  "classification": "MASTER_CONTROL_PLANE_READY_FOR_MERGE",
+  "classification": "MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL",
   "production_readiness": "NOT_READY",
   "product_implementation": false,
-  "recorded_at_utc": "2026-09-27T07:20:06Z",
+  "recorded_at_utc": "2026-09-27T07:44:14Z",
   "producer": {
-    "role": "PROGRAM_GOVERNANCE",
-    "agent": "bc-6f68334f-1ae1-5495-a4b6-d2c07f25c353",
+    "role": "PROGRAM_GOVERNANCE_REFRESH",
+    "agent": "bc-8753713b-17f1-5833-b500-cdae47988baa",
     "model": "Grok 4.7",
-    "url": "https://cursor.com/agents/bc-6f68334f-1ae1-5495-a4b6-d2c07f25c353"
+    "url": "https://cursor.com/agents/bc-8753713b-17f1-5833-b500-cdae47988baa"
   },
   "control_plane_source": {
     "requested_path": "uploads/master-control-plane.md",
@@ -23,14 +23,13 @@
     "retrieval_note": "The control-plane upload requires Founder Master Program encodings for category boundaries, WS0–WS13, and Wave 1 items A–V. That program body is not in the upload and is not a file on this main. Workstream text below is limited to the upload plus Founder Force briefs retrieved from the concurrent program launch."
   },
   "recorded_main": {
-    "sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
-    "short_sha": "5064f32f",
-    "expected_prefix": "5064f32",
-    "prefix_match": true,
-    "subject": "Merge pull request #65 from vantioai/docs/documentation-release-governance-v1",
-    "committed_at": "2026-09-27T02:56:33-04:00",
+    "sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "short_sha": "601342f0",
+    "subject": "Merge pull request #74 from vantioai/cursor/phantom-wave1-packaging-health-aa8c",
+    "committed_at": "2026-09-27T03:41:27-04:00",
     "retrieval": "git fetch origin main && git rev-parse origin/main",
-    "local_snapshot_before_fetch": "587f3b94d47ea958f91d3a99125cd55931d995f1"
+    "prior_control_plane_pin": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+    "prior_pin_is_ancestor": true
   },
   "standing_authorization": {
     "source": "control-plane upload",
@@ -66,18 +65,19 @@
       ]
     },
     "python": {
-      "id": "python-3.0.14-to-3.1.0",
+      "id": "python-3.1.0-published",
       "package": "vantio-agent-sdk",
-      "state": "TRANSITION_AUTHORIZED",
-      "published_version_observed": "3.0.14",
+      "state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
+      "published_version_observed": "3.1.0",
       "source_version_on_main": "3.1.0",
-      "this_program_publishes": false,
+      "this_refresh_publishes": false,
+      "announcement": "NOT_OBSERVED",
       "evidence": [
-        "PyPI vantio-agent-sdk info.version 3.0.14 on 2026-09-27; release list has no 3.1.0",
-        "packages/vantio-agent-sdk-py/pyproject.toml version 3.1.0 on the recorded main",
-        "docs/governance/VERSION-METADATA.json id python-sdk",
-        "6f76dd84f52a1c3d02c6cef6c23be41aa3c4d35c is the 3.0.14 metadata release",
-        "14249ba84ff1f3d5aa8ad7a7366172f29235c76e merges the trusted-publisher workflow; that merge is not a PyPI release observation"
+        "GET https://pypi.org/pypi/vantio-agent-sdk/json info.version 3.1.0 on 2026-09-27",
+        "wheel sha256 dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb bytes 39235",
+        "sdist sha256 9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f bytes 59669",
+        "GitHub Actions run 36302566868 workflow_dispatch success",
+        "Loopback shield() client on the index-installed 3.1.0 package"
       ]
     },
     "pkg01_and_unit_a": {
@@ -92,12 +92,14 @@
     },
     "pe_customer_docs": {
       "id": "pe-docs-private-channel",
-      "state": "PRIVATE_CHANNEL_REQUIRED",
-      "public_main_merge": "INCOMPATIBLE",
+      "state": "PUBLIC_DRAFT_CLOSED_UNMERGED",
+      "public_main_merge": "DID_NOT_MERGE",
+      "private_body_read_by_this_refresh": false,
       "evidence": [
-        "https://github.com/vantioai/vantio-open-core/pull/66 is an open draft at 60726bef7a7d7da35525a4d832ec63b5f8ca5bad",
-        "WS9 Founder Force brief records PHANTOM_CUSTOMER_DOCS_COUNCIL_PASSED, REQUIRES_PRIVATE_CHANNEL, and MERGE_TO_PUBLIC_MAIN_INCOMPATIBLE",
-        "docs/governance/PE-CUSTOMER-BUNDLE.json public_distribution false; this repository's manual is a test fixture"
+        "https://github.com/vantioai/vantio-open-core/pull/66 state CLOSED, mergedAt null, closedAt 2026-09-27T07:33:14Z",
+        "Close text states PHANTOM_CUSTOMER_DOCS_PRIVATE_CHANNEL_PLACED",
+        "refs/heads/docs/phantom-engine-customer-manual-v1 was absent from origin",
+        "This token's visible vantioai repository list did not include a private customer-doc repository"
       ]
     }
   },
@@ -145,14 +147,84 @@
     "docs/programs/production-readiness/EXECUTIVE-REPORT.md"
   ],
   "subdirectory_ownership": {
-    "docs/programs/production-readiness/": "This control plane owns the root registry files listed above.",
-    "docs/programs/production-readiness/demo/": "WS6 investor-demo force, when it lands.",
-    "docs/programs/production-readiness/diligence/": "WS12 diligence-room force, when it lands.",
-    "docs/programs/production-readiness/leadership/": "WS13 hiring force may use this path or docs/internal/hiring/."
+    "docs/programs/production-readiness/": "Root registry files listed in files. This refresh edits those files only.",
+    "docs/programs/production-readiness/demo/": "Absent. WS6 pull request #75 is an open draft.",
+    "docs/programs/production-readiness/diligence/": "Present from pull request #70. WS12 owns it. Investor send is NOT_CLEARED. This refresh does not edit it.",
+    "docs/programs/production-readiness/leadership/": "Absent. WS13 landed at docs/internal/hiring/."
   },
   "hard_stops": [
     "No implementation packages in this branch.",
     "No Phantom Engine customer-confidential body in this tree.",
-    "No publish."
-  ]
+    "No publish and no announcement.",
+    "Demo, pilot, and investor readiness stay NOT_READY."
+  ],
+  "refresh_source": {
+    "requested_path": "uploads/master-control-plane-refresh",
+    "retrieved_path": "/home/ubuntu/.cursor/projects/workspace/uploads/master-control-plane-refresh_5c26.md",
+    "sha256": "d27c364bcceed886cb64e4a7eddac21768d28ff68d578638d432c40b36c37cff",
+    "founder_master_program_body_retrieved": false
+  },
+  "opening_record": {
+    "classification": "MASTER_CONTROL_PLANE_READY_FOR_MERGE",
+    "commit": "0fa1bf809383b0d822302c8f8bec425c4abca767",
+    "merge": {
+      "sha": "c5fd71abfa6bc94800ba156ec2685db7e2e00184",
+      "merged_at": "2026-09-27T07:28:43Z",
+      "classification": "MASTER_CONTROL_PLANE_MERGED"
+    },
+    "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d"
+  },
+  "refresh_disposition": "Stop at MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL. This refresh does not merge itself.",
+  "post_pin_merges": [
+    {
+      "pull_request": 67,
+      "sha": "cc7f7ae4a503b7934f2a4fa37a8159d02de66370",
+      "merged_at": "2026-09-27T07:22:27Z",
+      "classification": "DOCS_GOVERNANCE_CI_MERGED_NO_PUBLICATION"
+    },
+    {
+      "pull_request": 68,
+      "sha": "1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
+      "merged_at": "2026-09-27T07:25:39Z",
+      "classification": "HEAD_OF_PRODUCT_PACKAGE_MERGED"
+    },
+    {
+      "pull_request": 69,
+      "sha": "79b53e0e29df047aabb1863b62609ffd7b4dcff7",
+      "merged_at": "2026-09-27T07:36:24Z",
+      "classification": "OPTICS_STORE_OPTION_C_VERIFIED_PLAN_READY_FOR_COUNCIL"
+    },
+    {
+      "pull_request": 70,
+      "sha": "2f9fadaa47a73ddbfd0efa2848cf9c4e375e2936",
+      "merged_at": "2026-09-27T07:28:55Z",
+      "classification": "INVESTOR_DILIGENCE_ROOM_SCAFFOLD_MERGED"
+    },
+    {
+      "pull_request": 71,
+      "sha": "8eb353a94c08c1adaaa36d36e2536ee5619e9eb6",
+      "merged_at": "2026-09-27T07:34:50Z",
+      "classification": "ENTERPRISE_GOVERNANCE_E1_E3_PLAN_READY_FOR_COUNCIL"
+    },
+    {
+      "pull_request": 72,
+      "sha": "c5fd71abfa6bc94800ba156ec2685db7e2e00184",
+      "merged_at": "2026-09-27T07:28:43Z",
+      "classification": "MASTER_CONTROL_PLANE_MERGED"
+    },
+    {
+      "pull_request": 74,
+      "sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+      "merged_at": "2026-09-27T07:41:27Z",
+      "classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
+      "council_status": "PENDING_INDEPENDENT_COUNCIL"
+    }
+  ],
+  "refresh": {
+    "classification": "MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL",
+    "observed_at_utc": "2026-09-27T07:44:14Z",
+    "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "prior_recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+    "merges_under_this_refresh": false
+  }
 }

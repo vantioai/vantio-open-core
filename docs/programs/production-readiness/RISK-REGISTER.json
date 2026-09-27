@@ -1,70 +1,110 @@
 {
   "schema": "vantio.program.production-readiness.risk-register/v1",
   "audience": "INTERNAL_RESTRICTED",
-  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
   "risks": [
     {
       "id": "R1",
-      "state": "OPEN",
-      "title": "Public draft still holds the Phantom Engine customer-doc branch",
-      "detail": "Pull request #66 is an open draft on the public repository. WS9 is the relocation force. This program does not copy the manual.",
-      "evidence": ["CLAIM-LEDGER.json CL-009"]
+      "state": "CHANGED",
+      "title": "Public Phantom Engine draft closed without a merge",
+      "detail": "Pull request #66 is closed and mergedAt is null. The close text names a private placement. This refresh did not read that body. Closing the pull request does not erase objects already pushed.",
+      "evidence": [
+        "CLAIM-LEDGER.json CL-009"
+      ]
     },
     {
       "id": "R2",
-      "state": "OPEN",
-      "title": "Python source version and PyPI version differ",
-      "detail": "Main declares 3.1.0. PyPI served 3.0.14 on 2026-09-27. Readers can treat source version as a release.",
-      "evidence": ["CLAIM-LEDGER.json CL-004", "CLAIM-LEDGER.json CL-005"]
+      "state": "RESIDUAL",
+      "title": "Public Optics manual still describes PyPI as 3.0.14",
+      "detail": "Source and the registry both serve 3.1.0. docs/products/optics/ on this main still says 3.1.0 is unpublished. This refresh does not edit that manual.",
+      "evidence": [
+        "CLAIM-LEDGER.json CL-004",
+        "CLAIM-LEDGER.json CL-019"
+      ]
     },
     {
       "id": "R3",
       "state": "OPEN",
       "title": "Tag name custody-py-3.1.0 points at the PKG-02 planning merge",
       "detail": "The tag object is 620c68fd6fb10960194bbefb25bbfb2036d6d435, pull request #60. The publisher commit is 764361d7adfbd7eb6c5d4baac71cf32901a7eed0.",
-      "evidence": ["CLAIM-LEDGER.json CL-013"]
+      "evidence": [
+        "CLAIM-LEDGER.json CL-013"
+      ]
     },
     {
       "id": "R4",
       "state": "OPEN",
       "title": "Parallel forces share docs/programs/production-readiness/",
-      "detail": "WS6, WS12, and WS13 intend subdirectories under this program root. Root registry files belong to this control plane. Subdirectory owners are named in MASTER-MANIFEST.json.",
-      "evidence": ["WORKSTREAM-REGISTRY.json"]
+      "detail": "Diligence files from pull request #70 are on main. Demo and leadership directories are still absent. Root registry files are this control plane.",
+      "evidence": [
+        "WORKSTREAM-REGISTRY.json"
+      ]
     },
     {
       "id": "R5",
       "state": "OPEN",
       "title": "Founder Master Program body was not in the retrieved sources",
       "detail": "WS0, WS11, and Wave 1 items A–V have no definitions. Filling them from memory would invent scope.",
-      "evidence": ["WORKSTREAM-REGISTRY.json wave_1 and WS0 and WS11"]
+      "evidence": [
+        "WORKSTREAM-REGISTRY.json wave_1 and WS0 and WS11"
+      ]
     },
     {
       "id": "R6",
       "state": "OPEN",
       "title": "Pre-merge council prose remains in the merged tree",
       "detail": "docs/internal/optics-pkg01/PENDING-COUNCIL.md still says pull request #58 stays draft. docs/internal/optics-pkg02-unit-a/IMPLEMENTATION-REPORT.md still says Unit A was not merged. Git ancestry is the merge evidence.",
-      "evidence": ["CLAIM-LEDGER.json CL-007", "CLAIM-LEDGER.json CL-008"]
+      "evidence": [
+        "CLAIM-LEDGER.json CL-007",
+        "CLAIM-LEDGER.json CL-008"
+      ]
     },
     {
       "id": "R7",
       "state": "OPEN",
       "title": "Stranger-host and clean-host proof are design-only in the launched forces",
       "detail": "WS3 P34 prepares a packet and does not execute it. WS5 designs internal proof and does not satisfy stranger-host.",
-      "evidence": ["WORKSTREAM-REGISTRY.json WS3 and WS5"]
+      "evidence": [
+        "WORKSTREAM-REGISTRY.json WS3 and WS5"
+      ]
     },
     {
       "id": "R8",
       "state": "OPEN",
       "title": "Phantom Engine product proof is outside this workspace",
       "detail": "vantio-phantom-engine is not this repository. This program records no kernel or cluster result.",
-      "evidence": ["docs/PRODUCT_LINEUP.md", "MASTER-MANIFEST.json category_boundaries"]
+      "evidence": [
+        "docs/PRODUCT_LINEUP.md",
+        "MASTER-MANIFEST.json category_boundaries"
+      ]
     },
     {
       "id": "R9",
       "state": "OPEN",
       "title": "Demo, pilot, and investor surfaces can be read as ready",
-      "detail": "The readiness files in this directory are NOT_READY skeletons. Sibling scaffolds are separate forces and were not merged here.",
-      "evidence": ["DEMO-READINESS.json", "PILOT-READINESS.json", "INVESTOR-READINESS.json"]
+      "detail": "Demo, pilot, and investor readiness files stay NOT_READY. The diligence scaffold is merged and investor send is NOT_CLEARED. Open demo draft is pull request #75.",
+      "evidence": [
+        "DEMO-READINESS.json",
+        "PILOT-READINESS.json",
+        "INVESTOR-READINESS.json"
+      ]
+    },
+    {
+      "id": "R10",
+      "state": "OPEN",
+      "title": "Opening ledger was pinned before later merges",
+      "detail": "The merged control plane recorded main 5064f32f. Docs CI, hiring, diligence, the control plane itself, Enterprise planning, the store plan, and the PyPI 3.1.0 upload landed after that pin. This refresh records them and does not treat planning merges as production readiness.",
+      "evidence": [
+        "MASTER-MANIFEST.json post_pin_merges",
+        "CLAIM-LEDGER.json CL-001"
+      ]
     }
-  ]
+  ],
+  "refresh": {
+    "classification": "MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL",
+    "observed_at_utc": "2026-09-27T07:44:14Z",
+    "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "prior_recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+    "merges_under_this_refresh": false
+  }
 }

@@ -1,15 +1,20 @@
 {
   "schema": "vantio.program.production-readiness.workstream-registry/v1",
   "audience": "INTERNAL_RESTRICTED",
-  "recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
   "founder_master_program_body_retrieved": false,
   "status_enum": [
     "NOT_RETRIEVED",
     "PARTIAL_CROSS_REFERENCE",
     "IN_FLIGHT",
-    "NOT_LAUNCHED"
+    "NOT_LAUNCHED",
+    "MERGED",
+    "MERGED_PLAN_COUNCIL_PENDING",
+    "OPEN_DRAFT",
+    "PUBLIC_DRAFT_CLOSED_UNMERGED",
+    "PLAN_MERGED_PREP_DRAFT_OPEN"
   ],
-  "observation": "Force rows are a point-in-time reading of concurrent cloud agents on 2026-09-27. RUNNING is not a finished deliverable.",
+  "observation": "GitHub pull-request state read on 2026-09-27T07:44:14Z against main 601342f08a59798ce207840cfb75293c3c22f45c. Producer RUNNING status from the opening record is not a merge.",
   "workstreams": [
     {
       "id": "WS0",
@@ -22,7 +27,7 @@
     {
       "id": "WS1",
       "title": "PKG-02 inert adapters on merged Unit A",
-      "status": "IN_FLIGHT",
+      "status": "OPEN_DRAFT",
       "category": "optics",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Unit B and Unit C build inert adapters on the merged Unit A vocabulary. Writer activation stays closed.",
@@ -32,37 +37,47 @@
           "title": "Inert Node adapter",
           "agent": "bc-76c66259-da27-5327-a1c6-e0fdc26d7bf3",
           "url": "https://cursor.com/agents/bc-76c66259-da27-5327-a1c6-e0fdc26d7bf3",
-          "observed_status": "RUNNING",
-          "paths": ["docs/internal/optics-pkg02-unit-b/"],
+          "observed_status": "OPEN_DRAFT",
+          "paths": [
+            "docs/internal/optics-pkg02-unit-b/"
+          ],
           "success_classification": "OPTICS_PKG02_UNIT_B_READY_FOR_COUNCIL",
           "hard_stops": [
             "No Units D or E writer activation.",
             "No CLI or SDK public version bump.",
             "No SQLite, UI, or daemon.",
             "No merge inside that force."
-          ]
+          ],
+          "pull_request": 79,
+          "head": "56ec23c3dd4c80d52596767eb557931768824d48",
+          "council": "NOT_THIS_PULL_REQUEST"
         },
         {
           "id": "WS1-C",
           "title": "Inert Python adapter",
           "agent": "bc-7b9fe441-d81d-5850-a88c-25f707c4c7bb",
           "url": "https://cursor.com/agents/bc-7b9fe441-d81d-5850-a88c-25f707c4c7bb",
-          "observed_status": "RUNNING",
-          "paths": ["docs/internal/optics-pkg02-unit-c/"],
+          "observed_status": "OPEN_DRAFT",
+          "paths": [
+            "docs/internal/optics-pkg02-unit-c/"
+          ],
           "success_classification": "OPTICS_PKG02_UNIT_C_READY_FOR_COUNCIL",
           "hard_stops": [
             "No writer activation.",
             "No public package publish.",
             "No CLI reopen.",
             "No mutation of sealed or published 3.1.0 artifacts."
-          ]
+          ],
+          "pull_request": 78,
+          "head": "74313b5c1cb2c03ab5681a24f649cd751d1b3bff",
+          "council": "SEPARATE_AGENT"
         }
       ]
     },
     {
       "id": "WS2",
       "title": "Optics store Option C verification and O1–O20 plan",
-      "status": "IN_FLIGHT",
+      "status": "MERGED_PLAN_COUNCIL_PENDING",
       "category": "optics",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Verify ratified Store Option C as architecture-only and write a dependency-ordered plan for Optics packages O1–O20. The brief also asks for an O1 self-health boundary sketch.",
@@ -72,55 +87,77 @@
           "title": "Store Option C verification",
           "agent": "bc-e139d03a-e24f-5d71-95e9-2a71dc8ac633",
           "url": "https://cursor.com/agents/bc-e139d03a-e24f-5d71-95e9-2a71dc8ac633",
-          "observed_status": "RUNNING",
-          "paths": ["docs/planning/optics-production/"],
+          "observed_status": "MERGED",
+          "paths": [
+            "docs/planning/optics-production/"
+          ],
           "success_classification": "OPTICS_STORE_OPTION_C_VERIFIED_PLAN_READY_FOR_COUNCIL",
           "hard_stops": [
             "No live store implementation.",
             "No CLI reopen.",
             "Optics remains observation and evidence."
-          ]
+          ],
+          "pull_request": 69,
+          "merge": "79b53e0e29df047aabb1863b62609ffd7b4dcff7",
+          "council_status": "PENDING_COUNCIL",
+          "note": "Merged plan. Council file 10-INDEPENDENT-COUNCIL-REPORT.md is PENDING_COUNCIL. No SQLite file."
         }
       ]
     },
     {
       "id": "WS3",
       "title": "Phantom Engine wave-1 design and stranger-host preparation",
-      "status": "IN_FLIGHT",
+      "status": "PLAN_MERGED_PREP_DRAFT_OPEN",
       "category": "phantom_engine",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
-      "summary": "Two forces share WS3. One plans packaging, prerequisites, and health/coverage. One prepares the stranger-host packet and does not execute it.",
+      "summary": "Packaging, prerequisites, and health planning merged in pull request #74. Council status is PENDING_INDEPENDENT_COUNCIL. Stranger-host preparation remains open draft #77 and is not execution.",
       "forces": [
         {
           "id": "WS3-WAVE1",
           "title": "Packaging and health/coverage design",
           "agent": "bc-67390466-de62-5277-ba0b-3f01b390aa8c",
           "url": "https://cursor.com/agents/bc-67390466-de62-5277-ba0b-3f01b390aa8c",
-          "observed_status": "RUNNING",
-          "scope_ids": ["P1", "P2", "P24"],
-          "paths": ["docs/planning/phantom-engine-production/"],
+          "observed_status": "MERGED",
+          "scope_ids": [
+            "P1",
+            "P2",
+            "P24"
+          ],
+          "paths": [
+            "docs/planning/phantom-engine-production/"
+          ],
           "success_classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
           "hard_stops": [
             "No live eBPF load.",
             "No stranger-host.",
             "No customer deploy.",
             "No confidential customer-manual bodies in the public repo."
-          ]
+          ],
+          "pull_request": 74,
+          "council_status": "PENDING_INDEPENDENT_COUNCIL",
+          "merge": "601342f08a59798ce207840cfb75293c3c22f45c"
         },
         {
           "id": "WS3-P34",
           "title": "Stranger-host execution packet, preparation only",
           "agent": "bc-22d4d08f-d82d-5241-82ee-1a238b4c3e3f",
           "url": "https://cursor.com/agents/bc-22d4d08f-d82d-5241-82ee-1a238b4c3e3f",
-          "observed_status": "RUNNING",
-          "scope_ids": ["P34"],
-          "paths": ["docs/planning/stranger-host-gate/"],
+          "observed_status": "OPEN_DRAFT",
+          "scope_ids": [
+            "P34"
+          ],
+          "paths": [
+            "docs/planning/stranger-host-gate/"
+          ],
           "success_classification": "STRANGER_HOST_PACKET_READY_AWAITING_EXECUTION_AUTH",
           "hard_stops": [
             "No stranger-host execution.",
             "No customer host.",
             "No credential creation."
-          ]
+          ],
+          "pull_request": 77,
+          "head": "3b00ea90ce90a85f63c92c28591233aee62830d1",
+          "execution": "NOT_AUTHORIZED"
         }
       ]
     },
@@ -131,12 +168,12 @@
       "category": null,
       "definition_status": "PARTIAL_CROSS_REFERENCE",
       "forces": [],
-      "note": "The WS3 packaging brief says its health vocabulary comes from Workstream 4. No WS4 Founder Force brief was retrieved and no WS4 agent was in the concurrent launch list."
+      "note": "The merged pull request #74 manifest sets workstream_4 to DEFINITION_NOT_RETRIEVED and vocabulary_status to PENDING_WS4. No WS4 Founder Force brief was retrieved."
     },
     {
       "id": "WS5",
       "title": "Clean-host lifecycle lab design",
-      "status": "IN_FLIGHT",
+      "status": "OPEN_DRAFT",
       "category": "optics",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Design a CLEAN_HOST_INTERNAL_PROOF environment. The brief keeps that classification internal and separate from stranger-host proof.",
@@ -146,17 +183,24 @@
           "title": "Clean-host lifecycle lab",
           "agent": "bc-696d1176-5194-564e-a77c-9001563d5885",
           "url": "https://cursor.com/agents/bc-696d1176-5194-564e-a77c-9001563d5885",
-          "observed_status": "RUNNING",
-          "paths": ["docs/planning/clean-host-lifecycle/"],
+          "observed_status": "OPEN_DRAFT",
+          "paths": [
+            "docs/planning/clean-host-lifecycle/"
+          ],
           "success_classification": "CLEAN_HOST_LAB_DESIGN_READY_FOR_COUNCIL",
-          "hard_stops": ["No stranger-host run."]
+          "hard_stops": [
+            "No stranger-host run."
+          ],
+          "pull_request": 76,
+          "head": "2bff8ceb6ba0e3d5a3083c51f14051de72e5fd2c",
+          "council_status": "PENDING_INDEPENDENT_COUNCIL"
         }
       ]
     },
     {
       "id": "WS6",
       "title": "Investor demo design",
-      "status": "IN_FLIGHT",
+      "status": "OPEN_DRAFT",
       "category": "company",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Design a deterministic investor demo. The brief says story beats 1–18 live in the Founder Master Program and that implementation is Wave 2. Those beat texts were not in the retrieved briefs.",
@@ -166,17 +210,24 @@
           "title": "Investor demo design and scaffolding",
           "agent": "bc-da04b99d-56bf-55bb-b780-0531b9d953d7",
           "url": "https://cursor.com/agents/bc-da04b99d-56bf-55bb-b780-0531b9d953d7",
-          "observed_status": "RUNNING",
-          "paths": ["docs/programs/production-readiness/demo/"],
+          "observed_status": "OPEN_DRAFT",
+          "paths": [
+            "docs/programs/production-readiness/demo/"
+          ],
           "success_classification": "INVESTOR_DEMO_DESIGN_READY_FOR_COUNCIL",
-          "hard_stops": ["Simulation labels are required. Unlabeled synthetic events stay out."]
+          "hard_stops": [
+            "Simulation labels are required. Unlabeled synthetic events stay out."
+          ],
+          "pull_request": 75,
+          "head": "c2026a9c8d42130705f434faa0f79d922f473d31",
+          "readiness": "NOT_READY"
         }
       ]
     },
     {
       "id": "WS7",
       "title": "OpenTelemetry semantic mapping",
-      "status": "IN_FLIGHT",
+      "status": "OPEN_DRAFT",
       "category": "optics",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "I2 is a versioned mapping design. I3 adapter work is later. Adapters default to disabled. The canonical boundary on this main says there is no OTLP exporter.",
@@ -186,17 +237,24 @@
           "title": "OpenTelemetry semantic mapping design",
           "agent": "bc-9df330d5-2a6d-5f71-bf38-2753d0b8261c",
           "url": "https://cursor.com/agents/bc-9df330d5-2a6d-5f71-bf38-2753d0b8261c",
-          "observed_status": "RUNNING",
-          "scope_ids": ["I2"],
+          "observed_status": "OPEN_DRAFT",
+          "scope_ids": [
+            "I2"
+          ],
           "success_classification": "OTEL_MAPPING_DESIGN_READY_FOR_COUNCIL",
-          "hard_stops": ["No public shipped-support claim."]
+          "hard_stops": [
+            "No public shipped-support claim."
+          ],
+          "pull_request": 73,
+          "head": "dd9359e7c374d21986b3c7ec57d69946328d2252",
+          "docs_governance_check": "Run 36303131204 failed legacy-stale-name-inventory-frozen because tests/optics-otel-mapping/mapping.test.cjs is a new stale-name file"
         }
       ]
     },
     {
       "id": "WS8",
       "title": "Enterprise ownership, delegation, and approval classes",
-      "status": "IN_FLIGHT",
+      "status": "MERGED_PLAN_COUNCIL_PENDING",
       "category": "enterprise",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "E1 ownership, E2 delegated authority, and E3 approval classes. The brief places Enterprise under the Phantom Engine authority boundary and says Vantio must not become the sole party able to freeze, revoke, or recover customer authority.",
@@ -206,18 +264,29 @@
           "title": "Enterprise E1–E3 plan",
           "agent": "bc-53037043-9d63-5b25-9945-484d22d0eaa7",
           "url": "https://cursor.com/agents/bc-53037043-9d63-5b25-9945-484d22d0eaa7",
-          "observed_status": "RUNNING",
-          "scope_ids": ["E1", "E2", "E3"],
-          "paths": ["docs/planning/enterprise-governance/"],
+          "observed_status": "MERGED",
+          "scope_ids": [
+            "E1",
+            "E2",
+            "E3"
+          ],
+          "paths": [
+            "docs/planning/enterprise-governance/"
+          ],
           "success_classification": "ENTERPRISE_GOVERNANCE_E1_E3_PLAN_READY_FOR_COUNCIL",
-          "hard_stops": ["Docs and planning only in that force."]
+          "hard_stops": [
+            "Docs and planning only in that force."
+          ],
+          "pull_request": 71,
+          "merge": "8eb353a94c08c1adaaa36d36e2536ee5619e9eb6",
+          "council_status": "PENDING_INDEPENDENT_COUNCIL"
         }
       ]
     },
     {
       "id": "WS9",
       "title": "Phantom Engine private-doc relocation",
-      "status": "IN_FLIGHT",
+      "status": "PUBLIC_DRAFT_CLOSED_UNMERGED",
       "category": "phantom_engine",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Move the council-passed customer docs off the public draft. Public main is an incompatible destination.",
@@ -227,20 +296,25 @@
           "title": "Private-channel placement",
           "agent": "bc-2a884e3f-6244-5b8c-b016-32d551f66e59",
           "url": "https://cursor.com/agents/bc-2a884e3f-6244-5b8c-b016-32d551f66e59",
-          "observed_status": "RUNNING",
+          "observed_status": "CLOSED_UNMERGED",
           "success_classification": "PHANTOM_CUSTOMER_DOCS_PRIVATE_CHANNEL_PLACED",
           "blocked_classification": "PHANTOM_CUSTOMER_DOCS_RELOCATION_BLOCKED_NEEDS_FOUNDER",
           "hard_stops": [
             "Do not merge CUSTOMER_CONFIDENTIAL into public vantio-open-core main.",
             "Do not send the documents to customers."
-          ]
+          ],
+          "pull_request": 66,
+          "merged_at": null,
+          "closed_at": "2026-09-27T07:33:14Z",
+          "closer_text_classification": "PHANTOM_CUSTOMER_DOCS_PRIVATE_CHANNEL_PLACED",
+          "private_body_read_by_this_refresh": false
         }
       ]
     },
     {
       "id": "WS10",
       "title": "Documentation governance CI",
-      "status": "IN_FLIGHT",
+      "status": "MERGED",
       "category": "optics",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Wire the merged documentation-release checks into an uncredentialed pull-request workflow. This control plane does not add that workflow.",
@@ -250,14 +324,19 @@
           "title": "docs-release-governance workflow",
           "agent": "bc-4b7cce2f-9c13-5ab3-8fa5-f83b74c5ba0b",
           "url": "https://cursor.com/agents/bc-4b7cce2f-9c13-5ab3-8fa5-f83b74c5ba0b",
-          "observed_status": "RUNNING",
-          "paths": [".github/workflows/docs-release-governance.yml"],
-          "success_classification": "DOCS_GOVERNANCE_CI_READY_FOR_COUNCIL",
+          "observed_status": "MERGED",
+          "paths": [
+            ".github/workflows/docs-release-governance.yml"
+          ],
+          "success_classification": "DOCS_GOVERNANCE_CI_MERGED_NO_PUBLICATION",
           "hard_stops": [
             "No publish-workflow mutation.",
             "No secrets.",
             "No registry write."
-          ]
+          ],
+          "pull_request": 67,
+          "merge": "cc7f7ae4a503b7934f2a4fa37a8159d02de66370",
+          "publication": "NONE"
         }
       ]
     },
@@ -272,7 +351,7 @@
     {
       "id": "WS12",
       "title": "Investor diligence room scaffold",
-      "status": "IN_FLIGHT",
+      "status": "MERGED",
       "category": "company",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Internal scaffold with tiers PUBLIC, INVESTOR_UNDER_NDA, INTERNAL_RESTRICTED, and CUSTOMER_CONFIDENTIAL. Document skeletons only. Customer-confidential bodies stay out of this public repository.",
@@ -282,8 +361,10 @@
           "title": "Diligence room scaffold",
           "agent": "bc-c4fccba6-6357-58cd-b731-f935d88a31a9",
           "url": "https://cursor.com/agents/bc-c4fccba6-6357-58cd-b731-f935d88a31a9",
-          "observed_status": "RUNNING",
-          "paths": ["docs/programs/production-readiness/diligence/"],
+          "observed_status": "MERGED",
+          "paths": [
+            "docs/programs/production-readiness/diligence/"
+          ],
           "success_classification": "INVESTOR_DILIGENCE_ROOM_SCAFFOLD_MERGED",
           "alternate_classification": "READY_FOR_MERGE",
           "hard_stops": [
@@ -292,14 +373,18 @@
             "No credentials, customer information, or private prompts.",
             "No Phantom Engine customer-confidential bodies.",
             "No external publish."
-          ]
+          ],
+          "pull_request": 70,
+          "merge": "2f9fadaa47a73ddbfd0efa2848cf9c4e375e2936",
+          "investor_send": "NOT_CLEARED",
+          "readiness": "NOT_READY"
         }
       ]
     },
     {
       "id": "WS13",
       "title": "Head of Product hiring package",
-      "status": "IN_FLIGHT",
+      "status": "MERGED",
       "category": "company",
       "definition_status": "RETRIEVED_FROM_FORCE_BRIEFS",
       "summary": "Hiring package for Head of Product or Head of Product Engineering. The brief excludes founder, co-founder, and guaranteed CTO succession. CTO consideration stays a separate undecided framework.",
@@ -309,7 +394,7 @@
           "title": "Head of Product package",
           "agent": "bc-a8cf4569-b1b8-57df-bbb9-3ef720604f6d",
           "url": "https://cursor.com/agents/bc-a8cf4569-b1b8-57df-bbb9-3ef720604f6d",
-          "observed_status": "RUNNING",
+          "observed_status": "MERGED",
           "paths": [
             "docs/programs/production-readiness/leadership/",
             "docs/internal/hiring/"
@@ -319,7 +404,12 @@
           "hard_stops": [
             "The role is not founder and not a guaranteed CTO.",
             "Compensation bands stay TBD."
-          ]
+          ],
+          "pull_request": 68,
+          "merge": "1df51d29a65a3913f1ef1f29fc00ead1335ef7a0",
+          "landed_path": "docs/internal/hiring/",
+          "cto": "NOT PROMISED",
+          "cto_consideration": "POSSIBLE / UNDECIDED / NOT PROMISED / NOT APPROVED / NOT AUTOMATIC"
         }
       ]
     }
@@ -333,29 +423,174 @@
       "The WS6 brief says investor-demo implementation comes in Wave 2."
     ],
     "items": [
-      {"id": "A", "ordinal": 1, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "B", "ordinal": 2, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "C", "ordinal": 3, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "D", "ordinal": 4, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "E", "ordinal": 5, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "F", "ordinal": 6, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "G", "ordinal": 7, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "H", "ordinal": 8, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "I", "ordinal": 9, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "J", "ordinal": 10, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "K", "ordinal": 11, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "L", "ordinal": 12, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "M", "ordinal": 13, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "N", "ordinal": 14, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "O", "ordinal": 15, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "P", "ordinal": 16, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "Q", "ordinal": 17, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "R", "ordinal": 18, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "S", "ordinal": 19, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "T", "ordinal": 20, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "U", "ordinal": 21, "title": null, "definition_status": "UNREGISTERED"},
-      {"id": "V", "ordinal": 22, "title": null, "definition_status": "UNREGISTERED"}
+      {
+        "id": "A",
+        "ordinal": 1,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "B",
+        "ordinal": 2,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "C",
+        "ordinal": 3,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "D",
+        "ordinal": 4,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "E",
+        "ordinal": 5,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "F",
+        "ordinal": 6,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "G",
+        "ordinal": 7,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "H",
+        "ordinal": 8,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "I",
+        "ordinal": 9,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "J",
+        "ordinal": 10,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "K",
+        "ordinal": 11,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "L",
+        "ordinal": 12,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "M",
+        "ordinal": 13,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "N",
+        "ordinal": 14,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "O",
+        "ordinal": 15,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "P",
+        "ordinal": 16,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "Q",
+        "ordinal": 17,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "R",
+        "ordinal": 18,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "S",
+        "ordinal": 19,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "T",
+        "ordinal": 20,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "U",
+        "ordinal": 21,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      },
+      {
+        "id": "V",
+        "ordinal": 22,
+        "title": null,
+        "definition_status": "UNREGISTERED"
+      }
     ],
-    "unregistered_reason": "Control plane upload requires items A–V. Definitions were not in the upload, on main 5064f32f, or in the retrieved force briefs. UNREGISTERED is an open slot, not a scope assignment."
-  }
+    "unregistered_reason": "Control plane upload requires items A–V. Definitions were not in the upload, on main 5064f32f, or in the retrieved force briefs. UNREGISTERED is an open slot, not a scope assignment.",
+    "refresh_note": "Merges after pin 5064f32f are recorded on their workstreams. They did not define letters A–V. UNREGISTERED remains an open slot."
+  },
+  "refresh": {
+    "classification": "MASTER_CONTROL_PLANE_REFRESH_READY_FOR_COUNCIL",
+    "observed_at_utc": "2026-09-27T07:44:14Z",
+    "recorded_main_sha": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "prior_recorded_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+    "merges_under_this_refresh": false
+  },
+  "open_drafts_not_in_ws0_to_ws13_scope": [
+    {
+      "pull_request": 61,
+      "title": "Python SDK 3.1.0 independent artifact council",
+      "state": "OPEN_DRAFT"
+    },
+    {
+      "pull_request": 59,
+      "title": "PKG-01 detector-parity re-council NEEDS_REVISION",
+      "state": "OPEN_DRAFT"
+    },
+    {
+      "pull_request": 57,
+      "title": "Cloud Agent development environment config",
+      "state": "OPEN_DRAFT"
+    },
+    {
+      "pull_request": 43,
+      "title": "gate-mcp 0.1.1 draft",
+      "state": "OPEN_DRAFT"
+    },
+    {
+      "pull_request": 35,
+      "title": "Product system audit",
+      "state": "OPEN_DRAFT"
+    }
+  ]
 }
