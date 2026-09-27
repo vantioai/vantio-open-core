@@ -1,0 +1,1442 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "vantio-optics",
+      "purl": "pkg:npm/vantio-optics@0.1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.1.0"
+    },
+    {
+      "name": "vantio-open-core",
+      "purl": "pkg:npm/vantio-open-core@0.0.0",
+      "scope": "root",
+      "type": "library",
+      "version": "0.0.0"
+    },
+    {
+      "name": "@vantio/optics-evidence-contract",
+      "purl": "pkg:npm/%40vantio/optics-evidence-contract@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/optics-node-adapter",
+      "purl": "pkg:npm/%40vantio/optics-node-adapter@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/optics-otel-mapping",
+      "purl": "pkg:npm/%40vantio/optics-otel-mapping@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/optics-record-reader",
+      "purl": "pkg:npm/%40vantio/optics-record-reader@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/optics-record-vocabulary",
+      "purl": "pkg:npm/%40vantio/optics-record-vocabulary@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "@vantio/agent-sdk",
+      "purl": "pkg:npm/%40vantio/agent-sdk@0.2.4",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.2.4"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "@vantio/cli",
+      "purl": "pkg:npm/%40vantio/cli@0.3.24",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.3.24"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "@vantio/gate-mcp",
+      "purl": "pkg:npm/%40vantio/gate-mcp@0.1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.1.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "@vantio/optics-mcp",
+      "purl": "pkg:npm/%40vantio/optics-mcp@0.1.2",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.1.2"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "vantio-agent-sdk",
+      "purl": "pkg:pypi/vantio-agent-sdk@3.1.0",
+      "scope": "python-manifest",
+      "type": "library",
+      "version": "3.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="
+        }
+      ],
+      "name": "@hono/node-server",
+      "purl": "pkg:npm/%40hono/node-server@1.19.14",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.19.14"
+    },
+    {
+      "name": "  peerDependencie",
+      "purl": "pkg:npm/  peerDependencie@  peerDependencies",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "  peerDependencies"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ=="
+        }
+      ],
+      "name": "@modelcontextprotocol/sdk",
+      "purl": "pkg:npm/%40modelcontextprotocol/sdk@1.29.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.29.0"
+    },
+    {
+      "name": "  peerDependenciesMet",
+      "purl": "pkg:npm/  peerDependenciesMet@  peerDependenciesMeta",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "  peerDependenciesMeta"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-ECymXOukMnOoVkC2bb1Vc/w/836DXncOg5m8Xj1RH7xSHZJWNYY6Zh7EH477vcnD5egKNNfy2RpNOmuChhFPgQ=="
+        }
+      ],
+      "name": "@types/node",
+      "purl": "pkg:npm/%40types/node@20.19.41",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "20.19.41"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng=="
+        }
+      ],
+      "name": "accepts",
+      "purl": "pkg:npm/accepts@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="
+        }
+      ],
+      "name": "ajv-formats",
+      "purl": "pkg:npm/ajv-formats@3.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.0.1"
+    },
+    {
+      "name": "    aj",
+      "purl": "pkg:npm/    aj@    ajv",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "    ajv"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="
+        }
+      ],
+      "name": "ajv",
+      "purl": "pkg:npm/ajv@8.20.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "8.20.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw=="
+        }
+      ],
+      "name": "body-parser",
+      "purl": "pkg:npm/body-parser@2.3.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg=="
+        }
+      ],
+      "name": "bytes",
+      "purl": "pkg:npm/bytes@3.1.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.1.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ=="
+        }
+      ],
+      "name": "call-bind-apply-helpers",
+      "purl": "pkg:npm/call-bind-apply-helpers@1.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-+ys997U96po4Kx/ABpBCqhA9EuxJaQWDQg7295H4hBphv3IZg0boBKuwYpt4YXp6MZ5AmZQnU/tyMTlRpaSejg=="
+        }
+      ],
+      "name": "call-bound",
+      "purl": "pkg:npm/call-bound@1.0.4",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.4"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g=="
+        }
+      ],
+      "name": "content-disposition",
+      "purl": "pkg:npm/content-disposition@1.1.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA=="
+        }
+      ],
+      "name": "content-type",
+      "purl": "pkg:npm/content-type@1.0.5",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.5"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-j/O/d7GcZCyNl7/hwZAb606rzqkyvaDctLmckbxLzHvFBzTJHuGEdodATcP3yIRoDrLHkIATJuvzbFlp/ki2cQ=="
+        }
+      ],
+      "name": "content-type",
+      "purl": "pkg:npm/content-type@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg=="
+        }
+      ],
+      "name": "cookie-signature",
+      "purl": "pkg:npm/cookie-signature@1.2.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.2.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w=="
+        }
+      ],
+      "name": "cookie",
+      "purl": "pkg:npm/cookie@0.7.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "0.7.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw=="
+        }
+      ],
+      "name": "cors",
+      "purl": "pkg:npm/cors@2.8.6",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.8.6"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="
+        }
+      ],
+      "name": "cross-spawn",
+      "purl": "pkg:npm/cross-spawn@7.0.6",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "7.0.6"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="
+        }
+      ],
+      "name": "debug",
+      "purl": "pkg:npm/debug@4.4.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "4.4.3"
+    },
+    {
+      "name": "    supports-colo",
+      "purl": "pkg:npm/    supports-colo@    supports-color",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "    supports-color"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw=="
+        }
+      ],
+      "name": "depd",
+      "purl": "pkg:npm/depd@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="
+        }
+      ],
+      "name": "dunder-proto",
+      "purl": "pkg:npm/dunder-proto@1.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="
+        }
+      ],
+      "name": "ee-first",
+      "purl": "pkg:npm/ee-first@1.1.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg=="
+        }
+      ],
+      "name": "encodeurl",
+      "purl": "pkg:npm/encodeurl@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g=="
+        }
+      ],
+      "name": "es-define-property",
+      "purl": "pkg:npm/es-define-property@1.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw=="
+        }
+      ],
+      "name": "es-errors",
+      "purl": "pkg:npm/es-errors@1.3.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.3.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-FGgH2h8zKNim9ljj7dankFPcICIK9Cp5bm+c2gQSYePhpaG5+esrLODihIorn+Pe6FGJzWhXQotPv73jTaldXA=="
+        }
+      ],
+      "name": "es-object-atoms",
+      "purl": "pkg:npm/es-object-atoms@1.1.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow=="
+        }
+      ],
+      "name": "escape-html",
+      "purl": "pkg:npm/escape-html@1.0.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg=="
+        }
+      ],
+      "name": "etag",
+      "purl": "pkg:npm/etag@1.8.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.8.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg=="
+        }
+      ],
+      "name": "eventsource-parser",
+      "purl": "pkg:npm/eventsource-parser@3.1.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA=="
+        }
+      ],
+      "name": "eventsource",
+      "purl": "pkg:npm/eventsource@3.0.7",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.0.7"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-XKJXDsASUOo0LLtFwW5hCcQGH0N4WQc/Rn8/Pvoia+TJFOkkFPvrtW9lZOeeNcxQJspvOIERMwiRLsVFlhHEkA=="
+        }
+      ],
+      "name": "express-rate-limit",
+      "purl": "pkg:npm/express-rate-limit@8.6.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "8.6.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-hIS4idWWai69NezIdRt2xFVofaF4j+6INOpJlVOLDO8zXGpUVEVzIYk12UUi2JzjEzWL3IOAxcTubgz9Po0yXw=="
+        }
+      ],
+      "name": "express",
+      "purl": "pkg:npm/express@5.2.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "5.2.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q=="
+        }
+      ],
+      "name": "fast-deep-equal",
+      "purl": "pkg:npm/fast-deep-equal@3.1.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.1.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg=="
+        }
+      ],
+      "name": "fast-uri",
+      "purl": "pkg:npm/fast-uri@3.1.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.1.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA=="
+        }
+      ],
+      "name": "finalhandler",
+      "purl": "pkg:npm/finalhandler@2.1.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.1.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow=="
+        }
+      ],
+      "name": "forwarded",
+      "purl": "pkg:npm/forwarded@0.2.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "0.2.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A=="
+        }
+      ],
+      "name": "fresh",
+      "purl": "pkg:npm/fresh@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA=="
+        }
+      ],
+      "name": "function-bind",
+      "purl": "pkg:npm/function-bind@1.1.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ=="
+        }
+      ],
+      "name": "get-intrinsic",
+      "purl": "pkg:npm/get-intrinsic@1.3.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.3.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g=="
+        }
+      ],
+      "name": "get-proto",
+      "purl": "pkg:npm/get-proto@1.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="
+        }
+      ],
+      "name": "gopd",
+      "purl": "pkg:npm/gopd@1.2.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.2.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ=="
+        }
+      ],
+      "name": "has-symbols",
+      "purl": "pkg:npm/has-symbols@1.1.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-ej4AhfhfL2Q2zpMmLo7U1Uv9+PyhIZpgQLGT1F9miIGmiCJIoCgSmczFdrc97mWT4kVY72KA+WnnhJ5pghSvSg=="
+        }
+      ],
+      "name": "hasown",
+      "purl": "pkg:npm/hasown@2.0.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-emn+JoJjrN9YTpRDS5it/UI2SO9BAE37T6I3d963RxcZ81G9A4pr2SZTEiiaiKbzx+NKRg5BZ89fCL7gCJCUog=="
+        }
+      ],
+      "name": "hono",
+      "purl": "pkg:npm/hono@4.12.30",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "4.12.30"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ=="
+        }
+      ],
+      "name": "http-errors",
+      "purl": "pkg:npm/http-errors@2.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ=="
+        }
+      ],
+      "name": "iconv-lite",
+      "purl": "pkg:npm/iconv-lite@0.7.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "0.7.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ=="
+        }
+      ],
+      "name": "inherits",
+      "purl": "pkg:npm/inherits@2.0.4",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.4"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA=="
+        }
+      ],
+      "name": "ip-address",
+      "purl": "pkg:npm/ip-address@10.2.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "10.2.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g=="
+        }
+      ],
+      "name": "ipaddr.js",
+      "purl": "pkg:npm/ipaddr.js@1.9.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.9.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ=="
+        }
+      ],
+      "name": "is-promise",
+      "purl": "pkg:npm/is-promise@4.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "4.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
+        }
+      ],
+      "name": "isexe",
+      "purl": "pkg:npm/isexe@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw=="
+        }
+      ],
+      "name": "jose",
+      "purl": "pkg:npm/jose@6.2.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "6.2.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="
+        }
+      ],
+      "name": "json-schema-traverse",
+      "purl": "pkg:npm/json-schema-traverse@1.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-fQhoXdcvc3V28x7C7BMs4P5+kNlgUURe2jmUT1T//oBRMDrqy1QPelJimwZGo7Hg9VPV3EQV5Bnq4hbFy2vetA=="
+        }
+      ],
+      "name": "json-schema-typed",
+      "purl": "pkg:npm/json-schema-typed@8.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "8.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="
+        }
+      ],
+      "name": "math-intrinsics",
+      "purl": "pkg:npm/math-intrinsics@1.1.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw=="
+        }
+      ],
+      "name": "media-typer",
+      "purl": "pkg:npm/media-typer@1.1.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g=="
+        }
+      ],
+      "name": "merge-descriptors",
+      "purl": "pkg:npm/merge-descriptors@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ=="
+        }
+      ],
+      "name": "mime-db",
+      "purl": "pkg:npm/mime-db@1.54.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.54.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A=="
+        }
+      ],
+      "name": "mime-types",
+      "purl": "pkg:npm/mime-types@3.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="
+        }
+      ],
+      "name": "ms",
+      "purl": "pkg:npm/ms@2.1.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.1.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg=="
+        }
+      ],
+      "name": "negotiator",
+      "purl": "pkg:npm/negotiator@1.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg=="
+        }
+      ],
+      "name": "object-assign",
+      "purl": "pkg:npm/object-assign@4.1.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "4.1.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew=="
+        }
+      ],
+      "name": "object-inspect",
+      "purl": "pkg:npm/object-inspect@1.13.4",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.13.4"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg=="
+        }
+      ],
+      "name": "on-finished",
+      "purl": "pkg:npm/on-finished@2.4.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.4.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w=="
+        }
+      ],
+      "name": "once",
+      "purl": "pkg:npm/once@1.4.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.4.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ=="
+        }
+      ],
+      "name": "parseurl",
+      "purl": "pkg:npm/parseurl@1.3.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.3.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q=="
+        }
+      ],
+      "name": "path-key",
+      "purl": "pkg:npm/path-key@3.1.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.1.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-qRcuIdP69NPm4qbACK+aDogI5CBDMi1jKe0ry5rSQJz8JVLsC7jV8XpiJjGRLLol3N+R5ihGYcrPLTno6pAdBA=="
+        }
+      ],
+      "name": "path-to-regexp",
+      "purl": "pkg:npm/path-to-regexp@8.4.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "8.4.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="
+        }
+      ],
+      "name": "pkce-challenge",
+      "purl": "pkg:npm/pkce-challenge@5.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "5.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg=="
+        }
+      ],
+      "name": "proxy-addr",
+      "purl": "pkg:npm/proxy-addr@2.0.7",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.7"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A=="
+        }
+      ],
+      "name": "qs",
+      "purl": "pkg:npm/qs@6.15.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "6.15.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw=="
+        }
+      ],
+      "name": "range-parser",
+      "purl": "pkg:npm/range-parser@1.3.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.3.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA=="
+        }
+      ],
+      "name": "raw-body",
+      "purl": "pkg:npm/raw-body@3.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw=="
+        }
+      ],
+      "name": "require-from-string",
+      "purl": "pkg:npm/require-from-string@2.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ=="
+        }
+      ],
+      "name": "router",
+      "purl": "pkg:npm/router@2.2.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.2.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg=="
+        }
+      ],
+      "name": "safer-buffer",
+      "purl": "pkg:npm/safer-buffer@2.1.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.1.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ=="
+        }
+      ],
+      "name": "send",
+      "purl": "pkg:npm/send@1.2.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.2.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-xRXBn0pPqQTVQiC8wyQrKs2MOlX24zQ0POGaj0kultvoOCstBQM5yvOhAVSUwOMjQtTvsPWoNCHfPGwaaQJhTw=="
+        }
+      ],
+      "name": "serve-static",
+      "purl": "pkg:npm/serve-static@2.2.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.2.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw=="
+        }
+      ],
+      "name": "setprototypeof",
+      "purl": "pkg:npm/setprototypeof@1.2.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.2.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA=="
+        }
+      ],
+      "name": "shebang-command",
+      "purl": "pkg:npm/shebang-command@2.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A=="
+        }
+      ],
+      "name": "shebang-regex",
+      "purl": "pkg:npm/shebang-regex@3.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w=="
+        }
+      ],
+      "name": "side-channel-list",
+      "purl": "pkg:npm/side-channel-list@1.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-VCjCNfgMsby3tTdo02nbjtM/ewra6jPHmpThenkTYh8pG9ucZ/1P8So4u4FGBek/BjpOVsDCMoLA/iuBKIFXRA=="
+        }
+      ],
+      "name": "side-channel-map",
+      "purl": "pkg:npm/side-channel-map@1.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-WPS/HvHQTYnHisLo9McqBHOJk2FkHO/tlpvldyrnem4aeQp4hai3gythswg6p01oSoTl58rcpiFAjF2br2Ak2A=="
+        }
+      ],
+      "name": "side-channel-weakmap",
+      "purl": "pkg:npm/side-channel-weakmap@1.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-6x6dK6zJdpTzF4sQeNYxwtvBzf6Eg4GtlesS94HOvTudUeyK2WXAaIfmDgsyslYrRBeFIlsi54AYsFGUuhmvrQ=="
+        }
+      ],
+      "name": "side-channel",
+      "purl": "pkg:npm/side-channel@1.1.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw=="
+        }
+      ],
+      "name": "statuses",
+      "purl": "pkg:npm/statuses@2.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA=="
+        }
+      ],
+      "name": "toidentifier",
+      "purl": "pkg:npm/toidentifier@1.0.1",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA=="
+        }
+      ],
+      "name": "type-is",
+      "purl": "pkg:npm/type-is@2.1.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.1.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="
+        }
+      ],
+      "name": "typescript",
+      "purl": "pkg:npm/typescript@5.9.3",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "5.9.3"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="
+        }
+      ],
+      "name": "undici-types",
+      "purl": "pkg:npm/undici-types@6.21.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "6.21.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="
+        }
+      ],
+      "name": "undici",
+      "purl": "pkg:npm/undici@6.28.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "6.28.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ=="
+        }
+      ],
+      "name": "unpipe",
+      "purl": "pkg:npm/unpipe@1.0.0",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.0"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg=="
+        }
+      ],
+      "name": "vary",
+      "purl": "pkg:npm/vary@1.1.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.1.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA=="
+        }
+      ],
+      "name": "which",
+      "purl": "pkg:npm/which@2.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "2.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="
+        }
+      ],
+      "name": "wrappy",
+      "purl": "pkg:npm/wrappy@1.0.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "1.0.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="
+        }
+      ],
+      "name": "zod-to-json-schema",
+      "purl": "pkg:npm/zod-to-json-schema@3.25.2",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.25.2"
+    },
+    {
+      "hashes": [
+        {
+          "alg": "SHA512",
+          "content": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="
+        }
+      ],
+      "name": "zod",
+      "purl": "pkg:npm/zod@3.25.76",
+      "scope": "pnpm-lockfile-packages",
+      "type": "library",
+      "version": "3.25.76"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "name": "vantio-open-core",
+      "type": "application",
+      "version": "0.0.0"
+    }
+  },
+  "properties": [
+    {
+      "name": "vantio:completeness",
+      "value": "pnpm-lockfile-packages-section-plus-workspace-manifests"
+    },
+    {
+      "name": "vantio:bound-to-sealed-artifact",
+      "value": "false"
+    },
+    {
+      "name": "vantio:formal-provenance-level",
+      "value": "NOT_CLAIMED"
+    },
+    {
+      "name": "vantio:formal-reproducibility",
+      "value": "NOT_CLAIMED"
+    },
+    {
+      "name": "vantio:hardware-provenance",
+      "value": "NOT_CLAIMED"
+    },
+    {
+      "name": "vantio:lockfile-sha256",
+      "value": "0c1d17ac6188dec7c5754634ef6cd0dee4ed1fd56f84b7bbcdffdc6f6bc307ad"
+    }
+  ],
+  "specVersion": "1.5",
+  "version": 1
+}

@@ -1,0 +1,258 @@
+{
+  "actions": [
+    {
+      "digest_pinned": false,
+      "file": ".github/actions/vantio-prove/action.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/actions/vantio-prove/action.yml",
+      "uses": "actions/upload-artifact@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "pnpm/action-setup@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/setup-python@v5"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/setup-python@v5"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "pnpm/action-setup@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/setup-python@v5"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/ci.yml",
+      "uses": "actions/upload-artifact@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/docs-release-governance.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/docs-release-governance.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "uses": "pnpm/action-setup@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "uses": "actions/upload-artifact@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "uses": "actions/attest-build-provenance@v2"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/mcp-registry-publish.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/npm-publish.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/npm-publish.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/npm-publish.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/npm-publish.yml",
+      "uses": "actions/setup-node@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/npm-publish.yml",
+      "uses": "actions/upload-artifact@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/pypi-publish.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/pypi-publish.yml",
+      "uses": "pypa/gh-action-pypi-publish@release/v1"
+    }
+  ],
+  "audience": "INTERNAL_RESTRICTED",
+  "formal_certification": "NOT_CLAIMED",
+  "formal_reproducibility": "NOT_CLAIMED",
+  "formal_slsa_level": "NOT_CLAIMED",
+  "hardware_backed_provenance": "NOT_CLAIMED",
+  "lockfile": {
+    "lockfile_version": "9.0",
+    "path": "pnpm-lock.yaml",
+    "sha256": "0c1d17ac6188dec7c5754634ef6cd0dee4ed1fd56f84b7bbcdffdc6f6bc307ad"
+  },
+  "manual_paths": [
+    "docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md"
+  ],
+  "package_manager": {
+    "integrity": "sha512.88d94724d8f2e6c186744a5584c6e59ecac869ec7ba15e9cb4cd628e8dc7066820b2481d8ee3b51ea8da323a7378068aa58c556a3720d32b7c20a051d088363a",
+    "name": "pnpm",
+    "raw": "pnpm@11.13.0+sha512.88d94724d8f2e6c186744a5584c6e59ecac869ec7ba15e9cb4cd628e8dc7066820b2481d8ee3b51ea8da323a7378068aa58c556a3720d32b7c20a051d088363a",
+    "version": "11.13.0"
+  },
+  "provenance_workflow": {
+    "apps_web_present": false,
+    "attest_action": "actions/attest-build-provenance@v2",
+    "edge_proxy_present": false,
+    "formal_slsa_level": "NOT_CLAIMED",
+    "historical_log_contains_level_assertion": true,
+    "path": ".github/workflows/enterprise-slsa-provenance.yml",
+    "runs_on_push": true
+  },
+  "python_build_requires": [
+    "hatchling"
+  ],
+  "python_build_requires_pinned": false,
+  "release_register": {
+    "cli_tag": "v0.3.24",
+    "cli_tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
+    "cli_version": "0.3.24",
+    "python_publisher_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
+    "python_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
+    "python_version": "3.1.0"
+  },
+  "release_success": false,
+  "schema": "vantio.ws11.pin-report/v1",
+  "sealed_pypi": {
+    "package": "vantio-agent-sdk",
+    "sdist_bytes": 59669,
+    "sdist_name": "vantio_agent_sdk-3.1.0.tar.gz",
+    "sdist_sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
+    "version": "3.1.0",
+    "wheel_bytes": 39235,
+    "wheel_name": "vantio_agent_sdk-3.1.0-py3-none-any.whl",
+    "wheel_sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb"
+  },
+  "versions": [
+    {
+      "id": "cli",
+      "manifest": "packages/vantio-cli/package.json",
+      "name": "@vantio/cli",
+      "version": "0.3.24"
+    },
+    {
+      "id": "node-sdk",
+      "manifest": "packages/vantio-agent-sdk/package.json",
+      "name": "@vantio/agent-sdk",
+      "version": "0.2.4"
+    },
+    {
+      "id": "python-sdk",
+      "manifest": "packages/vantio-agent-sdk-py/pyproject.toml",
+      "name": "vantio-agent-sdk",
+      "version": "3.1.0"
+    },
+    {
+      "id": "optics-mcp",
+      "manifest": "packages/vantio-optics-mcp/package.json",
+      "name": "@vantio/optics-mcp",
+      "version": "0.1.2"
+    },
+    {
+      "id": "gate-mcp",
+      "manifest": "packages/vantio-gate-mcp/package.json",
+      "name": "@vantio/gate-mcp",
+      "version": "0.1.0"
+    },
+    {
+      "id": "vscode",
+      "manifest": "extensions/vantio-optics/package.json",
+      "name": "vantio-optics",
+      "version": "0.1.0"
+    },
+    {
+      "id": "evidence-contract",
+      "manifest": "packages/optics-evidence-contract/package.json",
+      "name": "@vantio/optics-evidence-contract",
+      "version": "0.0.0-unstable-pre-1.0"
+    }
+  ],
+  "workflow_count": 7,
+  "workflow_triggers_push": {
+    "ci.yml": true,
+    "enterprise-slsa-provenance.yml": true,
+    "mcp-registry-publish.yml": false,
+    "npm-publish.yml": false,
+    "pypi-publish.yml": false
+  }
+}

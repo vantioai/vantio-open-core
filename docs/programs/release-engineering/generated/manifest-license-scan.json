@@ -1,0 +1,61 @@
+{
+  "bound_to_sealed_bytes": false,
+  "findings": [
+    {
+      "accepted": false,
+      "id": "license-missing:package.json",
+      "name": "vantio-open-core",
+      "path": "package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-evidence-contract/package.json",
+      "name": "@vantio/optics-evidence-contract",
+      "path": "packages/optics-evidence-contract/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-node-adapter/package.json",
+      "name": "@vantio/optics-node-adapter",
+      "path": "packages/optics-node-adapter/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-otel-mapping/package.json",
+      "name": "@vantio/optics-otel-mapping",
+      "path": "packages/optics-otel-mapping/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-record-reader/package.json",
+      "name": "@vantio/optics-record-reader",
+      "path": "packages/optics-record-reader/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-record-vocabulary/package.json",
+      "name": "@vantio/optics-record-vocabulary",
+      "path": "packages/optics-record-vocabulary/package.json"
+    }
+  ],
+  "scanned": [
+    "extensions/vantio-optics/package.json",
+    "package.json",
+    "packages/optics-evidence-contract/package.json",
+    "packages/optics-node-adapter/package.json",
+    "packages/optics-otel-mapping/package.json",
+    "packages/optics-python-adapter/pyproject.toml",
+    "packages/optics-record-reader/package.json",
+    "packages/optics-record-vocabulary/package.json",
+    "packages/vantio-agent-sdk-py/pyproject.toml",
+    "packages/vantio-agent-sdk/package.json",
+    "packages/vantio-cli/package.json",
+    "packages/vantio-gate-mcp/package.json",
+    "packages/vantio-optics-mcp/package.json"
+  ],
+  "schema": "vantio.ws11.manifest-license-scan/v1",
+  "scope": "workspace-manifests",
+  "status": "FINDINGS",
+  "tool_name": "ws11-manifest-license-scan",
+  "tool_version": "1"
+}

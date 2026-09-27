@@ -1,0 +1,12 @@
+{
+  "schema": "vantio.ws11.role-separation/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "roles": ["author", "builder", "custodian", "publisher", "approver", "verifier"],
+  "rules": [
+    "The verifier identity differs from the publisher identity.",
+    "The approver identity differs from the publisher identity.",
+    "An emergency dossier also keeps the approver identity different from the builder identity.",
+    "A characterized dossier may name role slots. A publish request sets roles_are_slots to false and names the parties that acted.",
+    "The independent verifier writes council_pass false. A dossier cannot grant a council pass."
+  ]
+}

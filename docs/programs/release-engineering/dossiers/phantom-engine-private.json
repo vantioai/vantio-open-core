@@ -1,0 +1,173 @@
+{
+  "disposition_requested": "CHARACTERIZED",
+  "emergency": {
+    "invoked": false
+  },
+  "partial": {
+    "recovery": "DO_NOT_REPLACE_BYTES",
+    "state": "NOT_ASSESSED_THIS_FORCE"
+  },
+  "pins": [
+    {
+      "accepted_as_pin": false,
+      "kind": "prior-record-unverified",
+      "name": "planning-tip",
+      "required_for_publish": true,
+      "value": "631e435315cd780d83d3259e111893c1d0569bc3"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "prior-record-unverified",
+      "name": "rust-channel",
+      "required_for_publish": true,
+      "value": "nightly"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "prior-record-unverified",
+      "name": "dockerfile-builder",
+      "required_for_publish": true,
+      "value": "rust:1-bookworm"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "prior-record-unverified",
+      "name": "dockerfile-runtime",
+      "required_for_publish": true,
+      "value": "debian:bookworm-slim"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "prior-record-unverified",
+      "name": "bpf-linker",
+      "required_for_publish": true,
+      "value": "unversioned-binstall"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "prior-record-unverified",
+      "name": "image-digest",
+      "required_for_publish": true,
+      "value": "UNVERIFIED_THIS_FORCE"
+    }
+  ],
+  "private_distribution": {
+    "applicable": true,
+    "body_class": "absent",
+    "channel": "private",
+    "customer_body_in_public_repo": false,
+    "prior_record": "docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md",
+    "public_distribution": false,
+    "recorded_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
+    "this_force_refetched": false
+  },
+  "provenance": {
+    "certification": null,
+    "characterization": "NONE",
+    "hardware_backed": false,
+    "reproducible_build_claimed": false,
+    "slsa_level": null,
+    "verified": false
+  },
+  "reproducibility": {
+    "builds": [],
+    "formal_claim": false,
+    "reasons": [
+      "This force did not re-fetch vantio-phantom-engine.",
+      "The planning note records floating builder tags and an undated nightly channel.",
+      "No image digest was observed by this force."
+    ],
+    "status": "ASSESSED_NOT_REPRODUCIBLE"
+  },
+  "retention": {
+    "class": "phantom-private",
+    "customer_body_in_public_repo": false,
+    "demonstrated": false,
+    "location": "private vantio-phantom-engine repository and its private registry",
+    "minimum_days": 730
+  },
+  "roles": {
+    "approver": "slot:approver",
+    "approver_recorded": false,
+    "author": "slot:author",
+    "builder": "slot:builder",
+    "custodian": "slot:custodian",
+    "publisher": "slot:publisher",
+    "roles_are_slots": true,
+    "verifier": "slot:verifier"
+  },
+  "sbom": {
+    "completeness": "not-applicable",
+    "dependency_graph": "present",
+    "reason": "No Phantom Engine SBOM was fetched by this force.",
+    "status": "ABSENT"
+  },
+  "scans": {
+    "license": {
+      "reason": "No Phantom Engine scanner result was fetched by this force.",
+      "scope": "sealed-bytes",
+      "status": "NOT_RUN"
+    },
+    "vulnerability": {
+      "reason": "No Phantom Engine scanner result was fetched by this force.",
+      "scope": "sealed-bytes",
+      "status": "NOT_RUN"
+    }
+  },
+  "schema": "vantio.ws11.release-dossier/v1",
+  "subject": {
+    "distribution": "private",
+    "package": "vantio-phantom-engine",
+    "product": "phantom-engine"
+  },
+  "units": [
+    {
+      "artifacts": [
+        {
+          "byte_length": null,
+          "custody": {
+            "hash_status": "UNRECORDED",
+            "selector": {
+              "kind": "unrecorded",
+              "value": "UNRECORDED"
+            },
+            "selector_is_integrity": false
+          },
+          "distribution": "private",
+          "filename": "vantio-phantom-engine-0.1.0",
+          "hash_status": "UNRECORDED",
+          "role": "image",
+          "sha256": null,
+          "source_commit": "UNVERIFIED_THIS_FORCE",
+          "version": "0.1.0"
+        }
+      ],
+      "clean_env": {
+        "status": "NOT_RUN"
+      },
+      "distribution": "private",
+      "docs_gate": {
+        "reason": "Phantom Engine product docs stay in the private repository.",
+        "status": "NOT_APPLICABLE"
+      },
+      "ordinary_client": {
+        "status": "NOT_RUN"
+      },
+      "package": "ghcr.io/vantioai/vantio-phantom-engine",
+      "registry": {
+        "historical_register_state": null,
+        "status": "NOT_FETCHED",
+        "this_force_refetched": false
+      },
+      "upgrade": {
+        "from_sha256": null,
+        "from_version": null,
+        "rollback_sha256": null,
+        "to_sha256": null,
+        "to_version": "0.1.0",
+        "verified": false
+      },
+      "version": "0.1.0"
+    }
+  ]
+}

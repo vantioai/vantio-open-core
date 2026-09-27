@@ -1,0 +1,320 @@
+{
+  "optics-public.json": {
+    "council_pass": false,
+    "disposition": "CHARACTERIZED",
+    "disposition_requested": "CHARACTERIZED",
+    "formal_certification": "NOT_CLAIMED",
+    "formal_reproducibility": "NOT_CLAIMED",
+    "formal_slsa_level": "NOT_CLAIMED",
+    "hardware_backed_provenance": "NOT_CLAIMED",
+    "release_success": false,
+    "requirements": [
+      {
+        "detail": "pin python-build-hatchling is unpinned; pin node-toolchain is unpinned; pin cli-tarball is unrecorded; pin .github/actions/vantio-prove/action.yml actions/setup-node@v4 is unpinned; pin .github/actions/vantio-prove/action.yml actions/upload-artifact@v4 is unpinned; pin .github/workflows/ci.yml actions/checkout@v4 is unpinned; pin .github/workflows/ci.yml actions/setup-node@v4 is unpinned; pin .github/workflows/ci.yml pnpm/action-setup@v4 is unpinned; pin .github/workflows/ci.yml actions/checkout@v4 is unpinned; pin .github/workflows/ci.yml actions/setup-python@v5 is unpinned; pin .github/workflows/ci.yml actions/checkout@v4 is unpinned; pin .github/workflows/ci.yml actions/setup-node@v4 is unpinned; pin .github/workflows/ci.yml actions/setup-python@v5 is unpinned; pin .github/workflows/ci.yml actions/checkout@v4 is unpinned; pin .github/workflows/ci.yml actions/setup-node@v4 is unpinned; pin .github/workflows/ci.yml pnpm/action-setup@v4 is unpinned; pin .github/workflows/ci.yml actions/setup-python@v5 is unpinned; pin .github/workflows/ci.yml actions/upload-artifact@v4 is unpinned; pin .github/workflows/docs-release-governance.yml actions/checkout@v4 is unpinned; pin .github/workflows/docs-release-governance.yml actions/setup-node@v4 is unpinned; pin .github/workflows/enterprise-slsa-provenance.yml actions/checkout@v4 is unpinned; pin .github/workflows/enterprise-slsa-provenance.yml actions/setup-node@v4 is unpinned; pin .github/workflows/enterprise-slsa-provenance.yml pnpm/action-setup@v4 is unpinned; pin .github/workflows/enterprise-slsa-provenance.yml actions/upload-artifact@v4 is unpinned; pin .github/workflows/enterprise-slsa-provenance.yml actions/attest-build-provenance@v2 is unpinned; pin .github/workflows/mcp-registry-publish.yml actions/checkout@v4 is unpinned; pin .github/workflows/npm-publish.yml actions/checkout@v4 is unpinned; pin .github/workflows/npm-publish.yml actions/setup-node@v4 is unpinned; pin .github/workflows/npm-publish.yml actions/checkout@v4 is unpinned; pin .github/workflows/npm-publish.yml actions/setup-node@v4 is unpinned; pin .github/workflows/npm-publish.yml actions/upload-artifact@v4 is unpinned; pin .github/workflows/pypi-publish.yml actions/checkout@v4 is unpinned; pin .github/workflows/pypi-publish.yml pypa/gh-action-pypi-publish@release/v1 is unpinned",
+        "id": "R1",
+        "status": "GAP"
+      },
+      {
+        "detail": "assessment recorded; formal byte-identity claim token is NOT_CLAIMED",
+        "id": "R2",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "@vantio-cli-0.3.24.source hash unrecorded; @vantio-agent-sdk-0.2.4.source hash unrecorded; @vantio-optics-mcp-0.1.2.source hash unrecorded; @vantio-gate-mcp-0.1.0.source hash unrecorded; vantio-optics-0.1.0.source hash unrecorded; @vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source hash unrecorded",
+        "id": "R3",
+        "status": "GAP"
+      },
+      {
+        "detail": "@vantio-cli-0.3.24.source custody hash unrecorded; @vantio-agent-sdk-0.2.4.source custody hash unrecorded; @vantio-optics-mcp-0.1.2.source custody hash unrecorded; @vantio-gate-mcp-0.1.0.source custody hash unrecorded; vantio-optics-0.1.0.source custody hash unrecorded; @vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source custody hash unrecorded",
+        "id": "R4",
+        "status": "GAP"
+      },
+      {
+        "detail": "provenance characterization recorded; formal level token is NOT_CLAIMED",
+        "id": "R5",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "sbom absent for sealed bytes",
+        "id": "R6",
+        "status": "GAP"
+      },
+      {
+        "detail": "vulnerability result absent for sealed bytes; license result absent for sealed bytes",
+        "id": "R7",
+        "status": "GAP"
+      },
+      {
+        "detail": "@vantio/cli clean environment not run; @vantio/agent-sdk clean environment not run; vantio-agent-sdk clean environment not run; @vantio/optics-mcp clean environment not run; @vantio/gate-mcp clean environment not run; vantio-optics clean environment not run; @vantio/optics-evidence-contract clean environment not run",
+        "id": "R8",
+        "status": "GAP"
+      },
+      {
+        "detail": "@vantio/cli rollback hash unrecorded or unverified; @vantio/agent-sdk rollback hash unrecorded or unverified; vantio-agent-sdk rollback hash unrecorded or unverified; @vantio/optics-mcp rollback hash unrecorded or unverified; @vantio/gate-mcp rollback hash unrecorded or unverified; vantio-optics rollback hash unrecorded or unverified; @vantio/optics-evidence-contract rollback hash unrecorded or unverified",
+        "id": "R9",
+        "status": "GAP"
+      },
+      {
+        "detail": "@vantio/cli registry bytes not fetched by this force; @vantio/agent-sdk registry bytes not fetched by this force; vantio-agent-sdk registry bytes not fetched by this force; @vantio/optics-mcp registry bytes not fetched by this force; @vantio/gate-mcp registry bytes not fetched by this force; vantio-optics registry bytes not fetched by this force; @vantio/optics-evidence-contract registry bytes not fetched by this force",
+        "id": "R10",
+        "status": "GAP"
+      },
+      {
+        "detail": "@vantio/cli ordinary client proof absent; @vantio/agent-sdk ordinary client proof absent; vantio-agent-sdk ordinary client proof absent; @vantio/optics-mcp ordinary client proof absent; @vantio/gate-mcp ordinary client proof absent; vantio-optics ordinary client proof absent; @vantio/optics-evidence-contract ordinary client proof absent",
+        "id": "R11",
+        "status": "GAP"
+      },
+      {
+        "detail": "retention policy named; retention not demonstrated",
+        "id": "R12",
+        "status": "GAP"
+      },
+      {
+        "detail": "optics customer manual stays out of this public tree",
+        "id": "R13",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "@vantio/cli docs versions match; @vantio/agent-sdk docs versions match; vantio-agent-sdk docs versions match; @vantio/optics-mcp docs versions match; @vantio/gate-mcp docs versions match; vantio-optics docs versions match; @vantio/optics-evidence-contract docs versions match",
+        "id": "R14",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "emergency path not invoked",
+        "id": "R15",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "partial publication not assessed",
+        "id": "R16",
+        "status": "GAP"
+      },
+      {
+        "detail": "role slots are distinct",
+        "id": "R17",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "independent verifier executed; council_pass is false",
+        "id": "R18",
+        "status": "SATISFIED"
+      }
+    ],
+    "schema": "vantio.ws11.verification-result/v1",
+    "subject": "optics-public-and-private-source",
+    "verifier": "ws11-independent-release-verifier",
+    "verifier_version": "1"
+  },
+  "phantom-engine-private.json": {
+    "council_pass": false,
+    "disposition": "CHARACTERIZED",
+    "disposition_requested": "CHARACTERIZED",
+    "formal_certification": "NOT_CLAIMED",
+    "formal_reproducibility": "NOT_CLAIMED",
+    "formal_slsa_level": "NOT_CLAIMED",
+    "hardware_backed_provenance": "NOT_CLAIMED",
+    "release_success": false,
+    "requirements": [
+      {
+        "detail": "pin planning-tip is prior-record-unverified; pin rust-channel is prior-record-unverified; pin dockerfile-builder is prior-record-unverified; pin dockerfile-runtime is prior-record-unverified; pin bpf-linker is prior-record-unverified; pin image-digest is prior-record-unverified",
+        "id": "R1",
+        "status": "GAP"
+      },
+      {
+        "detail": "assessment recorded; formal byte-identity claim token is NOT_CLAIMED",
+        "id": "R2",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "vantio-phantom-engine-0.1.0 hash unrecorded",
+        "id": "R3",
+        "status": "GAP"
+      },
+      {
+        "detail": "vantio-phantom-engine-0.1.0 custody hash unrecorded",
+        "id": "R4",
+        "status": "GAP"
+      },
+      {
+        "detail": "provenance characterization recorded; formal level token is NOT_CLAIMED",
+        "id": "R5",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "sbom absent for sealed bytes",
+        "id": "R6",
+        "status": "GAP"
+      },
+      {
+        "detail": "vulnerability result absent for sealed bytes; license result absent for sealed bytes",
+        "id": "R7",
+        "status": "GAP"
+      },
+      {
+        "detail": "ghcr.io/vantioai/vantio-phantom-engine clean environment not run",
+        "id": "R8",
+        "status": "GAP"
+      },
+      {
+        "detail": "ghcr.io/vantioai/vantio-phantom-engine rollback hash unrecorded or unverified",
+        "id": "R9",
+        "status": "GAP"
+      },
+      {
+        "detail": "ghcr.io/vantioai/vantio-phantom-engine registry bytes not fetched by this force",
+        "id": "R10",
+        "status": "GAP"
+      },
+      {
+        "detail": "ghcr.io/vantioai/vantio-phantom-engine ordinary client proof absent",
+        "id": "R11",
+        "status": "GAP"
+      },
+      {
+        "detail": "retention policy named; retention not demonstrated",
+        "id": "R12",
+        "status": "GAP"
+      },
+      {
+        "detail": "phantom distribution stays private",
+        "id": "R13",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "ghcr.io/vantioai/vantio-phantom-engine docs gate is not applicable",
+        "id": "R14",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "emergency path not invoked",
+        "id": "R15",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "partial publication not assessed",
+        "id": "R16",
+        "status": "GAP"
+      },
+      {
+        "detail": "role slots are distinct",
+        "id": "R17",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "independent verifier executed; council_pass is false",
+        "id": "R18",
+        "status": "SATISFIED"
+      }
+    ],
+    "schema": "vantio.ws11.verification-result/v1",
+    "subject": "vantio-phantom-engine",
+    "verifier": "ws11-independent-release-verifier",
+    "verifier_version": "1"
+  },
+  "private-customer.json": {
+    "council_pass": false,
+    "disposition": "CHARACTERIZED",
+    "disposition_requested": "CHARACTERIZED",
+    "formal_certification": "NOT_CLAIMED",
+    "formal_reproducibility": "NOT_CLAIMED",
+    "formal_slsa_level": "NOT_CLAIMED",
+    "hardware_backed_provenance": "NOT_CLAIMED",
+    "release_success": false,
+    "requirements": [
+      {
+        "detail": "pin customer-bytes is unrecorded",
+        "id": "R1",
+        "status": "GAP"
+      },
+      {
+        "detail": "assessment recorded; formal byte-identity claim token is NOT_CLAIMED",
+        "id": "R2",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "pe-customer-bundle-fixture manifest recorded",
+        "id": "R3",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "PRIVATE-MANUAL.md custody hash matches",
+        "id": "R4",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "provenance characterization recorded; formal level token is NOT_CLAIMED",
+        "id": "R5",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "dependency graph is absent and the sbom gap is named",
+        "id": "R6",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "vulnerability result absent for sealed bytes; license result absent for sealed bytes",
+        "id": "R7",
+        "status": "GAP"
+      },
+      {
+        "detail": "pe-customer-bundle-fixture clean environment not run",
+        "id": "R8",
+        "status": "GAP"
+      },
+      {
+        "detail": "pe-customer-bundle-fixture rollback hash unrecorded or unverified",
+        "id": "R9",
+        "status": "GAP"
+      },
+      {
+        "detail": "pe-customer-bundle-fixture registry bytes not fetched by this force",
+        "id": "R10",
+        "status": "GAP"
+      },
+      {
+        "detail": "pe-customer-bundle-fixture ordinary client proof absent",
+        "id": "R11",
+        "status": "GAP"
+      },
+      {
+        "detail": "retention policy named; retention not demonstrated",
+        "id": "R12",
+        "status": "GAP"
+      },
+      {
+        "detail": "test double stays private and version-matched",
+        "id": "R13",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "pe-customer-bundle-fixture docs gate is not applicable",
+        "id": "R14",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "emergency path not invoked",
+        "id": "R15",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "partial publication not assessed",
+        "id": "R16",
+        "status": "GAP"
+      },
+      {
+        "detail": "role slots are distinct",
+        "id": "R17",
+        "status": "SATISFIED"
+      },
+      {
+        "detail": "independent verifier executed; council_pass is false",
+        "id": "R18",
+        "status": "SATISFIED"
+      }
+    ],
+    "schema": "vantio.ws11.verification-result/v1",
+    "subject": "pe-customer-bundle-fixture",
+    "verifier": "ws11-independent-release-verifier",
+    "verifier_version": "1"
+  }
+}

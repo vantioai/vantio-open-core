@@ -1,0 +1,27 @@
+{
+  "schema": "vantio.ws11.program/v1",
+  "audience": "INTERNAL_RESTRICTED",
+  "producer_classification": "WS11_RELEASE_ENGINEERING_READY_FOR_COUNCIL",
+  "council_status": "PENDING_INDEPENDENT_COUNCIL",
+  "council_pass": false,
+  "release_success": false,
+  "merge": false,
+  "base_commit": "89f95099d0dce463307eb75d78e7fcf2ef99feb2",
+  "formal_slsa_level": "NOT_CLAIMED",
+  "formal_certification": "NOT_CLAIMED",
+  "formal_reproducibility": "NOT_CLAIMED",
+  "hardware_backed_provenance": "NOT_CLAIMED",
+  "surfaces": ["optics", "phantom-engine", "private-customer"],
+  "requirements": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "R16", "R17", "R18"],
+  "producer": {
+    "agent": "bc-b0d40632-9601-5475-9941-b2aab0f4b75d",
+    "url": "https://cursor.com/agents/bc-b0d40632-9601-5475-9941-b2aab0f4b75d",
+    "model": "grok-4.7"
+  },
+  "verifier": "scripts/release/ws11/verify.mjs",
+  "dossiers": [
+    "docs/programs/release-engineering/dossiers/optics-public.json",
+    "docs/programs/release-engineering/dossiers/phantom-engine-private.json",
+    "docs/programs/release-engineering/dossiers/private-customer.json"
+  ]
+}
