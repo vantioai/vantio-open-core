@@ -1,0 +1,89 @@
+{
+  "schema": "vantio.stranger-host-gate.packet/v1",
+  "classification": "STRANGER_HOST_PACKET_READY_AWAITING_EXECUTION_AUTH",
+  "execution_status": "NOT_AUTHORIZED",
+  "mode": "PREP_ONLY",
+  "audience": "INTERNAL_RESTRICTED",
+  "force": "WS3-P34",
+  "repository": "vantioai/vantio-open-core",
+  "prepared_against_main_sha": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
+  "evidence_tiers_assigned": [],
+  "later_commands": [
+    "pnpm install --frozen-lockfile",
+    "pnpm --filter @vantio/cli run lint",
+    "pnpm --filter @vantio/agent-sdk run typecheck",
+    "pnpm --filter @vantio/agent-sdk run typecheck:test",
+    "pnpm --filter @vantio/cli run test",
+    "pnpm --filter @vantio/agent-sdk run test",
+    "pnpm --filter @vantio/agent-sdk run build",
+    "python -m pip install --disable-pip-version-check requests httpx aiohttp urllib3",
+    "python -m unittest discover -s tests -t . -v",
+    "python3 -m pip install --disable-pip-version-check 'pyyaml==6.0.1'",
+    "node --test scripts/release/governance.test.mjs",
+    "python3 scripts/release/test_promote_pypi.py -v",
+    "python3 scripts/release/test_pypi_publish_workflow.py -v",
+    "pnpm install --frozen-lockfile",
+    "mkdir -p \"$RUNNER_TEMP/candidates\"",
+    "npm pack --ignore-scripts --pack-destination \"$RUNNER_TEMP/candidates\"",
+    "mkdir -p \"$RUNNER_TEMP/candidates-py\"",
+    "python3 -m pip install --disable-pip-version-check build",
+    "python3 -m build --outdir \"$RUNNER_TEMP/candidates-py\" packages/vantio-agent-sdk-py"
+  ],
+  "published_commands_default_off": [
+    "npm install -g @vantio/cli@0.3.24",
+    "vantio --version",
+    "vantio status",
+    "pip install 'vantio-agent-sdk==3.0.14'",
+    "python -c 'import vantio; print(vantio.__version__)'"
+  ],
+  "files": [
+    {
+      "path": "docs/planning/stranger-host-gate/README.md",
+      "sha256": "b3ac7bc6bda381ccf7c25548edd5a92f393264d08656da33aa36986c524f8a8b"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/00-PACKET-BOUNDARY.md",
+      "sha256": "87bf189745716146eecf89b44a60cdbdf460ddfa4d724272a9fc4d87605258fd"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/01-PACKET-CHECKLIST.md",
+      "sha256": "a6628650e47c3252dbf2b77e4c87a5d5dce83c2b85671b4a400076d08758ac21"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/02-EVIDENCE-REQUIREMENTS.md",
+      "sha256": "c1f02b6ec662911352c0067740036b8ddd79fc4d92afcd8b0049c07ea52ef2cd"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/03-STOP-CONDITIONS.md",
+      "sha256": "23e297e66fda60d0e103a6644524d959a3740957055b9e3771b268d4cee4dd56"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/04-FOUNDER-AUTHORIZATION-TEMPLATE.md",
+      "sha256": "11824172c50cc6e7d4f9c179ffe09237a45823236abd8d00922b81a019f66fdb"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/05-RUNBOOK.md",
+      "sha256": "f18738c156804614885ee3d8bde371e76f0485b303ee65ea871a4b5edce5aa7d"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/06-ROLLBACK.md",
+      "sha256": "1d272cb2ac9ee1f36b9c8389eb506c7ca1db1536097d483ff06e5ccd244d44b2"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/authorization/FOUNDER-AUTHORIZATION.template.json",
+      "sha256": "9fa91586c1dda5163db290ea6cdc2c261bdbec9f7a1f87af52f35e7d2d7a8cba"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/scripts/verify-packet-prep.mjs",
+      "sha256": "e2585a3a58cd19e37c549f7ad4f252b4743989475cdfa7e45297e52a0ef07bed"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/scripts/refuse-stranger-host-execution.mjs",
+      "sha256": "fd9f2d589c7830d411a1b1ddd467173982dcbabccb0a26be3124dea485625d95"
+    },
+    {
+      "path": "docs/planning/stranger-host-gate/scripts/refuse-rollback.mjs",
+      "sha256": "0c32b3e235ad13343bec2fb48298f496a1045f8b703f50c2cdc605d96800111f"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "vantio.stranger-host-gate.authorization/v1",
+  "force": "WS3-P34",
+  "status": "NOT_AUTHORIZED",
+  "mode": "PREP_ONLY",
+  "audience": "INTERNAL_RESTRICTED",
+  "repository": "vantioai/vantio-open-core",
+  "locked_main_sha": "{{FOUNDER_LOCKED_MAIN_SHA}}",
+  "host_class": "{{FOUNDER_NAMED_HOST_CLASS}}",
+  "host_owner": "{{FOUNDER_NAMED_HOST_OWNER}}",
+  "customer_host": "FORBIDDEN",
+  "credentials": "NONE",
+  "published_install_smoke": "NO",
+  "source_tree_ci_parity": "UNFILLED",
+  "assigns_evidence_tier": false,
+  "assigns_stranger_host_proved": false,
+  "gate_8": "CLOSED",
+  "note": "Filling this template does not authorize execution. scripts/refuse-stranger-host-execution.mjs refuses every invocation. A later Founder force copies this template, completes every placeholder, and replaces that refuse script. Until that force exists, status stays NOT_AUTHORIZED."
+}
