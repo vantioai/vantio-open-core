@@ -1,0 +1,17 @@
+{
+  "name": "@vantio/optics-otel-i3",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "PRIVATE | DEFAULT DISABLED | NOT SHIPPED | NO PUBLIC OTLP EXPORT | NO STABLE SCHEMA. WS7 I3 OTLP/HTTP JSON traces adapter. Not loaded by live products.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/optics-otel-i3/*.test.cjs"
+  }
+}
