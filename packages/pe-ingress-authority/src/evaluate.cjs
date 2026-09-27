@@ -165,20 +165,22 @@ function resolveListener(workload, listener, envelope) {
 function healthFindings(health, accept) {
   const findings = [];
   if (!health) return ["health_or_evidence_unavailable"];
+  const coverage = health.coverage;
+  const namedCoverage = coverage === "seeing" || coverage === "degraded" || coverage === "honest_idle";
   const unavailable =
     health.loader_up !== true ||
     health.evidence_writable !== true ||
     health.enroll_readable !== true ||
     health.netns_readable !== true ||
     health.trace_map_available !== true ||
-    health.coverage == null ||
-    health.coverage === "cannot_see" ||
-    health.coverage === "coverage_unknown";
-  if (unavailable) findings.push("health_or_evidence_unavailable");
-  if (health.coverage === "degraded" || health.protection_state === "degraded") {
+    !namedCoverage;
+  if (unavailable || health.protection_state === "coverage_unknown") {
+    findings.push("health_or_evidence_unavailable");
+  }
+  if (coverage === "degraded" || health.protection_state === "degraded") {
     findings.push("health_degraded");
   }
-  if (health.coverage === "honest_idle" && accept) findings.push("health_evidence_contradiction");
+  if (coverage === "honest_idle" && accept) findings.push("health_evidence_contradiction");
   if (health.protection_state === "not_enrolled") findings.push("not_enrolled");
   if (health.protection_state === "quarantined") findings.push("already_quarantined");
   if (health.protection_state === "recovery_required") findings.push("recovery_required");
@@ -237,7 +239,14 @@ function identityFindings(workload, identity, listener, accept, now) {
     } else if (accept.accepting_pid !== identity.pid || accept.accepting_starttime !== identity.starttime) {
       findings.push("unattributed_accept");
     }
-    if (accept.accepting_trace_id && identity.trace_id && accept.accepting_trace_id !== identity.trace_id) {
+  }
+  if (accept) {
+    const acceptTrace = typeof accept.accepting_trace_id === "string" ? accept.accepting_trace_id : "";
+    if (acceptTrace.length === 0) findings.push("identity_unknown");
+    else if (
+      (identity && identity.trace_id && acceptTrace !== identity.trace_id) ||
+      (workload && workload.trace_id && acceptTrace !== workload.trace_id)
+    ) {
       findings.push("impersonation");
     }
   }
@@ -330,6 +339,10 @@ function postFindings(input, identity, workload) {
       findings.push("post_accept_unjoined");
       continue;
     }
+    if (behavior.cgroup_id == null || !workload || behavior.cgroup_id !== workload.cgroup_id) {
+      findings.push("post_accept_unjoined");
+      continue;
+    }
     if (behavior.authorized !== true) findings.push("post_accept_denied");
   }
   let postAccept = "permitted";
@@ -337,6 +350,19 @@ function postFindings(input, identity, workload) {
   else if (findings.includes("post_accept_denied")) postAccept = "denied";
   else if (findings.includes("post_accept_unjoined")) postAccept = "unjoined";
   return { findings, postAccept };
+}
+
+function acceptJoinsListener(accept, listener) {
+  if (!accept || !listener) return false;
+  const acceptPort = Number(accept.local_port);
+  const listenerPort = Number(listener.local_port);
+  if (!Number.isInteger(acceptPort) || !Number.isInteger(listenerPort) || acceptPort !== listenerPort) {
+    return false;
+  }
+  if (accept.proto != null && String(accept.proto) !== "") {
+    if (String(accept.proto).toLowerCase() !== String(listener.proto || "").toLowerCase()) return false;
+  }
+  return true;
 }
 
 function evaluateIngress(input, session) {
@@ -411,6 +437,14 @@ function evaluateIngress(input, session) {
   findings.push(...credentialView.findings);
 
   if (listenerView.listener_state === "unexpected") findings.push("unexpected_listener");
+  if (
+    accept &&
+    listener &&
+    listenerView.listener_state === "expected" &&
+    !acceptJoinsListener(accept, listener)
+  ) {
+    findings.push("unexpected_listener");
+  }
 
   const postView = postFindings(
     { accept, post_accept: asPlainObject(input.post_accept) },
@@ -438,11 +472,10 @@ function evaluateIngress(input, session) {
   );
 
   if (blocking.length === 0) {
-    if (!accept) {
-      if (listenerView.listener_state === "expected") findings.push("expected_listener_is_not_authority");
-      else if (listenerView.listener_state === "undeclared") findings.push("undeclared_listener_is_not_authority");
-      else findings.push("missing_listener_is_not_authority");
-    } else findings.push("permitted_after_accept");
+    if (listenerView.listener_state === "expected" && accept) findings.push("permitted_after_accept");
+    else if (listenerView.listener_state === "expected") findings.push("expected_listener_is_not_authority");
+    else if (listenerView.listener_state === "undeclared") findings.push("undeclared_listener_is_not_authority");
+    else findings.push("missing_listener_is_not_authority");
   }
 
   const ordered = orderFindings(findings);
@@ -456,9 +489,10 @@ function evaluateIngress(input, session) {
     issued = grantId(session, key, policy);
     storeGrant(session, issued, key, policy);
   } else if (session) {
-    retireGrant(session, key, REVOKE_ON.has(reason));
-    if (REVOKE_ON.has(reason)) {
-      session.events.push({ op: "authority_stopped", reason, key });
+    const stopReason = ordered.find((finding) => REVOKE_ON.has(finding)) || null;
+    retireGrant(session, key, stopReason != null);
+    if (stopReason) {
+      session.events.push({ op: "authority_stopped", reason: stopReason, key });
     }
   } else if (reason === "permitted_after_accept") {
     issued = grantId(null, key, policy);
@@ -492,7 +526,7 @@ function evaluateIngress(input, session) {
     grants_carried: session ? session.grants.size : issued ? 1 : 0,
     boot_id: session ? session.boot_id : null,
     association_not_causation: Boolean(accept),
-    containment: containmentFor(reason),
+    containment: containmentFor(reason, ordered),
   });
 }
 

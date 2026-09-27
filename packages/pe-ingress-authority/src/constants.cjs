@@ -140,7 +140,7 @@ const REASONS = Object.freeze({
   },
   unexpected_listener: {
     authority: "REFUSED",
-    spoken: "Authority is refused. The listener is unexpected for this workload policy. The live bind path is unchanged.",
+    spoken: "Authority is refused. The listener is unexpected for this workload policy, or the accept does not join the expected listener. The live bind path is unchanged.",
   },
   child_process_escape: {
     authority: "REFUSED",

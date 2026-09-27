@@ -20,7 +20,7 @@ From the repository root:
 node --test tests/pe-ingress/*.test.cjs
 ```
 
-The producer run of that command reported 49 tests and 0 failures.
+The producer run of that command reported 55 tests and 0 failures. A later revision on the same branch closed six hold-path gaps found by council `bc-b72399a9-4af2-507e-945d-2ee6a0278c12` (`PE_INGRESS_PROGRAM_NEEDS_REVISION`). Revision classification for that pass: `PE_INGRESS_PROGRAM_REVISION_READY_FOR_COUNCIL`. That is not a council verdict.
 
 ## Hard-stop attestations
 

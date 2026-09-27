@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { evaluateIngress } = require("../../packages/pe-ingress-authority/src/index.cjs");
+const { evaluateIngress, openSession } = require("../../packages/pe-ingress-authority/src/index.cjs");
 const { permitCase } = require("./fixtures.cjs");
 const { assertClosed } = require("./invariants.cjs");
 
@@ -296,4 +296,141 @@ test("an omitted caller window does not become a fresh identity", () => {
   const result = expect(input, "identity_unknown", "WITHHELD");
   assert.equal(result.identity_attestation, "WINDOW_ABSENT");
   assert.equal(result.freshness, "UNKNOWN");
+});
+
+test("an accept does not hold on an empty envelope, another workload, or a missing listener", () => {
+  const empty = permitCase();
+  empty.envelope.expected_listeners = [];
+  const emptyResult = expect(empty, "undeclared_listener_is_not_authority", "OBSERVED_ONLY");
+  assert.equal(emptyResult.listener_state, "undeclared");
+  assert.equal(emptyResult.grant_id, null);
+
+  const other = permitCase();
+  other.envelope.expected_listeners = [
+    { port: 5000, bind: "*", protocol: "tcp", workload: "hands", comm: "python3" },
+  ];
+  const otherResult = expect(other, "undeclared_listener_is_not_authority", "OBSERVED_ONLY");
+  assert.equal(otherResult.listener_state, "undeclared");
+  assert.equal(otherResult.findings.includes("unexpected_listener"), false);
+  assert.equal(otherResult.grant_id, null);
+
+  const missing = permitCase();
+  missing.listener = null;
+  const missingResult = expect(missing, "missing_listener_is_not_authority", "OBSERVED_ONLY");
+  assert.equal(missingResult.listener_state, "missing");
+  assert.equal(missingResult.grant_id, null);
+});
+
+test("coverage partial, bogus, or SEEING does not hold, and coverage_unknown echo does not hold", () => {
+  for (const coverage of ["partial", "bogus", "SEEING"]) {
+    const input = permitCase();
+    input.health.coverage = coverage;
+    const result = expect(input, "health_or_evidence_unavailable", "WITHHELD");
+    assert.equal(result.listener_state, "expected");
+    assert.equal(result.grant_id, null);
+  }
+  const unknown = permitCase();
+  unknown.health.coverage = "seeing";
+  unknown.health.protection_state = "coverage_unknown";
+  const echoed = expect(unknown, "health_or_evidence_unavailable", "WITHHELD");
+  assert.equal(echoed.protection_state_echo, "coverage_unknown");
+  assert.equal(echoed.grant_id, null);
+});
+
+test("a missing or empty accept trace does not hold, and a different accept trace is impersonation", () => {
+  const absent = permitCase();
+  delete absent.accept.accepting_trace_id;
+  const absentResult = expect(absent, "identity_unknown", "WITHHELD");
+  assert.equal(absentResult.grant_id, null);
+
+  const empty = permitCase();
+  empty.accept.accepting_trace_id = "";
+  expect(empty, "identity_unknown", "WITHHELD");
+
+  const mismatched = permitCase();
+  mismatched.accept.accepting_trace_id = "0xother";
+  const mismatchedResult = expect(mismatched, "impersonation", "REFUSED");
+  assert.equal(mismatchedResult.identity_result, "impersonation");
+});
+
+test("authorized later behavior without an enrolled cgroup does not hold", () => {
+  const absent = permitCase();
+  delete absent.post_accept.behaviors[0].cgroup_id;
+  assert.equal(absent.post_accept.behaviors[0].authorized, true);
+  const absentResult = expect(absent, "post_accept_unjoined", "WITHHELD");
+  assert.equal(absentResult.post_accept, "unjoined");
+  assert.equal(absentResult.grant_id, null);
+
+  const nulled = permitCase();
+  nulled.post_accept.behaviors[0].cgroup_id = null;
+  const nulledResult = expect(nulled, "post_accept_unjoined", "WITHHELD");
+  assert.equal(nulledResult.post_accept, "unjoined");
+});
+
+test("an accept on another port does not join the expected listener", () => {
+  const input = permitCase();
+  input.accept.local_port = 9999;
+  const result = expect(input, "unexpected_listener", "REFUSED");
+  assert.equal(result.listener_state, "expected");
+  assert.equal(result.live_bind_refused, false);
+  assert.equal(result.findings.includes("permitted_after_accept"), false);
+  assert.equal(result.grant_id, null);
+});
+
+test("child_process_escape still records decision-only containment when it is not primary", () => {
+  const unexpected = permitCase();
+  unexpected.listener.local_port = 9999;
+  unexpected.post_accept.behaviors.push({
+    kind: "cgroup_escape",
+    authorized: true,
+    trace_id: "0xtrace",
+    cgroup_id: "cg-1",
+    pid: 200,
+    starttime: 60,
+  });
+  const shadowed = expect(unexpected, "unexpected_listener", "REFUSED");
+  assert.equal(shadowed.listener_state, "unexpected");
+  assert.equal(shadowed.findings.includes("child_process_escape"), true);
+  assert.equal(shadowed.post_accept, "child_escape");
+  assert.equal(shadowed.containment.required, true);
+  assert.equal(shadowed.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(shadowed.containment.executor, "NOT_WIRED_IN_LIVE_LOADER");
+  assert.equal(shadowed.containment.cgroup_freeze_applied, false);
+  assert.equal(shadowed.containment.connection_isolation, "NOT_PRESENT");
+  assert.equal(shadowed.live_bind_refused, false);
+
+  const session = openSession({ boot_id: "boot-0", last_known_sha: "sha-applied", policy_version: "v3" });
+  const held = evaluateIngress(permitCase(), session);
+  assert.equal(held.authority, "HELD");
+  const modified = permitCase();
+  modified.workload.executable_digest = "sha256:fff";
+  modified.post_accept.behaviors.push({
+    kind: "exec",
+    authorized: true,
+    trace_id: "0xtrace",
+    cgroup_id: "cg-other",
+    pid: 200,
+    starttime: 60,
+  });
+  const refused = evaluateIngress(modified, session);
+  assertClosed(refused);
+  assert.equal(refused.reason, "modified_executable");
+  assert.equal(refused.findings.includes("child_process_escape"), true);
+  assert.equal(refused.containment.required, true);
+  assert.equal(refused.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(refused.containment.cgroup_freeze_applied, false);
+  const again = evaluateIngress(permitCase(), session);
+  assertClosed(again);
+  assert.equal(again.reason, "revoked");
+  assert.equal(again.authority, "REFUSED");
+
+  const denied = permitCase();
+  denied.workload.executable_digest = "sha256:fff";
+  denied.post_accept.behaviors[0].authorized = false;
+  const denyShadow = expect(denied, "modified_executable", "REFUSED");
+  assert.equal(denyShadow.findings.includes("post_accept_denied"), true);
+  assert.equal(denyShadow.containment.required, true);
+  assert.equal(denyShadow.containment.effect, "DECISION_RECORDED_ONLY");
+  assert.equal(denyShadow.containment.executor, "NOT_WIRED_IN_LIVE_LOADER");
+  assert.equal(denyShadow.containment.cgroup_freeze_applied, false);
 });

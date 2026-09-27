@@ -22,9 +22,9 @@ Producer classification: `PE_INGRESS_PROGRAM_READY_FOR_COUNCIL`
 
 ## 2. Health
 
-A hold needs `loader_up`, `evidence_writable`, `enroll_readable`, `netns_readable`, and `trace_map_available` all true, and coverage `seeing`.
+A hold needs `loader_up`, `evidence_writable`, `enroll_readable`, `netns_readable`, and `trace_map_available` all true, and coverage exactly `seeing`.
 
-`cannot_see`, a missing coverage, or any of those flags false yields `health_or_evidence_unavailable`.
+`cannot_see`, a missing coverage, any other coverage token (`partial`, `bogus`, `SEEING`, `coverage_unknown`), or any of those flags false yields `health_or_evidence_unavailable`. Protection echo `coverage_unknown` yields the same reason even when coverage is `seeing`. `degraded` and `honest_idle` keep the rows below.
 
 Coverage `degraded` or protection echo `degraded` yields `health_degraded`.
 

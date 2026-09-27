@@ -14,8 +14,13 @@ const {
   spokenFor,
 } = require("./constants.cjs");
 
-function containmentFor(reason) {
-  const required = reason === "child_process_escape" || reason === "post_accept_denied";
+function containmentFor(reason, findings = []) {
+  const rows = Array.isArray(findings) ? findings : [];
+  const required =
+    reason === "child_process_escape" ||
+    reason === "post_accept_denied" ||
+    rows.includes("child_process_escape") ||
+    rows.includes("post_accept_denied");
   return {
     required,
     effect: required ? "DECISION_RECORDED_ONLY" : "NONE",

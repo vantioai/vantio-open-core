@@ -10,7 +10,7 @@ Session state is an object in this process. It is not a loader map and it is not
 
 A `HELD` evaluation stores a grant id derived from the session boot id, the workload key, and the policy sha and version. The key is enroll id, pid, start time, port, and protocol. A later non-hold for that key moves the id to the dead set.
 
-`child_process_escape` and `post_accept_denied` also add the key to the revoked set. A later clean bundle stays `revoked` until restart or rollback clears that set. The event log keeps `authority_stopped`.
+`child_process_escape` and `post_accept_denied` also add the key to the revoked set when that finding is present, including when a higher-precedence reason is primary. A later clean bundle on that key stays `revoked` until restart or rollback clears that set. The event log keeps `authority_stopped`.
 
 ## 2. Revoke
 
