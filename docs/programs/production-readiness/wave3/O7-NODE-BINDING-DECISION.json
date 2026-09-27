@@ -1,0 +1,60 @@
+{
+  "document": "OPTICS_O7_NODE_BINDING_COUNCIL",
+  "audience": "INTERNAL_RESTRICTED",
+  "verdict": "O7_NODE_BINDING_COUNCIL_PASSED",
+  "packet": "docs/internal/optics-o7/BINDING-DECISION.json",
+  "narrative": "docs/internal/optics-o7/00-BINDING-DECISION.md",
+  "council": {
+    "agent": "bc-00af4334-6f4f-59be-9ebf-c084d3c9baa6",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-00af4334-6f4f-59be-9ebf-c084d3c9baa6"
+  },
+  "repository": "vantioai/vantio-open-core",
+  "starting_commit": "0620f10ee52d3abcea18c1c988df02f687f51b36",
+  "observed_on": "2026-09-27",
+  "engine_remains": "embedded SQLite with WAL",
+  "selected_binding": "node:sqlite",
+  "selected_version": "24.15.0",
+  "selected_binding_at_version": "node:sqlite@24.15.0",
+  "fallback_binding_at_version": "better-sqlite3@13.0.3",
+  "fallback_installed": false,
+  "evidence_tier": "UNSET",
+  "gate_8": "CLOSED",
+  "runtime_proof": false,
+  "external_proof": "NOT_CLAIMED",
+  "cli_version": "0.3.24",
+  "node_sdk_version": "0.2.4",
+  "python_sdk_version": "3.1.0",
+  "claims": [
+    {
+      "id": "CL-W3-O7-01",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "Decision 9 selects node:sqlite@24.15.0 as the Node binding for the ratified embedded SQLite WAL store.",
+      "evidence": [
+        "docs/internal/optics-o7/BINDING-DECISION.json",
+        "docs/internal/optics-o7/00-BINDING-DECISION.md"
+      ]
+    },
+    {
+      "id": "CL-W3-O7-02",
+      "status": "EVIDENCE_RECORDED",
+      "claim": "@vantio/cli 0.3.24, @vantio/agent-sdk 0.2.4, and vantio-agent-sdk 3.1.0 are unchanged by this council.",
+      "evidence": [
+        "packages/vantio-cli/package.json",
+        "packages/vantio-agent-sdk/package.json",
+        "packages/vantio-agent-sdk-py/pyproject.toml",
+        "docs/governance/VERSION-METADATA.json left unedited"
+      ]
+    },
+    {
+      "id": "CL-W3-O7-03",
+      "status": "NOT_ASSERTED",
+      "claim": "The selection is a runtime proof, a stranger-host proof, an external proof, a Gate 8 opening, or a customer migration.",
+      "evidence": [
+        "evidence_tier UNSET",
+        "gate_8 CLOSED",
+        "running openStore still returns NODE_BINDING_UNSELECTED"
+      ]
+    }
+  ]
+}

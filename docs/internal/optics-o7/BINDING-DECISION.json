@@ -1,0 +1,87 @@
+{
+  "document": "OPTICS_O7_NODE_BINDING_DECISION",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "verdict": "O7_NODE_BINDING_COUNCIL_PASSED",
+  "council": {
+    "agent": "bc-00af4334-6f4f-59be-9ebf-c084d3c9baa6",
+    "model": "Grok 4.7",
+    "url": "https://cursor.com/agents/bc-00af4334-6f4f-59be-9ebf-c084d3c9baa6",
+    "self_certified_store_implementation": false
+  },
+  "repository": "vantioai/vantio-open-core",
+  "starting_commit": "0620f10ee52d3abcea18c1c988df02f687f51b36",
+  "observed_on": "2026-09-27",
+  "engine": {
+    "remains": "embedded SQLite with WAL",
+    "source": "CITED_FROM_RATIFIED_TEXT",
+    "sentence": "Embedded SQLite, WAL, application-owned schema, path `~/.vantio/optics/store.sqlite` under the evidence root.",
+    "python_mechanism": "stdlib_sqlite3"
+  },
+  "selected_binding": "node:sqlite",
+  "selected_version": "24.15.0",
+  "selected_binding_at_version": "node:sqlite@24.15.0",
+  "version_meaning": "Minimum Node.js version whose 24.x documentation marks node:sqlite as a release candidate. The module is the copy built into that Node.js binary. There is no npm package and no npm integrity hash.",
+  "dependency_pin": {
+    "npm": null,
+    "runtime": "node>=24.15.0",
+    "supported_lines": ["24.x>=24.15.0", "26.x"],
+    "package_json_edited": false
+  },
+  "fallback": {
+    "binding": "better-sqlite3",
+    "version": "13.0.3",
+    "binding_at_version": "better-sqlite3@13.0.3",
+    "integrity": "sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==",
+    "engines": "node>=22",
+    "license": "MIT",
+    "bundled_sqlite_version": "3.53.4",
+    "installed": false,
+    "load_on_primary_failure": false,
+    "adoption_rule": "A later council only. If adopted, optionalDependency, timeout 0, fail-open when the addon is absent. Not a required dependency of @vantio/cli."
+  },
+  "operational_fallback": "FAIL_OPEN_NO_FILE",
+  "rollback": {
+    "software": "Stop loading node:sqlite. Leave store.sqlite, store.sqlite-wal, and store.sqlite-shm in place. Do not down-migrate user_version.",
+    "sql": "BEGIN IMMEDIATE failure uses ROLLBACK. Do not replace the file with an empty database.",
+    "automatic_switch_to_fallback_binding": false
+  },
+  "platforms": {
+    "authorized_target": "Official Node.js release binaries >=24.15.0 on 24.x and 26.x, built with the default SQLite configuration.",
+    "exercised_by_this_council": "One Linux workstation, Node.js v22.14.0, which is below the floor and printed the experimental warning. Temp files deleted.",
+    "unsupported": [
+      "Node.js <24.15.0",
+      "Node.js 18, 20, 22, and 25",
+      "Node.js configured with --without-sqlite",
+      "Node.js configured with --shared-sqlite",
+      "Bun and Deno",
+      "WASM or in-memory exports as the store file"
+    ]
+  },
+  "release_impact": {
+    "cli_modified": false,
+    "cli_version": "0.3.24",
+    "node_sdk_modified": false,
+    "node_sdk_version": "0.2.4",
+    "python_sdk_modified": false,
+    "python_sdk_version": "3.1.0",
+    "version_metadata_edited": false,
+    "future_store_engines": "Track 2 raises the private store package engines to >=24.15.0. This packet does not.",
+    "publication": false
+  },
+  "honesty": {
+    "evidence_tier": "UNSET",
+    "gate_8": "CLOSED",
+    "architecture_pack_amended": false,
+    "running_open_store_reason": "NODE_BINDING_UNSELECTED",
+    "running_founder_decision_9": "UNRESOLVED",
+    "decision_9_selection": "CLOSED_BY_THIS_RECORD",
+    "runtime_proof": false,
+    "stranger_host": false,
+    "external_proof": "NOT_CLAIMED",
+    "customer_migration": false,
+    "default_write_path": false,
+    "historical_packets_rewritten": false
+  },
+  "reading_rule": "This record selects the Node binding. docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md still says the binding is not selected, and the running store still returns NODE_BINDING_UNSELECTED. Those older sentences stay in place. Track 2 implements this record and does not pick a different library."
+}
