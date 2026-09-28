@@ -779,7 +779,15 @@ def authorize_live(
 
 
 class ProductionObserver:
-    """Read-only host checks. They do not receive the mutation's exit code."""
+    """Read-only host checks. They do not receive the mutation's exit code.
+
+    apparmor_profiles overrides the kernel profile list. Production leaves it
+    unset and reads /sys/kernel/security/apparmor/profiles. Tests pass a
+    fixture path so they do not touch securityfs.
+    """
+
+    def __init__(self, apparmor_profiles: Path | None = None) -> None:
+        self.apparmor_profiles = apparmor_profiles
 
     def verify(self, op_type: str, grant: LiveGrant) -> str:
         try:
@@ -823,12 +831,18 @@ class ProductionObserver:
                 path = pe_apparmor_profile_path(grant.stage)
                 if not path.is_file() or path.read_text(encoding="utf-8") != profile_text():
                     return "NOT_VERIFIED"
-                loaded = apparmor_profile_loaded(constants.PE_OBSERVE_APPARMOR_PROFILE)
+                loaded = apparmor_profile_loaded(
+                    constants.PE_OBSERVE_APPARMOR_PROFILE,
+                    self.apparmor_profiles,
+                )
                 if loaded is True:
                     return "VERIFIED"
                 return "UNKNOWN" if loaded is None else "NOT_VERIFIED"
             if op_type == "unload_pe_apparmor":
-                loaded = apparmor_profile_loaded(constants.PE_OBSERVE_APPARMOR_PROFILE)
+                loaded = apparmor_profile_loaded(
+                    constants.PE_OBSERVE_APPARMOR_PROFILE,
+                    self.apparmor_profiles,
+                )
                 if loaded is False:
                     return "VERIFIED"
                 return "UNKNOWN" if loaded is None else "NOT_VERIFIED"

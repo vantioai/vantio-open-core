@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -243,6 +244,38 @@ def plant_cli(prefix: Path, version: str, *, executable: bool = True, manifest: 
         package.parent.mkdir(parents=True, exist_ok=True)
         package.write_text(json.dumps({"name": "@vantio/cli", "version": manifest}) + "\n", encoding="utf-8")
     return binary
+
+
+class PrefixGate:
+    """Production checks for prefix residuals. Lab checks for simulated PE operations.
+
+    AppArmor load and unload stay on the lab observer. That observer records
+    the apparmor_parser result and does not read securityfs.
+    """
+
+    _PRODUCTION = frozenset(
+        {
+            "install_optics_cli",
+            "install_agent_sdk_npm",
+            "install_agent_sdk_py",
+            "remove_optics",
+            "remove_sdks",
+        }
+    )
+
+    def __init__(self, lab: Lab) -> None:
+        self.lab = lab
+        self.production = ProductionObserver()
+
+    def verify(self, op_type: str, grant) -> str:
+        if op_type in self._PRODUCTION:
+            return self.production.verify(op_type, grant)
+        return self.lab.verify(op_type, grant)
+
+    def observed_delta(self, op_type: str, grant) -> dict:
+        if op_type in self._PRODUCTION:
+            return self.production.observed_delta(op_type, grant)
+        return self.lab.observed_delta(op_type, grant)
 
 
 class OpticsGate:
@@ -1108,6 +1141,31 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertFalse((py_sdk_site(harness.prefix) / "vantio").exists())
         self.assertFalse(list(py_sdk_site(harness.prefix).glob("vantio_agent_sdk-*.dist-info")))
 
+    def test_apparmor_host_check_uses_a_fixture_profile_list(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        directory = Path(tempfile.mkdtemp(prefix="vantio-aa-obs-"))
+        self.addCleanup(lambda: shutil.rmtree(directory, ignore_errors=True))
+        absent = directory / "no-profiles"
+        self.assertEqual(
+            ProductionObserver(apparmor_profiles=absent).verify("unload_pe_apparmor", grant),
+            "VERIFIED",
+        )
+        unreadable = directory / "not-a-file"
+        unreadable.mkdir()
+        self.assertEqual(
+            ProductionObserver(apparmor_profiles=unreadable).verify("unload_pe_apparmor", grant),
+            "UNKNOWN",
+        )
+        listed = directory / "profiles"
+        listed.write_text("vantio-pe-observe (enforce)\n", encoding="utf-8")
+        self.assertEqual(
+            ProductionObserver(apparmor_profiles=listed).verify("unload_pe_apparmor", grant),
+            "NOT_VERIFIED",
+        )
+        self.assertEqual(Lab().verify("unload_pe_apparmor", grant), "VERIFIED")
+
     def test_residual_found_dual_gated_rollback_clears_prefix(self) -> None:
         harness = self.planned()
         code, body = harness.run("apply", yes=True)
@@ -1137,7 +1195,7 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(json.loads(harness.tx_file("TRANSACTION.json").read_text())["state"], "RESIDUAL_FOUND")
         self.set_env("1")
         ctx = self.ctx(harness, "rollback", lab)
-        ctx["live_observer"] = ProductionObserver()
+        ctx["live_observer"] = PrefixGate(lab)
         code, body = rollback(ctx)
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "ROLLED_BACK", body)
@@ -1167,17 +1225,18 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(json.loads(harness.tx_file("TRANSACTION.json").read_text())["state"], "RESIDUAL_FOUND")
         ctx = self.ctx(harness, "uninstall", lab)
         ctx["scope"] = "pe"
-        ctx["live_observer"] = ProductionObserver()
+        ctx["live_observer"] = PrefixGate(lab)
         code, body = uninstall(ctx)
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "UNINSTALLED", body)
         self.assertTrue((harness.prefix / "bin" / "vantio").is_file())
+        self.assertTrue(any(argv[:2] == ["apparmor_parser", "-KR"] for argv in lab.calls))
         code, body = self.verify_live(harness)
         self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
         self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
         ctx = self.ctx(harness, "uninstall", lab)
         ctx["scope"] = "optics"
-        ctx["live_observer"] = ProductionObserver()
+        ctx["live_observer"] = PrefixGate(lab)
         code, body = uninstall(ctx)
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "UNINSTALLED", body)
