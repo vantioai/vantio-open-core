@@ -160,6 +160,9 @@ LIVE_CANONICAL_IDENTITY = {
     "pe_manifest_digest": "sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553",
 }
 
+# Observe-only PE container profile. docker-default denies /sys/fs/bpf pin writes.
+PE_OBSERVE_APPARMOR_PROFILE = "vantio-pe-observe"
+
 # Memory class is the only preflight limitation a live apply may carry.
 APPROVED_LIVE_LIMITATIONS = frozenset({"PF-MEM"})
 
@@ -172,6 +175,7 @@ PREFLIGHT_ORDER = (
     "PF-CGROUP2",
     "PF-BPFFS",
     "PF-DOCKER",
+    "PF-APPARMOR",
     "PF-DOCKER-PERM",
     "PF-MEM",
     "PF-IFACE",

@@ -26,7 +26,7 @@ sys.path.insert(0, str(PACKAGE))
 from tests.factory import default_files, host, pins_for, refresh_sums, write_bundle  # noqa: E402
 from vantio_install import constants  # noqa: E402
 from vantio_install.cli import main  # noqa: E402
-from vantio_install.commands import observe_container_argv  # noqa: E402
+from vantio_install.commands import observe_apparmor_opt, observe_container_argv  # noqa: E402
 from vantio_install.health import derive  # noqa: E402
 from vantio_install.state_machine import transition  # noqa: E402
 from vantio_install.support_bundle import build_support_bundle  # noqa: E402
@@ -308,7 +308,11 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertNotIn("--enforce", snap["containers"][0]["cmd"])
         joined = " ".join(" ".join(argv) for argv in snap["recorded_argv"])
         self.assertNotIn("--enforce", joined)
+        self.assertNotIn("--privileged", joined)
+        self.assertNotIn("apparmor=unconfined", joined)
         self.assertNotIn("VANTIO_PHANTOM_DENY", joined)
+        self.assertIn(observe_apparmor_opt(), joined)
+        self.assertIn("apparmor_parser -Kr", joined)
         again, replay = harness.run("apply", yes=True)
         self.assertEqual(again, 0, replay)
         self.assertTrue(replay.get("replayed"))
@@ -765,16 +769,44 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertEqual(derive(snapshot, config)["overall"], _recompute_health(snapshot, config, []))
 
     def test_observe_argv_shape(self) -> None:
-        argv = observe_container_argv(
-            tag=constants.FROZEN_PINS["pe_local_tag"],
-            iface="ens5",
-            name="vantio-pe-test",
+        tag = constants.FROZEN_PINS["pe_local_tag"]
+        argv = observe_container_argv(tag=tag, iface="ens5", name="vantio-pe-test")
+        self.assertEqual(
+            argv,
+            [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                "vantio-pe-test",
+                "--network",
+                "host",
+                "--cap-add",
+                "NET_ADMIN",
+                "--cap-add",
+                "BPF",
+                "--cap-add",
+                "SYS_ADMIN",
+                "--security-opt",
+                "apparmor=vantio-pe-observe",
+                "-v",
+                "/sys/fs/bpf:/sys/fs/bpf",
+                "-e",
+                "VANTIO_TELEMETRY_DISABLED=1",
+                "-e",
+                "DO_NOT_TRACK=1",
+                tag,
+                "--iface",
+                "ens5",
+            ],
         )
         self.assertNotIn("--enforce", argv)
         self.assertNotIn("VANTIO_PHANTOM_DENY", argv)
         self.assertNotIn("--privileged", argv)
-        self.assertIn("--iface", argv)
-        self.assertIn("ens5", argv)
+        self.assertNotIn("PERFMON", argv)
+        self.assertNotIn("apparmor=unconfined", argv)
+        self.assertEqual(argv.count("--security-opt"), 1)
+        self.assertEqual(argv.count(observe_apparmor_opt()), 1)
 
     def test_illegal_transition_fails(self) -> None:
         with self.assertRaises(InstallError):

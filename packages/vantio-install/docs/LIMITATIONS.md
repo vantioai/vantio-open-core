@@ -2,6 +2,8 @@
 
 This installer starts Phantom Engine in observe-only mode. Enforcement stays off. OTLP stays disabled. Path deny stays disabled. Traffic control stays audit-only.
 
+The observe-only container is started with `--security-opt apparmor=vantio-pe-observe`. Docker's default profile denies writes under `/sys/fs/bpf`, so `BPF_OBJ_PIN` for the trace map fails after the eBPF object loads. The named profile keeps the rest of the default denials and allows read, write, lock, and link under `/sys/fs/bpf`. The container capability list on that command is `NET_ADMIN`, `BPF`, and `SYS_ADMIN`. Privileged mode stays off. The installer writes the profile under the stage directory and loads it with `apparmor_parser` before the container starts. Preflight records AppArmor and `apparmor_parser` as PF-APPARMOR. Rollback and uninstall unload that profile. `CAP_PERFMON` stays off this start path. A later uprobe that needs it is a separate residual. This change does not raise the proof ceiling.
+
 `proof_state` in the JSON is `NOT_PROVED`. The proof ceiling recorded on the transaction is `INTERNAL_CLEAN_HOST_PROOF`. A local fixture run does not raise that ceiling.
 
 Hosts with less than 3 GiB of memory are recorded as a bounded-memory limitation. Full resource sufficiency stays outside that result. A Free-eligible t3.small is in that class. Preflight records it as PF-MEM, a limitation, and an observe-only install is not stopped for that reason alone. This package does not change the instance size.

@@ -19,4 +19,4 @@ Every command prints one JSON object. `proof_state` stays `NOT_PROVED` in this p
 
 A live change needs `VANTIO_INSTALL_ALLOW_LIVE=1` and `--i-accept-live-mutations` together, plus `--plan` and `--plan-sha256`, on `apply`, `rollback`, or `uninstall`. The installer then runs an allowlisted observe-only command list and checks the host again before it treats the step as verified.
 
-The supported host for this contract is Ubuntu 24.04 LTS on x86_64, with cgroup v2, kernel BTF, bpffs, Docker, and Node.js 18 or newer.
+The supported host for this contract is Ubuntu 24.04 LTS on x86_64, with cgroup v2, kernel BTF, bpffs, Docker, AppArmor, and Node.js 18 or newer.

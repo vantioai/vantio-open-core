@@ -44,6 +44,20 @@ def _parse_node(value: object) -> tuple[int, int, int] | None:
     return nums[0], nums[1], nums[2]
 
 
+def _apparmor_observation(host: dict) -> tuple[str, dict]:
+    enabled = host.get("apparmor_enabled", "UNKNOWN")
+    parser = host.get("apparmor_parser", "UNKNOWN")
+    observed = {
+        "apparmor_enabled": enabled if isinstance(enabled, bool) else "UNKNOWN",
+        "apparmor_parser": parser if isinstance(parser, bool) else "UNKNOWN",
+    }
+    if enabled is True and parser is True:
+        return "PASS", observed
+    if not isinstance(enabled, bool) or not isinstance(parser, bool):
+        return "UNKNOWN", observed
+    return "BLOCKED", observed
+
+
 def _forbidden_cidr(value: str) -> bool:
     text = value.strip()
     if text in _FORBIDDEN_CIDRS or text.endswith("/0"):
@@ -180,6 +194,18 @@ def run_preflight(
             {"docker_binary": docker_bin, "docker_version_or_UNKNOWN": docker_ver},
             {"docker_binary": True},
             "Install Docker and confirm the docker CLI is on PATH.",
+        )
+    )
+
+    apparmor_result, apparmor_observed = _apparmor_observation(host)
+    checks.append(
+        _check(
+            "PF-APPARMOR",
+            "AppArmor enabled and apparmor_parser available",
+            apparmor_result,
+            apparmor_observed,
+            {"apparmor_enabled": True, "apparmor_parser": True},
+            "Enable AppArmor and install apparmor_parser. The observe-only Phantom Engine container loads a named profile.",
         )
     )
 

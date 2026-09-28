@@ -10,13 +10,17 @@ from vantio_install.live_executor import execute_step
 from vantio_install.agent_sdk import remove_agent_sdks
 from vantio_install.optics_cli import remove_optics_prefix
 from vantio_install.commands import (
+    apparmor_parser_load_argv,
+    apparmor_parser_remove_argv,
     docker_load_argv,
     docker_rmi_argv,
     docker_stop_rm_argv,
     npm_install_argv,
+    observe_apparmor_opt,
     observe_container_argv,
     observe_env,
 )
+from vantio_install.pe_apparmor import pe_apparmor_profile_path
 from vantio_install.errors import InstallError
 from vantio_install.util import sha256_file, write_json
 
@@ -207,9 +211,14 @@ class FixtureMutator:
         pin = constants.FROZEN_PINS
         iface = ctx["config"]["iface"]
         name = f"vantio-pe-{ctx['transaction_id'][-12:]}"
+        load_argv = apparmor_parser_load_argv(str(pe_apparmor_profile_path(self.stage)))
+        self.recorded_argv.append(load_argv)
+        self.snapshot.setdefault("recorded_argv", []).append(load_argv)
         argv = observe_container_argv(tag=pin["pe_local_tag"], iface=iface, name=name)
-        if "--enforce" in argv:
+        if "--enforce" in argv or "--privileged" in argv or "apparmor=unconfined" in argv:
             raise InstallError("Observe start refused an enforce flag.", exit_code=4, state="FAILED_SAFE")
+        if observe_apparmor_opt() not in argv:
+            raise InstallError("Observe start is missing its AppArmor profile.", exit_code=4, state="FAILED_SAFE")
         self.recorded_argv.append(argv)
         self.snapshot.setdefault("recorded_argv", []).append(argv)
         containers = self.snapshot.setdefault("containers", [])
@@ -245,6 +254,7 @@ class FixtureMutator:
     def _stop(self, ctx: dict) -> None:
         name_suffix = ctx["transaction_id"][-12:]
         commands = docker_stop_rm_argv(f"vantio-pe-{name_suffix}")
+        commands.append(apparmor_parser_remove_argv(str(pe_apparmor_profile_path(self.stage))))
         self.recorded_argv.extend(commands)
         self.snapshot["containers"] = [
             row

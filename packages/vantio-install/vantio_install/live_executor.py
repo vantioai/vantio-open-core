@@ -16,6 +16,8 @@ from pathlib import Path
 
 from vantio_install import constants
 from vantio_install.commands import (
+    apparmor_parser_load_argv,
+    apparmor_parser_remove_argv,
     docker_load_argv,
     docker_rmi_argv,
     docker_start_argv,
@@ -23,11 +25,18 @@ from vantio_install.commands import (
     docker_tag_argv,
     mkdir_argv,
     npm_install_argv,
+    observe_apparmor_opt,
     observe_container_argv,
     observe_env,
     pip_wheel_argv,
     tc_clsact_argv,
     tc_clsact_del_argv,
+)
+from vantio_install.pe_apparmor import (
+    apparmor_profile_loaded,
+    inspect_is_observe_container,
+    pe_apparmor_profile_path,
+    profile_text,
 )
 from vantio_install.agent_sdk import (
     agent_sdk_npm_verified,
@@ -54,7 +63,7 @@ _ENV_GATE = "VANTIO_INSTALL_ALLOW_LIVE"
 _IFACE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,14}$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "busybox", "sudo", "su"}
 _META = (";", "|", "&", "`", "$(", "\n", "\r", ">", "<")
-_ALLOWED_EXE = {"mkdir", "npm", "python3", "docker", "tc"}
+_ALLOWED_EXE = {"mkdir", "npm", "python3", "docker", "tc", "apparmor_parser"}
 
 STEP_OPERATIONS = {
     "install_optics_cli": ("mkdir_prefix", "install_optics_cli"),
@@ -62,11 +71,17 @@ STEP_OPERATIONS = {
     "stage_pe_archive": ("mkdir_stage", "stage_pe_archive"),
     "docker_load": ("docker_load", "docker_tag"),
     "write_observe_config": ("mkdir_evidence", "write_observe_config", "o7_init"),
-    "start_pe_observe": ("tc_clsact", "start_pe_observe"),
+    "start_pe_observe": ("tc_clsact", "write_pe_apparmor", "load_pe_apparmor", "start_pe_observe"),
 }
 
 ROLLBACK_OPERATIONS = {
-    "start_pe_observe": ("docker_stop", "docker_rm", "tc_clsact_del"),
+    "start_pe_observe": (
+        "docker_stop",
+        "docker_rm",
+        "unload_pe_apparmor",
+        "remove_pe_apparmor",
+        "tc_clsact_del",
+    ),
     "docker_load": ("docker_rmi",),
     "stage_pe_archive": ("remove_stage",),
     "write_observe_config": ("remove_observe_config", "remove_o7_record"),
@@ -79,6 +94,7 @@ _PARTIAL_ON_EXIT = {
     "install_optics_cli": "install_optics_cli",
     "install_agent_sdk_npm": "install_agent_sdks",
     "install_agent_sdk_py": "install_agent_sdks",
+    "load_pe_apparmor": "start_pe_observe",
 }
 
 _START_STATES = {
@@ -226,6 +242,44 @@ def _observe_only(config: dict) -> bool:
     )
 
 
+def _reject_forbidden_live_argv(argv: list[str]) -> None:
+    if "--enforce" in argv or "--privileged" in argv or any("VANTIO_PHANTOM_DENY" in item for item in argv):
+        _fail("Refusing an enforce or privileged flag.", failure_class="FAILED_SAFE")
+    named = observe_apparmor_opt()
+    for item in argv:
+        if item.startswith("apparmor=") and item != named:
+            _fail(
+                "Refusing an AppArmor setting other than the observe-only profile.",
+                failure_class="FAILED_SAFE",
+            )
+
+
+def _require_observe_apparmor(argv: list[str]) -> None:
+    opt = observe_apparmor_opt()
+    caps = [argv[index + 1] for index, item in enumerate(argv) if item == "--cap-add"]
+    if argv.count("--security-opt") != 1 or argv.count(opt) != 1:
+        _fail("The observe container argv is missing its AppArmor profile.", failure_class="FAILED_SAFE")
+    if caps != ["NET_ADMIN", "BPF", "SYS_ADMIN"]:
+        _fail("The observe container capability list changed.", failure_class="FAILED_SAFE")
+
+
+def _observe_profile_file(grant: LiveGrant) -> Path:
+    return confine(pe_apparmor_profile_path(grant.stage), [grant.stage])
+
+
+def _profile_bytes_match(grant: LiveGrant) -> bool:
+    path = _observe_profile_file(grant)
+    return path.is_file() and path.read_text(encoding="utf-8") == profile_text()
+
+
+def _require_apparmor_parser_argv(op_type: str, argv: list[str]) -> None:
+    flag = "-Kr" if op_type == "load_pe_apparmor" else "-KR"
+    if argv[:2] != ["apparmor_parser", flag]:
+        _fail("The AppArmor parser argv is not the allowlisted form.", failure_class="FAILED_SAFE")
+    if not argv[-1].endswith("/" + constants.PE_OBSERVE_APPARMOR_PROFILE):
+        _fail("The AppArmor parser argv is not the observe profile path.", failure_class="FAILED_SAFE")
+
+
 def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
     """Argv for process operations. None means a confined filesystem operation."""
     pin = constants.FROZEN_PINS
@@ -244,7 +298,11 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
         "write_observe_config": None,
         "o7_init": None,
         "tc_clsact": tc_clsact_argv(iface),
+        "write_pe_apparmor": None,
+        "load_pe_apparmor": apparmor_parser_load_argv(str(pe_apparmor_profile_path(grant.stage))),
         "start_pe_observe": observe_container_argv(tag=pin["pe_local_tag"], iface=iface, name=grant.container_name),
+        "unload_pe_apparmor": apparmor_parser_remove_argv(str(pe_apparmor_profile_path(grant.stage))),
+        "remove_pe_apparmor": None,
         "restart_pe_observe": docker_start_argv(grant.container_name),
         "docker_stop": docker_stop_rm_argv(grant.container_name)[0],
         "docker_rm": docker_stop_rm_argv(grant.container_name)[1],
@@ -261,8 +319,11 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
     argv = mapping[op_type]
     if argv is not None:
         reject_argv(argv)
-        if "--enforce" in argv or "--privileged" in argv or "VANTIO_PHANTOM_DENY" in argv:
-            _fail("An allowlisted command included an enforce flag.", failure_class="FAILED_SAFE")
+        _reject_forbidden_live_argv(argv)
+        if op_type == "start_pe_observe":
+            _require_observe_apparmor(argv)
+        if op_type in {"load_pe_apparmor", "unload_pe_apparmor"}:
+            _require_apparmor_parser_argv(op_type, argv)
         if op_type == "docker_tag" and (argv[-1] != pin["pe_local_tag"] or argv[-1].endswith(":latest")):
             _fail("Refusing a mutable image tag.", failure_class="FAILED_SAFE")
     return argv
@@ -394,6 +455,18 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
         if path.is_file():
             path.unlink()
         return
+    if op_type == "write_pe_apparmor":
+        path = confine(pe_apparmor_profile_path(grant.stage), [grant.stage])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(profile_text(), encoding="utf-8")
+        if path.read_text(encoding="utf-8") != profile_text():
+            _fail("The observe AppArmor profile bytes changed while writing.", failure_class="FAILED_SAFE")
+        return
+    if op_type == "remove_pe_apparmor":
+        path = confine(pe_apparmor_profile_path(grant.stage), [grant.stage])
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+        return
     if op_type == "remove_optics":
         remove_optics_prefix(grant.prefix)
         return
@@ -457,12 +530,17 @@ def dispatch(
     else:
         supplied = list(argv if argv is not None else expected)
         reject_argv(supplied)
-        if "--enforce" in supplied or "--privileged" in supplied or any("VANTIO_PHANTOM_DENY" in item for item in supplied):
-            _fail("Refusing an enforce or privileged flag.", failure_class="FAILED_SAFE")
+        _reject_forbidden_live_argv(supplied)
         if any(item.endswith(":latest") or item == "latest" for item in supplied):
             _fail("Refusing a mutable image tag.", failure_class="FAILED_SAFE")
         if supplied != list(expected):
             _fail(f"Refusing argv that is not the allowlisted command for {op_type}.", failure_class="FAILED_SAFE")
+    if op_type == "load_pe_apparmor" and not _profile_bytes_match(grant):
+        _fail("The observe AppArmor profile bytes changed before load.", failure_class="FAILED_SAFE")
+    if op_type == "unload_pe_apparmor" and not _profile_bytes_match(grant):
+        path = _observe_profile_file(grant)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(profile_text(), encoding="utf-8")
     if op_type in {"docker_load", "docker_tag", "stage_pe_archive", "start_pe_observe"}:
         _rehash_archive(grant)
     _rehash_inputs(op_type, grant)
@@ -470,6 +548,8 @@ def dispatch(
     result: ExecResult | None = None
     if expected is not None:
         result = run_allowlisted(expected, timeout, runner)
+        if runner is None:
+            result = _recover_absent_target(op_type, grant, result)
         if result.timed_out:
             _append_op(grant, {"op": op_type, "phase": "INTERRUPTED", "transaction_id": grant.transaction_id})
             _fail(
@@ -734,6 +814,27 @@ class ProductionObserver:
                 if payload.get("enforcement") == "NOT_ENABLED" and payload.get("host_enforcement") is False:
                     return "VERIFIED"
                 return "NOT_VERIFIED"
+            if op_type == "write_pe_apparmor":
+                path = pe_apparmor_profile_path(grant.stage)
+                if path.is_file() and path.read_text(encoding="utf-8") == profile_text():
+                    return "VERIFIED"
+                return "NOT_VERIFIED"
+            if op_type == "load_pe_apparmor":
+                path = pe_apparmor_profile_path(grant.stage)
+                if not path.is_file() or path.read_text(encoding="utf-8") != profile_text():
+                    return "NOT_VERIFIED"
+                loaded = apparmor_profile_loaded(constants.PE_OBSERVE_APPARMOR_PROFILE)
+                if loaded is True:
+                    return "VERIFIED"
+                return "UNKNOWN" if loaded is None else "NOT_VERIFIED"
+            if op_type == "unload_pe_apparmor":
+                loaded = apparmor_profile_loaded(constants.PE_OBSERVE_APPARMOR_PROFILE)
+                if loaded is False:
+                    return "VERIFIED"
+                return "UNKNOWN" if loaded is None else "NOT_VERIFIED"
+            if op_type == "remove_pe_apparmor":
+                path = pe_apparmor_profile_path(grant.stage)
+                return "VERIFIED" if not path.exists() else "NOT_VERIFIED"
             if op_type == "remove_optics":
                 return "VERIFIED" if not optics_cli_present(grant.prefix) else "NOT_VERIFIED"
             if op_type == "remove_sdks":
@@ -753,7 +854,7 @@ class ProductionObserver:
                     return "VERIFIED"
                 return "NOT_VERIFIED"
             if op_type in {"docker_stop", "docker_rm"}:
-                return "VERIFIED" if _docker_running_observe(grant.container_name) == "NOT_VERIFIED" else "NOT_VERIFIED"
+                return _docker_stopped(grant.container_name)
             if op_type == "docker_rmi":
                 return "VERIFIED" if _docker_image_present(grant.tag) == "NOT_VERIFIED" else "NOT_VERIFIED"
             if op_type == "tc_clsact":
@@ -835,13 +936,70 @@ def _docker_image_present(tag: str) -> str:
     return "VERIFIED" if text else "NOT_VERIFIED"
 
 
+_INSPECT_FORMAT = "{{.State.Running}} {{.HostConfig.Privileged}} {{.AppArmorProfile}} {{json .Config.Cmd}}"
+
+
+def _docker_inspect_line(name: str) -> str | None:
+    return _read_only(["docker", "inspect", "--format", _INSPECT_FORMAT, name])
+
+
 def _docker_running_observe(name: str) -> str:
-    text = _read_only(["docker", "inspect", "--format", "{{.State.Running}} {{json .Config.Cmd}}", name])
-    if not text:
-        return "NOT_VERIFIED"
-    if text.startswith("true ") and "--enforce" not in text:
+    text = _docker_inspect_line(name)
+    if text and inspect_is_observe_container(text):
         return "VERIFIED"
     return "NOT_VERIFIED"
+
+
+def _docker_stopped(name: str) -> str:
+    text = _docker_inspect_line(name)
+    if not text:
+        return "VERIFIED"
+    running = text.split(" ", 1)[0]
+    return "VERIFIED" if running != "true" else "NOT_VERIFIED"
+
+
+def _docker_presence(name: str) -> str:
+    argv = ["docker", "inspect", "--format", "{{.State.Running}}", name]
+    try:
+        checked = reject_argv(argv)
+    except InstallError:
+        return "unknown"
+    try:
+        completed = subprocess.run(
+            checked,
+            shell=False,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    if completed.returncode == 0:
+        return "present"
+    err = (completed.stderr or "") + (completed.stdout or "")
+    if "No such" in err:
+        return "absent"
+    return "unknown"
+
+
+def _recover_absent_target(op_type: str, grant: LiveGrant, result: ExecResult) -> ExecResult:
+    """A stop, rm, or profile unload of an already-absent target is done."""
+    if result.returncode == 0 or result.timed_out:
+        return result
+    if op_type == "docker_rm" and _docker_presence(grant.container_name) == "absent":
+        return ExecResult(0, False)
+    if op_type == "docker_stop":
+        presence = _docker_presence(grant.container_name)
+        if presence == "absent":
+            return ExecResult(0, False)
+        if presence == "present":
+            text = _docker_inspect_line(grant.container_name)
+            if text and not text.startswith("true "):
+                return ExecResult(0, False)
+    if op_type == "unload_pe_apparmor" and apparmor_profile_loaded(constants.PE_OBSERVE_APPARMOR_PROFILE) is False:
+        return ExecResult(0, False)
+    return result
 
 
 def _host_pins() -> list[str]:
