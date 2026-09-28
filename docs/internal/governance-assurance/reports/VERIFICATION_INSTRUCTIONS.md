@@ -18,7 +18,7 @@ Regenerate the reports with the package `buildReports` function. The default clo
 
 Version rebind:
 
-- 0.2.0 after Wave 2 merges that change a bound track.
-- 0.3.0 after clean-host evidence exists.
+- 0.2.0-internal is this catalog. It rebinds citations to the Stage B accepted close and the C5 integration record. It does not grant satisfaction to ingress, egress, Unit E, enforcement, billing, recordings, Class B, or a live RBK-004 re-proof.
+- 0.3.0 only after a clean-host qualification that this partial Stage B proof does not supply. BLOCKED_INFRA and an unset evidence tier do not qualify.
 - 0.4.0 after stranger-host execution is authorized and completed.
 - 1.0.0-customer-candidate only after external assessment, disclosure review, and a separate release council.

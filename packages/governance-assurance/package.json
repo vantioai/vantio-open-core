@@ -1,9 +1,9 @@
 {
   "name": "@vantio/governance-assurance",
   "private": true,
-  "version": "0.1.0-internal",
+  "version": "0.2.0-internal",
   "license": "MIT",
-  "description": "PRIVATE | INTERNAL_RESTRICTED | 0.1.0-internal | NOT A CUSTOMER RELEASE | NOT A CERTIFICATION. Governance Assurance maps actual controls and evidence. It is not a fourth product and it is not published.",
+  "description": "PRIVATE | INTERNAL_RESTRICTED | 0.2.0-internal | NOT A CUSTOMER RELEASE | NOT A CERTIFICATION. Governance Assurance maps actual controls and evidence after the Stage B close. It is not a fourth product and it is not published. It does not raise the proof class.",
   "type": "commonjs",
   "main": "src/index.cjs",
   "exports": {

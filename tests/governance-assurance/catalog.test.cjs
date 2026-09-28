@@ -17,6 +17,7 @@ test("catalog has forty unique controls from inventory through decommissioning",
   assert.equal(controls[0].title.includes("inventory"), true);
   assert.equal(controls[controls.length - 1].title, "Decommissioning");
   for (const control of controls) {
+    assert.equal(control.review_date, "2026-09-28");
     assert.equal(api.SUPPORT_CLASSES.includes(control.primary_support), true);
     assert.equal(control.customer_responsibilities.length > 0, true);
     assert.equal(control.Vantio_responsibilities.length > 0, true);
@@ -39,7 +40,7 @@ test("schema rejects a missing field, a duplicate id, and a promoted verificatio
 test("package stays private and off the shipping workspace", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "packages/governance-assurance/package.json"), "utf8"));
   assert.equal(manifest.private, true);
-  assert.equal(manifest.version, "0.1.0-internal");
+  assert.equal(manifest.version, "0.2.0-internal");
   assert.equal(manifest.vantio.pnpm_workspace_member, false);
   assert.equal(manifest.vantio.npm_publish, false);
   const workspace = fs.readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
@@ -50,8 +51,10 @@ test("package stays private and off the shipping workspace", () => {
   assert.equal(cli.version, "0.3.24");
   const python = fs.readFileSync(path.join(root, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
   assert.match(python, /version = "3.1.0"/);
+  const npmSdk = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-agent-sdk/package.json"), "utf8"));
+  assert.equal(npmSdk.version, "0.2.4");
   const boundary = fs.readFileSync(path.join(root, "docs/internal/governance-assurance/00-BOUNDARY.md"), "utf8");
   assert.match(boundary, /Vantio does \*\*not\*\* independently make an AI system lawful/);
   assert.match(boundary, /PENDING_INDEPENDENT_COUNCIL/);
-  assert.match(boundary, /WS17_GOVERNANCE_ASSURANCE_READY_FOR_COUNCIL/);
+  assert.match(boundary, /WS17_GOVERNANCE_ASSURANCE_0_2_0_INTERNAL_REBIND_READY_FOR_COUNCIL/);
 });

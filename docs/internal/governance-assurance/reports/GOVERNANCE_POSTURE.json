@@ -1,7 +1,8 @@
 {
-  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
+  "claim_ceiling": "Governance Assurance 0.2.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass. It does not raise a proof class and it is not a customer candidate.",
   "controls": [
     {
+      "capability_version": "0.3.24",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-01",
@@ -11,6 +12,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -26,10 +28,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "AI system inventory for supported observation paths",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "characterized",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-02",
@@ -39,6 +43,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "CHARACTERIZATION",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -54,10 +59,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Component and release-surface inventory",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.3.24",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-03",
@@ -67,6 +74,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -82,10 +90,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Coverage gap disclosure",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-04",
@@ -95,6 +105,7 @@
       "primary_support": "CUSTOMER_PROVIDES",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -107,10 +118,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Legal classification and conformity roles",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "plan-only",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-05",
@@ -120,6 +133,7 @@
       "primary_support": "CUSTOMER_CONFIGURES",
       "product": "ENTERPRISE",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -132,10 +146,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Ownership assignment",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "plan-only",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-06",
@@ -145,6 +161,7 @@
       "primary_support": "CUSTOMER_CONFIGURES",
       "product": "ENTERPRISE",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -157,10 +174,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Delegated authority",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "plan-only",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-07",
@@ -170,6 +189,7 @@
       "primary_support": "CUSTOMER_CONFIGURES",
       "product": "ENTERPRISE",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -182,10 +202,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Approvals and dual control",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "absent",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-08",
@@ -195,6 +217,7 @@
       "primary_support": "NOT_IMPLEMENTED",
       "product": "ENTERPRISE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -209,10 +232,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Exception handling",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "absent",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-09",
@@ -222,6 +247,7 @@
       "primary_support": "NOT_IMPLEMENTED",
       "product": "ENTERPRISE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -236,10 +262,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Customer policy authoring",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "not-in-this-tree",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-10",
@@ -249,6 +277,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -263,10 +292,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Host policy configuration",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "not-in-this-tree",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-11",
@@ -276,6 +307,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -290,10 +322,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Host enrollment",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.3.24",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-12",
@@ -303,6 +337,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -318,10 +353,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Runtime observation of supported agent egress",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "not-attached",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-13",
@@ -331,6 +368,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -345,10 +383,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Runtime enforcement",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "merged-observe-only",
       "claim_ceiling": "This row is not satisfied. The observe-only merge is not a pass.",
       "configuration_state": "UNKNOWN",
       "control_id": "GA-14",
@@ -358,6 +398,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "UNKNOWN",
       "satisfaction": {
         "pass": false,
@@ -370,10 +411,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Ingress control",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "merged-contract-only",
       "claim_ceiling": "This row is not satisfied. The contract-only merge is not a pass.",
       "configuration_state": "UNKNOWN",
       "control_id": "GA-15",
@@ -383,6 +426,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "UNKNOWN",
       "satisfaction": {
         "pass": false,
@@ -395,10 +439,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Egress enforcement",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.3.24",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-16",
@@ -408,6 +454,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -423,10 +470,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Process attribution on supported paths",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.0.0-unstable-pre-1.0",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-17",
@@ -436,6 +485,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "PHANTOM_ENGINE",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -451,10 +501,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "In-process revocation step",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "absent",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-18",
@@ -464,6 +516,7 @@
       "primary_support": "NOT_IMPLEMENTED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -478,10 +531,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Recovery after revocation or failure",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "cli 0.3.24 / unit D private / unit E not live",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-19",
@@ -491,6 +546,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -506,10 +562,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Evidence capture for supported observation",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "3.1.0",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-20",
@@ -519,6 +577,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "RELEASE_CLOSE_PACKET",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -534,10 +593,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Evidence custody for the closed Python release",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-21",
@@ -547,6 +608,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -562,10 +624,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Evidence freshness and staleness",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-22",
@@ -575,6 +639,7 @@
       "primary_support": "NOT_IMPLEMENTED",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -589,10 +654,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Independent verification",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "statement-only",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-23",
@@ -602,6 +669,7 @@
       "primary_support": "CUSTOMER_PROVIDES",
       "product": "PHANTOM_ENGINE",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -614,10 +682,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Customer-controlled infrastructure boundary",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.3.24",
       "claim_ceiling": "Partial. A secret placed in the URL path is stored because the path is kept. The CLI version file does not prove non-collection. This row is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-24",
@@ -627,6 +697,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -639,10 +710,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Credential and secret non-collection on supported paths",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.3.24",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-25",
@@ -652,6 +725,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -667,10 +741,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Content non-retention on supported paths",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "characterized",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-26",
@@ -680,6 +756,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "CHARACTERIZATION",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -695,10 +772,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Change and release characterization",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "blocked",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-27",
@@ -708,6 +787,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "BLOCKED_UNSET",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -722,10 +802,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Rollback and uninstall proof",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.0.0-unstable-pre-1.0",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-28",
@@ -735,6 +817,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -750,10 +833,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Health and degradation signaling",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.0.0-unstable-pre-1.0",
       "claim_ceiling": "The adapter exists and defaults off. A configured, independently checked export is not in this tree.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-29",
@@ -763,6 +848,7 @@
       "primary_support": "CUSTOMER_CONFIGURES",
       "product": "OPTICS",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -775,10 +861,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Telemetry interoperability",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.0.0-unstable-pre-1.0",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-30",
@@ -788,6 +876,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "PHANTOM_ENGINE",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -803,10 +892,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Sequential and aggregate evaluation",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.0.0-unstable-pre-1.0",
       "claim_ceiling": "This row binds a bounded fact already in the tree. It is not certification, legal conformity, or external proof.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-31",
@@ -816,6 +907,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "PHANTOM_ENGINE",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -831,10 +923,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": null,
       "title": "Progressive enforcement staging in process",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "not-performed",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-32",
@@ -844,6 +938,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -858,10 +953,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Host-attachment proof",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "blocked",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-33",
@@ -871,6 +968,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "BLOCKED_UNSET",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -885,10 +983,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Clean-host proof",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "readiness-only",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-34",
@@ -898,6 +998,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -910,10 +1011,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Stranger-host proof",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-35",
@@ -923,6 +1026,7 @@
       "primary_support": "THIRD_PARTY_REQUIRED",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -935,10 +1039,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Model-provider obligations",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "plan-only",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-36",
@@ -948,6 +1054,7 @@
       "primary_support": "CUSTOMER_PROVIDES",
       "product": "ENTERPRISE",
       "proof_class": "DESIGN_RECORD",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -960,10 +1067,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Human oversight",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "The named customer or third-party role holds this duty. Vantio does not discharge it.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-37",
@@ -973,6 +1082,7 @@
       "primary_support": "CUSTOMER_PROVIDES",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "NONE",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "pass": false,
@@ -987,10 +1097,12 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Incident evidence and legal submission",
       "verification_state": "NOT_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "A private index for review. Not a submission and not an authorization to sell.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-38",
@@ -1000,6 +1112,7 @@
       "primary_support": "VANTIO_PARTIALLY_SUPPORTS",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -1015,10 +1128,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Procurement evidence packaging",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "0.2.0-internal",
       "claim_ceiling": "Vantio provides this disclosure. The disclosure does not make any system conformant.",
       "configuration_state": "NOT_APPLICABLE",
       "control_id": "GA-39",
@@ -1028,6 +1143,7 @@
       "primary_support": "VANTIO_PROVIDES",
       "product": "GOVERNANCE_ASSURANCE",
       "proof_class": "PRODUCER_TEST",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_APPLICABLE",
       "satisfaction": {
         "binding_ids": [
@@ -1043,10 +1159,12 @@
         },
         "status": "BOUND_WITH_LIMITS"
       },
+      "supersedes": "0.1.0-internal",
       "title": "Claim ceiling and disclosure",
       "verification_state": "PRODUCER_TESTED"
     },
     {
+      "capability_version": "blocked",
       "claim_ceiling": "This row is not satisfied. Absence, a plan, or an in-revision track is not a pass.",
       "configuration_state": "NOT_CONFIGURED",
       "control_id": "GA-40",
@@ -1056,6 +1174,7 @@
       "primary_support": "UNVERIFIED",
       "product": "PHANTOM_ENGINE",
       "proof_class": "BLOCKED_UNSET",
+      "review_date": "2026-09-28",
       "runtime_state": "NOT_RUNNING",
       "satisfaction": {
         "pass": false,
@@ -1070,6 +1189,7 @@
         },
         "status": "NOT_SATISFIED"
       },
+      "supersedes": null,
       "title": "Decommissioning",
       "verification_state": "NOT_TESTED"
     }
@@ -1077,13 +1197,113 @@
   "counts": {
     "controls": 40,
     "customer_responsibility_assignments": 62,
-    "evidence_bindings": 22,
+    "evidence_bindings": 25,
     "external_controls": 9,
     "frameworks": 6,
     "mappings": 144,
     "unsupported_controls": 14
   },
   "document": "GOVERNANCE_POSTURE",
+  "open_gates": [
+    {
+      "from_council": "F",
+      "id": "GATE-F-BILLING",
+      "state": "OPEN",
+      "summary": "C2 STAGE_B_BILLING_CLOSE_PENDING. September 2026 period open. Delayed charges UNKNOWN. A billing close is required before Class B."
+    },
+    {
+      "from_council": "F",
+      "id": "GATE-F-C8",
+      "state": "OPEN",
+      "summary": "C8 DESIGN_COMPLETE_AWAITING_FOUNDER_CREDENTIAL_OR_ROLE. Interactive destroy does not satisfy NONINTERACTIVE_TEARDOWN_READY."
+    },
+    {
+      "from_council": "I",
+      "id": "GATE-I-RECORDINGS",
+      "state": "OPEN",
+      "summary": "Recordings A-H NOT_CAPTURED. C15 plan only. Visual and demo completeness stays open."
+    },
+    {
+      "from_councils": [
+        "A",
+        "E",
+        "C1"
+      ],
+      "id": "GATE-RBK004-LIVE",
+      "state": "OPEN_NONBLOCKING_FOR_INTEGRATION_CEILING",
+      "summary": "GAP-SB-RBK-004 SOURCE_CLOSED_MERGED. Live Class A residual-only re-proof is not claimed and is NOT_YET_AUTHORIZED."
+    },
+    {
+      "id": "GATE-CLASS-B",
+      "state": "BLOCKED",
+      "summary": "Class B provision BLOCKED until billing close and C8 NONINTERACTIVE_TEARDOWN_READY, plus the remaining hard stops. No Paid plan. No new host until those gates clear."
+    }
+  ],
+  "program_bindings": {
+    "aws_destruction_note": "Founder close records removal of the lab instance, root volume, security group, and key pair. C5 keeps that axis visible as STAGE_B_DESTROY_PASS. Council F stays NEEDS_REVISION.",
+    "billing_close": "STAGE_B_BILLING_CLOSE_PENDING",
+    "billing_lineage": "Founder close recorded NOT_YET_FULLY_RECONCILED. C3 recorded REQUIRES_FINAL_RECONCILIATION. C5 records STAGE_B_BILLING_CLOSE_PENDING. This rebind binds the C5 token.",
+    "c15": "PLAN_READY_AWAITING_AUTHORIZED_LAB",
+    "c1_merge_sha": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+    "c1_pr": 125,
+    "c1_state": "MERGED_SOURCE_CLOSED",
+    "c3_classification": "STAGE_B_EVIDENCE_CONSOLIDATION_PASS",
+    "c5_classification": "INTEGRATION_PASS_WITH_NONBLOCKING_AND_OPEN_GATES",
+    "c5_state": "CLOSED",
+    "c8": "DESIGN_COMPLETE_AWAITING_FOUNDER_CREDENTIAL_OR_ROLE",
+    "c8_ready": false,
+    "c8_short": "DESIGN_COMPLETE_AWAITING_FOUNDER",
+    "claim_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
+    "class_b": "BLOCKED",
+    "clean_host_evidence_tier": "UNSET",
+    "clean_host_sequence": "BLOCKED_INFRA",
+    "council_f": "NEEDS_REVISION",
+    "council_i": "NEEDS_REVISION",
+    "council_j": "PASS_WITH_NONBLOCKING_NOTES_PREP_ONLY",
+    "customer_deployment": "NOT_AUTHORIZED",
+    "destruction": "STAGE_B_DESTROY_PASS",
+    "enforcement_efficacy": "NOT_PROVED",
+    "enterprise": "NO_LIVE_CUSTOMER_AUTHORITY",
+    "frozen_pins": {
+      "@vantio/agent-sdk": "0.2.4",
+      "@vantio/cli": "0.3.24",
+      "vantio-agent-sdk": "3.1.0"
+    },
+    "full_ws17_at_council_j": "DEFERRED_TO_C6",
+    "health": "PASS_WITH_LIMITATIONS",
+    "health_detail": "DEGRADED",
+    "installer": "VANTIO_INSTALLER_REPEATABLE_PATH_PROVED_WITH_LIMITATIONS",
+    "installer_not_yet": "VANTIO_INSTALLER_INTERNAL_CUSTOMER_CANDIDATE",
+    "installer_proof": "TRANSACTIONAL_OBSERVE_ONLY_PATH_PROVED_WITH_LIMITATIONS",
+    "live_reproof_claimed": false,
+    "marketing_announcement": "HOLD",
+    "next_lab": "NOT_YET_AUTHORIZED",
+    "noninteractive_teardown_ready": false,
+    "o7": "INTERNAL_CLEAN_HOST_INITIALIZATION_PROOF",
+    "o7_enforcement": "NOT_ENABLED",
+    "optics": "INTERNAL_CLEAN_HOST_INSTALLATION_PROOF",
+    "pe_customer_portability_tip": "fab81efc08110506ff90847495197e7051a253b5",
+    "pe_sealed_archive_sha256": "72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128",
+    "phantom_engine": "INTERNAL_CLEAN_HOST_OBSERVE_ONLY_PROOF",
+    "proof_state": "PARTIAL_NOT_FULL_EFFICACY",
+    "public_publication": "HOLD",
+    "public_rewrite": "HOLD",
+    "qualifies_for_0_3_0": false,
+    "qualifies_for_0_4_0": false,
+    "qualifies_for_customer_candidate": false,
+    "rbk_001_002": "CLOSED_LIVE_PASS",
+    "rbk_004": "SOURCE_CLOSED_MERGED",
+    "rbk_004_live_class_a_reproof": "NOT_YET_AUTHORIZED",
+    "recordings_a_h": "NOT_CAPTURED",
+    "repeatability": "NOT_YET_PROVED",
+    "residual_only_path": "SOURCE_CLOSED_AWAITING_LIVE_REPROOF",
+    "stage_b": "PARTIAL_INTERNAL_CLEAN_HOST_PROOF",
+    "stranger_host": "NOT_AUTHORIZED_WITHOUT_NAMED_ENVIRONMENT_AND_OPERATOR",
+    "uninstall": "LIVE_REMOVAL_AND_BPF_UNPIN_PROOF",
+    "wave2_egress": "MERGED_CONTRACT_ONLY_HOST_NETWORK_NOT_EXECUTED",
+    "wave2_ingress": "MERGED_OBSERVE_ONLY_LOADER_UNTOUCHED",
+    "wave2_unit_e": "MERGED_NO_LIVE_INTEGRATION"
+  },
   "prohibited_interpretations": [
     "Do not treat this packet as a compliance percentage or an overall score.",
     "Do not treat a missing, planned, or in-revision capability as a pass.",
@@ -1093,32 +1313,64 @@
     "Do not assign legal classification, conformity, registration, or incident submission to Vantio by default.",
     "Do not read a framework crosswalk as certification, regulator approval, or a statement that Vantio fulfills the framework.",
     "Do not treat the Python 3.1.0 release-close as runtime observation or as observation evidence capture.",
-    "Do not treat a package version file as proof that credentials are not collected."
+    "Do not treat a package version file as proof that credentials are not collected.",
+    "Do not treat PARTIAL_INTERNAL_CLEAN_HOST_PROOF as full efficacy, as 0.3.0, or as a customer candidate.",
+    "Do not treat SOURCE_CLOSED_MERGED on RBK-004 as a live Class A residual-only re-proof.",
+    "Do not treat STAGE_B_DESTROY_PASS as a billing close, as C8 readiness, or as Council F acceptance.",
+    "Do not treat NOT_CAPTURED recordings as captured demonstrations.",
+    "Do not treat an integration record that names open gates as a clean result with those gates removed."
   ],
   "provenance": {
     "audience": "INTERNAL_RESTRICTED",
-    "catalog_version": "0.1.0-internal",
+    "catalog_version": "0.2.0-internal",
     "council_status": "PENDING_INDEPENDENT_COUNCIL",
     "distribution": "INTERNAL_RESTRICTED",
-    "generated_at": "2026-09-27T12:46:00Z",
+    "generated_at": "2026-09-28T17:26:43Z",
     "generator": "@vantio/governance-assurance",
     "mapping_commit": "NOT_SELF_HASHED",
-    "mapping_version": "0.1.0-internal",
+    "mapping_version": "0.2.0-internal",
     "package_name": "@vantio/governance-assurance",
-    "package_version": "0.1.0-internal",
-    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_READY_FOR_COUNCIL",
-    "retrieved_at": "2026-09-27T12:46:00Z",
+    "package_version": "0.2.0-internal",
+    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_0_2_0_INTERNAL_REBIND_READY_FOR_COUNCIL",
+    "program_claim_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
+    "retrieved_at": "2026-09-28T17:26:43Z",
     "reviewer": "PENDING_INDEPENDENT_COUNCIL",
     "self_certified_council_pass": false,
-    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
-    "source_repository": "vantioai/vantio-open-core"
+    "source_base_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+    "source_repository": "vantioai/vantio-open-core",
+    "supersedes_package": "0.1.0-internal"
   },
+  "rebind_not_claimed": [
+    "0.3.0",
+    "0.4.0",
+    "1.0.0-customer-candidate",
+    "VANTIO_INSTALLER_INTERNAL_CUSTOMER_CANDIDATE",
+    "enforcement efficacy proved",
+    "recordings captured",
+    "billing close pass",
+    "C8 NONINTERACTIVE_TEARDOWN_READY",
+    "live Class A residual-only RBK-004 re-proof",
+    "Class B or stranger-host or customer deploy authorized",
+    "PUBLIC_REWRITE or announcement or publish",
+    "claim ceiling above INTERNAL_CLEAN_HOST_PROOF",
+    "a clean integration result that hides Council F or Council I",
+    "WS17 council acceptance by this producer",
+    "claim ledger freeze (that is C7)"
+  ],
   "refuses": [
     "overall compliance score",
     "compliance percentage",
     "legal conclusion",
     "certification conclusion",
     "regulator approval"
+  ],
+  "residuals": [
+    "GAP-SB-RES-001 remains an open documentation gap on Council A. It is not one of the five C5 open gates.",
+    "Repeatability is NOT_YET_PROVED. One transactional observe-only install does not make a repeatable claim.",
+    "Uninstall plus BPF unpin on the re-apply path is not a residual-only RBK-004 live re-proof.",
+    "O7 initialization is an observe record with enforcement NOT_ENABLED. It is not a store authorization and not host enforcement.",
+    "Enterprise E1-E3 stays NO_LIVE_CUSTOMER_AUTHORITY.",
+    "The prior clean-host sequence stays BLOCKED_INFRA with evidence tier UNSET. Stage B partial proof does not clear it and does not qualify 0.3.0."
   ],
   "role_statement": "Vantio is the runtime authority, enforcement, revocation, recovery, and independently verifiable evidence layer for AI governance on customer-controlled Linux infrastructure. Vantio supports governance programs; Vantio does not independently make an AI system lawful, compliant, certified, regulator-approved, unbiased, appropriate for a regulated use, safe for every environment, or conformant with every framework.",
   "schema": "vantio.governance-assurance.posture/v1",
@@ -1435,6 +1687,39 @@
       "track_id": "WS17",
       "verification_result": "INDEX_GENERATED_NOT_SUBMITTED",
       "wave2_state": "PRIVATE_NOT_SUBMITTED"
+    },
+    {
+      "binding_id": "EB-STAGE-B",
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "proof_class": "CHARACTERIZATION",
+      "track_id": "STAGE-B",
+      "verification_result": "PARTIAL_INTERNAL_CLEAN_HOST_PROOF",
+      "wave2_state": "STAGE_B_PARTIAL_CITED_NOT_REEXECUTED"
+    },
+    {
+      "binding_id": "EB-C5",
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "proof_class": "CHARACTERIZATION",
+      "track_id": "C5",
+      "verification_result": "OPEN_GATES_VISIBLE",
+      "wave2_state": "C5_INTEGRATION_PASS_WITH_NONBLOCKING_AND_OPEN_GATES"
+    },
+    {
+      "binding_id": "EB-WAVE2-RESIDUAL",
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "proof_class": "CHARACTERIZATION",
+      "track_id": "WAVE2-RESIDUAL",
+      "verification_result": "ENFORCEMENT_NOT_PROVED_RBK004_SOURCE_CLOSED_LIVE_REPROOF_NOT_CLAIMED",
+      "wave2_state": "WAVE2_RESIDUAL_HONESTY_UNSATISFIED"
     }
   ]
 }

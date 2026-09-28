@@ -1,8 +1,10 @@
-# Governance Assurance 0.1.0-internal
+# Governance Assurance 0.2.0-internal
 
 PRIVATE | INTERNAL_RESTRICTED | NOT A CUSTOMER RELEASE | NOT A CERTIFICATION | NON-NORMATIVE | NOT_LEGAL_ADVICE | NO_COMPLIANCE_GUARANTEE
 
 This package maps controls and evidence that already exist. It is not a fourth product. Optics, Phantom Engine, and Enterprise stay the product line. Governance Assurance is the private mapping layer.
+
+0.2.0-internal rebinds that map to the Stage B accepted close and the C5 integration record. It does not raise the proof class. It is not 0.3.0, not 0.4.0, and not a customer candidate.
 
 It is not a pnpm workspace member and it is not published.
 

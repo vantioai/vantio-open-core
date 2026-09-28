@@ -16,6 +16,7 @@ const {
   PACKAGE_NAME,
   PACKAGE_VERSION,
   PRODUCER_CLASSIFICATION,
+  PROGRAM_CLAIM_CEILING,
   PROHIBITED_INTERPRETATIONS,
   RETRIEVED_AT,
   REVIEWER,
@@ -23,10 +24,12 @@ const {
   RUNTIME_STATES,
   SOURCE_BASE_COMMIT,
   SOURCE_REPOSITORY,
+  SUPERSEDES_PACKAGE,
   SUPPORT_CLASSES,
   VERIFICATION_STATES,
 } = require("./constants.cjs");
 const { CONTROLS } = require("./data/controls.cjs");
+const { REBIND } = require("./data/rebind.cjs");
 const { loadEvidence } = require("./evidence.cjs");
 const { FRAMEWORKS, MAPPINGS, selectMappings, unmappedControls } = require("./mappings.cjs");
 const { buildMatrix, customerResponsibilityCount } = require("./responsibility.cjs");
@@ -48,6 +51,8 @@ function provenance(generatedAt) {
     package_name: PACKAGE_NAME,
     package_version: PACKAGE_VERSION,
     catalog_version: CATALOG_VERSION,
+    supersedes_package: SUPERSEDES_PACKAGE,
+    program_claim_ceiling: PROGRAM_CLAIM_CEILING,
     mapping_version: MAPPING_VERSION,
     mapping_commit: MAPPING_COMMIT,
     source_repository: SOURCE_REPOSITORY,
@@ -69,6 +74,9 @@ function postureRows(controls, bindings, context) {
     control_id: control.control_id,
     title: control.title,
     product: control.product,
+    capability_version: control.capability_version,
+    supersedes: control.supersedes,
+    review_date: control.review_date,
     lifecycle_order: control.lifecycle_order,
     implementation_state: control.implementation_state,
     configuration_state: control.configuration_state,
@@ -124,6 +132,10 @@ function buildReports(options = {}) {
     provenance: base,
     role_statement: ROLE_STATEMENT,
     claim_ceiling: CLAIM_CEILING,
+    program_bindings: REBIND.program_bindings,
+    open_gates: REBIND.open_gates,
+    residuals: REBIND.recorded_nonblocking_residuals,
+    rebind_not_claimed: REBIND.not_claimed,
     state_separation: {
       capability: CAPABILITY_STATES,
       configuration: CONFIGURATION_STATES,
@@ -310,6 +322,9 @@ function renderPostureMarkdown(posture) {
   for (const row of posture.controls) {
     lines.push(`### ${row.control_id} ${row.title}`);
     lines.push("");
+    lines.push(`- Capability version: ${row.capability_version}`);
+    lines.push(`- Supersedes: ${row.supersedes === null ? "none" : row.supersedes}`);
+    lines.push(`- Review date: ${row.review_date}`);
     lines.push(`- Capability: ${row.implementation_state}`);
     lines.push(`- Configuration: ${row.configuration_state}`);
     lines.push(`- Runtime: ${row.runtime_state}`);
@@ -320,6 +335,32 @@ function renderPostureMarkdown(posture) {
     lines.push(`- Ceiling: ${row.claim_ceiling}`);
     lines.push("");
   }
+  lines.push("## Program bindings");
+  lines.push("");
+  lines.push(`- Stage B: ${posture.program_bindings.stage_b}`);
+  lines.push(`- Installer: ${posture.program_bindings.installer}`);
+  lines.push(`- Claim ceiling: ${posture.program_bindings.claim_ceiling}`);
+  lines.push(`- RBK-004: ${posture.program_bindings.rbk_004}`);
+  lines.push(`- Live Class A re-proof: ${posture.program_bindings.rbk_004_live_class_a_reproof}`);
+  lines.push(`- Billing: ${posture.program_bindings.billing_close} (${posture.program_bindings.council_f})`);
+  lines.push(`- Recordings A-H: ${posture.program_bindings.recordings_a_h} (${posture.program_bindings.council_i})`);
+  lines.push(`- Enforcement efficacy: ${posture.program_bindings.enforcement_efficacy}`);
+  lines.push(`- C8: ${posture.program_bindings.c8}`);
+  lines.push(`- Class B: ${posture.program_bindings.class_b}`);
+  lines.push(`- Next lab: ${posture.program_bindings.next_lab}`);
+  lines.push(`- Public rewrite: ${posture.program_bindings.public_rewrite}`);
+  lines.push(`- Destruction: ${posture.program_bindings.destruction}`);
+  lines.push("");
+  lines.push("## Open gates");
+  lines.push("");
+  for (const gate of posture.open_gates) {
+    lines.push(`- ${gate.id} ${gate.state}: ${gate.summary}`);
+  }
+  lines.push("");
+  lines.push("## Residuals");
+  lines.push("");
+  for (const residual of posture.residuals) lines.push(`- ${residual}`);
+  lines.push("");
   lines.push("## Wave 2 bindings");
   lines.push("");
   for (const binding of posture.wave2) {
@@ -357,8 +398,8 @@ function renderVerification() {
     "",
     "Version rebind:",
     "",
-    "- 0.2.0 after Wave 2 merges that change a bound track.",
-    "- 0.3.0 after clean-host evidence exists.",
+    "- 0.2.0-internal is this catalog. It rebinds citations to the Stage B accepted close and the C5 integration record. It does not grant satisfaction to ingress, egress, Unit E, enforcement, billing, recordings, Class B, or a live RBK-004 re-proof.",
+    "- 0.3.0 only after a clean-host qualification that this partial Stage B proof does not supply. BLOCKED_INFRA and an unset evidence tier do not qualify.",
     "- 0.4.0 after stranger-host execution is authorized and completed.",
     "- 1.0.0-customer-candidate only after external assessment, disclosure review, and a separate release council.",
     "",

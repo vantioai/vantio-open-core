@@ -32,11 +32,14 @@ test("reports are deterministic and carry no compliance verdict", () => {
     assert.equal(typeof posture.provenance[key], "string");
     assert.equal(posture.provenance[key].length > 0, true);
   }
-  assert.equal(posture.provenance.package_version, "0.1.0-internal");
+  assert.equal(posture.provenance.package_version, "0.2.0-internal");
   assert.equal(posture.provenance.self_certified_council_pass, false);
   assert.equal(posture.overall_compliance_score, undefined);
   assert.equal(posture.controls.every((row) => row.satisfaction.pass === false), true);
   assert.equal(posture.controls.some((row) => row.satisfaction.status === "PASS"), false);
+  assert.equal(posture.provenance.program_claim_ceiling, "INTERNAL_CLEAN_HOST_PROOF");
+  assert.equal(posture.provenance.supersedes_package, "0.1.0-internal");
+  assert.equal(posture.program_bindings.stage_b, "PARTIAL_INTERNAL_CLEAN_HOST_PROOF");
   const names = Object.keys(first);
   for (const name of [
     "GOVERNANCE_POSTURE.json",

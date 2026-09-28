@@ -49,7 +49,7 @@
       "proof_class_elevated": false
     }
   ],
-  "claim_ceiling": "Governance Assurance 0.1.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass.",
+  "claim_ceiling": "Governance Assurance 0.2.0-internal is a private mapping layer. NON-NORMATIVE. NOT_LEGAL_ADVICE. NO_COMPLIANCE_GUARANTEE. It does not certify a system, approve a procurement, classify legal risk, or convert a missing capability into a pass. It does not raise a proof class and it is not a customer candidate.",
   "customer_confidential_on_public": false,
   "distribution": "INTERNAL_RESTRICTED",
   "distribution_classes": [
@@ -63,21 +63,23 @@
   "proof_class_elevated": false,
   "provenance": {
     "audience": "INTERNAL_RESTRICTED",
-    "catalog_version": "0.1.0-internal",
+    "catalog_version": "0.2.0-internal",
     "council_status": "PENDING_INDEPENDENT_COUNCIL",
     "distribution": "INTERNAL_RESTRICTED",
-    "generated_at": "2026-09-27T12:46:00Z",
+    "generated_at": "2026-09-28T17:26:43Z",
     "generator": "@vantio/governance-assurance",
     "mapping_commit": "NOT_SELF_HASHED",
-    "mapping_version": "0.1.0-internal",
+    "mapping_version": "0.2.0-internal",
     "package_name": "@vantio/governance-assurance",
-    "package_version": "0.1.0-internal",
-    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_READY_FOR_COUNCIL",
-    "retrieved_at": "2026-09-27T12:46:00Z",
+    "package_version": "0.2.0-internal",
+    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_0_2_0_INTERNAL_REBIND_READY_FOR_COUNCIL",
+    "program_claim_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
+    "retrieved_at": "2026-09-28T17:26:43Z",
     "reviewer": "PENDING_INDEPENDENT_COUNCIL",
     "self_certified_council_pass": false,
-    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
-    "source_repository": "vantioai/vantio-open-core"
+    "source_base_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+    "source_repository": "vantioai/vantio-open-core",
+    "supersedes_package": "0.1.0-internal"
   },
   "refuses": [
     "ATO",
