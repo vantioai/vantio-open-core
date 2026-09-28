@@ -280,6 +280,34 @@
       "name": ".github/workflows/pypi-publish.yml pypa/gh-action-pypi-publish@release/v1",
       "required_for_publish": true,
       "value": "pypa/gh-action-pypi-publish@release/v1"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/w3-lab-teardown-verify.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/w3-lab-teardown-verify.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/w3-lab-teardown-verify.yml aws-actions/configure-aws-credentials@v6",
+      "required_for_publish": true,
+      "value": "aws-actions/configure-aws-credentials@v6"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/w3-lab-teardown-verify.yml actions/upload-artifact@v4",
+      "required_for_publish": true,
+      "value": "actions/upload-artifact@v4"
     }
   ],
   "private_distribution": {

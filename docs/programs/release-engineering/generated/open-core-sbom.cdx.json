@@ -59,10 +59,10 @@
         }
       ],
       "name": "@vantio/governance-assurance",
-      "purl": "pkg:npm/%40vantio/governance-assurance@0.1.0-internal",
+      "purl": "pkg:npm/%40vantio/governance-assurance@0.2.0-internal",
       "scope": "workspace-manifest",
       "type": "library",
-      "version": "0.1.0-internal"
+      "version": "0.2.0-internal"
     },
     {
       "name": "@vantio/investor-demo-wave2",
