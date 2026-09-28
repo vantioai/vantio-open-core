@@ -128,9 +128,9 @@ def caller_payload() -> dict:
     }
 
 
-def terminate_dry_run(region: str):
+def create_sg(region: str, group_name: str):
     def predicate(got_region: str, args: list[str]) -> bool:
-        return got_region == region and args[:2] == ["ec2", "terminate-instances"] and "--dry-run" in args
+        return got_region == region and args[:2] == ["ec2", "create-security-group"] and group_name in args
 
     return predicate
 
@@ -140,12 +140,12 @@ def happy_aws() -> FakeAws:
     fake = FakeAws()
     fake.add(starts(verify.REGION, "sts", "get-caller-identity"), aws_json(caller_payload()))
     fake.add(describe_instances(verify.REGION, filtered=True), aws_json(reservations(lab)))
-    fake.add(terminate_dry_run(verify.REGION), aws_error("UnauthorizedOperation", "explicit deny"))
-    fake.add(starts(verify.REGION, "ec2", "create-security-group"), aws_error("UnauthorizedOperation", "explicit deny"))
+    fake.add(create_sg(verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP), aws_error("UnauthorizedOperation", "explicit deny"))
+    fake.add(create_sg(verify.REGION, verify.PROBE_SECURITY_GROUP), aws_error("UnauthorizedOperation", "explicit deny"))
     fake.add(starts(verify.REGION, "iam", "get-user"), aws_error("AccessDenied", "explicit deny"))
     fake.add(starts(verify.OTHER_REGION, "ce", "get-cost-and-usage"), aws_error("AccessDeniedException", "explicit deny"))
     fake.add(describe_instances(verify.OTHER_REGION), aws_error("UnauthorizedOperation", "not authorized"))
-    fake.add(terminate_dry_run(verify.OTHER_REGION), aws_error("UnauthorizedOperation", "explicit deny"))
+    fake.add(create_sg(verify.OTHER_REGION, verify.PROBE_REGION_SECURITY_GROUP), aws_error("UnauthorizedOperation", "explicit deny"))
     fake.add(starts(verify.REGION, "cloudtrail", "lookup-events"), aws_json({"Events": []}))
     return fake
 
@@ -187,15 +187,29 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("Expiration=2026-09-28T19:37:16Z", report["checks"][14]["detail"])
         self.assertEqual(report["policy_sha256"], verify.POLICY_SHA256)
         self.assertEqual(report["policy_sha256_label"], "prepared_digest")
-        terminated = calls_named(fake, "ec2", "terminate-instances")
-        self.assertEqual([item[0] for item in terminated], [verify.REGION, verify.OTHER_REGION])
-        for _region, args in terminated:
-            self.assertIn("--dry-run", args)
-            self.assertIn(verify.SENTINEL_INSTANCE_ID, args)
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+        create = calls_named(fake, "ec2", "create-security-group")
+        self.assertEqual(
+            [(region, args[3]) for region, args in create],
+            [
+                (verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP),
+                (verify.REGION, verify.PROBE_SECURITY_GROUP),
+                (verify.OTHER_REGION, verify.PROBE_REGION_SECURITY_GROUP),
+            ],
+        )
+        for _region, args in create:
+            self.assertEqual(args[-1], "--dry-run")
             self.assertNotIn(LAB_INSTANCE, args)
             self.assertNotIn(OTHER_INSTANCE, args)
-        create = calls_named(fake, "ec2", "create-security-group")
-        self.assertEqual(create[0][1][-1], "--dry-run")
+            self.assertNotIn("i-0deadbeef0deadbee", args)
+        tagged = create[0][1]
+        self.assertIn("--tag-specifications", tagged)
+        self.assertIn("vantio:program", " ".join(tagged))
+        self.assertIn("w3-clean-host-lab", " ".join(tagged))
+        self.assertNotIn("--tag-specifications", create[1][1])
+        self.assertNotIn("--tag-specifications", create[2][1])
+        self.assertIn("TerminateInstances was not called", report["checks"][3]["detail"])
+        self.assertIn("TerminateInstances was not called", report["checks"][7]["detail"])
         self.assertEqual(calls_named(fake, "iam", "get-user")[0][1][3], verify.PROBE_IAM_USER)
         self.assertEqual(calls_named(fake, "iam", "create-user"), [])
         rendered = json.dumps(report)
@@ -210,14 +224,14 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(statuses(report)[3], "PASS")
         self.assertIn("count=0", report["checks"][2]["detail"])
 
-    def test_sentinel_dry_run_runs_with_no_instances_in_the_account(self) -> None:
+    def test_tagged_create_dry_run_runs_with_no_instances_in_the_account(self) -> None:
         fake = happy_aws()
         fake.routes[1] = (describe_instances(verify.REGION, filtered=True), aws_json(reservations()))
         report = verify.run_checks(fake, context())
         self.assertEqual(report["overall"], "PASS")
         self.assertEqual(statuses(report)[4], "PASS")
-        terminated = calls_named(fake, "ec2", "terminate-instances")
-        self.assertTrue(all("--dry-run" in args for _region, args in terminated))
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+        self.assertTrue(all(args[-1] == "--dry-run" for _region, args in calls_named(fake, "ec2", "create-security-group")))
         self.assertNotIn("SKIP", statuses(report).values())
 
     def test_wrong_account_blocks_later_mutations(self) -> None:
@@ -255,22 +269,109 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(statuses(report)[9], "FAIL")
         self.assertIn("not attempted", report["checks"][8]["detail"])
 
-    def test_sentinel_dry_run_allowed_fails(self) -> None:
+    def test_tagged_create_dry_run_allowed_fails(self) -> None:
         fake = happy_aws()
-        fake.routes[2] = (terminate_dry_run(verify.REGION), aws_error("DryRunOperation", "Request would have succeeded"))
+        fake.routes[2] = (
+            create_sg(verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP),
+            aws_error("DryRunOperation", "Request would have succeeded"),
+        )
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[4], "FAIL")
         self.assertIn("would have been allowed", report["checks"][3]["detail"])
+        self.assertIn("DryRunOperation", report["checks"][3]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
 
-    def test_other_region_dry_run_allowed_fails(self) -> None:
+    def test_other_region_create_dry_run_allowed_fails(self) -> None:
         fake = happy_aws()
         fake.routes[7] = (
-            terminate_dry_run(verify.OTHER_REGION),
+            create_sg(verify.OTHER_REGION, verify.PROBE_REGION_SECURITY_GROUP),
             aws_error("DryRunOperation", "Request would have succeeded"),
         )
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[8], "FAIL")
         self.assertIn("would have been allowed", report["checks"][7]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+
+    def test_lab_tag_specification_is_json(self) -> None:
+        spec = verify.security_group_tag_specification()
+        prefix = "ResourceType=security-group,Tags="
+        self.assertTrue(spec.startswith(prefix))
+        tags = json.loads(spec[len(prefix) :])
+        self.assertEqual({item["Key"]: item["Value"] for item in tags}, dict(verify.LAB_TAGS))
+
+    def test_not_found_does_not_pass_checks_4_or_8(self) -> None:
+        not_found = aws_error(
+            "InvalidInstanceID.NotFound",
+            "The instance ID 'i-0deadbeef0deadbee' does not exist",
+        )
+        self.assertFalse(verify.is_denied(not_found))
+        self.assertEqual(verify.classify_dry_run(not_found), "not_found")
+        poisoned = aws_error(
+            "InvalidInstanceID.NotFound",
+            "not authorized explicit deny The instance ID 'i-0deadbeef0deadbee' does not exist",
+        )
+        self.assertEqual(verify.classify_dry_run(poisoned), "not_found")
+
+        fake = happy_aws()
+        fake.routes[2] = (create_sg(verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP), not_found)
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[4], "FAIL")
+        self.assertEqual(report["overall"], "FAIL")
+        detail = report["checks"][3]["detail"]
+        self.assertIn("InvalidInstanceID.NotFound", detail)
+        self.assertIn("does not pass", detail)
+        self.assertNotIn("was denied", detail)
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+
+        fake = happy_aws()
+        fake.routes[7] = (create_sg(verify.OTHER_REGION, verify.PROBE_REGION_SECURITY_GROUP), not_found)
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[8], "FAIL")
+        self.assertEqual(report["overall"], "FAIL")
+        detail = report["checks"][7]["detail"]
+        self.assertIn("InvalidInstanceID.NotFound", detail)
+        self.assertIn("does not pass", detail)
+        self.assertNotIn("was denied", detail)
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+
+    def test_access_denied_passes_checks_4_and_8(self) -> None:
+        fake = happy_aws()
+        fake.routes[2] = (
+            create_sg(verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP),
+            aws_error("AccessDenied", "explicit deny"),
+        )
+        fake.routes[7] = (
+            create_sg(verify.OTHER_REGION, verify.PROBE_REGION_SECURITY_GROUP),
+            aws_error("AccessDenied", "explicit deny"),
+        )
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[4], "PASS")
+        self.assertEqual(statuses(report)[8], "PASS")
+        self.assertIn("AccessDenied", report["checks"][3]["detail"])
+        self.assertIn("AccessDenied", report["checks"][7]["detail"])
+
+    def test_tagged_create_that_returns_a_group_fails_without_delete(self) -> None:
+        fake = happy_aws()
+        fake.routes[2] = (
+            create_sg(verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP),
+            aws_json({"GroupId": "sg-09999999999999999"}),
+        )
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[4], "FAIL")
+        self.assertIn("delete was not called", report["checks"][3]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "delete-security-group"), [])
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+
+    def test_other_region_create_not_found_variant_does_not_pass(self) -> None:
+        fake = happy_aws()
+        fake.routes[7] = (
+            create_sg(verify.OTHER_REGION, verify.PROBE_REGION_SECURITY_GROUP),
+            aws_error("InvalidGroup.NotFound", "The security group does not exist"),
+        )
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[8], "FAIL")
+        self.assertIn("InvalidGroup.NotFound", report["checks"][7]["detail"])
+        self.assertIn("does not pass", report["checks"][7]["detail"])
 
     def test_dry_run_success_fails_create_check(self) -> None:
         fake = happy_aws()
@@ -365,11 +466,7 @@ class VerifierTests(unittest.TestCase):
         )
         self.assertEqual(statuses(report)[9], "FAIL")
         self.assertIn("refused", report["checks"][8]["detail"])
-        terminated = [item for item in calls_named(fake, "ec2", "terminate-instances") if item[0] == verify.REGION]
-        self.assertEqual(len(terminated), 1)
-        self.assertIn("--dry-run", terminated[0][1])
-        self.assertIn(verify.SENTINEL_INSTANCE_ID, terminated[0][1])
-        self.assertNotIn(OTHER_INSTANCE, terminated[0][1])
+        self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
 
     def test_destructive_close_runs_dependency_order_for_tagged_fixtures(self) -> None:
         fake = happy_aws()
@@ -510,6 +607,8 @@ class VerifierTests(unittest.TestCase):
             "create-key-pair",
             "create-user",
             "delete-user",
+            "simulate-principal-policy",
+            "i-0deadbeef0deadbee",
         ):
             self.assertNotIn(banned, text)
 

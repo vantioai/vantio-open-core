@@ -17,7 +17,8 @@ name: Verify W3 lab teardown role
 #
 # This workflow does not provision a Class B or product lab, does not create
 # access keys, and does not change billing or a Paid plan. The default path
-# calls TerminateInstances only with --dry-run, and does not call CreateUser.
+# does not call TerminateInstances. Checks 4 and 8 use CreateSecurityGroup
+# with --dry-run, and the default path does not call CreateUser.
 # Checks 9-13 delete fixtures only when the dispatch input is true and an id
 # was passed.
 #

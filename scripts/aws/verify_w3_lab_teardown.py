@@ -3,9 +3,10 @@
 
 The workflow in .github/workflows/w3-lab-teardown-verify.yml is the only
 supported caller. This module does not provision a lab, create access keys,
-or change billing. Checks 4, 6, and 8 are non-mutating deny probes. Checks
-9-13 delete fixtures only when RUN_DESTRUCTIVE_FIXTURES=true and an id was
-passed.
+or change billing. Checks 4, 5, 6, and 8 are non-mutating deny probes.
+Checks 4 and 8 use CreateSecurityGroup --dry-run. A NotFound error is not an
+authorization pass. Checks 9-13 delete fixtures only when
+RUN_DESTRUCTIVE_FIXTURES=true and an id was passed.
 
 Audience: INTERNAL_RESTRICTED
 """
@@ -20,7 +21,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal, Never
 
 ROLE_ARN = "arn:aws:iam::960577828987:role/vantio-w3-lab-teardown"
 ROLE_NAME = "vantio-w3-lab-teardown"
@@ -33,10 +34,12 @@ POLICY_SHA256 = "2fd3909fe84cbe93b15c5525ece0d247d0f4f4a91e333346001d512e1efc521
 AUTHORIZED_KEY_PAIR = "vantio-w3-class-b-lab-01"
 REPOSITORY = "vantioai/vantio-open-core"
 WORKFLOW_REF = "vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main"
-SENTINEL_INSTANCE_ID = "i-0deadbeef0deadbee"
 POLICY_SHA256_LABEL = "prepared_digest"
 PROBE_SECURITY_GROUP = "vantio-w3-teardown-verify-deny-probe"
+PROBE_TAGGED_SECURITY_GROUP = "vantio-w3-teardown-verify-tagged-deny-probe"
+PROBE_REGION_SECURITY_GROUP = "vantio-w3-teardown-verify-region-deny-probe"
 PROBE_IAM_USER = "vantio-w3-teardown-verify-deny-probe"
+DryRunClass = Literal["denied", "allowed", "not_found", "unexpected"]
 SCHEMA = "vantio.w3-lab-teardown-verify.v1"
 
 LAB_TAGS = {
@@ -188,12 +191,106 @@ def is_authorized_instance(instance: dict[str, Any]) -> bool:
     return has_tags(tag_map(instance.get("Tags")), LAB_TAGS)
 
 
-def dry_run_outcome(result: AwsResult) -> str:
+def _not_found_code(code: str) -> bool:
+    return code.endswith("NotFound")
+
+
+def classify_dry_run(result: AwsResult) -> DryRunClass:
+    """Classify a non-mutating dry-run.
+
+    NotFound is decided before the deny text search. A missing id is not
+    AccessDenied, UnauthorizedOperation, or DryRunOperation, even when the
+    error text contains words like "not authorized".
+    """
+    code = error_code(result)
+    if _not_found_code(code):
+        return "not_found"
     if is_denied(result):
         return "denied"
-    if result.returncode == 0 or error_code(result) == "DryRunOperation":
+    if result.returncode == 0 or code == "DryRunOperation":
         return "allowed"
     return "unexpected"
+
+
+def security_group_tag_specification() -> str:
+    tags = ",".join(f'{{"Key":"{key}","Value":"{value}"}}' for key, value in LAB_TAGS.items())
+    return f"ResourceType=security-group,Tags=[{tags}]"
+
+
+def create_security_group_dry_run_args(group_name: str, *, with_lab_tags: bool) -> list[str]:
+    args = [
+        "ec2",
+        "create-security-group",
+        "--group-name",
+        group_name,
+        "--description",
+        "OIDC verify probe; must be denied",
+    ]
+    if with_lab_tags:
+        args.extend(["--tag-specifications", security_group_tag_specification()])
+    args.append("--dry-run")
+    return args
+
+
+def _created_group_suffix(result: AwsResult) -> str:
+    if result.returncode != 0:
+        return ""
+    group_id = ""
+    try:
+        payload = parse_json(result)
+    except ValueError:
+        payload = {}
+    if isinstance(payload.get("GroupId"), str):
+        group_id = payload["GroupId"]
+    if not group_id:
+        return ""
+    return f"; GroupId={group_id}; delete was not called"
+
+
+def finish_create_dry_run(
+    check_id: int,
+    name: str,
+    result: AwsResult,
+    label: str,
+    *,
+    nonmutation_note: str = "",
+) -> dict[str, Any]:
+    outcome = classify_dry_run(result)
+    note = f" {nonmutation_note}" if nonmutation_note else ""
+    if outcome == "denied":
+        if nonmutation_note:
+            denied = f"{label} was denied. {nonmutation_note} {failure_detail(result)}"
+        else:
+            denied = f"{label} was denied: {failure_detail(result)}"
+        return check(check_id, name, "PASS", denied)
+    if outcome == "allowed":
+        code = error_code(result) or "success"
+        return check(
+            check_id,
+            name,
+            "FAIL",
+            f"{label} would have been allowed ({code}){note}{_created_group_suffix(result)}",
+        )
+    if outcome == "not_found":
+        found = error_code(result) or "NotFound"
+        return check(
+            check_id,
+            name,
+            "FAIL",
+            (
+                f"{label} returned {found}, which is not an authorization result and does not pass."
+                f"{note} {failure_detail(result)}"
+            ),
+        )
+    if outcome == "unexpected":
+        return check(
+            check_id,
+            name,
+            "FAIL",
+            f"{label} was not an access denial.{note} {failure_detail(result)}",
+        )
+    remaining: Never = outcome
+    raise RuntimeError(remaining)
 
 
 def parse_time(value: str) -> datetime:
@@ -404,67 +501,26 @@ def check_describe_lab(aws: AwsCaller) -> dict[str, Any]:
     )
 
 
-def check_deny_terminate_sentinel(aws: AwsCaller) -> dict[str, Any]:
+def check_deny_tagged_create(aws: AwsCaller) -> dict[str, Any]:
     result = aws(
-        ["ec2", "terminate-instances", "--instance-ids", SENTINEL_INSTANCE_ID, "--dry-run"],
+        create_security_group_dry_run_args(PROBE_TAGGED_SECURITY_GROUP, with_lab_tags=True),
         REGION,
     )
-    outcome = dry_run_outcome(result)
-    if outcome == "denied":
-        return check(
-            4,
-            "deny_terminate_sentinel",
-            "PASS",
-            f"TerminateInstances --dry-run on sentinel {SENTINEL_INSTANCE_ID} in {REGION} was denied: {failure_detail(result)}",
-        )
-    if outcome == "allowed":
-        return check(
-            4,
-            "deny_terminate_sentinel",
-            "FAIL",
-            f"TerminateInstances --dry-run on sentinel {SENTINEL_INSTANCE_ID} in {REGION} would have been allowed",
-        )
-    return check(
+    return finish_create_dry_run(
         4,
-        "deny_terminate_sentinel",
-        "FAIL",
-        f"TerminateInstances --dry-run on sentinel {SENTINEL_INSTANCE_ID} was not an access denial: {failure_detail(result)}",
+        "deny_tagged_create",
+        result,
+        (
+            f"CreateSecurityGroup --dry-run for {PROBE_TAGGED_SECURITY_GROUP} "
+            f"with lab tags in {REGION}"
+        ),
+        nonmutation_note="TerminateInstances was not called.",
     )
 
 
 def check_deny_create(aws: AwsCaller) -> dict[str, Any]:
-    result = aws(
-        [
-            "ec2",
-            "create-security-group",
-            "--group-name",
-            PROBE_SECURITY_GROUP,
-            "--description",
-            "OIDC verify probe; must be denied",
-            "--dry-run",
-        ],
-        REGION,
-    )
-    if is_denied(result):
-        return check(
-            5,
-            "deny_create_ec2",
-            "PASS",
-            f"CreateSecurityGroup --dry-run was denied: {failure_detail(result)}",
-        )
-    if error_code(result) == "DryRunOperation" or result.returncode == 0:
-        group_id = ""
-        if result.returncode == 0:
-            try:
-                payload = parse_json(result)
-                if isinstance(payload.get("GroupId"), str):
-                    group_id = payload["GroupId"]
-            except ValueError:
-                group_id = ""
-        suffix = f"; GroupId={group_id}; delete was not called" if group_id else ""
-        code = error_code(result) or "success"
-        return check(5, "deny_create_ec2", "FAIL", f"CreateSecurityGroup --dry-run would have been allowed ({code})" + suffix)
-    return check(5, "deny_create_ec2", "FAIL", f"CreateSecurityGroup --dry-run was not an access denial: {failure_detail(result)}")
+    result = aws(create_security_group_dry_run_args(PROBE_SECURITY_GROUP, with_lab_tags=False), REGION)
+    return finish_create_dry_run(5, "deny_create_ec2", result, "CreateSecurityGroup --dry-run")
 
 
 def check_deny_iam(aws: AwsCaller) -> dict[str, Any]:
@@ -510,30 +566,46 @@ def check_deny_billing(aws: AwsCaller) -> dict[str, Any]:
 
 def check_deny_other_region(aws: AwsCaller) -> dict[str, Any]:
     describe = aws(["ec2", "describe-instances"], OTHER_REGION)
-    terminate = aws(
-        ["ec2", "terminate-instances", "--instance-ids", SENTINEL_INSTANCE_ID, "--dry-run"],
+    create = aws(
+        create_security_group_dry_run_args(PROBE_REGION_SECURITY_GROUP, with_lab_tags=False),
         OTHER_REGION,
     )
     describe_denied = is_denied(describe)
-    terminate_outcome = dry_run_outcome(terminate)
-    if describe_denied and terminate_outcome == "denied":
+    outcome = classify_dry_run(create)
+    if describe_denied and outcome == "denied":
         return check(
             8,
             "deny_outside_us_east_2",
             "PASS",
             f"{OTHER_REGION} describe was denied ({error_code(describe) or 'denied'}) and "
-            f"terminate --dry-run of sentinel {SENTINEL_INSTANCE_ID} was denied ({error_code(terminate) or 'denied'})",
+            f"CreateSecurityGroup --dry-run was denied ({error_code(create) or 'denied'}). "
+            "TerminateInstances was not called.",
         )
-    parts = []
+    parts: list[str] = []
     if not describe_denied:
         if describe.returncode == 0:
             parts.append(f"{OTHER_REGION} describe-instances was allowed")
         else:
             parts.append(f"{OTHER_REGION} describe-instances was not an access denial: {failure_detail(describe)}")
-    if terminate_outcome == "allowed":
-        parts.append(f"{OTHER_REGION} terminate --dry-run of sentinel {SENTINEL_INSTANCE_ID} would have been allowed")
-    elif terminate_outcome != "denied":
-        parts.append(f"{OTHER_REGION} terminate --dry-run was not an access denial: {failure_detail(terminate)}")
+    if outcome == "allowed":
+        code = error_code(create) or "success"
+        parts.append(
+            f"{OTHER_REGION} CreateSecurityGroup --dry-run would have been allowed ({code}){_created_group_suffix(create)}"
+        )
+    elif outcome == "not_found":
+        found = error_code(create) or "NotFound"
+        parts.append(
+            f"{OTHER_REGION} CreateSecurityGroup --dry-run returned {found}, "
+            "which is not an authorization result and does not pass: "
+            f"{failure_detail(create)}"
+        )
+    elif outcome == "unexpected":
+        parts.append(f"{OTHER_REGION} CreateSecurityGroup --dry-run was not an access denial: {failure_detail(create)}")
+    elif outcome == "denied":
+        pass
+    else:
+        remaining: Never = outcome
+        raise RuntimeError(remaining)
     return check(8, "deny_outside_us_east_2", "FAIL", "; ".join(parts))
 
 
@@ -767,7 +839,7 @@ def blocked_after_identity(ctx: Context) -> list[dict[str, Any]]:
     reason = "not attempted; caller identity did not match the teardown role"
     blocked = [
         check(3, "describe_lab_instances", "FAIL", reason),
-        check(4, "deny_terminate_sentinel", "FAIL", reason),
+        check(4, "deny_tagged_create", "FAIL", reason),
         check(5, "deny_create_ec2", "FAIL", reason),
         check(6, "deny_iam_mutation", "FAIL", reason),
         check(7, "deny_billing", "FAIL", reason),
@@ -803,7 +875,7 @@ def run_checks(aws: AwsCaller, ctx: Context, *, sleep: Callable[[float], None] =
     items = [identity_check, check_duration(ctx)]
     if identity_ok:
         items.append(check_describe_lab(aws))
-        items.append(check_deny_terminate_sentinel(aws))
+        items.append(check_deny_tagged_create(aws))
         items.append(check_deny_create(aws))
         items.append(check_deny_iam(aws))
         items.append(check_deny_billing(aws))
