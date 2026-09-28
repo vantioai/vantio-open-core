@@ -1,0 +1,133 @@
+name: Verify W3 lab teardown role
+
+# Manual OIDC check for arn:aws:iam::960577828987:role/vantio-w3-lab-teardown.
+# Ordinary pushes and pull requests do not run this workflow.
+#
+# Trust subject, enforced by the job environment below:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-teardown
+# The role session is at most 3600 seconds. There are no long-lived AWS keys.
+#
+# This workflow does not provision a Class B or product lab, does not create
+# access keys, and does not change billing or a Paid plan. Checks 9-13 delete
+# fixtures only when the dispatch input is true and an id was passed.
+#
+# Class B stays unauthorized until STAGE_B_BILLING_CLOSE_PASS and
+# NONINTERACTIVE_TEARDOWN_READY are both recorded. A green run does not
+# record either token.
+#
+# Environment protection (required reviewer, main-only deployment branch)
+# lives on the GitHub environment, outside this file. See
+# docs/internal/c8-teardown/README.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_destructive_fixtures:
+        description: Close exact authorized fixtures. Leave false unless ids are in hand.
+        required: false
+        type: boolean
+        default: false
+      fixture_instance_id:
+        description: Disposable instance id (i-...)
+        required: false
+        type: string
+        default: ""
+      fixture_volume_id:
+        description: Disposable volume id (vol-...)
+        required: false
+        type: string
+        default: ""
+      fixture_security_group_id:
+        description: Disposable security group id (sg-...)
+        required: false
+        type: string
+        default: ""
+      fixture_keypair_name:
+        description: Key pair name. Only vantio-w3-class-b-lab-01 is accepted.
+        required: false
+        type: string
+        default: ""
+      fixture_eip_allocation_id:
+        description: Disposable EIP allocation id (eipalloc-...)
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-teardown-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify vantio-w3-lab-teardown
+    runs-on: ubuntu-latest
+    environment: w3-lab-teardown
+    timeout-minutes: 20
+    steps:
+      - name: Require the teardown workflow identity
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "CHECK 01 FAIL assume_session: static AWS credentials are present before OIDC assume" >&2
+            exit 1
+          fi
+
+      - name: Checkout verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/verify_w3_lab_teardown.py
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-teardown
+        id: aws
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-teardown
+          role-session-name: w3-lab-teardown-verify-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "3600"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          # Expiration is an output only when credential outputs are enabled.
+          # Later steps read aws-expiration and do not read the secret outputs.
+          output-credentials: true
+
+      - name: Verify role boundaries
+        env:
+          AWS_CONFIGURE_OUTCOME: ${{ steps.aws.outcome }}
+          W3_AWS_EXPIRATION: ${{ steps.aws.outputs.aws-expiration }}
+          W3_ACTION_ACCOUNT_ID: ${{ steps.aws.outputs.aws-account-id }}
+          W3_ACTION_ARN: ${{ steps.aws.outputs.authenticated-arn }}
+          REQUESTED_ROLE_DURATION_SECONDS: "3600"
+          ROLE_SESSION_NAME: w3-lab-teardown-verify-${{ github.run_id }}
+          RUN_DESTRUCTIVE_FIXTURES: ${{ inputs.run_destructive_fixtures == true && 'true' || 'false' }}
+          FIXTURE_INSTANCE_ID: ${{ inputs.fixture_instance_id }}
+          FIXTURE_VOLUME_ID: ${{ inputs.fixture_volume_id }}
+          FIXTURE_SECURITY_GROUP_ID: ${{ inputs.fixture_security_group_id }}
+          FIXTURE_KEYPAIR_NAME: ${{ inputs.fixture_keypair_name }}
+          FIXTURE_EIP_ALLOCATION_ID: ${{ inputs.fixture_eip_allocation_id }}
+          VERIFY_RESULT_PATH: ${{ github.workspace }}/w3-lab-teardown-verify.json
+        run: python3 scripts/aws/verify_w3_lab_teardown.py
+
+      - name: Upload verification artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w3-lab-teardown-verify-${{ github.run_id }}
+          path: w3-lab-teardown-verify.json
+          if-no-files-found: error
