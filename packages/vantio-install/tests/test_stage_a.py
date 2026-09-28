@@ -32,6 +32,7 @@ from vantio_install.state_machine import transition  # noqa: E402
 from vantio_install.support_bundle import build_support_bundle  # noqa: E402
 from vantio_install.verifier import _recompute_health, verify  # noqa: E402
 from vantio_install.errors import InstallError
+from vantio_install.agent_sdk import remove_agent_sdks  # noqa: E402
 from vantio_install.optics_cli import remove_optics_prefix  # noqa: E402
 
 TX = "vantio-tx-11111111-1111-4111-8111-111111111111"
@@ -488,6 +489,97 @@ class StageAInstallerTests(unittest.TestCase):
         code, body = harness.run("verify-removal", scope="all")
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "VERIFIED_REMOVED")
+
+    def test_uncheckpointed_sdk_prefix_is_not_verified_removed(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        harness.run("uninstall", yes=True, scope="all")
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertFalse(harness.snapshot().get("agent_sdk_npm_version"))
+        self.assertFalse(harness.snapshot().get("agent_sdk_py_version"))
+        receipt = harness.prefix / "agent-sdk-receipt.json"
+        receipt.write_text('{"marker":"vantio-install-receipt"}\n', encoding="utf-8")
+        npm = harness.prefix / "lib" / "node_modules" / "@vantio" / "agent-sdk"
+        npm.mkdir(parents=True)
+        (npm / "package.json").write_text('{"name":"@vantio/agent-sdk","version":"0.2.4"}\n', encoding="utf-8")
+        site = harness.prefix / "local" / "lib" / "python3.12" / "dist-packages"
+        module = site / "vantio"
+        module.mkdir(parents=True)
+        (module / "__init__.py").write_text('__version__ = "3.1.0"\n', encoding="utf-8")
+        dist = site / "vantio_agent_sdk-3.1.0.dist-info"
+        dist.mkdir()
+        (dist / "METADATA").write_text("Name: vantio-agent-sdk\nVersion: 3.1.0\n", encoding="utf-8")
+        false_clean = verify(harness.evidence, harness.bundle)
+        self.assertEqual(false_clean["result"], "FAIL")
+        residual = next(row for row in false_clean["checks"] if row["id"] == "recompute-residual")
+        self.assertEqual(residual["result"], "FAIL")
+        self.assertEqual(residual["stated"], "EMPTY")
+        self.assertEqual(residual["recomputed"], "RESIDUAL_PRESENT")
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertNotEqual(code, 0, body)
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        self.assertNotEqual(body["residual_result"], "EMPTY")
+        paths = {item.get("path") for item in body["residual_items"]}
+        self.assertIn("lib/node_modules/@vantio/agent-sdk", paths)
+        self.assertIn("local/lib/python3.12/dist-packages/vantio", paths)
+        self.assertIn("local/lib/python3.12/dist-packages/vantio_agent_sdk-3.1.0.dist-info", paths)
+        self.assertTrue(any(item.get("name") == "agent-sdk-receipt.json" for item in body["residual_items"]))
+
+    def test_uncheckpointed_sdk_prefix_is_removed_on_rollback(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        path = harness.tx_file("TRANSACTION.json")
+        tx = json.loads(path.read_text(encoding="utf-8"))
+        tx["state"] = "FAILED_SAFE"
+        tx["completed_steps"] = ["verify_artifacts", "ensure_node"]
+        tx["rollback_completed_steps"] = ["install_agent_sdks"]
+        path.write_text(json.dumps(tx), encoding="utf-8")
+        self.assertFalse((harness.tx_file("PARTIAL-MUTATIONS.json")).exists())
+        outside = harness.root / "outside-tree"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep\n", encoding="utf-8")
+        escaped = harness.prefix / "lib" / "node_modules" / "@vantio" / "agent-sdk"
+        escaped.parent.mkdir(parents=True, exist_ok=True)
+        escaped.symlink_to(outside)
+        site = harness.prefix / "lib" / "python3.12" / "site-packages"
+        module = site / "vantio"
+        module.mkdir(parents=True)
+        (module / "__init__.py").write_text('__version__ = "3.1.0"\n', encoding="utf-8")
+        dist = site / "vantio_agent_sdk-3.1.0.dist-info"
+        dist.mkdir()
+        (dist / "METADATA").write_text("Name: vantio-agent-sdk\nVersion: 3.1.0\n", encoding="utf-8")
+        receipt = harness.prefix / "agent-sdk-receipt.json"
+        receipt.write_text('{"marker":"vantio-install-receipt"}\n', encoding="utf-8")
+        code, body = harness.run("rollback", yes=True)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK")
+        self.assertFalse(escaped.exists())
+        self.assertFalse(module.exists())
+        self.assertFalse(dist.exists())
+        self.assertFalse(receipt.exists())
+        self.assertTrue((outside / "keep.txt").is_file())
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertIn("install_agent_sdks", saved["rollback_completed_steps"])
+        self.assertNotIn("install_agent_sdks", saved["completed_steps"])
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+
+    def test_sdk_removal_does_not_follow_symlink_outside_prefix(self) -> None:
+        harness = self.make()
+        outside = harness.root / "outside-tree"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep\n", encoding="utf-8")
+        link = harness.prefix / "local" / "lib" / "python3.12" / "dist-packages" / "vantio"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(outside)
+        remove_agent_sdks(harness.prefix)
+        self.assertFalse(link.exists())
+        self.assertTrue((outside / "keep.txt").is_file())
 
     def test_optics_removal_does_not_follow_symlink_outside_prefix(self) -> None:
         harness = self.make()

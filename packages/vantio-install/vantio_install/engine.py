@@ -21,6 +21,7 @@ from vantio_install.live_executor import (
     partial_mutation_steps,
     residual_result,
 )
+from vantio_install.agent_sdk import agent_sdk_present
 from vantio_install.optics_cli import optics_cli_present
 from vantio_install.mutator import FixtureMutator, LiveMutator
 from vantio_install.paths import assert_safe_root
@@ -740,6 +741,8 @@ def _rollback_extras(tx: dict, tx_dir: Path, prefix: Path) -> list[str]:
             extras.append(step)
     if optics_cli_present(prefix) and "install_optics_cli" not in extras:
         extras.append("install_optics_cli")
+    if agent_sdk_present(prefix) and "install_agent_sdks" not in extras:
+        extras.append("install_agent_sdks")
     return extras
 
 
@@ -772,6 +775,8 @@ def rollback(ctx: dict) -> tuple[int, dict]:
         already = list(tx.get("rollback_completed_steps") or [])
         if optics_cli_present(prefix):
             already = [step for step in already if step != "install_optics_cli"]
+        if agent_sdk_present(prefix):
+            already = [step for step in already if step != "install_agent_sdks"]
         pending = _reverse_steps(
             list(tx.get("completed_steps") or []),
             already,

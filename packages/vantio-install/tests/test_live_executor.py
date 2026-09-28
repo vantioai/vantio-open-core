@@ -6,6 +6,7 @@ import ast
 import copy
 import json
 import os
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -26,6 +27,11 @@ from vantio_install.live_executor import (  # noqa: E402
     dispatch,
     reject_argv,
     residual_result,
+)
+from vantio_install.agent_sdk import (  # noqa: E402
+    observed_agent_sdk_npm_version,
+    observed_agent_sdk_py_version,
+    remove_agent_sdks,
 )
 from vantio_install.optics_cli import observed_optics_cli_version  # noqa: E402
 from vantio_install.util import sha256_file  # noqa: E402
@@ -154,6 +160,53 @@ class Lab:
         return {}
 
 
+def npm_sdk_root(prefix: Path) -> Path:
+    return prefix / "lib" / "node_modules" / "@vantio" / "agent-sdk"
+
+
+def py_sdk_site(prefix: Path, layout: str = "debian") -> Path:
+    if layout == "debian":
+        return prefix / "local" / "lib" / "python3.12" / "dist-packages"
+    if layout == "posix":
+        return prefix / "lib" / "python3.12" / "site-packages"
+    raise AssertionError(layout)
+
+
+def plant_npm_sdk(prefix: Path, version: str) -> Path:
+    package = npm_sdk_root(prefix) / "package.json"
+    package.parent.mkdir(parents=True, exist_ok=True)
+    package.write_text(json.dumps({"name": "@vantio/agent-sdk", "version": version}) + "\n", encoding="utf-8")
+    return package
+
+
+def plant_py_sdk(
+    prefix: Path,
+    version: str,
+    *,
+    metadata: str | None = None,
+    layout: str = "debian",
+    declare: bool = True,
+) -> Path:
+    site = py_sdk_site(prefix, layout)
+    site.mkdir(parents=True, exist_ok=True)
+    for child in list(site.glob("vantio_agent_sdk-*.dist-info")) + list(site.glob("vantio-agent-sdk-*.dist-info")):
+        shutil.rmtree(child)
+    module = site / "vantio" / "__init__.py"
+    module.parent.mkdir(parents=True, exist_ok=True)
+    if declare:
+        module.write_text('__version__ = "%s"\n' % version, encoding="utf-8")
+    else:
+        module.write_text("# installed without a declared version\n", encoding="utf-8")
+    meta_version = version if metadata is None else metadata
+    dist = site / ("vantio_agent_sdk-%s.dist-info" % meta_version)
+    dist.mkdir(parents=True, exist_ok=True)
+    (dist / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: vantio-agent-sdk\nVersion: %s\n" % meta_version,
+        encoding="utf-8",
+    )
+    return module
+
+
 def plant_cli(prefix: Path, version: str, *, executable: bool = True, manifest: str | None = None) -> Path:
     binary = prefix / "bin" / "vantio"
     binary.parent.mkdir(parents=True, exist_ok=True)
@@ -189,6 +242,36 @@ class OpticsGate:
 
     def observed_delta(self, op_type: str, grant) -> dict:
         if op_type in {"install_optics_cli", "remove_optics"}:
+            return self.production.observed_delta(op_type, grant)
+        return self.lab.observed_delta(op_type, grant)
+
+
+class SdkGate:
+    """Production host check for Agent SDKs, lab observer for every other operation."""
+
+    def __init__(self, lab: Lab, npm_version: str | None, py_version: str | None) -> None:
+        self.lab = lab
+        self.npm_version = npm_version
+        self.py_version = py_version
+        self.production = ProductionObserver()
+
+    def runner(self, argv: list[str], timeout: int) -> ExecResult:
+        result = self.lab.runner(argv, timeout)
+        pins = constants.FROZEN_PINS
+        if argv[:2] == ["npm", "install"] and str(argv[-1]).endswith(pins["agent_sdk_npm_filename"]) and self.npm_version:
+            plant_npm_sdk(Path(argv[argv.index("--prefix") + 1]), self.npm_version)
+        wheel = pins["agent_sdk_py_wheel"]
+        if argv[:3] == ["python3", "-m", "pip"] and str(argv[-1]).endswith(wheel) and self.py_version:
+            plant_py_sdk(Path(argv[argv.index("--prefix") + 1]), self.py_version)
+        return result
+
+    def verify(self, op_type: str, grant) -> str:
+        if op_type in {"install_agent_sdk_npm", "install_agent_sdk_py", "remove_sdks"}:
+            return self.production.verify(op_type, grant)
+        return self.lab.verify(op_type, grant)
+
+    def observed_delta(self, op_type: str, grant) -> dict:
+        if op_type in {"install_agent_sdk_npm", "install_agent_sdk_py", "remove_sdks"}:
             return self.production.observed_delta(op_type, grant)
         return self.lab.observed_delta(op_type, grant)
 
@@ -815,6 +898,129 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(body["state"], "ROLLED_BACK", body)
         self.assertFalse(binary.exists())
         self.assertFalse((harness.prefix / "lib" / "node_modules" / "@vantio" / "cli").exists())
+
+    def test_sdk_packages_present_pass_host_check_and_checkpoint(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        pins = constants.FROZEN_PINS
+        gate = SdkGate(Lab(), pins["agent_sdk_npm_version"], pins["agent_sdk_py_version"])
+        code, body = apply(self.ctx(harness, "apply", gate))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertIn("install_agent_sdks", tx["completed_steps"])
+        self.assertTrue((npm_sdk_root(harness.prefix) / "package.json").is_file())
+        self.assertTrue((py_sdk_site(harness.prefix) / "vantio" / "__init__.py").is_file())
+        self.assertEqual(harness.snapshot().get("agent_sdk_npm_version"), pins["agent_sdk_npm_version"])
+        self.assertEqual(harness.snapshot().get("agent_sdk_py_version"), pins["agent_sdk_py_version"])
+        self.assertFalse(harness.tx_file("PARTIAL-MUTATIONS.json").exists())
+        code, body = rollback(self.ctx(harness, "rollback", gate))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        self.assertFalse(npm_sdk_root(harness.prefix).exists())
+        self.assertFalse((py_sdk_site(harness.prefix) / "vantio").exists())
+        self.assertFalse(list(py_sdk_site(harness.prefix).glob("vantio_agent_sdk-*.dist-info")))
+        self.assertIsNone(harness.snapshot().get("agent_sdk_npm_version"))
+        self.assertIsNone(harness.snapshot().get("agent_sdk_py_version"))
+
+    def test_sdk_host_check_uses_package_tree_not_the_pin_constant(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        observer = ProductionObserver()
+        pins = constants.FROZEN_PINS
+        npm_pin = pins["agent_sdk_npm_version"]
+        py_pin = pins["agent_sdk_py_version"]
+        self.assertEqual(observer.verify("install_agent_sdk_npm", grant), "NOT_VERIFIED")
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "NOT_VERIFIED")
+        plant_npm_sdk(harness.prefix, npm_pin)
+        self.assertEqual(observer.verify("install_agent_sdk_npm", grant), "VERIFIED")
+        self.assertEqual(observer.observed_delta("install_agent_sdk_npm", grant)["agent_sdk_npm_version"], npm_pin)
+        plant_npm_sdk(harness.prefix, "9.9.9")
+        self.assertEqual(observed_agent_sdk_npm_version(harness.prefix), "9.9.9")
+        self.assertEqual(observer.verify("install_agent_sdk_npm", grant), "NOT_VERIFIED")
+        plant_py_sdk(harness.prefix, "9.9.9", metadata=py_pin)
+        self.assertEqual(observed_agent_sdk_py_version(harness.prefix), "9.9.9")
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "NOT_VERIFIED")
+        plant_py_sdk(harness.prefix, py_pin, metadata="9.9.9")
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "VERIFIED")
+        self.assertEqual(observer.observed_delta("install_agent_sdk_py", grant)["agent_sdk_py_version"], py_pin)
+        plant_py_sdk(harness.prefix, py_pin, metadata=py_pin, declare=False)
+        self.assertEqual(observed_agent_sdk_py_version(harness.prefix), py_pin)
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "VERIFIED")
+        plant_py_sdk(harness.prefix, py_pin, metadata="9.9.9", declare=False)
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "NOT_VERIFIED")
+        plant_py_sdk(harness.prefix, "9.9.9")
+        plant_py_sdk(harness.prefix, py_pin, layout="posix")
+        self.assertIsNone(observed_agent_sdk_py_version(harness.prefix))
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "NOT_VERIFIED")
+        shutil.rmtree(py_sdk_site(harness.prefix))
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "VERIFIED")
+        posix = py_sdk_site(harness.prefix, "posix")
+        module = posix / "vantio"
+        dist = posix / ("vantio_agent_sdk-%s.dist-info" % py_pin)
+        shutil.rmtree(module)
+        self.assertTrue(dist.is_dir())
+        self.assertEqual(observer.verify("install_agent_sdk_py", grant), "NOT_VERIFIED")
+        self.assertEqual(observer.verify("remove_sdks", grant), "NOT_VERIFIED")
+        cli = harness.prefix / "lib" / "node_modules" / "@vantio" / "cli" / "package.json"
+        cli.parent.mkdir(parents=True, exist_ok=True)
+        cli.write_text('{"name":"@vantio/cli","version":"0.3.24"}\n', encoding="utf-8")
+        remove_agent_sdks(harness.prefix)
+        self.assertTrue(cli.is_file())
+        receipt = harness.prefix / "agent-sdk-receipt.json"
+        receipt.write_text("{}\n", encoding="utf-8")
+        self.assertEqual(observer.verify("remove_sdks", grant), "NOT_VERIFIED")
+        remove_agent_sdks(harness.prefix)
+        self.assertEqual(observer.verify("remove_sdks", grant), "VERIFIED")
+        self.assertFalse(receipt.exists())
+        self.assertFalse(npm_sdk_root(harness.prefix).exists())
+        self.assertFalse(module.exists())
+        self.assertFalse(dist.exists())
+
+    def test_missing_sdks_require_rollback(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        gate = SdkGate(Lab(), None, None)
+        code, body = apply(self.ctx(harness, "apply", gate))
+        self.assertEqual(code, 4, body)
+        self.assertEqual(body["state"], "FAILED_SAFE")
+        self.assertEqual(body["live_failure_class"], "ROLLBACK_REQUIRED")
+        tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertIn("install_optics_cli", tx["completed_steps"])
+        self.assertNotIn("install_agent_sdks", tx["completed_steps"])
+        self.assertIn("install_agent_sdks", tx["rollback_required_steps"])
+        partial = json.loads(harness.tx_file("PARTIAL-MUTATIONS.json").read_text(encoding="utf-8"))
+        self.assertIn("install_agent_sdks", partial["steps"])
+        self.assertFalse(npm_sdk_root(harness.prefix).exists())
+        self.assertIsNone(harness.snapshot().get("agent_sdk_npm_version"))
+        self.assertIsNone(harness.snapshot().get("agent_sdk_py_version"))
+        code, body = rollback(self.ctx(harness, "rollback", gate))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+
+    def test_wrong_sdk_version_rolls_back_uncheckpointed_trees(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        pins = constants.FROZEN_PINS
+        gate = SdkGate(Lab(), pins["agent_sdk_npm_version"], "9.9.9")
+        code, body = apply(self.ctx(harness, "apply", gate))
+        self.assertEqual(code, 4, body)
+        self.assertEqual(body["live_failure_class"], "ROLLBACK_REQUIRED")
+        npm_tree = npm_sdk_root(harness.prefix)
+        py_module = py_sdk_site(harness.prefix) / "vantio"
+        self.assertTrue((npm_tree / "package.json").is_file())
+        self.assertTrue(py_module.is_dir())
+        tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertNotIn("install_agent_sdks", tx["completed_steps"])
+        partial = json.loads(harness.tx_file("PARTIAL-MUTATIONS.json").read_text(encoding="utf-8"))
+        self.assertIn("install_agent_sdks", partial["steps"])
+        code, body = rollback(self.ctx(harness, "rollback", gate))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        self.assertFalse(npm_tree.exists())
+        self.assertFalse(py_module.exists())
+        self.assertFalse(list(py_sdk_site(harness.prefix).glob("vantio_agent_sdk-*.dist-info")))
 
 
 if __name__ == "__main__":

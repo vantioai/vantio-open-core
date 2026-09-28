@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vantio_install import constants
 from vantio_install.live_executor import execute_step
+from vantio_install.agent_sdk import remove_agent_sdks
 from vantio_install.optics_cli import remove_optics_prefix
 from vantio_install.commands import (
     docker_load_argv,
@@ -123,6 +124,8 @@ class FixtureMutator:
                 "python": pin["agent_sdk_py_version"],
             },
         )
+        self.snapshot["agent_sdk_npm_version"] = pin["agent_sdk_npm_version"]
+        self.snapshot["agent_sdk_py_version"] = pin["agent_sdk_py_version"]
 
     def _remove_optics(self, ctx: dict) -> None:
         remove_optics_prefix(self.prefix)
@@ -131,7 +134,10 @@ class FixtureMutator:
         self.snapshot["optics_cli_version"] = None
 
     def _remove_sdks(self, ctx: dict) -> None:
+        remove_agent_sdks(self.prefix)
         self._drop_file(self.prefix / "agent-sdk-receipt.json")
+        self.snapshot["agent_sdk_npm_version"] = None
+        self.snapshot["agent_sdk_py_version"] = None
 
     def _stage_pe(self, ctx: dict) -> None:
         source = ctx["paths"]["pe_archive"]
@@ -297,7 +303,7 @@ class LiveMutator:
             self.mutation_count += 1
 
     def _merge(self, delta: dict) -> None:
-        for key in ("optics_cli_version",):
+        for key in ("optics_cli_version", "agent_sdk_npm_version", "agent_sdk_py_version"):
             if key in delta:
                 self.snapshot[key] = delta[key]
         for key in ("images", "containers", "bpf_pins", "clsact_ifaces", "processes"):

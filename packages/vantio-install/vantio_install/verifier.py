@@ -15,6 +15,7 @@ from pathlib import Path
 
 from vantio_install import constants
 from vantio_install.errors import InstallError
+from vantio_install.agent_sdk import agent_sdk_residual_items
 from vantio_install.optics_cli import optics_cli_residual_items
 from vantio_install.paths import assert_safe_root
 
@@ -163,8 +164,13 @@ def _residual_items(snapshot: dict, scope: str, iface: str, prefix: Path | None 
     if scope in {"optics", "all"}:
         if snapshot.get("optics_cli_version"):
             items.append({"kind": "optics_cli", "version": snapshot.get("optics_cli_version")})
+        if snapshot.get("agent_sdk_npm_version"):
+            items.append({"kind": "agent_sdk_npm", "version": snapshot.get("agent_sdk_npm_version")})
+        if snapshot.get("agent_sdk_py_version"):
+            items.append({"kind": "agent_sdk_py", "version": snapshot.get("agent_sdk_py_version")})
         if prefix is not None:
             items.extend(optics_cli_residual_items(prefix))
+            items.extend(agent_sdk_residual_items(prefix))
     return items
 
 
