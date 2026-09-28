@@ -29,6 +29,14 @@ from vantio_install.commands import (
     tc_clsact_argv,
     tc_clsact_del_argv,
 )
+from vantio_install.agent_sdk import (
+    agent_sdk_npm_verified,
+    agent_sdk_present,
+    agent_sdk_py_verified,
+    observed_agent_sdk_npm_version,
+    observed_agent_sdk_py_version,
+    remove_agent_sdks,
+)
 from vantio_install.errors import InstallError
 from vantio_install.manifest import artifact_paths, load_manifest
 from vantio_install.optics_cli import (
@@ -38,6 +46,7 @@ from vantio_install.optics_cli import (
     remove_optics_prefix,
 )
 from vantio_install.paths import assert_safe_root
+from vantio_install.state_machine import RESIDUAL_STATES
 from vantio_install.preflight import run_preflight
 from vantio_install.util import read_json, sha256_file, write_json
 
@@ -65,10 +74,17 @@ ROLLBACK_OPERATIONS = {
     "install_optics_cli": ("remove_optics",),
 }
 
+# Host steps recorded after the command returns 0 and before the host check.
+_PARTIAL_ON_EXIT = {
+    "install_optics_cli": "install_optics_cli",
+    "install_agent_sdk_npm": "install_agent_sdks",
+    "install_agent_sdk_py": "install_agent_sdks",
+}
+
 _START_STATES = {
     "apply": {"PLANNED", "INTERRUPTED", "APPLYING"},
-    "rollback": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "APPLYING", "ROLLING_BACK"},
-    "uninstall": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "UNINSTALLING"},
+    "rollback": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "APPLYING", "ROLLING_BACK"} | RESIDUAL_STATES,
+    "uninstall": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "UNINSTALLING"} | RESIDUAL_STATES,
 }
 
 _RUNTIME_STATES = {
@@ -382,9 +398,7 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
         remove_optics_prefix(grant.prefix)
         return
     if op_type == "remove_sdks":
-        path = confine(grant.prefix / "agent-sdk-receipt.json", [grant.prefix])
-        if path.is_file():
-            path.unlink()
+        remove_agent_sdks(grant.prefix)
         return
     _fail(f"Filesystem operation {op_type} is not on the live allowlist.", failure_class="FAILED_SAFE")
 
@@ -467,8 +481,9 @@ def dispatch(
     else:
         _filesystem(op_type, grant)
         result = ExecResult(0, False)
-    if op_type == "install_optics_cli" and result.returncode == 0 and not result.timed_out:
-        note_partial_mutation(grant.tx_dir, "install_optics_cli")
+    partial_step = _PARTIAL_ON_EXIT.get(op_type)
+    if partial_step and result.returncode == 0 and not result.timed_out:
+        note_partial_mutation(grant.tx_dir, partial_step)
     status = observer.verify(op_type, grant) if observer is not None else "NOT_VERIFIED"
     if status != "VERIFIED" or result.returncode != 0:
         failure = "ROLLBACK_REQUIRED" if result.returncode == 0 else "FAILED_SAFE"
@@ -545,7 +560,14 @@ def authorize_live(
         _fail("The planned interface is not an up interface on this host.", failure_class="FAILED_SAFE")
 
     state = str(tx.get("state") or "")
-    if state in _CLOSED or (command == "apply" and state in {"HEALTHY", "DEGRADED"}):
+    # RESIDUAL_FOUND and RESIDUAL_PRESENT stay closed for apply. Rollback and
+    # uninstall are the recovery commands that may start from those states.
+    if state in _CLOSED and state not in _START_STATES[command]:
+        _fail(
+            f"The transaction is {state} and is not an open plan for live {command}.",
+            failure_class="FAILED_SAFE",
+        )
+    if command == "apply" and state in {"HEALTHY", "DEGRADED"}:
         _fail(
             f"The transaction is {state} and is not an open plan for live {command}.",
             failure_class="FAILED_SAFE",
@@ -684,6 +706,12 @@ class ProductionObserver:
             if op_type == "install_optics_cli":
                 expected = constants.FROZEN_PINS["optics_cli_version"]
                 return "VERIFIED" if optics_cli_verified(grant.prefix, expected) else "NOT_VERIFIED"
+            if op_type == "install_agent_sdk_npm":
+                expected = constants.FROZEN_PINS["agent_sdk_npm_version"]
+                return "VERIFIED" if agent_sdk_npm_verified(grant.prefix, expected) else "NOT_VERIFIED"
+            if op_type == "install_agent_sdk_py":
+                expected = constants.FROZEN_PINS["agent_sdk_py_version"]
+                return "VERIFIED" if agent_sdk_py_verified(grant.prefix, expected) else "NOT_VERIFIED"
             if op_type in {"mkdir_prefix", "mkdir_stage", "mkdir_evidence"}:
                 path = {
                     "mkdir_prefix": grant.prefix,
@@ -708,7 +736,9 @@ class ProductionObserver:
                 return "NOT_VERIFIED"
             if op_type == "remove_optics":
                 return "VERIFIED" if not optics_cli_present(grant.prefix) else "NOT_VERIFIED"
-            if op_type in {"remove_stage", "remove_observe_config", "remove_o7_record", "remove_sdks"}:
+            if op_type == "remove_sdks":
+                return "VERIFIED" if not agent_sdk_present(grant.prefix) else "NOT_VERIFIED"
+            if op_type in {"remove_stage", "remove_observe_config", "remove_o7_record"}:
                 return "VERIFIED"
             if op_type == "docker_load":
                 return _docker_image_present(constants.FROZEN_PINS["pe_manifest_digest"])
@@ -740,6 +770,16 @@ class ProductionObserver:
             version = observed_optics_cli_version(grant.prefix)
             if version:
                 return {"optics_cli_version": version}
+            return {}
+        if op_type == "install_agent_sdk_npm":
+            version = observed_agent_sdk_npm_version(grant.prefix)
+            if version:
+                return {"agent_sdk_npm_version": version}
+            return {}
+        if op_type == "install_agent_sdk_py":
+            version = observed_agent_sdk_py_version(grant.prefix)
+            if version:
+                return {"agent_sdk_py_version": version}
             return {}
         if op_type == "docker_tag":
             return {
@@ -774,6 +814,8 @@ class ProductionObserver:
             return {"images": []}
         if op_type == "remove_optics":
             return {"optics_cli_version": None}
+        if op_type == "remove_sdks":
+            return {"agent_sdk_npm_version": None, "agent_sdk_py_version": None}
         return {}
 
 

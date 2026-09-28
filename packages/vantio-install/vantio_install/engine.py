@@ -21,12 +21,13 @@ from vantio_install.live_executor import (
     partial_mutation_steps,
     residual_result,
 )
+from vantio_install.agent_sdk import agent_sdk_present
 from vantio_install.optics_cli import optics_cli_present
 from vantio_install.mutator import FixtureMutator, LiveMutator
 from vantio_install.paths import assert_safe_root
 from vantio_install.preflight import run_preflight
 from vantio_install.residual import inspect as inspect_residual
-from vantio_install.state_machine import TRANSIENT, transition
+from vantio_install.state_machine import RESIDUAL_STATES, TRANSIENT, transition
 from vantio_install.support_bundle import build_support_bundle
 from vantio_install.util import (
     canonical_json,
@@ -740,6 +741,8 @@ def _rollback_extras(tx: dict, tx_dir: Path, prefix: Path) -> list[str]:
             extras.append(step)
     if optics_cli_present(prefix) and "install_optics_cli" not in extras:
         extras.append("install_optics_cli")
+    if agent_sdk_present(prefix) and "install_agent_sdks" not in extras:
+        extras.append("install_agent_sdks")
     return extras
 
 
@@ -752,16 +755,20 @@ def rollback(ctx: dict) -> tuple[int, dict]:
         hooks = _fixture_hooks(config, bool(ctx.get("fixture_host")))
         if tx["state"] == "APPLIED":
             _move(tx, "INTERRUPTED", stamp)
-        if tx["state"] not in {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "APPLYING", "ROLLING_BACK"}:
+        if tx["state"] not in {
+            "HEALTHY",
+            "DEGRADED",
+            "FAILED_SAFE",
+            "INTERRUPTED",
+            "APPLYING",
+            "ROLLING_BACK",
+            *RESIDUAL_STATES,
+        }:
             raise InstallError(f"Rollback cannot start from {tx['state']}.", exit_code=10, state=tx["state"])
         snapshot = read_json(tx_dir / "HOST-SNAPSHOT.json")
         bundle = Path(tx["bundle_dir"])
         grant = None if ctx.get("fixture_host") else _live_grant(ctx, tx, tx_dir, config, bundle, snapshot)
-        if tx["state"] == "INTERRUPTED":
-            _move(tx, "ROLLING_BACK", stamp)
-        elif tx["state"] == "APPLYING":
-            _move(tx, "ROLLING_BACK", stamp)
-        elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
+        if tx["state"] in {"INTERRUPTED", "APPLYING", "HEALTHY", "DEGRADED", "FAILED_SAFE"} or tx["state"] in RESIDUAL_STATES:
             _move(tx, "ROLLING_BACK", stamp)
         mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
         prefix = getattr(mutator, "prefix", _prefix)
@@ -772,6 +779,8 @@ def rollback(ctx: dict) -> tuple[int, dict]:
         already = list(tx.get("rollback_completed_steps") or [])
         if optics_cli_present(prefix):
             already = [step for step in already if step != "install_optics_cli"]
+        if agent_sdk_present(prefix):
+            already = [step for step in already if step != "install_agent_sdks"]
         pending = _reverse_steps(
             list(tx.get("completed_steps") or []),
             already,
@@ -845,16 +854,14 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
             _move(tx, "INTERRUPTED", stamp)
         if tx["state"] == "INTERRUPTED":
             pass
-        elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
+        elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"} or tx["state"] in RESIDUAL_STATES:
             pass
         else:
             raise InstallError(f"Uninstall cannot start from {tx['state']}.", exit_code=10, state=tx["state"])
         snapshot = read_json(tx_dir / "HOST-SNAPSHOT.json")
         bundle = Path(tx["bundle_dir"])
         grant = None if ctx.get("fixture_host") else _live_grant(ctx, tx, tx_dir, config, bundle, snapshot)
-        if tx["state"] == "INTERRUPTED":
-            _move(tx, "UNINSTALLING", stamp)
-        elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
+        if tx["state"] == "INTERRUPTED" or tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"} or tx["state"] in RESIDUAL_STATES:
             _move(tx, "UNINSTALLING", stamp)
         mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
         step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json")
