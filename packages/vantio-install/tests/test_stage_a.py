@@ -669,6 +669,100 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertFalse(link.exists())
         self.assertTrue((outside / "keep.txt").is_file())
 
+    def test_bpffs_pins_are_not_verified_removed_when_the_snapshot_is_empty(self) -> None:
+        harness = self.make()
+        bpffs = harness.root / "bpffs"
+        bpffs.mkdir()
+        outside = harness.root / "outside-pin"
+        outside.write_text("keep\n", encoding="utf-8")
+        (bpffs / "other_map").write_text("keep\n", encoding="utf-8")
+        (bpffs / constants.BPF_PINS[0]).symlink_to(outside)
+        for name in constants.BPF_PINS[1:]:
+            (bpffs / name).write_text("pin\n", encoding="utf-8")
+        harness.config["bpffs_root"] = str(bpffs)
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        code, body = harness.run("uninstall", yes=True, scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED", body)
+        for name in constants.BPF_PINS:
+            self.assertFalse((bpffs / name).exists())
+            self.assertFalse((bpffs / name).is_symlink())
+        self.assertEqual(outside.read_text(), "keep\n")
+        self.assertTrue((bpffs / "other_map").is_file())
+        self.assertEqual(harness.snapshot().get("bpf_pins"), [])
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["residual_result"], "EMPTY")
+        for name in constants.BPF_PINS:
+            (bpffs / name).write_text("pin\n", encoding="utf-8")
+        false_clean = verify(harness.evidence, harness.bundle, bpffs=bpffs)
+        self.assertNotEqual(false_clean["result"], "PASS")
+        residual = next(row for row in false_clean["checks"] if row["id"] == "recompute-residual")
+        self.assertEqual(residual["result"], "FAIL")
+        self.assertEqual(residual["stated"], "EMPTY")
+        self.assertEqual(residual["recomputed"], "RESIDUAL_PRESENT")
+        code, body = harness.run("verify-removal", scope="optics")
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.assertFalse(any(item.get("kind") == "bpf_pin" for item in body["residual_items"]))
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 2, body)
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertNotEqual(body["residual_result"], "EMPTY")
+        self.assertEqual(
+            {item.get("name") for item in body["residual_items"] if item.get("kind") == "bpf_pin"},
+            set(constants.BPF_PINS),
+        )
+        code, body = harness.run("rollback", yes=True)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        for name in constants.BPF_PINS:
+            self.assertFalse((bpffs / name).exists())
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["residual_result"], "EMPTY")
+
+    def test_directory_pin_stays_in_the_residual_when_unlink_fails(self) -> None:
+        harness = self.make()
+        bpffs = harness.root / "bpffs"
+        stuck = bpffs / "vantio_trace_map"
+        stuck.mkdir(parents=True)
+        (stuck / "child").write_text("x\n", encoding="utf-8")
+        harness.config["bpffs_root"] = str(bpffs)
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        code, body = harness.run("uninstall", yes=True, scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED", body)
+        self.assertTrue(stuck.is_dir())
+        self.assertTrue((stuck / "child").is_file())
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 2, body)
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertTrue(any(item.get("name") == "vantio_trace_map" for item in body["residual_items"]))
+
+    def test_unreadable_bpffs_is_not_verified_removed(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        harness.run("uninstall", yes=True, scope="all")
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        bogus = harness.root / "bpffs-file"
+        bogus.write_text("x\n", encoding="utf-8")
+        false_clean = verify(harness.evidence, harness.bundle, bpffs=bogus)
+        self.assertNotEqual(false_clean["result"], "PASS")
+        residual = next(row for row in false_clean["checks"] if row["id"] == "recompute-residual")
+        self.assertEqual(residual["result"], "UNKNOWN")
+        harness.config["bpffs_root"] = str(bogus)
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["state"], "FAILED_SAFE", body)
+        self.assertEqual(body["residual_result"], "UNKNOWN")
+
     def test_unknown_residual_is_not_removed(self) -> None:
         harness = self.make()
         harness.run("plan")

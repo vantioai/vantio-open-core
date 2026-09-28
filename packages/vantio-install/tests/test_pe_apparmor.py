@@ -140,7 +140,14 @@ class ObserveApparmorFixtures(unittest.TestCase):
         )
         self.assertEqual(
             ROLLBACK_OPERATIONS["start_pe_observe"],
-            ("docker_stop", "docker_rm", "unload_pe_apparmor", "remove_pe_apparmor", "tc_clsact_del"),
+            (
+                "docker_stop",
+                "docker_rm",
+                "unpin_bpf_maps",
+                "unload_pe_apparmor",
+                "remove_pe_apparmor",
+                "tc_clsact_del",
+            ),
         )
 
     def test_missing_apparmor_blocks_plan(self) -> None:

@@ -5,8 +5,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from vantio_install import constants
-from vantio_install.live_executor import execute_step
+from vantio_install import bpf_pins, constants
+from vantio_install.live_executor import catalog_argv, dispatch, execute_step
 from vantio_install.agent_sdk import remove_agent_sdks
 from vantio_install.optics_cli import remove_optics_prefix
 from vantio_install.commands import (
@@ -61,6 +61,8 @@ class FixtureMutator:
         if handler:
             self.mutation_count += 1
             handler(ctx)
+        if step_id == "start_pe_observe":
+            self.unpin_remaining(ctx)
 
     def uninstall(self, scope: str, ctx: dict) -> None:
         leave = set(ctx.get("uninstall_leave") or [])
@@ -71,10 +73,10 @@ class FixtureMutator:
                 self._docker_rmi(ctx)
             if "stage" not in leave:
                 self._remove_stage(ctx)
-            if "bpf_pins" not in leave:
-                self.snapshot["bpf_pins"] = []
-            else:
+            if "bpf_pins" in leave:
                 self.snapshot["bpf_pins"] = list(constants.BPF_PINS)
+            else:
+                self.unpin_remaining(ctx)
             if "clsact" not in leave:
                 self.snapshot["clsact_ifaces"] = []
             if "loader" not in leave:
@@ -261,11 +263,28 @@ class FixtureMutator:
             for row in self.snapshot.get("containers") or []
             if not str(row.get("name", "")).endswith(name_suffix)
         ]
-        self.snapshot["bpf_pins"] = []
         self.snapshot["clsact_ifaces"] = []
         self.snapshot["processes"] = [
             name for name in self.snapshot.get("processes") or [] if name != "vantio-loader"
         ]
+
+    def unpin_remaining(self, ctx: dict) -> None:
+        """Unlink known pin files, then record whatever names remain."""
+        if "bpf_pins" in set(ctx.get("uninstall_leave") or []):
+            return
+        raw = str(ctx.get("bpffs_root") or "").strip()
+        if not raw:
+            self.snapshot["bpf_pins"] = []
+            return
+        remaining, errors = bpf_pins.unlink_known_pins(Path(raw))
+        if errors:
+            raise InstallError(
+                "Could not read the bpffs pin directory after unlink.",
+                exit_code=4,
+                state="FAILED_SAFE",
+                failure_class="FAILED_SAFE",
+            )
+        self.snapshot["bpf_pins"] = remaining
 
 
 class LiveMutator:
@@ -300,6 +319,31 @@ class LiveMutator:
         if scope in {"optics", "all"}:
             for step_id in ("install_agent_sdks", "install_optics_cli"):
                 self._run(step_id, "rollback")
+
+    def unpin_remaining(self, _ctx: dict) -> None:
+        """Unpin known maps when an earlier rollback step already completed.
+
+        The start_pe_observe rollback unpins during a normal pass. A later
+        recovery can find the step already recorded while the names remain.
+        """
+        root = bpf_pins.default_bpffs()
+        names, errors = bpf_pins.scan_known_pins(root)
+        if errors:
+            raise InstallError(
+                "Could not read /sys/fs/bpf to confirm pinned maps are gone.",
+                exit_code=4,
+                state="FAILED_SAFE",
+                failure_class="FAILED_SAFE",
+            )
+        if not names:
+            return
+        argv = catalog_argv("unpin_bpf_maps", self.grant)
+        delta = dispatch(self.grant, "unpin_bpf_maps", argv, runner=self.runner, observer=self.observer)
+        self._merge(delta)
+        if argv:
+            self.recorded_argv.append(argv)
+            self.snapshot.setdefault("recorded_argv", []).append(argv)
+        self.mutation_count += 1
 
     def _run(self, step_id: str, kind: str) -> None:
         if step_id not in constants.HOST_MUTATION_STEPS:

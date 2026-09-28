@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from vantio_install import constants
+from vantio_install import bpf_pins, constants
 from vantio_install.errors import InstallError
 from vantio_install.agent_sdk import agent_sdk_residual_items
 from vantio_install.optics_cli import optics_cli_residual_items
@@ -143,10 +143,17 @@ def _configured_prefix(config: dict) -> tuple[Path | None, bool]:
         return None, True
 
 
-def _residual_items(snapshot: dict, scope: str, iface: str, prefix: Path | None = None) -> list[dict] | None:
+def _residual_items(
+    snapshot: dict,
+    scope: str,
+    iface: str,
+    prefix: Path | None = None,
+    bpffs: Path | None = None,
+) -> list[dict] | None:
     if snapshot.get("probe_errors"):
         return None
     items: list[dict] = []
+    pin_unreadable = False
     if scope in {"pe", "all", None}:
         for row in snapshot.get("containers") or []:
             if row.get("role") == "phantom_engine":
@@ -154,9 +161,16 @@ def _residual_items(snapshot: dict, scope: str, iface: str, prefix: Path | None 
         for row in snapshot.get("images") or []:
             if row.get("role") == "phantom_engine":
                 items.append({"kind": "image"})
-        for pin in snapshot.get("bpf_pins") or []:
-            if pin in constants.BPF_PINS:
-                items.append({"kind": "bpf_pin", "name": pin})
+        recorded = {pin for pin in (snapshot.get("bpf_pins") or []) if pin in constants.BPF_PINS}
+        if bpffs is not None:
+            live, errors = bpf_pins.scan_known_pins(bpffs)
+            if errors:
+                pin_unreadable = True
+            else:
+                recorded.update(live)
+        for name in constants.BPF_PINS:
+            if name in recorded:
+                items.append({"kind": "bpf_pin", "name": name})
         if iface and iface in (snapshot.get("clsact_ifaces") or []):
             items.append({"kind": "clsact"})
         if "vantio-loader" in (snapshot.get("processes") or []):
@@ -171,10 +185,12 @@ def _residual_items(snapshot: dict, scope: str, iface: str, prefix: Path | None 
         if prefix is not None:
             items.extend(optics_cli_residual_items(prefix))
             items.extend(agent_sdk_residual_items(prefix))
+    if pin_unreadable and not items:
+        return None
     return items
 
 
-def verify(evidence_dir: Path, bundle_dir: Path) -> dict:
+def verify(evidence_dir: Path, bundle_dir: Path, bpffs: Path | None = None) -> dict:
     checks: list[dict] = []
     missing = [name for name in _REQUIRED if not (evidence_dir / name).is_file()]
     checks.append({"id": "evidence-present", "result": "FAIL" if missing else "PASS", "missing": missing})
@@ -221,7 +237,12 @@ def verify(evidence_dir: Path, bundle_dir: Path) -> dict:
         checks.append({"id": "recompute-health", "result": result, "stated": stated, "recomputed": recomputed})
         scope = residual.get("scope") or "all"
         prefix, prefix_blocked = _configured_prefix(config)
-        items = None if prefix_blocked else _residual_items(snapshot, str(scope), str(config.get("iface", "")), prefix)
+        pin_root = bpf_pins.default_bpffs() if bpffs is None else bpffs
+        items = (
+            None
+            if prefix_blocked
+            else _residual_items(snapshot, str(scope), str(config.get("iface", "")), prefix, pin_root)
+        )
         if items is None:
             checks.append({"id": "recompute-residual", "result": "UNKNOWN"})
         else:

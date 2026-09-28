@@ -18,7 +18,7 @@ sys.path.insert(0, str(PACKAGE))
 from tests.test_stage_a import AS_OF, TX, Harness  # noqa: E402
 from vantio_install.engine import apply, rollback, uninstall, verify_removal  # noqa: E402
 from vantio_install.errors import InstallError  # noqa: E402
-from vantio_install import constants  # noqa: E402
+from vantio_install import bpf_pins, constants  # noqa: E402
 from vantio_install.live_executor import (  # noqa: E402
     ExecResult,
     ProductionObserver,
@@ -26,6 +26,7 @@ from vantio_install.live_executor import (  # noqa: E402
     catalog_argv,
     confine,
     dispatch,
+    live_operation_ids,
     reject_argv,
     residual_result,
 )
@@ -146,6 +147,11 @@ class Lab:
             return "NOT_VERIFIED"
         if op_type in {"docker_stop", "docker_rm"}:
             return "VERIFIED" if not self.running else "NOT_VERIFIED"
+        if op_type == "unpin_bpf_maps":
+            names, errors = bpf_pins.scan_known_pins(bpf_pins.default_bpffs())
+            if errors:
+                return "UNKNOWN"
+            return "VERIFIED" if not names else "NOT_VERIFIED"
         if op_type == "docker_rmi":
             return "VERIFIED" if not self.loaded and self.tagged is None else "NOT_VERIFIED"
         if op_type == "tc_clsact_del":
@@ -155,8 +161,6 @@ class Lab:
         return "NOT_VERIFIED"
 
     def observed_delta(self, op_type: str, grant) -> dict:
-        from vantio_install import constants
-
         pin = constants.FROZEN_PINS
         if op_type == "install_optics_cli":
             return {"optics_cli_version": pin["optics_cli_version"]}
@@ -179,11 +183,18 @@ class Lab:
                 "clsact_ifaces": [grant.iface],
             }
         if op_type in {"docker_stop", "docker_rm"}:
-            return {"containers": [], "processes": [], "bpf_pins": [], "clsact_ifaces": []}
+            return {"containers": [], "processes": [], "clsact_ifaces": []}
+        if op_type == "unpin_bpf_maps":
+            names, errors = bpf_pins.scan_known_pins(bpf_pins.default_bpffs())
+            if errors:
+                return {}
+            return {"bpf_pins": names}
         if op_type == "docker_rmi":
             return {"images": []}
         if op_type == "remove_optics":
             return {"optics_cli_version": None}
+        if op_type == "remove_sdks":
+            return {"agent_sdk_npm_version": None, "agent_sdk_py_version": None}
         return {}
 
 
@@ -336,6 +347,13 @@ class SdkGate:
 
 
 class LiveExecutorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._bpffs = Path(tempfile.mkdtemp(prefix="vantio-bpffs-"))
+        self.addCleanup(lambda: shutil.rmtree(self._bpffs, ignore_errors=True))
+        original = bpf_pins.default_bpffs
+        bpf_pins.default_bpffs = lambda: self._bpffs
+        self.addCleanup(lambda: setattr(bpf_pins, "default_bpffs", original))
+
     def make(self) -> Harness:
         harness = Harness()
         self.addCleanup(harness.close)
@@ -1350,6 +1368,130 @@ class LiveExecutorTests(unittest.TestCase):
         self.assert_prefix_residuals_gone(harness)
         code, body = self.verify_live(harness)
         self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.assertEqual(body["residual_result"], "EMPTY")
+
+    def test_pin_scan_does_not_treat_an_unreadable_directory_as_empty(self) -> None:
+        self.assertEqual(bpf_pins.DEFAULT_BPFFS, Path("/sys/fs/bpf"))
+        self.assertNotIn("unpin_bpf_maps", live_operation_ids())
+        bogus = self._bpffs / "not-a-directory"
+        bogus.write_text("x\n", encoding="utf-8")
+        self.assertEqual(bpf_pins.scan_known_pins(bogus), ([], ["bpf"]))
+        self.assertEqual(bpf_pins.scan_known_pins(self._bpffs / "absent"), ([], []))
+        if os.geteuid() != 0:
+            locked = self._bpffs / "locked"
+            locked.mkdir()
+            locked.chmod(0)
+            try:
+                self.assertEqual(bpf_pins.scan_known_pins(locked), ([], ["bpf"]))
+            finally:
+                locked.chmod(0o700)
+        with self.assertRaises(InstallError):
+            reject_argv(["rm", "--", "/sys/fs/bpf/vantio_trace_map"])
+        with self.assertRaises(InstallError):
+            reject_argv(["bpftool", "map", "unpin", "/sys/fs/bpf/vantio_trace_map"])
+
+    def test_stop_delta_keeps_live_pins_and_unpin_drops_only_known_names(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        self.assertIsNone(catalog_argv("unpin_bpf_maps", grant))
+        outside = self._bpffs.parent / "outside-target"
+        outside.write_text("keep\n", encoding="utf-8")
+        (self._bpffs / "other_map").write_text("keep\n", encoding="utf-8")
+        (self._bpffs / constants.BPF_PINS[0]).symlink_to(outside)
+        for name in constants.BPF_PINS[1:]:
+            (self._bpffs / name).write_text("pin\n", encoding="utf-8")
+        observer = ProductionObserver()
+        stopped = observer.observed_delta("docker_stop", grant)
+        self.assertEqual(stopped["containers"], [])
+        self.assertEqual(stopped["bpf_pins"], list(constants.BPF_PINS))
+        self.arm(harness, "ROLLING_BACK")
+        grant = self.grant_for(harness, command="rollback")
+        delta = dispatch(grant, "unpin_bpf_maps", None, runner=None, observer=observer)
+        self.assertEqual(delta["bpf_pins"], [])
+        self.assertEqual(outside.read_text(), "keep\n")
+        self.assertTrue((self._bpffs / "other_map").is_file())
+        for name in constants.BPF_PINS:
+            self.assertFalse((self._bpffs / name).exists())
+            self.assertFalse((self._bpffs / name).is_symlink())
+        stuck = self._bpffs / "vantio_trace_map"
+        stuck.mkdir()
+        (stuck / "child").write_text("x\n", encoding="utf-8")
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "unpin_bpf_maps", None, runner=None, observer=observer)
+        self.assertTrue(stuck.is_dir())
+        self.assertTrue((stuck / "child").is_file())
+        self.assertNotEqual(caught.exception.state, "VERIFIED_REMOVED")
+
+    def test_empty_snapshot_does_not_hide_live_pins(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        code, body = harness.run("apply", yes=True)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        for name in constants.BPF_PINS:
+            (self._bpffs / name).write_text("pin\n", encoding="utf-8")
+        (self._bpffs / "other_map").write_text("keep\n", encoding="utf-8")
+        lab = Lab()
+        code, body = uninstall(self.ctx(harness, "uninstall", lab))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED", body)
+        joined = " ".join(" ".join(argv) for argv in lab.calls)
+        self.assertNotIn("--privileged", joined)
+        for name in constants.BPF_PINS:
+            self.assertFalse((self._bpffs / name).exists())
+        self.assertTrue((self._bpffs / "other_map").is_file())
+        self.assertEqual(harness.snapshot().get("bpf_pins"), [])
+        ops = harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8")
+        self.assertIn("unpin_bpf_maps", ops)
+        code, body = self.verify_live(harness)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.assertEqual(body["residual_result"], "EMPTY")
+        for name in constants.BPF_PINS:
+            (self._bpffs / name).write_text("pin\n", encoding="utf-8")
+        code, body = self.verify_live(harness)
+        self.assertEqual(code, 2, body)
+        self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
+        self.assertEqual(body["residual_result"], "RESIDUAL_FOUND")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(
+            {item.get("name") for item in body["residual_items"] if item.get("kind") == "bpf_pin"},
+            set(constants.BPF_PINS),
+        )
+        code, body = rollback(self.ctx(harness, "rollback", lab))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        for name in constants.BPF_PINS:
+            self.assertFalse((self._bpffs / name).exists())
+        self.assertTrue((self._bpffs / "other_map").is_file())
+        code, body = self.verify_live(harness)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.assertEqual(body["residual_result"], "EMPTY")
+
+    def test_completed_rollback_still_unpins_when_pins_remain(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        code, body = harness.run("apply", yes=True)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        lab = Lab()
+        code, body = rollback(self.ctx(harness, "rollback", lab))
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        saved = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertIn("start_pe_observe", saved["rollback_completed_steps"])
+        code, body = self.verify_live(harness)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        for name in constants.BPF_PINS:
+            (self._bpffs / name).write_text("pin\n", encoding="utf-8")
+        code, body = self.verify_live(harness)
+        self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
+        self.assertNotEqual(body["residual_result"], "EMPTY")
+        code, body = rollback(self.ctx(harness, "rollback", lab))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        for name in constants.BPF_PINS:
+            self.assertFalse((self._bpffs / name).exists())
+        code, body = self.verify_live(harness)
         self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
         self.assertEqual(body["residual_result"], "EMPTY")
 
