@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from vantio_install import constants
+from vantio_install import bpf_pins, constants
 from vantio_install.commands import (
     apparmor_parser_load_argv,
     apparmor_parser_remove_argv,
@@ -81,6 +81,7 @@ ROLLBACK_OPERATIONS = {
     "start_pe_observe": (
         "docker_stop",
         "docker_rm",
+        "unpin_bpf_maps",
         "unload_pe_apparmor",
         "remove_pe_apparmor",
         "tc_clsact_del",
@@ -322,6 +323,7 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
         "restart_pe_observe": docker_start_argv(grant.container_name),
         "docker_stop": docker_stop_rm_argv(grant.container_name)[0],
         "docker_rm": docker_stop_rm_argv(grant.container_name)[1],
+        "unpin_bpf_maps": None,
         "docker_rmi": docker_rmi_argv(pin["pe_local_tag"]),
         "tc_clsact_del": tc_clsact_del_argv(iface),
         "remove_stage": None,
@@ -489,6 +491,9 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
         return
     if op_type == "remove_sdks":
         remove_agent_sdks(grant.prefix)
+        return
+    if op_type == "unpin_bpf_maps":
+        bpf_pins.unlink_known_pins(bpf_pins.default_bpffs())
         return
     _fail(f"Filesystem operation {op_type} is not on the live allowlist.", failure_class="FAILED_SAFE")
 
@@ -920,12 +925,19 @@ class ProductionObserver:
                 return _docker_image_present(grant.tag)
             if op_type in {"start_pe_observe", "restart_pe_observe"}:
                 running = _docker_running_observe(grant.container_name) == "VERIFIED"
-                pins = _host_pins()
+                pins, pin_errors = _host_pins()
                 loader = _loader_running()
                 clsact = _tc_has_clsact(grant.iface) == "VERIFIED"
+                if pin_errors:
+                    return "UNKNOWN"
                 if running and pins == list(constants.BPF_PINS) and loader and clsact:
                     return "VERIFIED"
                 return "NOT_VERIFIED"
+            if op_type == "unpin_bpf_maps":
+                pins, pin_errors = _host_pins()
+                if pin_errors:
+                    return "UNKNOWN"
+                return "VERIFIED" if not pins else "NOT_VERIFIED"
             if op_type in {"docker_stop", "docker_rm"}:
                 return _docker_stopped(grant.container_name)
             if op_type == "docker_rmi":
@@ -976,14 +988,25 @@ class ProductionObserver:
             }
             if _loader_running():
                 delta["processes"] = ["vantio-loader"]
-            pins = _host_pins()
-            if pins:
+            pins, pin_errors = _host_pins()
+            if pins and not pin_errors:
                 delta["bpf_pins"] = pins
             if _tc_has_clsact(grant.iface) == "VERIFIED":
                 delta["clsact_ifaces"] = [grant.iface]
             return delta
         if op_type in {"docker_stop", "docker_rm"}:
-            return {"containers": [], "processes": [], "bpf_pins": [], "clsact_ifaces": []}
+            # The container stop does not unpin maps. Record the live names.
+            # An empty list here used to clear the snapshot while pins remained.
+            stopped: dict = {"containers": [], "processes": [], "clsact_ifaces": []}
+            pins, pin_errors = _host_pins()
+            if not pin_errors:
+                stopped["bpf_pins"] = pins
+            return stopped
+        if op_type == "unpin_bpf_maps":
+            pins, pin_errors = _host_pins()
+            if pin_errors:
+                return {}
+            return {"bpf_pins": pins}
         if op_type == "docker_rmi":
             return {"images": []}
         if op_type == "remove_optics":
@@ -1075,16 +1098,8 @@ def _recover_absent_target(op_type: str, grant: LiveGrant, result: ExecResult) -
     return result
 
 
-def _host_pins() -> list[str]:
-    root = Path("/sys/fs/bpf")
-    found = []
-    for name in constants.BPF_PINS:
-        try:
-            if (root / name).exists():
-                found.append(name)
-        except OSError:
-            continue
-    return found
+def _host_pins() -> tuple[list[str], list[str]]:
+    return bpf_pins.scan_known_pins(bpf_pins.default_bpffs())
 
 
 def _loader_running() -> bool:

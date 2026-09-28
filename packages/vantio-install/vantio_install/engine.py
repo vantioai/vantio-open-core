@@ -7,7 +7,7 @@ import os
 import uuid
 from pathlib import Path
 
-from vantio_install import constants
+from vantio_install import bpf_pins, constants
 from vantio_install.errors import InstallError
 from vantio_install.health import component_template, derive
 from vantio_install.host import load_fixture, probe_live
@@ -283,7 +283,20 @@ def _fixture_hooks(config: dict, enabled: bool) -> dict:
         "simulate_missing": config.get("simulate_missing") or [],
         "simulate_probe_errors": config.get("simulate_probe_errors") or [],
         "residual_probe_errors": config.get("residual_probe_errors") or [],
+        "bpffs_root": config.get("bpffs_root") or "",
     }
+
+
+def _removal_bpffs(ctx: dict, hooks: dict) -> Path | None:
+    """Live removal reads ``/sys/fs/bpf``. A fixture reads ``bpffs_root`` when set.
+
+    Fixture mode does not scan the machine running the tests unless the hook
+    is set. Live mode does not honor ``bpffs_root`` from the config.
+    """
+    if ctx.get("fixture_host"):
+        raw = str(hooks.get("bpffs_root") or "").strip()
+        return Path(raw) if raw else None
+    return bpf_pins.default_bpffs()
 
 
 def _resolve_evidence(config: dict, tx_id: str, override: Path | None) -> Path:
@@ -482,6 +495,7 @@ def _step_ctx(tx: dict, config: dict, bundle: Path, hooks: dict, observe_path: P
         "simulate_missing": hooks.get("simulate_missing") or [],
         "simulate_probe_errors": hooks.get("simulate_probe_errors") or [],
         "uninstall_leave": hooks.get("uninstall_leave") or [],
+        "bpffs_root": hooks.get("bpffs_root") or "",
     }
 
 
@@ -808,6 +822,8 @@ def rollback(ctx: dict) -> tuple[int, dict]:
                     tx["last_error"] = f"rollback interrupted after {step_id}"
                     break
             else:
+                mutator.unpin_remaining(step_ctx)
+                write_json(tx_dir / "HOST-SNAPSHOT.json", snapshot)
                 _move(tx, "ROLLED_BACK", stamp)
                 tx["last_error"] = None
             health = derive(snapshot, config, limitations=tx.get("limitations") or [])
@@ -881,6 +897,8 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
         _save_tx(tx_dir, tx)
         try:
             mutator.uninstall(scope, step_ctx)
+            if scope in {"pe", "all"}:
+                mutator.unpin_remaining(step_ctx)
             write_json(tx_dir / "HOST-SNAPSHOT.json", snapshot)
             health = derive(snapshot, config, limitations=tx.get("limitations") or [])
             health.update(
@@ -939,12 +957,14 @@ def verify_removal(ctx: dict) -> tuple[int, dict]:
             snapshot["probe_errors"] = list(hooks["residual_probe_errors"])
         stage = assert_safe_root(str(config.get("stage_dir") or (ctx["state_dir"] / "pe-stage")), label="stage_dir")
         prefix = assert_safe_root(str(config.get("prefix") or (ctx["state_dir"] / "prefix")), label="prefix")
+        bpffs = _removal_bpffs(ctx, hooks)
         report = inspect_residual(
             snapshot,
             scope=scope,
             prefix=prefix,
             stage=stage,
             iface=str(config.get("iface", "")),
+            bpffs=bpffs,
         )
         report["transaction_id"] = tx["transaction_id"]
         report["as_of_et"] = stamp

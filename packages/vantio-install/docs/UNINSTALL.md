@@ -6,4 +6,6 @@ A live uninstall uses the same two gates and the same plan hash as apply. `state
 
 `RESIDUAL_FOUND` and `RESIDUAL_PRESENT` can start another uninstall. `--scope optics` or `--scope all`, with the same two gates, removes the Optics CLI, the Agent SDK trees, and the receipts under the prefix. `--scope pe` leaves that prefix in place, and a later `verify-removal` still reports the residual while those files are on disk. Run `verify-removal` again after the optics or all scope finishes.
 
+`--scope pe` and `--scope all` also unlink `vantio_trace_map`, `vantio_enrolled_cgroups`, `vantio_debug_counters`, `vantio_debug_last_comm`, and `vantio_tls_severed_pids` under `/sys/fs/bpf` after the container stops. `--scope optics` leaves those names in place. `verify-removal` for `pe` or `all` reads the directory. It reports `VERIFIED_REMOVED` only when the residual list is empty. An empty pin list in the saved snapshot does not hide a name that is still there. When the directory cannot be read, the result is `UNKNOWN` and the state is `FAILED_SAFE`. A name that could not be unlinked stays in the residual list.
+
 Evidence for the transaction stays on disk so you can still read what happened.

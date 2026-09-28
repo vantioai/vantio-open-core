@@ -13,7 +13,7 @@ Run the commands from the host that will keep the node:
 - `vantio-install status` reads the saved transaction.
 - `vantio-install rollback --yes` reverses that transaction.
 - `vantio-install uninstall --yes` removes the product scope you name.
-- `vantio-install verify-removal` checks whether that scope is actually gone.
+- `vantio-install verify-removal` checks whether that scope is actually gone, including the known pin names on `/sys/fs/bpf` for a Phantom Engine scope.
 
 Every command prints one JSON object. `proof_state` stays `NOT_PROVED` in this package. `vantio-verify` reads the evidence directory and the bundle from disk, and it ignores an installer exit code of 0.
 
