@@ -152,6 +152,19 @@ FROZEN_PINS = {
     "pe_platform": "linux/amd64",
 }
 
+# Sealed identity the live gate compares to the pin table at call time.
+# Archive file bytes are compared to FROZEN_PINS["pe_archive_sha256"].
+LIVE_CANONICAL_IDENTITY = {
+    "pe_source_commit": "fab81efc08110506ff90847495197e7051a253b5",
+    "pe_archive_sha256": "72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128",
+    "pe_manifest_digest": "sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553",
+}
+
+# Memory class is the only preflight limitation a live apply may carry.
+APPROVED_LIVE_LIMITATIONS = frozenset({"PF-MEM"})
+
+LIVE_MUTATING_COMMANDS = frozenset({"apply", "rollback", "uninstall"})
+
 PREFLIGHT_ORDER = (
     "PF-ARCH",
     "PF-OS",

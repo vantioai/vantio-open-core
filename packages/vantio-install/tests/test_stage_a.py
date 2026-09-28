@@ -507,6 +507,7 @@ class StageAInstallerTests(unittest.TestCase):
             "vantio_install.cli",
             "vantio_install.mutator",
             "vantio_install.preflight",
+            "vantio_install.live_executor",
         }
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module in banned:

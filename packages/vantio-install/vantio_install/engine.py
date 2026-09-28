@@ -12,6 +12,13 @@ from vantio_install.errors import InstallError
 from vantio_install.health import component_template, derive
 from vantio_install.host import load_fixture, probe_live
 from vantio_install.manifest import artifact_paths, bundle_digest, load_manifest, missing_manifest_fields
+from vantio_install.live_executor import (
+    ProductionObserver,
+    authorize_live,
+    guard_readonly_command,
+    live_operation_ids,
+    residual_result,
+)
 from vantio_install.mutator import FixtureMutator, LiveMutator
 from vantio_install.paths import assert_safe_root
 from vantio_install.preflight import run_preflight
@@ -124,7 +131,7 @@ def _exit_for(state: str) -> int:
         "PREFLIGHT_READY_WITH_LIMITATIONS",
     }:
         return constants.EXIT_OK
-    if state in {"PREFLIGHT_BLOCKED", "RESIDUAL_PRESENT"}:
+    if state in {"PREFLIGHT_BLOCKED", "RESIDUAL_PRESENT", "RESIDUAL_FOUND"}:
         return constants.EXIT_BLOCKED
     if state == "UNSUPPORTED":
         return constants.EXIT_UNSUPPORTED
@@ -287,7 +294,22 @@ def _load_host(fixture: Path | None) -> dict:
     return probe_live()
 
 
+def _plan_document(tx_id: str, gate: str, missing: list[str], layout: dict[str, Path]) -> dict:
+    ready = gate in {"PREFLIGHT_READY", "PREFLIGHT_READY_WITH_LIMITATIONS"}
+    return {
+        "transaction_id": tx_id,
+        "planned_steps": _planned_steps() if ready else [],
+        "artifact_digests": _digests(),
+        "missing_manifest_fields": missing,
+        "layout": {key: str(value) for key, value in layout.items()},
+        "rollback_steps": [step for step in reversed(constants.APPLY_STEPS) if step in constants.HOST_MUTATION_STEPS],
+        "residual_checks": ["container", "image", "stage", "bpf_pins", "clsact", "loader", "optics", "o7_record"],
+        "live_operations": live_operation_ids(),
+    }
+
+
 def plan(ctx: dict) -> tuple[int, dict]:
+    guard_readonly_command(ctx)
     if ctx.get("dry_run_flag") and ctx["command"] != "plan":
         raise InstallError("Apply does not accept --dry-run. Use plan.", exit_code=10, state="FAILED_SAFE")
     stamp = _clock(ctx.get("as_of"))
@@ -363,18 +385,9 @@ def plan(ctx: dict) -> tuple[int, dict]:
             "UNSUPPORTED": "UNSUPPORTED",
         }[report["overall"]]
         _move(tx, gate, stamp)
-        plan_doc = {
-            "transaction_id": tx_id,
-            "planned_steps": _planned_steps() if gate.startswith("PREFLIGHT_READY") or gate == "PREFLIGHT_READY" else [],
-            "artifact_digests": _digests(),
-            "missing_manifest_fields": missing,
-            "layout": {key: str(value) for key, value in layout.items()},
-        }
+        plan_doc = _plan_document(tx_id, gate, missing, layout)
         if gate in {"PREFLIGHT_READY", "PREFLIGHT_READY_WITH_LIMITATIONS"}:
-            plan_doc["planned_steps"] = _planned_steps()
             _move(tx, "PLANNED", stamp)
-        else:
-            plan_doc["planned_steps"] = []
         tx["phase"] = "plan"
         tx["owner_pid"] = None
         tx["mutation_in_progress"] = False
@@ -420,13 +433,37 @@ def _open_existing(ctx: dict) -> tuple[dict, Path, dict, dict]:
     return tx, tx_dir, config, {}
 
 
-def _mutator(ctx: dict, snapshot: dict, config: dict):
+def _mutator(ctx: dict, snapshot: dict, config: dict, grant=None):
     if ctx.get("fixture_host"):
         stage = assert_safe_root(str(config.get("stage_dir") or (ctx["state_dir"] / "pe-stage")), label="stage_dir")
         prefix = assert_safe_root(str(config.get("prefix") or (ctx["state_dir"] / "prefix")), label="prefix")
         return FixtureMutator(snapshot, prefix, stage), stage, prefix
-    return LiveMutator(), Path(str(config.get("stage_dir") or "/var/tmp/vantio-pe")), Path(
-        str(config.get("prefix") or "/var/lib/vantio/prefix")
+    return (
+        LiveMutator(
+            grant,
+            runner=ctx.get("live_runner"),
+            observer=ctx.get("live_observer") or ProductionObserver(),
+            snapshot=snapshot,
+        ),
+        Path(str(config.get("stage_dir") or "/var/tmp/vantio-pe")),
+        Path(str(config.get("prefix") or "/var/lib/vantio/prefix")),
+    )
+
+
+def _live_grant(ctx: dict, tx: dict, tx_dir: Path, config: dict, bundle: Path, host: dict):
+    if ctx.get("fixture_host"):
+        return None
+    return authorize_live(
+        command=str(ctx.get("command") or ""),
+        tx=tx,
+        tx_dir=tx_dir,
+        config=config,
+        bundle=bundle,
+        host=host,
+        plan_path=ctx.get("plan_path"),
+        plan_sha256=ctx.get("plan_sha256"),
+        accept_live_mutations=bool(ctx.get("accept_live_mutations")),
+        euid=ctx.get("live_euid"),
     )
 
 
@@ -456,6 +493,13 @@ def apply(ctx: dict) -> tuple[int, dict]:
         digest = bundle_digest(manifest_bytes)
         hooks = _fixture_hooks(config, bool(ctx.get("fixture_host")))
         if tx["state"] in {"HEALTHY", "DEGRADED"} and tx.get("bundle_digest") == digest:
+            if not ctx.get("fixture_host"):
+                raise InstallError(
+                    "This transaction is already committed. Live apply will not run it again.",
+                    exit_code=constants.EXIT_FAILED_SAFE,
+                    state="FAILED_SAFE",
+                    failure_class="FAILED_SAFE",
+                )
             tx["replayed"] = True
             _save_tx(tx_dir, tx)
             _sync(tx_dir, evidence)
@@ -496,13 +540,14 @@ def apply(ctx: dict) -> tuple[int, dict]:
             _save_tx(tx_dir, tx)
             _sync(tx_dir, evidence)
             return constants.EXIT_FAILED_SAFE, _payload("apply", tx)
+        snapshot_path = tx_dir / "HOST-SNAPSHOT.json"
+        snapshot = read_json(snapshot_path) if snapshot_path.is_file() else load_fixture(ctx["fixture_host"])
+        grant = None if ctx.get("fixture_host") else _live_grant(ctx, tx, tx_dir, config, bundle, snapshot)
         if tx["state"] == "INTERRUPTED":
             _move(tx, "APPLYING", stamp)
         elif tx["state"] == "PLANNED":
             _move(tx, "APPLYING", stamp)
-        snapshot_path = tx_dir / "HOST-SNAPSHOT.json"
-        snapshot = read_json(snapshot_path) if snapshot_path.is_file() else load_fixture(ctx["fixture_host"])
-        mutator, stage, prefix = _mutator(ctx, snapshot, config)
+        mutator, stage, prefix = _mutator(ctx, snapshot, config, grant)
         observe_path = tx_dir / "observe-config.json"
         step_ctx = _step_ctx(tx, config, bundle, hooks, observe_path)
         tx["mutation_in_progress"] = True
@@ -594,15 +639,26 @@ def apply(ctx: dict) -> tuple[int, dict]:
             _save_tx(tx_dir, tx)
             _sync(tx_dir, evidence)
         except InstallError as exc:
-            if tx["state"] == "APPLYING":
-                _move(tx, "FAILED_SAFE", stamp)
+            target = exc.state if exc.state in {"INTERRUPTED", "FAILED_SAFE"} else "FAILED_SAFE"
+            if tx["state"] == "APPLYING" and target != tx["state"]:
+                _move(tx, target, stamp)
+            elif tx["state"] == "APPLIED" and target in {"FAILED_SAFE", "INTERRUPTED"}:
+                _move(tx, target, stamp)
             tx["last_error"] = str(exc)
+            if exc.failure_class:
+                tx["live_failure_class"] = exc.failure_class
             tx["mutation_in_progress"] = False
             tx["owner_pid"] = None
             _save_tx(tx_dir, tx)
             _event(tx_dir, stamp, "apply", tx["state"], str(exc))
             _sync(tx_dir, evidence)
-            return exc.exit_code, _payload("apply", tx, limitations=tx.get("limitations") or [], last_error=str(exc))
+            return exc.exit_code, _payload(
+                "apply",
+                tx,
+                limitations=tx.get("limitations") or [],
+                last_error=str(exc),
+                live_failure_class=exc.failure_class,
+            )
         health = read_json(tx_dir / "HEALTH.json") if (tx_dir / "HEALTH.json").is_file() else _blank_health(
             tx["transaction_id"], stamp, str(evidence)
         )
@@ -617,6 +673,7 @@ def apply(ctx: dict) -> tuple[int, dict]:
 
 
 def status(ctx: dict) -> tuple[int, dict]:
+    guard_readonly_command(ctx)
     stamp = _clock(ctx.get("as_of"))
     state_dir = ctx["state_dir"]
     with Lock(state_dir):
@@ -661,20 +718,22 @@ def rollback(ctx: dict) -> tuple[int, dict]:
             _move(tx, "INTERRUPTED", stamp)
         if tx["state"] not in {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "APPLYING", "ROLLING_BACK"}:
             raise InstallError(f"Rollback cannot start from {tx['state']}.", exit_code=10, state=tx["state"])
+        snapshot = read_json(tx_dir / "HOST-SNAPSHOT.json")
+        bundle = Path(tx["bundle_dir"])
+        grant = None if ctx.get("fixture_host") else _live_grant(ctx, tx, tx_dir, config, bundle, snapshot)
         if tx["state"] == "INTERRUPTED":
             _move(tx, "ROLLING_BACK", stamp)
         elif tx["state"] == "APPLYING":
             _move(tx, "ROLLING_BACK", stamp)
         elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
             _move(tx, "ROLLING_BACK", stamp)
-        snapshot = read_json(tx_dir / "HOST-SNAPSHOT.json")
-        bundle = Path(tx["bundle_dir"])
-        mutator, _stage, _prefix = _mutator(ctx, snapshot, config)
+        mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
         step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json")
         tx["mutation_in_progress"] = True
         tx["owner_pid"] = os.getpid()
         tx["phase"] = "rollback"
         pending = _reverse_steps(list(tx.get("completed_steps") or []), list(tx.get("rollback_completed_steps") or []))
+        _save_tx(tx_dir, tx)
         try:
             for step_id in pending:
                 mutator.rollback_step(step_id, step_ctx)
@@ -703,11 +762,14 @@ def rollback(ctx: dict) -> tuple[int, dict]:
             tx["owner_pid"] = None
             _save_tx(tx_dir, tx)
             _sync(tx_dir, evidence)
-        except InstallError:
+        except InstallError as exc:
             tx["mutation_in_progress"] = False
             tx["owner_pid"] = None
+            if exc.failure_class:
+                tx["live_failure_class"] = exc.failure_class
             if tx["state"] == "ROLLING_BACK":
-                _move(tx, "FAILED_SAFE", stamp)
+                target = "INTERRUPTED" if exc.state == "INTERRUPTED" else "FAILED_SAFE"
+                _move(tx, target, stamp)
             _save_tx(tx_dir, tx)
             _sync(tx_dir, evidence)
             raise
@@ -738,19 +800,25 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
         if tx["state"] == "APPLIED":
             _move(tx, "INTERRUPTED", stamp)
         if tx["state"] == "INTERRUPTED":
-            _move(tx, "UNINSTALLING", stamp)
+            pass
         elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
-            _move(tx, "UNINSTALLING", stamp)
+            pass
         else:
             raise InstallError(f"Uninstall cannot start from {tx['state']}.", exit_code=10, state=tx["state"])
         snapshot = read_json(tx_dir / "HOST-SNAPSHOT.json")
         bundle = Path(tx["bundle_dir"])
-        mutator, _stage, _prefix = _mutator(ctx, snapshot, config)
+        grant = None if ctx.get("fixture_host") else _live_grant(ctx, tx, tx_dir, config, bundle, snapshot)
+        if tx["state"] == "INTERRUPTED":
+            _move(tx, "UNINSTALLING", stamp)
+        elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
+            _move(tx, "UNINSTALLING", stamp)
+        mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
         step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json")
         tx["scope"] = scope
         tx["phase"] = "uninstall"
         tx["mutation_in_progress"] = True
         tx["owner_pid"] = os.getpid()
+        _save_tx(tx_dir, tx)
         try:
             mutator.uninstall(scope, step_ctx)
             write_json(tx_dir / "HOST-SNAPSHOT.json", snapshot)
@@ -770,10 +838,13 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
             _save_tx(tx_dir, tx)
             _event(tx_dir, stamp, "uninstall", "UNINSTALLED", scope)
             _sync(tx_dir, evidence)
-        except InstallError:
+        except InstallError as exc:
             tx["mutation_in_progress"] = False
+            if exc.failure_class:
+                tx["live_failure_class"] = exc.failure_class
             if tx["state"] == "UNINSTALLING":
-                _move(tx, "FAILED_SAFE", stamp)
+                target = "INTERRUPTED" if exc.state == "INTERRUPTED" else "FAILED_SAFE"
+                _move(tx, target, stamp)
             _save_tx(tx_dir, tx)
             _sync(tx_dir, evidence)
             raise
@@ -787,6 +858,7 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
 
 
 def verify_removal(ctx: dict) -> tuple[int, dict]:
+    guard_readonly_command(ctx)
     stamp = _clock(ctx.get("as_of"))
     scope = ctx.get("scope") or "all"
     if scope == "all_product_owned":
@@ -816,12 +888,18 @@ def verify_removal(ctx: dict) -> tuple[int, dict]:
         )
         report["transaction_id"] = tx["transaction_id"]
         report["as_of_et"] = stamp
+        if not ctx.get("fixture_host"):
+            report["result"] = residual_result(report.get("items") or [], report.get("probe_errors") or [])
+        if report["result"] == "PASS":
+            report["result"] = "RESIDUAL_FOUND"
         write_json(tx_dir / "RESIDUAL.json", report)
         if report["result"] == "EMPTY":
             _move(tx, "VERIFIED_REMOVED", stamp)
         elif report["result"] == "UNKNOWN":
             _move(tx, "FAILED_SAFE", stamp)
             tx["last_error"] = "residual probe returned UNKNOWN"
+        elif report["result"] == "RESIDUAL_FOUND":
+            _move(tx, "RESIDUAL_FOUND", stamp)
         else:
             _move(tx, "RESIDUAL_PRESENT", stamp)
         tx["phase"] = "verify-removal"

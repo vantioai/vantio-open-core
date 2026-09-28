@@ -50,6 +50,36 @@ def npm_install_argv(tarball: str, prefix: str) -> list[str]:
     return ["npm", "install", "--global", "--prefix", prefix, tarball]
 
 
+def pip_wheel_argv(wheel: str, prefix: str) -> list[str]:
+    return [
+        "python3",
+        "-m",
+        "pip",
+        "install",
+        "--no-index",
+        "--disable-pip-version-check",
+        "--prefix",
+        prefix,
+        wheel,
+    ]
+
+
+def mkdir_argv(path: str) -> list[str]:
+    return ["mkdir", "-p", "--", path]
+
+
+def tc_clsact_argv(iface: str) -> list[str]:
+    return ["tc", "qdisc", "replace", "dev", iface, "clsact"]
+
+
+def tc_clsact_del_argv(iface: str) -> list[str]:
+    return ["tc", "qdisc", "del", "dev", iface, "clsact"]
+
+
+def docker_start_argv(name: str) -> list[str]:
+    return ["docker", "start", name]
+
+
 def observe_env() -> dict[str, str]:
     return {
         "VANTIO_TELEMETRY_DISABLED": "1",

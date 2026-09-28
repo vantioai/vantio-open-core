@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 
 from vantio_install import constants
+from vantio_install.live_executor import execute_step
 from vantio_install.commands import (
     docker_load_argv,
     docker_rmi_argv,
@@ -250,33 +250,52 @@ class FixtureMutator:
 
 
 class LiveMutator:
-    """Builds the same argv as a host install and refuses to run it in Stage A."""
+    """Runs allowlisted observe-only operations after authorize_live returns a grant."""
 
-    def __init__(self) -> None:
+    def __init__(self, grant, runner, observer, snapshot: dict) -> None:
+        if grant is None:
+            raise InstallError(
+                "Live host mutations need an authorization grant. The env var alone does not grant one.",
+                exit_code=4,
+                state="FAILED_SAFE",
+                failure_class="FAILED_SAFE",
+            )
+        self.grant = grant
+        self.runner = runner
+        self.observer = observer
+        self.snapshot = snapshot
         self.mutation_count = 0
         self.recorded_argv: list[list[str]] = []
 
     def apply_step(self, step_id: str, ctx: dict) -> None:
-        if step_id not in constants.HOST_MUTATION_STEPS:
-            return
-        self._refuse()
+        self._run(step_id, "apply")
 
     def rollback_step(self, step_id: str, ctx: dict) -> None:
-        if step_id in constants.HOST_MUTATION_STEPS:
-            self._refuse()
+        self._run(step_id, "rollback")
 
     def uninstall(self, scope: str, ctx: dict) -> None:
-        self._refuse()
+        if scope in {"pe", "all"}:
+            for step_id in ("start_pe_observe", "docker_load", "stage_pe_archive", "write_observe_config"):
+                self._run(step_id, "rollback")
+        if scope in {"optics", "all"}:
+            for step_id in ("install_agent_sdks", "install_optics_cli"):
+                self._run(step_id, "rollback")
 
-    def _refuse(self) -> None:
-        if os.environ.get("VANTIO_INSTALL_ALLOW_LIVE") == "1":
-            raise InstallError(
-                "Live mutations are still not executed by this Stage A package.",
-                exit_code=4,
-                state="FAILED_SAFE",
-            )
-        raise InstallError(
-            "Live host mutations are disabled. Plan remains read-only. A clean-host apply needs a later authorization.",
-            exit_code=4,
-            state="FAILED_SAFE",
-        )
+    def _run(self, step_id: str, kind: str) -> None:
+        if step_id not in constants.HOST_MUTATION_STEPS:
+            return
+        deltas, argv = execute_step(self.grant, step_id, kind, self.runner, self.observer)
+        for delta in deltas:
+            self._merge(delta)
+        self.recorded_argv.extend(argv)
+        self.snapshot.setdefault("recorded_argv", []).extend(argv)
+        if argv or deltas:
+            self.mutation_count += 1
+
+    def _merge(self, delta: dict) -> None:
+        for key in ("optics_cli_version",):
+            if key in delta:
+                self.snapshot[key] = delta[key]
+        for key in ("images", "containers", "bpf_pins", "clsact_ifaces", "processes"):
+            if key in delta:
+                self.snapshot[key] = delta[key]

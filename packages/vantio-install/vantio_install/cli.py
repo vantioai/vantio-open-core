@@ -35,6 +35,9 @@ def _parser() -> argparse.ArgumentParser:
     parent.add_argument("--yes", action="store_true")
     parent.add_argument("--scope", default="all", choices=["pe", "optics", "all", "all_product_owned"])
     parent.add_argument("--dry-run", action="store_true")
+    parent.add_argument("--i-accept-live-mutations", action="store_true")
+    parent.add_argument("--plan", default=None)
+    parent.add_argument("--plan-sha256", default=None)
     parser = argparse.ArgumentParser(prog="vantio-install")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in _COMMANDS:
@@ -55,6 +58,9 @@ def _ctx(args: argparse.Namespace) -> dict:
         "yes": bool(args.yes),
         "scope": args.scope,
         "dry_run_flag": bool(args.dry_run),
+        "accept_live_mutations": bool(args.i_accept_live_mutations),
+        "plan_path": Path(args.plan) if args.plan else None,
+        "plan_sha256": args.plan_sha256,
     }
 
 
@@ -89,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
         code, payload = command(_ctx(args))
     except InstallError as exc:
         payload = _error_payload(args.command, args.transaction_id, exc.state, str(exc))
+        if exc.failure_class:
+            payload["live_failure_class"] = exc.failure_class
         code = exc.exit_code
     except Exception as exc:  # noqa: BLE001 — last-resort crash envelope
         payload = _error_payload(args.command, args.transaction_id, "FAILED_SAFE", exc.__class__.__name__)

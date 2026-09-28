@@ -1,19 +1,28 @@
 {
   "document": "IMPLEMENTATION-REPORT",
   "audience": "INTERNAL_RESTRICTED",
-  "as_of_et": "2026-09-27T20:40:48-04:00",
-  "program": "CUSTOMER INSTALLER / SECOND LAB — Stage A",
+  "as_of_et": "2026-09-27T21:12:27-04:00",
+  "program": "CUSTOMER INSTALLER / SECOND LAB — Stage A revision",
+  "classification": "VANTIO_INSTALLER_REVISION_READY_FOR_COUNCIL",
   "design_status_implemented": "DESIGN_READY_FOR_IMPLEMENTATION",
+  "prior_council": "NEEDS_REVISION",
   "proof_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
   "proof_state_emitted_by_installer": "NOT_PROVED",
+  "stage_b_gate": "CLOSED",
   "ready_for_council": "YES",
+  "council_pass_claimed": false,
   "repo": "vantioai/vantio-open-core",
   "base_branch": "main",
   "base_tip": "5bb8154ae377a561478ffc50ce81cc4544deaa36",
-  "base_tip_subject": "Merge Wave 3 Track 15 public claim and content inventory onto main. Source-only. Frozen inventory.",
+  "reviewed_tip": "959c270fc0bc68c6622fe8b30b622e490c04c115",
   "branch": "cursor/stage-a-vantio-install-8195",
   "pr_url": "https://github.com/vantioai/vantio-open-core/pull/118",
   "package": "packages/vantio-install",
+  "revisions": [
+    "REV-LIVE-EXECUTOR",
+    "REV-PIN-REPORT-REGEN",
+    "REV-REAL-ARTIFACT-PATH"
+  ],
   "commands": [
     "vantio-install plan",
     "vantio-install apply",
@@ -23,6 +32,52 @@
     "vantio-install verify-removal"
   ],
   "independent_verifier": "vantio-verify",
+  "live_executor": {
+    "module": "packages/vantio-install/vantio_install/live_executor.py",
+    "dual_gate": [
+      "VANTIO_INSTALL_ALLOW_LIVE=1",
+      "--i-accept-live-mutations"
+    ],
+    "flag_commands_only": [
+      "apply",
+      "rollback",
+      "uninstall"
+    ],
+    "plan_hash_binding": "apply|rollback|uninstall --plan <PLAN.json> --plan-sha256 <sha256 of those bytes> --i-accept-live-mutations",
+    "invocation": "argv list only; subprocess shell=False; shell strings and extra argv refused",
+    "success_rule": "process exit 0 is not success; a separate host check must return VERIFIED",
+    "failure_classes": [
+      "FAILED_SAFE",
+      "INTERRUPTED",
+      "ROLLBACK_REQUIRED"
+    ],
+    "residual_live_result": "RESIDUAL_FOUND",
+    "allowlist": [
+      "mkdir_prefix",
+      "mkdir_stage",
+      "mkdir_evidence",
+      "install_optics_cli",
+      "install_agent_sdk_npm",
+      "install_agent_sdk_py",
+      "stage_pe_archive",
+      "docker_load",
+      "docker_tag",
+      "write_observe_config",
+      "o7_init",
+      "tc_clsact",
+      "start_pe_observe",
+      "restart_pe_observe",
+      "docker_stop",
+      "docker_rm",
+      "docker_rmi",
+      "tc_clsact_del",
+      "remove_stage",
+      "remove_observe_config",
+      "remove_o7_record",
+      "remove_optics",
+      "remove_sdks"
+    ]
+  },
   "defaults": {
     "install_mode": "observe-only",
     "enforcement": "NOT_ENABLED",
@@ -46,10 +101,21 @@
     "cwd": "packages/vantio-install",
     "interpreter": "Python 3.14.4",
     "result": "OK",
-    "ran": 29,
+    "ran": 59,
     "failed": 0,
+    "fixture_tests": 29,
+    "live_executor_tests": 30,
+    "release_governance": {
+      "generator": "node scripts/release/ws11/verify.mjs --emit",
+      "ws11_test": "13 passed, 0 failed",
+      "governance_test": "13 passed, 0 failed",
+      "result": "RELEASE_GOVERNANCE_PIN_REPORT_CURRENT",
+      "action_upgrades": false
+    },
     "ci_job": "test-vantio-install on Python 3.12"
   },
+  "artifact_runbook": "packages/vantio-install/docs/STAGE-B-ARTIFACT-PATH.md",
+  "pin_report": "docs/programs/release-engineering/generated/pin-report.json",
   "hard_stops_honored": {
     "aws_provision": false,
     "paid_plan": false,
@@ -58,18 +124,27 @@
     "secrets_in_tree": false,
     "phantom_box_or_crm_in_customer_docs": false,
     "pe_enforce_default": false,
-    "mutate_frozen_optics_packages": false
+    "mutate_frozen_optics_packages": false,
+    "merge": false,
+    "council_pass_self_claimed": false
+  },
+  "disclosure_secret_scan": {
+    "customer_surface": "README, docs, and config passed the existing needle scan",
+    "package_tree": "no PEM blocks and no AKIA-shaped keys in the installer tree",
+    "support_bundle_redaction": "unchanged and covered by the existing fixture test"
   },
   "fail_closed_extensions": [
     "APPLIED can move to INTERRUPTED when the process dies before health is recorded",
     "VERIFIED_REMOVED and RESIDUAL_PRESENT can be re-checked",
-    "VERIFYING_REMOVAL moves to FAILED_SAFE when a residual probe returns UNKNOWN"
+    "VERIFYING_REMOVAL moves to FAILED_SAFE when a residual probe returns UNKNOWN",
+    "A live residual check records RESIDUAL_FOUND",
+    "A live command that exits 0 without a host check records ROLLBACK_REQUIRED"
   ],
   "residual_gaps": [
-    "Live Docker, npm, BPF, and traffic-control commands are constructed and tested as argument lists. The live executor refuses to run them, including when VANTIO_INSTALL_ALLOW_LIVE=1. A later authorized clean-host run has to execute that path.",
-    "Fixture tests prove the transaction, rollback, residual check, support-bundle redaction, and independent verifier. They are not a clean-host proof. proof_state stays NOT_PROVED.",
-    "The sealed Phantom Engine archive and Optics tarballs are not vendored. The installer pins the frozen digests and refuses a mismatch. Happy-path fixtures inject those digest fields in-process so the same comparator can pass on small files. A subprocess plan against the real pin table and stand-in bytes is PREFLIGHT_BLOCKED.",
-    "No second AWS lab, no GHCR publish, no Paid conversion, and no public announcement were performed."
+    "The live positive test injects archive digest fields in-process, the same way the Stage A fixtures do. A plan against the unpatched pin table and stand-in bytes stays PREFLIGHT_BLOCKED. The sealed archive and Optics tarballs are not in this pull request.",
+    "Unit tests bind a runner and a host observer. They do not execute Docker, npm, pip, BPF, or traffic control on this machine. The production runner uses subprocess with shell=False when both gates and the plan hash pass.",
+    "o7_init writes an observe record with enforcement off. It does not initialize a host enforcement store.",
+    "No second AWS lab, no GHCR publish, no Paid conversion, and no public announcement were performed. Stage B stays CLOSED. This report does not claim a council PASS."
   ],
-  "summary": "Stage A adds a dedicated vantio-install package and an independent vantio-verify command. The frozen Optics CLI, agent SDK, and Phantom Engine identities are unchanged. Observe-only is the only install mode. Twenty-nine fixture tests passed locally."
+  "summary": "The revision adds a typed observe-only live executor, regenerates the release pin report with the official emitter, and documents how sealed Optics and Phantom Engine bytes are placed for a later lab. Fifty-nine installer tests passed locally. proof_state stays NOT_PROVED."
 }
