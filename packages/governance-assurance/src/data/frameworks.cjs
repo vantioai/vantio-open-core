@@ -2,7 +2,7 @@
 
 const { RETRIEVED_AT } = require("../constants.cjs");
 
-const NEXT_REVIEW = "Rebind at package 0.2.0 after Wave 2 merges, or sooner when the cited authority republishes.";
+const NEXT_REVIEW = "Reviewed at package 0.2.0-internal on 2026-09-28. Next rebind at 0.3.0 only after a clean-host qualification that PARTIAL_INTERNAL_CLEAN_HOST_PROOF does not supply, or sooner when the cited authority republishes.";
 
 function document(spec) {
   return {

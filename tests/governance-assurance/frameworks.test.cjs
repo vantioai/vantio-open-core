@@ -31,7 +31,7 @@ test("six frameworks are version-pinned and unknown versions fail closed", () =>
 test("every mapping carries provenance and does not copy clause text", () => {
   assert.equal(api.MAPPINGS.length, 144);
   for (const mapping of api.MAPPINGS) {
-    assert.equal(mapping.mapping_version, "0.1.0-internal");
+    assert.equal(mapping.mapping_version, "0.2.0-internal");
     assert.equal(mapping.mapping_commit, "NOT_SELF_HASHED");
     assert.equal(mapping.reviewer, "PENDING_INDEPENDENT_COUNCIL");
     assert.equal(typeof mapping.publication_date, "string");

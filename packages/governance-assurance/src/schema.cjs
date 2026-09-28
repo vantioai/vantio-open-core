@@ -74,7 +74,7 @@ function controlProblems(control) {
   if (!inList(RUNTIME_STATES, control.runtime_state)) problems.push("runtime_state");
   if (!inList(VERIFICATION_STATES, control.verification_state)) problems.push("verification_state");
   if (inList(PROMOTION_BLOCKED_VERIFICATION, control.verification_state)) {
-    problems.push("verification promotion blocked in 0.1.0-internal");
+    problems.push("verification promotion blocked in 0.2.0-internal");
   }
   if (!inList(PROOF_CLASSES, control.proof_class)) problems.push("proof_class");
   if (!stringList(control.evidence_requirements)) problems.push("evidence_requirements");

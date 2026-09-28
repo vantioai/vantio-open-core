@@ -18,7 +18,7 @@
         "GA-20"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -36,7 +36,7 @@
         "Do not count this record toward GA-12 or GA-19."
       ],
       "proof_class": "RELEASE_CLOSE_PACKET",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "2026-09-27T11:18:04Z",
       "title": "Python 3.1.0 release-close packet",
       "track_id": "T1",
@@ -59,14 +59,15 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "UNSET",
       "independent_verifier": "UNSET",
       "informs_posture": false,
       "limitations": [
         "O7 status on this tree is NOT_AUTHORIZED.",
         "Founder decision 9 is unresolved. The Node binding is BLOCKED_NODE until that decision and an O6 selection exist.",
-        "No council pass is claimed. This catalog does not open a store."
+        "No council pass is claimed. This catalog does not open a store.",
+        "Stage B cites O7 INTERNAL_CLEAN_HOST_INITIALIZATION_PROOF for an observe record with enforcement NOT_ENABLED. That citation does not authorize this store and does not count toward satisfaction."
       ],
       "producer": "option-c revalidation packet",
       "product_version": "not-opened",
@@ -75,7 +76,7 @@
         "Do not treat BLOCKED_NODE as a chosen library."
       ],
       "proof_class": "DESIGN_RECORD",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "O7 store remains unauthorized",
       "track_id": "T3",
@@ -106,7 +107,7 @@
         "GA-28"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -121,7 +122,7 @@
         "Do not read the health package as live enforcement or as independent verification."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Shared health runtime",
       "track_id": "T4",
@@ -149,14 +150,14 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
       "limitations": [
         "packet_plane is OBSERVE_ONLY. packet_effect stays NOT_APPLIED. live_loader_mutated is false.",
         "The ingress program council is a different force. This catalog does not sit it and does not re-execute the tests.",
-        "The merge does not count toward satisfaction. A satisfaction rebind remains 0.2.0."
+        "The 0.2.0 rebind read this merge and still does not count it toward satisfaction. Stage B enforcement efficacy is NOT_PROVED."
       ],
       "producer": "pe-ingress-authority package",
       "product_version": "0.0.0-internal",
@@ -193,14 +194,14 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
       "limitations": [
         "this_force_executed_host is false. this_force_executed_network is false. optimistic_allow is false.",
         "The egress program council is a different force. This catalog does not sit it and does not re-execute the tests.",
-        "Contract-only egress does not count toward satisfaction. Optics observation is a different control."
+        "The 0.2.0 rebind read this merge and still does not count it toward satisfaction. Stage B enforcement efficacy is NOT_PROVED."
       ],
       "producer": "pe-egress-authority package",
       "product_version": "0.0.0-internal",
@@ -235,7 +236,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": false,
@@ -250,7 +251,7 @@
         "Do not promote CONTRACT_ONLY to host enforcement or to clean-host proof."
       ],
       "proof_class": "CONTRACT_EVALUATION",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Host-authority contract",
       "track_id": "T7",
@@ -279,7 +280,7 @@
         "GA-30"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -321,7 +322,7 @@
         "GA-31"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -335,7 +336,7 @@
         "Do not treat an in-process stage as a host enforce action."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Progressive enforcement lifecycle",
       "track_id": "T9",
@@ -360,14 +361,15 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "UNSET",
       "independent_verifier": "UNSET",
       "informs_posture": false,
       "limitations": [
         "sequence_result is BLOCKED_INFRA. evidence_tier is UNSET.",
         "The guard-script exit is not a sequence pass.",
-        "Does not count toward control satisfaction."
+        "Does not count toward control satisfaction.",
+        "Stage B PARTIAL_INTERNAL_CLEAN_HOST_PROOF is a different program. It does not clear BLOCKED_INFRA and it does not qualify 0.3.0."
       ],
       "producer": "clean-host execution packet",
       "product_version": "blocked",
@@ -375,7 +377,7 @@
         "Do not treat exit 0 of check-guards.sh as clean-host proof."
       ],
       "proof_class": "BLOCKED_UNSET",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "2026-09-27T11:18:58Z",
       "title": "Clean-host execution",
       "track_id": "T10",
@@ -398,7 +400,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "NOT_APPLICABLE",
       "independent_verifier": "UNSET",
       "informs_posture": false,
@@ -411,7 +413,7 @@
         "Do not use the investor demo as evidence that a control is met."
       ],
       "proof_class": "NOT_COMPLIANCE_ELIGIBLE",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Investor demo",
       "track_id": "T11",
@@ -434,7 +436,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -449,7 +451,7 @@
         "Do not treat the adapter file as a live export."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "OTLP I3 adapter",
       "track_id": "T12",
@@ -479,13 +481,14 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": false,
       "limitations": [
         "The packet says it does not authorize an implementation.",
-        "Internal plan and customer deploy are different. Neither is live here."
+        "Internal plan and customer deploy are different. Neither is live here.",
+        "The 0.2.0 rebind leaves Enterprise at NO_LIVE_CUSTOMER_AUTHORITY. A Stage B observe record is not a live customer authority object."
       ],
       "producer": "enterprise planning packet",
       "product_version": "plan-only",
@@ -493,7 +496,7 @@
         "Do not describe the plan as customer authority or as a council pass."
       ],
       "proof_class": "DESIGN_RECORD",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Enterprise E1-E3 plan",
       "track_id": "T13",
@@ -520,7 +523,7 @@
         "GA-26"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -558,13 +561,14 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": false,
       "limitations": [
         "execution_status is NOT_AUTHORIZED. placeholder_execution is NOT_EXECUTED.",
-        "No evidence tier is assigned. This force did not execute a stranger host."
+        "No evidence tier is assigned. This force did not execute a stranger host.",
+        "NEXT_LAB is NOT_YET_AUTHORIZED. Class B provision is BLOCKED. PUBLIC_REWRITE stays HOLD."
       ],
       "producer": "stranger-host prep packet",
       "product_version": "readiness-only",
@@ -573,7 +577,7 @@
         "Do not treat Phantom-Box as a stranger host."
       ],
       "proof_class": "DESIGN_RECORD",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Stranger-host readiness",
       "track_id": "T16",
@@ -590,7 +594,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "UNSET",
       "independent_verifier": "UNSET",
       "informs_posture": false,
@@ -603,7 +607,7 @@
         "Do not state a performance ranking."
       ],
       "proof_class": "NONE",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Best-in-class and benchmark claims",
       "track_id": "BENCHMARK",
@@ -632,7 +636,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -675,7 +679,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -684,7 +688,7 @@
         "MATRIX-MARKERS.json still records merged false and marker_achievement READY_FOR_COUNCIL. activates_unit_e is true on that Unit E marker.",
         "activates_unit_e stays false on the planning matrix and on Unit D. registry_publish is false. sealed is false.",
         "Sealed Python 3.1.0 and CLI 0.3.24 were not mutated. This catalog did not re-execute Unit E tests.",
-        "Does not count toward satisfaction."
+        "The 0.2.0 rebind read this merge and still does not count it toward satisfaction."
       ],
       "producer": "PKG-02 Unit E",
       "product_version": "PKG02-FUTURE-PYTHON-UNASSIGNED",
@@ -727,7 +731,7 @@
         "GA-25"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -744,7 +748,7 @@
         "Do not treat the package manifest as proof that credentials are not collected."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Frozen Optics CLI",
       "track_id": "CLI",
@@ -772,7 +776,7 @@
       ],
       "count_control_ids": [],
       "counts_toward_satisfaction": false,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -789,7 +793,7 @@
         "Do not treat path retention as credential non-collection."
       ],
       "proof_class": "DESIGN_RECORD",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
       "timestamp": "UNKNOWN",
       "title": "Optics public privacy statement",
       "track_id": "OPTICS-PRIVACY",
@@ -801,7 +805,7 @@
         {
           "path": "packages/governance-assurance/src/constants.cjs",
           "present": true,
-          "sha256": "6f1e33e2b71b4e37476a657f2fd94d21b49741c2bafdbf6c0efd0b979c6191ac"
+          "sha256": "719657293022ef2cd82a3f4babc809fd4390e5020de2763794efd051937258b5"
         }
       ],
       "artifact_status": "PRESENT",
@@ -818,7 +822,7 @@
         "GA-39"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -826,13 +830,13 @@
         "The statement limits claims. It does not prove a customer system."
       ],
       "producer": "governance-assurance package",
-      "product_version": "0.1.0-internal",
+      "product_version": "0.2.0-internal",
       "prohibited_interpretations": [
         "Do not quote the role statement as a certification."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
-      "timestamp": "2026-09-27T12:46:00Z",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+      "timestamp": "2026-09-28T17:26:43Z",
       "title": "Role statement and claim ceiling",
       "track_id": "WS17",
       "verification_result": "DISCLOSURE_ONLY",
@@ -856,7 +860,7 @@
         "GA-21"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -864,13 +868,13 @@
         "The function can mark a row stale. It does not measure a customer evidence window."
       ],
       "producer": "governance-assurance package",
-      "product_version": "0.1.0-internal",
+      "product_version": "0.2.0-internal",
       "prohibited_interpretations": [
         "Do not treat a generated staleness section as the underlying evidence."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
-      "timestamp": "2026-09-27T12:46:00Z",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+      "timestamp": "2026-09-28T17:26:43Z",
       "title": "Staleness function",
       "track_id": "WS17",
       "verification_result": "STALENESS_FUNCTION_PRESENT",
@@ -881,7 +885,7 @@
         {
           "path": "packages/governance-assurance/src/reports.cjs",
           "present": true,
-          "sha256": "92ceea18c5be07aa798277f84f02d8a8a46fd50a9ff289c98678dd14ded07d06"
+          "sha256": "656f3d9e8a577715e08e04ebc83e6cc511a68618bd986fae77b430ec5bde9d8c"
         }
       ],
       "artifact_status": "PRESENT",
@@ -894,7 +898,7 @@
         "GA-38"
       ],
       "counts_toward_satisfaction": true,
-      "environment": "source tree vantio-open-core at the WS17 base. Not a clean host and not a stranger host.",
+      "environment": "source tree vantio-open-core at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. Not a clean host and not a stranger host.",
       "freshness": "CURRENT_FOR_CATALOG_REVIEW",
       "independent_verifier": "UNSET",
       "informs_posture": true,
@@ -902,37 +906,226 @@
         "Distribution stays INTERNAL_RESTRICTED unless a later review says otherwise. Proof class does not rise with audience."
       ],
       "producer": "governance-assurance package",
-      "product_version": "0.1.0-internal",
+      "product_version": "0.2.0-internal",
       "prohibited_interpretations": [
         "Do not submit this index externally from this force."
       ],
       "proof_class": "PRODUCER_TEST",
-      "source_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
-      "timestamp": "2026-09-27T12:46:00Z",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+      "timestamp": "2026-09-28T17:26:43Z",
       "title": "Procurement index generator",
       "track_id": "WS17",
       "verification_result": "INDEX_GENERATED_NOT_SUBMITTED",
       "wave2_state": "PRIVATE_NOT_SUBMITTED"
+    },
+    {
+      "artifact_records": [
+        {
+          "path": "docs/internal/governance-assurance/stage-b/C6-REBIND.json",
+          "present": true,
+          "sha256": "0ab713761007e6ef98ede125755c91bc2696b9515700100d0b933019ba1a7b99"
+        },
+        {
+          "path": "packages/vantio-install/vantio_install/constants.py",
+          "present": true,
+          "sha256": "685591ce71bc0c1d87ae91a84e370375d2bf123f88f0174a93ce81519a2f3618"
+        },
+        {
+          "path": "packages/vantio-cli/package.json",
+          "present": true,
+          "sha256": "5f772f6ad1a071f34905a6b30eb29be32eea4175ab58bee1e235f9ee3c7ef6e0"
+        },
+        {
+          "path": "packages/vantio-agent-sdk/package.json",
+          "present": true,
+          "sha256": "9b049c29544e62cfe533f6c30ed51b2d9854f98e89d912647ab46016c11d8984"
+        },
+        {
+          "path": "packages/vantio-agent-sdk-py/pyproject.toml",
+          "present": true,
+          "sha256": "7a031c6b36bff33529c434b489231dbd2d041e596424833255cd05cfd77e935f"
+        }
+      ],
+      "artifact_status": "PRESENT",
+      "binding_id": "EB-STAGE-B",
+      "collection_source": "C6-REBIND.json program_bindings, with installer ceiling and frozen pins hashed beside it",
+      "control_ids": [
+        "GA-12",
+        "GA-13",
+        "GA-19",
+        "GA-27",
+        "GA-33",
+        "GA-39",
+        "GA-40"
+      ],
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "environment": "documentary citation of the 2026-09-28 closure program. Not a re-execution. Not a clean host and not a stranger host.",
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "informs_posture": true,
+      "limitations": [
+        "Documentary citation. reexecuted is false. This catalog did not rerun the lab.",
+        "Stage B is PARTIAL_INTERNAL_CLEAN_HOST_PROOF. proof_state is PARTIAL_NOT_FULL_EFFICACY. The claim ceiling is INTERNAL_CLEAN_HOST_PROOF.",
+        "Installer token is VANTIO_INSTALLER_REPEATABLE_PATH_PROVED_WITH_LIMITATIONS. It is not VANTIO_INSTALLER_INTERNAL_CUSTOMER_CANDIDATE.",
+        "Optics is INTERNAL_CLEAN_HOST_INSTALLATION_PROOF for frozen CLI 0.3.24. npm SDK stays 0.2.4. Python SDK stays 3.1.0.",
+        "O7 is INTERNAL_CLEAN_HOST_INITIALIZATION_PROOF with enforcement NOT_ENABLED. Phantom Engine is INTERNAL_CLEAN_HOST_OBSERVE_ONLY_PROOF.",
+        "Uninstall is LIVE_REMOVAL_AND_BPF_UNPIN_PROOF. That is not a residual-only path.",
+        "Destruction is STAGE_B_DESTROY_PASS for the lab resources. It is not product decommission and it does not close Council F.",
+        "Enforcement efficacy is NOT_PROVED. Repeatability is NOT_YET_PROVED. This citation does not qualify 0.3.0.",
+        "constants.py still emits PROOF_STATE NOT_PROVED and still forbids a claim that the governance rebind is a completed product proof."
+      ],
+      "producer": "closure program citation, not this catalog",
+      "product_version": "0.2.0-internal",
+      "prohibited_interpretations": [
+        "Do not treat this citation as a re-executed clean-host pass.",
+        "Do not raise the proof class from this file."
+      ],
+      "proof_class": "CHARACTERIZATION",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+      "timestamp": "2026-09-28T17:26:43Z",
+      "title": "Stage B accepted close citation",
+      "track_id": "STAGE-B",
+      "verification_result": "PARTIAL_INTERNAL_CLEAN_HOST_PROOF",
+      "wave2_state": "STAGE_B_PARTIAL_CITED_NOT_REEXECUTED"
+    },
+    {
+      "artifact_records": [
+        {
+          "path": "docs/internal/governance-assurance/stage-b/C6-REBIND.json",
+          "present": true,
+          "sha256": "0ab713761007e6ef98ede125755c91bc2696b9515700100d0b933019ba1a7b99"
+        }
+      ],
+      "artifact_status": "PRESENT",
+      "binding_id": "EB-C5",
+      "collection_source": "C6-REBIND.json open_gates and tally",
+      "control_ids": [
+        "GA-22",
+        "GA-34",
+        "GA-39",
+        "GA-40"
+      ],
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "environment": "documentary citation of the 2026-09-28 closure program. Not a re-execution. Not a clean host and not a stranger host.",
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "informs_posture": true,
+      "limitations": [
+        "C5 classification is INTEGRATION_PASS_WITH_NONBLOCKING_AND_OPEN_GATES. Clean-pass tally is zero.",
+        "Council F is NEEDS_REVISION. Billing close is STAGE_B_BILLING_CLOSE_PENDING.",
+        "Council I is NEEDS_REVISION. Recordings A-H are NOT_CAPTURED.",
+        "C8 is DESIGN_COMPLETE_AWAITING_FOUNDER_CREDENTIAL_OR_ROLE. noninteractive_teardown_ready is false.",
+        "Class B is BLOCKED. NEXT_LAB is NOT_YET_AUTHORIZED. PUBLIC_REWRITE is HOLD.",
+        "Council J was prep only. This packet does not convert that prep into a WS17 council acceptance."
+      ],
+      "producer": "closure program citation, not this catalog",
+      "product_version": "0.2.0-internal",
+      "prohibited_interpretations": [
+        "Do not hide Council F or Council I.",
+        "Do not treat C5 as this package's independent council."
+      ],
+      "proof_class": "CHARACTERIZATION",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+      "timestamp": "2026-09-28T17:26:43Z",
+      "title": "C5 integration close with open gates",
+      "track_id": "C5",
+      "verification_result": "OPEN_GATES_VISIBLE",
+      "wave2_state": "C5_INTEGRATION_PASS_WITH_NONBLOCKING_AND_OPEN_GATES"
+    },
+    {
+      "artifact_records": [
+        {
+          "path": "docs/internal/governance-assurance/stage-b/C6-REBIND.json",
+          "present": true,
+          "sha256": "0ab713761007e6ef98ede125755c91bc2696b9515700100d0b933019ba1a7b99"
+        },
+        {
+          "path": "docs/internal/pe-ingress/INGRESS-MANIFEST.json",
+          "present": true,
+          "sha256": "d19c7af47b84420e6b571daf48e33687cece57302082a94ac9e89dec2ee4c277"
+        },
+        {
+          "path": "packages/pe-ingress-authority/src/constants.cjs",
+          "present": true,
+          "sha256": "9140b55b6513cb5bfa8bf90bc65e0fe0e78f7cc76d272ae165b43589a985f53a"
+        },
+        {
+          "path": "docs/internal/pe-egress/EGRESS-MANIFEST.json",
+          "present": true,
+          "sha256": "d8102bb740b9df10a4376e7d90a71053f0ce48f866fd578eb44d7fdc8816ac8b"
+        },
+        {
+          "path": "packages/pe-egress-authority/src/decision.cjs",
+          "present": true,
+          "sha256": "82d60106a082fa6d16019e2c52a3d83f49db15042998c600ea989995ed376e42"
+        },
+        {
+          "path": "docs/internal/optics-pkg02-unit-e/MATRIX-MARKERS.json",
+          "present": true,
+          "sha256": "df4297edae3afdedb9f583b28e637ccf25f7c9d9da4dfa0c25ee28012509de70"
+        }
+      ],
+      "artifact_status": "PRESENT",
+      "binding_id": "EB-WAVE2-RESIDUAL",
+      "collection_source": "ingress, egress, and Unit E files reread at the 0.2.0 tip, with C6-REBIND.json",
+      "control_ids": [
+        "GA-13",
+        "GA-14",
+        "GA-15",
+        "GA-27",
+        "GA-40"
+      ],
+      "count_control_ids": [],
+      "counts_toward_satisfaction": false,
+      "environment": "documentary citation of the 2026-09-28 closure program. Not a re-execution. Not a clean host and not a stranger host.",
+      "freshness": "CURRENT_FOR_CATALOG_REVIEW",
+      "independent_verifier": "UNSET",
+      "informs_posture": true,
+      "limitations": [
+        "Ingress remains MERGED_OBSERVE_ONLY_LOADER_UNTOUCHED and does not count.",
+        "Egress remains MERGED_CONTRACT_ONLY_HOST_NETWORK_NOT_EXECUTED and does not count.",
+        "Unit E remains MERGED_NO_LIVE_INTEGRATION and does not count.",
+        "RBK-004 is SOURCE_CLOSED_MERGED at b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450. live_reproof_claimed is false. The live Class A residual-only re-proof is NOT_YET_AUTHORIZED.",
+        "C3 listed GAP-SB-RBK-004 as open before that merge. The later C1 and C5 records are the ones this rebind binds.",
+        "Enforcement efficacy is NOT_PROVED."
+      ],
+      "producer": "closure program citation plus the merged track files",
+      "product_version": "0.2.0-internal",
+      "prohibited_interpretations": [
+        "Do not count the observe-only or contract-only merges because the catalog version changed.",
+        "Do not describe a source merge as a live residual-only re-proof."
+      ],
+      "proof_class": "CHARACTERIZATION",
+      "source_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+      "timestamp": "2026-09-28T17:26:43Z",
+      "title": "Wave 2 residual honesty after the 0.2.0 reading",
+      "track_id": "WAVE2-RESIDUAL",
+      "verification_result": "ENFORCEMENT_NOT_PROVED_RBK004_SOURCE_CLOSED_LIVE_REPROOF_NOT_CLAIMED",
+      "wave2_state": "WAVE2_RESIDUAL_HONESTY_UNSATISFIED"
     }
   ],
   "document": "CONTROL_EVIDENCE_INDEX",
   "provenance": {
     "audience": "INTERNAL_RESTRICTED",
-    "catalog_version": "0.1.0-internal",
+    "catalog_version": "0.2.0-internal",
     "council_status": "PENDING_INDEPENDENT_COUNCIL",
     "distribution": "INTERNAL_RESTRICTED",
-    "generated_at": "2026-09-27T12:46:00Z",
+    "generated_at": "2026-09-28T17:26:43Z",
     "generator": "@vantio/governance-assurance",
     "mapping_commit": "NOT_SELF_HASHED",
-    "mapping_version": "0.1.0-internal",
+    "mapping_version": "0.2.0-internal",
     "package_name": "@vantio/governance-assurance",
-    "package_version": "0.1.0-internal",
-    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_READY_FOR_COUNCIL",
-    "retrieved_at": "2026-09-27T12:46:00Z",
+    "package_version": "0.2.0-internal",
+    "producer_classification": "WS17_GOVERNANCE_ASSURANCE_0_2_0_INTERNAL_REBIND_READY_FOR_COUNCIL",
+    "program_claim_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
+    "retrieved_at": "2026-09-28T17:26:43Z",
     "reviewer": "PENDING_INDEPENDENT_COUNCIL",
     "self_certified_council_pass": false,
-    "source_base_commit": "a80fd4288df4983bf294aa219511ef60d86fa87c",
-    "source_repository": "vantioai/vantio-open-core"
+    "source_base_commit": "b0bcbdeb01ccb84a58a3aa6aacd0c05f94b22450",
+    "source_repository": "vantioai/vantio-open-core",
+    "supersedes_package": "0.1.0-internal"
   },
   "schema": "vantio.governance-assurance.evidence-index/v1"
 }

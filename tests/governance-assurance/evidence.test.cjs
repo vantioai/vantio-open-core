@@ -17,7 +17,7 @@ function byTrack(bindings, track) {
 
 test("wave 2 bindings keep unresolved tracks off the satisfied set", () => {
   const bindings = api.loadEvidence(root);
-  assert.equal(bindings.length, 22);
+  assert.equal(bindings.length, 25);
   const ingress = byTrack(bindings, "T5");
   const egress = byTrack(bindings, "T6");
   assert.equal(ingress.wave2_state, "MERGED_OBSERVE_ONLY_LOADER_UNTOUCHED");
