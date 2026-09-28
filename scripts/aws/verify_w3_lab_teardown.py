@@ -127,10 +127,20 @@ def error_code(result: AwsResult) -> str:
     return match.group(1)
 
 
+def _not_found_code(code: str) -> bool:
+    if code == "NotFound" or code.endswith("NotFound"):
+        return True
+    return code.endswith("NotFoundException")
+
+
 def is_denied(result: AwsResult) -> bool:
     if result.returncode == 0:
         return False
     code = error_code(result)
+    # Existence errors are not authorization, even when the text says
+    # "explicit deny" or "not authorized".
+    if _not_found_code(code):
+        return False
     if code in DENY_CODES:
         return True
     lowered = f"{result.stderr}\n{result.stdout}".lower()
@@ -191,10 +201,6 @@ def is_authorized_instance(instance: dict[str, Any]) -> bool:
     return has_tags(tag_map(instance.get("Tags")), LAB_TAGS)
 
 
-def _not_found_code(code: str) -> bool:
-    return code.endswith("NotFound")
-
-
 def classify_dry_run(result: AwsResult) -> DryRunClass:
     """Classify a non-mutating dry-run.
 
@@ -213,8 +219,18 @@ def classify_dry_run(result: AwsResult) -> DryRunClass:
 
 
 def security_group_tag_specification() -> str:
-    tags = ",".join(f'{{"Key":"{key}","Value":"{value}"}}' for key, value in LAB_TAGS.items())
-    return f"ResourceType=security-group,Tags=[{tags}]"
+    """One JSON object for --tag-specifications.
+
+    AWS CLI v2 treats a value that does not start with '{' or '[' as
+    shorthand. A shorthand prefix plus a JSON Tags array fails in
+    ShorthandParser (Expected: '=', received: '"') before the API call.
+    A value that starts with '{' is parsed as JSON and sent to EC2.
+    """
+    payload = {
+        "ResourceType": "security-group",
+        "Tags": [{"Key": key, "Value": value} for key, value in LAB_TAGS.items()],
+    }
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def create_security_group_dry_run_args(group_name: str, *, with_lab_tags: bool) -> list[str]:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import string
 import subprocess
 import sys
 import tempfile
@@ -158,6 +159,119 @@ def calls_named(fake: FakeAws, service: str, action: str) -> list[tuple[str, lis
     return [item for item in fake.calls if item[1][:2] == [service, action]]
 
 
+class CliShorthandError(Exception):
+    """Same failure AWS CLI v2 ShorthandParser raises for a bad hash literal."""
+
+
+_SHORTHAND_KEY_CHARS = set(string.ascii_letters + string.digits + "-_.#/:")
+
+
+class _ShorthandCursor:
+    """Subset of awscli.shorthand.ShorthandParser for --tag-specifications.
+
+    AWS CLI v2 skips this parser when the value starts with '{' or '['
+    (ParamShorthandParser._should_parse_as_shorthand). Otherwise a '{'
+    starts a hash literal, and the next token must be a key then '='.
+    A quote there raises Expected: '=', received: '"'.
+    """
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+        self.index = 0
+
+    def current(self) -> str:
+        if self.index >= len(self.value):
+            return ""
+        return self.value[self.index]
+
+    def _skip_ws(self) -> None:
+        while self.current() and self.current() in string.whitespace:
+            self.index += 1
+
+    def expect(self, char: str) -> None:
+        self._skip_ws()
+        actual = self.current() or "EOF"
+        if actual != char:
+            raise CliShorthandError(f"Expected: '{char}', received: '{actual}'")
+        self.index += 1
+
+    def key(self) -> str:
+        self._skip_ws()
+        start = self.index
+        while self.current() in _SHORTHAND_KEY_CHARS:
+            self.index += 1
+        return self.value[start : self.index]
+
+    def scalar(self) -> str:
+        self._skip_ws()
+        start = self.index
+        while self.current() and self.current() not in ",}]":
+            self.index += 1
+        return self.value[start : self.index].rstrip()
+
+    def explicit_value(self):
+        self._skip_ws()
+        if self.current() == "[":
+            return self.explicit_list()
+        if self.current() == "{":
+            return self.hash_literal()
+        return self.scalar()
+
+    def hash_literal(self) -> dict:
+        self.expect("{")
+        found: dict = {}
+        self._skip_ws()
+        while self.current() != "}":
+            key = self.key()
+            self.expect("=")
+            found[key] = self.explicit_value()
+            self._skip_ws()
+            if self.current() != "}":
+                self.expect(",")
+                self._skip_ws()
+        self.expect("}")
+        return found
+
+    def explicit_list(self) -> list:
+        self.expect("[")
+        values = []
+        self._skip_ws()
+        while self.current() != "]":
+            values.append(self.explicit_value())
+            self._skip_ws()
+            if self.current() != "]":
+                self.expect(",")
+                self._skip_ws()
+        self.expect("]")
+        return values
+
+    def parameter(self) -> dict:
+        params: dict = {}
+        while True:
+            key = self.key()
+            self.expect("=")
+            params[key] = self.explicit_value()
+            self._skip_ws()
+            if not self.current():
+                return params
+            self.expect(",")
+
+
+def parse_tag_specifications_like_aws_cli_v2(value: str) -> list[dict]:
+    """Parse one --tag-specifications argument the way AWS CLI v2 does.
+
+    A value that starts with '{' or '[' is JSON. Anything else is shorthand.
+    """
+    text = value.strip()
+    if text.startswith(("{", "[")):
+        parsed = json.loads(text)
+        specs = parsed if isinstance(parsed, list) else [parsed]
+        if not isinstance(specs, list) or not all(isinstance(item, dict) for item in specs):
+            raise ValueError("tag specifications JSON was not an object or a list of objects")
+        return specs
+    return [_ShorthandCursor(text).parameter()]
+
+
 class VerifierTests(unittest.TestCase):
     def test_happy_path_passes_without_destructive_calls(self) -> None:
         fake = happy_aws()
@@ -292,12 +406,37 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("would have been allowed", report["checks"][7]["detail"])
         self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
 
-    def test_lab_tag_specification_is_json(self) -> None:
+    def test_tag_specification_is_cli_json_not_broken_shorthand(self) -> None:
         spec = verify.security_group_tag_specification()
-        prefix = "ResourceType=security-group,Tags="
-        self.assertTrue(spec.startswith(prefix))
-        tags = json.loads(spec[len(prefix) :])
-        self.assertEqual({item["Key"]: item["Value"] for item in tags}, dict(verify.LAB_TAGS))
+        args = verify.create_security_group_dry_run_args(
+            verify.PROBE_TAGGED_SECURITY_GROUP,
+            with_lab_tags=True,
+        )
+        self.assertEqual(args[-1], "--dry-run")
+        self.assertEqual(args[args.index("--tag-specifications") + 1], spec)
+        self.assertTrue(spec.startswith("{"))
+        self.assertFalse(spec.startswith("ResourceType="))
+        self.assertNotIn('Tags=[{"', spec)
+        parsed = parse_tag_specifications_like_aws_cli_v2(spec)
+        self.assertEqual(
+            parsed,
+            [
+                {
+                    "ResourceType": "security-group",
+                    "Tags": [{"Key": key, "Value": value} for key, value in verify.LAB_TAGS.items()],
+                }
+            ],
+        )
+        shorthand = "ResourceType=security-group,Tags=[" + ",".join(
+            f"{{Key={key},Value={value}}}" for key, value in verify.LAB_TAGS.items()
+        ) + "]"
+        self.assertEqual(parse_tag_specifications_like_aws_cli_v2(shorthand), parsed)
+        broken = 'ResourceType=security-group,Tags=[{"Key":"vantio:program","Value":"w3-clean-host-lab"}]'
+        with self.assertRaises(CliShorthandError) as raised:
+            parse_tag_specifications_like_aws_cli_v2(broken)
+        message = str(raised.exception)
+        self.assertIn("Expected: '='", message)
+        self.assertIn("received: '\"'", message)
 
     def test_not_found_does_not_pass_checks_4_or_8(self) -> None:
         not_found = aws_error(
@@ -311,6 +450,7 @@ class VerifierTests(unittest.TestCase):
             "not authorized explicit deny The instance ID 'i-0deadbeef0deadbee' does not exist",
         )
         self.assertEqual(verify.classify_dry_run(poisoned), "not_found")
+        self.assertFalse(verify.is_denied(poisoned))
 
         fake = happy_aws()
         fake.routes[2] = (create_sg(verify.REGION, verify.PROBE_TAGGED_SECURITY_GROUP), not_found)
@@ -333,6 +473,40 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("does not pass", detail)
         self.assertNotIn("was denied", detail)
         self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+
+    def test_describe_not_found_with_deny_wording_fails_check_8(self) -> None:
+        fake = happy_aws()
+        fake.routes[6] = (
+            describe_instances(verify.OTHER_REGION),
+            aws_error(
+                "InvalidInstanceID.NotFound",
+                "explicit deny not authorized The instance ID does not exist",
+            ),
+        )
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[8], "FAIL")
+        detail = report["checks"][7]["detail"]
+        self.assertIn("InvalidInstanceID.NotFound", detail)
+        self.assertNotIn("describe was denied", detail)
+        self.assertEqual(report["overall"], "FAIL")
+
+    def test_not_found_exception_codes_are_not_denied(self) -> None:
+        wording = "explicit deny not authorized"
+        for code in ("NotFound", "NotFoundException", "ResourceNotFoundException", "InvalidInstanceID.NotFound"):
+            result = aws_error(code, wording)
+            self.assertFalse(verify.is_denied(result), code)
+            self.assertEqual(verify.classify_dry_run(result), "not_found", code)
+        bare_deny = verify.AwsResult(254, "", "User is not authorized to perform this operation")
+        self.assertTrue(verify.is_denied(bare_deny))
+        for code in ("NotFoundException", "ResourceNotFoundException"):
+            fake = happy_aws()
+            fake.routes[6] = (
+                describe_instances(verify.OTHER_REGION),
+                aws_error(code, wording),
+            )
+            report = verify.run_checks(fake, context())
+            self.assertEqual(statuses(report)[8], "FAIL", code)
+            self.assertNotIn("describe was denied", report["checks"][7]["detail"])
 
     def test_access_denied_passes_checks_4_and_8(self) -> None:
         fake = happy_aws()
