@@ -31,6 +31,7 @@ class WorkflowContractTests(unittest.TestCase):
         cls.raw = WORKFLOW_PATH.read_text(encoding="utf-8")
         cls.doc = yaml.safe_load(cls.raw)
         cls.job = cls.doc["jobs"]["verify"]
+        cls.preflight = cls.doc["jobs"]["preflight"]
         cls.steps = cls.job["steps"]
         cls.trigger = trigger_of(cls.doc)
         cls.assume = next(step for step in cls.steps if step.get("id") == "aws")
@@ -47,9 +48,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(self.trigger["workflow_dispatch"]["inputs"]["run_destructive_fixtures"]["default"], False)
 
     def test_oidc_permissions_environment_and_role(self) -> None:
-        self.assertEqual(set(self.doc["jobs"]), {"verify"})
+        self.assertEqual(set(self.doc["jobs"]), {"preflight", "verify"})
         self.assertEqual(self.doc["permissions"], {"contents": "read", "id-token": "write"})
         self.assertNotIn("contents: write", self.raw)
+        self.assertNotIn("environment", self.preflight)
+        self.assertEqual(self.preflight["permissions"], {"contents": "read", "administration": "read"})
+        self.assertNotIn("id-token", self.preflight["permissions"])
+        self.assertEqual(self.job["needs"], "preflight")
         self.assertEqual(self.job["environment"], "w3-lab-teardown")
         self.assertEqual(self.job["timeout-minutes"], 20)
         self.assertIs(self.doc["concurrency"]["cancel-in-progress"], False)
@@ -90,6 +95,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('test "$GITHUB_EVENT_NAME" = "workflow_dispatch"', joined)
         self.assertIn('test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"', joined)
         self.assertIn('test "$GITHUB_REF" = "refs/heads/main"', joined)
+        workflow_ref = 'test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main"'
+        self.assertIn(workflow_ref, joined)
+        preflight_joined = "\n".join(step.get("run", "") for step in self.preflight["steps"])
+        self.assertIn(workflow_ref, preflight_joined)
+        self.assertEqual(self.raw.count(workflow_ref), 2)
+        self.assertIn("gh api repos/vantioai/vantio-open-core/environments/w3-lab-teardown", preflight_joined)
 
     def test_doc_and_script_share_the_policy_hash(self) -> None:
         doc = DOC_PATH.read_text(encoding="utf-8")
@@ -103,6 +114,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("STAGE_B_BILLING_CLOSE_PENDING", doc)
         self.assertIn("403", doc)
         self.assertIn("zacharybalicki", doc)
+        self.assertIn("269605088", doc)
+        self.assertIn("auto-creates", doc)
+        self.assertIn("BEFORE any dispatch", doc)
+        self.assertIn("prepared_digest", doc)
+        self.assertIn("GetUser", doc)
+        self.assertIn("--dry-run", doc)
+        self.assertNotIn("Until that environment exists, the job cannot assume", doc)
+        self.assertNotIn("iam:CreateUser", doc)
+        self.assertNotIn("the check is `SKIP`", doc)
 
 
 if __name__ == "__main__":

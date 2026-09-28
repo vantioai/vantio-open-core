@@ -128,19 +128,24 @@ def caller_payload() -> dict:
     }
 
 
+def terminate_dry_run(region: str):
+    def predicate(got_region: str, args: list[str]) -> bool:
+        return got_region == region and args[:2] == ["ec2", "terminate-instances"] and "--dry-run" in args
+
+    return predicate
+
+
 def happy_aws() -> FakeAws:
     lab = instance(LAB_INSTANCE, lab_tags())
-    other = instance(OTHER_INSTANCE)
     fake = FakeAws()
     fake.add(starts(verify.REGION, "sts", "get-caller-identity"), aws_json(caller_payload()))
     fake.add(describe_instances(verify.REGION, filtered=True), aws_json(reservations(lab)))
-    fake.add(describe_instances(verify.REGION), aws_json(reservations(lab, other)))
-    fake.add(starts(verify.REGION, "ec2", "terminate-instances"), aws_error("UnauthorizedOperation", "explicit deny"))
+    fake.add(terminate_dry_run(verify.REGION), aws_error("UnauthorizedOperation", "explicit deny"))
     fake.add(starts(verify.REGION, "ec2", "create-security-group"), aws_error("UnauthorizedOperation", "explicit deny"))
-    fake.add(starts(verify.REGION, "iam", "create-user"), aws_error("AccessDenied", "explicit deny"))
+    fake.add(starts(verify.REGION, "iam", "get-user"), aws_error("AccessDenied", "explicit deny"))
     fake.add(starts(verify.OTHER_REGION, "ce", "get-cost-and-usage"), aws_error("AccessDeniedException", "explicit deny"))
     fake.add(describe_instances(verify.OTHER_REGION), aws_error("UnauthorizedOperation", "not authorized"))
-    fake.add(starts(verify.OTHER_REGION, "ec2", "terminate-instances"), aws_error("UnauthorizedOperation", "explicit deny"))
+    fake.add(terminate_dry_run(verify.OTHER_REGION), aws_error("UnauthorizedOperation", "explicit deny"))
     fake.add(starts(verify.REGION, "cloudtrail", "lookup-events"), aws_json({"Events": []}))
     return fake
 
@@ -181,16 +186,22 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("event_count=0", report["checks"][13]["detail"])
         self.assertIn("Expiration=2026-09-28T19:37:16Z", report["checks"][14]["detail"])
         self.assertEqual(report["policy_sha256"], verify.POLICY_SHA256)
+        self.assertEqual(report["policy_sha256_label"], "prepared_digest")
         terminated = calls_named(fake, "ec2", "terminate-instances")
         self.assertEqual([item[0] for item in terminated], [verify.REGION, verify.OTHER_REGION])
-        self.assertIn(OTHER_INSTANCE, terminated[0][1])
-        self.assertNotIn(LAB_INSTANCE, terminated[0][1])
-        self.assertIn(verify.SENTINEL_INSTANCE_ID, terminated[1][1])
+        for _region, args in terminated:
+            self.assertIn("--dry-run", args)
+            self.assertIn(verify.SENTINEL_INSTANCE_ID, args)
+            self.assertNotIn(LAB_INSTANCE, args)
+            self.assertNotIn(OTHER_INSTANCE, args)
         create = calls_named(fake, "ec2", "create-security-group")
         self.assertEqual(create[0][1][-1], "--dry-run")
+        self.assertEqual(calls_named(fake, "iam", "get-user")[0][1][3], verify.PROBE_IAM_USER)
+        self.assertEqual(calls_named(fake, "iam", "create-user"), [])
         rendered = json.dumps(report)
         self.assertNotIn(CANARY_KEY, rendered)
         self.assertNotIn("run-instances", rendered)
+        self.assertNotIn("live-measured", rendered)
 
     def test_zero_lab_instances_still_pass_describe(self) -> None:
         fake = happy_aws()
@@ -199,32 +210,15 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(statuses(report)[3], "PASS")
         self.assertIn("count=0", report["checks"][2]["detail"])
 
-    def test_no_instances_skips_negative_terminate(self) -> None:
+    def test_sentinel_dry_run_runs_with_no_instances_in_the_account(self) -> None:
         fake = happy_aws()
-        fake.routes[2] = (describe_instances(verify.REGION), aws_json(reservations()))
+        fake.routes[1] = (describe_instances(verify.REGION, filtered=True), aws_json(reservations()))
         report = verify.run_checks(fake, context())
-        self.assertEqual(statuses(report)[4], "SKIP")
-        self.assertIn("no EC2 instances", report["checks"][3]["detail"])
-        self.assertEqual(calls_named(fake, "ec2", "terminate-instances")[0][0], verify.OTHER_REGION)
-
-    def test_only_lab_tagged_instances_skip_negative_terminate(self) -> None:
-        fake = happy_aws()
-        fake.routes[2] = (describe_instances(verify.REGION), aws_json(reservations(instance(LAB_INSTANCE, lab_tags()))))
-        report = verify.run_checks(fake, context())
-        self.assertEqual(statuses(report)[4], "SKIP")
-        self.assertIn("authorized lab tags", report["checks"][3]["detail"])
-        regions = [item[0] for item in calls_named(fake, "ec2", "terminate-instances")]
-        self.assertNotIn(verify.REGION, regions)
-
-    def test_partial_tags_are_the_deny_probe(self) -> None:
-        partial = instance(OTHER_INSTANCE, lab_tags())
-        partial["Tags"] = [item for item in partial["Tags"] if item["Key"] != "vantio:destroyable"]
-        fake = happy_aws()
-        fake.routes[2] = (describe_instances(verify.REGION), aws_json(reservations(instance(LAB_INSTANCE, lab_tags()), partial)))
-        report = verify.run_checks(fake, context())
+        self.assertEqual(report["overall"], "PASS")
         self.assertEqual(statuses(report)[4], "PASS")
-        terminated = calls_named(fake, "ec2", "terminate-instances")[0][1]
-        self.assertIn(OTHER_INSTANCE, terminated)
+        terminated = calls_named(fake, "ec2", "terminate-instances")
+        self.assertTrue(all("--dry-run" in args for _region, args in terminated))
+        self.assertNotIn("SKIP", statuses(report).values())
 
     def test_wrong_account_blocks_later_mutations(self) -> None:
         fake = FakeAws()
@@ -261,19 +255,26 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(statuses(report)[9], "FAIL")
         self.assertIn("not attempted", report["checks"][8]["detail"])
 
-    def test_accepted_terminate_of_untagged_instance_fails(self) -> None:
+    def test_sentinel_dry_run_allowed_fails(self) -> None:
         fake = happy_aws()
-        fake.routes[3] = (
-            starts(verify.REGION, "ec2", "terminate-instances"),
-            aws_json({"TerminatingInstances": [{"InstanceId": OTHER_INSTANCE}]}),
-        )
+        fake.routes[2] = (terminate_dry_run(verify.REGION), aws_error("DryRunOperation", "Request would have succeeded"))
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[4], "FAIL")
-        self.assertIn("was accepted", report["checks"][3]["detail"])
+        self.assertIn("would have been allowed", report["checks"][3]["detail"])
+
+    def test_other_region_dry_run_allowed_fails(self) -> None:
+        fake = happy_aws()
+        fake.routes[7] = (
+            terminate_dry_run(verify.OTHER_REGION),
+            aws_error("DryRunOperation", "Request would have succeeded"),
+        )
+        report = verify.run_checks(fake, context())
+        self.assertEqual(statuses(report)[8], "FAIL")
+        self.assertIn("would have been allowed", report["checks"][7]["detail"])
 
     def test_dry_run_success_fails_create_check(self) -> None:
         fake = happy_aws()
-        fake.routes[4] = (
+        fake.routes[3] = (
             starts(verify.REGION, "ec2", "create-security-group"),
             aws_error("DryRunOperation", "Request would have succeeded"),
         )
@@ -281,34 +282,35 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(statuses(report)[5], "FAIL")
         self.assertIn("DryRunOperation", report["checks"][4]["detail"])
 
-    def test_created_security_group_is_a_failure_and_delete_is_attempted(self) -> None:
+    def test_created_security_group_fails_without_a_delete(self) -> None:
         fake = happy_aws()
-        fake.routes[4] = (
+        fake.routes[3] = (
             starts(verify.REGION, "ec2", "create-security-group"),
             aws_json({"GroupId": "sg-09999999999999999"}),
         )
-        fake.add(starts(verify.REGION, "ec2", "delete-security-group"), aws_error("UnauthorizedOperation"))
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[5], "FAIL")
-        self.assertTrue(calls_named(fake, "ec2", "delete-security-group"))
+        self.assertEqual(calls_named(fake, "ec2", "delete-security-group"), [])
+        self.assertIn("delete was not called", report["checks"][4]["detail"])
 
-    def test_created_iam_user_attempts_delete(self) -> None:
+    def test_authorized_get_user_fails_without_create_user(self) -> None:
         fake = happy_aws()
-        fake.routes[5] = (starts(verify.REGION, "iam", "create-user"), aws_json({"User": {"UserName": verify.PROBE_IAM_USER}}))
-        fake.add(starts(verify.REGION, "iam", "delete-user"), aws_error("AccessDenied", "explicit deny"))
+        fake.routes[4] = (starts(verify.REGION, "iam", "get-user"), aws_error("NoSuchEntity", "cannot be found"))
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[6], "FAIL")
-        self.assertTrue(calls_named(fake, "iam", "delete-user"))
+        self.assertIn("CreateUser was not called", report["checks"][5]["detail"])
+        self.assertEqual(calls_named(fake, "iam", "create-user"), [])
+        self.assertEqual(calls_named(fake, "iam", "delete-user"), [])
 
     def test_billing_success_fails(self) -> None:
         fake = happy_aws()
-        fake.routes[6] = (starts(verify.OTHER_REGION, "ce", "get-cost-and-usage"), aws_json({"ResultsByTime": []}))
+        fake.routes[5] = (starts(verify.OTHER_REGION, "ce", "get-cost-and-usage"), aws_json({"ResultsByTime": []}))
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[7], "FAIL")
 
     def test_other_region_describe_success_fails(self) -> None:
         fake = happy_aws()
-        fake.routes[7] = (describe_instances(verify.OTHER_REGION), aws_json(reservations()))
+        fake.routes[6] = (describe_instances(verify.OTHER_REGION), aws_json(reservations()))
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[8], "FAIL")
         self.assertIn("was allowed", report["checks"][7]["detail"])
@@ -321,7 +323,7 @@ class VerifierTests(unittest.TestCase):
 
     def test_cloudtrail_denial_fails_and_empty_success_notes_delay(self) -> None:
         fake = happy_aws()
-        fake.routes[9] = (starts(verify.REGION, "cloudtrail", "lookup-events"), aws_error("AccessDeniedException"))
+        fake.routes[8] = (starts(verify.REGION, "cloudtrail", "lookup-events"), aws_error("AccessDeniedException"))
         report = verify.run_checks(fake, context())
         self.assertEqual(statuses(report)[14], "FAIL")
 
@@ -331,11 +333,11 @@ class VerifierTests(unittest.TestCase):
         report = verify.run_checks(happy_aws(), context(requested_duration_seconds=7200))
         self.assertEqual(statuses(report)[2], "FAIL")
 
-    def test_missing_expiration_still_passes_when_request_is_capped(self) -> None:
+    def test_missing_expiration_fails(self) -> None:
         report = verify.run_checks(happy_aws(), context(expiration=""))
-        self.assertEqual(statuses(report)[2], "PASS")
-        self.assertIn("not available", report["checks"][1]["detail"])
-        self.assertIn("3600", report["checks"][1]["detail"])
+        self.assertEqual(statuses(report)[2], "FAIL")
+        self.assertEqual(report["overall"], "FAIL")
+        self.assertIn("Expiration was not returned", report["checks"][1]["detail"])
 
     def test_javascript_date_expiration_parses(self) -> None:
         raw = "Mon Sep 28 2026 19:37:16 GMT+0000 (Coordinated Universal Time)"
@@ -365,7 +367,9 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("refused", report["checks"][8]["detail"])
         terminated = [item for item in calls_named(fake, "ec2", "terminate-instances") if item[0] == verify.REGION]
         self.assertEqual(len(terminated), 1)
-        self.assertIn(OTHER_INSTANCE, terminated[0][1])
+        self.assertIn("--dry-run", terminated[0][1])
+        self.assertIn(verify.SENTINEL_INSTANCE_ID, terminated[0][1])
+        self.assertNotIn(OTHER_INSTANCE, terminated[0][1])
 
     def test_destructive_close_runs_dependency_order_for_tagged_fixtures(self) -> None:
         fake = happy_aws()
@@ -418,14 +422,13 @@ class VerifierTests(unittest.TestCase):
         )
         fake.add(starts(verify.REGION, "ec2", "disassociate-address"), aws_json({}))
         fake.add(starts(verify.REGION, "ec2", "release-address"), aws_json({}))
-        # The untagged deny probe still matches the first terminate route. Register the
-        # authorized terminate after it by making the happy route only match the other id.
-        fake.routes[3] = (
-            lambda region, args: region == verify.REGION and args[:2] == ["ec2", "terminate-instances"] and OTHER_INSTANCE in args,
-            aws_error("UnauthorizedOperation", "explicit deny"),
-        )
         fake.add(
-            lambda region, args: region == verify.REGION and args[:2] == ["ec2", "terminate-instances"] and LAB_INSTANCE in args,
+            lambda region, args: (
+                region == verify.REGION
+                and args[:2] == ["ec2", "terminate-instances"]
+                and "--dry-run" not in args
+                and LAB_INSTANCE in args
+            ),
             aws_json({"TerminatingInstances": [{"InstanceId": LAB_INSTANCE, "CurrentState": {"Name": "shutting-down"}}]}),
         )
         report = verify.run_checks(
@@ -499,7 +502,15 @@ class VerifierTests(unittest.TestCase):
 
     def test_source_does_not_call_provision_or_admin_attach(self) -> None:
         text = (ROOT / "scripts" / "aws" / "verify_w3_lab_teardown.py").read_text(encoding="utf-8")
-        for banned in ("run-instances", "attach-role-policy", "create-access-key", "allocate-address", "create-key-pair"):
+        for banned in (
+            "run-instances",
+            "attach-role-policy",
+            "create-access-key",
+            "allocate-address",
+            "create-key-pair",
+            "create-user",
+            "delete-user",
+        ):
             self.assertNotIn(banned, text)
 
     def test_main_writes_artifact_and_summary(self) -> None:
@@ -531,6 +542,8 @@ class VerifierTests(unittest.TestCase):
             summary = Path(summary_path).read_text(encoding="utf-8")
             self.assertIn("Overall: **PASS**", summary)
             self.assertIn("09 close_instance", summary)
+            self.assertIn("Prepared policy digest SHA-256 (not a live-measured hash)", summary)
+            self.assertEqual(payload["policy_sha256_label"], "prepared_digest")
             self.assertNotIn(CANARY_KEY, summary)
 
     def test_main_rejects_non_dispatch_on_actions(self) -> None:

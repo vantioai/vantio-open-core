@@ -3,8 +3,9 @@
 
 The workflow in .github/workflows/w3-lab-teardown-verify.yml is the only
 supported caller. This module does not provision a lab, create access keys,
-or change billing. Checks 9-13 delete fixtures only when
-RUN_DESTRUCTIVE_FIXTURES=true and an id was passed.
+or change billing. Checks 4, 6, and 8 are non-mutating deny probes. Checks
+9-13 delete fixtures only when RUN_DESTRUCTIVE_FIXTURES=true and an id was
+passed.
 
 Audience: INTERNAL_RESTRICTED
 """
@@ -31,7 +32,9 @@ SESSION_SKEW_SECONDS = 120
 POLICY_SHA256 = "2fd3909fe84cbe93b15c5525ece0d247d0f4f4a91e333346001d512e1efc5215"
 AUTHORIZED_KEY_PAIR = "vantio-w3-class-b-lab-01"
 REPOSITORY = "vantioai/vantio-open-core"
+WORKFLOW_REF = "vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main"
 SENTINEL_INSTANCE_ID = "i-0deadbeef0deadbee"
+POLICY_SHA256_LABEL = "prepared_digest"
 PROBE_SECURITY_GROUP = "vantio-w3-teardown-verify-deny-probe"
 PROBE_IAM_USER = "vantio-w3-teardown-verify-deny-probe"
 SCHEMA = "vantio.w3-lab-teardown-verify.v1"
@@ -181,30 +184,16 @@ def instances_from_describe(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return found
 
 
-def instance_state(instance: dict[str, Any]) -> str:
-    state = instance.get("State")
-    if isinstance(state, dict) and isinstance(state.get("Name"), str):
-        return state["Name"]
-    return ""
-
-
 def is_authorized_instance(instance: dict[str, Any]) -> bool:
     return has_tags(tag_map(instance.get("Tags")), LAB_TAGS)
 
 
-def select_probe_instance(instances: list[dict[str, Any]]) -> dict[str, Any] | None:
-    candidates = []
-    for instance in instances:
-        instance_id = instance.get("InstanceId")
-        if not isinstance(instance_id, str) or INSTANCE_ID.fullmatch(instance_id) is None:
-            continue
-        if is_authorized_instance(instance):
-            continue
-        candidates.append(instance)
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: 0 if instance_state(item) not in {"terminated", "shutting-down"} else 1)
-    return candidates[0]
+def dry_run_outcome(result: AwsResult) -> str:
+    if is_denied(result):
+        return "denied"
+    if result.returncode == 0 or error_code(result) == "DryRunOperation":
+        return "allowed"
+    return "unexpected"
 
 
 def parse_time(value: str) -> datetime:
@@ -261,10 +250,17 @@ def enforce_github_identity() -> None:
     repository = os.environ.get("GITHUB_REPOSITORY", "")
     event = os.environ.get("GITHUB_EVENT_NAME", "")
     ref = os.environ.get("GITHUB_REF", "")
-    if repository != REPOSITORY or event != "workflow_dispatch" or ref != "refs/heads/main":
+    workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "")
+    if (
+        repository != REPOSITORY
+        or event != "workflow_dispatch"
+        or ref != "refs/heads/main"
+        or workflow_ref != WORKFLOW_REF
+    ):
         raise SystemExit(
             "CHECK 01 FAIL assume_session: workflow identity is "
-            f"repo={repository or 'unset'} event={event or 'unset'} ref={ref or 'unset'}"
+            f"repo={repository or 'unset'} event={event or 'unset'} ref={ref or 'unset'} "
+            f"workflow_ref={workflow_ref or 'unset'}"
         )
 
 
@@ -354,7 +350,7 @@ def check_duration(ctx: Context) -> dict[str, Any]:
     if requested is None or requested <= 0 or requested > MAX_SESSION_SECONDS:
         return check(2, "session_duration", "FAIL", note)
     if not ctx.expiration:
-        return check(2, "session_duration", "PASS", note + "; Expiration was not available from the assume step")
+        return check(2, "session_duration", "FAIL", note + "; Expiration was not returned by the assume step")
     try:
         expires = parse_time(ctx.expiration)
     except ValueError:
@@ -408,50 +404,31 @@ def check_describe_lab(aws: AwsCaller) -> dict[str, Any]:
     )
 
 
-def check_deny_unrelated_terminate(aws: AwsCaller) -> dict[str, Any]:
-    result = aws(["ec2", "describe-instances"], REGION)
-    if is_denied(result):
-        return check(4, "deny_terminate_untagged", "FAIL", f"unfiltered DescribeInstances was denied: {failure_detail(result)}")
-    if result.returncode != 0:
-        return check(4, "deny_terminate_untagged", "FAIL", f"unfiltered DescribeInstances failed: {failure_detail(result)}")
-    try:
-        instances = instances_from_describe(parse_json(result))
-    except ValueError as exc:
-        return check(4, "deny_terminate_untagged", "FAIL", str(exc))
-    if not instances:
-        return check(4, "deny_terminate_untagged", "SKIP", f"no EC2 instances in {REGION}; no non-matching instance id to probe")
-    chosen = select_probe_instance(instances)
-    if chosen is None:
+def check_deny_terminate_sentinel(aws: AwsCaller) -> dict[str, Any]:
+    result = aws(
+        ["ec2", "terminate-instances", "--instance-ids", SENTINEL_INSTANCE_ID, "--dry-run"],
+        REGION,
+    )
+    outcome = dry_run_outcome(result)
+    if outcome == "denied":
         return check(
             4,
-            "deny_terminate_untagged",
-            "SKIP",
-            f"every instance in {REGION} carries the authorized lab tags; no non-matching instance id to probe",
-        )
-    if is_authorized_instance(chosen):
-        return check(4, "deny_terminate_untagged", "FAIL", "internal guard refused to terminate an authorized lab instance")
-    instance_id = str(chosen.get("InstanceId"))
-    state = instance_state(chosen)
-    terminated = aws(["ec2", "terminate-instances", "--instance-ids", instance_id], REGION)
-    if is_denied(terminated):
-        return check(
-            4,
-            "deny_terminate_untagged",
+            "deny_terminate_sentinel",
             "PASS",
-            f"TerminateInstances on non-matching {instance_id} (state={state or 'unset'}) was denied: {failure_detail(terminated)}",
+            f"TerminateInstances --dry-run on sentinel {SENTINEL_INSTANCE_ID} in {REGION} was denied: {failure_detail(result)}",
         )
-    if terminated.returncode == 0:
+    if outcome == "allowed":
         return check(
             4,
-            "deny_terminate_untagged",
+            "deny_terminate_sentinel",
             "FAIL",
-            f"TerminateInstances on non-matching {instance_id} was accepted",
+            f"TerminateInstances --dry-run on sentinel {SENTINEL_INSTANCE_ID} in {REGION} would have been allowed",
         )
     return check(
         4,
-        "deny_terminate_untagged",
+        "deny_terminate_sentinel",
         "FAIL",
-        f"TerminateInstances on {instance_id} was not an access denial: {failure_detail(terminated)}",
+        f"TerminateInstances --dry-run on sentinel {SENTINEL_INSTANCE_ID} was not an access denial: {failure_detail(result)}",
     )
 
 
@@ -475,37 +452,33 @@ def check_deny_create(aws: AwsCaller) -> dict[str, Any]:
             "PASS",
             f"CreateSecurityGroup --dry-run was denied: {failure_detail(result)}",
         )
-    if error_code(result) == "DryRunOperation":
-        return check(5, "deny_create_ec2", "FAIL", "CreateSecurityGroup --dry-run would have succeeded (DryRunOperation)")
-    if result.returncode == 0:
+    if error_code(result) == "DryRunOperation" or result.returncode == 0:
         group_id = ""
-        try:
-            payload = parse_json(result)
-            if isinstance(payload.get("GroupId"), str):
-                group_id = payload["GroupId"]
-        except ValueError:
-            group_id = ""
-        cleanup = "no GroupId to delete"
-        if group_id:
-            deleted = aws(["ec2", "delete-security-group", "--group-id", group_id], REGION)
-            cleanup = f"delete {group_id}: {failure_detail(deleted)}"
-        return check(5, "deny_create_ec2", "FAIL", f"CreateSecurityGroup created a group; cleanup {cleanup}")
+        if result.returncode == 0:
+            try:
+                payload = parse_json(result)
+                if isinstance(payload.get("GroupId"), str):
+                    group_id = payload["GroupId"]
+            except ValueError:
+                group_id = ""
+        suffix = f"; GroupId={group_id}; delete was not called" if group_id else ""
+        code = error_code(result) or "success"
+        return check(5, "deny_create_ec2", "FAIL", f"CreateSecurityGroup --dry-run would have been allowed ({code})" + suffix)
     return check(5, "deny_create_ec2", "FAIL", f"CreateSecurityGroup --dry-run was not an access denial: {failure_detail(result)}")
 
 
 def check_deny_iam(aws: AwsCaller) -> dict[str, Any]:
-    result = aws(["iam", "create-user", "--user-name", PROBE_IAM_USER], REGION)
+    result = aws(["iam", "get-user", "--user-name", PROBE_IAM_USER], REGION)
     if is_denied(result):
-        return check(6, "deny_iam_mutation", "PASS", f"iam:CreateUser was denied: {failure_detail(result)}")
-    if result.returncode == 0:
-        deleted = aws(["iam", "delete-user", "--user-name", PROBE_IAM_USER], REGION)
+        return check(6, "deny_iam_mutation", "PASS", f"iam:GetUser on {PROBE_IAM_USER} was denied: {failure_detail(result)}")
+    if error_code(result) == "NoSuchEntity" or result.returncode == 0:
         return check(
             6,
             "deny_iam_mutation",
             "FAIL",
-            f"iam:CreateUser was accepted for {PROBE_IAM_USER}; delete attempt: {failure_detail(deleted) if deleted.returncode != 0 else 'delete returned success'}",
+            f"iam:GetUser on {PROBE_IAM_USER} was authorized; CreateUser was not called",
         )
-    return check(6, "deny_iam_mutation", "FAIL", f"iam:CreateUser was not an access denial: {failure_detail(result)}")
+    return check(6, "deny_iam_mutation", "FAIL", f"iam:GetUser was not an access denial: {failure_detail(result)}")
 
 
 def check_deny_billing(aws: AwsCaller) -> dict[str, Any]:
@@ -537,16 +510,19 @@ def check_deny_billing(aws: AwsCaller) -> dict[str, Any]:
 
 def check_deny_other_region(aws: AwsCaller) -> dict[str, Any]:
     describe = aws(["ec2", "describe-instances"], OTHER_REGION)
-    terminate = aws(["ec2", "terminate-instances", "--instance-ids", SENTINEL_INSTANCE_ID], OTHER_REGION)
+    terminate = aws(
+        ["ec2", "terminate-instances", "--instance-ids", SENTINEL_INSTANCE_ID, "--dry-run"],
+        OTHER_REGION,
+    )
     describe_denied = is_denied(describe)
-    terminate_denied = is_denied(terminate)
-    if describe_denied and terminate_denied:
+    terminate_outcome = dry_run_outcome(terminate)
+    if describe_denied and terminate_outcome == "denied":
         return check(
             8,
             "deny_outside_us_east_2",
             "PASS",
             f"{OTHER_REGION} describe was denied ({error_code(describe) or 'denied'}) and "
-            f"terminate of sentinel {SENTINEL_INSTANCE_ID} was denied ({error_code(terminate) or 'denied'})",
+            f"terminate --dry-run of sentinel {SENTINEL_INSTANCE_ID} was denied ({error_code(terminate) or 'denied'})",
         )
     parts = []
     if not describe_denied:
@@ -554,11 +530,10 @@ def check_deny_other_region(aws: AwsCaller) -> dict[str, Any]:
             parts.append(f"{OTHER_REGION} describe-instances was allowed")
         else:
             parts.append(f"{OTHER_REGION} describe-instances was not an access denial: {failure_detail(describe)}")
-    if not terminate_denied:
-        if terminate.returncode == 0:
-            parts.append(f"{OTHER_REGION} terminate of sentinel {SENTINEL_INSTANCE_ID} was accepted")
-        else:
-            parts.append(f"{OTHER_REGION} terminate was not an access denial: {failure_detail(terminate)}")
+    if terminate_outcome == "allowed":
+        parts.append(f"{OTHER_REGION} terminate --dry-run of sentinel {SENTINEL_INSTANCE_ID} would have been allowed")
+    elif terminate_outcome != "denied":
+        parts.append(f"{OTHER_REGION} terminate --dry-run was not an access denial: {failure_detail(terminate)}")
     return check(8, "deny_outside_us_east_2", "FAIL", "; ".join(parts))
 
 
@@ -792,7 +767,7 @@ def blocked_after_identity(ctx: Context) -> list[dict[str, Any]]:
     reason = "not attempted; caller identity did not match the teardown role"
     blocked = [
         check(3, "describe_lab_instances", "FAIL", reason),
-        check(4, "deny_terminate_untagged", "FAIL", reason),
+        check(4, "deny_terminate_sentinel", "FAIL", reason),
         check(5, "deny_create_ec2", "FAIL", reason),
         check(6, "deny_iam_mutation", "FAIL", reason),
         check(7, "deny_billing", "FAIL", reason),
@@ -828,7 +803,7 @@ def run_checks(aws: AwsCaller, ctx: Context, *, sleep: Callable[[float], None] =
     items = [identity_check, check_duration(ctx)]
     if identity_ok:
         items.append(check_describe_lab(aws))
-        items.append(check_deny_unrelated_terminate(aws))
+        items.append(check_deny_terminate_sentinel(aws))
         items.append(check_deny_create(aws))
         items.append(check_deny_iam(aws))
         items.append(check_deny_billing(aws))
@@ -856,6 +831,7 @@ def run_checks(aws: AwsCaller, ctx: Context, *, sleep: Callable[[float], None] =
         "role_max_session_duration_seconds": MAX_SESSION_SECONDS,
         "session_expiration": ctx.expiration or None,
         "policy_sha256": POLICY_SHA256,
+        "policy_sha256_label": POLICY_SHA256_LABEL,
         "authorized_key_pair": AUTHORIZED_KEY_PAIR,
         "run_destructive_fixtures": ctx.run_destructive,
         "destructive_execution_order": ["eip", "instance", "volume", "security_group", "keypair"],
@@ -872,7 +848,7 @@ def summary_markdown(report: dict[str, Any]) -> str:
         f"Overall: **{report['overall']}**",
         "",
         f"Role `{report['role_arn']}` in `{report['region']}`.",
-        f"Policy SHA-256 `{report['policy_sha256']}`.",
+        f"Prepared policy digest SHA-256 (not a live-measured hash) `{report['policy_sha256']}`.",
         f"Session expiration: `{report['session_expiration'] or 'not recorded'}`.",
         "",
         "| Check | Status | Detail |",

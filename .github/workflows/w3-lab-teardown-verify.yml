@@ -3,21 +3,28 @@ name: Verify W3 lab teardown role
 # Manual OIDC check for arn:aws:iam::960577828987:role/vantio-w3-lab-teardown.
 # Ordinary pushes and pull requests do not run this workflow.
 #
-# Trust subject, enforced by the job environment below:
+# preflight has no environment key. It fails unless w3-lab-teardown already
+# exists with required reviewer zacharybalicki (269605088) and a deployment
+# branch policy of only main. verify is the only job that sets
+# environment: w3-lab-teardown, and only after preflight succeeds.
+# GitHub auto-creates an unprotected environment when a job that sets
+# environment: is scheduled and the name is missing. Do not dispatch until
+# the protected environment already exists.
+#
+# Trust subject, enforced by that protected environment:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-teardown
 # The role session is at most 3600 seconds. There are no long-lived AWS keys.
 #
 # This workflow does not provision a Class B or product lab, does not create
-# access keys, and does not change billing or a Paid plan. Checks 9-13 delete
-# fixtures only when the dispatch input is true and an id was passed.
+# access keys, and does not change billing or a Paid plan. The default path
+# does not call TerminateInstances or CreateUser. Checks 9-13 delete fixtures
+# only when the dispatch input is true and an id was passed.
 #
 # Class B stays unauthorized until STAGE_B_BILLING_CLOSE_PASS and
 # NONINTERACTIVE_TEARDOWN_READY are both recorded. A green run does not
 # record either token.
 #
-# Environment protection (required reviewer, main-only deployment branch)
-# lives on the GitHub environment, outside this file. See
-# docs/internal/c8-teardown/README.md.
+# See docs/internal/c8-teardown/README.md.
 
 on:
   workflow_dispatch:
@@ -62,8 +69,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Require protected w3-lab-teardown environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      administration: read
+    steps:
+      - name: Require the teardown workflow identity
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main"
+
+      - name: Checkout preflight
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/preflight_w3_lab_teardown.py
+          sparse-checkout-cone-mode: false
+
+      - name: Reject a missing or unprotected environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/preflight"
+          gh api repos/vantioai/vantio-open-core/environments/w3-lab-teardown \
+            > "$RUNNER_TEMP/preflight/environment.json" || true
+          gh api repos/vantioai/vantio-open-core/environments/w3-lab-teardown/deployment-branch-policies \
+            > "$RUNNER_TEMP/preflight/branches.json" || true
+          python3 scripts/aws/preflight_w3_lab_teardown.py \
+            --environment "$RUNNER_TEMP/preflight/environment.json" \
+            --branch-policies "$RUNNER_TEMP/preflight/branches.json"
+
   verify:
     name: Verify vantio-w3-lab-teardown
+    needs: preflight
     runs-on: ubuntu-latest
     environment: w3-lab-teardown
     timeout-minutes: 20
@@ -74,6 +120,7 @@ jobs:
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
           test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main"
 
       - name: Refuse static AWS keys
         run: |

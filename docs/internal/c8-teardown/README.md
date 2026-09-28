@@ -21,7 +21,7 @@ A passing run is the verification that the role can be assumed and that the prob
 | Prepared policy SHA-256 | `2fd3909fe84cbe93b15c5525ece0d247d0f4f4a91e333346001d512e1efc5215` |
 | Key pair name in that policy | `vantio-w3-class-b-lab-01` |
 
-The SHA-256 is the raw bytes of the prepared policy document after the key pair name was substituted to `vantio-w3-class-b-lab-01`. This repository does not store that policy JSON. The workflow does not call `iam:GetRole`; check 2 records MaxSessionDuration as 3600 from this handoff and checks the requested session length and the STS Expiration timestamp.
+The SHA-256 above is a prepared digest of the policy document after the key pair name was substituted to `vantio-w3-class-b-lab-01`. It is not a live-measured hash from IAM. This repository does not store that policy JSON. The workflow does not call `iam:GetRole`. Check 2 records MaxSessionDuration as 3600 from this handoff and fails unless the assume step returns an STS Expiration at most one hour ahead.
 
 The workflow does not create a long-lived access key, an IAM user, or a root key. The job refuses to start the assume step if `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN` is already set. `use-existing-credentials` is false, so ambient credentials cannot skip the OIDC exchange.
 
@@ -31,25 +31,29 @@ The workflow does not create a long-lived access key, an IAM user, or a root key
 
 Name: `w3-lab-teardown`.
 
+The Founder must create this protected environment BEFORE any dispatch. GitHub auto-creates an unprotected environment when a job that sets `environment:` is scheduled and that name does not already exist. An unprotected environment has no required reviewers and no branch rule, and a job that reaches it can assume the role. The trust policy checks the environment subject. It does not check GitHub's protection rules.
+
 Creation was attempted on 2026-09-28 with the repository integration token:
 
 ```text
 PUT /repos/vantioai/vantio-open-core/environments/w3-lab-teardown
 ```
 
-GitHub returned `403 Resource not accessible by integration`. The environment was not created by that call. Confirm before the first dispatch:
+GitHub returned `403 Resource not accessible by integration`. That call did not create the environment. Do not dispatch this workflow to "see if the environment appears."
+
+If an unprotected `w3-lab-teardown` environment was created by a dispatch, delete it before creating the protected one:
 
 ```bash
-gh api repos/vantioai/vantio-open-core/environments/w3-lab-teardown
+gh api --method DELETE repos/vantioai/vantio-open-core/environments/w3-lab-teardown
 ```
 
-The protected publish environments `npm-publish`, `pypi`, and `mcp-registry-publish` already use this pattern:
+Delete only the accidental unprotected environment. After it is gone, create the protected environment. The protected publish environments `npm-publish`, `pypi`, and `mcp-registry-publish` already use this pattern:
 
 - required reviewer GitHub login `zacharybalicki` (user id `269605088`)
 - `prevent_self_review: false` (a single reviewer can approve a run they started; the sibling environments use this)
 - custom deployment branch policy allowing only `main`
 
-Apply the same pattern. `prevent_self_review` stays false so the publish-environment pattern does not deadlock a single reviewer. The Founder may add or replace required reviewers in the environment settings after the environment exists.
+`zacharybalicki` must remain a required reviewer. Other reviewers may be added beside that user. `prevent_self_review` stays false so the publish-environment pattern does not deadlock a single reviewer.
 
 ```bash
 gh api --method PUT repos/vantioai/vantio-open-core/environments/w3-lab-teardown --input - <<'JSON'
@@ -74,13 +78,13 @@ gh api --method POST \
 JSON
 ```
 
-Until that environment exists, the job cannot assume the role. The trust policy accepts only the environment subject above. The workflow file also refuses any run whose repository, event, or ref is not `vantioai/vantio-open-core`, `workflow_dispatch`, and `refs/heads/main`.
+The `preflight` job does not set `environment:`. It GETs the environment and fails unless the environment exists, `zacharybalicki` (id `269605088`) is a required reviewer, and the deployment branch policy allows only `main`. The `verify` job is the only job that sets `environment: w3-lab-teardown`, and it has `needs: preflight`. A failed preflight skips `verify`, so that skipped job does not schedule the environment. Both jobs also require `GITHUB_WORKFLOW_REF` to be `vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main`.
 
 ## Dispatch
 
-After this workflow file is on `main` and the environment exists, open Actions, choose **Verify W3 lab teardown role**, and run it on `main`. Leave fixture close off unless the ids of an already-provisioned disposable lab are in hand.
+After this workflow file is on `main` and the protected environment already exists, open Actions, choose **Verify W3 lab teardown role**, and run it on `main`. Leave fixture close off unless the ids of an already-provisioned disposable lab are in hand.
 
-The job waits for the environment reviewer before the OIDC assume.
+`verify` waits for the environment reviewer before the OIDC assume.
 
 ```bash
 gh workflow run w3-lab-teardown-verify.yml --ref main \
@@ -105,16 +109,16 @@ Checks 9–13 stay `NOT_RUN_AWAITING_FIXTURES` when the flag is false, or when t
 
 ## What the job checks
 
-The log prints `CHECK NN STATUS name: detail`. The same rows are in the job summary and in the artifact `w3-lab-teardown-verify-<run_id>` (`w3-lab-teardown-verify.json`). The job fails when any check is `FAIL`.
+The log prints `CHECK NN STATUS name: detail`. The same rows are in the job summary and in the artifact `w3-lab-teardown-verify-<run_id>` (`w3-lab-teardown-verify.json`). The artifact field `policy_sha256` is labeled `prepared_digest`. It is not a live-measured hash. The job fails when any check is `FAIL`.
 
 1. `sts get-caller-identity` shows account `960577828987` and role `vantio-w3-lab-teardown`.
-2. Requested session duration is 3600 seconds or less. Expiration from the assume step is recorded when the credentials action returns it. Remaining lifetime must be at most one hour plus two minutes of clock skew.
+2. Requested session duration is 3600 seconds or less, and the assume step returned an STS Expiration. A missing Expiration is a fail. Remaining lifetime must be at most one hour plus two minutes of clock skew.
 3. `DescribeInstances` in `us-east-2` with the lab tag filters (`vantio:program=w3-clean-host-lab`, `vantio:lifecycle=lab`, `vantio:destroyable=true`, `vantio:environment=lab`). Zero instances is a pass. `AccessDenied` is a fail.
-4. `TerminateInstances` on one instance in `us-east-2` that lacks those tags. The expected result is `AccessDenied`. If the account has no such instance, the check is `SKIP`.
-5. `CreateSecurityGroup --dry-run` in `us-east-2`. The expected result is `AccessDenied`. `RunInstances` is not called.
-6. `iam:CreateUser` for a probe user name. The expected result is `AccessDenied`. `AttachRolePolicy` is not called.
+4. `TerminateInstances --dry-run` in `us-east-2` on the sentinel id `i-0deadbeef0deadbee`. `AccessDenied` or `UnauthorizedOperation` is a pass. `DryRunOperation` is a fail, because the call would have been allowed. The default path does not terminate a live instance.
+5. `CreateSecurityGroup --dry-run` in `us-east-2`. The expected result is `AccessDenied`. `RunInstances` is not called. A group id is not deleted by this check.
+6. `iam:GetUser` for the nonexistent name `vantio-w3-teardown-verify-deny-probe`. The expected result is `AccessDenied`. `CreateUser` is not called.
 7. `ce:GetCostAndUsage` (Cost Explorer lives in `us-east-1`). The expected result is `AccessDenied`. The probe does not change a support plan or payment method.
-8. `DescribeInstances` and `TerminateInstances` with `--region us-east-1`. The terminate target is the sentinel id `i-0deadbeef0deadbee`, not an id discovered in the account. Both calls must be denied.
+8. `DescribeInstances` in `us-east-1`, and `TerminateInstances --dry-run` there on the same sentinel id. Both must be denied. `DryRunOperation` on the terminate is a fail. The default path does not call a real terminate.
 9. Terminate the passed instance, only when destructive close is on and the id's tags match.
 10. Detach, if needed, and delete the passed volume when its tags match, including `vantio:owned-by=transaction`.
 11. Delete the passed security group when its tags match.
@@ -126,7 +130,7 @@ The log prints `CHECK NN STATUS name: detail`. The same rows are in the job summ
 ## What this does not do
 
 - It does not provision a Class B lab or any other host.
-- It does not create IAM users, access keys, or root keys on the success path. Check 6 is an explicit deny probe; if that probe is ever allowed, the script attempts `DeleteUser` and the check fails.
+- It does not create IAM users, access keys, or root keys. Check 6 is `iam:GetUser` on a probe name. It does not call `CreateUser`.
 - It does not change billing, payments, or the Paid plan.
 - It does not grant `NONINTERACTIVE_TEARDOWN_READY`.
 - It does not record `STAGE_B_BILLING_CLOSE_PASS`.

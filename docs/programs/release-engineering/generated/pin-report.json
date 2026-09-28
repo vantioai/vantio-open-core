@@ -168,6 +168,11 @@
     {
       "digest_pinned": false,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "uses": "actions/checkout@v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
       "uses": "aws-actions/configure-aws-credentials@v6"
     },
     {

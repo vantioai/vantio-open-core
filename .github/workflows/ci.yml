@@ -97,6 +97,7 @@ jobs:
           python3 scripts/release/test_promote_pypi.py -v
           python3 scripts/release/test_pypi_publish_workflow.py -v
           python3 scripts/aws/test_verify_w3_lab_teardown.py -v
+          python3 scripts/aws/test_preflight_w3_lab_teardown.py -v
           python3 scripts/aws/test_w3_lab_teardown_workflow.py -v
 
   candidate-artifacts:
