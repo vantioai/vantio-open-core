@@ -4,7 +4,7 @@ Audience: INTERNAL_RESTRICTED
 
 Classification: `W3_PUBLIC_CLAIM_CONTENT_INVENTORY_READY_FOR_COUNCIL`
 
-The ledger is [CLAIM-LEDGER.json](../../../programs/production-readiness/wave3/CLAIM-LEDGER.json). These notes are the reading guide. Where a sentence here and a field in the JSON disagree, the JSON is the record.
+The claim-ledger JSON is not in this repository. These notes are the reading guide. They are not a public rewrite.
 
 | File | What it covers |
 | --- | --- |
@@ -16,4 +16,4 @@ The ledger is [CLAIM-LEDGER.json](../../../programs/production-readiness/wave3/C
 
 Status on the ledger is `FROZEN_INVENTORY`. That is an inventory freeze. It is not permission to rewrite, publish, or announce.
 
-Track 14 dispositions in [PUBLIC-SURFACE-INVENTORY.json](../../../programs/production-readiness/wave3/PUBLIC-SURFACE-INVENTORY.json) stay `UNREVIEWED`. Recommended dispositions live on the claim ledger.
+Track 14 dispositions stay `UNREVIEWED`. The public-surface inventory JSON is not in this repository. PUBLIC_REWRITE remains HOLD.

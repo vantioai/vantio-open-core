@@ -14,16 +14,43 @@ const {
 } = require("../../internal/wave3-claim-inventory/freeze.cjs");
 
 const ROOT = path.resolve(__dirname, "../..");
-const ledger = JSON.parse(
-  fs.readFileSync(path.join(ROOT, "docs/programs/production-readiness/wave3/CLAIM-LEDGER.json"), "utf8"),
-);
 
-const AUTHORIZING_STATUSES = ["PUBLIC_SHIP_AUTHORIZED"];
+function sampleLedger() {
+  const freeze = {
+    status: "FROZEN_INVENTORY",
+    kind: "INVENTORY_ONLY",
+  };
+  for (const flag of SHIP_FLAGS) freeze[flag] = false;
+  return {
+    status: "FROZEN_INVENTORY",
+    classification: "W3_PUBLIC_CLAIM_CONTENT_INVENTORY_READY_FOR_COUNCIL",
+    public_surfaces_mutated: false,
+    t14_dispositions_mutated: false,
+    frozen_packages_reopened: false,
+    freeze,
+    claims: [
+      {
+        claim_id: "CL-W3-T15-001",
+        claim_class: "other",
+        claim_text: "synthetic containment fixture",
+        text_form: "paraphrase",
+        evidence_status: "UNKNOWN",
+        recommended_disposition: "HOLD",
+        executes_now: false,
+        surfaces: ["fixture"],
+        evidence: ["fixture"],
+        drift_ids: [],
+      },
+    ],
+  };
+}
 
-test("FROZEN_INVENTORY is not a public-ship status", () => {
+test("a frozen inventory fixture is not a public-ship status", () => {
+  const ledger = sampleLedger();
+  assert.deepEqual(freezeProblems(ledger), []);
   assert.equal(publicShipAuthorized(ledger), false);
-  assert.equal(AUTHORIZING_STATUSES.includes(ledger.status), false);
-  assert.equal(AUTHORIZING_STATUSES.includes("FROZEN_INVENTORY"), false);
+  assert.equal(["PUBLIC_SHIP_AUTHORIZED"].includes(ledger.status), false);
+  assert.equal(["PUBLIC_SHIP_AUTHORIZED"].includes("FROZEN_INVENTORY"), false);
   for (const disposition of DISPOSITIONS) {
     assert.equal(dispositionExecutesNow(ledger, disposition), false);
   }
@@ -33,7 +60,7 @@ test("FROZEN_INVENTORY is not a public-ship status", () => {
 });
 
 test("flipping ship flags does not authorize a ship and does fail the freeze check", () => {
-  const mutated = structuredClone(ledger);
+  const mutated = sampleLedger();
   for (const flag of SHIP_FLAGS) mutated.freeze[flag] = true;
   mutated.public_surfaces_mutated = true;
   mutated.frozen_packages_reopened = true;
@@ -61,4 +88,11 @@ test("the freeze module has no ship branch", () => {
   assert.doesNotMatch(source, /child_process/);
   assert.doesNotMatch(source, /npm publish/);
   assert.doesNotMatch(source, /FROZEN_INVENTORY[\s\S]{0,80}return true/);
+});
+
+test("the public tree does not keep the claim ledger for the freeze check", () => {
+  assert.equal(
+    fs.existsSync(path.join(ROOT, "docs/programs/production-readiness/wave3/CLAIM-LEDGER.json")),
+    false,
+  );
 });

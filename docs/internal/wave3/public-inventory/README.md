@@ -4,7 +4,7 @@ Audience: INTERNAL_RESTRICTED
 
 Classification: `W3_PUBLIC_ESTATE_INVENTORY_READY_FOR_COUNCIL`
 
-The register is [PUBLIC-SURFACE-INVENTORY.json](../../../programs/production-readiness/wave3/PUBLIC-SURFACE-INVENTORY.json). These notes are the reading guide. Where a sentence here and a field in the JSON disagree, the JSON is the record.
+The public-surface inventory JSON is not in this repository. These notes are the reading guide. Dispositions recorded here stay `UNREVIEWED`.
 
 | File | What it covers |
 | --- | --- |
@@ -17,4 +17,4 @@ The register is [PUBLIC-SURFACE-INVENTORY.json](../../../programs/production-rea
 | [06-OTHER-SURFACES.md](06-OTHER-SURFACES.md) | LinkedIn, X, directories, and what was not found |
 | [07-DRIFT.md](07-DRIFT.md) | Places the public copy does not match itself |
 
-Every disposition in this register stays `UNREVIEWED`. Track 15 records recommended dispositions on the claim ledger and does not edit these fields.
+Every disposition in this register stays `UNREVIEWED`. Track 15 did not edit these fields.
