@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 PACKAGE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE))
@@ -19,9 +20,11 @@ from tests.test_stage_a import AS_OF, TX, Harness  # noqa: E402
 from vantio_install.engine import apply, rollback, uninstall, verify_removal  # noqa: E402
 from vantio_install.errors import InstallError  # noqa: E402
 from vantio_install import bpf_pins, constants  # noqa: E402
+from vantio_install.docker_object import DockerCommandResult, interpret_probe  # noqa: E402
 from vantio_install.live_executor import (  # noqa: E402
     ExecResult,
     ProductionObserver,
+    _recover_absent_target,
     authorize_live,
     catalog_argv,
     confine,
@@ -1494,6 +1497,118 @@ class LiveExecutorTests(unittest.TestCase):
         code, body = self.verify_live(harness)
         self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
         self.assertEqual(body["residual_result"], "EMPTY")
+
+    def _rolling_grant(self, state: str, command: str):
+        harness = self.planned()
+        self.set_env("1")
+        self.arm(harness, state)
+        grant = self.grant_for(harness, command=command)
+        return harness, grant
+
+    def test_docker29_lowercase_absence_does_not_stall_stop_or_rm(self) -> None:
+        harness, grant = self._rolling_grant("ROLLING_BACK", "rollback")
+        name = grant.container_name
+        self.assertEqual(name, "vantio-pe-" + TX[-12:])
+        stderr = "Error response from daemon: no such object: %s\n" % name
+        inspection = interpret_probe(name, DockerCommandResult(1, False, "", stderr))
+        kept = ExecResult(1, False, "kept-stdout", stderr)
+        with patch("vantio_install.live_executor.inspect_container", return_value=inspection):
+            recovered = _recover_absent_target("docker_stop", grant, kept)
+        self.assertIs(recovered, kept)
+        self.assertEqual(kept.returncode, 1)
+        self.assertEqual(kept.stdout, "kept-stdout")
+        self.assertEqual(kept.stderr, stderr)
+        self.assertEqual(kept.disposition, "IDEMPOTENT_ABSENT")
+
+        calls: list[list[str]] = []
+
+        encoded = stderr.encode()
+
+        def fake_run(argv, **_kwargs):
+            calls.append(list(argv))
+            completed = type("Completed", (), {"returncode": 1, "stdout": b"", "stderr": encoded})()
+            if list(argv)[:2] == ["docker", "inspect"]:
+                return completed
+            if list(argv)[:2] in (["docker", "stop"], ["docker", "rm"]):
+                self.assertEqual(argv[-1], name)
+                return completed
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor.subprocess.run", fake_run):
+            with patch("vantio_install.docker_object.subprocess.run", fake_run):
+                delta = dispatch(grant, "docker_stop", None, runner=None, observer=ProductionObserver())
+                dispatch(grant, "docker_rm", None, runner=None, observer=ProductionObserver())
+        self.assertEqual(delta["containers"], [])
+        self.assertEqual(calls[0][:2], ["docker", "stop"])
+        self.assertEqual(calls[1][:2], ["docker", "inspect"])
+        self.assertEqual(calls[1][-1], name)
+        ops = [
+            json.loads(line)
+            for line in (harness.tx_file("LIVE-OPS.jsonl")).read_text(encoding="utf-8").splitlines()
+        ]
+        verified = [row for row in ops if row["phase"] == "VERIFIED"]
+        self.assertEqual([row["op"] for row in verified], ["docker_stop", "docker_rm"])
+        self.assertEqual({row["docker_object"] for row in verified}, {"IDEMPOTENT_ABSENT"})
+        self.assertEqual({row["docker_exit_code"] for row in verified}, {1})
+
+    def test_repeated_rollback_and_uninstall_accept_an_absent_container(self) -> None:
+        cases = (("ROLLING_BACK", "rollback"), ("UNINSTALLING", "uninstall"))
+        for state, command in cases:
+            harness, grant = self._rolling_grant(state, command)
+            name = grant.container_name
+            stderr = b"Error response from daemon: no such object\n"
+
+            def fake_run(argv, **_kwargs):
+                class Completed:
+                    returncode = 1
+                    stdout = b""
+                    stderr = b"Error response from daemon: no such object\n"
+
+                if argv[-1] != name:
+                    raise AssertionError(argv)
+                return Completed()
+
+            with patch("vantio_install.live_executor.subprocess.run", fake_run):
+                with patch("vantio_install.docker_object.subprocess.run", fake_run):
+                    for _ in range(2):
+                        dispatch(grant, "docker_stop", None, runner=None, observer=ProductionObserver())
+                        dispatch(grant, "docker_rm", None, runner=None, observer=ProductionObserver())
+            ops = [
+                json.loads(line)
+                for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            verified = [row for row in ops if row.get("phase") == "VERIFIED"]
+            self.assertEqual(len(verified), 4, command)
+            self.assertTrue(all(row["docker_object"] == "IDEMPOTENT_ABSENT" for row in verified), command)
+            self.assertTrue(all(row["docker_exit_code"] == 1 for row in verified), command)
+
+    def test_rm_that_leaves_the_container_records_residual(self) -> None:
+        harness, grant = self._rolling_grant("ROLLING_BACK", "rollback")
+        name = grant.container_name
+        body = json.dumps(
+            {
+                "Name": "/" + name,
+                "State": {"Running": False, "Status": "exited"},
+                "Config": {"Labels": {}},
+            }
+        ).encode()
+
+        def fake_run(argv, **_kwargs):
+            if list(argv)[:2] == ["docker", "rm"]:
+                return type("Completed", (), {"returncode": 0, "stdout": (name + "\n").encode(), "stderr": b""})()
+            if list(argv)[:2] == ["docker", "inspect"]:
+                return type("Completed", (), {"returncode": 0, "stdout": body, "stderr": b""})()
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor.subprocess.run", fake_run):
+            with patch("vantio_install.docker_object.subprocess.run", fake_run):
+                with self.assertRaises(InstallError) as caught:
+                    dispatch(grant, "docker_rm", None, runner=None, observer=ProductionObserver())
+        self.assertIn("residual", str(caught.exception))
+        self.assertEqual(caught.exception.failure_class, "FAILED_SAFE")
+        ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(any(row["phase"] == "RESIDUAL_FOUND" and row["op"] == "docker_rm" for row in ops))
+        self.assertFalse(any(row["phase"] == "VERIFIED" for row in ops))
 
 
 if __name__ == "__main__":

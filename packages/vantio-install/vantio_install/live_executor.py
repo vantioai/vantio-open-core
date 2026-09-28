@@ -16,6 +16,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vantio_install import bpf_pins, constants
+from vantio_install.docker_object import (
+    FAILED_SAFE as DOCKER_FAILED_SAFE,
+    IDEMPOTENT_ABSENT,
+    REMOVED as DOCKER_REMOVED,
+    RESIDUAL_FOUND as DOCKER_RESIDUAL_FOUND,
+    DockerCommandResult,
+    classify_docker_object_operation,
+    docker_object_host_status,
+    inspect_container,
+)
 from vantio_install.commands import (
     apparmor_parser_load_argv,
     apparmor_parser_remove_argv,
@@ -146,9 +156,19 @@ def rollback_operation_ids() -> list[str]:
 
 
 class ExecResult:
-    def __init__(self, returncode: int, timed_out: bool = False) -> None:
+    def __init__(
+        self,
+        returncode: int,
+        timed_out: bool = False,
+        stdout: str = "",
+        stderr: str = "",
+        disposition: str | None = None,
+    ) -> None:
         self.returncode = returncode
         self.timed_out = timed_out
+        self.stdout = stdout
+        self.stderr = stderr
+        self.disposition = disposition
 
 
 @dataclass(frozen=True)
@@ -409,11 +429,16 @@ def run_allowlisted(argv: list[str], timeout: int, runner) -> ExecResult:
                 capture_output=True,
                 timeout=timeout,
             )
-        except subprocess.TimeoutExpired:
-            return ExecResult(124, True)
+        except subprocess.TimeoutExpired as exc:
+            return ExecResult(124, True, _captured_text(exc.stdout), _captured_text(exc.stderr))
         except OSError as exc:
             _fail(f"The live command could not start: {exc.__class__.__name__}.", failure_class="FAILED_SAFE")
-        return ExecResult(completed.returncode, False)
+        return ExecResult(
+            completed.returncode,
+            False,
+            _captured_text(completed.stdout),
+            _captured_text(completed.stderr),
+        )
     result = runner(checked, timeout)
     if not isinstance(result, ExecResult):
         _fail("The live runner returned an unexpected result.", failure_class="FAILED_SAFE")
@@ -586,8 +611,17 @@ def dispatch(
     partial_step = _PARTIAL_ON_EXIT.get(op_type)
     if partial_step and result.returncode == 0 and not result.timed_out:
         note_partial_mutation(grant.tx_dir, partial_step)
+    if result.disposition in {DOCKER_FAILED_SAFE, DOCKER_RESIDUAL_FOUND}:
+        _record_docker_failure(grant, op_type, result)
     status = observer.verify(op_type, grant) if observer is not None else "NOT_VERIFIED"
-    if status != "VERIFIED" or result.returncode != 0:
+    if result.disposition in {IDEMPOTENT_ABSENT, DOCKER_REMOVED} and status == "NOT_VERIFIED":
+        result.disposition = DOCKER_RESIDUAL_FOUND
+        _record_docker_failure(grant, op_type, result)
+    if result.disposition in {IDEMPOTENT_ABSENT, DOCKER_REMOVED} and status not in {"VERIFIED", "NOT_VERIFIED"}:
+        result.disposition = DOCKER_FAILED_SAFE
+        _record_docker_failure(grant, op_type, result)
+    code_ok = result.returncode == 0 or result.disposition == IDEMPOTENT_ABSENT
+    if status != "VERIFIED" or not code_ok:
         failure = "ROLLBACK_REQUIRED" if result.returncode == 0 else "FAILED_SAFE"
         _append_op(grant, {"op": op_type, "phase": failure, "transaction_id": grant.transaction_id})
         if failure == "ROLLBACK_REQUIRED":
@@ -599,7 +633,11 @@ def dispatch(
     delta = observer.observed_delta(op_type, grant) if observer is not None else {}
     if not isinstance(delta, dict):
         _fail("The host check returned an unexpected observation.", failure_class="ROLLBACK_REQUIRED")
-    _append_op(grant, {"op": op_type, "phase": "VERIFIED", "transaction_id": grant.transaction_id})
+    verified = {"op": op_type, "phase": "VERIFIED", "transaction_id": grant.transaction_id}
+    if result.disposition:
+        verified["docker_object"] = result.disposition
+        verified["docker_exit_code"] = result.returncode
+    _append_op(grant, verified)
     return delta
 
 
@@ -938,8 +976,10 @@ class ProductionObserver:
                 if pin_errors:
                     return "UNKNOWN"
                 return "VERIFIED" if not pins else "NOT_VERIFIED"
-            if op_type in {"docker_stop", "docker_rm"}:
+            if op_type == "docker_stop":
                 return _docker_stopped(grant.container_name)
+            if op_type == "docker_rm":
+                return _docker_removed(grant.container_name)
             if op_type == "docker_rmi":
                 return "VERIFIED" if _docker_image_present(grant.tag) == "NOT_VERIFIED" else "NOT_VERIFIED"
             if op_type == "tc_clsact":
@@ -1047,55 +1087,64 @@ def _docker_running_observe(name: str) -> str:
 
 
 def _docker_stopped(name: str) -> str:
-    text = _docker_inspect_line(name)
-    if not text:
-        return "VERIFIED"
-    running = text.split(" ", 1)[0]
-    return "VERIFIED" if running != "true" else "NOT_VERIFIED"
+    return docker_object_host_status("docker_stop", inspect_container(name))
 
 
-def _docker_presence(name: str) -> str:
-    argv = ["docker", "inspect", "--format", "{{.State.Running}}", name]
-    try:
-        checked = reject_argv(argv)
-    except InstallError:
-        return "unknown"
-    try:
-        completed = subprocess.run(
-            checked,
-            shell=False,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return "unknown"
-    if completed.returncode == 0:
-        return "present"
-    err = (completed.stderr or "") + (completed.stdout or "")
-    if "No such" in err:
-        return "absent"
-    return "unknown"
+def _docker_removed(name: str) -> str:
+    return docker_object_host_status("docker_rm", inspect_container(name))
 
 
 def _recover_absent_target(op_type: str, grant: LiveGrant, result: ExecResult) -> ExecResult:
-    """A stop, rm, or profile unload of an already-absent target is done."""
-    if result.returncode == 0 or result.timed_out:
+    """Classify a Docker miss. Keep the original exit code, stdout, and stderr.
+
+    Only a post-operation inspect that agrees the transaction-owned object is
+    already gone can mark the command idempotent. Other Docker failures stay
+    on the result and fail closed.
+    """
+    if result.timed_out:
         return result
-    if op_type == "docker_rm" and _docker_presence(grant.container_name) == "absent":
-        return ExecResult(0, False)
-    if op_type == "docker_stop":
-        presence = _docker_presence(grant.container_name)
-        if presence == "absent":
-            return ExecResult(0, False)
-        if presence == "present":
-            text = _docker_inspect_line(grant.container_name)
-            if text and not text.startswith("true "):
-                return ExecResult(0, False)
+    if op_type in {"docker_stop", "docker_rm"}:
+        inspection = inspect_container(grant.container_name)
+        result.disposition = classify_docker_object_operation(
+            operation=op_type,
+            transaction_id=grant.transaction_id,
+            object_name=grant.container_name,
+            command=DockerCommandResult(result.returncode, result.timed_out, result.stdout, result.stderr),
+            inspection=inspection,
+        )
+        return result
+    if result.returncode == 0:
+        return result
     if op_type == "unload_pe_apparmor" and apparmor_profile_loaded(constants.PE_OBSERVE_APPARMOR_PROFILE) is False:
-        return ExecResult(0, False)
+        return ExecResult(0, False, result.stdout, result.stderr)
     return result
+
+
+def _record_docker_failure(grant: LiveGrant, op_type: str, result: ExecResult) -> None:
+    if result.disposition in {DOCKER_FAILED_SAFE, DOCKER_RESIDUAL_FOUND}:
+        phase = result.disposition
+    else:
+        phase = DOCKER_FAILED_SAFE
+    _append_op(
+        grant,
+        {
+            "op": op_type,
+            "phase": phase,
+            "transaction_id": grant.transaction_id,
+            "docker_exit_code": result.returncode,
+        },
+    )
+    if phase == DOCKER_RESIDUAL_FOUND:
+        _fail(f"{op_type} left residual product state.", failure_class="FAILED_SAFE")
+    _fail(f"{op_type} failed the host check.", failure_class="FAILED_SAFE")
+
+
+def _captured_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
 
 
 def _host_pins() -> tuple[list[str], list[str]]:
