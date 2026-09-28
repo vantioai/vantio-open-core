@@ -16,6 +16,7 @@ from vantio_install.live_executor import (
     ProductionObserver,
     authorize_live,
     clear_partial_mutation,
+    resolve_tracefs_host,
     guard_readonly_command,
     live_operation_ids,
     partial_mutation_steps,
@@ -468,6 +469,7 @@ def _live_grant(ctx: dict, tx: dict, tx_dir: Path, config: dict, bundle: Path, h
         plan_sha256=ctx.get("plan_sha256"),
         accept_live_mutations=bool(ctx.get("accept_live_mutations")),
         euid=ctx.get("live_euid"),
+        tracefs_probe=ctx.get("tracefs_probe"),
     )
 
 
@@ -558,14 +560,20 @@ def apply(ctx: dict) -> tuple[int, dict]:
         tx["owner_pid"] = os.getpid()
         tx["phase"] = "apply"
         _save_tx(tx_dir, tx)
+        checked_host, allow_unrecorded_tracefs = resolve_tracefs_host(
+            snapshot,
+            command="apply",
+            probe=ctx.get("tracefs_probe"),
+        )
         recheck = run_preflight(
             bundle=bundle,
             config={**config, "transaction_id": tx["transaction_id"]},
-            host=snapshot,
+            host=checked_host,
             resuming=True,
             plan_present=True,
             config_present=True,
             bundle_digest_match=digest == tx.get("bundle_digest"),
+            allow_unrecorded_tracefs=allow_unrecorded_tracefs,
         )
         if recheck["overall"] in {"BLOCKED", "UNSUPPORTED"}:
             _move(tx, "FAILED_SAFE", stamp)
@@ -588,11 +596,12 @@ def apply(ctx: dict) -> tuple[int, dict]:
                     report = run_preflight(
                         bundle=bundle,
                         config={**config, "transaction_id": tx["transaction_id"]},
-                        host=snapshot,
+                        host=checked_host,
                         resuming=True,
                         plan_present=True,
                         config_present=True,
                         bundle_digest_match=True,
+                        allow_unrecorded_tracefs=allow_unrecorded_tracefs,
                     )
                     if report["overall"] in {"BLOCKED", "UNSUPPORTED"}:
                         _move(tx, "FAILED_SAFE", stamp)

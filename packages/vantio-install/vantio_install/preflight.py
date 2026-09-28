@@ -44,6 +44,39 @@ def _parse_node(value: object) -> tuple[int, int, int] | None:
     return nums[0], nums[1], nums[2]
 
 
+def _tracefs_check(host: dict, *, allow_unrecorded: bool) -> dict:
+    """New plans require a recorded mount. Recovery of an older snapshot does not invent one."""
+    title = "tracefs mounted at /sys/kernel/tracing and non-empty"
+    remediation = "Mount tracefs at /sys/kernel/tracing. An empty directory at that path is not tracefs."
+    if "tracefs_mounted" not in host:
+        if allow_unrecorded:
+            return _check(
+                "PF-TRACEFS",
+                "tracefs fact unrecorded on this recovery snapshot",
+                "PASS",
+                {"tracefs_mounted": "UNRECORDED"},
+                {"tracefs_mounted": "UNRECORDED"},
+                "Recovery does not use tracefs. Apply re-probes the live host when the snapshot has no fact.",
+            )
+        return _check(
+            "PF-TRACEFS",
+            title,
+            "BLOCKED",
+            {"tracefs_mounted": "UNKNOWN"},
+            {"tracefs_mounted": True},
+            remediation,
+        )
+    tracefs = host.get("tracefs_mounted")
+    return _check(
+        "PF-TRACEFS",
+        title,
+        "PASS" if tracefs is True else "BLOCKED",
+        {"tracefs_mounted": tracefs if isinstance(tracefs, bool) else "UNKNOWN"},
+        {"tracefs_mounted": True},
+        remediation,
+    )
+
+
 def _apparmor_observation(host: dict) -> tuple[str, dict]:
     enabled = host.get("apparmor_enabled", "UNKNOWN")
     parser = host.get("apparmor_parser", "UNKNOWN")
@@ -100,6 +133,7 @@ def run_preflight(
     plan_present: bool,
     config_present: bool,
     bundle_digest_match: bool,
+    allow_unrecorded_tracefs: bool = False,
 ) -> dict:
     pin = constants.FROZEN_PINS
     checks: list[dict] = []
@@ -183,6 +217,8 @@ def run_preflight(
             "Mount bpffs at /sys/fs/bpf and grant the install principal write access.",
         )
     )
+
+    checks.append(_tracefs_check(host, allow_unrecorded=allow_unrecorded_tracefs))
 
     docker_bin = host.get("docker_binary") is True
     docker_ver = host.get("docker_version") if host.get("docker_version") else "UNKNOWN"

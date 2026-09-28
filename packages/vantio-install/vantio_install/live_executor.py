@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from vantio_install.commands import (
     mkdir_argv,
     npm_install_argv,
     observe_apparmor_opt,
+    observe_binds,
     observe_container_argv,
     observe_env,
     pip_wheel_argv,
@@ -47,6 +49,7 @@ from vantio_install.agent_sdk import (
     remove_agent_sdks,
 )
 from vantio_install.errors import InstallError
+from vantio_install.host import probe_tracefs_mounted
 from vantio_install.manifest import artifact_paths, load_manifest
 from vantio_install.optics_cli import (
     observed_optics_cli_version,
@@ -108,6 +111,13 @@ _RUNTIME_STATES = {
     "rollback": {"ROLLING_BACK"},
     "uninstall": {"UNINSTALLING"},
 }
+
+_TRACEFS_RECORDED = "Live mutations require a non-empty tracefs at /sys/kernel/tracing."
+_TRACEFS_PROBE = (
+    "The saved host snapshot has no tracefs fact. "
+    "The live probe did not find a non-empty tracefs at /sys/kernel/tracing."
+)
+_RECOVERY_COMMANDS = frozenset({"rollback", "uninstall"})
 
 _CLOSED = {
     "ROLLED_BACK",
@@ -263,6 +273,12 @@ def _require_observe_apparmor(argv: list[str]) -> None:
         _fail("The observe container capability list changed.", failure_class="FAILED_SAFE")
 
 
+def _require_observe_mounts(argv: list[str]) -> None:
+    volumes = [argv[index + 1] for index, item in enumerate(argv) if item == "-v" and index + 1 < len(argv)]
+    if volumes != observe_binds():
+        _fail("The observe container mount list changed.", failure_class="FAILED_SAFE")
+
+
 def _observe_profile_file(grant: LiveGrant) -> Path:
     return confine(pe_apparmor_profile_path(grant.stage), [grant.stage])
 
@@ -322,6 +338,7 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
         _reject_forbidden_live_argv(argv)
         if op_type == "start_pe_observe":
             _require_observe_apparmor(argv)
+            _require_observe_mounts(argv)
         if op_type in {"load_pe_apparmor", "unload_pe_apparmor"}:
             _require_apparmor_parser_argv(op_type, argv)
         if op_type == "docker_tag" and (argv[-1] != pin["pe_local_tag"] or argv[-1].endswith(":latest")):
@@ -596,6 +613,31 @@ def execute_step(grant: LiveGrant, step_id: str, kind: str, runner, observer) ->
     return deltas, recorded
 
 
+def resolve_tracefs_host(
+    host: dict,
+    *,
+    command: str,
+    probe: Callable[[], bool] | None = None,
+) -> tuple[dict, bool]:
+    """Decide tracefs for a live command without rewriting the saved snapshot.
+
+    A missing ``tracefs_mounted`` key is unrecorded. It is not an observation
+    that the mount is absent. Apply fills that gap from a live probe. Rollback
+    and uninstall do not need the mount, so an unrecorded key does not block them.
+    A recorded false or unknown value stays a refusal on every command.
+    """
+    if "tracefs_mounted" in host:
+        if host.get("tracefs_mounted") is not True:
+            _fail(_TRACEFS_RECORDED, failure_class="FAILED_SAFE")
+        return host, False
+    if command in _RECOVERY_COMMANDS:
+        return host, True
+    live = probe_tracefs_mounted() if probe is None else probe()
+    if live is not True:
+        _fail(_TRACEFS_PROBE, failure_class="FAILED_SAFE")
+    return {**host, "tracefs_mounted": True}, False
+
+
 def authorize_live(
     *,
     command: str,
@@ -609,6 +651,7 @@ def authorize_live(
     accept_live_mutations: bool,
     env: dict[str, str] | None = None,
     euid: int | None = None,
+    tracefs_probe: Callable[[], bool] | None = None,
 ) -> LiveGrant:
     """Return a grant or refuse before any host mutation."""
     env = os.environ if env is None else env
@@ -678,8 +721,23 @@ def authorize_live(
     residual = plan_doc.get("residual_checks")
     if not isinstance(residual, list) or not residual:
         _fail("The plan is missing residual checks.", failure_class="FAILED_SAFE")
-    if plan_doc.get("live_operations") != live_operation_ids():
+    recorded_ops = plan_doc.get("live_operations")
+    expected_ops = live_operation_ids()
+    if not isinstance(recorded_ops, list) or not recorded_ops:
         _fail("The plan is missing the live operation list.", failure_class="FAILED_SAFE")
+    if recorded_ops != expected_ops:
+        _fail(
+            "This installer refuses a plan whose live operation list does not match. "
+            "Roll that plan back with the installer that wrote it.",
+            failure_class="FAILED_SAFE",
+        )
+    # After the operation list. A parent snapshot with no tracefs_mounted key
+    # must not be reported as a missing host mount.
+    checked_host, allow_unrecorded_tracefs = resolve_tracefs_host(
+        host,
+        command=command,
+        probe=tracefs_probe,
+    )
 
     evidence = Path(str(tx.get("evidence_dir") or ""))
     if not evidence.is_dir() or not (evidence / "TRANSACTION.json").is_file():
@@ -697,11 +755,12 @@ def authorize_live(
     report = run_preflight(
         bundle=bundle,
         config={**config, "transaction_id": tx["transaction_id"]},
-        host=host,
+        host=checked_host,
         resuming=True,
         plan_present=True,
         config_present=True,
         bundle_digest_match=True,
+        allow_unrecorded_tracefs=allow_unrecorded_tracefs,
     )
     for row in report["checks"]:
         if row["result"] == "UNKNOWN":

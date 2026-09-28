@@ -33,7 +33,7 @@ Sealed Phantom Engine archive:
 
 `artifacts/phantom-engine/PHANTOM-ARTIFACT-MANIFEST.json` records that commit, that archive hash, and that manifest digest. `SHA256SUMS` lists every file in the bundle. A mismatch stops `plan`.
 
-The host for this contract is Ubuntu 24.04 on x86_64, with kernel BTF, cgroup v2, bpffs, Docker, AppArmor with `apparmor_parser`, and Node.js 18 or newer. The observe-only Phantom Engine container loads profile `vantio-pe-observe` so pin writes under `/sys/fs/bpf` are allowed. Set `iface` to an interface that is up, and set `workload_roots` to absolute directories you own.
+The host for this contract is Ubuntu 24.04 on x86_64, with kernel BTF, cgroup v2, bpffs, tracefs at `/sys/kernel/tracing`, Docker, AppArmor with `apparmor_parser`, and Node.js 18 or newer. The observe-only Phantom Engine container loads profile `vantio-pe-observe` so pin writes under `/sys/fs/bpf` are allowed, and it bind-mounts that tracefs path. Set `iface` to an interface that is up, and set `workload_roots` to absolute directories you own.
 
 `vantio-install plan --bundle <bundle> --config <config> --json` checks the host and the hashes. It does not install.
 

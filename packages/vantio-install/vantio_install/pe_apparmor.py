@@ -5,6 +5,11 @@ That denial returns EACCES from BPF_OBJ_PIN after the eBPF object has loaded.
 This profile keeps the rest of that template and allows read, write, lock, and
 link under /sys/fs/bpf only.
 
+The observe container bind-mounts host tracefs at /sys/kernel/tracing. Writes
+under /sys/kernel/** stay denied. The loader's tracefs probe is a read of a
+non-empty directory, and tracepoint id files are reads. uprobe_events writes
+stay denied.
+
 The text follows the moby docker-default template at v27.5.1 and v28.3.3
 (`profiles/apparmor/template.go`). proof_state for this package stays
 NOT_PROVED. A parsed profile is not a clean-host pin proof.
@@ -45,6 +50,7 @@ profile PROFILE_NAME flags=(attach_disconnected,mediate_deleted) {
 
   deny mount,
 
+  # Host tracefs is bind-mounted at /sys/kernel/tracing. Writes stay denied.
   deny /sys/[^f]*/** wklx,
   deny /sys/f[^s]*/** wklx,
   deny /sys/fs/[^cb]*/** wklx,
