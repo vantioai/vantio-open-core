@@ -1,0 +1,75 @@
+{
+  "document": "IMPLEMENTATION-REPORT",
+  "audience": "INTERNAL_RESTRICTED",
+  "as_of_et": "2026-09-27T20:37:00-04:00",
+  "program": "CUSTOMER INSTALLER / SECOND LAB — Stage A",
+  "design_status_implemented": "DESIGN_READY_FOR_IMPLEMENTATION",
+  "proof_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
+  "proof_state_emitted_by_installer": "NOT_PROVED",
+  "ready_for_council": "YES",
+  "repo": "vantioai/vantio-open-core",
+  "base_branch": "main",
+  "base_tip": "5bb8154ae377a561478ffc50ce81cc4544deaa36",
+  "base_tip_subject": "Merge Wave 3 Track 15 public claim and content inventory onto main. Source-only. Frozen inventory.",
+  "branch": "cursor/stage-a-vantio-install-8195",
+  "pr_url": null,
+  "package": "packages/vantio-install",
+  "commands": [
+    "vantio-install plan",
+    "vantio-install apply",
+    "vantio-install status",
+    "vantio-install rollback",
+    "vantio-install uninstall",
+    "vantio-install verify-removal"
+  ],
+  "independent_verifier": "vantio-verify",
+  "defaults": {
+    "install_mode": "observe-only",
+    "enforcement": "NOT_ENABLED",
+    "otlp": "DISABLED",
+    "path_deny": "disabled",
+    "traffic_control": "audit-only",
+    "optimistic_success": false
+  },
+  "frozen_unchanged": {
+    "optics_cli": "0.3.24",
+    "optics_cli_sha256": "82fe13ad6fc916ac67a670bd95fbf18b24389ecb383d81246e1d52cb96712a1f",
+    "agent_sdk_npm": "0.2.4",
+    "agent_sdk_py": "3.1.0",
+    "pe_source_commit": "fab81efc08110506ff90847495197e7051a253b5",
+    "pe_archive_sha256": "72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128",
+    "pe_manifest_digest": "sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553",
+    "cli_package_tree_mutated": false
+  },
+  "tests": {
+    "command": "python3 -m unittest discover -s tests -t . -v",
+    "cwd": "packages/vantio-install",
+    "interpreter": "Python 3.14.4",
+    "result": "OK",
+    "ran": 29,
+    "failed": 0,
+    "ci_job": "test-vantio-install on Python 3.12"
+  },
+  "hard_stops_honored": {
+    "aws_provision": false,
+    "paid_plan": false,
+    "ghcr_publish": false,
+    "public_announce": false,
+    "secrets_in_tree": false,
+    "phantom_box_or_crm_in_customer_docs": false,
+    "pe_enforce_default": false,
+    "mutate_frozen_optics_packages": false
+  },
+  "fail_closed_extensions": [
+    "APPLIED can move to INTERRUPTED when the process dies before health is recorded",
+    "VERIFIED_REMOVED and RESIDUAL_PRESENT can be re-checked",
+    "VERIFYING_REMOVAL moves to FAILED_SAFE when a residual probe returns UNKNOWN"
+  ],
+  "residual_gaps": [
+    "Live Docker, npm, BPF, and traffic-control commands are constructed and tested as argument lists. The live executor refuses to run them, including when VANTIO_INSTALL_ALLOW_LIVE=1. A later authorized clean-host run has to execute that path.",
+    "Fixture tests prove the transaction, rollback, residual check, support-bundle redaction, and independent verifier. They are not a clean-host proof. proof_state stays NOT_PROVED.",
+    "The sealed Phantom Engine archive and Optics tarballs are not vendored. The installer pins the frozen digests and refuses a mismatch. Happy-path fixtures inject those digest fields in-process so the same comparator can pass on small files. A subprocess plan against the real pin table and stand-in bytes is PREFLIGHT_BLOCKED.",
+    "No second AWS lab, no GHCR publish, no Paid conversion, and no public announcement were performed."
+  ],
+  "summary": "Stage A adds a dedicated vantio-install package and an independent vantio-verify command. The frozen Optics CLI, agent SDK, and Phantom Engine identities are unchanged. Observe-only is the only install mode. Twenty-nine fixture tests passed locally."
+}

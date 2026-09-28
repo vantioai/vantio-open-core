@@ -1,0 +1,17 @@
+{
+  "install_mode": "observe-only",
+  "enforcement": "NOT_ENABLED",
+  "iface": "",
+  "workload_roots": ["/var/lib/vantio/workloads/default"],
+  "evidence_root": "/var/tmp/vantio-evidence/<transaction_id>",
+  "dry_run": true,
+  "otlp": "DISABLED",
+  "path_deny": "disabled",
+  "traffic_control": "audit-only",
+  "transfer_required": false,
+  "transfer_source_cidrs": [],
+  "artifact_source": "sealed_archive",
+  "install_motion": "customer-local",
+  "enterprise_inclusion": "OPTIONAL_SOURCE_ONLY_NOT_PACKAGED_AUTHORITY",
+  "non_interactive": true
+}
