@@ -17,8 +17,9 @@ name: Verify W3 lab teardown role
 #
 # This workflow does not provision a Class B or product lab, does not create
 # access keys, and does not change billing or a Paid plan. The default path
-# does not call TerminateInstances or CreateUser. Checks 9-13 delete fixtures
-# only when the dispatch input is true and an id was passed.
+# calls TerminateInstances only with --dry-run, and does not call CreateUser.
+# Checks 9-13 delete fixtures only when the dispatch input is true and an id
+# was passed.
 #
 # Class B stays unauthorized until STAGE_B_BILLING_CLOSE_PASS and
 # NONINTERACTIVE_TEARDOWN_READY are both recorded. A green run does not
@@ -75,7 +76,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      administration: read
     steps:
       - name: Require the teardown workflow identity
         run: |
