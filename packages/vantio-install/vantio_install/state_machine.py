@@ -33,8 +33,8 @@ TRANSITIONS: dict[str, set[str]] = {
     "UNINSTALLED": {"VERIFYING_REMOVAL"},
     "VERIFYING_REMOVAL": {"VERIFIED_REMOVED", "RESIDUAL_PRESENT", "RESIDUAL_FOUND", "FAILED_SAFE"},
     "VERIFIED_REMOVED": {"VERIFYING_REMOVAL"},
-    "RESIDUAL_PRESENT": {"VERIFYING_REMOVAL"},
-    "RESIDUAL_FOUND": {"VERIFYING_REMOVAL"},
+    "RESIDUAL_PRESENT": {"VERIFYING_REMOVAL", "ROLLING_BACK", "UNINSTALLING"},
+    "RESIDUAL_FOUND": {"VERIFYING_REMOVAL", "ROLLING_BACK", "UNINSTALLING"},
     "INTERRUPTED": {
         "APPLYING",
         "ROLLING_BACK",
@@ -43,6 +43,11 @@ TRANSITIONS: dict[str, set[str]] = {
         "PREFLIGHTING",
     },
 }
+
+# Live verify-removal records RESIDUAL_FOUND. Fixture verify-removal records
+# RESIDUAL_PRESENT. Both still mean the host is not clean, and both can
+# start a later rollback or uninstall that removes the recorded artifacts.
+RESIDUAL_STATES = frozenset({"RESIDUAL_FOUND", "RESIDUAL_PRESENT"})
 
 TRANSIENT = frozenset(
     {

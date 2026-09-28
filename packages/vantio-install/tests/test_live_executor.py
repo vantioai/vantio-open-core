@@ -15,7 +15,7 @@ PACKAGE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE))
 
 from tests.test_stage_a import AS_OF, TX, Harness  # noqa: E402
-from vantio_install.engine import apply, rollback  # noqa: E402
+from vantio_install.engine import apply, rollback, uninstall, verify_removal  # noqa: E402
 from vantio_install.errors import InstallError  # noqa: E402
 from vantio_install import constants  # noqa: E402
 from vantio_install.live_executor import (  # noqa: E402
@@ -1021,6 +1021,115 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertFalse(npm_tree.exists())
         self.assertFalse(py_module.exists())
         self.assertFalse(list(py_sdk_site(harness.prefix).glob("vantio_agent_sdk-*.dist-info")))
+
+    def verify_live(self, harness: Harness, scope: str = "all") -> tuple[int, dict]:
+        return verify_removal(
+            {
+                "command": "verify-removal",
+                "bundle": harness.bundle,
+                "config_path": harness.config_path,
+                "state_dir": harness.state,
+                "evidence_dir": harness.evidence,
+                "fixture_host": None,
+                "transaction_id": TX,
+                "as_of": AS_OF,
+                "scope": scope,
+                "accept_live_mutations": False,
+                "yes": False,
+                "dry_run_flag": False,
+            }
+        )
+
+    def plant_residual_prefix(self, harness: Harness) -> None:
+        pins = constants.FROZEN_PINS
+        plant_cli(harness.prefix, pins["optics_cli_version"], manifest=pins["optics_cli_version"])
+        plant_npm_sdk(harness.prefix, pins["agent_sdk_npm_version"])
+        plant_py_sdk(harness.prefix, pins["agent_sdk_py_version"])
+
+    def assert_prefix_residuals_gone(self, harness: Harness) -> None:
+        self.assertFalse((harness.prefix / "bin" / "vantio").exists())
+        self.assertFalse(npm_sdk_root(harness.prefix).exists())
+        self.assertFalse((py_sdk_site(harness.prefix) / "vantio").exists())
+        self.assertFalse(list(py_sdk_site(harness.prefix).glob("vantio_agent_sdk-*.dist-info")))
+
+    def test_residual_found_dual_gated_rollback_clears_prefix(self) -> None:
+        harness = self.planned()
+        code, body = harness.run("apply", yes=True)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        code, body = harness.run("rollback", yes=True)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.plant_residual_prefix(harness)
+        code, body = self.verify_live(harness)
+        self.assertEqual(code, 2, body)
+        self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
+        self.assertEqual(body["residual_result"], "RESIDUAL_FOUND")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertTrue(any(item.get("path") == "bin/vantio" for item in body["residual_items"]))
+        binary = harness.prefix / "bin" / "vantio"
+        self.assertTrue(binary.is_file())
+        lab = Lab()
+        with self.assertRaises(InstallError) as caught:
+            apply(self.ctx(harness, "apply", lab))
+        self.assertIn("RESIDUAL_FOUND", str(caught.exception))
+        self.assertEqual(lab.calls, [])
+        self.assertTrue(binary.is_file())
+        with self.assertRaises(InstallError):
+            rollback(self.ctx(harness, "rollback", lab, flag=False))
+        self.assertTrue(binary.is_file())
+        self.assertEqual(json.loads(harness.tx_file("TRANSACTION.json").read_text())["state"], "RESIDUAL_FOUND")
+        self.set_env("1")
+        ctx = self.ctx(harness, "rollback", lab)
+        ctx["live_observer"] = ProductionObserver()
+        code, body = rollback(ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        self.assert_prefix_residuals_gone(harness)
+        code, body = self.verify_live(harness)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.assertEqual(body["residual_result"], "EMPTY")
+
+    def test_residual_found_dual_gated_uninstall_clears_prefix(self) -> None:
+        harness = self.planned()
+        code, body = harness.run("apply", yes=True)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        code, body = harness.run("rollback", yes=True)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        self.plant_residual_prefix(harness)
+        code, body = self.verify_live(harness)
+        self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
+        self.assertNotEqual(body["residual_result"], "EMPTY")
+        self.set_env("1")
+        lab = Lab()
+        blocked = self.ctx(harness, "uninstall", lab, flag=False)
+        blocked["scope"] = "optics"
+        with self.assertRaises(InstallError):
+            uninstall(blocked)
+        self.assertTrue((harness.prefix / "bin" / "vantio").is_file())
+        self.assertEqual(json.loads(harness.tx_file("TRANSACTION.json").read_text())["state"], "RESIDUAL_FOUND")
+        ctx = self.ctx(harness, "uninstall", lab)
+        ctx["scope"] = "pe"
+        ctx["live_observer"] = ProductionObserver()
+        code, body = uninstall(ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED", body)
+        self.assertTrue((harness.prefix / "bin" / "vantio").is_file())
+        code, body = self.verify_live(harness)
+        self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        ctx = self.ctx(harness, "uninstall", lab)
+        ctx["scope"] = "optics"
+        ctx["live_observer"] = ProductionObserver()
+        code, body = uninstall(ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED", body)
+        self.assert_prefix_residuals_gone(harness)
+        code, body = self.verify_live(harness)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED", body)
+        self.assertEqual(body["residual_result"], "EMPTY")
 
 
 if __name__ == "__main__":

@@ -14,4 +14,6 @@ If the Optics CLI is on disk at `<prefix>/bin/vantio` but that install step was 
 
 If an Agent SDK tree or `agent-sdk-receipt.json` is on disk under the prefix and `install_agent_sdks` was not checkpointed, rollback still removes `lib/node_modules/@vantio/agent-sdk`, the `vantio` module, the `vantio_agent_sdk` dist-info under the prefix, and the receipt. `verify-removal` reads those paths from disk. It does not report `VERIFIED_REMOVED` while any of them remain, including when the saved host snapshot has no SDK version.
 
+When `verify-removal` reports `RESIDUAL_FOUND` (live) or `RESIDUAL_PRESENT` (fixture) because `<prefix>/bin/vantio` or an Agent SDK tree is still on disk, run the same dual-gated rollback again. That recovery removes those prefix artifacts. Run `verify-removal` again afterward. `VERIFIED_REMOVED` is reported only when the residual list is empty. Apply stays refused from either residual state.
+
 If the process stops in the middle, `status` reports `INTERRUPTED`. Run rollback again with the same transaction id to continue from the saved checkpoint.

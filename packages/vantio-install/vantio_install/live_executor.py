@@ -46,6 +46,7 @@ from vantio_install.optics_cli import (
     remove_optics_prefix,
 )
 from vantio_install.paths import assert_safe_root
+from vantio_install.state_machine import RESIDUAL_STATES
 from vantio_install.preflight import run_preflight
 from vantio_install.util import read_json, sha256_file, write_json
 
@@ -82,8 +83,8 @@ _PARTIAL_ON_EXIT = {
 
 _START_STATES = {
     "apply": {"PLANNED", "INTERRUPTED", "APPLYING"},
-    "rollback": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "APPLYING", "ROLLING_BACK"},
-    "uninstall": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "UNINSTALLING"},
+    "rollback": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "APPLYING", "ROLLING_BACK"} | RESIDUAL_STATES,
+    "uninstall": {"HEALTHY", "DEGRADED", "FAILED_SAFE", "INTERRUPTED", "UNINSTALLING"} | RESIDUAL_STATES,
 }
 
 _RUNTIME_STATES = {
@@ -559,7 +560,14 @@ def authorize_live(
         _fail("The planned interface is not an up interface on this host.", failure_class="FAILED_SAFE")
 
     state = str(tx.get("state") or "")
-    if state in _CLOSED or (command == "apply" and state in {"HEALTHY", "DEGRADED"}):
+    # RESIDUAL_FOUND and RESIDUAL_PRESENT stay closed for apply. Rollback and
+    # uninstall are the recovery commands that may start from those states.
+    if state in _CLOSED and state not in _START_STATES[command]:
+        _fail(
+            f"The transaction is {state} and is not an open plan for live {command}.",
+            failure_class="FAILED_SAFE",
+        )
+    if command == "apply" and state in {"HEALTHY", "DEGRADED"}:
         _fail(
             f"The transaction is {state} and is not an open plan for live {command}.",
             failure_class="FAILED_SAFE",

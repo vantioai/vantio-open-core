@@ -569,6 +569,78 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "VERIFIED_REMOVED")
 
+    def _plant_prefix_residuals(self, harness: Harness) -> None:
+        binary = harness.prefix / "bin" / "vantio"
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text("#!/bin/sh\nprintf '%s\\n' \"0.3.24\"\n", encoding="utf-8")
+        binary.chmod(0o755)
+        npm = harness.prefix / "lib" / "node_modules" / "@vantio" / "agent-sdk"
+        npm.mkdir(parents=True)
+        (npm / "package.json").write_text('{"name":"@vantio/agent-sdk","version":"0.2.4"}\n', encoding="utf-8")
+        site = harness.prefix / "local" / "lib" / "python3.12" / "dist-packages"
+        module = site / "vantio"
+        module.mkdir(parents=True)
+        (module / "__init__.py").write_text('__version__ = "3.1.0"\n', encoding="utf-8")
+        dist = site / "vantio_agent_sdk-3.1.0.dist-info"
+        dist.mkdir()
+        (dist / "METADATA").write_text("Name: vantio-agent-sdk\nVersion: 3.1.0\n", encoding="utf-8")
+
+    def test_residual_present_rollback_clears_prefix_artifacts(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        harness.run("rollback", yes=True)
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self._plant_prefix_residuals(harness)
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 2, body)
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertNotEqual(body["residual_result"], "EMPTY")
+        self.assertTrue(any(item.get("path") == "bin/vantio" for item in body["residual_items"]))
+        code, body = harness.run("rollback", yes=True)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK")
+        self.assertFalse((harness.prefix / "bin" / "vantio").exists())
+        self.assertFalse((harness.prefix / "lib" / "node_modules" / "@vantio" / "agent-sdk").exists())
+        self.assertFalse((harness.prefix / "local" / "lib" / "python3.12" / "dist-packages" / "vantio").exists())
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["residual_result"], "EMPTY")
+
+    def test_residual_present_uninstall_scope_clears_prefix_artifacts(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        harness.run("uninstall", yes=True, scope="all")
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self._plant_prefix_residuals(harness)
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        binary = harness.prefix / "bin" / "vantio"
+        code, body = harness.run("uninstall", yes=True, scope="pe")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED")
+        self.assertTrue(binary.is_file())
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertTrue(any(item.get("path") == "bin/vantio" for item in body["residual_items"]))
+        code, body = harness.run("uninstall", yes=True, scope="optics")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "UNINSTALLED")
+        self.assertFalse(binary.exists())
+        self.assertFalse((harness.prefix / "lib" / "node_modules" / "@vantio" / "agent-sdk").exists())
+        self.assertFalse((harness.prefix / "local" / "lib" / "python3.12" / "dist-packages" / "vantio").exists())
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["residual_result"], "EMPTY")
+
     def test_sdk_removal_does_not_follow_symlink_outside_prefix(self) -> None:
         harness = self.make()
         outside = harness.root / "outside-tree"
