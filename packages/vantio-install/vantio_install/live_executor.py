@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,6 +49,7 @@ from vantio_install.agent_sdk import (
     remove_agent_sdks,
 )
 from vantio_install.errors import InstallError
+from vantio_install.host import probe_tracefs_mounted
 from vantio_install.manifest import artifact_paths, load_manifest
 from vantio_install.optics_cli import (
     observed_optics_cli_version,
@@ -109,6 +111,13 @@ _RUNTIME_STATES = {
     "rollback": {"ROLLING_BACK"},
     "uninstall": {"UNINSTALLING"},
 }
+
+_TRACEFS_RECORDED = "Live mutations require a non-empty tracefs at /sys/kernel/tracing."
+_TRACEFS_PROBE = (
+    "The saved host snapshot has no tracefs fact. "
+    "The live probe did not find a non-empty tracefs at /sys/kernel/tracing."
+)
+_RECOVERY_COMMANDS = frozenset({"rollback", "uninstall"})
 
 _CLOSED = {
     "ROLLED_BACK",
@@ -604,6 +613,31 @@ def execute_step(grant: LiveGrant, step_id: str, kind: str, runner, observer) ->
     return deltas, recorded
 
 
+def resolve_tracefs_host(
+    host: dict,
+    *,
+    command: str,
+    probe: Callable[[], bool] | None = None,
+) -> tuple[dict, bool]:
+    """Decide tracefs for a live command without rewriting the saved snapshot.
+
+    A missing ``tracefs_mounted`` key is unrecorded. It is not an observation
+    that the mount is absent. Apply fills that gap from a live probe. Rollback
+    and uninstall do not need the mount, so an unrecorded key does not block them.
+    A recorded false or unknown value stays a refusal on every command.
+    """
+    if "tracefs_mounted" in host:
+        if host.get("tracefs_mounted") is not True:
+            _fail(_TRACEFS_RECORDED, failure_class="FAILED_SAFE")
+        return host, False
+    if command in _RECOVERY_COMMANDS:
+        return host, True
+    live = probe_tracefs_mounted() if probe is None else probe()
+    if live is not True:
+        _fail(_TRACEFS_PROBE, failure_class="FAILED_SAFE")
+    return {**host, "tracefs_mounted": True}, False
+
+
 def authorize_live(
     *,
     command: str,
@@ -617,6 +651,7 @@ def authorize_live(
     accept_live_mutations: bool,
     env: dict[str, str] | None = None,
     euid: int | None = None,
+    tracefs_probe: Callable[[], bool] | None = None,
 ) -> LiveGrant:
     """Return a grant or refuse before any host mutation."""
     env = os.environ if env is None else env
@@ -643,11 +678,6 @@ def authorize_live(
         _fail("Live mutations require an observed kernel.", failure_class="FAILED_SAFE")
     if host.get("cgroup_version") != "cgroup2" or host.get("bpffs_mounted") is not True:
         _fail("Live mutations require cgroup v2 and bpffs.", failure_class="FAILED_SAFE")
-    if host.get("tracefs_mounted") is not True:
-        _fail(
-            "Live mutations require a non-empty tracefs at /sys/kernel/tracing.",
-            failure_class="FAILED_SAFE",
-        )
     iface = str(config.get("iface") or "")
     if not _iface_ok(host, iface):
         _fail("The planned interface is not an up interface on this host.", failure_class="FAILED_SAFE")
@@ -701,6 +731,13 @@ def authorize_live(
             "Roll that plan back with the installer that wrote it.",
             failure_class="FAILED_SAFE",
         )
+    # After the operation list. A parent snapshot with no tracefs_mounted key
+    # must not be reported as a missing host mount.
+    checked_host, allow_unrecorded_tracefs = resolve_tracefs_host(
+        host,
+        command=command,
+        probe=tracefs_probe,
+    )
 
     evidence = Path(str(tx.get("evidence_dir") or ""))
     if not evidence.is_dir() or not (evidence / "TRANSACTION.json").is_file():
@@ -718,11 +755,12 @@ def authorize_live(
     report = run_preflight(
         bundle=bundle,
         config={**config, "transaction_id": tx["transaction_id"]},
-        host=host,
+        host=checked_host,
         resuming=True,
         plan_present=True,
         config_present=True,
         bundle_digest_match=True,
+        allow_unrecorded_tracefs=allow_unrecorded_tracefs,
     )
     for row in report["checks"]:
         if row["result"] == "UNKNOWN":

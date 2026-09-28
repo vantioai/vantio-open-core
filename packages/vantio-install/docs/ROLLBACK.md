@@ -8,7 +8,9 @@ A live rollback uses the same two gates as apply, and the same plan hash:
 
 The command is bound to that transaction. It does not accept a different plan hash, and it does not enable enforcement.
 
-The plan's `live_operations` list must match this installer. A list that is present but different, including a plan written before the `vantio-pe-observe` load and unload operations, is refused. The refusal names that mismatch. Roll that plan back with the installer that wrote it. An empty or absent list is still reported as a missing live operation list. This installer does not rewrite an older plan into the current list.
+The plan's `live_operations` list must match this installer. That comparison runs before the tracefs fact is read. A list that is present but different, including a plan written before the `vantio-pe-observe` load and unload operations, is refused. The refusal names that mismatch. Roll that plan back with the installer that wrote it. An empty or absent list is still reported as a missing live operation list. This installer does not rewrite an older plan into the current list.
+
+A saved host snapshot with no `tracefs_mounted` key can still roll back when the operation list matches. The parent installer did not record that fact. Rollback does not treat the missing key as an absent mount and does not re-probe tracefs. Apply of that same plan re-probes the live host.
 
 When rollback finishes, `state` is `ROLLED_BACK`. Run `vantio-install verify-removal --transaction-id <id> --json` next. Removal is confirmed when that command reports `VERIFIED_REMOVED`.
 

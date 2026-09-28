@@ -176,3 +176,7 @@ class ObserveApparmorFixtures(unittest.TestCase):
         code, body = harness.run("plan")
         self.assertEqual(code, 2, body)
         self.assertIn("PF-TRACEFS", body["failed_or_limiting_checks"])
+        del harness.host["tracefs_mounted"]
+        code, body = harness.run("plan")
+        self.assertEqual(code, 2, body)
+        self.assertIn("PF-TRACEFS", body["failed_or_limiting_checks"])

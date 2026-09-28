@@ -80,7 +80,7 @@ def probe_live() -> dict:
     host["bpffs_mounted"] = " bpf " in f" {mounts} " or "bpf" in mounts
     bpf = Path("/sys/fs/bpf")
     host["bpffs_writable"] = bpf.is_dir() and os.access(bpf, os.W_OK)
-    host["tracefs_mounted"] = _tracefs_mounted(mounts)
+    host["tracefs_mounted"] = _tracefs_mounted(mounts, Path("/sys/kernel/tracing"))
     host["docker_binary"] = shutil.which("docker") is not None
     host["docker_version"] = "UNKNOWN"
     host["apparmor_enabled"] = _apparmor_enabled()
@@ -102,6 +102,18 @@ def probe_live() -> dict:
     return host
 
 
+def probe_tracefs_mounted() -> bool:
+    """Read the live host. A missing fact in an old snapshot is not this probe."""
+    mounts = ""
+    mount_table = Path("/proc/mounts")
+    if mount_table.is_file():
+        try:
+            mounts = mount_table.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+    return _tracefs_mounted(mounts, Path("/sys/kernel/tracing"))
+
+
 def tracefs_present(mounts: str, entry_names: list[str] | None) -> bool:
     """True when tracefs is mounted at /sys/kernel/tracing and that directory has an entry.
 
@@ -119,8 +131,7 @@ def tracefs_present(mounts: str, entry_names: list[str] | None) -> bool:
     return bool(entry_names)
 
 
-def _tracefs_mounted(mounts: str) -> bool:
-    tracing = Path("/sys/kernel/tracing")
+def _tracefs_mounted(mounts: str, tracing: Path) -> bool:
     try:
         names = [entry.name for entry in tracing.iterdir()] if tracing.is_dir() else []
     except OSError:

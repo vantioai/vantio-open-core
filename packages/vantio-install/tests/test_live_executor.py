@@ -615,7 +615,82 @@ class LiveExecutorTests(unittest.TestCase):
         host["tracefs_mounted"] = False
         with self.assertRaises(InstallError) as caught:
             self.grant_for(harness, host=host)
-        self.assertIn("tracefs", str(caught.exception))
+        self.assertIn("Live mutations require a non-empty tracefs at /sys/kernel/tracing.", str(caught.exception))
+
+    def _drop_tracefs_fact(self, harness: Harness, *, drop_apparmor: bool) -> None:
+        snap_path = harness.tx_file("HOST-SNAPSHOT.json")
+        snap = json.loads(snap_path.read_text(encoding="utf-8"))
+        self.assertIn("tracefs_mounted", snap)
+        del snap["tracefs_mounted"]
+        snap_path.write_text(json.dumps(snap), encoding="utf-8")
+        if drop_apparmor:
+            plan = harness.tx_file("PLAN.json")
+            doc = json.loads(plan.read_text(encoding="utf-8"))
+            doc["live_operations"] = [op for op in doc["live_operations"] if "apparmor" not in op]
+            self.assertTrue(doc["live_operations"])
+            plan.write_text(json.dumps(doc), encoding="utf-8")
+        self.arm(harness, "FAILED_SAFE")
+        path = harness.tx_file("TRANSACTION.json")
+        tx = json.loads(path.read_text(encoding="utf-8"))
+        tx["completed_steps"] = ["start_pe_observe"]
+        path.write_text(json.dumps(tx), encoding="utf-8")
+
+    def test_ac0c2d67_snapshot_without_tracefs_key_names_the_writer(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        self._drop_tracefs_fact(harness, drop_apparmor=True)
+        lab = Lab()
+        ctx = self.ctx(harness, "rollback", lab)
+        ctx["tracefs_probe"] = self._tracefs_probe_must_not_run
+        with self.assertRaises(InstallError) as caught:
+            rollback(ctx)
+        self.assertIn("installer that wrote it", str(caught.exception))
+        self.assertNotIn("tracefs", str(caught.exception).lower())
+        self.assertEqual(lab.calls, [])
+
+    def test_parent_snapshot_without_tracefs_key_rolls_back(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        self._drop_tracefs_fact(harness, drop_apparmor=False)
+        lab = Lab()
+        ctx = self.ctx(harness, "rollback", lab)
+        ctx["tracefs_probe"] = self._tracefs_probe_must_not_run
+        code, body = rollback(ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK")
+        self.assertTrue(lab.calls)
+        saved = json.loads(harness.tx_file("HOST-SNAPSHOT.json").read_text(encoding="utf-8"))
+        self.assertNotIn("tracefs_mounted", saved)
+
+    def test_parent_plan_apply_reprobes_when_tracefs_fact_is_absent(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        snap_path = harness.tx_file("HOST-SNAPSHOT.json")
+        snap = json.loads(snap_path.read_text(encoding="utf-8"))
+        del snap["tracefs_mounted"]
+        snap_path.write_text(json.dumps(snap), encoding="utf-8")
+        lab = Lab()
+        ctx = self.ctx(harness, "apply", lab)
+        ctx["tracefs_probe"] = lambda: False
+        with self.assertRaises(InstallError) as caught:
+            apply(ctx)
+        self.assertIn("live probe", str(caught.exception))
+        self.assertNotIn(
+            "Live mutations require a non-empty tracefs at /sys/kernel/tracing.",
+            str(caught.exception),
+        )
+        self.assertEqual(lab.calls, [])
+        ctx["tracefs_probe"] = lambda: True
+        code, body = apply(ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        self.assertTrue(any("/sys/kernel/tracing:/sys/kernel/tracing" in " ".join(argv) for argv in lab.calls))
+        saved = json.loads(harness.tx_file("HOST-SNAPSHOT.json").read_text(encoding="utf-8"))
+        self.assertNotIn("tracefs_mounted", saved)
+
+    @staticmethod
+    def _tracefs_probe_must_not_run() -> bool:
+        raise AssertionError("recovery re-probed tracefs")
 
     def test_older_plan_operation_list_names_the_writer_installer(self) -> None:
         harness = self.planned()
