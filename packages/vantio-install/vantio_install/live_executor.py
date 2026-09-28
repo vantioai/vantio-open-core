@@ -26,6 +26,7 @@ from vantio_install.commands import (
     mkdir_argv,
     npm_install_argv,
     observe_apparmor_opt,
+    observe_binds,
     observe_container_argv,
     observe_env,
     pip_wheel_argv,
@@ -263,6 +264,12 @@ def _require_observe_apparmor(argv: list[str]) -> None:
         _fail("The observe container capability list changed.", failure_class="FAILED_SAFE")
 
 
+def _require_observe_mounts(argv: list[str]) -> None:
+    volumes = [argv[index + 1] for index, item in enumerate(argv) if item == "-v" and index + 1 < len(argv)]
+    if volumes != observe_binds():
+        _fail("The observe container mount list changed.", failure_class="FAILED_SAFE")
+
+
 def _observe_profile_file(grant: LiveGrant) -> Path:
     return confine(pe_apparmor_profile_path(grant.stage), [grant.stage])
 
@@ -322,6 +329,7 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
         _reject_forbidden_live_argv(argv)
         if op_type == "start_pe_observe":
             _require_observe_apparmor(argv)
+            _require_observe_mounts(argv)
         if op_type in {"load_pe_apparmor", "unload_pe_apparmor"}:
             _require_apparmor_parser_argv(op_type, argv)
         if op_type == "docker_tag" and (argv[-1] != pin["pe_local_tag"] or argv[-1].endswith(":latest")):
@@ -635,6 +643,11 @@ def authorize_live(
         _fail("Live mutations require an observed kernel.", failure_class="FAILED_SAFE")
     if host.get("cgroup_version") != "cgroup2" or host.get("bpffs_mounted") is not True:
         _fail("Live mutations require cgroup v2 and bpffs.", failure_class="FAILED_SAFE")
+    if host.get("tracefs_mounted") is not True:
+        _fail(
+            "Live mutations require a non-empty tracefs at /sys/kernel/tracing.",
+            failure_class="FAILED_SAFE",
+        )
     iface = str(config.get("iface") or "")
     if not _iface_ok(host, iface):
         _fail("The planned interface is not an up interface on this host.", failure_class="FAILED_SAFE")
@@ -678,8 +691,16 @@ def authorize_live(
     residual = plan_doc.get("residual_checks")
     if not isinstance(residual, list) or not residual:
         _fail("The plan is missing residual checks.", failure_class="FAILED_SAFE")
-    if plan_doc.get("live_operations") != live_operation_ids():
+    recorded_ops = plan_doc.get("live_operations")
+    expected_ops = live_operation_ids()
+    if not isinstance(recorded_ops, list) or not recorded_ops:
         _fail("The plan is missing the live operation list.", failure_class="FAILED_SAFE")
+    if recorded_ops != expected_ops:
+        _fail(
+            "This installer refuses a plan whose live operation list does not match. "
+            "Roll that plan back with the installer that wrote it.",
+            failure_class="FAILED_SAFE",
+        )
 
     evidence = Path(str(tx.get("evidence_dir") or ""))
     if not evidence.is_dir() or not (evidence / "TRANSACTION.json").is_file():

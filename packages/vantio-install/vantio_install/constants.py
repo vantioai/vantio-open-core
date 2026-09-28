@@ -174,6 +174,7 @@ PREFLIGHT_ORDER = (
     "PF-BTF",
     "PF-CGROUP2",
     "PF-BPFFS",
+    "PF-TRACEFS",
     "PF-DOCKER",
     "PF-APPARMOR",
     "PF-DOCKER-PERM",

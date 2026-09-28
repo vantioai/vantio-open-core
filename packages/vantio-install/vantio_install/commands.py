@@ -9,9 +9,19 @@ def observe_apparmor_opt() -> str:
     return "apparmor=" + constants.PE_OBSERVE_APPARMOR_PROFILE
 
 
+# Read-write binds. No :ro suffix. AppArmor still denies writes under /sys/kernel.
+OBSERVE_BPFFS_BIND = "/sys/fs/bpf:/sys/fs/bpf"
+OBSERVE_TRACEFS_BIND = "/sys/kernel/tracing:/sys/kernel/tracing"
+
+
+def observe_binds() -> list[str]:
+    """Host paths the observe container must see. bpffs, then tracefs."""
+    return [OBSERVE_BPFFS_BIND, OBSERVE_TRACEFS_BIND]
+
+
 def observe_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
-    """Observe-only container. Named AppArmor profile, three caps, bpffs bind."""
-    return [
+    """Observe-only container. Named AppArmor profile, three caps, bpffs and tracefs binds."""
+    argv = [
         "docker",
         "run",
         "-d",
@@ -27,16 +37,21 @@ def observe_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
         "SYS_ADMIN",
         "--security-opt",
         observe_apparmor_opt(),
-        "-v",
-        "/sys/fs/bpf:/sys/fs/bpf",
-        "-e",
-        "VANTIO_TELEMETRY_DISABLED=1",
-        "-e",
-        "DO_NOT_TRACK=1",
-        tag,
-        "--iface",
-        iface,
     ]
+    for bind in observe_binds():
+        argv.extend(["-v", bind])
+    argv.extend(
+        [
+            "-e",
+            "VANTIO_TELEMETRY_DISABLED=1",
+            "-e",
+            "DO_NOT_TRACK=1",
+            tag,
+            "--iface",
+            iface,
+        ]
+    )
+    return argv
 
 
 def apparmor_parser_load_argv(profile_path: str) -> list[str]:

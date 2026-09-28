@@ -608,6 +608,34 @@ class LiveExecutorTests(unittest.TestCase):
             self.grant_for(harness, host=host)
         self.assertIn("x86_64", str(caught.exception))
 
+    def test_live_missing_tracefs_refuses(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        host = harness.snapshot()
+        host["tracefs_mounted"] = False
+        with self.assertRaises(InstallError) as caught:
+            self.grant_for(harness, host=host)
+        self.assertIn("tracefs", str(caught.exception))
+
+    def test_older_plan_operation_list_names_the_writer_installer(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        plan = harness.tx_file("PLAN.json")
+        doc = json.loads(plan.read_text(encoding="utf-8"))
+        original = list(doc["live_operations"])
+        doc["live_operations"] = [op for op in original if "apparmor" not in op]
+        self.assertTrue(doc["live_operations"])
+        self.assertNotEqual(doc["live_operations"], original)
+        plan.write_text(json.dumps(doc), encoding="utf-8")
+        with self.assertRaises(InstallError) as caught:
+            self.grant_for(harness, plan_sha=sha256_file(plan))
+        self.assertIn("installer that wrote it", str(caught.exception))
+        doc["live_operations"] = []
+        plan.write_text(json.dumps(doc), encoding="utf-8")
+        with self.assertRaises(InstallError) as caught:
+            self.grant_for(harness, plan_sha=sha256_file(plan))
+        self.assertIn("missing the live operation list", str(caught.exception))
+
     def test_live_missing_btf_refuses(self) -> None:
         harness = self.planned()
         self.set_env("1")
@@ -890,6 +918,10 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertNotIn("VANTIO_PHANTOM_DENY", joined)
         self.assertIn(observe_apparmor_opt(), joined)
         self.assertIn("apparmor_parser -Kr", joined)
+        self.assertIn("/sys/fs/bpf:/sys/fs/bpf", joined)
+        self.assertIn("/sys/kernel/tracing:/sys/kernel/tracing", joined)
+        self.assertNotIn("/sys/kernel/debug/tracing", joined)
+        self.assertEqual(joined.count("--security-opt"), 1)
         ops = (harness.tx_file("LIVE-OPS.jsonl")).read_text(encoding="utf-8")
         self.assertLess(ops.index("PENDING"), ops.index("VERIFIED"))
         code, body = rollback(self.ctx(harness, "rollback", lab))

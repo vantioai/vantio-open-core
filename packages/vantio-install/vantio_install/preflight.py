@@ -184,6 +184,18 @@ def run_preflight(
         )
     )
 
+    tracefs = host.get("tracefs_mounted")
+    checks.append(
+        _check(
+            "PF-TRACEFS",
+            "tracefs mounted at /sys/kernel/tracing and non-empty",
+            "PASS" if tracefs is True else "BLOCKED",
+            {"tracefs_mounted": tracefs if isinstance(tracefs, bool) else "UNKNOWN"},
+            {"tracefs_mounted": True},
+            "Mount tracefs at /sys/kernel/tracing. An empty directory at that path is not tracefs.",
+        )
+    )
+
     docker_bin = host.get("docker_binary") is True
     docker_ver = host.get("docker_version") if host.get("docker_version") else "UNKNOWN"
     checks.append(

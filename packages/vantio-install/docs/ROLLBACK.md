@@ -8,6 +8,8 @@ A live rollback uses the same two gates as apply, and the same plan hash:
 
 The command is bound to that transaction. It does not accept a different plan hash, and it does not enable enforcement.
 
+The plan's `live_operations` list must match this installer. A list that is present but different, including a plan written before the `vantio-pe-observe` load and unload operations, is refused. The refusal names that mismatch. Roll that plan back with the installer that wrote it. An empty or absent list is still reported as a missing live operation list. This installer does not rewrite an older plan into the current list.
+
 When rollback finishes, `state` is `ROLLED_BACK`. Run `vantio-install verify-removal --transaction-id <id> --json` next. Removal is confirmed when that command reports `VERIFIED_REMOVED`.
 
 If the Optics CLI is on disk at `<prefix>/bin/vantio` but that install step was not checkpointed, rollback still removes `bin/vantio` and the `@vantio/cli` package directory under the prefix. `verify-removal` reads that prefix from disk. It does not report `VERIFIED_REMOVED` while `bin/vantio` remains, including when the saved host snapshot has no CLI version.

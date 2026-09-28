@@ -791,6 +791,8 @@ class StageAInstallerTests(unittest.TestCase):
                 "apparmor=vantio-pe-observe",
                 "-v",
                 "/sys/fs/bpf:/sys/fs/bpf",
+                "-v",
+                "/sys/kernel/tracing:/sys/kernel/tracing",
                 "-e",
                 "VANTIO_TELEMETRY_DISABLED=1",
                 "-e",

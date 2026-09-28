@@ -34,6 +34,7 @@ def ready_host(**overrides: object) -> dict:
         "cgroup_version": "cgroup2",
         "bpffs_mounted": True,
         "bpffs_writable": True,
+        "tracefs_mounted": True,
         "docker_binary": True,
         "docker_version": "27.0.0",
         "docker_sock_path": "/var/run/docker.sock",
@@ -79,6 +80,7 @@ def probe_live() -> dict:
     host["bpffs_mounted"] = " bpf " in f" {mounts} " or "bpf" in mounts
     bpf = Path("/sys/fs/bpf")
     host["bpffs_writable"] = bpf.is_dir() and os.access(bpf, os.W_OK)
+    host["tracefs_mounted"] = _tracefs_mounted(mounts)
     host["docker_binary"] = shutil.which("docker") is not None
     host["docker_version"] = "UNKNOWN"
     host["apparmor_enabled"] = _apparmor_enabled()
@@ -98,6 +100,32 @@ def probe_live() -> dict:
     host["node_version"] = _node_version()
     host["probe_note"] = "LIVE_READ_ONLY"
     return host
+
+
+def tracefs_present(mounts: str, entry_names: list[str] | None) -> bool:
+    """True when tracefs is mounted at /sys/kernel/tracing and that directory has an entry.
+
+    The sealed loader treats an empty /sys/kernel/tracing as missing and then
+    tries /sys/kernel/debug/tracing. This contract uses the first path.
+    """
+    mounted = False
+    for line in mounts.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[1] == "/sys/kernel/tracing" and parts[2] == "tracefs":
+            mounted = True
+            break
+    if not mounted:
+        return False
+    return bool(entry_names)
+
+
+def _tracefs_mounted(mounts: str) -> bool:
+    tracing = Path("/sys/kernel/tracing")
+    try:
+        names = [entry.name for entry in tracing.iterdir()] if tracing.is_dir() else []
+    except OSError:
+        return False
+    return tracefs_present(mounts, names)
 
 
 def _apparmor_enabled() -> bool | str:

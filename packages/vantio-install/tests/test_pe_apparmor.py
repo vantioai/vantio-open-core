@@ -18,8 +18,10 @@ from vantio_install.commands import (  # noqa: E402
     apparmor_parser_load_argv,
     apparmor_parser_remove_argv,
     observe_apparmor_opt,
+    observe_binds,
     observe_container_argv,
 )
+from vantio_install.host import tracefs_present  # noqa: E402
 from vantio_install.live_executor import ROLLBACK_OPERATIONS, STEP_OPERATIONS  # noqa: E402
 from vantio_install.pe_apparmor import (  # noqa: E402
     apparmor_profile_loaded,
@@ -57,6 +59,9 @@ class ObserveApparmorFixtures(unittest.TestCase):
             self.assertIn(kept, text)
         self.assertEqual(text.count("profile vantio-pe-observe "), 1)
         self.assertEqual(constants.PE_OBSERVE_APPARMOR_PROFILE, "vantio-pe-observe")
+        self.assertNotIn("/sys/kernel/tracing rw", text)
+        self.assertNotIn("/sys/kernel/tracing/** rw", text)
+        self.assertIn("Writes stay denied.", text)
 
     def test_inspect_requires_named_profile_and_refuses_privileged(self) -> None:
         cmd = '["--iface","ens5"]'
@@ -107,7 +112,15 @@ class ObserveApparmorFixtures(unittest.TestCase):
         self.assertNotIn("PERFMON", argv)
         self.assertNotIn("apparmor=unconfined", argv)
         self.assertNotIn("apparmor=docker-default", argv)
-        self.assertIn("/sys/fs/bpf:/sys/fs/bpf", argv)
+        self.assertEqual(
+            [argv[index + 1] for index, item in enumerate(argv) if item == "-v"],
+            ["/sys/fs/bpf:/sys/fs/bpf", "/sys/kernel/tracing:/sys/kernel/tracing"],
+        )
+        self.assertEqual(observe_binds(), ["/sys/fs/bpf:/sys/fs/bpf", "/sys/kernel/tracing:/sys/kernel/tracing"])
+        self.assertNotIn("/sys/kernel/debug/tracing:/sys/kernel/debug/tracing", argv)
+        self.assertNotIn("/sys/kernel/tracing:/sys/kernel/tracing:ro", argv)
+        self.assertEqual(argv.count("--security-opt"), 1)
+        self.assertNotIn("--privileged", argv)
 
     def test_plan_lists_profile_load_before_container_start(self) -> None:
         harness = Harness()
@@ -142,3 +155,24 @@ class ObserveApparmorFixtures(unittest.TestCase):
         code, body = harness.run("plan")
         self.assertEqual(code, 2, body)
         self.assertIn("PF-APPARMOR", body["failed_or_limiting_checks"])
+
+    def test_tracefs_probe_accepts_only_a_nonempty_kernel_tracing_mount(self) -> None:
+        mounts = "tracefs /sys/kernel/tracing tracefs rw,nosuid,nodev,noexec,relatime 0 0\n"
+        self.assertTrue(tracefs_present(mounts, ["events"]))
+        self.assertFalse(tracefs_present(mounts, []))
+        self.assertFalse(tracefs_present(mounts, None))
+        debug_only = "tracefs /sys/kernel/debug/tracing tracefs rw 0 0\n"
+        self.assertFalse(tracefs_present(debug_only, ["events"]))
+        self.assertFalse(tracefs_present("", ["events"]))
+
+    def test_missing_tracefs_blocks_plan(self) -> None:
+        harness = Harness()
+        self.addCleanup(harness.close)
+        harness.host["tracefs_mounted"] = False
+        code, body = harness.run("plan")
+        self.assertEqual(code, 2, body)
+        self.assertIn("PF-TRACEFS", body["failed_or_limiting_checks"])
+        harness.host["tracefs_mounted"] = "UNKNOWN"
+        code, body = harness.run("plan")
+        self.assertEqual(code, 2, body)
+        self.assertIn("PF-TRACEFS", body["failed_or_limiting_checks"])
