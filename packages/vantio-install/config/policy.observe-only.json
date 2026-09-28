@@ -1,0 +1,10 @@
+{
+  "install_mode": "observe-only",
+  "enforcement": "NOT_ENABLED",
+  "otlp": "DISABLED",
+  "path_deny": "disabled",
+  "traffic_control": "audit-only",
+  "sg_zero_zero": "FORBIDDEN",
+  "ghcr_unverified": "FORBIDDEN_DEFAULT",
+  "optimistic_success": "FORBIDDEN"
+}

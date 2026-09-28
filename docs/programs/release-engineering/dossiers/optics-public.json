@@ -165,6 +165,20 @@
     {
       "accepted_as_pin": false,
       "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/checkout@v4",
+      "required_for_publish": true,
+      "value": "actions/checkout@v4"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
+      "name": ".github/workflows/ci.yml actions/setup-python@v5",
+      "required_for_publish": true,
+      "value": "actions/setup-python@v5"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
       "name": ".github/workflows/docs-release-governance.yml actions/checkout@v4",
       "required_for_publish": true,
       "value": "actions/checkout@v4"

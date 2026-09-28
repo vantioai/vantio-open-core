@@ -140,3 +140,21 @@ jobs:
             ${{ runner.temp }}/candidates
             ${{ runner.temp }}/candidates-py
           if-no-files-found: error
+
+  test-vantio-install:
+    name: Test vantio-install (Stage A fixtures)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile and test vantio-install
+        working-directory: packages/vantio-install
+        run: |
+          python -m compileall -q vantio_install
+          python -m unittest discover -s tests -t . -v

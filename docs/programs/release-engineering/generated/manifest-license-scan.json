@@ -3,6 +3,30 @@
   "findings": [
     {
       "accepted": false,
+      "id": "license-missing:internal/enterprise-governance/package.json",
+      "name": "@vantio/enterprise-governance-internal",
+      "path": "internal/enterprise-governance/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:internal/enterprise-runtime-integration/package.json",
+      "name": "@vantio/enterprise-runtime-integration",
+      "path": "internal/enterprise-runtime-integration/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:internal/pe-integrated-runtime/package.json",
+      "name": "@vantio/pe-integrated-runtime",
+      "path": "internal/pe-integrated-runtime/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:internal/w3-otlp-enable-test-disable/package.json",
+      "name": "@vantio/w3-otlp-enable-test-disable",
+      "path": "internal/w3-otlp-enable-test-disable/package.json"
+    },
+    {
+      "accepted": false,
       "id": "license-missing:package.json",
       "name": "vantio-open-core",
       "path": "package.json"
@@ -24,6 +48,18 @@
       "id": "license-missing:packages/optics-node-adapter/package.json",
       "name": "@vantio/optics-node-adapter",
       "path": "packages/optics-node-adapter/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-operational-store/package.json",
+      "name": "@vantio/optics-operational-store",
+      "path": "packages/optics-operational-store/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/optics-operational-store/pyproject.toml",
+      "name": "packages/optics-operational-store/pyproject.toml",
+      "path": "packages/optics-operational-store/pyproject.toml"
     },
     {
       "accepted": false,
@@ -57,9 +93,21 @@
     },
     {
       "accepted": false,
+      "id": "license-missing:packages/pe-egress-authority/package.json",
+      "name": "@vantio/pe-egress-authority",
+      "path": "packages/pe-egress-authority/package.json"
+    },
+    {
+      "accepted": false,
       "id": "license-missing:packages/pe-host-authority/package.json",
       "name": "@vantio/pe-host-authority",
       "path": "packages/pe-host-authority/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/pe-ingress-authority/package.json",
+      "name": "@vantio/pe-ingress-authority",
+      "path": "packages/pe-ingress-authority/package.json"
     },
     {
       "accepted": false,
@@ -78,28 +126,46 @@
       "id": "license-missing:packages/shared-health-runtime/package.json",
       "name": "@vantio/shared-health-runtime",
       "path": "packages/shared-health-runtime/package.json"
+    },
+    {
+      "accepted": false,
+      "id": "license-missing:packages/vantio-cli-pkg02/package.json",
+      "name": "@vantio/cli",
+      "path": "packages/vantio-cli-pkg02/package.json"
     }
   ],
   "scanned": [
     "extensions/vantio-optics/package.json",
+    "internal/enterprise-governance/package.json",
+    "internal/enterprise-runtime-integration/package.json",
+    "internal/pe-integrated-runtime/package.json",
+    "internal/w3-otlp-enable-test-disable/package.json",
     "package.json",
+    "packages/governance-assurance/package.json",
     "packages/investor-demo-wave2/package.json",
     "packages/optics-evidence-contract/package.json",
     "packages/optics-node-adapter/package.json",
+    "packages/optics-operational-store/package.json",
+    "packages/optics-operational-store/pyproject.toml",
     "packages/optics-otel-i3/package.json",
     "packages/optics-otel-mapping/package.json",
     "packages/optics-python-adapter/pyproject.toml",
     "packages/optics-reader-compat-gates/package.json",
     "packages/optics-record-reader/package.json",
     "packages/optics-record-vocabulary/package.json",
+    "packages/pe-egress-authority/package.json",
     "packages/pe-host-authority/package.json",
+    "packages/pe-ingress-authority/package.json",
     "packages/pe-progressive-enforcement/package.json",
     "packages/pe-sequential-authority/package.json",
     "packages/shared-health-runtime/package.json",
+    "packages/vantio-agent-sdk-py-future/pyproject.toml",
     "packages/vantio-agent-sdk-py/pyproject.toml",
     "packages/vantio-agent-sdk/package.json",
+    "packages/vantio-cli-pkg02/package.json",
     "packages/vantio-cli/package.json",
     "packages/vantio-gate-mcp/package.json",
+    "packages/vantio-install/pyproject.toml",
     "packages/vantio-optics-mcp/package.json"
   ],
   "schema": "vantio.ws11.manifest-license-scan/v1",

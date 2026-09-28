@@ -16,11 +16,53 @@
       "version": "0.1.0"
     },
     {
+      "name": "@vantio/enterprise-governance-internal",
+      "purl": "pkg:npm/%40vantio/enterprise-governance-internal@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/enterprise-runtime-integration",
+      "purl": "pkg:npm/%40vantio/enterprise-runtime-integration@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/pe-integrated-runtime",
+      "purl": "pkg:npm/%40vantio/pe-integrated-runtime@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/w3-otlp-enable-test-disable",
+      "purl": "pkg:npm/%40vantio/w3-otlp-enable-test-disable@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
       "name": "vantio-open-core",
       "purl": "pkg:npm/vantio-open-core@0.0.0",
       "scope": "root",
       "type": "library",
       "version": "0.0.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "@vantio/governance-assurance",
+      "purl": "pkg:npm/%40vantio/governance-assurance@0.1.0-internal",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.1.0-internal"
     },
     {
       "name": "@vantio/investor-demo-wave2",
@@ -39,6 +81,13 @@
     {
       "name": "@vantio/optics-node-adapter",
       "purl": "pkg:npm/%40vantio/optics-node-adapter@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
+      "name": "@vantio/optics-operational-store",
+      "purl": "pkg:npm/%40vantio/optics-operational-store@0.0.0-unstable-pre-1.0",
       "scope": "workspace-manifest",
       "type": "library",
       "version": "0.0.0-unstable-pre-1.0"
@@ -79,11 +128,25 @@
       "version": "0.0.0-unstable-pre-1.0"
     },
     {
+      "name": "@vantio/pe-egress-authority",
+      "purl": "pkg:npm/%40vantio/pe-egress-authority@0.0.0-internal",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-internal"
+    },
+    {
       "name": "@vantio/pe-host-authority",
       "purl": "pkg:npm/%40vantio/pe-host-authority@0.0.0-internal-proof",
       "scope": "workspace-manifest",
       "type": "library",
       "version": "0.0.0-internal-proof"
+    },
+    {
+      "name": "@vantio/pe-ingress-authority",
+      "purl": "pkg:npm/%40vantio/pe-ingress-authority@0.0.0-internal",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-internal"
     },
     {
       "name": "@vantio/pe-progressive-enforcement",
@@ -119,6 +182,13 @@
       "scope": "workspace-manifest",
       "type": "library",
       "version": "0.2.4"
+    },
+    {
+      "name": "@vantio/cli",
+      "purl": "pkg:npm/%40vantio/cli@0.4.0-pkg02-unit-d",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.4.0-pkg02-unit-d"
     },
     {
       "licenses": [
