@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,8 @@ from vantio_install.agent_sdk import (  # noqa: E402
 )
 from vantio_install.optics_cli import observed_optics_cli_version  # noqa: E402
 from vantio_install.util import sha256_file  # noqa: E402
+from vantio_install.commands import observe_apparmor_opt  # noqa: E402
+from vantio_install.pe_apparmor import pe_apparmor_profile_path, profile_text  # noqa: E402
 
 ENV = "VANTIO_INSTALL_ALLOW_LIVE"
 
@@ -50,6 +53,7 @@ class Lab:
         self.pip = False
         self.clsact: list[str] = []
         self.verified: list[str] = []
+        self.apparmor = False
 
     def runner(self, argv: list[str], timeout: int) -> ExecResult:
         self.calls.append(list(argv))
@@ -78,6 +82,10 @@ class Lab:
             self.clsact.append(argv[4])
         elif argv[:3] == ["tc", "qdisc", "del"]:
             self.clsact = []
+        elif argv[:2] == ["apparmor_parser", "-Kr"]:
+            self.apparmor = True
+        elif argv[:2] == ["apparmor_parser", "-KR"]:
+            self.apparmor = False
         return ExecResult(0, False)
 
     def verify(self, op_type: str, grant) -> str:
@@ -113,8 +121,27 @@ class Lab:
             return "NOT_VERIFIED"
         if op_type == "tc_clsact":
             return "VERIFIED" if grant.iface in self.clsact else "NOT_VERIFIED"
+        if op_type == "write_pe_apparmor":
+            path = pe_apparmor_profile_path(grant.stage)
+            if path.is_file() and path.read_text(encoding="utf-8") == profile_text():
+                return "VERIFIED"
+            return "NOT_VERIFIED"
+        if op_type == "load_pe_apparmor":
+            path = pe_apparmor_profile_path(grant.stage)
+            if self.apparmor and path.is_file() and path.read_text(encoding="utf-8") == profile_text():
+                return "VERIFIED"
+            return "NOT_VERIFIED"
+        if op_type == "unload_pe_apparmor":
+            return "VERIFIED" if not self.apparmor else "NOT_VERIFIED"
         if op_type == "start_pe_observe":
-            if self.running and "--enforce" not in self.cmd and "--privileged" not in self.cmd:
+            opt = observe_apparmor_opt()
+            if (
+                self.running
+                and "--enforce" not in self.cmd
+                and "--privileged" not in self.cmd
+                and "apparmor=unconfined" not in self.cmd
+                and opt in self.cmd
+            ):
                 return "VERIFIED"
             return "NOT_VERIFIED"
         if op_type in {"docker_stop", "docker_rm"}:
@@ -217,6 +244,38 @@ def plant_cli(prefix: Path, version: str, *, executable: bool = True, manifest: 
         package.parent.mkdir(parents=True, exist_ok=True)
         package.write_text(json.dumps({"name": "@vantio/cli", "version": manifest}) + "\n", encoding="utf-8")
     return binary
+
+
+class PrefixGate:
+    """Production checks for prefix residuals. Lab checks for simulated PE operations.
+
+    AppArmor load and unload stay on the lab observer. That observer records
+    the apparmor_parser result and does not read securityfs.
+    """
+
+    _PRODUCTION = frozenset(
+        {
+            "install_optics_cli",
+            "install_agent_sdk_npm",
+            "install_agent_sdk_py",
+            "remove_optics",
+            "remove_sdks",
+        }
+    )
+
+    def __init__(self, lab: Lab) -> None:
+        self.lab = lab
+        self.production = ProductionObserver()
+
+    def verify(self, op_type: str, grant) -> str:
+        if op_type in self._PRODUCTION:
+            return self.production.verify(op_type, grant)
+        return self.lab.verify(op_type, grant)
+
+    def observed_delta(self, op_type: str, grant) -> dict:
+        if op_type in self._PRODUCTION:
+            return self.production.observed_delta(op_type, grant)
+        return self.lab.observed_delta(op_type, grant)
 
 
 class OpticsGate:
@@ -600,6 +659,31 @@ class LiveExecutorTests(unittest.TestCase):
             dispatch(grant, "start_pe_observe", argv, runner=lab.runner, observer=lab)
         self.assertIn("privileged", str(caught.exception))
         self.assertEqual(lab.calls, [])
+        unconfined = catalog_argv("start_pe_observe", grant)
+        slot = unconfined.index(observe_apparmor_opt())
+        unconfined[slot] = "apparmor=unconfined"
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "start_pe_observe", unconfined, runner=lab.runner, observer=lab)
+        self.assertIn("AppArmor", str(caught.exception))
+        self.assertEqual(lab.calls, [])
+        default_profile = catalog_argv("start_pe_observe", grant)
+        default_profile[default_profile.index(observe_apparmor_opt())] = "apparmor=docker-default"
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "start_pe_observe", default_profile, runner=lab.runner, observer=lab)
+        self.assertIn("AppArmor", str(caught.exception))
+        self.assertEqual(lab.calls, [])
+        forged = ["apparmor_parser", "-r", "/tmp/other-profile"]
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "load_pe_apparmor", forged, runner=lab.runner, observer=lab)
+        self.assertIn("allowlisted", str(caught.exception))
+        self.assertEqual(lab.calls, [])
+        swapped = pe_apparmor_profile_path(grant.stage)
+        swapped.parent.mkdir(parents=True, exist_ok=True)
+        swapped.write_text("profile other { file, }\n", encoding="utf-8")
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "load_pe_apparmor", catalog_argv("load_pe_apparmor", grant), runner=lab.runner, observer=lab)
+        self.assertIn("bytes changed", str(caught.exception))
+        self.assertEqual(lab.calls, [])
 
     def test_live_mutable_tag_refuses(self) -> None:
         harness = self.planned()
@@ -801,7 +885,11 @@ class LiveExecutorTests(unittest.TestCase):
         joined = " ".join(" ".join(argv) for argv in lab.calls)
         self.assertNotIn("--enforce", joined)
         self.assertNotIn("--privileged", joined)
+        self.assertNotIn("apparmor=unconfined", joined)
+        self.assertNotIn("PERFMON", joined)
         self.assertNotIn("VANTIO_PHANTOM_DENY", joined)
+        self.assertIn(observe_apparmor_opt(), joined)
+        self.assertIn("apparmor_parser -Kr", joined)
         ops = (harness.tx_file("LIVE-OPS.jsonl")).read_text(encoding="utf-8")
         self.assertLess(ops.index("PENDING"), ops.index("VERIFIED"))
         code, body = rollback(self.ctx(harness, "rollback", lab))
@@ -809,6 +897,7 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(body["state"], "ROLLED_BACK", body)
         self.assertEqual(body["proof_state"], "NOT_PROVED")
         self.assertTrue(any(argv[:2] == ["docker", "stop"] for argv in lab.calls))
+        self.assertTrue(any(argv[:2] == ["apparmor_parser", "-KR"] for argv in lab.calls))
 
     def test_optics_cli_present_passes_host_check_and_checkpoints(self) -> None:
         harness = self.planned()
@@ -1052,6 +1141,31 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertFalse((py_sdk_site(harness.prefix) / "vantio").exists())
         self.assertFalse(list(py_sdk_site(harness.prefix).glob("vantio_agent_sdk-*.dist-info")))
 
+    def test_apparmor_host_check_uses_a_fixture_profile_list(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        directory = Path(tempfile.mkdtemp(prefix="vantio-aa-obs-"))
+        self.addCleanup(lambda: shutil.rmtree(directory, ignore_errors=True))
+        absent = directory / "no-profiles"
+        self.assertEqual(
+            ProductionObserver(apparmor_profiles=absent).verify("unload_pe_apparmor", grant),
+            "VERIFIED",
+        )
+        unreadable = directory / "not-a-file"
+        unreadable.mkdir()
+        self.assertEqual(
+            ProductionObserver(apparmor_profiles=unreadable).verify("unload_pe_apparmor", grant),
+            "UNKNOWN",
+        )
+        listed = directory / "profiles"
+        listed.write_text("vantio-pe-observe (enforce)\n", encoding="utf-8")
+        self.assertEqual(
+            ProductionObserver(apparmor_profiles=listed).verify("unload_pe_apparmor", grant),
+            "NOT_VERIFIED",
+        )
+        self.assertEqual(Lab().verify("unload_pe_apparmor", grant), "VERIFIED")
+
     def test_residual_found_dual_gated_rollback_clears_prefix(self) -> None:
         harness = self.planned()
         code, body = harness.run("apply", yes=True)
@@ -1081,7 +1195,7 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(json.loads(harness.tx_file("TRANSACTION.json").read_text())["state"], "RESIDUAL_FOUND")
         self.set_env("1")
         ctx = self.ctx(harness, "rollback", lab)
-        ctx["live_observer"] = ProductionObserver()
+        ctx["live_observer"] = PrefixGate(lab)
         code, body = rollback(ctx)
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "ROLLED_BACK", body)
@@ -1111,17 +1225,18 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(json.loads(harness.tx_file("TRANSACTION.json").read_text())["state"], "RESIDUAL_FOUND")
         ctx = self.ctx(harness, "uninstall", lab)
         ctx["scope"] = "pe"
-        ctx["live_observer"] = ProductionObserver()
+        ctx["live_observer"] = PrefixGate(lab)
         code, body = uninstall(ctx)
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "UNINSTALLED", body)
         self.assertTrue((harness.prefix / "bin" / "vantio").is_file())
+        self.assertTrue(any(argv[:2] == ["apparmor_parser", "-KR"] for argv in lab.calls))
         code, body = self.verify_live(harness)
         self.assertEqual(body["state"], "RESIDUAL_FOUND", body)
         self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
         ctx = self.ctx(harness, "uninstall", lab)
         ctx["scope"] = "optics"
-        ctx["live_observer"] = ProductionObserver()
+        ctx["live_observer"] = PrefixGate(lab)
         code, body = uninstall(ctx)
         self.assertEqual(code, 0, body)
         self.assertEqual(body["state"], "UNINSTALLED", body)

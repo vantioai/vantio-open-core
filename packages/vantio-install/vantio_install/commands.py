@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+from vantio_install import constants
+
+
+def observe_apparmor_opt() -> str:
+    return "apparmor=" + constants.PE_OBSERVE_APPARMOR_PROFILE
+
 
 def observe_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
+    """Observe-only container. Named AppArmor profile, three caps, bpffs bind."""
     return [
         "docker",
         "run",
@@ -18,6 +25,8 @@ def observe_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
         "BPF",
         "--cap-add",
         "SYS_ADMIN",
+        "--security-opt",
+        observe_apparmor_opt(),
         "-v",
         "/sys/fs/bpf:/sys/fs/bpf",
         "-e",
@@ -28,6 +37,15 @@ def observe_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
         "--iface",
         iface,
     ]
+
+
+def apparmor_parser_load_argv(profile_path: str) -> list[str]:
+    # -K skips the cache write. -r replaces the kernel profile. Same flags dockerd uses.
+    return ["apparmor_parser", "-Kr", profile_path]
+
+
+def apparmor_parser_remove_argv(profile_path: str) -> list[str]:
+    return ["apparmor_parser", "-KR", profile_path]
 
 
 def docker_load_argv(archive: str) -> list[str]:

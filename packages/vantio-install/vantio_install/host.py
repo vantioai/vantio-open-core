@@ -37,6 +37,8 @@ def ready_host(**overrides: object) -> dict:
         "docker_binary": True,
         "docker_version": "27.0.0",
         "docker_sock_path": "/var/run/docker.sock",
+        "apparmor_enabled": True,
+        "apparmor_parser": True,
         "principal_can_talk_to_docker": False,
         "privilege_mode": "sudo",
         "sudo_available": True,
@@ -79,6 +81,8 @@ def probe_live() -> dict:
     host["bpffs_writable"] = bpf.is_dir() and os.access(bpf, os.W_OK)
     host["docker_binary"] = shutil.which("docker") is not None
     host["docker_version"] = "UNKNOWN"
+    host["apparmor_enabled"] = _apparmor_enabled()
+    host["apparmor_parser"] = shutil.which("apparmor_parser") is not None
     sock = Path("/var/run/docker.sock")
     host["docker_sock_path"] = str(sock) if sock.exists() else None
     host["principal_can_talk_to_docker"] = bool(sock.exists() and os.access(sock, os.W_OK))
@@ -94,6 +98,19 @@ def probe_live() -> dict:
     host["node_version"] = _node_version()
     host["probe_note"] = "LIVE_READ_ONLY"
     return host
+
+
+def _apparmor_enabled() -> bool | str:
+    path = Path("/sys/module/apparmor/parameters/enabled")
+    if not path.exists():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return "UNKNOWN"
+    if not text:
+        return "UNKNOWN"
+    return text[0].upper() == "Y"
 
 
 def _mem_total_kib() -> int | None:
