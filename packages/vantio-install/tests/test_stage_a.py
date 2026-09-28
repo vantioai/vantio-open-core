@@ -31,7 +31,8 @@ from vantio_install.health import derive  # noqa: E402
 from vantio_install.state_machine import transition  # noqa: E402
 from vantio_install.support_bundle import build_support_bundle  # noqa: E402
 from vantio_install.verifier import _recompute_health, verify  # noqa: E402
-from vantio_install.errors import InstallError  # noqa: E402
+from vantio_install.errors import InstallError
+from vantio_install.optics_cli import remove_optics_prefix  # noqa: E402
 
 TX = "vantio-tx-11111111-1111-4111-8111-111111111111"
 AS_OF = "2026-09-27T20:00:00-04:00"
@@ -428,6 +429,77 @@ class StageAInstallerTests(unittest.TestCase):
         code, body = harness.run("verify-removal", scope="all")
         self.assertEqual(code, 2, body)
         self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+
+    def test_uncheckpointed_optics_prefix_is_not_verified_removed(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        harness.run("apply", yes=True)
+        harness.run("uninstall", yes=True, scope="all")
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertFalse(harness.snapshot().get("optics_cli_version"))
+        self.assertFalse((harness.prefix / "optics-cli-receipt.json").exists())
+        binary = harness.prefix / "bin" / "vantio"
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text("#!/bin/sh\nprintf '%s\\n' \"0.3.24\"\n", encoding="utf-8")
+        binary.chmod(0o755)
+        false_clean = verify(harness.evidence, harness.bundle)
+        self.assertEqual(false_clean["result"], "FAIL")
+        residual = next(row for row in false_clean["checks"] if row["id"] == "recompute-residual")
+        self.assertEqual(residual["result"], "FAIL")
+        self.assertEqual(residual["stated"], "EMPTY")
+        self.assertEqual(residual["recomputed"], "RESIDUAL_PRESENT")
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertNotEqual(code, 0, body)
+        self.assertNotEqual(body["state"], "VERIFIED_REMOVED")
+        self.assertEqual(body["state"], "RESIDUAL_PRESENT")
+        self.assertNotEqual(body["residual_result"], "EMPTY")
+        self.assertTrue(any(item.get("path") == "bin/vantio" for item in body["residual_items"]))
+
+    def test_uncheckpointed_optics_prefix_is_removed_on_rollback(self) -> None:
+        harness = self.make()
+        harness.run("plan")
+        path = harness.tx_file("TRANSACTION.json")
+        tx = json.loads(path.read_text(encoding="utf-8"))
+        tx["state"] = "FAILED_SAFE"
+        tx["completed_steps"] = ["verify_artifacts", "ensure_node"]
+        path.write_text(json.dumps(tx), encoding="utf-8")
+        self.assertFalse((harness.tx_file("PARTIAL-MUTATIONS.json")).exists())
+        binary = harness.prefix / "bin" / "vantio"
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_text("#!/bin/sh\nprintf '%s\\n' \"0.3.24\"\n", encoding="utf-8")
+        binary.chmod(0o755)
+        outside = harness.root / "outside-tree"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep\n", encoding="utf-8")
+        escaped = harness.prefix / "lib" / "node_modules" / "@vantio" / "cli"
+        escaped.parent.mkdir(parents=True, exist_ok=True)
+        escaped.symlink_to(outside)
+        code, body = harness.run("rollback", yes=True)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK")
+        self.assertFalse(binary.exists())
+        self.assertFalse(escaped.is_symlink())
+        self.assertTrue((outside / "keep.txt").is_file())
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertIn("install_optics_cli", saved["rollback_completed_steps"])
+        self.assertNotIn("install_optics_cli", saved["completed_steps"])
+        code, body = harness.run("verify-removal", scope="all")
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "VERIFIED_REMOVED")
+
+    def test_optics_removal_does_not_follow_symlink_outside_prefix(self) -> None:
+        harness = self.make()
+        outside = harness.root / "outside-tree"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep\n", encoding="utf-8")
+        link = harness.prefix / "lib" / "node_modules" / "@vantio" / "cli"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(outside)
+        remove_optics_prefix(harness.prefix)
+        self.assertFalse(link.exists())
+        self.assertTrue((outside / "keep.txt").is_file())
 
     def test_unknown_residual_is_not_removed(self) -> None:
         harness = self.make()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from vantio_install import constants
+from vantio_install.optics_cli import optics_cli_residual_items
 
 
 def inspect(snapshot: dict, *, scope: str, prefix: Path, stage: Path, iface: str) -> dict:
@@ -40,5 +41,6 @@ def inspect(snapshot: dict, *, scope: str, prefix: Path, stage: Path, iface: str
                 items.append({"kind": "optics_receipt", "name": name})
         if snapshot.get("optics_cli_version"):
             items.append({"kind": "optics_cli", "version": snapshot.get("optics_cli_version")})
+        items.extend(optics_cli_residual_items(prefix))
     result = "EMPTY" if not items else "RESIDUAL_PRESENT"
     return {"result": result, "scope": scope, "items": items, "probe_errors": []}

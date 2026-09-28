@@ -31,6 +31,12 @@ from vantio_install.commands import (
 )
 from vantio_install.errors import InstallError
 from vantio_install.manifest import artifact_paths, load_manifest
+from vantio_install.optics_cli import (
+    observed_optics_cli_version,
+    optics_cli_present,
+    optics_cli_verified,
+    remove_optics_prefix,
+)
 from vantio_install.paths import assert_safe_root
 from vantio_install.preflight import run_preflight
 from vantio_install.util import read_json, sha256_file, write_json
@@ -373,9 +379,7 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
             path.unlink()
         return
     if op_type == "remove_optics":
-        path = confine(grant.prefix / "optics-cli-receipt.json", [grant.prefix])
-        if path.is_file():
-            path.unlink()
+        remove_optics_prefix(grant.prefix)
         return
     if op_type == "remove_sdks":
         path = confine(grant.prefix / "agent-sdk-receipt.json", [grant.prefix])
@@ -383,6 +387,41 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
             path.unlink()
         return
     _fail(f"Filesystem operation {op_type} is not on the live allowlist.", failure_class="FAILED_SAFE")
+
+
+def partial_mutation_steps(tx_dir: Path) -> list[str]:
+    path = tx_dir / "PARTIAL-MUTATIONS.json"
+    if not path.is_file():
+        return []
+    try:
+        document = read_json(path)
+    except (OSError, json.JSONDecodeError):
+        return []
+    steps = document.get("steps") if isinstance(document, dict) else None
+    if not isinstance(steps, list):
+        return []
+    return [step for step in steps if isinstance(step, str) and step in constants.HOST_MUTATION_STEPS]
+
+
+def note_partial_mutation(tx_dir: Path, step_id: str) -> None:
+    """Record a host change before its host check so rollback can still see it."""
+    if step_id not in constants.HOST_MUTATION_STEPS:
+        return
+    steps = partial_mutation_steps(tx_dir)
+    if step_id not in steps:
+        steps.append(step_id)
+    write_json(tx_dir / "PARTIAL-MUTATIONS.json", {"steps": steps})
+
+
+def clear_partial_mutation(tx_dir: Path, step_id: str) -> None:
+    path = tx_dir / "PARTIAL-MUTATIONS.json"
+    if not path.is_file():
+        return
+    steps = [step for step in partial_mutation_steps(tx_dir) if step != step_id]
+    if steps:
+        write_json(path, {"steps": steps})
+        return
+    path.unlink()
 
 
 def dispatch(
@@ -428,6 +467,8 @@ def dispatch(
     else:
         _filesystem(op_type, grant)
         result = ExecResult(0, False)
+    if op_type == "install_optics_cli" and result.returncode == 0 and not result.timed_out:
+        note_partial_mutation(grant.tx_dir, "install_optics_cli")
     status = observer.verify(op_type, grant) if observer is not None else "NOT_VERIFIED"
     if status != "VERIFIED" or result.returncode != 0:
         failure = "ROLLBACK_REQUIRED" if result.returncode == 0 else "FAILED_SAFE"
@@ -640,6 +681,9 @@ class ProductionObserver:
 
     def verify(self, op_type: str, grant: LiveGrant) -> str:
         try:
+            if op_type == "install_optics_cli":
+                expected = constants.FROZEN_PINS["optics_cli_version"]
+                return "VERIFIED" if optics_cli_verified(grant.prefix, expected) else "NOT_VERIFIED"
             if op_type in {"mkdir_prefix", "mkdir_stage", "mkdir_evidence"}:
                 path = {
                     "mkdir_prefix": grant.prefix,
@@ -662,7 +706,9 @@ class ProductionObserver:
                 if payload.get("enforcement") == "NOT_ENABLED" and payload.get("host_enforcement") is False:
                     return "VERIFIED"
                 return "NOT_VERIFIED"
-            if op_type in {"remove_stage", "remove_observe_config", "remove_o7_record", "remove_optics", "remove_sdks"}:
+            if op_type == "remove_optics":
+                return "VERIFIED" if not optics_cli_present(grant.prefix) else "NOT_VERIFIED"
+            if op_type in {"remove_stage", "remove_observe_config", "remove_o7_record", "remove_sdks"}:
                 return "VERIFIED"
             if op_type == "docker_load":
                 return _docker_image_present(constants.FROZEN_PINS["pe_manifest_digest"])
@@ -691,7 +737,10 @@ class ProductionObserver:
     def observed_delta(self, op_type: str, grant: LiveGrant) -> dict:
         pin = constants.FROZEN_PINS
         if op_type == "install_optics_cli":
-            return {"optics_cli_version": pin["optics_cli_version"]}
+            version = observed_optics_cli_version(grant.prefix)
+            if version:
+                return {"optics_cli_version": version}
+            return {}
         if op_type == "docker_tag":
             return {
                 "images": [
