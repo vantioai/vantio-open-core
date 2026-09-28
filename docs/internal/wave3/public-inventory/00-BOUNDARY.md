@@ -19,6 +19,6 @@ Not done:
 - GitHub Support was not contacted.
 - No announcement, credential, or customer deployment.
 
-The register lives in the public open-core repository and is marked `INTERNAL_RESTRICTED`. It quotes short public sentences so a reviewer can find them. It does not copy private repository bodies. GitHub HTTP 404 on a named repository is recorded as 404. That status does not prove the repository is missing, and it does not prove it is private.
+The register JSON is not in this repository. This note does not copy it back. GitHub HTTP 404 on a named repository was recorded as 404. That status does not prove the repository is missing, and it does not prove it is private.
 
 Claim sentences on LinkedIn are recorded as public text. They are not adopted here as product truth.
