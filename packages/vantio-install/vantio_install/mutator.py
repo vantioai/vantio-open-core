@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vantio_install import constants
 from vantio_install.live_executor import execute_step
+from vantio_install.optics_cli import remove_optics_prefix
 from vantio_install.commands import (
     docker_load_argv,
     docker_rmi_argv,
@@ -124,7 +125,9 @@ class FixtureMutator:
         )
 
     def _remove_optics(self, ctx: dict) -> None:
+        remove_optics_prefix(self.prefix)
         self._drop_file(self.prefix / "optics-cli-receipt.json")
+        self._drop_file(self.prefix / "bin" / "vantio")
         self.snapshot["optics_cli_version"] = None
 
     def _remove_sdks(self, ctx: dict) -> None:
@@ -261,6 +264,7 @@ class LiveMutator:
                 failure_class="FAILED_SAFE",
             )
         self.grant = grant
+        self.prefix = grant.prefix
         self.runner = runner
         self.observer = observer
         self.snapshot = snapshot

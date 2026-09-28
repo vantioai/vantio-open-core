@@ -10,4 +10,6 @@ The command is bound to that transaction. It does not accept a different plan ha
 
 When rollback finishes, `state` is `ROLLED_BACK`. Run `vantio-install verify-removal --transaction-id <id> --json` next. Removal is confirmed when that command reports `VERIFIED_REMOVED`.
 
+If the Optics CLI is on disk at `<prefix>/bin/vantio` but that install step was not checkpointed, rollback still removes `bin/vantio` and the `@vantio/cli` package directory under the prefix. `verify-removal` reads that prefix from disk. It does not report `VERIFIED_REMOVED` while `bin/vantio` remains, including when the saved host snapshot has no CLI version.
+
 If the process stops in the middle, `status` reports `INTERRUPTED`. Run rollback again with the same transaction id to continue from the saved checkpoint.

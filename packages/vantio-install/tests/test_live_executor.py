@@ -16,8 +16,10 @@ sys.path.insert(0, str(PACKAGE))
 from tests.test_stage_a import AS_OF, TX, Harness  # noqa: E402
 from vantio_install.engine import apply, rollback  # noqa: E402
 from vantio_install.errors import InstallError  # noqa: E402
+from vantio_install import constants  # noqa: E402
 from vantio_install.live_executor import (  # noqa: E402
     ExecResult,
+    ProductionObserver,
     authorize_live,
     catalog_argv,
     confine,
@@ -25,6 +27,7 @@ from vantio_install.live_executor import (  # noqa: E402
     reject_argv,
     residual_result,
 )
+from vantio_install.optics_cli import observed_optics_cli_version  # noqa: E402
 from vantio_install.util import sha256_file  # noqa: E402
 
 ENV = "VANTIO_INSTALL_ALLOW_LIVE"
@@ -149,6 +152,45 @@ class Lab:
         if op_type == "remove_optics":
             return {"optics_cli_version": None}
         return {}
+
+
+def plant_cli(prefix: Path, version: str, *, executable: bool = True, manifest: str | None = None) -> Path:
+    binary = prefix / "bin" / "vantio"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    binary.write_text("#!/bin/sh\nprintf '%s\\n' " + json.dumps(version) + "\n", encoding="utf-8")
+    binary.chmod(0o755 if executable else 0o644)
+    if manifest is not None:
+        package = prefix / "lib" / "node_modules" / "@vantio" / "cli" / "package.json"
+        package.parent.mkdir(parents=True, exist_ok=True)
+        package.write_text(json.dumps({"name": "@vantio/cli", "version": manifest}) + "\n", encoding="utf-8")
+    return binary
+
+
+class OpticsGate:
+    """Production host check for Optics, lab observer for every other operation."""
+
+    def __init__(self, lab: Lab, version: str) -> None:
+        self.lab = lab
+        self.version = version
+        self.production = ProductionObserver()
+
+    def runner(self, argv: list[str], timeout: int) -> ExecResult:
+        result = self.lab.runner(argv, timeout)
+        filename = constants.FROZEN_PINS["optics_cli_filename"]
+        if argv[:2] == ["npm", "install"] and str(argv[-1]).endswith(filename):
+            prefix = Path(argv[argv.index("--prefix") + 1])
+            plant_cli(prefix, self.version, manifest=self.version)
+        return result
+
+    def verify(self, op_type: str, grant) -> str:
+        if op_type in {"install_optics_cli", "remove_optics"}:
+            return self.production.verify(op_type, grant)
+        return self.lab.verify(op_type, grant)
+
+    def observed_delta(self, op_type: str, grant) -> dict:
+        if op_type in {"install_optics_cli", "remove_optics"}:
+            return self.production.observed_delta(op_type, grant)
+        return self.lab.observed_delta(op_type, grant)
 
 
 class LiveExecutorTests(unittest.TestCase):
@@ -684,6 +726,95 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(body["state"], "ROLLED_BACK", body)
         self.assertEqual(body["proof_state"], "NOT_PROVED")
         self.assertTrue(any(argv[:2] == ["docker", "stop"] for argv in lab.calls))
+
+    def test_optics_cli_present_passes_host_check_and_checkpoints(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        version = constants.FROZEN_PINS["optics_cli_version"]
+        gate = OpticsGate(Lab(), version)
+        code, body = apply(self.ctx(harness, "apply", gate))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "HEALTHY", body)
+        tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertIn("install_optics_cli", tx["completed_steps"])
+        binary = harness.prefix / "bin" / "vantio"
+        self.assertTrue(binary.is_file())
+        self.assertEqual(harness.snapshot().get("optics_cli_version"), version)
+        self.assertFalse(harness.tx_file("PARTIAL-MUTATIONS.json").exists())
+        code, body = rollback(self.ctx(harness, "rollback", gate))
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        self.assertFalse(binary.exists())
+        self.assertFalse((harness.prefix / "lib" / "node_modules" / "@vantio" / "cli").exists())
+
+    def test_optics_host_check_uses_binary_not_the_pin_constant(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        observer = ProductionObserver()
+        self.assertEqual(observer.verify("install_optics_cli", grant), "NOT_VERIFIED")
+        version = constants.FROZEN_PINS["optics_cli_version"]
+        plant_cli(harness.prefix, version, manifest="9.9.9")
+        self.assertEqual(observer.verify("install_optics_cli", grant), "VERIFIED")
+        self.assertEqual(observer.observed_delta("install_optics_cli", grant)["optics_cli_version"], version)
+        plant_cli(harness.prefix, "9.9.9", manifest=version)
+        self.assertEqual(observed_optics_cli_version(harness.prefix), "9.9.9")
+        self.assertEqual(observer.verify("install_optics_cli", grant), "NOT_VERIFIED")
+        plant_cli(harness.prefix, version, executable=False, manifest=version)
+        self.assertEqual(observer.verify("install_optics_cli", grant), "VERIFIED")
+
+    def test_missing_optics_cli_requires_rollback(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        lab = Lab()
+        ctx = self.ctx(harness, "apply", lab)
+        ctx["live_observer"] = ProductionObserver()
+        code, body = apply(ctx)
+        self.assertEqual(code, 4, body)
+        self.assertEqual(body["state"], "FAILED_SAFE")
+        self.assertEqual(body["live_failure_class"], "ROLLBACK_REQUIRED")
+        tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertNotIn("install_optics_cli", tx["completed_steps"])
+        self.assertIn("install_optics_cli", tx["rollback_required_steps"])
+        partial = json.loads(harness.tx_file("PARTIAL-MUTATIONS.json").read_text(encoding="utf-8"))
+        self.assertIn("install_optics_cli", partial["steps"])
+        self.assertFalse((harness.prefix / "bin" / "vantio").exists())
+        self.assertIsNone(harness.snapshot().get("optics_cli_version"))
+        rollback_ctx = self.ctx(harness, "rollback", lab)
+        rollback_ctx["live_observer"] = ProductionObserver()
+        code, body = rollback(rollback_ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+
+    def test_wrong_optics_version_rolls_back_uncheckpointed_prefix(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        lab = Lab()
+
+        def runner(argv: list[str], timeout: int) -> ExecResult:
+            result = lab.runner(argv, timeout)
+            filename = constants.FROZEN_PINS["optics_cli_filename"]
+            if argv[:2] == ["npm", "install"] and str(argv[-1]).endswith(filename):
+                plant_cli(Path(argv[argv.index("--prefix") + 1]), "9.9.9", manifest="9.9.9")
+            return result
+
+        ctx = self.ctx(harness, "apply", lab)
+        ctx["live_runner"] = runner
+        ctx["live_observer"] = ProductionObserver()
+        code, body = apply(ctx)
+        self.assertEqual(code, 4, body)
+        self.assertEqual(body["live_failure_class"], "ROLLBACK_REQUIRED")
+        binary = harness.prefix / "bin" / "vantio"
+        self.assertTrue(binary.is_file())
+        tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
+        self.assertNotIn("install_optics_cli", tx["completed_steps"])
+        rollback_ctx = self.ctx(harness, "rollback", lab)
+        rollback_ctx["live_observer"] = ProductionObserver()
+        code, body = rollback(rollback_ctx)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "ROLLED_BACK", body)
+        self.assertFalse(binary.exists())
+        self.assertFalse((harness.prefix / "lib" / "node_modules" / "@vantio" / "cli").exists())
 
 
 if __name__ == "__main__":

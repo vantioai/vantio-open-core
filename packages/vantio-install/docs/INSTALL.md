@@ -14,4 +14,4 @@ A live apply on the host that will keep the node uses both gates and the plan ha
 
 `<hex>` is the SHA-256 of that `PLAN.json` file. The installer recomputes the hash, checks the transaction id, and checks the artifact bytes again before each change. A mismatch stops the command. The sealed Phantom Engine tip, archive hash, and manifest digest stay the ones recorded for this package.
 
-Apply is finished only when `state` is `HEALTHY` or `DEGRADED` and `HEALTH.json` records that result. `APPLIED` means the steps ran and health is not confirmed yet. A process exit of 0 from Docker or npm is not that result.
+Apply is finished only when `state` is `HEALTHY` or `DEGRADED` and `HEALTH.json` records that result. `APPLIED` means the steps ran and health is not confirmed yet. A process exit of 0 from Docker or npm is not that result. After the Optics npm install, the host check requires `<prefix>/bin/vantio` and the pinned CLI version (`vantio --version`, or the installed package manifest when the binary does not print a version).

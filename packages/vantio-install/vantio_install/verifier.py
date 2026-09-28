@@ -14,6 +14,9 @@ import sys
 from pathlib import Path
 
 from vantio_install import constants
+from vantio_install.errors import InstallError
+from vantio_install.optics_cli import optics_cli_residual_items
+from vantio_install.paths import assert_safe_root
 
 _REQUIRED = (
     "TRANSACTION.json",
@@ -129,7 +132,17 @@ def _claim_hits(value: object, hits: list[str]) -> None:
         hits.append(value)
 
 
-def _residual_items(snapshot: dict, scope: str, iface: str) -> list[dict] | None:
+def _configured_prefix(config: dict) -> tuple[Path | None, bool]:
+    raw = config.get("prefix")
+    if not isinstance(raw, str) or not raw.strip():
+        return None, False
+    try:
+        return assert_safe_root(raw, label="prefix"), False
+    except InstallError:
+        return None, True
+
+
+def _residual_items(snapshot: dict, scope: str, iface: str, prefix: Path | None = None) -> list[dict] | None:
     if snapshot.get("probe_errors"):
         return None
     items: list[dict] = []
@@ -147,6 +160,11 @@ def _residual_items(snapshot: dict, scope: str, iface: str) -> list[dict] | None
             items.append({"kind": "clsact"})
         if "vantio-loader" in (snapshot.get("processes") or []):
             items.append({"kind": "process"})
+    if scope in {"optics", "all"}:
+        if snapshot.get("optics_cli_version"):
+            items.append({"kind": "optics_cli", "version": snapshot.get("optics_cli_version")})
+        if prefix is not None:
+            items.extend(optics_cli_residual_items(prefix))
     return items
 
 
@@ -196,7 +214,8 @@ def verify(evidence_dir: Path, bundle_dir: Path) -> dict:
             result = "UNKNOWN"
         checks.append({"id": "recompute-health", "result": result, "stated": stated, "recomputed": recomputed})
         scope = residual.get("scope") or "all"
-        items = _residual_items(snapshot, str(scope), str(config.get("iface", "")))
+        prefix, prefix_blocked = _configured_prefix(config)
+        items = None if prefix_blocked else _residual_items(snapshot, str(scope), str(config.get("iface", "")), prefix)
         if items is None:
             checks.append({"id": "recompute-residual", "result": "UNKNOWN"})
         else:

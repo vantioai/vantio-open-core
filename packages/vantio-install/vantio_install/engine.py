@@ -15,10 +15,13 @@ from vantio_install.manifest import artifact_paths, bundle_digest, load_manifest
 from vantio_install.live_executor import (
     ProductionObserver,
     authorize_live,
+    clear_partial_mutation,
     guard_readonly_command,
     live_operation_ids,
+    partial_mutation_steps,
     residual_result,
 )
+from vantio_install.optics_cli import optics_cli_present
 from vantio_install.mutator import FixtureMutator, LiveMutator
 from vantio_install.paths import assert_safe_root
 from vantio_install.preflight import run_preflight
@@ -574,8 +577,10 @@ def apply(ctx: dict) -> tuple[int, dict]:
             _event(tx_dir, stamp, "resume-preflight", "FAILED_SAFE", tx["last_error"])
             _sync(tx_dir, evidence)
             return constants.EXIT_FAILED_SAFE, _payload("apply", tx, limitations=tx.get("limitations") or [])
+        current_step: str | None = None
         try:
             for step_id in constants.APPLY_STEPS:
+                current_step = step_id
                 if step_id in done:
                     continue
                 if step_id == "verify_artifacts":
@@ -624,6 +629,7 @@ def apply(ctx: dict) -> tuple[int, dict]:
                         )
                 else:
                     mutator.apply_step(step_id, step_ctx)
+                clear_partial_mutation(tx_dir, step_id)
                 done.append(step_id)
                 tx["completed_steps"] = done
                 tx["host_mutation_count"] = getattr(mutator, "mutation_count", 0)
@@ -647,6 +653,15 @@ def apply(ctx: dict) -> tuple[int, dict]:
             tx["last_error"] = str(exc)
             if exc.failure_class:
                 tx["live_failure_class"] = exc.failure_class
+            if (
+                exc.failure_class == "ROLLBACK_REQUIRED"
+                and current_step in constants.HOST_MUTATION_STEPS
+                and current_step not in done
+            ):
+                required = [step for step in (tx.get("rollback_required_steps") or []) if isinstance(step, str)]
+                if current_step not in required:
+                    required.append(current_step)
+                tx["rollback_required_steps"] = required
             tx["mutation_in_progress"] = False
             tx["owner_pid"] = None
             _save_tx(tx_dir, tx)
@@ -702,9 +717,30 @@ def status(ctx: dict) -> tuple[int, dict]:
         )
 
 
-def _reverse_steps(completed: list[str], already: list[str]) -> list[str]:
-    wanted = [step for step in reversed(completed) if step in constants.HOST_MUTATION_STEPS]
-    return [step for step in wanted if step not in already]
+def _reverse_steps(completed: list[str], already: list[str], extras: list[str] | None = None) -> list[str]:
+    order = {step: index for index, step in enumerate(constants.APPLY_STEPS)}
+    sequence = [step for step in completed if step in constants.HOST_MUTATION_STEPS]
+    for step in extras or []:
+        if step not in constants.HOST_MUTATION_STEPS or step in sequence:
+            continue
+        slot = len(sequence)
+        for index, existing in enumerate(sequence):
+            if order.get(step, len(order)) < order.get(existing, len(order)):
+                slot = index
+                break
+        sequence.insert(slot, step)
+    return [step for step in reversed(sequence) if step not in already]
+
+
+def _rollback_extras(tx: dict, tx_dir: Path, prefix: Path) -> list[str]:
+    extras: list[str] = []
+    recorded = list(tx.get("rollback_required_steps") or []) + partial_mutation_steps(tx_dir)
+    for step in recorded:
+        if isinstance(step, str) and step not in extras:
+            extras.append(step)
+    if optics_cli_present(prefix) and "install_optics_cli" not in extras:
+        extras.append("install_optics_cli")
+    return extras
 
 
 def rollback(ctx: dict) -> tuple[int, dict]:
@@ -728,11 +764,19 @@ def rollback(ctx: dict) -> tuple[int, dict]:
         elif tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"}:
             _move(tx, "ROLLING_BACK", stamp)
         mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
+        prefix = getattr(mutator, "prefix", _prefix)
         step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json")
         tx["mutation_in_progress"] = True
         tx["owner_pid"] = os.getpid()
         tx["phase"] = "rollback"
-        pending = _reverse_steps(list(tx.get("completed_steps") or []), list(tx.get("rollback_completed_steps") or []))
+        already = list(tx.get("rollback_completed_steps") or [])
+        if optics_cli_present(prefix):
+            already = [step for step in already if step != "install_optics_cli"]
+        pending = _reverse_steps(
+            list(tx.get("completed_steps") or []),
+            already,
+            _rollback_extras(tx, tx_dir, prefix),
+        )
         _save_tx(tx_dir, tx)
         try:
             for step_id in pending:
