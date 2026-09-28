@@ -1,7 +1,7 @@
 {
   "document": "IMPLEMENTATION-REPORT",
   "audience": "INTERNAL_RESTRICTED",
-  "as_of_et": "2026-09-27T20:37:00-04:00",
+  "as_of_et": "2026-09-27T20:50:00-04:00",
   "program": "CUSTOMER INSTALLER / SECOND LAB — Stage A",
   "design_status_implemented": "DESIGN_READY_FOR_IMPLEMENTATION",
   "proof_ceiling": "INTERNAL_CLEAN_HOST_PROOF",
@@ -12,7 +12,7 @@
   "base_tip": "5bb8154ae377a561478ffc50ce81cc4544deaa36",
   "base_tip_subject": "Merge Wave 3 Track 15 public claim and content inventory onto main. Source-only. Frozen inventory.",
   "branch": "cursor/stage-a-vantio-install-8195",
-  "pr_url": null,
+  "pr_url": "https://github.com/vantioai/vantio-open-core/pull/118",
   "package": "packages/vantio-install",
   "commands": [
     "vantio-install plan",
