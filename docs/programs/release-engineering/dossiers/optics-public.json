@@ -56,20 +56,6 @@
       "name": "cli-tarball",
       "required_for_publish": true,
       "value": "UNRECORDED"
-    },
-    {
-      "accepted_as_pin": false,
-      "kind": "unpinned",
-      "name": ".github/actions/vantio-prove/action.yml actions/setup-node@v4",
-      "required_for_publish": true,
-      "value": "actions/setup-node@v4"
-    },
-    {
-      "accepted_as_pin": false,
-      "kind": "unpinned",
-      "name": ".github/actions/vantio-prove/action.yml actions/upload-artifact@v4",
-      "required_for_publish": true,
-      "value": "actions/upload-artifact@v4"
     }
   ],
   "private_distribution": {
@@ -90,7 +76,7 @@
     "builds": [],
     "formal_claim": false,
     "reasons": [
-      "Workflow third-party actions are commit SHA pins with tag comments. The local composite .github/actions/vantio-prove still uses floating @v4 refs.",
+      "All tip third-party action uses in workflows and the local composite .github/actions/vantio-prove are commit SHA pins with tag comments.",
       "The Python build-system requirement is hatchling with no version comparator.",
       "No second build digest is recorded in this force."
     ],

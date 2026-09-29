@@ -39,9 +39,9 @@ Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes,
 - Root `packageManager` names pnpm `11.13.0` and carries a `sha512` integrity string.
 - `pnpm-lock.yaml` is present. Its SHA-256 is in the pin report. Lockfile importers record resolved versions for the workspace dependency ranges.
 - `scripts/release/stage_sealed_pypi.py` pins the Python 3.1.0 filenames, byte lengths, and SHA-256 values. Dispatch inputs cannot replace them.
-- Workflow files under `.github/workflows/` pin third-party actions to commit SHAs with tag comments. The pin report records those as `owner/name@sha # tag` with `digest_pinned: true`. `.github/actions/vantio-prove/action.yml` still uses floating `@v4` refs, and those two stay `digest_pinned: false`.
+- Workflow files under `.github/workflows/` and the local composite `.github/actions/vantio-prove/action.yml` pin third-party actions to commit SHAs with tag comments. The pin report records those as `owner/name@sha # tag` with `digest_pinned: true`.
 - `packages/vantio-agent-sdk-py/pyproject.toml` requires `hatchling` with no version comparator.
-- CI and the provenance workflow install with `pnpm install --frozen-lockfile`. That binds the install to the lockfile. The local composite action refs and the Python build backend stay unpinned.
+- CI and the provenance workflow install with `pnpm install --frozen-lockfile`. That binds the install to the lockfile. The Python build backend stays unpinned.
 
 `npm-publish.yml`, `pypi-publish.yml`, and `mcp-registry-publish.yml` trigger on `workflow_dispatch`. `ci.yml` triggers on push and builds candidate artifacts. The candidate job packs and builds. It performs no registry write.
 
