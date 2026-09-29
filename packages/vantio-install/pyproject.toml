@@ -7,6 +7,9 @@ packages = ["vantio_install"]
 
 [project]
 name = "vantio-install"
+# Source pin. Not a PEP 440 version. docs/PACKAGING.md seals a temporary
+# copy as 0.1.0+stage.a. Do not change this string. Optics CLI 0.3.24,
+# Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0 are not this package.
 version = "0.1.0-stage-a"
 description = "Transactional installer for a Vantio node. Observe-only by default. Separate from the frozen Optics CLI."
 readme = "README.md"
@@ -24,6 +27,21 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
+# Customer bins. The sealed wheel installs these console scripts.
+# bin/vantio-install in this tree is a source launcher and is not one of them.
 [project.scripts]
 vantio-install = "vantio_install.cli:main"
 vantio-verify = "vantio_install.verifier:main"
+
+# Sealed sdist file set. Independent of a git checkout. The source launcher
+# under bin/ is omitted on purpose.
+[tool.hatch.build.targets.sdist]
+include = [
+  "vantio_install",
+  "docs",
+  "config",
+  "packaging/seal_customer_artifact.py",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]

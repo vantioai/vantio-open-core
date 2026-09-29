@@ -1,8 +1,8 @@
 # Rollback
 
-`vantio-install rollback --transaction-id <id> --yes --json` reverses the product changes recorded for that transaction. It stops the Phantom Engine container this transaction started, unloads the `vantio-pe-observe` AppArmor profile this transaction loaded, removes the image and staged archive this transaction loaded, and removes the receipts this transaction wrote.
+Rollback reverses the product changes recorded for that transaction. It stops the Phantom Engine container this transaction started, unloads the `vantio-pe-observe` AppArmor profile this transaction loaded, removes the image and staged archive this transaction loaded, and removes the receipts this transaction wrote.
 
-A live rollback uses the same two gates as apply, and the same plan hash:
+A customer rollback uses both live gates and the plan hash. `--fixture-host` is forbidden for customer operators. A rollback that omits either live gate is ungated and is not a customer operation. Raw `docker` outside the installer argv list is forbidden. Privilege symptoms are in `PREFLIGHT.md`.
 
 `VANTIO_INSTALL_ALLOW_LIVE=1 vantio-install rollback --transaction-id <id> --yes --plan <PLAN.json> --plan-sha256 <hex> --i-accept-live-mutations --json`
 
