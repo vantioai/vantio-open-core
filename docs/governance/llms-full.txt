@@ -72,7 +72,7 @@ Without the SDK, `vantio run python` does not intercept. Browser paths, or proce
 
 ## License and telemetry
 
-MIT License.
+Published packages such as `@vantio/cli`, `@vantio/agent-sdk`, and `vantio-agent-sdk` declare MIT in their package manifests (and in package-level LICENSE files where present). This repository does not currently publish a root LICENSE file.
 
 Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 override.
 
