@@ -11,174 +11,179 @@
       "uses": "actions/upload-artifact@v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "pnpm/action-setup@v4"
+      "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-python@v5"
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-python@v5"
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "pnpm/action-setup@v4"
+      "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-python@v5"
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/upload-artifact@v4"
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
-      "uses": "actions/setup-python@v5"
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/docs-release-governance.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/docs-release-governance.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
-      "uses": "pnpm/action-setup@v4"
+      "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
-      "uses": "actions/upload-artifact@v4"
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
-      "uses": "actions/attest-build-provenance@v2"
+      "uses": "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/mcp-registry-publish.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
-      "uses": "actions/upload-artifact@v4"
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/pypi-publish.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/pypi-publish.yml",
-      "uses": "pypa/gh-action-pypi-publish@release/v1"
+      "uses": "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1"
     },
     {
-      "digest_pinned": false,
-      "file": ".github/workflows/w3-lab-teardown-verify.yml",
-      "uses": "actions/checkout@v4"
+      "digest_pinned": true,
+      "file": ".github/workflows/vantio-prove-example.yml",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
-      "uses": "aws-actions/configure-aws-credentials@v6"
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
-      "uses": "actions/upload-artifact@v4"
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     }
   ],
   "audience": "INTERNAL_RESTRICTED",
@@ -202,7 +207,7 @@
   },
   "provenance_workflow": {
     "apps_web_present": false,
-    "attest_action": "actions/attest-build-provenance@v2",
+    "attest_action": "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2",
     "edge_proxy_present": false,
     "formal_slsa_level": "NOT_CLAIMED",
     "historical_log_contains_level_assertion": true,

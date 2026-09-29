@@ -159,7 +159,9 @@ class WorkflowContractTests(unittest.TestCase):
             ],
         )
         checkout = self.steps[0]
-        self.assertEqual(checkout["uses"], "actions/checkout@v4")
+        checkout_uses = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+        self.assertEqual(checkout["uses"], checkout_uses)
+        self.assertIn(f"uses: {checkout_uses} # v4", self.raw)
         self.assertIs(checkout["with"]["persist-credentials"], False)
         self.assertEqual(
             [line.strip() for line in checkout["with"]["sparse-checkout"].splitlines() if line.strip()],
@@ -186,7 +188,9 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_publish_action_is_oidc_and_explicit(self) -> None:
         publish = self.steps[5]
-        self.assertEqual(publish["uses"], "pypa/gh-action-pypi-publish@release/v1")
+        publish_uses = "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
+        self.assertEqual(publish["uses"], publish_uses)
+        self.assertIn(f"uses: {publish_uses} # release/v1", self.raw)
         self.assertEqual(
             set(publish["with"]),
             {"packages-dir", "verbose", "print-hash", "skip-existing"},
