@@ -18,21 +18,21 @@ This inventory is the tree this force read. The machine-readable copy is `genera
 | Phantom Engine | `docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md` | `private` |
 | Private customer package | `docs/governance/PE-CUSTOMER-BUNDLE.json` and the test double at `docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md` | `private` |
 
-The control-plane snapshot in `docs/programs/production-readiness/WORKSTREAM-REGISTRY.json` still records WS11 as `NOT_RETRIEVED`. That snapshot is a prior refresh. This program sits beside it.
+The prior program snapshot that recorded WS11 as `NOT_RETRIEVED` is not in this public tree.
 
 ## Optics versions in this tree
 
 | Package | Version | Registry bytes fetched by this force |
 | --- | --- | --- |
-| `@vantio/cli` | `0.3.24` | No. The release register records tag `v0.3.24` at `1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4`. The tag selector is not an integrity pin. |
+| `@vantio/cli` | `0.3.24` | No. `docs/programs/release-engineering/SEALED-RELEASE-PINS.json` records tag `v0.3.24` at `1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4`. The tag selector is not an integrity pin. |
 | `@vantio/agent-sdk` | `0.2.4` | No |
-| `vantio-agent-sdk` | `3.1.0` | No. Sealed hashes below are copied from `scripts/release/stage_sealed_pypi.py`, which matches `RELEASE-REGISTER.json`. |
+| `vantio-agent-sdk` | `3.1.0` | No. Sealed hashes below are copied from `scripts/release/stage_sealed_pypi.py`. |
 | `@vantio/optics-mcp` | `0.1.2` | No |
 | `@vantio/gate-mcp` | `0.1.0` | No |
 | `vantio-optics` | `0.1.0` | No |
 | `@vantio/optics-evidence-contract` | `0.0.0-unstable-pre-1.0` | Unpublished private source |
 
-Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes, SHA-256 `dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb`. The sdist `vantio_agent_sdk-3.1.0.tar.gz` is pinned at 59669 bytes, SHA-256 `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f`. The release register's current row state is `RELEASE_CLOSED_REGISTRY_VERIFIED`. Its earlier observation remains `PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED`. The Optics dossier keeps registry status `NOT_FETCHED` and `this_force_refetched: false`. The historical label stays a citation. This refresh did not fetch registry bytes.
+Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes, SHA-256 `dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb`. The sdist `vantio_agent_sdk-3.1.0.tar.gz` is pinned at 59669 bytes, SHA-256 `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f`. The sealed release pins record the current row state as `RELEASE_CLOSED_REGISTRY_VERIFIED`. Its earlier observation remains `PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED`. The Optics dossier keeps registry status `NOT_FETCHED` and `this_force_refetched: false`. The historical label stays a citation. This refresh did not fetch registry bytes.
 
 ## Pins this tree actually has
 

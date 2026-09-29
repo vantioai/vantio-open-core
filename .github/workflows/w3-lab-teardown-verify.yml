@@ -29,8 +29,6 @@ name: Verify W3 lab teardown role
 # Class B stays unauthorized until STAGE_B_BILLING_CLOSE_PASS and
 # NONINTERACTIVE_TEARDOWN_READY are both recorded. A green run does not
 # record either token.
-#
-# See docs/internal/c8-teardown/README.md.
 
 on:
   workflow_dispatch:

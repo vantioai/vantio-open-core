@@ -238,15 +238,15 @@ export function buildInventory(root) {
   }
   const architecture = readText(root, "architecture_state.md");
   const sealed = readSealedPypi(root);
-  const register = JSON.parse(readText(root, "docs/programs/production-readiness/RELEASE-REGISTER.json"));
-  const py = register.releases.find((item) => item.id === "REL-PY-3.1.0");
-  const cli = register.releases.find((item) => item.id === "REL-CLI-0.3.24");
-  if (!py || !cli) throw new Error("release register is missing the CLI or Python row");
+  const pins = JSON.parse(readText(root, "docs/programs/release-engineering/SEALED-RELEASE-PINS.json"));
+  const py = pins.python;
+  const cli = pins.cli;
+  if (!py || !cli) throw new Error("sealed release pins are missing the CLI or Python row");
   if (py.wheel_sha256 !== sealed.wheel_sha256 || py.sdist_sha256 !== sealed.sdist_sha256) {
-    throw new Error("release register hashes differ from stage_sealed_pypi.py");
+    throw new Error("sealed release pins differ from stage_sealed_pypi.py");
   }
   if (py.wheel_bytes !== sealed.wheel_bytes || py.sdist_bytes !== sealed.sdist_bytes) {
-    throw new Error("release register byte lengths differ from stage_sealed_pypi.py");
+    throw new Error("sealed release pin byte lengths differ from stage_sealed_pypi.py");
   }
   const pyproject = readText(root, "packages/vantio-agent-sdk-py/pyproject.toml");
   const hatch = /requires = \[(.*)\]/.exec(pyproject);

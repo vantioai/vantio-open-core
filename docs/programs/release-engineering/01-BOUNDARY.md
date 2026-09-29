@@ -33,7 +33,7 @@ A dossier string that matches the denylist in `REQUIREMENTS.json` is `REJECTED`.
 - No customer deploy, no stranger-host execution, no announcement, no credential creation.
 - No Phantom Engine customer-manual body in this public tree. The test double remains a test double.
 - No merge. The pull request stays draft.
-- `docs/programs/production-readiness/WORKSTREAM-REGISTRY.json` stays the prior snapshot.
+- The prior program snapshot is not in this public tree.
 
 ## How to read a green verifier exit
 

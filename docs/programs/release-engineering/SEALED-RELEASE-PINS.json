@@ -1,0 +1,18 @@
+{
+  "schema": "vantio.release-engineering.sealed-release-pins/v1",
+  "cli": {
+    "version": "0.3.24",
+    "tag": "v0.3.24",
+    "tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4"
+  },
+  "python": {
+    "version": "3.1.0",
+    "state": "RELEASE_CLOSED_REGISTRY_VERIFIED",
+    "prior_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
+    "publisher_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
+    "wheel_sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
+    "sdist_sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
+    "wheel_bytes": 39235,
+    "sdist_bytes": 59669
+  }
+}
