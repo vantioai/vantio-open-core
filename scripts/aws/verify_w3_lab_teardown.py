@@ -8,6 +8,13 @@ Checks 4 and 8 use CreateSecurityGroup --dry-run. A NotFound error is not an
 authorization pass. Checks 9-13 delete fixtures only when
 RUN_DESTRUCTIVE_FIXTURES=true and an id was passed.
 
+Destructive order is settle-first: terminate the instance, wait until it is
+terminated, delete the volume once it is available without calling
+DetachVolume, release the EIP once AssociationId is gone without calling
+DisassociateAddress, retry DeleteSecurityGroup on DependencyViolation, then
+delete the key pair. Class B is not authorized. This module does not record
+NONINTERACTIVE_TEARDOWN_READY.
+
 Audience: INTERNAL_RESTRICTED
 """
 
@@ -41,6 +48,21 @@ PROBE_REGION_SECURITY_GROUP = "vantio-w3-teardown-verify-region-deny-probe"
 PROBE_IAM_USER = "vantio-w3-teardown-verify-deny-probe"
 DryRunClass = Literal["denied", "allowed", "not_found", "unexpected"]
 SCHEMA = "vantio.w3-lab-teardown-verify.v1"
+# GAP-C8-VER-002. TerminateInstances drops the data-volume attachment and the
+# EIP association as the instance reaches terminated. The locked policy allows
+# DetachVolume on volume/* and DisassociateAddress on elastic-ip/* only.
+# Run 36506523073 denied DetachVolume on an instance ARN and DisassociateAddress
+# on a network-interface ARN. Those calls are not the primary close path.
+# Budgets stay inside the verify job's 20 minute timeout.
+SETTLE_POLL_SECONDS = 5.0
+INSTANCE_TERMINATED_POLLS = 60
+VOLUME_AVAILABLE_POLLS = 24
+POST_DETACH_POLLS = 12
+EIP_FREE_POLLS = 24
+SG_DEPENDENCY_ATTEMPTS = 12
+DESTRUCTIVE_EXECUTION_ORDER = ["instance", "volume", "eip", "security_group", "keypair"]
+VolumePoll = Literal["ready", "pending", "not_found", "missing", "error"]
+AddressPoll = Literal["free", "associated", "not_found", "missing", "error"]
 
 LAB_TAGS = {
     "vantio:program": "w3-clean-host-lab",
@@ -629,6 +651,204 @@ def _not_run(check_id: int, name: str, detail: str) -> dict[str, Any]:
     return check(check_id, name, "NOT_RUN_AWAITING_FIXTURES", detail)
 
 
+def _sg_backoff_seconds(failed_attempt: int) -> float:
+    schedule = (5.0, 10.0, 15.0, 20.0)
+    if failed_attempt < len(schedule):
+        return schedule[failed_attempt]
+    return 20.0
+
+
+def _is_dependency_violation(result: AwsResult) -> bool:
+    if result.returncode == 0:
+        return False
+    # The EC2 error code decides. A DependencyViolation is a residual attachment,
+    # even when the message text contains words the deny heuristic recognizes.
+    if error_code(result) == "DependencyViolation":
+        return True
+    if is_denied(result) or _not_found_code(error_code(result)):
+        return False
+    return "DependencyViolation" in f"{result.stderr}\n{result.stdout}"
+
+
+def _instance_state_name(payload: dict[str, Any]) -> str:
+    found = instances_from_describe(payload)
+    if not found:
+        return ""
+    state = found[0].get("State")
+    if isinstance(state, dict) and isinstance(state.get("Name"), str):
+        return state["Name"]
+    return ""
+
+
+def _wait_instance_terminated(aws: AwsCaller, instance_id: str, sleep: Callable[[float], None]) -> str:
+    """Poll until the instance reports terminated.
+
+    An empty return means terminated was observed. "not-found" means describe
+    returned NotFound. NotFound does not pass a check. Any other return is a
+    short reason the budget ended first.
+    """
+    last = "unset"
+    last_error = ""
+    for _ in range(INSTANCE_TERMINATED_POLLS):
+        sleep(SETTLE_POLL_SECONDS)
+        described = aws(["ec2", "describe-instances", "--instance-ids", instance_id], REGION)
+        if described.returncode != 0 or is_denied(described):
+            if _not_found_code(error_code(described)):
+                return "not-found"
+            last_error = failure_detail(described)
+            continue
+        try:
+            payload = parse_json(described)
+        except ValueError as exc:
+            last_error = str(exc)
+            continue
+        last = _instance_state_name(payload) or "missing"
+        if last == "terminated":
+            return ""
+    if last == "unset" and last_error:
+        return last_error
+    return f"state stayed {last}"
+
+
+def _annotate_instance_settle(item: dict[str, Any], outcome: str) -> None:
+    if outcome == "":
+        note = "waited until state=terminated before volume, EIP, and security group close"
+    elif outcome == "not-found":
+        note = "settle describe returned NotFound; NotFound is not a pass and did not authorize the close"
+    else:
+        note = (
+            "settle wait did not observe state=terminated "
+            f"({outcome}). Later closes still wait on their own resource state"
+        )
+    item["detail"] = f"{item['detail']}; {note}"
+
+
+def _volume_attachments(volume: dict[str, Any]) -> list[Any]:
+    attachments = volume.get("Attachments")
+    if isinstance(attachments, list):
+        return attachments
+    return []
+
+
+def _volume_is_free(volume: dict[str, Any]) -> bool:
+    return volume.get("State") == "available" and not _volume_attachments(volume)
+
+
+def _describe_volume(aws: AwsCaller, volume_id: str) -> tuple[dict[str, Any] | None, str, str]:
+    described = aws(["ec2", "describe-volumes", "--volume-ids", volume_id], REGION)
+    if described.returncode != 0 or is_denied(described):
+        if _not_found_code(error_code(described)):
+            return None, "not_found", failure_detail(described)
+        return None, "error", failure_detail(described)
+    try:
+        payload = parse_json(described)
+    except ValueError as exc:
+        return None, "error", str(exc)
+    volumes = payload.get("Volumes")
+    if not isinstance(volumes, list) or not volumes or not isinstance(volumes[0], dict):
+        return None, "missing", f"{volume_id} was not returned"
+    return volumes[0], "ok", ""
+
+
+def _poll_volume_free(
+    aws: AwsCaller,
+    volume_id: str,
+    sleep: Callable[[float], None],
+    polls: int,
+) -> tuple[VolumePoll, str]:
+    last_state = "unset"
+    last_error = ""
+    for _ in range(polls):
+        sleep(SETTLE_POLL_SECONDS)
+        volume, kind, detail = _describe_volume(aws, volume_id)
+        if kind == "ok" and volume is not None:
+            last_state = str(volume.get("State") or "unset")
+            if _volume_is_free(volume):
+                return "ready", last_state
+            continue
+        if kind == "not_found":
+            return "not_found", detail
+        if kind == "missing":
+            return "missing", detail
+        last_error = detail
+    if last_error and last_state == "unset":
+        return "error", last_error
+    return "pending", last_state
+
+
+def _delete_volume(aws: AwsCaller, volume_id: str, note: str) -> dict[str, Any]:
+    deleted = aws(["ec2", "delete-volume", "--volume-id", volume_id], REGION)
+    if is_denied(deleted) or deleted.returncode != 0:
+        return check(10, "close_volume", "FAIL", f"delete failed: {failure_detail(deleted)}")
+    return check(10, "close_volume", "PASS", f"DeleteVolume accepted for {volume_id}. {note}")
+
+
+def _volume_poll_failure(status: VolumePoll, detail: str) -> dict[str, Any] | None:
+    if status == "not_found":
+        return check(
+            10,
+            "close_volume",
+            "FAIL",
+            f"describe during settle returned NotFound, which is not a pass; delete was not called: {detail}",
+        )
+    if status == "missing":
+        return check(10, "close_volume", "FAIL", f"{detail}; delete was not called")
+    if status == "error":
+        return check(10, "close_volume", "FAIL", f"describe during settle failed; delete was not called: {detail}")
+    if status == "ready" or status == "pending":
+        return None
+    remaining: Never = status
+    raise RuntimeError(remaining)
+
+
+def _detach_volume_last_resort(
+    aws: AwsCaller,
+    volume_id: str,
+    sleep: Callable[[float], None],
+    last_state: str,
+) -> dict[str, Any]:
+    """Call DetachVolume only after the settle wait left the volume attached.
+
+    The locked policy allows DetachVolume on volume/* only. EC2 also authorizes
+    the instance ARN, and that resource is outside the Allow. UnauthorizedOperation
+    on instance/* is the expected denial when the volume has not become available.
+    """
+    detached = aws(["ec2", "detach-volume", "--volume-id", volume_id], REGION)
+    if is_denied(detached) or detached.returncode != 0:
+        return check(
+            10,
+            "close_volume",
+            "FAIL",
+            (
+                f"volume stayed {last_state} after the settle wait. "
+                "DetachVolume was called only after that wait and it failed. "
+                "DeleteVolume was not called. "
+                "The locked policy allows DetachVolume on volume/* only. "
+                "EC2 also authorizes the attached instance ARN, so UnauthorizedOperation "
+                "on instance/* is outside that Allow. "
+                "This verifier does not widen the policy to Resource:*. "
+                f"{failure_detail(detached)}"
+            ),
+        )
+    after, after_detail = _poll_volume_free(aws, volume_id, sleep, POST_DETACH_POLLS)
+    failed = _volume_poll_failure(after, after_detail)
+    if failed is not None:
+        return failed
+    if after == "ready":
+        return _delete_volume(
+            aws,
+            volume_id,
+            "DetachVolume was required after the settle wait. "
+            "The locked policy may deny DetachVolume on the instance ARN.",
+        )
+    return check(
+        10,
+        "close_volume",
+        "FAIL",
+        f"volume stayed {after_detail} after DetachVolume; delete was not called",
+    )
+
+
 def _close_instance(aws: AwsCaller, instance_id: str) -> dict[str, Any]:
     if INSTANCE_ID.fullmatch(instance_id) is None:
         return check(9, "close_instance", "FAIL", "refused: instance id format is invalid; terminate was not called")
@@ -653,52 +873,54 @@ def _close_instance(aws: AwsCaller, instance_id: str) -> dict[str, Any]:
 def _close_volume(aws: AwsCaller, volume_id: str, sleep: Callable[[float], None]) -> dict[str, Any]:
     if VOLUME_ID.fullmatch(volume_id) is None:
         return check(10, "close_volume", "FAIL", "refused: volume id format is invalid; delete was not called")
-    described = aws(["ec2", "describe-volumes", "--volume-ids", volume_id], REGION)
-    if is_denied(described) or described.returncode != 0:
-        return check(10, "close_volume", "FAIL", f"describe failed; delete was not called: {failure_detail(described)}")
-    try:
-        payload = parse_json(described)
-    except ValueError as exc:
-        return check(10, "close_volume", "FAIL", f"{exc}; delete was not called")
-    volumes = payload.get("Volumes")
-    if not isinstance(volumes, list) or not volumes or not isinstance(volumes[0], dict):
-        return check(10, "close_volume", "FAIL", f"{volume_id} was not returned; delete was not called")
-    volume = volumes[0]
+    volume, kind, detail = _describe_volume(aws, volume_id)
+    if kind == "missing":
+        return check(10, "close_volume", "FAIL", f"{detail}; delete was not called")
+    if kind == "not_found":
+        return check(
+            10,
+            "close_volume",
+            "FAIL",
+            f"describe returned NotFound, which is not a pass; delete was not called: {detail}",
+        )
+    if kind != "ok" or volume is None:
+        return check(10, "close_volume", "FAIL", f"describe failed; delete was not called: {detail}")
     if not has_tags(tag_map(volume.get("Tags")), VOLUME_TAGS):
         return check(10, "close_volume", "FAIL", f"refused: {volume_id} tags do not match the authorized fixture; delete was not called")
-    attachments = volume.get("Attachments") if isinstance(volume.get("Attachments"), list) else []
-    if volume.get("State") != "available" or attachments:
-        detached = aws(["ec2", "detach-volume", "--volume-id", volume_id], REGION)
-        if is_denied(detached) or detached.returncode != 0:
-            return check(10, "close_volume", "FAIL", f"detach failed; delete was not called: {failure_detail(detached)}")
-        ready = False
-        last_state = str(volume.get("State") or "unset")
-        for _ in range(12):
-            sleep(5)
-            again = aws(["ec2", "describe-volumes", "--volume-ids", volume_id], REGION)
-            if is_denied(again) or again.returncode != 0:
-                return check(10, "close_volume", "FAIL", f"describe after detach failed: {failure_detail(again)}")
-            try:
-                follow = parse_json(again)
-            except ValueError as exc:
-                return check(10, "close_volume", "FAIL", str(exc))
-            found = follow.get("Volumes")
-            if not isinstance(found, list) or not found or not isinstance(found[0], dict):
-                return check(10, "close_volume", "FAIL", f"{volume_id} disappeared after detach; delete was not called")
-            last_state = str(found[0].get("State") or "unset")
-            still_attached = found[0].get("Attachments") if isinstance(found[0].get("Attachments"), list) else []
-            if last_state == "available" and not still_attached:
-                ready = True
-                break
-        if not ready:
-            return check(10, "close_volume", "FAIL", f"volume stayed {last_state}; delete was not called")
-    deleted = aws(["ec2", "delete-volume", "--volume-id", volume_id], REGION)
-    if is_denied(deleted) or deleted.returncode != 0:
-        return check(10, "close_volume", "FAIL", f"delete failed: {failure_detail(deleted)}")
-    return check(10, "close_volume", "PASS", f"DeleteVolume accepted for {volume_id}")
+    if _volume_is_free(volume):
+        return _delete_volume(
+            aws,
+            volume_id,
+            "DetachVolume was not called because the volume was available with no attachments",
+        )
+    polled, polled_detail = _poll_volume_free(aws, volume_id, sleep, VOLUME_AVAILABLE_POLLS)
+    if polled == "ready":
+        return _delete_volume(
+            aws,
+            volume_id,
+            "DetachVolume was not called; the volume became available with no attachments after the settle wait",
+        )
+    if polled == "pending":
+        # DetachVolume is the last resort, and only while an attachment can still
+        # be named. Other terminal states (deleting, error, missing) are not detach.
+        if polled_detail in {"in-use", "available"}:
+            return _detach_volume_last_resort(aws, volume_id, sleep, polled_detail)
+        return check(
+            10,
+            "close_volume",
+            "FAIL",
+            (
+                f"volume stayed {polled_detail} after the settle wait. "
+                "DetachVolume was not called. DeleteVolume was not called."
+            ),
+        )
+    held = _volume_poll_failure(polled, polled_detail)
+    if held is None:
+        raise RuntimeError(f"unhandled volume poll status {polled}")
+    return held
 
 
-def _close_security_group(aws: AwsCaller, group_id: str) -> dict[str, Any]:
+def _close_security_group(aws: AwsCaller, group_id: str, sleep: Callable[[float], None]) -> dict[str, Any]:
     if SECURITY_GROUP_ID.fullmatch(group_id) is None:
         return check(11, "close_security_group", "FAIL", "refused: security group id format is invalid; delete was not called")
     described = aws(["ec2", "describe-security-groups", "--group-ids", group_id], REGION)
@@ -716,10 +938,40 @@ def _close_security_group(aws: AwsCaller, group_id: str) -> dict[str, Any]:
         return check(11, "close_security_group", "FAIL", "refused: default security group; delete was not called")
     if not has_tags(tag_map(group.get("Tags")), LAB_TAGS):
         return check(11, "close_security_group", "FAIL", f"refused: {group_id} tags do not match the authorized fixture; delete was not called")
-    deleted = aws(["ec2", "delete-security-group", "--group-id", group_id], REGION)
-    if is_denied(deleted) or deleted.returncode != 0:
+    for attempt in range(SG_DEPENDENCY_ATTEMPTS):
+        deleted = aws(["ec2", "delete-security-group", "--group-id", group_id], REGION)
+        if deleted.returncode == 0 and not is_denied(deleted):
+            if attempt == 0:
+                return check(11, "close_security_group", "PASS", f"DeleteSecurityGroup accepted for {group_id}")
+            return check(
+                11,
+                "close_security_group",
+                "PASS",
+                f"DeleteSecurityGroup accepted for {group_id} after {attempt} DependencyViolation retries",
+            )
+        if _is_dependency_violation(deleted) and attempt + 1 < SG_DEPENDENCY_ATTEMPTS:
+            sleep(_sg_backoff_seconds(attempt))
+            continue
+        if _is_dependency_violation(deleted):
+            return check(
+                11,
+                "close_security_group",
+                "FAIL",
+                (
+                    f"DeleteSecurityGroup returned DependencyViolation after {SG_DEPENDENCY_ATTEMPTS} attempts. "
+                    "That is a residual dependency, not a missing DeleteSecurityGroup IAM grant. "
+                    f"{failure_detail(deleted)}"
+                ),
+            )
+        if _not_found_code(error_code(deleted)):
+            return check(
+                11,
+                "close_security_group",
+                "FAIL",
+                f"delete returned NotFound, which is not a pass: {failure_detail(deleted)}",
+            )
         return check(11, "close_security_group", "FAIL", f"delete failed: {failure_detail(deleted)}")
-    return check(11, "close_security_group", "PASS", f"DeleteSecurityGroup accepted for {group_id}")
+    return check(11, "close_security_group", "FAIL", "delete failed: retry budget ended without a result")
 
 
 def _close_keypair(aws: AwsCaller, key_name: str) -> dict[str, Any]:
@@ -739,31 +991,122 @@ def _close_keypair(aws: AwsCaller, key_name: str) -> dict[str, Any]:
     return check(12, "close_keypair", "PASS", f"DeleteKeyPair accepted for {key_name}")
 
 
-def _close_eip(aws: AwsCaller, allocation_id: str) -> dict[str, Any]:
-    if ALLOCATION_ID.fullmatch(allocation_id) is None:
-        return check(13, "close_eip", "FAIL", "refused: allocation id format is invalid; release was not called")
+def _association_id(address: dict[str, Any]) -> str:
+    value = address.get("AssociationId")
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _describe_address(aws: AwsCaller, allocation_id: str) -> tuple[dict[str, Any] | None, str, str]:
     described = aws(["ec2", "describe-addresses", "--allocation-ids", allocation_id], REGION)
-    if is_denied(described) or described.returncode != 0:
-        return check(13, "close_eip", "FAIL", f"describe failed; release was not called: {failure_detail(described)}")
+    if described.returncode != 0 or is_denied(described):
+        if _not_found_code(error_code(described)):
+            return None, "not_found", failure_detail(described)
+        return None, "error", failure_detail(described)
     try:
         payload = parse_json(described)
     except ValueError as exc:
-        return check(13, "close_eip", "FAIL", f"{exc}; release was not called")
+        return None, "error", str(exc)
     addresses = payload.get("Addresses")
     if not isinstance(addresses, list) or not addresses or not isinstance(addresses[0], dict):
-        return check(13, "close_eip", "FAIL", f"{allocation_id} was not returned; release was not called")
-    address = addresses[0]
-    if not has_tags(tag_map(address.get("Tags")), LAB_TAGS):
-        return check(13, "close_eip", "FAIL", f"refused: {allocation_id} tags do not match the authorized fixture; release was not called")
-    association_id = address.get("AssociationId")
-    if isinstance(association_id, str) and association_id:
-        disassociated = aws(["ec2", "disassociate-address", "--association-id", association_id], REGION)
-        if is_denied(disassociated) or disassociated.returncode != 0:
-            return check(13, "close_eip", "FAIL", f"disassociate failed; release was not called: {failure_detail(disassociated)}")
+        return None, "missing", f"{allocation_id} was not returned"
+    return addresses[0], "ok", ""
+
+
+def _poll_eip_free(
+    aws: AwsCaller,
+    allocation_id: str,
+    sleep: Callable[[float], None],
+) -> tuple[AddressPoll, str]:
+    last_association = "unset"
+    last_error = ""
+    for _ in range(EIP_FREE_POLLS):
+        sleep(SETTLE_POLL_SECONDS)
+        address, kind, detail = _describe_address(aws, allocation_id)
+        if kind == "ok" and address is not None:
+            last_association = _association_id(address)
+            if not last_association:
+                return "free", ""
+            continue
+        if kind == "not_found":
+            return "not_found", detail
+        if kind == "missing":
+            return "missing", detail
+        last_error = detail
+    if last_error and last_association == "unset":
+        return "error", last_error
+    return "associated", last_association
+
+
+def _release_address(aws: AwsCaller, allocation_id: str, note: str) -> dict[str, Any]:
     released = aws(["ec2", "release-address", "--allocation-id", allocation_id], REGION)
     if is_denied(released) or released.returncode != 0:
         return check(13, "close_eip", "FAIL", f"release failed: {failure_detail(released)}")
-    return check(13, "close_eip", "PASS", f"ReleaseAddress accepted for {allocation_id}")
+    return check(13, "close_eip", "PASS", f"ReleaseAddress accepted for {allocation_id}. {note}")
+
+
+def _close_eip(aws: AwsCaller, allocation_id: str, sleep: Callable[[float], None]) -> dict[str, Any]:
+    if ALLOCATION_ID.fullmatch(allocation_id) is None:
+        return check(13, "close_eip", "FAIL", "refused: allocation id format is invalid; release was not called")
+    address, kind, detail = _describe_address(aws, allocation_id)
+    if kind == "missing":
+        return check(13, "close_eip", "FAIL", f"{detail}; release was not called")
+    if kind == "not_found":
+        return check(
+            13,
+            "close_eip",
+            "FAIL",
+            f"describe returned NotFound, which is not a pass; release was not called: {detail}",
+        )
+    if kind != "ok" or address is None:
+        return check(13, "close_eip", "FAIL", f"describe failed; release was not called: {detail}")
+    if not has_tags(tag_map(address.get("Tags")), LAB_TAGS):
+        return check(13, "close_eip", "FAIL", f"refused: {allocation_id} tags do not match the authorized fixture; release was not called")
+    association = _association_id(address)
+    if not association:
+        return _release_address(
+            aws,
+            allocation_id,
+            "DisassociateAddress was not called because AssociationId was absent",
+        )
+    # The locked policy does not allow DisassociateAddress on network-interface/*.
+    # Wait for TerminateInstances to drop the association instead of calling it.
+    polled, polled_detail = _poll_eip_free(aws, allocation_id, sleep)
+    if polled == "free":
+        return _release_address(
+            aws,
+            allocation_id,
+            "DisassociateAddress was not called; the association cleared after terminate",
+        )
+    if polled == "not_found":
+        return check(
+            13,
+            "close_eip",
+            "FAIL",
+            f"describe during settle returned NotFound, which is not a pass; release was not called: {polled_detail}",
+        )
+    if polled == "missing":
+        return check(13, "close_eip", "FAIL", f"{polled_detail}; release was not called")
+    if polled == "error":
+        return check(13, "close_eip", "FAIL", f"describe during settle failed; release was not called: {polled_detail}")
+    if polled == "associated":
+        shown = polled_detail or association
+        return check(
+            13,
+            "close_eip",
+            "FAIL",
+            (
+                f"AssociationId {shown} was still present after the settle wait. "
+                "DisassociateAddress was not called. "
+                "The locked policy allows DisassociateAddress on elastic-ip/* only. "
+                "EC2 also authorizes the network-interface ARN, which this role does not allow. "
+                "This verifier does not widen the policy to Resource:*. "
+                "ReleaseAddress was not called."
+            ),
+        )
+    remaining: Never = polled
+    raise RuntimeError(remaining)
 
 
 def check_destructive(aws: AwsCaller, ctx: Context, sleep: Callable[[float], None]) -> list[dict[str, Any]]:
@@ -776,25 +1119,29 @@ def check_destructive(aws: AwsCaller, ctx: Context, sleep: Callable[[float], Non
             _not_run(12, "close_keypair", waiting),
             _not_run(13, "close_eip", waiting),
         ]
-    eip = (
-        _not_run(13, "close_eip", "fixture allocation id was not passed")
-        if not ctx.fixture_eip_allocation_id
-        else _close_eip(aws, ctx.fixture_eip_allocation_id)
-    )
-    instance = (
-        _not_run(9, "close_instance", "fixture instance id was not passed")
-        if not ctx.fixture_instance_id
-        else _close_instance(aws, ctx.fixture_instance_id)
-    )
+    if not ctx.fixture_instance_id:
+        instance = _not_run(9, "close_instance", "fixture instance id was not passed")
+    else:
+        instance = _close_instance(aws, ctx.fixture_instance_id)
+        if instance["status"] == "PASS":
+            _annotate_instance_settle(
+                instance,
+                _wait_instance_terminated(aws, ctx.fixture_instance_id, sleep),
+            )
     volume = (
         _not_run(10, "close_volume", "fixture volume id was not passed")
         if not ctx.fixture_volume_id
         else _close_volume(aws, ctx.fixture_volume_id, sleep)
     )
+    eip = (
+        _not_run(13, "close_eip", "fixture allocation id was not passed")
+        if not ctx.fixture_eip_allocation_id
+        else _close_eip(aws, ctx.fixture_eip_allocation_id, sleep)
+    )
     group = (
         _not_run(11, "close_security_group", "fixture security group id was not passed")
         if not ctx.fixture_security_group_id
-        else _close_security_group(aws, ctx.fixture_security_group_id)
+        else _close_security_group(aws, ctx.fixture_security_group_id, sleep)
     )
     keypair = (
         _not_run(12, "close_keypair", "fixture key pair name was not passed")
@@ -922,7 +1269,7 @@ def run_checks(aws: AwsCaller, ctx: Context, *, sleep: Callable[[float], None] =
         "policy_sha256_label": POLICY_SHA256_LABEL,
         "authorized_key_pair": AUTHORIZED_KEY_PAIR,
         "run_destructive_fixtures": ctx.run_destructive,
-        "destructive_execution_order": ["eip", "instance", "volume", "security_group", "keypair"],
+        "destructive_execution_order": list(DESTRUCTIVE_EXECUTION_ORDER),
         "caller": caller,
         "checks": items,
         "overall": overall,
@@ -938,6 +1285,8 @@ def summary_markdown(report: dict[str, Any]) -> str:
         f"Role `{report['role_arn']}` in `{report['region']}`.",
         f"Prepared policy digest SHA-256 (not a live-measured hash) `{report['policy_sha256']}`.",
         f"Session expiration: `{report['session_expiration'] or 'not recorded'}`.",
+        "Destructive execution order when fixture ids are passed: instance, volume, EIP, security group, key pair.",
+        "Class B is not authorized. This run does not record NONINTERACTIVE_TEARDOWN_READY.",
         "",
         "| Check | Status | Detail |",
         "| --- | --- | --- |",

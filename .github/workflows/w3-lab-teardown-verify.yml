@@ -20,7 +20,11 @@ name: Verify W3 lab teardown role
 # does not call TerminateInstances. Checks 4 and 8 use CreateSecurityGroup
 # with --dry-run, and the default path does not call CreateUser.
 # Checks 9-13 delete fixtures only when the dispatch input is true and an id
-# was passed.
+# was passed. GAP-C8-VER-002 runs those closes settle-first: terminate, wait
+# until the instance is terminated and the volume is available, delete the
+# volume without DetachVolume when it is already free, release the EIP without
+# DisassociateAddress when the association is gone, retry DeleteSecurityGroup
+# on DependencyViolation, then delete the key pair.
 #
 # Class B stays unauthorized until STAGE_B_BILLING_CLOSE_PASS and
 # NONINTERACTIVE_TEARDOWN_READY are both recorded. A green run does not
