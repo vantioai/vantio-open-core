@@ -15,7 +15,6 @@ FROZEN = [
     "docs/planning/optics-pkg02",
     "packages/optics-reader-compat-gates",
     "packages/optics-record-reader",
-    "packages/optics-python-adapter",
     "packages/optics-node-adapter",
     "packages/optics-evidence-contract",
     "packages/optics-record-vocabulary",

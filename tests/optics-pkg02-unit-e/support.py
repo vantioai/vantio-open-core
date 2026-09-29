@@ -10,7 +10,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FUTURE_SRC = ROOT / "packages" / "vantio-agent-sdk-py-future" / "src"
 SDK_31 = ROOT / "packages" / "vantio-agent-sdk-py"
-ADAPTER_SRC = ROOT / "packages" / "optics-python-adapter" / "src"
 NODE_ADAPTER = ROOT / "packages" / "optics-node-adapter" / "src" / "index.cjs"
 NODE_CANONICAL = ROOT / "packages" / "optics-record-vocabulary" / "src" / "canonical-json.cjs"
 SHARED_FIXTURE = ROOT / "packages" / "vantio-agent-sdk-py-future" / "fixtures" / "shared-semantic-observation.json"

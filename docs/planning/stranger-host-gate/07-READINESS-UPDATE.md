@@ -47,8 +47,6 @@ Tests added under `tests/` between the prepared SHA and the currency SHA, record
 - `tests/optics-pkg02-unit-f/direct.test.cjs`
 - `tests/optics-pkg02-unit-f/isolation.test.cjs`
 - `tests/optics-pkg02-unit-f/ordinary-client.test.cjs`
-- `tests/optics-python-adapter/test_adapter.py`
-- `tests/optics-python-adapter/test_isolation.py`
 - `tests/shared-health-vocabulary/catalog.test.cjs`
 - `tests/shared-health-vocabulary/collision.test.cjs`
 

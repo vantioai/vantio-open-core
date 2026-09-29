@@ -114,7 +114,6 @@
     "packages/optics-operational-store/pyproject.toml",
     "packages/optics-otel-i3/package.json",
     "packages/optics-otel-mapping/package.json",
-    "packages/optics-python-adapter/pyproject.toml",
     "packages/optics-reader-compat-gates/package.json",
     "packages/optics-record-reader/package.json",
     "packages/optics-record-vocabulary/package.json",
