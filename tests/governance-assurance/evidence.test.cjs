@@ -1,5 +1,14 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+const { test: privateTreeSkipTest } = require("node:test");
+
+if (!fs.existsSync(path.resolve(__dirname, "../../docs/internal"))) {
+  privateTreeSkipTest("docs/internal", { skip: "PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP" }, () => {});
+} else {
+"use strict";
+
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -122,3 +131,4 @@ test("rejected sole proofs and producer self-verification cannot count", () => {
   const promoted = { ...control, verification_state: "INDEPENDENTLY_TESTED" };
   assert.equal(api.bindingCountsFor(self, promoted), false);
 });
+}

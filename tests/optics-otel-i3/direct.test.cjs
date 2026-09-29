@@ -1,5 +1,14 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+const { test: privateTreeSkipTest } = require("node:test");
+
+if (!fs.existsSync(path.resolve(__dirname, "../../docs/internal"))) {
+  privateTreeSkipTest("docs/internal", { skip: "PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP" }, () => {});
+} else {
+"use strict";
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -229,3 +238,4 @@ test("mapping package export stays disabled", () => {
   assert.equal(JSON.stringify(result).includes(prompt), false);
   assert.equal(mapping.mappingDocument().i3_status, "NOT_AUTHORIZED");
 });
+}

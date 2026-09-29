@@ -1,5 +1,14 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+const { test: privateTreeSkipTest } = require("node:test");
+
+if (!fs.existsSync(path.resolve(__dirname, "../../docs/internal"))) {
+  privateTreeSkipTest("docs/internal", { skip: "PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP" }, () => {});
+} else {
+"use strict";
+
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -232,3 +241,4 @@ test("no Unit D or Unit E package is added", () => {
   assert.equal(diff.includes("packages/vantio-agent-sdk-py/"), false);
   assert.equal(diff.includes("packages/vantio-agent-sdk/"), false);
 });
+}

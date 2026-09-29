@@ -8,6 +8,13 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def setUpModule():
+    if not (ROOT / "docs" / "internal").exists():
+        raise unittest.SkipTest("PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP")
+
+
 sys.path.insert(0, str(ROOT / "packages" / "optics-python-adapter" / "src"))
 sys.path.insert(0, str(ROOT / "packages" / "vantio-agent-sdk-py"))
 

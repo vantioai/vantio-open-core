@@ -1,5 +1,14 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+const { test: privateTreeSkipTest } = require("node:test");
+
+if (!fs.existsSync(path.resolve(__dirname, "../../docs/internal"))) {
+  privateTreeSkipTest("docs/internal", { skip: "PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP" }, () => {});
+} else {
+"use strict";
+
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
@@ -439,3 +448,4 @@ floorTest("a lock does not wait and a symlink store path is refused", () => {
     fs.rmSync(linkDir, { recursive: true, force: true });
   }
 });
+}

@@ -1,5 +1,14 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+const { test: privateTreeSkipTest } = require("node:test");
+
+if (!fs.existsSync(path.resolve(__dirname, "../../docs/internal"))) {
+  privateTreeSkipTest("docs/internal", { skip: "PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP" }, () => {});
+} else {
+"use strict";
+
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -126,3 +135,4 @@ test("internal notes keep the council pending and name the producer classificati
   assert.equal(joined.includes("COUNCIL_PASSED"), false);
   assert.equal(joined.includes("PE_INGRESS_PROGRAM_COUNCIL_PASSED"), false);
 });
+}
