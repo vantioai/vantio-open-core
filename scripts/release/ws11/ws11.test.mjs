@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { findForbiddenClaims, loadRequirements } from "./claims.mjs";
 import { allGenerated, characterizeOptics } from "./characterize.mjs";
 import { evaluateDossier, exitCodeFor } from "./evaluate.mjs";
-import { REPO_ROOT, buildSbom, privateManualPaths, readSealedPypi, scanManifestLicenses } from "./inventory.mjs";
+import { REPO_ROOT, actionUses, buildSbom, privateManualPaths, readSealedPypi, scanManifestLicenses } from "./inventory.mjs";
 import { stableStringify } from "./stable.mjs";
 import { assemblePeCustomerBundle, packageVersionProblems, readText } from "../../../docs/scripts/docs-release-lib.mjs";
 
@@ -262,13 +262,43 @@ test("workspace SBOM and license scan stay bounded to what the tree shows", () =
   assert.equal(scan.findings.some((item) => item.path === "packages/vantio-cli/package.json"), false);
 });
 
-test("pin report records floating actions and the sealed Python hashes", () => {
+test("actionUses keeps SHA pins that carry a tag comment", () => {
+  const text = [
+    "        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
+    "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
+    "        uses: actions/setup-node@v4",
+    "        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1",
+  ].join("\n");
+  assert.deepEqual(actionUses(text), [
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
+    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
+    "actions/setup-node@v4",
+    "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1",
+  ]);
+});
+
+test("pin report records SHA-pinned workflow actions and the sealed Python hashes", () => {
   const { artifacts } = allGenerated(ROOT);
   const report = artifacts["pin-report.json"];
   assert.equal(report.package_manager.name, "pnpm");
   assert.equal(report.package_manager.version, "11.13.0");
   assert.match(report.package_manager.integrity, /^sha512\./);
-  assert.equal(report.actions.every((action) => action.digest_pinned === false), true);
+  const floating = report.actions.filter((action) => action.digest_pinned === false);
+  const pinned = report.actions.filter((action) => action.digest_pinned === true);
+  assert.deepEqual(
+    floating.map((action) => `${action.file} ${action.uses}`),
+    [
+      ".github/actions/vantio-prove/action.yml actions/setup-node@v4",
+      ".github/actions/vantio-prove/action.yml actions/upload-artifact@v4",
+    ],
+  );
+  assert.ok(pinned.length > 0);
+  assert.equal(pinned.length, report.actions.length - floating.length);
+  assert.ok(pinned.every((action) => /@[0-9a-f]{40} # \S+$/.test(action.uses)));
+  assert.equal(
+    report.provenance_workflow.attest_action,
+    "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2",
+  );
   assert.equal(report.workflow_triggers_push["npm-publish.yml"], false);
   assert.equal(report.workflow_triggers_push["pypi-publish.yml"], false);
   assert.equal(report.workflow_triggers_push["mcp-registry-publish.yml"], false);

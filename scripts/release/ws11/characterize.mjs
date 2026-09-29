@@ -193,7 +193,7 @@ export function characterizeOptics(root, inventory = buildInventory(root)) {
       ...actionPins,
     ],
     reproducibility: assessment([
-      "GitHub Actions steps use floating refs such as @v4 and @release/v1.",
+      "Workflow third-party actions are commit SHA pins with tag comments. The local composite .github/actions/vantio-prove still uses floating @v4 refs.",
       "The Python build-system requirement is hatchling with no version comparator.",
       "No second build digest is recorded in this force.",
     ]),

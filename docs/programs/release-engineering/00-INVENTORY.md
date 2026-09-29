@@ -39,15 +39,15 @@ Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes,
 - Root `packageManager` names pnpm `11.13.0` and carries a `sha512` integrity string.
 - `pnpm-lock.yaml` is present. Its SHA-256 is in the pin report. Lockfile importers record resolved versions for the workspace dependency ranges.
 - `scripts/release/stage_sealed_pypi.py` pins the Python 3.1.0 filenames, byte lengths, and SHA-256 values. Dispatch inputs cannot replace them.
-- GitHub Action references under `.github/` use floating refs such as `@v4` and `@release/v1`. The pin report records `digest_pinned: false` for each.
+- Workflow files under `.github/workflows/` pin third-party actions to commit SHAs with tag comments. The pin report records those as `owner/name@sha # tag` with `digest_pinned: true`. `.github/actions/vantio-prove/action.yml` still uses floating `@v4` refs, and those two stay `digest_pinned: false`.
 - `packages/vantio-agent-sdk-py/pyproject.toml` requires `hatchling` with no version comparator.
-- CI and the provenance workflow install with `pnpm install --frozen-lockfile`. That binds the install to the lockfile. It leaves the Action refs and the Python build backend unpinned.
+- CI and the provenance workflow install with `pnpm install --frozen-lockfile`. That binds the install to the lockfile. The local composite action refs and the Python build backend stay unpinned.
 
 `npm-publish.yml`, `pypi-publish.yml`, and `mcp-registry-publish.yml` trigger on `workflow_dispatch`. `ci.yml` triggers on push and builds candidate artifacts. The candidate job packs and builds. It performs no registry write.
 
 ## Provenance characterization
 
-`.github/workflows/enterprise-slsa-provenance.yml` can request `actions/attest-build-provenance@v2` for a tarball of `packages/vantio-agent-sdk/dist` and `packages/vantio-cli/bin`. The workflow comment withholds an in-repo verification. This force did not copy an attestation bundle into the tree.
+`.github/workflows/enterprise-slsa-provenance.yml` requests `actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2` for a tarball of `packages/vantio-agent-sdk/dist` and `packages/vantio-cli/bin`. The workflow comment withholds an in-repo verification. This force did not copy an attestation bundle into the tree.
 
 `architecture_state.md` Phase VIII is a historical log. The pin report sets `historical_log_contains_level_assertion` from that log. The same log names `apps/web` and `packages/edge-proxy`. Both paths are absent. The workflow file on this commit attests a smaller bundle. WS11 claim tokens stay `NOT_CLAIMED`.
 

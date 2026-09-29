@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "__pycache__", ".pytest_cache"]);
-const BINDING_ACTION = /@(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})$/i;
+const BINDING_ACTION = /@(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})(?:\s+#\s*\S+)?$/i;
+const ACTION_USES_LINE = /^\s*(?:-\s+)?uses:\s*(\S+)(?:\s+#\s*(\S+))?\s*$/gm;
 
 export function sha256Text(text) {
   return createHash("sha256").update(text).digest("hex");
@@ -48,7 +49,7 @@ export function triggerHasPush(text) {
 }
 
 export function actionUses(text) {
-  return [...text.matchAll(/^\s*uses:\s*(\S+)\s*$/gm)].map((match) => match[1]);
+  return [...text.matchAll(ACTION_USES_LINE)].map((match) => (match[2] ? `${match[1]} # ${match[2]}` : match[1]));
 }
 
 function constString(source, name) {
@@ -248,6 +249,12 @@ export function buildInventory(root) {
   if (py.wheel_bytes !== sealed.wheel_bytes || py.sdist_bytes !== sealed.sdist_bytes) {
     throw new Error("sealed release pin byte lengths differ from stage_sealed_pypi.py");
   }
+  const attest = actions.find(
+    (action) =>
+      action.file === ".github/workflows/enterprise-slsa-provenance.yml" &&
+      action.uses.startsWith("actions/attest-build-provenance@"),
+  );
+  if (!attest) throw new Error("enterprise-slsa-provenance.yml is missing actions/attest-build-provenance");
   const pyproject = readText(root, "packages/vantio-agent-sdk-py/pyproject.toml");
   const hatch = /requires = \[(.*)\]/.exec(pyproject);
   const pythonBuildRequires = hatch
@@ -284,7 +291,7 @@ export function buildInventory(root) {
     },
     provenance_workflow: {
       path: ".github/workflows/enterprise-slsa-provenance.yml",
-      attest_action: "actions/attest-build-provenance@v2",
+      attest_action: attest.uses,
       runs_on_push: publish["enterprise-slsa-provenance.yml"],
       formal_slsa_level: "NOT_CLAIMED",
       historical_log_contains_level_assertion: architecture.includes("SLSA Level"),

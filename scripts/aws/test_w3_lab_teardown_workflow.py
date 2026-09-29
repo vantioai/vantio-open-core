@@ -16,6 +16,9 @@ WORKFLOW_PATH = ROOT / ".github" / "workflows" / "w3-lab-teardown-verify.yml"
 SCRIPT_PATH = ROOT / "scripts" / "aws" / "verify_w3_lab_teardown.py"
 ROLE_ARN = "arn:aws:iam::960577828987:role/vantio-w3-lab-teardown"
 POLICY_SHA256 = "2fd3909fe84cbe93b15c5525ece0d247d0f4f4a91e333346001d512e1efc5215"
+CHECKOUT_USES = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+UPLOAD_USES = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+AWS_USES = "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd"
 
 
 def trigger_of(document: dict) -> dict:
@@ -60,7 +63,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(self.job["timeout-minutes"], 20)
         self.assertIs(self.doc["concurrency"]["cancel-in-progress"], False)
         settings = self.assume["with"]
-        self.assertEqual(self.assume["uses"], "aws-actions/configure-aws-credentials@v6")
+        self.assertEqual(self.assume["uses"], AWS_USES)
+        self.assertIn(f"uses: {AWS_USES} # v6", self.raw)
         self.assertEqual(settings["role-to-assume"], ROLE_ARN)
         self.assertEqual(settings["aws-region"], "us-east-2")
         self.assertEqual(str(settings["role-duration-seconds"]), "3600")
@@ -85,11 +89,13 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_checkout_and_artifact(self) -> None:
         checkout = self.steps[2]
-        self.assertEqual(checkout["uses"], "actions/checkout@v4")
+        self.assertEqual(checkout["uses"], CHECKOUT_USES)
+        self.assertIn(f"uses: {CHECKOUT_USES} # v4", self.raw)
         self.assertIs(checkout["with"]["persist-credentials"], False)
         self.assertIn("scripts/aws/verify_w3_lab_teardown.py", checkout["with"]["sparse-checkout"])
         upload = self.steps[-1]
-        self.assertEqual(upload["uses"], "actions/upload-artifact@v4")
+        self.assertEqual(upload["uses"], UPLOAD_USES)
+        self.assertIn(f"uses: {UPLOAD_USES} # v4", self.raw)
         self.assertEqual(upload["if"], "always()")
         self.assertIn("w3-lab-teardown-verify.json", upload["with"]["path"])
         joined = "\n".join(step.get("run", "") for step in self.steps)

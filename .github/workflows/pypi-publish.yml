@@ -68,7 +68,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout release scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           sparse-checkout: |
@@ -127,7 +127,7 @@ jobs:
             --upload-dir "$GITHUB_WORKSPACE/pypi-sealed-upload"
 
       - name: Publish sealed distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: pypi-sealed-upload
           verbose: false
