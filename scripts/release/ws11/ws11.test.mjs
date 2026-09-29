@@ -277,7 +277,7 @@ test("actionUses keeps SHA pins that carry a tag comment", () => {
   ]);
 });
 
-test("pin report records SHA-pinned workflow actions and the sealed Python hashes", () => {
+test("pin report records SHA-pinned workflow and composite actions and the sealed Python hashes", () => {
   const { artifacts } = allGenerated(ROOT);
   const report = artifacts["pin-report.json"];
   assert.equal(report.package_manager.name, "pnpm");
@@ -287,10 +287,7 @@ test("pin report records SHA-pinned workflow actions and the sealed Python hashe
   const pinned = report.actions.filter((action) => action.digest_pinned === true);
   assert.deepEqual(
     floating.map((action) => `${action.file} ${action.uses}`),
-    [
-      ".github/actions/vantio-prove/action.yml actions/setup-node@v4",
-      ".github/actions/vantio-prove/action.yml actions/upload-artifact@v4",
-    ],
+    [],
   );
   assert.ok(pinned.length > 0);
   assert.equal(pinned.length, report.actions.length - floating.length);

@@ -10,7 +10,7 @@
     "release_success": false,
     "requirements": [
       {
-        "detail": "pin python-build-hatchling is unpinned; pin node-toolchain is unpinned; pin cli-tarball is unrecorded; pin .github/actions/vantio-prove/action.yml actions/setup-node@v4 is unpinned; pin .github/actions/vantio-prove/action.yml actions/upload-artifact@v4 is unpinned",
+        "detail": "pin python-build-hatchling is unpinned; pin node-toolchain is unpinned; pin cli-tarball is unrecorded",
         "id": "R1",
         "status": "GAP"
       },

@@ -1,14 +1,14 @@
 {
   "actions": [
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/actions/vantio-prove/action.yml",
-      "uses": "actions/setup-node@v4"
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
-      "digest_pinned": false,
+      "digest_pinned": true,
       "file": ".github/actions/vantio-prove/action.yml",
-      "uses": "actions/upload-artifact@v4"
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
