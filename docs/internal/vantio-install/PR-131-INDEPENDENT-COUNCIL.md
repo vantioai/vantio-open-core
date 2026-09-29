@@ -6,22 +6,64 @@ Audience: INTERNAL_RESTRICTED
 | --- | --- |
 | Subject | https://github.com/vantioai/vantio-open-core/pull/131 |
 | Branch | `cursor/class-b-installer-docs-459a` |
-| Tip | `e3eefd226102ba9e8e349179c89c5b37e7f06e4b` |
+| Tip | `f5a1967f1da3cafc848e150b771a9b9defa7ee54` |
+| Prior tip | `e3eefd226102ba9e8e349179c89c5b37e7f06e4b` |
 | Base | `main` @ `c4a543e269a0b6a710ac43925e8badff5a663aa4` |
 | Gaps | GAP-CB-DEP-004, GAP-CB-DEP-008, GAP-CB-DEP-011 |
 | Reviewed at (UTC) | 2026-09-29 |
 | Reviewer | Independent cloud agent (Grok 4.7) |
-| Scope | Read the diff and the installer the docs describe. No installer code was added. No merge. No package publish. |
+| Scope | Re-read the remediated tip. Re-ran the two blocked procedures. No installer code was added. No merge. No package publish. |
 
 ## Verdict
+
+VERDICT: PASS_WITH_NOTES
+
+MERGE: ALLOWED
+
+Source-only squash-merge of PR #131 is allowed. The two blockers from `e3eefd2` are closed on `f5a1967`. Optics pins stay CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0. `proof_state` stays `NOT_PROVED`. The ceiling stays `INTERNAL_CLEAN_HOST_PROOF`.
+
+## Re-council at f5a1967
+
+Commit `f5a1967` changes only `packages/vantio-install/docs/QUICKSTART.md` and `packages/vantio-install/tests/test_seal_recipe.py`. `vantio_install/constants.py` is still outside the diff. At this tip it still sets `INSTALLER_VERSION = "0.1.0-stage-a"`, `PROOF_CEILING = "INTERNAL_CLEAN_HOST_PROOF"`, `PROOF_STATE = "NOT_PROVED"`, and the three frozen pins above.
+
+### Blocker 1 — sdist install
+
+Closed. QUICKSTART now says the wheel install is the one to use, and the sdist fallback is:
+
+`/var/lib/vantio/installer-venv/bin/python -m pip install --no-index --disable-pip-version-check --no-deps --no-build-isolation <sealed-sdist>`
+
+The page states that `--no-index` without `--no-build-isolation` looks up hatchling in an isolated environment and fails with `No matching distribution found for hatchling`. `test_seal_recipe.py` asserts that full sdist command is in QUICKSTART, and that the wheel command in the same file has no `--no-build-isolation`.
+
+Re-run from this tip: seal into a fresh directory, `sha256sum -c SHA256SUMS` matched, then a fresh virtualenv with hatchling installed ran that sdist command. Install succeeded. `vantio-install --help` exited 0. Installed identity was `0.1.0-stage-a`, ceiling `INTERNAL_CLEAN_HOST_PROOF`, pins `0.3.24` / `0.2.4` / `3.1.0`.
+
+### Blocker 2 — prefix `PYTHONPATH`
+
+Closed. QUICKSTART exports:
+
+`export PYTHONPATH="/var/lib/vantio/installer-prefix/local/lib/python3.X/dist-packages"`
+
+and tells the operator to replace `X` with the minor version from `python3 --version`. The seal-recipe test asserts that export, the `ModuleNotFoundError: No module named 'vantio_install'` sentence, and `sys.path`.
+
+Re-run in a clean `PATH`: `pip install --prefix` of the sealed wheel wrote `local/bin/vantio-install` and `local/lib/python3.12/dist-packages/vantio_install`. `PATH` alone still raised `ModuleNotFoundError`. The same `PATH` plus `PYTHONPATH` set to that `dist-packages` directory made `vantio-install --help` exit 0. The import reported the same version, ceiling, and pins.
+
+`tests.test_seal_recipe` at this tip passed (2 tests).
+
+## Notes that do not block
+
+- SHA256SUMS is an operator comparison. `pip install` does not read that file. QUICKSTART tells the operator to compare first and leave a mismatch unused.
+- `PF-DOCKER-PERM` also passes when the socket is writable and `privilege_mode` is `UNKNOWN`. `probe_live` does not emit that pair.
+- `seal()` checksums every file already in `--outdir` except `SHA256SUMS`. A fresh directory matches the documented names.
+- `--fixture-host` remains on `vantio-install apply --help` after the wheel install. Customer pages forbid it. Ungated live apply without that flag is still refused by `authorize_live`.
+
+## First review at e3eefd2
 
 VERDICT: NEEDS_REVISION
 
 MERGE: BLOCKED
 
-Source-only squash-merge stays blocked until the two QUICKSTART corrections below are on the PR tip. The other five checks passed on `e3eefd2`.
+That tip failed two QUICKSTART procedures. The record of those failures follows.
 
-## Blocking fixes
+## Blocking fixes at e3eefd2
 
 1. **Sealed sdist command in `packages/vantio-install/docs/QUICKSTART.md`.** The page says a sealed sdist installs with the same `pip install --no-index --disable-pip-version-check --no-deps` command once a build backend is already on the machine. That command failed here with hatchling already installed in the target virtualenv. Pip still builds in an isolated environment, `--no-index` leaves that environment with no hatchling, and the error is `No matching distribution found for hatchling`. The command that installed the sdist is the same command plus `--no-build-isolation`. Change the opening sentence that says the sdist is installed "the same way", and change the later sdist paragraph, to that flag. Assert the corrected command from `tests/test_seal_recipe.py` so the false sentence cannot return.
 
@@ -33,7 +75,7 @@ The virtualenv wheel command is the one that worked. Leave it as written:
 
 `/var/lib/vantio/installer-venv/bin/python -m pip install --no-index --disable-pip-version-check --no-deps <sealed-wheel>`
 
-## Checks
+## Checks at e3eefd2
 
 ### 1. GAP-CB-DEP-004 — sealed wheel, sdist, SHA256SUMS, no private clone
 
@@ -85,7 +127,7 @@ Pass. The diff adds no `Resource:*` IAM statement and no AWS credential material
 
 Pass, with the doc-test gap called out in the blocking fixes. `python3 -m unittest discover -s tests` at the tip ran 124 tests and passed, including `tests.test_seal_recipe`. The recipe builds the documented filenames and leaves the source pin in place. The unit test checks the version rewrite and greps the docs. It does not run `python -m build` or the pip commands, which is why the two false procedures stayed green.
 
-## Notes that do not block
+## Notes recorded at e3eefd2
 
 - SHA256SUMS is an operator comparison. `pip install` does not read that file. QUICKSTART already tells the operator to compare first and leave a mismatch unused.
 - `PF-DOCKER-PERM` also passes when the socket is writable and `privilege_mode` is `UNKNOWN`. `probe_live` does not emit that pair. The customer description of the live probe is the one that matches the code.
