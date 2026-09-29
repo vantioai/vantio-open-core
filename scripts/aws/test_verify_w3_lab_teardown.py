@@ -52,6 +52,33 @@ def volume_tags() -> list[dict[str, str]]:
     return [{"Key": key, "Value": value} for key, value in values.items()]
 
 
+ATTACHED = [{"InstanceId": LAB_INSTANCE, "State": "attached"}]
+
+
+def volume_body(state: str, attachments: list | None = None) -> dict:
+    return {
+        "Volumes": [
+            {
+                "VolumeId": VOLUME_ID,
+                "State": state,
+                "Attachments": [] if attachments is None else attachments,
+                "Tags": volume_tags(),
+            }
+        ]
+    }
+
+
+def address_body(association_id: str = "") -> dict:
+    body = {"AllocationId": ALLOCATION_ID, "Tags": lab_tags()}
+    if association_id:
+        body["AssociationId"] = association_id
+    return {"Addresses": [body]}
+
+
+def security_group_body() -> dict:
+    return {"SecurityGroups": [{"GroupId": GROUP_ID, "GroupName": "lab", "Tags": lab_tags()}]}
+
+
 def instance(instance_id: str, tags: list[dict[str, str]] | None = None, state: str = "running") -> dict:
     return {"InstanceId": instance_id, "State": {"Name": state}, "Tags": tags or []}
 
@@ -301,7 +328,15 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("Expiration=2026-09-28T19:37:16Z", report["checks"][14]["detail"])
         self.assertEqual(report["policy_sha256"], verify.POLICY_SHA256)
         self.assertEqual(report["policy_sha256_label"], "prepared_digest")
+        self.assertEqual(
+            report["destructive_execution_order"],
+            ["instance", "volume", "eip", "security_group", "keypair"],
+        )
         self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
+        self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
+        self.assertEqual(calls_named(fake, "ec2", "disassociate-address"), [])
+        self.assertEqual(calls_named(fake, "ec2", "delete-volume"), [])
+        self.assertEqual(calls_named(fake, "ec2", "release-address"), [])
         create = calls_named(fake, "ec2", "create-security-group")
         self.assertEqual(
             [(region, args[3]) for region, args in create],
@@ -642,12 +677,16 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("refused", report["checks"][8]["detail"])
         self.assertEqual(calls_named(fake, "ec2", "terminate-instances"), [])
 
-    def test_destructive_close_runs_dependency_order_for_tagged_fixtures(self) -> None:
+    def test_destructive_close_settles_before_volume_eip_and_security_group(self) -> None:
         fake = happy_aws()
-        fake.add(
-            describe_instances(verify.REGION, by_id=True),
-            aws_json(reservations(instance(LAB_INSTANCE, lab_tags()))),
-        )
+        instance_reads = {"n": 0}
+
+        def instance_by_id(_region, _args):
+            instance_reads["n"] += 1
+            state = "running" if instance_reads["n"] == 1 else "terminated"
+            return aws_json(reservations(instance(LAB_INSTANCE, lab_tags(), state=state)))
+
+        fake.add(describe_instances(verify.REGION, by_id=True), instance_by_id)
         volume_calls = {"n": 0}
 
         def volume_describe(_region, _args):
@@ -668,7 +707,6 @@ class VerifierTests(unittest.TestCase):
             return aws_json({"Volumes": [{"VolumeId": VOLUME_ID, "State": "available", "Attachments": [], "Tags": volume_tags()}]})
 
         fake.add(starts(verify.REGION, "ec2", "describe-volumes"), volume_describe)
-        fake.add(starts(verify.REGION, "ec2", "detach-volume"), aws_json({"VolumeId": VOLUME_ID}))
         fake.add(starts(verify.REGION, "ec2", "delete-volume"), aws_json({"VolumeId": VOLUME_ID}))
         fake.add(
             starts(verify.REGION, "ec2", "describe-security-groups"),
@@ -677,21 +715,16 @@ class VerifierTests(unittest.TestCase):
         fake.add(starts(verify.REGION, "ec2", "delete-security-group"), aws_json({}))
         fake.add(starts(verify.REGION, "ec2", "describe-key-pairs"), aws_json({"KeyPairs": [{"KeyName": verify.AUTHORIZED_KEY_PAIR}]}))
         fake.add(starts(verify.REGION, "ec2", "delete-key-pair"), aws_json({}))
-        fake.add(
-            starts(verify.REGION, "ec2", "describe-addresses"),
-            aws_json(
-                {
-                    "Addresses": [
-                        {
-                            "AllocationId": ALLOCATION_ID,
-                            "AssociationId": ASSOCIATION_ID,
-                            "Tags": lab_tags(),
-                        }
-                    ]
-                }
-            ),
-        )
-        fake.add(starts(verify.REGION, "ec2", "disassociate-address"), aws_json({}))
+        address_reads = {"n": 0}
+
+        def address_describe(_region, _args):
+            address_reads["n"] += 1
+            body = {"AllocationId": ALLOCATION_ID, "Tags": lab_tags()}
+            if address_reads["n"] == 1:
+                body["AssociationId"] = ASSOCIATION_ID
+            return aws_json({"Addresses": [body]})
+
+        fake.add(starts(verify.REGION, "ec2", "describe-addresses"), address_describe)
         fake.add(starts(verify.REGION, "ec2", "release-address"), aws_json({}))
         fake.add(
             lambda region, args: (
@@ -720,6 +753,13 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(statuses(report)[11], "PASS")
         self.assertEqual(statuses(report)[12], "PASS")
         self.assertEqual(statuses(report)[13], "PASS")
+        self.assertIn("state=terminated", report["checks"][8]["detail"])
+        self.assertIn("DetachVolume was not called", report["checks"][9]["detail"])
+        self.assertIn("DisassociateAddress was not called", report["checks"][12]["detail"])
+        self.assertEqual(
+            report["destructive_execution_order"],
+            ["instance", "volume", "eip", "security_group", "keypair"],
+        )
         destructive_ops = []
         for region, args in fake.calls:
             if region != verify.REGION:
@@ -736,9 +776,16 @@ class VerifierTests(unittest.TestCase):
                 destructive_ops.append("delete-key")
         self.assertEqual(
             destructive_ops,
-            ["release", "terminate-lab", "delete-volume", "delete-sg", "delete-key"],
+            ["terminate-lab", "delete-volume", "release", "delete-sg", "delete-key"],
         )
+        self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
+        self.assertEqual(calls_named(fake, "ec2", "disassociate-address"), [])
         self.assertEqual(volume_calls["n"], 2)
+        self.assertEqual(address_reads["n"], 2)
+        self.assertGreaterEqual(instance_reads["n"], 2)
+        creates = calls_named(fake, "ec2", "create-security-group")
+        self.assertEqual(len(creates), 3)
+        self.assertTrue(all(args[-1] == "--dry-run" for _region, args in creates))
 
     def test_wrong_key_pair_is_refused(self) -> None:
         fake = happy_aws()
@@ -771,6 +818,291 @@ class VerifierTests(unittest.TestCase):
         self.assertEqual(calls_named(fake, "ec2", "delete-volume"), [])
         self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
 
+    def test_available_volume_deletes_without_detach(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-volumes"), aws_json(volume_body("available")))
+        fake.add(starts(verify.REGION, "ec2", "delete-volume"), aws_json({}))
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_volume_id=VOLUME_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[10], "PASS")
+        self.assertIn("available with no attachments", report["checks"][9]["detail"])
+        self.assertIn("DetachVolume was not called", report["checks"][9]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
+        self.assertEqual(len(calls_named(fake, "ec2", "delete-volume")), 1)
+        self.assertEqual(slept, [])
+
+    def test_in_use_volume_waits_until_available_without_detach(self) -> None:
+        fake = happy_aws()
+        reads = {"n": 0}
+
+        def describe(_region, _args):
+            reads["n"] += 1
+            if reads["n"] == 1:
+                return aws_json(volume_body("in-use", ATTACHED))
+            return aws_json(volume_body("available"))
+
+        fake.add(starts(verify.REGION, "ec2", "describe-volumes"), describe)
+        fake.add(starts(verify.REGION, "ec2", "delete-volume"), aws_json({}))
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_volume_id=VOLUME_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[10], "PASS")
+        self.assertIn("DetachVolume was not called", report["checks"][9]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
+        self.assertEqual(len(calls_named(fake, "ec2", "delete-volume")), 1)
+        self.assertEqual(reads["n"], 2)
+        self.assertEqual(slept, [verify.SETTLE_POLL_SECONDS])
+
+    def test_volume_detach_after_wait_records_instance_arn_denial(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-volumes"), aws_json(volume_body("in-use", ATTACHED)))
+        fake.add(
+            starts(verify.REGION, "ec2", "detach-volume"),
+            aws_error("UnauthorizedOperation", "not authorized for resource arn:aws:ec2:us-east-2:960577828987:instance/i-abc"),
+        )
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_volume_id=VOLUME_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[10], "FAIL")
+        detail = report["checks"][9]["detail"]
+        self.assertIn("DetachVolume was called only after that wait", detail)
+        self.assertIn("volume/*", detail)
+        self.assertIn("instance/*", detail)
+        self.assertIn("Resource:*", detail)
+        self.assertIn("UnauthorizedOperation", detail)
+        self.assertEqual(len(calls_named(fake, "ec2", "detach-volume")), 1)
+        self.assertEqual(calls_named(fake, "ec2", "delete-volume"), [])
+        self.assertEqual(len(slept), verify.VOLUME_AVAILABLE_POLLS)
+
+    def test_volume_detaches_only_after_budget_then_deletes(self) -> None:
+        fake = happy_aws()
+        reads = {"n": 0}
+
+        def describe(_region, _args):
+            reads["n"] += 1
+            if reads["n"] <= 1 + verify.VOLUME_AVAILABLE_POLLS:
+                return aws_json(volume_body("in-use", ATTACHED))
+            return aws_json(volume_body("available"))
+
+        fake.add(starts(verify.REGION, "ec2", "describe-volumes"), describe)
+        fake.add(starts(verify.REGION, "ec2", "detach-volume"), aws_json({}))
+        fake.add(starts(verify.REGION, "ec2", "delete-volume"), aws_json({}))
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_volume_id=VOLUME_ID),
+            sleep=lambda _seconds: None,
+        )
+        self.assertEqual(statuses(report)[10], "PASS")
+        self.assertIn("instance ARN", report["checks"][9]["detail"])
+        self.assertEqual(len(calls_named(fake, "ec2", "detach-volume")), 1)
+        self.assertEqual(len(calls_named(fake, "ec2", "delete-volume")), 1)
+        self.assertEqual(reads["n"], 1 + verify.VOLUME_AVAILABLE_POLLS + 1)
+
+    def test_volume_stuck_deleting_does_not_detach(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-volumes"), aws_json(volume_body("deleting")))
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_volume_id=VOLUME_ID),
+            sleep=lambda _seconds: None,
+        )
+        self.assertEqual(statuses(report)[10], "FAIL")
+        self.assertIn("DetachVolume was not called", report["checks"][9]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
+        self.assertEqual(calls_named(fake, "ec2", "delete-volume"), [])
+
+    def test_volume_not_found_during_settle_does_not_pass(self) -> None:
+        fake = happy_aws()
+        reads = {"n": 0}
+
+        def describe(_region, _args):
+            reads["n"] += 1
+            if reads["n"] == 1:
+                return aws_json(volume_body("in-use", ATTACHED))
+            return aws_error("InvalidVolume.NotFound", "not authorized explicit deny The volume does not exist")
+
+        fake.add(starts(verify.REGION, "ec2", "describe-volumes"), describe)
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_volume_id=VOLUME_ID),
+            sleep=lambda _seconds: None,
+        )
+        self.assertEqual(statuses(report)[10], "FAIL")
+        self.assertEqual(report["overall"], "FAIL")
+        detail = report["checks"][9]["detail"]
+        self.assertIn("InvalidVolume.NotFound", detail)
+        self.assertIn("not a pass", detail)
+        self.assertEqual(calls_named(fake, "ec2", "detach-volume"), [])
+        self.assertEqual(calls_named(fake, "ec2", "delete-volume"), [])
+
+    def test_free_eip_releases_without_disassociate(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-addresses"), aws_json(address_body()))
+        fake.add(starts(verify.REGION, "ec2", "release-address"), aws_json({}))
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_eip_allocation_id=ALLOCATION_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[13], "PASS")
+        detail = report["checks"][12]["detail"]
+        self.assertIn("DisassociateAddress was not called", detail)
+        self.assertIn("AssociationId was absent", detail)
+        self.assertEqual(calls_named(fake, "ec2", "disassociate-address"), [])
+        self.assertEqual(len(calls_named(fake, "ec2", "release-address")), 1)
+        self.assertEqual(slept, [])
+
+    def test_associated_eip_waits_for_auto_clear_without_disassociate(self) -> None:
+        fake = happy_aws()
+        reads = {"n": 0}
+
+        def describe(_region, _args):
+            reads["n"] += 1
+            if reads["n"] == 1:
+                return aws_json(address_body(ASSOCIATION_ID))
+            return aws_json(address_body())
+
+        fake.add(starts(verify.REGION, "ec2", "describe-addresses"), describe)
+        fake.add(starts(verify.REGION, "ec2", "release-address"), aws_json({}))
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_eip_allocation_id=ALLOCATION_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[13], "PASS")
+        self.assertIn("association cleared", report["checks"][12]["detail"])
+        self.assertEqual(calls_named(fake, "ec2", "disassociate-address"), [])
+        self.assertEqual(len(calls_named(fake, "ec2", "release-address")), 1)
+        self.assertEqual(reads["n"], 2)
+        self.assertEqual(slept, [verify.SETTLE_POLL_SECONDS])
+
+    def test_eip_that_stays_associated_does_not_call_disassociate(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-addresses"), aws_json(address_body(ASSOCIATION_ID)))
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_eip_allocation_id=ALLOCATION_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[13], "FAIL")
+        self.assertEqual(report["overall"], "FAIL")
+        detail = report["checks"][12]["detail"]
+        self.assertIn("DisassociateAddress was not called", detail)
+        self.assertIn("elastic-ip/*", detail)
+        self.assertIn("network-interface", detail)
+        self.assertIn("Resource:*", detail)
+        self.assertIn(ASSOCIATION_ID, detail)
+        self.assertEqual(calls_named(fake, "ec2", "disassociate-address"), [])
+        self.assertEqual(calls_named(fake, "ec2", "release-address"), [])
+        self.assertEqual(len(slept), verify.EIP_FREE_POLLS)
+
+    def test_security_group_retries_dependency_violation_with_deny_wording(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-security-groups"), aws_json(security_group_body()))
+        deletes = {"n": 0}
+
+        def delete(_region, _args):
+            deletes["n"] += 1
+            if deletes["n"] == 1:
+                return aws_error(
+                    "DependencyViolation",
+                    "not authorized explicit deny resource has a dependent object",
+                )
+            return aws_json({})
+
+        fake.add(starts(verify.REGION, "ec2", "delete-security-group"), delete)
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_security_group_id=GROUP_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(report["overall"], "PASS")
+        self.assertEqual(statuses(report)[11], "PASS")
+        self.assertIn("1 DependencyViolation", report["checks"][10]["detail"])
+        self.assertEqual(deletes["n"], 2)
+        self.assertEqual(slept, [5.0])
+        denied = aws_error("DependencyViolation", "not authorized explicit deny resource has a dependent object")
+        self.assertTrue(verify.is_denied(denied))
+        self.assertTrue(verify._is_dependency_violation(denied))
+
+    def test_security_group_dependency_violation_is_not_missing_iam(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-security-groups"), aws_json(security_group_body()))
+        fake.add(
+            starts(verify.REGION, "ec2", "delete-security-group"),
+            aws_error("DependencyViolation", "resource sg has a dependent object"),
+        )
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_security_group_id=GROUP_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[11], "FAIL")
+        detail = report["checks"][10]["detail"]
+        self.assertIn("DependencyViolation", detail)
+        self.assertIn("not a missing DeleteSecurityGroup IAM grant", detail)
+        self.assertEqual(len(calls_named(fake, "ec2", "delete-security-group")), verify.SG_DEPENDENCY_ATTEMPTS)
+        self.assertEqual(len(slept), verify.SG_DEPENDENCY_ATTEMPTS - 1)
+        self.assertEqual(slept[0], 5.0)
+        self.assertEqual(slept[1], 10.0)
+        self.assertEqual(slept[2], 15.0)
+        self.assertEqual(slept[-1], 20.0)
+
+    def test_security_group_unauthorized_does_not_retry(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-security-groups"), aws_json(security_group_body()))
+        fake.add(
+            starts(verify.REGION, "ec2", "delete-security-group"),
+            aws_error("UnauthorizedOperation", "explicit deny"),
+        )
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_security_group_id=GROUP_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[11], "FAIL")
+        self.assertNotIn("not a missing DeleteSecurityGroup", report["checks"][10]["detail"])
+        self.assertEqual(len(calls_named(fake, "ec2", "delete-security-group")), 1)
+        self.assertEqual(slept, [])
+
+    def test_security_group_not_found_does_not_pass(self) -> None:
+        fake = happy_aws()
+        fake.add(starts(verify.REGION, "ec2", "describe-security-groups"), aws_json(security_group_body()))
+        fake.add(
+            starts(verify.REGION, "ec2", "delete-security-group"),
+            aws_error("InvalidGroup.NotFound", "not authorized The security group does not exist"),
+        )
+        slept: list[float] = []
+        report = verify.run_checks(
+            fake,
+            context(run_destructive=True, fixture_security_group_id=GROUP_ID),
+            sleep=slept.append,
+        )
+        self.assertEqual(statuses(report)[11], "FAIL")
+        self.assertEqual(report["overall"], "FAIL")
+        detail = report["checks"][10]["detail"]
+        self.assertIn("InvalidGroup.NotFound", detail)
+        self.assertIn("not a pass", detail)
+        self.assertNotIn("was denied", detail)
+        self.assertEqual(len(calls_named(fake, "ec2", "delete-security-group")), 1)
+        self.assertEqual(slept, [])
+
     def test_source_does_not_call_provision_or_admin_attach(self) -> None:
         text = (ROOT / "scripts" / "aws" / "verify_w3_lab_teardown.py").read_text(encoding="utf-8")
         for banned in (
@@ -783,8 +1115,11 @@ class VerifierTests(unittest.TestCase):
             "delete-user",
             "simulate-principal-policy",
             "i-0deadbeef0deadbee",
+            "disassociate-address",
         ):
             self.assertNotIn(banned, text)
+        self.assertIn("NONINTERACTIVE_TEARDOWN_READY", text)
+        self.assertIn("Class B is not authorized", text)
 
     def test_main_writes_artifact_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -816,6 +1151,9 @@ class VerifierTests(unittest.TestCase):
             self.assertIn("Overall: **PASS**", summary)
             self.assertIn("09 close_instance", summary)
             self.assertIn("Prepared policy digest SHA-256 (not a live-measured hash)", summary)
+            self.assertIn("instance, volume, EIP, security group, key pair", summary)
+            self.assertIn("Class B is not authorized", summary)
+            self.assertIn("NONINTERACTIVE_TEARDOWN_READY", summary)
             self.assertEqual(payload["policy_sha256_label"], "prepared_digest")
             self.assertNotIn(CANARY_KEY, summary)
 
