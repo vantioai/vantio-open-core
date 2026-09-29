@@ -135,3 +135,61 @@ export function purgePacketProblems(text) {
   if (body.includes("manual body:")) problems.push("purge packet includes a manual body marker");
   return problems;
 }
+
+export function fixtureDisclosureRecord() {
+  return {
+    schema: "vantio.disclosure.pe-public-draft/v1",
+    audience: "INTERNAL_RESTRICTED",
+    classification: "DISCLOSURE_GOVERNANCE_CLEANUP_READY_FOR_COUNCIL",
+    council_status: "PENDING_INDEPENDENT_COUNCIL",
+    public_pull_request: {
+      number: 66,
+      state: "closed",
+      merged: false,
+      merged_at: null,
+      head_sha: TIP,
+      branch_ref_on_origin: "ABSENT",
+      pull_ref: "refs/pull/66/head",
+      pull_ref_sha: TIP,
+    },
+    merge_to_public_main: "NOT_AUTHORIZED",
+    history_rewrite: {
+      git_filter_repo_run: false,
+      force_push: false,
+    },
+    support_purge: {
+      status: "PREPARED_NOT_SENT",
+      contacted_github_support: false,
+    },
+    private_channel: {
+      repo: "vantioai/vantio-pe-customer-docs",
+      visibility: "private",
+      forking: false,
+      main_tip: PRIVATE_TIP,
+      wording_fix_commit: WORDING_COMMIT,
+      manual_bytes_copied_into_open_core: false,
+      anonymous_http_status: 404,
+    },
+    public_commits: PUBLIC_COMMITS.slice(),
+    reachable_from_main: false,
+    reviewed_hashes: {
+      files: REVIEWED_MANUAL_FILES.map((file) => ({ ...file })),
+    },
+  };
+}
+
+export function fixturePurgePacket() {
+  return [
+    "PACKET_STATUS: PREPARED_NOT_SENT",
+    "GITHUB_SUPPORT_CONTACTED: false",
+    "PUBLIC_PR_66_STATE: CLOSED_UNMERGED",
+    `TIP: ${TIP}`,
+    "PULL_REF: refs/pull/66/head",
+    "HISTORY_REWRITE_OF_MAIN: NOT_PERFORMED",
+    "FILTER_REPO_RUN: false",
+    "MERGE_TO_PUBLIC_MAIN: NOT_AUTHORIZED",
+    "vantioai/vantio-open-core",
+    "vantioai/vantio-pe-customer-docs",
+    "This force did not submit this packet.",
+  ].join("\n");
+}

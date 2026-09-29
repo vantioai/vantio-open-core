@@ -12,6 +12,8 @@ import {
 } from "../../docs/scripts/docs-release-lib.mjs";
 import {
   disclosureRecordProblems,
+  fixtureDisclosureRecord,
+  fixturePurgePacket,
   purgePacketProblems,
 } from "../../docs/scripts/disclosure-review.mjs";
 
@@ -83,11 +85,8 @@ test("a different new retired-name file is still new debt", () => {
 });
 
 test("a merged pull request or a sent purge packet fails the disclosure review", () => {
-  const record = readJson("docs/internal/disclosure-governance-cleanup/DISCLOSURE-RECORD.json");
-  const packet = readFileSync(
-    join(ROOT, "docs/internal/disclosure-governance-cleanup/GITHUB-SUPPORT-PURGE-PACKET.md"),
-    "utf8",
-  );
+  const record = fixtureDisclosureRecord();
+  const packet = fixturePurgePacket();
   const merged = structuredClone(record);
   merged.public_pull_request.merged = true;
   merged.public_pull_request.merged_at = "2026-09-27T12:00:00Z";
@@ -107,7 +106,7 @@ test("a merged pull request or a sent purge packet fails the disclosure review",
 });
 
 test("changing one reviewed hash fails the disclosure record", () => {
-  const record = structuredClone(readJson("docs/internal/disclosure-governance-cleanup/DISCLOSURE-RECORD.json"));
+  const record = structuredClone(fixtureDisclosureRecord());
   record.reviewed_hashes.files[0].public_tip_sha256 = "0".repeat(64);
   const problems = disclosureRecordProblems(record);
   assert.ok(problems.some((item) => item.includes("public_tip_sha256 drifted")));

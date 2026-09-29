@@ -3,39 +3,9 @@
   "findings": [
     {
       "accepted": false,
-      "id": "license-missing:internal/enterprise-governance/package.json",
-      "name": "@vantio/enterprise-governance-internal",
-      "path": "internal/enterprise-governance/package.json"
-    },
-    {
-      "accepted": false,
-      "id": "license-missing:internal/enterprise-runtime-integration/package.json",
-      "name": "@vantio/enterprise-runtime-integration",
-      "path": "internal/enterprise-runtime-integration/package.json"
-    },
-    {
-      "accepted": false,
-      "id": "license-missing:internal/pe-integrated-runtime/package.json",
-      "name": "@vantio/pe-integrated-runtime",
-      "path": "internal/pe-integrated-runtime/package.json"
-    },
-    {
-      "accepted": false,
-      "id": "license-missing:internal/w3-otlp-enable-test-disable/package.json",
-      "name": "@vantio/w3-otlp-enable-test-disable",
-      "path": "internal/w3-otlp-enable-test-disable/package.json"
-    },
-    {
-      "accepted": false,
       "id": "license-missing:package.json",
       "name": "vantio-open-core",
       "path": "package.json"
-    },
-    {
-      "accepted": false,
-      "id": "license-missing:packages/investor-demo-wave2/package.json",
-      "name": "@vantio/investor-demo-wave2",
-      "path": "packages/investor-demo-wave2/package.json"
     },
     {
       "accepted": false,
@@ -136,13 +106,8 @@
   ],
   "scanned": [
     "extensions/vantio-optics/package.json",
-    "internal/enterprise-governance/package.json",
-    "internal/enterprise-runtime-integration/package.json",
-    "internal/pe-integrated-runtime/package.json",
-    "internal/w3-otlp-enable-test-disable/package.json",
     "package.json",
     "packages/governance-assurance/package.json",
-    "packages/investor-demo-wave2/package.json",
     "packages/optics-evidence-contract/package.json",
     "packages/optics-node-adapter/package.json",
     "packages/optics-operational-store/package.json",

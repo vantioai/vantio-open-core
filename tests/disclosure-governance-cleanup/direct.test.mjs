@@ -11,6 +11,8 @@ import {
 } from "../../docs/scripts/docs-release-lib.mjs";
 import {
   disclosureRecordProblems,
+  fixtureDisclosureRecord,
+  fixturePurgePacket,
   purgePacketProblems,
 } from "../../docs/scripts/disclosure-review.mjs";
 
@@ -48,12 +50,14 @@ test("collision test stays visible frozen debt at the live count", () => {
   assert.equal(text.includes("kubectl apply"), true);
 });
 
-test("disclosure record and unsent purge packet agree", () => {
-  const record = readJson("docs/internal/disclosure-governance-cleanup/DISCLOSURE-RECORD.json");
-  const packet = readFileSync(
-    join(ROOT, "docs/internal/disclosure-governance-cleanup/GITHUB-SUPPORT-PURGE-PACKET.md"),
-    "utf8",
+test("non-public disclosure packet is absent and the review fixture still agrees", () => {
+  assert.equal(existsSync(join(ROOT, "docs/internal")), false);
+  assert.equal(
+    existsSync(join(ROOT, "docs/internal/disclosure-governance-cleanup/DISCLOSURE-RECORD.json")),
+    false,
   );
+  const record = fixtureDisclosureRecord();
+  const packet = fixturePurgePacket();
   assert.deepEqual(disclosureRecordProblems(record), []);
   assert.deepEqual(purgePacketProblems(packet), []);
   assert.equal(existsSync(join(ROOT, "docs/customer/phantom-engine")), false);

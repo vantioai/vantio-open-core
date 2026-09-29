@@ -13,7 +13,6 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "w3-lab-teardown-verify.yml"
-DOC_PATH = ROOT / "docs" / "internal" / "c8-teardown" / "README.md"
 SCRIPT_PATH = ROOT / "scripts" / "aws" / "verify_w3_lab_teardown.py"
 ROLE_ARN = "arn:aws:iam::960577828987:role/vantio-w3-lab-teardown"
 POLICY_SHA256 = "2fd3909fe84cbe93b15c5525ece0d247d0f4f4a91e333346001d512e1efc5215"
@@ -104,34 +103,21 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(self.raw.count(workflow_ref), 2)
         self.assertIn("gh api repos/vantioai/vantio-open-core/environments/w3-lab-teardown", preflight_joined)
 
-    def test_doc_and_script_share_the_policy_hash(self) -> None:
-        doc = DOC_PATH.read_text(encoding="utf-8")
+    def test_script_and_workflow_share_the_policy_hash(self) -> None:
         script = SCRIPT_PATH.read_text(encoding="utf-8")
-        self.assertIn("INTERNAL_RESTRICTED", doc)
-        self.assertIn(POLICY_SHA256, doc)
         self.assertIn(POLICY_SHA256, script)
-        self.assertIn("vantio-w3-class-b-lab-01", doc)
-        self.assertIn("STAGE_B_BILLING_CLOSE_PASS", doc)
-        self.assertIn("NONINTERACTIVE_TEARDOWN_READY", doc)
-        self.assertIn("STAGE_B_BILLING_CLOSE_PENDING", doc)
-        self.assertIn("403", doc)
-        self.assertIn("zacharybalicki", doc)
-        self.assertIn("269605088", doc)
-        self.assertIn("auto-creates", doc)
-        self.assertIn("BEFORE any dispatch", doc)
-        self.assertIn("prepared_digest", doc)
-        self.assertIn("GetUser", doc)
-        self.assertIn("--dry-run", doc)
-        self.assertIn("InvalidInstanceID.NotFound", doc)
-        self.assertIn("36474749760", doc)
-        self.assertIn("GAP-C8-VER-001", doc)
-        self.assertIn("CreateSecurityGroup --dry-run", doc)
+        self.assertIn("INTERNAL_RESTRICTED", script)
+        self.assertIn("vantio-w3-class-b-lab-01", script)
+        self.assertIn("NONINTERACTIVE_TEARDOWN_READY", script)
+        self.assertIn("prepared_digest", script)
+        self.assertIn("GetUser", script)
+        self.assertIn("CreateSecurityGroup --dry-run", script)
+        self.assertIn("STAGE_B_BILLING_CLOSE_PASS", self.raw)
+        self.assertIn("NONINTERACTIVE_TEARDOWN_READY", self.raw)
+        self.assertNotIn("docs/internal/", self.raw)
         self.assertNotIn("i-0deadbeef0deadbee", script)
         self.assertIn("does not call TerminateInstances", self.raw)
         self.assertNotIn("calls TerminateInstances only with --dry-run", self.raw)
-        self.assertNotIn("Until that environment exists, the job cannot assume", doc)
-        self.assertNotIn("iam:CreateUser", doc)
-        self.assertNotIn("the check is `SKIP`", doc)
 
 
 if __name__ == "__main__":

@@ -16,34 +16,6 @@
       "version": "0.1.0"
     },
     {
-      "name": "@vantio/enterprise-governance-internal",
-      "purl": "pkg:npm/%40vantio/enterprise-governance-internal@0.0.0-unstable-pre-1.0",
-      "scope": "workspace-manifest",
-      "type": "library",
-      "version": "0.0.0-unstable-pre-1.0"
-    },
-    {
-      "name": "@vantio/enterprise-runtime-integration",
-      "purl": "pkg:npm/%40vantio/enterprise-runtime-integration@0.0.0-unstable-pre-1.0",
-      "scope": "workspace-manifest",
-      "type": "library",
-      "version": "0.0.0-unstable-pre-1.0"
-    },
-    {
-      "name": "@vantio/pe-integrated-runtime",
-      "purl": "pkg:npm/%40vantio/pe-integrated-runtime@0.0.0-unstable-pre-1.0",
-      "scope": "workspace-manifest",
-      "type": "library",
-      "version": "0.0.0-unstable-pre-1.0"
-    },
-    {
-      "name": "@vantio/w3-otlp-enable-test-disable",
-      "purl": "pkg:npm/%40vantio/w3-otlp-enable-test-disable@0.0.0-unstable-pre-1.0",
-      "scope": "workspace-manifest",
-      "type": "library",
-      "version": "0.0.0-unstable-pre-1.0"
-    },
-    {
       "name": "vantio-open-core",
       "purl": "pkg:npm/vantio-open-core@0.0.0",
       "scope": "root",
@@ -63,13 +35,6 @@
       "scope": "workspace-manifest",
       "type": "library",
       "version": "0.2.0-internal"
-    },
-    {
-      "name": "@vantio/investor-demo-wave2",
-      "purl": "pkg:npm/%40vantio/investor-demo-wave2@0.0.0-unstable-pre-1.0",
-      "scope": "workspace-manifest",
-      "type": "library",
-      "version": "0.0.0-unstable-pre-1.0"
     },
     {
       "name": "@vantio/optics-evidence-contract",
