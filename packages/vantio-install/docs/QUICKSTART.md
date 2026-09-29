@@ -1,6 +1,6 @@
 # Quickstart
 
-This note is for a qualified Linux operator on Ubuntu 24.04 LTS x86_64. It installs the `vantio-install` and `vantio-verify` commands from a sealed wheel. A sealed sdist of the same package can be installed the same way when a build backend is already present offline. Installing these commands does not install Optics and does not start Phantom Engine.
+This note is for a qualified Linux operator on Ubuntu 24.04 LTS x86_64. It installs the `vantio-install` and `vantio-verify` commands from a sealed wheel. That wheel install is the one to use. A sealed sdist is a fallback: it needs `--no-build-isolation` and hatchling already installed in the same environment. Installing these commands does not install Optics and does not start Phantom Engine.
 
 `proof_state` stays `NOT_PROVED`. The proof ceiling stays `INTERNAL_CLEAN_HOST_PROOF`. The second-lab gate in `STAGE-B-ARTIFACT-PATH.md` stays closed until a separate authorization. These pages do not raise that ceiling.
 
@@ -24,11 +24,15 @@ When `venv` is unavailable, install with a prefix instead:
 
 Either directory is only the tool environment. It is not the node prefix, the stage directory, or the evidence directory.
 
-The wheel installs two console scripts, `vantio-install` and `vantio-verify`, into `/var/lib/vantio/installer-venv/bin`. A `--prefix /var/lib/vantio/installer-prefix` install on Debian or Ubuntu writes those scripts to `/var/lib/vantio/installer-prefix/local/bin` and the package to `local/lib/python3.X/dist-packages`. Put the directory that contains the scripts on `PATH` and confirm both commands resolve there:
+The wheel installs two console scripts, `vantio-install` and `vantio-verify`, into `/var/lib/vantio/installer-venv/bin`. The virtualenv interpreter already sees that environment's site-packages. Put the script directory on `PATH` and confirm both commands resolve there:
 
 `export PATH="/var/lib/vantio/installer-venv/bin:${PATH}"`
 
-For the prefix install, use `export PATH="/var/lib/vantio/installer-prefix/local/bin:${PATH}"` instead.
+A `--prefix /var/lib/vantio/installer-prefix` install on Debian or Ubuntu writes those scripts to `/var/lib/vantio/installer-prefix/local/bin` and the package to `local/lib/python3.X/dist-packages`. The script shebang is `/usr/bin/python3`. `PATH` alone leaves that interpreter without the prefix packages, and `vantio-install` raises `ModuleNotFoundError: No module named 'vantio_install'`. Put the prefix `dist-packages` directory on `PYTHONPATH` so it is on `sys.path`. Replace `X` with the minor version reported by `python3 --version`.
+
+`export PATH="/var/lib/vantio/installer-prefix/local/bin:${PATH}"`
+
+`export PYTHONPATH="/var/lib/vantio/installer-prefix/local/lib/python3.X/dist-packages"`
 
 `command -v vantio-install`
 
@@ -36,7 +40,11 @@ For the prefix install, use `export PATH="/var/lib/vantio/installer-prefix/local
 
 `vantio-install --help` and `vantio-verify --help` print usage and do not change the host.
 
-A sealed sdist installs the same two scripts when you pass that file to the same `pip install --no-index --no-deps` command and the build backend is already on the machine. When the backend is absent, install the wheel.
+Use the wheel commands above. A sealed sdist installs the same two scripts only when hatchling is already installed in that virtualenv and pip does not isolate the build:
+
+`/var/lib/vantio/installer-venv/bin/python -m pip install --no-index --disable-pip-version-check --no-deps --no-build-isolation <sealed-sdist>`
+
+`--no-index` without `--no-build-isolation` still builds in an isolated environment, looks up hatchling there, and fails with `No matching distribution found for hatchling`. When hatchling is absent, install the wheel.
 
 The product bundle is a separate sealed directory that is already on the host. `INSTALL.md` is the next step. The bundle pins stay Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0. This package does not change those versions. The installer reads the bundle. It does not fetch it.
 

@@ -44,6 +44,26 @@ class SealRecipeTest(unittest.TestCase):
         self.assertIn("vantio_install-0.1.0+stage.a-py3-none-any.whl", quick)
         self.assertIn("SHA256SUMS", quick)
         self.assertIn("--no-index", quick)
+        wheel = (
+            "/var/lib/vantio/installer-venv/bin/python -m pip install "
+            "--no-index --disable-pip-version-check --no-deps <sealed-wheel>"
+        )
+        sdist = (
+            "/var/lib/vantio/installer-venv/bin/python -m pip install "
+            "--no-index --disable-pip-version-check --no-deps --no-build-isolation <sealed-sdist>"
+        )
+        self.assertIn(wheel, quick)
+        self.assertIn(sdist, quick)
+        self.assertIn("--no-build-isolation", sdist)
+        self.assertNotIn("--no-build-isolation", wheel)
+        self.assertNotIn("installed the same way", quick)
+        self.assertNotIn("the same `pip install --no-index --no-deps` command", quick)
+        self.assertIn(
+            'export PYTHONPATH="/var/lib/vantio/installer-prefix/local/lib/python3.X/dist-packages"',
+            quick,
+        )
+        self.assertIn("ModuleNotFoundError: No module named 'vantio_install'", quick)
+        self.assertIn("sys.path", quick)
         self.assertIn("floating `main`", quick)
         self.assertIn("Phantom Box", quick)
         self.assertIn("GHCR", quick)
