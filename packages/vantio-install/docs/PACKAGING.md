@@ -17,7 +17,7 @@ From `packages/vantio-install`, with the `build` module available for the sealer
 
 `python3 packaging/seal_customer_artifact.py --outdir <sealed-dir>`
 
-The script runs `python -m build --wheel --sdist` in the temporary copy and writes the wheel, the sdist, and `SHA256SUMS` into `<sealed-dir>`. The checksum file is `sha256sum` format. The script does not upload those files, does not contact a package registry, and does not pull Phantom Engine.
+The script runs `python -m build --wheel --sdist` in the temporary copy and writes the wheel, the sdist, and `SHA256SUMS` into `<sealed-dir>`. The wheel name is `vantio_install-0.1.0+stage.a-py3-none-any.whl`. The sdist name is `vantio_install-0.1.0+stage.a.tar.gz`. The checksum file is `sha256sum` format. The script does not upload those files, does not contact a package registry, and does not pull Phantom Engine.
 
 Deliver the wheel, `SHA256SUMS`, and the operator notes. Deliver the sdist when you want the sealed source archive beside the wheel. The customer compares the hash and installs the wheel with `--no-index`, as `QUICKSTART.md` describes.
 

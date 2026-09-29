@@ -41,6 +41,7 @@ class SealRecipeTest(unittest.TestCase):
         install = (docs / "INSTALL.md").read_text(encoding="utf-8")
         preflight = (docs / "PREFLIGHT.md").read_text(encoding="utf-8")
         limits = (docs / "LIMITATIONS.md").read_text(encoding="utf-8")
+        self.assertIn("vantio_install-0.1.0+stage.a-py3-none-any.whl", quick)
         self.assertIn("SHA256SUMS", quick)
         self.assertIn("--no-index", quick)
         self.assertIn("floating `main`", quick)
