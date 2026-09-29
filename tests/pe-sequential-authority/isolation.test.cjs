@@ -1,5 +1,14 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+const { test: privateTreeSkipTest } = require("node:test");
+
+if (!fs.existsSync(path.resolve(__dirname, "../../docs/internal"))) {
+  privateTreeSkipTest("docs/internal", { skip: "PRIVATE_TREE_REMOVED_FROM_PUBLIC_TIP" }, () => {});
+} else {
+"use strict";
+
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -215,3 +224,4 @@ test("internal docs carry the candidate banner and leave the council pending", (
   const pending = read("docs/internal/pe-sequential-authority/PENDING-COUNCIL.md");
   assert.equal(pending.includes("PENDING_INDEPENDENT_COUNCIL"), true);
 });
+}
