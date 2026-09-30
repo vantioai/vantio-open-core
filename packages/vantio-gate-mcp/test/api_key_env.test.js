@@ -39,18 +39,21 @@ test("fetchCloudConfig sends the environment key and ignores a tool argument", a
   };
   try {
     await withEnv("VANTIO_API_KEY", "from-env", async () => {
-      const result = await fetchCloudConfig({
-        apiKey: "from-tool",
-        apiBase: "https://example.test",
+      await withEnv("VANTIO_API_BASE", undefined, async () => {
+        const result = await fetchCloudConfig({
+          apiKey: "from-tool",
+          apiBase: "https://example.test",
+        });
+        assert.equal(result.ok, true);
       });
-      assert.equal(result.ok, true);
     });
   } finally {
     globalThis.fetch = original;
   }
   assert.equal(seen.length, 1);
   assert.equal(seen[0].opts.headers["x-vantio-identity"], "from-env");
-  assert.equal(String(seen[0].url).startsWith("https://example.test/"), true);
+  assert.equal(String(seen[0].url).startsWith("https://api.vantio.ai/"), true);
+  assert.equal(String(seen[0].url).includes("example.test"), false);
 });
 
 test("fetchCloudConfig does not use a tool api key when the environment is empty", async () => {
@@ -82,14 +85,18 @@ test("fetchResidualRisk sends the environment key and ignores a tool argument", 
   };
   try {
     await withEnv("VANTIO_API_KEY", "from-env", async () => {
-      const result = await fetchResidualRisk({
-        apiKey: "from-tool",
-        apiBase: "https://example.test",
+      await withEnv("VANTIO_API_BASE", undefined, async () => {
+        const result = await fetchResidualRisk({
+          apiKey: "from-tool",
+          apiBase: "https://example.test",
+        });
+        assert.equal(result.ok, true);
       });
-      assert.equal(result.ok, true);
     });
   } finally {
     globalThis.fetch = original;
   }
   assert.equal(seen[0].opts.headers["x-vantio-identity"], "from-env");
+  assert.equal(String(seen[0].url).startsWith("https://api.vantio.ai/"), true);
+  assert.equal(String(seen[0].url).includes("example.test"), false);
 });

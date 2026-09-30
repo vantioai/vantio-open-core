@@ -41,6 +41,8 @@ Cursor / Claude Desktop:
 | `gate_explain` | Fence + rules that stick |
 | `gate_upgrade_path` | Optics → Phantom Engine → Enterprise |
 
+`gate_get_policy` and `gate_residual_risk` read `VANTIO_API_KEY` and `VANTIO_API_BASE` from the environment. They do not take a key argument or a host argument. When `VANTIO_API_BASE` is unset, the host is `https://api.vantio.ai`.
+
 > `gate_explain` JSON: `phantom` is the current product URL field (`https://vantio.ai/phantom`). The `gate` key is a **legacy compatibility alias** for that same URL — not a product SKU.
 
 ## Upgrade path

@@ -28,7 +28,7 @@
         },
         {
           "name": "VANTIO_API_BASE",
-          "description": "Optional Phantom Engine API base URL (default https://api.vantio.ai)",
+          "description": "Optional Phantom Engine API base URL (default https://api.vantio.ai). Environment only. The fetch tools do not take a host argument.",
           "isRequired": false,
           "format": "string",
           "isSecret": false
