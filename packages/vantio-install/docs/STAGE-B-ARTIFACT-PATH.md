@@ -1,8 +1,10 @@
 # Stage B artifact path
 
+Customer operators use `ARTIFACT-PATH.md` for sealed-byte placement. This note uses the same customer-staging archive basename and the same frozen digests.
+
 This note is for the operator who will place sealed bytes on a host before a later live run. The second-lab gate is closed. `proof_state` stays `NOT_PROVED`. This file does not publish a download URL, a registry token, or a public image name.
 
-Place the bytes in the bundle directory on the host that will keep the node. The installer reads that directory. It does not fetch them.
+Place the sealed bytes in the bundle directory on the host that will keep the node. The installer reads that directory. It does not fetch them from a registry, an object store, or another host.
 
 Optics CLI 0.3.24:
 
@@ -26,7 +28,7 @@ Optional Python sdist, only if you include it:
 
 Sealed Phantom Engine archive:
 
-- Path: `artifacts/phantom-engine/vantio-phantom-engine-w3-aws-internal-fab81efc0811-linux-amd64.oci.tar`
+- Path: `artifacts/phantom-engine/vantio-phantom-engine-customer-staging-fab81efc0811-linux-amd64.oci.tar`
 - SHA-256: `72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128`
 - Source commit: `fab81efc08110506ff90847495197e7051a253b5`
 - Manifest digest: `sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553`

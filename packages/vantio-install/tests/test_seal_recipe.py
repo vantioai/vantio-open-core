@@ -65,7 +65,10 @@ class SealRecipeTest(unittest.TestCase):
         self.assertIn("ModuleNotFoundError: No module named 'vantio_install'", quick)
         self.assertIn("sys.path", quick)
         self.assertIn("floating `main`", quick)
-        self.assertIn("Phantom Box", quick)
+        self.assertIn("company-host path", quick)
+        self.assertNotIn("Phantom Box", quick)
+        self.assertNotIn("w3-aws-internal", quick)
+        self.assertIn("ARTIFACT-PATH.md", quick)
         self.assertIn("GHCR", quick)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", quick)
         self.assertIn("0.3.24", quick)
@@ -81,6 +84,43 @@ class SealRecipeTest(unittest.TestCase):
         self.assertIn("privilege_mode", limits)
         self.assertIn("--fixture-host", limits)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", limits)
+        self.assertIn("published", limits)
+        self.assertIn("ARTIFACT-PATH.md", limits)
+
+    def test_customer_docs_use_staging_basename_only(self) -> None:
+        docs = PACKAGE / "docs"
+        names = (
+            "ARTIFACT-PATH.md",
+            "STAGE-B-ARTIFACT-PATH.md",
+            "QUICKSTART.md",
+            "LIMITATIONS.md",
+            "PACKAGING.md",
+        )
+        combined = "\n".join((docs / name).read_text(encoding="utf-8") for name in names)
+        artifact = (docs / "ARTIFACT-PATH.md").read_text(encoding="utf-8")
+        stage_b = (docs / "STAGE-B-ARTIFACT-PATH.md").read_text(encoding="utf-8")
+        basename = "vantio-phantom-engine-customer-staging-fab81efc0811-linux-amd64.oci.tar"
+        self.assertIn(basename, artifact)
+        self.assertIn(basename, stage_b)
+        self.assertIn(
+            "72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128",
+            artifact,
+        )
+        self.assertIn("fab81efc08110506ff90847495197e7051a253b5", artifact)
+        self.assertIn(
+            "sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553",
+            artifact,
+        )
+        self.assertIn("INTERNAL_CLEAN_HOST_PROOF", artifact)
+        self.assertIn("`published` remains **false**", artifact)
+        for banned in (
+            "Phantom Box",
+            "phantom-box",
+            "w3-aws-internal",
+            "VANTIO_SOAK_LOCAL",
+            ":5001",
+        ):
+            self.assertNotIn(banned, combined)
 
 
 if __name__ == "__main__":

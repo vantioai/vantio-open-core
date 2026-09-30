@@ -4,9 +4,9 @@ Audience: INTERNAL_RESTRICTED
 
 Producer role: execution producer only. This agent does not sit the independent council, does not self-assign a council pass, and does not assign an evidence tier.
 
-Producer identity: Cursor cloud agent `bc-36ae62af-00aa-561d-ba4e-e99dd8ea62cc`, model Grok 4.7.
+Producer identity: OMITTED_FROM_PUBLIC_TIP.
 
-Producer URL: https://cursor.com/agents/bc-36ae62af-00aa-561d-ba4e-e99dd8ea62cc
+Producer URL: OMITTED_FROM_PUBLIC_TIP.
 
 Producer classification: `CLEAN_HOST_BLOCKED_INFRA_READY_FOR_COUNCIL`
 
@@ -36,7 +36,7 @@ That classification means the required proof sequence could not run on a clean h
 - Re-runs the merged design exerciser `scripts/check-guards.sh` on the producer pod and records the process result.
 - Probes the same pod for the host prerequisites the required sequence needs.
 - Records each required sequence row as `BLOCKED_INFRA` with the missing prerequisite.
-- Leaves `05-INDEPENDENT-COUNCIL.md` as `PENDING_INDEPENDENT_COUNCIL`.
+- Leaves `05-INDEPENDENT-COUNCIL.md` as `PENDING_INDEPENDENT_COUNCIL`. The public tip holds a placeholder. The full council record is private.
 
 The exerciser exit code is a process result for the merged script contract. It leaves `evidence_tier` at `UNSET`. It does not fill a sequence row.
 
@@ -86,6 +86,6 @@ Assigned evidence tier is `UNSET`. This packet does not assign `UNIT_PROVED`, `I
 | `02-SEQUENCE-MATRIX.md` | Required sequence |
 | `03-MERGED-DESIGN-EXERCISER.md` | `check-guards.sh` process result |
 | `04-MISSING-PREREQUISITES.md` | Exact gaps |
-| `05-INDEPENDENT-COUNCIL.md` | Pending council |
+| `05-INDEPENDENT-COUNCIL.md` | Public placeholder. The full council record is private. |
 | `EXECUTION-MANIFEST.json` | Classification and file hashes |
 | `SEQUENCE.json` | Machine-readable rows |

@@ -53,9 +53,9 @@ const manifest = {
   branch: "cursor/benchmark-framework-b6b6",
   repository: "vantioai/vantio-open-core",
   producer: {
-    agent: "bc-e0913dd4-07fa-5610-a4fe-8178e8f2b6b6",
-    model: "Grok 4.7",
-    url: "https://cursor.com/agents/bc-e0913dd4-07fa-5610-a4fe-8178e8f2b6b6",
+    agent: "OMITTED_FROM_PUBLIC_TIP",
+    model: "OMITTED_FROM_PUBLIC_TIP",
+    url: "OMITTED_FROM_PUBLIC_TIP",
   },
   merge: false,
   closed: {

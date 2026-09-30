@@ -1,12 +1,12 @@
 # Independent council
 
-Audience: INTERNAL_RESTRICTED
+Audience: PUBLIC_PLANNING_PLACEHOLDER
 
 Status: `PENDING_INDEPENDENT_COUNCIL`
 
 Producer classification under review: `PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL`
 
-This file is the producer stub. The planning producer does not sit the council and does not write a verdict.
+This file is a public planning placeholder. The planning producer does not sit the council and does not write a verdict. Producer agent identifiers and private product tip SHAs are omitted from the public tip.
 
 ## 1. What a separate council reviews
 
@@ -14,28 +14,18 @@ This file is the producer stub. The planning producer does not sit the council a
 | --- | --- |
 | Repository | `vantioai/vantio-open-core` |
 | Planning directory | `docs/planning/phantom-engine-production/` |
-| Open-core base named by the producer | `5064f32f1cdfcb840dfd100e2ce5c712d046550d` |
-| Private product tip named by the producer | `631e435315cd780d83d3259e111893c1d0569bc3` |
-| Producer | `bc-67390466-de62-5277-ba0b-3f01b390aa8c` |
+| Private product tip | `OMITTED_FROM_PUBLIC_TIP` |
 | Classification the producer claims | `PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL` |
 
-## 2. Seats
+## 2. Seats (pending)
 
-| Seat | Scope | Verdict |
-| --- | --- | --- |
-| 1 | Private-repo access and commit constraints | `UNSAT` |
-| 2 | P1 package and artifact provenance | `UNSAT` |
-| 3 | P2 prerequisite and compatibility | `UNSAT` |
-| 4 | P24 health and coverage | `UNSAT` |
-| 5 | Shared vocabulary and Workstream 4 gap | `UNSAT` |
-| 6 | Public-repo confidentiality boundary | `UNSAT` |
+Six seats remain `UNSAT` (private-repo access constraints, P1 provenance, P2 compatibility, P24 health/coverage, shared vocabulary / WS4 gap, public-repo confidentiality boundary) until an independent council records a verdict.
 
 ## 3. Checks the council can re-run without a live load
 
 - The diff is only `docs/planning/phantom-engine-production/`.
 - No file path contains `PRIVATE-MANUAL` or `CUSTOMER-MANUAL`.
-- `docs/operations-guide.md` body from blob `1b973342b3bf7f6aa6cdad70de49fa6e26db0077` is not pasted.
-- `vocabulary_status` is `PENDING_WS4`.
+- `vocabulary_status` remains `PENDING_WS4` (or successor token recorded in PLANNING-MANIFEST).
 - Every coverage row has `this_force` `NOT_EXECUTED`.
 - The producer classification is present and no council pass token is present.
 
@@ -43,7 +33,7 @@ This file is the producer stub. The planning producer does not sit the council a
 
 | Field | Value |
 | --- | --- |
-| Council agent | `UNSAT` |
-| Reviewed tip | `UNSAT` |
+| Council agent | unset |
+| Reviewed tip | unset |
 | Verdict | `PENDING_INDEPENDENT_COUNCIL` |
-| Blocking findings | `UNSAT` |
+| Blocking findings | unset |

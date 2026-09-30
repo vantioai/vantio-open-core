@@ -37,14 +37,14 @@
     "fills_sequence_row": false
   },
   "producer": {
-    "agent": "bc-36ae62af-00aa-561d-ba4e-e99dd8ea62cc",
-    "model": "Grok 4.7",
-    "url": "https://cursor.com/agents/bc-36ae62af-00aa-561d-ba4e-e99dd8ea62cc"
+    "agent": "OMITTED_FROM_PUBLIC_TIP",
+    "model": "OMITTED_FROM_PUBLIC_TIP",
+    "url": "OMITTED_FROM_PUBLIC_TIP"
   },
   "files_sha256": [
     {
       "path": "docs/planning/clean-host-lifecycle/execution/00-EXECUTION-BOUNDARY.md",
-      "sha256": "83431f4f8b0211484202836ff80e6fe98921d1cf014d998f9bbd767460d92025"
+      "sha256": "3bca2458b41d8f585d7a88c6ac026760ce71a8e7fcf0fb64b2614de31a133c54"
     },
     {
       "path": "docs/planning/clean-host-lifecycle/execution/01-HOST-PROBE.md",
@@ -64,7 +64,7 @@
     },
     {
       "path": "docs/planning/clean-host-lifecycle/execution/05-INDEPENDENT-COUNCIL.md",
-      "sha256": "724c7a42552b4d739a2f6e378e7ed44a9cdac9815ae740027229520fab2be7eb"
+      "sha256": "49585251853539882f96956e1488b3b9e396da29163bc4efa5f74154169d2245"
     },
     {
       "path": "docs/planning/clean-host-lifecycle/execution/SEQUENCE.json",

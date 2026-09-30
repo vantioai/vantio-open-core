@@ -5,9 +5,9 @@
   "producer_classification": "OPTICS_O7_STORE_BLOCKED_NODE_BINDING_UNSELECTED_REVISION_READY_FOR_COUNCIL",
   "producer_role": "IMPLEMENTATION_PRODUCER_ONLY",
   "producer_identity": {
-    "agent": "bc-4b9b153e-e636-58b6-a894-7de8dd2cd819",
-    "model": "Grok 4.7",
-    "url": "https://cursor.com/agents/bc-4b9b153e-e636-58b6-a894-7de8dd2cd819",
+    "agent": "OMITTED_FROM_PUBLIC_TIP",
+    "model": "OMITTED_FROM_PUBLIC_TIP",
+    "url": "OMITTED_FROM_PUBLIC_TIP",
     "self_certified_council_pass": false
   },
   "council_status": "PENDING_INDEPENDENT_COUNCIL",
@@ -44,7 +44,7 @@
   },
   "files_sha256": {
     "docs/planning/optics-o7-store/00-STORE.md": "064fa19c16e5a6bb60dc2d8f76a8a96e04ee824417a901611bfa074a9ea9097a",
-    "docs/planning/optics-o7-store/10-INDEPENDENT-COUNCIL.md": "5ed3c35546b749470123a085c74d43524c042bf41994bd105d5dc6b1e7f13452",
+    "docs/planning/optics-o7-store/10-INDEPENDENT-COUNCIL.md": "604b7f843f645b10fdb0ef06a500b989345cd5751c9ad8a0595d120c1d012cc5",
     "packages/optics-operational-store/src/optics_operational_store/store.py": "9ed8999b34499eea286d770f96c25ef879e3651c6980cf2aadd5b561d8397488",
     "packages/optics-operational-store/src/optics_operational_store/posture.py": "5b93aba1b3669ffa5297bbee10b06e9859cb3982cc880907a97b82fd044c49e6",
     "packages/optics-operational-store/src/optics_operational_store/__init__.py": "87bac557e1c456493af0d2b1d9855a4715af18454bba6187820f3e0a824145b2",
