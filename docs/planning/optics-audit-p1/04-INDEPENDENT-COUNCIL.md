@@ -1,5 +1,7 @@
 # Optics audit P1 independent council
 
+The `api_base` residual named in this file is closed on tip `1c15407f82f7d43548e9fb0b3a3cf037b0ba70b7`. That later review is `06-API-BASE-COUNCIL.md`. The verdict below still reviews tip `1bbed9021c9ceb494b34d1d3ab4d625d5e7c32f3`.
+
 Audience: review of source changes on this branch.
 
 Status: `PASS_WITH_NONBLOCKING_NOTES`
