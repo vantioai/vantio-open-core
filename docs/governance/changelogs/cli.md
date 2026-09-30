@@ -6,7 +6,7 @@ This heading exists so a documentation release can require a changelog entry for
 
 CANDIDATE_ONLY_NOT_FOR_PUBLICATION. Source version only. Not an npm release.
 
-Gate-era enforcement was removed from Optics. The CLI records destination, process, size, timing, and status. It does not fetch policy, block, redact, or apply a spend cap. Enforcement is provided by Phantom Engine.
+This heading stages the source version label and the docs checks that read it. It does not change CLI behavior. Removal of Gate-era enforcement is a separate change.
 
 ## 0.3.24
 

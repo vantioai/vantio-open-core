@@ -4,7 +4,7 @@
 
 CANDIDATE_ONLY_NOT_FOR_PUBLICATION. This heading is source. It is not a PyPI release.
 
-Gate-era enforcement was removed from Optics. The Python SDK records destination, process, size, timing, and status. It does not fetch policy, block hosts, redact request bodies, or rewrite curl, wget, httpie, or aria2c. Enforcement is provided by Phantom Engine. `http.client` stores status from `getresponse()` and clears pending state when that call throws.
+This heading stages the source version label. It does not change SDK behavior. The sealed publisher stays on 3.1.0. Enforcement removal and the http.client status fix are separate changes.
 
 ## 3.1.0
 
