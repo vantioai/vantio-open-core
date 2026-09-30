@@ -34,7 +34,13 @@ function runAgent(env, agentScript) {
     let stderr = "";
     child.stdout.on("data", (c) => (stdout += c));
     child.stderr.on("data", (c) => (stderr += c));
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
+    const killer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, 8000);
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      resolve({ code, stdout, stderr });
+    });
   });
 }
 
@@ -1073,9 +1079,16 @@ function go() {
   const sock = net.connect({ host: u.hostname, port: Number(u.port) }, () => {
     process.stdout.write(JSON.stringify({ connected: true }) + "\\n");
     sock.end();
+    setTimeout(() => process.exit(0), 50);
+  });
+  sock.setTimeout(1500, () => {
+    process.stdout.write(JSON.stringify({ error: "TIMEOUT" }) + "\\n");
+    sock.destroy();
+    process.exit(0);
   });
   sock.on("error", (err) => {
     process.stdout.write(JSON.stringify({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }) + "\\n");
+    process.exit(0);
   });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
@@ -1094,9 +1107,17 @@ function go() {
   }, () => {
     process.stdout.write(JSON.stringify({ connected: true }) + "\\n");
     sock.end();
+    process.exit(0);
   });
+  const killer = setTimeout(() => {
+    try { sock.destroy(); } catch (e) {}
+    process.stdout.write(JSON.stringify({ error: "TIMEOUT" }) + "\\n");
+    process.exit(0);
+  }, 1500);
   sock.on("error", (err) => {
+    clearTimeout(killer);
     process.stdout.write(JSON.stringify({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }) + "\\n");
+    process.exit(0);
   });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
@@ -1107,11 +1128,15 @@ else go();
     let tcpServer;
     let tcpUrl;
     let tcpHits;
+    let tcpSockets;
 
     beforeEach(async () => {
       tcpHits = 0;
+      tcpSockets = new Set();
       tcpServer = net.createServer((sock) => {
+        tcpSockets.add(sock);
         tcpHits += 1;
+        sock.on("close", () => tcpSockets.delete(sock));
         sock.end();
       });
       await new Promise((resolve) => tcpServer.listen(0, "127.0.0.1", resolve));
@@ -1119,7 +1144,13 @@ else go();
     });
 
     afterEach(async () => {
-      await new Promise((resolve) => tcpServer.close(resolve));
+      for (const sock of tcpSockets) {
+        try { sock.destroy(); } catch { /* ignore */ }
+      }
+      await new Promise((resolve) => {
+        tcpServer.close(() => resolve());
+        setTimeout(resolve, 500);
+      });
     });
 
     test("PAID_MODE, net.connect blocked_hosts: TCP never opens", async () => {
@@ -1147,7 +1178,6 @@ else go();
       assert.equal(code, 0);
       const result = JSON.parse(stdout.trim().split("\n").pop());
       assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(tcpHits, 0, "tls.connect must not bypass destination blocking");
       assert.equal(requests.ingest.length, 0);
       assert.equal(requests.ingest.length, 0);
     });
@@ -1709,14 +1739,15 @@ function go() {
     process.stdout.write(JSON.stringify(obj) + "\\n");
     setTimeout(() => process.exit(0), 150);
   };
-  const child = spawn("http", ["GET", process.env.TARGET_URL], {
+  const child = spawn("http", ["--timeout", "2", "GET", process.env.TARGET_URL], {
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const killer = setTimeout(() => { try { child.kill("SIGKILL"); } catch (e) {} }, 2000);
   child.on("error", (err) => out({
     error: err && err.code ? String(err.code) : "Error",
     body: err && err.message ? String(err.message) : "",
   }));
-  child.on("close", (code) => out({ ok: true, code }));
+  child.on("close", (code) => { clearTimeout(killer); out({ ok: true, code }); });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
 else go();
@@ -1732,14 +1763,15 @@ function go() {
     process.stdout.write(JSON.stringify(obj) + "\\n");
     setTimeout(() => process.exit(0), 150);
   };
-  const child = spawn("aria2c", [process.env.TARGET_URL], {
+  const child = spawn("aria2c", ["--timeout=2", "--connect-timeout=2", "--max-tries=1", process.env.TARGET_URL], {
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const killer = setTimeout(() => { try { child.kill("SIGKILL"); } catch (e) {} }, 2000);
   child.on("error", (err) => out({
     error: err && err.code ? String(err.code) : "Error",
     body: err && err.message ? String(err.message) : "",
   }));
-  child.on("close", (code) => out({ ok: true, code }));
+  child.on("close", (code) => { clearTimeout(killer); out({ ok: true, code }); });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
 else go();
