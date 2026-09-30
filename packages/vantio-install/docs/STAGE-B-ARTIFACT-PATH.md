@@ -1,6 +1,6 @@
 # Stage B artifact path
 
-Customer operators use `ARTIFACT-PATH.md` for sealed-byte placement. This note uses the same customer-staging archive basename and the same frozen digests.
+Customer operators use `ARTIFACT-PATH.md` for sealed-byte placement. This note uses the same archive basename and the same frozen digests.
 
 This note is for the operator who will place sealed bytes on a host before a later live run. The second-lab gate is closed. `proof_state` stays `NOT_PROVED`. This file does not publish a download URL, a registry token, or a public image name.
 
@@ -28,10 +28,10 @@ Optional Python sdist, only if you include it:
 
 Sealed Phantom Engine archive:
 
-- Path: `artifacts/phantom-engine/vantio-phantom-engine-customer-staging-fab81efc0811-linux-amd64.oci.tar`
-- SHA-256: `72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128`
-- Source commit: `fab81efc08110506ff90847495197e7051a253b5`
-- Manifest digest: `sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553`
+- Path: `artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar`
+- SHA-256: `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`
+- Source commit: `06696d5020700693b0154c59d0e072a24f648378`
+- Manifest digest: `sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19`
 
 `artifacts/phantom-engine/PHANTOM-ARTIFACT-MANIFEST.json` records that commit, that archive hash, and that manifest digest. `SHA256SUMS` lists every file in the bundle. A mismatch stops `plan`.
 

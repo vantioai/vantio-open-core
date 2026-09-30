@@ -37,23 +37,25 @@ Optional Python sdist (only if included):
 - Path: `artifacts/optics/vantio_agent_sdk-3.1.0.tar.gz`
 - SHA-256: `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f`
 
-## Sealed Phantom Engine archive (customer staging name)
+## Sealed Phantom Engine archive
 
-Use a **customer staging** filename that does **not** embed internal lab aliases:
+Place the sealed tar under this basename. Apply opens that path and checks this SHA-256.
 
-- Path: `artifacts/phantom-engine/vantio-phantom-engine-customer-staging-fab81efc0811-linux-amd64.oci.tar`
-- SHA-256: `72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128`
-- Source commit: `fab81efc08110506ff90847495197e7051a253b5`
-- Manifest digest: `sha256:4d932b93bf4c20983142d5f9bff1ea060d9407a19a5e8c9f59db29f7a4122553`
+- Path: `artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar`
+- SHA-256: `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`
+- Source commit: `06696d5020700693b0154c59d0e072a24f648378`
+- Manifest digest: `sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19`
 
-**Naming rule (GAP-CB-DEP-002):** the customer-visible archive basename is locked to the staging name above. Customer docs and checksums use that basename only. Do not substitute an internal lab alias, a shorter untagged alias, or any absolute path.
+That manifest digest is the digest inside the sealed tar. On Ubuntu 24.04, apply writes a temporary load archive when a layer is gzip and the manifest calls it an uncompressed tar, then `docker load` records the corrected manifest. The sealed file hash stays `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`.
+
+**Naming rule:** customer docs and checksums use the basename above. Do not substitute a shorter untagged alias or any absolute path.
 
 `artifacts/phantom-engine/PHANTOM-ARTIFACT-MANIFEST.json` must record the same commit, archive hash, and manifest digest. `SHA256SUMS` lists every file in the bundle. A mismatch stops `plan`.
 
 ### Example SHA256SUMS line
 
 ```
-72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128  artifacts/phantom-engine/vantio-phantom-engine-customer-staging-fab81efc0811-linux-amd64.oci.tar
+e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e  artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar
 ```
 
 ## GHCR / registries
@@ -78,7 +80,7 @@ Rollback, uninstall, status, and verify-removal semantics remain as documented i
 
 | Field | Value |
 | --- | --- |
-| pe_source_commit | `fab81efc08110506ff90847495197e7051a253b5` |
-| pe_archive_sha256 | `72719cf4c590805378188da38a0d43c540e6722328268bde3955f07d2c3a9128` |
+| pe_source_commit | `06696d5020700693b0154c59d0e072a24f648378` |
+| pe_archive_sha256 | `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e` |
 | published | `false` |
 | claim_ceiling | `INTERNAL_CLEAN_HOST_PROOF` |
