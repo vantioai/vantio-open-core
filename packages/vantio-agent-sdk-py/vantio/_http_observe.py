@@ -2089,6 +2089,8 @@ def _apply_cli_gate(
         hostname, port, path = _host_port_from_url(url)
         decision = _decide(hostname, port, path, data_bytes)
         rows.append((hostname, path, decision, url))
+    # NOT_DONE: the block, block_size, block_spend, and dry_* arms below do not
+    # run. _decide returns only "pass" or "observe". The observe arm is live.
     hard = [r for r in rows if r[2] in ("block", "block_size", "block_spend")]
     in_scope = [r for r in rows if r[2] != "pass"]
     to_record = hard if hard else in_scope

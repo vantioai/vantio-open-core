@@ -10,7 +10,7 @@ import urllib.request
 import warnings
 from pathlib import Path
 
-from vantio import get_current_trace_id, report_anomaly, shield
+from vantio import fetch_policy, get_current_trace_id, redact_pii, report_anomaly, shield
 from vantio.sdk import VantioContext, _normalize_policy
 
 from .mock_server import MockServer
@@ -264,6 +264,28 @@ class NormalizePolicyTests(unittest.TestCase):
     def test_dry_run_defaults_false_on_non_boolean(self) -> None:
         p = _normalize_policy({"dry_run": "true"})
         self.assertFalse(p.dry_run)
+
+
+class ObservationalSdkTests(unittest.TestCase):
+    def test_fetch_policy_does_not_call_the_network(self) -> None:
+        def boom(*_args, **_kwargs):
+            raise AssertionError("fetch_policy must not open a URL")
+
+        original = urllib.request.urlopen
+        urllib.request.urlopen = boom
+        try:
+            policy = fetch_policy("vk_test_dummy", ingest_url="http://127.0.0.1:9")
+        finally:
+            urllib.request.urlopen = original
+        self.assertFalse(policy.enforce)
+        self.assertFalse(policy.pii_redact)
+
+    def test_redact_pii_returns_the_original_text(self) -> None:
+        raw = "Contact bob@example.com or call 555-123-4567"
+        result = redact_pii(raw)
+        self.assertEqual(result.text, raw)
+        self.assertEqual(result.redactions, [])
+        self.assertNotIn("VANTIO_REDACTED", result.text)
 
 
 if __name__ == "__main__":
