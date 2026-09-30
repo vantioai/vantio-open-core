@@ -43,6 +43,9 @@ jobs:
       - name: Test @vantio/cli
         run: pnpm --filter @vantio/cli run test
 
+      - name: Test @vantio/gate-mcp
+        run: pnpm --filter @vantio/gate-mcp test
+
       - name: Test @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run test
 
