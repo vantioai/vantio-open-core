@@ -1,0 +1,104 @@
+name: W3 lab auto cost gate
+
+# Artifact draft for vantioai/vantio-open-core. This packet does not install it.
+# Trust subject, after the file is on main:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# job_workflow_ref:
+#   vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main
+# Role: arn:aws:iam::960577828987:role/vantio-w3-lab-billing-read
+# Requested session: 900 seconds. Role maximum: 3600 seconds.
+#
+# The only billing read is freetier:GetAccountPlanState in us-east-1.
+# Cost Explorer is not called. UpgradeAccountPlan is not called.
+# expected_oop_usd is 0 only when that read shows the Free plan can cover
+# the $2.00 ceiling. Any other result fails the job. A green gate does not
+# set NONINTERACTIVE_TEARDOWN_READY.
+
+on:
+  workflow_call:
+    outputs:
+      expected_oop_usd:
+        description: Zero only when the Free-plan ceiling check passes.
+        value: ${{ jobs.gate.outputs.expected_oop_usd }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-auto-cost-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Abort unless expected out-of-pocket is $0
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 5
+    outputs:
+      expected_oop_usd: ${{ steps.eval.outputs.expected_oop_usd }}
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout gate script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-billing-read
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-billing-read
+          role-session-name: w3-lab-auto-cost-${{ github.run_id }}
+          aws-region: us-east-1
+          role-duration-seconds: "900"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Read Free plan state
+        run: |
+          set -euo pipefail
+          aws freetier get-account-plan-state --region us-east-1 > "$RUNNER_TEMP/plan-state.json"
+
+      - name: Abort unless expected out-of-pocket is 0
+        id: eval
+        run: |
+          set -euo pipefail
+          set +e
+          python3 scripts/aws/w3_lab_auto.py cost-gate < "$RUNNER_TEMP/plan-state.json" | tee "$GITHUB_WORKSPACE/w3-lab-auto-cost-gate.json"
+          status=$?
+          set -e
+          oop=$(python3 -c 'import json; print(json.load(open("w3-lab-auto-cost-gate.json"))["expected_oop_usd"])')
+          echo "expected_oop_usd=$oop" >> "$GITHUB_OUTPUT"
+          test "$status" -eq 0
+          test "$oop" = "0"
+
+      - name: Upload gate artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-auto-cost-gate-${{ github.run_id }}
+          path: w3-lab-auto-cost-gate.json
+          if-no-files-found: error
