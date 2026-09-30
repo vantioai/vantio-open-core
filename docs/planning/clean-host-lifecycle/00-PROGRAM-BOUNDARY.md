@@ -4,9 +4,9 @@ Audience: INTERNAL_RESTRICTED
 
 Producer role: planning producer only. This agent does not sit the independent council, does not self-assign a council pass, and does not assign an evidence tier.
 
-Producer identity: Cursor cloud agent `bc-696d1176-5194-564e-a77c-9001563d5885`, model Grok 4.7.
+Producer identity: OMITTED_FROM_PUBLIC_TIP.
 
-Producer URL: https://cursor.com/agents/bc-696d1176-5194-564e-a77c-9001563d5885
+Producer URL: OMITTED_FROM_PUBLIC_TIP.
 
 Producer classification: `CLEAN_HOST_LAB_DESIGN_READY_FOR_COUNCIL`
 
@@ -37,7 +37,7 @@ Environment class: `CLEAN_HOST_INTERNAL_PROOF`
 - Defines an internal clean-host lab that is independent of Phantom-Box.
 - Specifies reset, capture, retention, expiry, and stop behavior for that lab.
 - Adds lifecycle scripts under `scripts/` that enforce those rules on a disposable `HOME`.
-- Leaves `06-INDEPENDENT-COUNCIL.md` as `PENDING_INDEPENDENT_COUNCIL`.
+- Leaves `06-INDEPENDENT-COUNCIL.md` as `PENDING_INDEPENDENT_COUNCIL`. The public tip holds a placeholder. The full council record is private.
 
 The scripts are in-repo artifacts. A zero exit code from a script is a process result. It is not an evidence tier.
 
@@ -103,6 +103,6 @@ The script created a temporary lab root under `/tmp`, ran the refusal cases, res
 | `03-LIFECYCLE-SCRIPT-INVENTORY.md` | Script inventory |
 | `04-STOP-CONDITIONS.md` | Stop conditions |
 | `05-EVIDENCE-RETENTION.md` | Evidence retention |
-| `06-INDEPENDENT-COUNCIL.md` | Pending council |
+| `06-INDEPENDENT-COUNCIL.md` | Public placeholder. The full council record is private. |
 | `LAB-MANIFEST.json` | File hashes and classification |
 | `scripts/` | Guarded lifecycle scripts |
