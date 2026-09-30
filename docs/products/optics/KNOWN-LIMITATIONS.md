@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: CLI 0.3.24, published Python 3.0.14, unpublished Python 3.1.0 source as labeled.
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). Gate-era enforcement was removed from the Optics source candidates. Enforcement is provided by Phantom Engine.
 
 ## Absent on purpose in the current products
 

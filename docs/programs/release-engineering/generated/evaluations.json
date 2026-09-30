@@ -20,12 +20,12 @@
         "status": "SATISFIED"
       },
       {
-        "detail": "@vantio-cli-0.3.24.source hash unrecorded; @vantio-agent-sdk-0.2.4.source hash unrecorded; @vantio-optics-mcp-0.1.2.source hash unrecorded; @vantio-gate-mcp-0.1.1.source hash unrecorded; vantio-optics-0.1.0.source hash unrecorded; @vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source hash unrecorded",
+        "detail": "@vantio-cli-0.3.25.source hash unrecorded; @vantio-agent-sdk-0.2.4.source hash unrecorded; @vantio-optics-mcp-0.1.2.source hash unrecorded; @vantio-gate-mcp-0.1.1.source hash unrecorded; vantio-optics-0.1.0.source hash unrecorded; @vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source hash unrecorded",
         "id": "R3",
         "status": "GAP"
       },
       {
-        "detail": "@vantio-cli-0.3.24.source custody hash unrecorded; @vantio-agent-sdk-0.2.4.source custody hash unrecorded; @vantio-optics-mcp-0.1.2.source custody hash unrecorded; @vantio-gate-mcp-0.1.1.source custody hash unrecorded; vantio-optics-0.1.0.source custody hash unrecorded; @vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source custody hash unrecorded",
+        "detail": "@vantio-cli-0.3.25.source custody hash unrecorded; @vantio-agent-sdk-0.2.4.source custody hash unrecorded; @vantio-optics-mcp-0.1.2.source custody hash unrecorded; @vantio-gate-mcp-0.1.1.source custody hash unrecorded; vantio-optics-0.1.0.source custody hash unrecorded; @vantio-optics-evidence-contract-0.0.0-unstable-pre-1.0.source custody hash unrecorded",
         "id": "R4",
         "status": "GAP"
       },

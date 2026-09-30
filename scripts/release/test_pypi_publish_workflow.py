@@ -258,8 +258,8 @@ class WorkflowContractTests(unittest.TestCase):
     def test_python_version_pin_remains(self) -> None:
         pyproject = (ROOT / "packages/vantio-agent-sdk-py/pyproject.toml").read_text(encoding="utf-8")
         init = (ROOT / "packages/vantio-agent-sdk-py/vantio/__init__.py").read_text(encoding="utf-8")
-        self.assertIn('version = "3.1.0"', pyproject)
-        self.assertIn('__version__ = "3.1.0"', init)
+        self.assertIn('version = "3.1.1"', pyproject)
+        self.assertIn('__version__ = "3.1.1"', init)
 
 
 class SealedGateTests(unittest.TestCase):

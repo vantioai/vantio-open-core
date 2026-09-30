@@ -97,7 +97,7 @@ describe("public surfaces do not advertise accounts", () => {
   test("README and package metadata do not promise accounts, billing, or the missing config route", () => {
     const readme = readFileSync(README_PATH, "utf8");
     const pkg = JSON.parse(readFileSync(PKG_PATH, "utf8"));
-    assert.equal(pkg.version, "0.3.24");
+    assert.equal(pkg.version, "0.3.25");
     assert.equal(pkg.license, "MIT");
     assert.ok(pkg.files.includes("README.md"));
     assert.ok(pkg.files.includes("LICENSE"));
