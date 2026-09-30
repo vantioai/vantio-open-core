@@ -36,6 +36,13 @@
       "disposition": "REMOVED",
       "reviewed_on": "2026-09-30",
       "reason": "The two sight_loop needles were assertions on a BLOCKED_HOST ingest event. Optics no longer emits that enforcement event, so those assertions are gone. The CLI still does not emit sight_loop. The path is no longer in hits."
+    },
+    {
+      "path": "packages/vantio-cli/bin/interceptor.cjs",
+      "count": 0,
+      "disposition": "REMOVED",
+      "reviewed_on": "2026-09-30",
+      "reason": "The two sight_loop needles were comments on the retired ingest body. That body is gone. Optics does not emit sight_loop. The path is no longer in hits."
     }
   ],
   "intentional_leftovers": {
@@ -294,10 +301,6 @@
     },
     {
       "path": "packages/vantio-agent-sdk/package.json",
-      "count": 2
-    },
-    {
-      "path": "packages/vantio-cli/bin/interceptor.cjs",
       "count": 2
     },
     {

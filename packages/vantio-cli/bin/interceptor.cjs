@@ -2103,6 +2103,10 @@ globalThis.fetch = function vantioFetch(input, init) {
 })();
 
 process.on("exit", () => {
+  // `vantio run --summary` sets VANTIO_SUMMARY=1. Recorded calls already print
+  // this local summary. The flag does not hide it and does not invent one
+  // when the run recorded nothing.
+  const summaryRequested = process.env.VANTIO_SUMMARY === "1";
   const hosts      = [...new Set(_calls.map((x) => x.hostname))];
   const redacted   = _calls.filter((x) => x.action === "REDACTED").length;
   const blocked    = _calls.filter((x) => String(x.action).startsWith("BLOCKED")).length;
@@ -2193,7 +2197,12 @@ process.on("exit", () => {
     // Non-fatal — never let log writing affect the exiting agent.
   }
 
-  if (_calls.length === 0) return;
+  if (_calls.length === 0) {
+    if (summaryRequested) {
+      // No recorded calls. The summary flag does not print an empty banner.
+    }
+    return;
+  }
 
   if (process.env.VANTIO_JSON === "1") {
     const rollup = rollupCalls(_calls);
