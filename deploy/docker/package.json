@@ -1,0 +1,8 @@
+{
+  "name": "vantio-optics-observe-example",
+  "private": true,
+  "description": "Tiny Node process for the Optics observe image. Run only under vantio run node.",
+  "scripts": {
+    "start": "node agent.js"
+  }
+}

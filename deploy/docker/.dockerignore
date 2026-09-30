@@ -1,0 +1,24 @@
+# Strict context. Only the named observe example files are sent to the daemon.
+*
+!Dockerfile.observe
+!agent.js
+!package.json
+!compose.observe.yml
+
+# Secret and VCS names stay excluded even if a later exception is added.
+**/.env
+**/.env.*
+**/.git
+**/.git/**
+**/.ssh
+**/.ssh/**
+**/*.pem
+**/*.key
+**/id_rsa
+**/id_rsa.pub
+**/*credentials*
+**/secrets
+**/secrets/**
+**/.npmrc
+**/.aws
+**/.aws/**

@@ -23,7 +23,10 @@ from vantio_install import bpf_pins, constants  # noqa: E402
 from vantio_install.docker_object import DockerCommandResult, interpret_probe  # noqa: E402
 from vantio_install.live_executor import (  # noqa: E402
     ExecResult,
+    LiveGrant,
     ProductionObserver,
+    _filesystem,
+    _privilege_ok,
     _recover_absent_target,
     authorize_live,
     catalog_argv,
@@ -33,6 +36,7 @@ from vantio_install.live_executor import (  # noqa: E402
     reject_argv,
     residual_result,
 )
+from vantio_install.mutator import FixtureMutator  # noqa: E402
 from vantio_install.agent_sdk import (  # noqa: E402
     observed_agent_sdk_npm_version,
     observed_agent_sdk_py_version,
@@ -498,6 +502,42 @@ class LiveExecutorTests(unittest.TestCase):
         with self.assertRaises(InstallError) as caught:
             self.grant_for(harness, host=host, euid=1000)
         self.assertIn("root", str(caught.exception))
+
+    def test_sudo_on_path_is_not_live_privilege(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        host = harness.snapshot()
+        host["privilege_mode"] = "sudo"
+        host["sudo_available"] = True
+        host["principal_can_talk_to_docker"] = False
+        self.assertFalse(_privilege_ok(host, 1000))
+        with self.assertRaises(InstallError) as caught:
+            self.grant_for(harness, host=host, euid=1000)
+        self.assertIn("effective root", str(caught.exception))
+        self.assertEqual(caught.exception.failure_class, "FAILED_SAFE")
+
+    def test_docker_group_without_effective_root_is_not_live_privilege(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        host = harness.snapshot()
+        host["privilege_mode"] = "docker_group"
+        host["sudo_available"] = False
+        host["principal_can_talk_to_docker"] = True
+        self.assertFalse(_privilege_ok(host, 1000))
+        with self.assertRaises(InstallError) as caught:
+            self.grant_for(harness, host=host, euid=1000)
+        self.assertIn("effective root", str(caught.exception))
+
+    def test_effective_root_is_live_privilege_without_sudo_on_path(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        host = harness.snapshot()
+        host["privilege_mode"] = "sudo"
+        host["sudo_available"] = False
+        host["principal_can_talk_to_docker"] = True
+        self.assertTrue(_privilege_ok(host, 0))
+        grant = self.grant_for(harness, host=host, euid=0)
+        self.assertEqual(grant.command, "apply")
 
     def test_live_preflight_blocked_refuses(self) -> None:
         harness = self.planned()
@@ -1609,6 +1649,89 @@ class LiveExecutorTests(unittest.TestCase):
         ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertTrue(any(row["phase"] == "RESIDUAL_FOUND" and row["op"] == "docker_rm" for row in ops))
         self.assertFalse(any(row["phase"] == "VERIFIED" for row in ops))
+
+    def _stage_grant(self, stage: Path) -> LiveGrant:
+        root = stage.parent
+        return LiveGrant(
+            command="rollback",
+            transaction_id=TX,
+            plan_sha256="0" * 64,
+            bundle_digest="0" * 64,
+            iface="ens5",
+            prefix=root / "prefix",
+            stage=stage,
+            evidence=root / "evidence",
+            bundle=root / "bundle",
+            tx_dir=root,
+            tag="local",
+            archive=root / "archive.tar",
+            optics_tarball=root / "optics.tgz",
+            sdk_npm=root / "sdk.tgz",
+            sdk_wheel=root / "sdk.whl",
+            container_name="vantio-pe-test",
+            observe_config=root / "observe-config.json",
+        )
+
+    def test_remove_stage_refuses_symlink_and_does_not_follow_it(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="vantio-stage-link-"))
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        tx = root / "tx"
+        tx.mkdir()
+        # A sibling inside the stage parent still passes a resolve-and-confine check.
+        victim = tx / "sibling"
+        victim.mkdir()
+        secret = victim / "keep.txt"
+        secret.write_text("keep\n", encoding="utf-8")
+        stage = tx / "stage"
+        stage.symlink_to(victim, target_is_directory=True)
+        outside = root / "outside"
+        outside.mkdir()
+        (outside / "keep.txt").write_text("keep\n", encoding="utf-8")
+        outside_stage = tx / "outside-stage"
+        outside_stage.symlink_to(outside, target_is_directory=True)
+        for link, kept in ((stage, secret), (outside_stage, outside / "keep.txt")):
+            with self.assertRaises(InstallError) as caught:
+                _filesystem("remove_stage", self._stage_grant(link))
+            self.assertIn("symlink", str(caught.exception).lower())
+            self.assertEqual(caught.exception.failure_class, "FAILED_SAFE")
+            self.assertEqual(kept.read_text(encoding="utf-8"), "keep\n")
+            self.assertTrue(link.is_symlink())
+
+    def test_remove_stage_does_not_follow_a_symlink_inside_the_directory(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="vantio-stage-child-"))
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        outside = root / "outside"
+        outside.mkdir()
+        secret = outside / "keep.txt"
+        secret.write_text("keep\n", encoding="utf-8")
+        stage = root / "tx" / "stage"
+        stage.mkdir(parents=True)
+        (stage / "note.txt").write_text("stage\n", encoding="utf-8")
+        (stage / "link").symlink_to(outside, target_is_directory=True)
+        nested = stage / "nested"
+        nested.mkdir()
+        (nested / "inner").symlink_to(secret)
+        _filesystem("remove_stage", self._stage_grant(stage))
+        self.assertFalse(stage.exists())
+        self.assertFalse(stage.is_symlink())
+        self.assertEqual(secret.read_text(encoding="utf-8"), "keep\n")
+        self.assertTrue(outside.is_dir())
+
+    def test_fixture_remove_stage_refuses_symlink(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="vantio-fixture-stage-"))
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        victim = root / "victim"
+        victim.mkdir()
+        secret = victim / "keep.txt"
+        secret.write_text("keep\n", encoding="utf-8")
+        stage = root / "stage"
+        stage.symlink_to(victim, target_is_directory=True)
+        mutator = FixtureMutator({"product_files": [str(secret)]}, root / "prefix", stage)
+        with self.assertRaises(InstallError) as caught:
+            mutator._remove_stage({})
+        self.assertIn("symlink", str(caught.exception).lower())
+        self.assertEqual(secret.read_text(encoding="utf-8"), "keep\n")
+        self.assertTrue(stage.is_symlink())
 
 
 if __name__ == "__main__":
