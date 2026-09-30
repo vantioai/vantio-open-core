@@ -45,7 +45,9 @@ const c = {
   cyan:   USE_COLOR ? "\x1b[36m" : "",
 };
 
-const INGEST_URL = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
+const { parseIngestUrl } = require("./ingest-url.cjs");
+const _parsedIngest = parseIngestUrl(process.env.VANTIO_INGEST_URL);
+const INGEST_URL = _parsedIngest.ok ? _parsedIngest.href : (process.env.VANTIO_INGEST_URL || "https://vantio.ai");
 // Keep the path. Do not reduce the URL to its origin.
 function isPublicCloudHost(raw) {
   try {

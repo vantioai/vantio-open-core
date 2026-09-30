@@ -115,6 +115,7 @@ _orig_socket_connect_ex: Any = None
 _orig_create_connection: Any = None
 _orig_ssl_connect: Any = None
 _orig_http_request: Any = None
+_orig_http_getresponse: Any = None
 _orig_http_putrequest: Any = None
 _orig_urllib3_request: Any = None
 _orig_pycurl_curl: Any = None
@@ -490,7 +491,7 @@ def _record(
     action: str,
     mediation: str,
     **extra: Any,
-) -> None:
+) -> dict[str, Any]:
     rec = {
         "hostname": hostname,
         "provider": extra.pop("provider", "other"),
@@ -506,6 +507,7 @@ def _record(
     rec["opticsLabel"] = _human_status(optics)
     apply_customer_outcome(rec)
     _append(rec)
+    return rec
 
 
 def _dispatch_gate(
@@ -1101,10 +1103,14 @@ def _observe_http_client_request(
         resp = _http_orig(
             _orig_http_request, self, method, url, body, headers or {}, encode_chunked=encode_chunked
         )
-        if record_send:
+        if record_send and getattr(self, "_vantio_pending", None) is None:
             action = "OBSERVED"
-            _record(hostname, action, "python_http_client", method=method_s, path=path, ok=True,
-                    duration_ms=int((time.time() - t0) * 1000))
+            rec = _record(
+                hostname, action, "python_http_client", method=method_s, path=path, ok=True,
+                duration_ms=int((time.time() - t0) * 1000),
+            )
+            _, _, nbytes = _body_to_text(body)
+            self._vantio_pending = {"rec": rec, "path": path, "t0": t0, "request_bytes": nbytes}
         return resp
     except Exception as exc:
         _record_http_exception(
@@ -1134,33 +1140,68 @@ def _observe_http_client_putrequest(
     kind, _payload, _redactions, record_send = _dispatch_gate(
         hostname, port, path, None, "python_http_client"
     )
-    if kind != "pass" and record_send:
+    if kind != "pass" and record_send and getattr(self, "_vantio_pending", None) is None:
         action = "OBSERVED"
-        _record(hostname, action, "python_http_client", method=str(method or "GET").upper(), path=path)
+        rec = _record(
+            hostname, action, "python_http_client",
+            method=str(method or "GET").upper(), path=path,
+        )
+        self._vantio_pending = {"rec": rec, "path": path, "t0": time.time(), "request_bytes": None}
     return _http_orig(_orig_http_putrequest, self, method, url, skip_host, skip_accept_encoding)
 
 
+def _observe_http_client_getresponse(self: Any, *args: Any, **kwargs: Any) -> Any:
+    if _http_owns():
+        return _orig_http_getresponse(self, *args, **kwargs)
+    pending = getattr(self, "_vantio_pending", None)
+    try:
+        resp = _orig_http_getresponse(self, *args, **kwargs)
+    except Exception:
+        self._vantio_pending = None
+        raise
+    self._vantio_pending = None
+    if pending and isinstance(pending.get("rec"), dict):
+        status = getattr(resp, "status", None)
+        rec = pending["rec"]
+        rec["status"] = _normalize_http_status(status)
+        rec["ok"] = _ok_for_http_status(status)
+        rec["applicationStatus"] = _application_status(status)
+        try:
+            cl = resp.getheader("Content-Length") if hasattr(resp, "getheader") else None
+            if cl is not None and str(cl).strip() != "":
+                rec["bytes"] = int(cl)
+        except (TypeError, ValueError):
+            pass
+        apply_customer_outcome(rec)
+    return resp
+
+
 def _install_http_client() -> None:
-    global _orig_http_request, _orig_http_putrequest
+    global _orig_http_request, _orig_http_putrequest, _orig_http_getresponse
     if _orig_http_request is not None:
         return
     _orig_http_request = http.client.HTTPConnection.request
     _orig_http_putrequest = http.client.HTTPConnection.putrequest
+    _orig_http_getresponse = http.client.HTTPConnection.getresponse
     http.client.HTTPConnection.request = _observe_http_client_request  # type: ignore[assignment]
     http.client.HTTPConnection.putrequest = _observe_http_client_putrequest  # type: ignore[assignment]
+    http.client.HTTPConnection.getresponse = _observe_http_client_getresponse  # type: ignore[assignment]
 
 
 def _uninstall_http_client() -> None:
-    global _orig_http_request, _orig_http_putrequest
+    global _orig_http_request, _orig_http_putrequest, _orig_http_getresponse
     try:
         if _orig_http_request is not None:
             http.client.HTTPConnection.request = _orig_http_request
         if _orig_http_putrequest is not None:
             http.client.HTTPConnection.putrequest = _orig_http_putrequest
+        if _orig_http_getresponse is not None:
+            http.client.HTTPConnection.getresponse = _orig_http_getresponse
     except Exception:
         pass
     _orig_http_request = None
     _orig_http_putrequest = None
+    _orig_http_getresponse = None
 
 
 def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
