@@ -11,13 +11,36 @@ import http2 from "node:http2";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INTERCEPTOR_PATH = join(__dirname, "..", "bin", "interceptor.cjs");
+
+describe("observe-only source", () => {
+  test("transport wrappers have no FREE_MODE or unreachable enforce arms", () => {
+    const source = readFileSync(INTERCEPTOR_PATH, "utf8");
+    assert.doesNotMatch(source, /\bFREE_MODE\b/);
+    for (const token of [
+      "BLOCKED_HOST",
+      "BLOCKED_SIZE",
+      "BLOCKED_SPEND",
+      "DRY_RUN_BLOCKED",
+      "VANTIO_GATE_BLOCKED",
+      "blocked_by_vantio",
+    ]) {
+      assert.equal(source.includes(token), false, `${token} must not remain in the interceptor`);
+    }
+    for (const name of ["decideHttp", "decideWs", "decideHttp2", "decideNet", "decideCurl"]) {
+      const match = source.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n  \\}`));
+      assert.ok(match, `${name} must exist`);
+      assert.match(match[0], /return "observe"/);
+      assert.doesNotMatch(match[0], /return "(?:block|dry_block|block_size|block_spend|dry_size|dry_spend)"/);
+    }
+  });
+});
 
 // Runs `node --require interceptor.cjs -e <agentScript>` in a fresh process
 // with the given env layered over a minimal base. Resolves with

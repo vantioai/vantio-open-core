@@ -12,13 +12,13 @@ and Vertex patterns and local Ollama on port 11434.
 Wraps urllib.request.urlopen and OpenerDirector.open always. If requests,
 httpx, aiohttp, urllib3, or pycurl are installed, wraps those too. Also wraps
 socket.connect / connect_ex / create_connection / ssl.SSLSocket.connect and
-http.client request/putrequest to in-scope hosts (host-block and observe; TLS
+http.client request/putrequest to in-scope hosts (observe only; TLS
 payloads are not read). Also wraps subprocess / os.system / asyncio curl, wget,
-httpie, and aria2c spawns to in-scope hosts (host-block and observe; file-body
+httpie, and aria2c spawns to in-scope hosts (observe only; file-body
 and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines;
-inline argv bodies are rewritten by the Phantom Engine enforcement component; file contents and stdin pipes
-are not read). With a Phantom Engine API key, the same wrap can block, redact PII, or
-enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.
+file contents and stdin pipes are not read). Optics does not block, delay, or
+rewrite. A VANTIO_API_KEY does not fetch policy and is not sent for enforcement.
+Browsers stay outside this wrap.
 """
 from __future__ import annotations
 
@@ -39,7 +39,6 @@ import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
-from io import BytesIO
 from typing import Any, Iterator, Optional
 from urllib.parse import urlparse
 
@@ -149,7 +148,7 @@ _http_owns_tls = threading.local()
 
 
 class GateBlockedError(OSError):
-    """Raised when Gate blocks a raw socket connect, http.client request, or a curl/wget spawn."""
+    """Kept so older imports still resolve. Optics does not raise it."""
 
     def __init__(self, hostname: str) -> None:
         super().__init__(f"Vantio Gate blocked host: {hostname}")
@@ -365,62 +364,6 @@ def _body_to_text(body: Any) -> tuple[Optional[str], Optional[bytes], int]:
         encoded = body.encode("utf-8")
         return body, encoded, len(encoded)
     return None, None, 0
-
-
-def _gate_blocked_urllib(url: str, reason: str) -> urllib.error.HTTPError:
-    payload = json.dumps({"error": "blocked_by_vantio", "reason": reason}).encode("utf-8")
-    from email.message import EmailMessage
-
-    hdrs = EmailMessage()
-    hdrs["content-type"] = "application/json"
-    hdrs["content-length"] = str(len(payload))
-    return urllib.error.HTTPError(url, 403, reason, hdrs, BytesIO(payload))
-
-
-def _gate_blocked_requests(reason: str) -> Any:
-    if _requests is None:
-        raise urllib.error.URLError(reason)
-    resp = _requests.models.Response()
-    resp.status_code = 403
-    resp._content = json.dumps({"error": "blocked_by_vantio", "reason": reason}).encode("utf-8")
-    resp.headers["content-type"] = "application/json"
-    resp.reason = reason
-    return resp
-
-
-def _gate_blocked_httpx(reason: str) -> Any:
-    if _httpx is None:
-        raise urllib.error.URLError(reason)
-    return _httpx.Response(
-        403,
-        json={"error": "blocked_by_vantio", "reason": reason},
-    )
-
-
-def _gate_blocked_aiohttp(method: str, url: Any, reason: str) -> BaseException:
-    if _aiohttp is None:
-        return urllib.error.URLError(reason)
-    try:
-        from multidict import CIMultiDict, CIMultiDictProxy
-        from yarl import URL as YarlURL
-
-        parsed = url if hasattr(url, "human_repr") else YarlURL(str(url))
-        empty = CIMultiDict()
-        request_info = _aiohttp.RequestInfo(
-            parsed,
-            str(method or "GET").upper(),
-            CIMultiDictProxy(empty),
-            parsed,
-        )
-        return _aiohttp.ClientResponseError(
-            request_info,
-            (),
-            status=403,
-            message=reason,
-            headers=CIMultiDict({"content-type": "application/json"}),
-        )
-    except Exception:
-        return _aiohttp.ClientError(f"blocked_by_vantio:{reason}")
 
 
 def _aiohttp_request_body(kwargs: dict[str, Any]) -> Any:
@@ -691,38 +634,15 @@ def _dispatch_gate(
 ) -> tuple[str, Any, list[str], bool]:
     """Returns (kind, payload, redactions, record_send).
 
-    kind: pass | block | send
-    payload: original body, a block reason string, or the (possibly redacted) body
-    record_send: False when a dry-run event was already recorded
-
-    NOT_DONE: the block, block_size, block_spend, and dry_* arms below do not
-    run. _decide returns only "pass" or "observe". Those arms are not the live
-    Optics path. A later edit can delete them without changing what this
-    process does.
+    kind is pass or send. _decide returns only pass or observe. In-scope calls
+    are recorded by the caller. Optics does not block, cap, or dry-run.
     """
+    del mediation
     _, _, length = _body_to_text(body)
     decision = _decide(hostname, port, path, length)
     if decision == "pass":
         return "pass", body, [], False
-    if decision == "block":
-        _record(hostname, "BLOCKED_HOST", mediation, path=path, ok=False)
-        return "block", "host_not_permitted", [], False
-    if decision == "block_size":
-        _record(hostname, "BLOCKED_SIZE", mediation, path=path, ok=False)
-        return "block", "request_too_large", [], False
-    if decision == "block_spend":
-        _record(hostname, "BLOCKED_SPEND", mediation, path=path, ok=False)
-        return "block", "spend_cap_reached", [], False
     send_body, redactions, _ = _apply_body(body)
-    if decision == "dry_block":
-        _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, path=path)
-        return "send", send_body, redactions, False
-    if decision == "dry_size":
-        _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, path=path)
-        return "send", send_body, redactions, False
-    if decision == "dry_spend":
-        _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, path=path)
-        return "send", send_body, redactions, False
     return "send", send_body, redactions, True
 
 
@@ -745,10 +665,8 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
         if hasattr(url, "full_url"):
             raw_url = url.full_url
         scheme = "https" if str(raw_url).startswith("https") else "http"
-        url_s = str(raw_url)
     except Exception:
         scheme = "https"
-        url_s = str(url)
 
     body = data if data is not None else getattr(url, "data", None)
     kind, payload, redactions, record_send = _dispatch_gate(
@@ -756,8 +674,6 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
     )
     if kind == "pass":
         return _http_orig(_orig_urlopen, url, data, timeout, *args, **kwargs)
-    if kind == "block":
-        raise _gate_blocked_urllib(url_s, str(payload))
 
     send_data = data
     if data is None and hasattr(url, "data"):
@@ -813,19 +729,15 @@ def _observe_opener_open(self, fullurl, data=None, timeout=socket._GLOBAL_DEFAUL
         raw_url = fullurl
         if hasattr(fullurl, "full_url"):
             raw_url = fullurl.full_url
-        url_s = str(raw_url)
-        scheme = "https" if url_s.startswith("https") else "http"
+        scheme = "https" if str(raw_url).startswith("https") else "http"
     except Exception:
         scheme = "https"
-        url_s = str(fullurl)
     body = data if data is not None else getattr(fullurl, "data", None)
     kind, payload, redactions, record_send = _dispatch_gate(
         hostname, port, path, body, "python_urllib"
     )
     if kind == "pass":
         return _http_orig(_orig_opener_open, self, fullurl, data, timeout)
-    if kind == "block":
-        raise _gate_blocked_urllib(url_s, str(payload))
     send_data = data
     if data is None and hasattr(fullurl, "data"):
         if redactions:
@@ -903,8 +815,6 @@ def _install_requests() -> None:
         )
         if kind == "pass":
             return _http_orig(_orig_requests_send, self, request, **kwargs)
-        if kind == "block":
-            return _gate_blocked_requests(str(payload))
         if redactions:
             request.body = payload
         t0 = time.time()
@@ -970,8 +880,6 @@ def _install_httpx() -> None:
         )
         if kind == "pass":
             return _http_orig(_orig_httpx_sync_send, self, request, **kwargs)
-        if kind == "block":
-            return _gate_blocked_httpx(str(payload))
         if redactions:
             _httpx_set_content(request, payload)
         t0 = time.time()
@@ -1015,8 +923,6 @@ def _install_httpx() -> None:
         )
         if kind == "pass":
             return await _http_orig_async(_orig_httpx_async_send, self, request, **kwargs)
-        if kind == "block":
-            return _gate_blocked_httpx(str(payload))
         if redactions:
             _httpx_set_content(request, payload)
         t0 = time.time()
@@ -1086,8 +992,6 @@ def _install_aiohttp() -> None:
         )
         if kind == "pass":
             return await _http_orig_async(_orig_aiohttp_request, self, method, str_or_url, **kwargs)
-        if kind == "block":
-            raise _gate_blocked_aiohttp(str(method), str_or_url, str(payload))
         send_kwargs = dict(kwargs)
         if redactions:
             if kwargs.get("json") is not None and isinstance(payload, str):
@@ -1174,9 +1078,8 @@ def _addr_host_port(address: Any) -> tuple[Optional[str], Optional[str], bool]:
 def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> tuple[str, bool]:
     """Return (decision, record_after).
 
-    decision is pass, block, or connect. record_after is true when the caller
-    should time the real connect and store that duration. Dry-run decisions are
-    already stored by the gate and are not timed again.
+    decision is pass or connect. record_after is true when the caller should
+    time the real connect and store that duration.
     """
     if not hostname or _http_owns() or _is_control_plane_dest(hostname, port):
         return "pass", False
@@ -1185,8 +1088,6 @@ def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> tuple[str
     )
     if kind == "pass":
         return "pass", False
-    if kind == "block":
-        return "block", False
     return "connect", bool(record_send)
 
 
@@ -1216,8 +1117,6 @@ def _observe_socket_connect(self: Any, address: Any, *args: Any, **kwargs: Any) 
     if ipc:
         return _orig_socket_connect(self, address, *args, **kwargs)
     decision, record_after = _gate_socket_dest(hostname, port)
-    if decision == "block":
-        raise GateBlockedError(hostname or "")
     if decision != "connect" or not record_after:
         return _orig_socket_connect(self, address, *args, **kwargs)
     t0 = time.perf_counter()
@@ -1235,8 +1134,6 @@ def _observe_socket_connect_ex(self: Any, address: Any) -> Any:
     if ipc:
         return _orig_socket_connect_ex(self, address)
     decision, record_after = _gate_socket_dest(hostname, port)
-    if decision == "block":
-        raise GateBlockedError(hostname or "")
     if decision != "connect" or not record_after:
         return _orig_socket_connect_ex(self, address)
     t0 = time.perf_counter()
@@ -1258,8 +1155,6 @@ def _observe_ssl_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> 
         with _http_handled():
             return _orig_ssl_connect(self, address, *args, **kwargs)
     decision, record_after = _gate_socket_dest(hostname, port)
-    if decision == "block":
-        raise GateBlockedError(hostname or "")
     if decision != "connect" or not record_after or _orig_ssl_connect is None:
         with _http_handled():
             return _orig_ssl_connect(self, address, *args, **kwargs)
@@ -1280,8 +1175,6 @@ def _observe_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
         with _http_handled():
             return _orig_create_connection(address, *args, **kwargs)
     decision, record_after = _gate_socket_dest(hostname, port)
-    if decision == "block":
-        raise GateBlockedError(hostname or "")
     if decision != "connect" or not record_after:
         with _http_handled():
             return _orig_create_connection(address, *args, **kwargs)
@@ -1364,8 +1257,6 @@ def _observe_http_client_request(
         return _http_orig(
             _orig_http_request, self, method, url, body, headers or {}, encode_chunked=encode_chunked
         )
-    if kind == "block":
-        raise GateBlockedError(hostname or "")
     send_body = payload if redactions else body
     t0 = time.time()
     method_s = str(method or "GET").upper()
@@ -1379,8 +1270,6 @@ def _observe_http_client_request(
                     duration_ms=int((time.time() - t0) * 1000))
         return resp
     except Exception as exc:
-        if isinstance(exc, GateBlockedError):
-            raise
         _record_http_exception(
             hostname,
             "python_http_client",
@@ -1408,8 +1297,6 @@ def _observe_http_client_putrequest(
     kind, _payload, _redactions, record_send = _dispatch_gate(
         hostname, port, path, None, "python_http_client"
     )
-    if kind == "block":
-        raise GateBlockedError(hostname or "")
     if kind != "pass" and record_send:
         action = "ALLOWED" if _cloud_sync else "OBSERVED"
         _record(hostname, action, "python_http_client", method=str(method or "GET").upper(), path=path)
@@ -1452,8 +1339,6 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwa
     )
     if kind == "pass":
         return _http_orig(_orig_urllib3_request, self, method, url, *args, **kwargs)
-    if kind == "block":
-        raise GateBlockedError(hostname or "")
     call_args = args
     call_kwargs = kwargs
     if redactions:
@@ -1481,8 +1366,6 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwa
             )
         return resp
     except Exception as exc:
-        if isinstance(exc, GateBlockedError):
-            raise
         _record_http_exception(
             hostname,
             "python_urllib3",
@@ -1998,137 +1881,24 @@ def _cli_mediation(tool: str) -> str:
     return "python_curl"
 
 
-def _rewrite_httpie_item(token: str, take_redact: Any) -> str:
-    at = token.find("@")
-    if at > 0 and "=" not in token and ":" not in token:
-        return token
-    for sep in (":=", "==", "="):
-        idx = token.find(sep)
-        if idx <= 0:
-            continue
-        rhs = token[idx + len(sep):]
-        if rhs.startswith("@") or rhs.startswith("<"):
-            return token
-        return token[: idx + len(sep)] + take_redact(rhs)
-    return token
-
-
-def _rewrite_curl_form_value(value: str, treat_at_as_file: bool, take_redact: Any) -> str:
-    eq = value.find("=")
-    rhs = value[eq + 1:] if eq >= 0 else value
-    if treat_at_as_file and (rhs.startswith("@") or rhs.startswith("<")):
-        return value
-    nxt = take_redact(rhs)
-    if nxt == rhs:
-        return value
-    return (value[: eq + 1] + nxt) if eq >= 0 else nxt
-
-
-def _rewrite_inline_cli_bodies(tool: str, argv: list[str]) -> tuple[list[str], list[str]]:
-    # Spawned curl, wget, httpie, and aria2c are observed. Their argv is not rewritten.
-    return [str(a) for a in argv], []
-
-
-def _splice_cli_tokens(tokens: list[str], rewritten_argv: list[str]) -> list[str]:
-    stripped = _strip_spawn_prefixes(tokens)
-    prefix = tokens[: len(tokens) - len(stripped)] if stripped else tokens[:]
-    if not stripped:
-        return tokens
-    base = _cmd_base(stripped[0])
-    if base in ("sh", "bash", "dash", "zsh"):
-        rest = stripped[1:]
-        try:
-            c_idx = rest.index("-c")
-        except ValueError:
-            c_idx = -1
-        if c_idx >= 0 and c_idx + 1 < len(rest):
-            inner_tokens = _tokenize_shell(rest[c_idx + 1])
-            inner_stripped = _strip_spawn_prefixes(inner_tokens)
-            inner_prefix = (
-                inner_tokens[: len(inner_tokens) - len(inner_stripped)] if inner_stripped else []
-            )
-            new_inner = (
-                inner_prefix + [inner_stripped[0]] + rewritten_argv
-                if inner_stripped
-                else inner_tokens
-            )
-            new_stripped = list(stripped)
-            new_stripped[c_idx + 2] = " ".join(shlex.quote(t) for t in new_inner)
-            return prefix + new_stripped
-    return prefix + [stripped[0]] + rewritten_argv
-
-
-def _rewrite_popen_args(args: Any, kwargs: dict[str, Any], rewritten_argv: list[str]) -> Any:
-    shell = bool(kwargs.get("shell"))
-    if isinstance(args, bytes):
-        args = args.decode("utf-8", "replace")
-    if isinstance(args, str):
-        tokens = _tokenize_shell(args)
-        return " ".join(shlex.quote(t) for t in _splice_cli_tokens(tokens, rewritten_argv))
-    try:
-        seq = [str(x) for x in list(args)]
-    except TypeError:
-        return args
-    if not seq:
-        return args
-    if shell:
-        tokens = _tokenize_shell(" ".join(seq))
-        return " ".join(shlex.quote(t) for t in _splice_cli_tokens(tokens, rewritten_argv))
-    return _splice_cli_tokens(seq, rewritten_argv)
-
-
 def _apply_cli_gate(
     tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None
-) -> tuple[Optional[GateBlockedError], Optional[list[str]]]:
+) -> None:
+    """Record in-scope CLI HTTP tools. The child argv is never rewritten or refused."""
     global _spent_usd
     urls, data_bytes = _parse_cli_argv(tool, argv, kwargs)
     if not urls:
-        return None, None
-    rows: list[tuple[Optional[str], Optional[str], str, str]] = []
+        return
+    mediation = _cli_mediation(tool)
     for url in urls:
         hostname, port, path = _host_port_from_url(url)
         decision = _decide(hostname, port, path, data_bytes)
-        rows.append((hostname, path, decision, url))
-    # NOT_DONE: the block, block_size, block_spend, and dry_* arms below do not
-    # run. _decide returns only "pass" or "observe". The observe arm is live.
-    hard = [r for r in rows if r[2] in ("block", "block_size", "block_spend")]
-    in_scope = [r for r in rows if r[2] != "pass"]
-    to_record = hard if hard else in_scope
-    mediation = _cli_mediation(tool)
-    err: Optional[GateBlockedError] = None
-    for hostname, path, decision, _url in to_record:
+        if decision != "observe":
+            continue
         extra = {"path": path, "bytes_observed": data_bytes}
-        if decision == "block":
-            _record(hostname, "BLOCKED_HOST", mediation, ok=False, **extra)
-            if err is None:
-                err = GateBlockedError(hostname or "")
-        elif decision == "block_size":
-            _record(hostname, "BLOCKED_SIZE", mediation, ok=False, **extra)
-            if err is None:
-                err = GateBlockedError(hostname or "")
-        elif decision == "block_spend":
-            _record(hostname, "BLOCKED_SPEND", mediation, ok=False, **extra)
-            if err is None:
-                err = GateBlockedError(hostname or "")
-    if err is not None:
-        return err, None
-    new_argv = argv
-    redactions: list[str] = []
-    if _policy.get("redact_pii") and in_scope:
-        new_argv, redactions = _rewrite_inline_cli_bodies(tool, argv)
-    for hostname, path, decision, _url in to_record:
-        extra = {"path": path, "bytes_observed": data_bytes}
-        if decision == "dry_block":
-            _record(hostname, "DRY_RUN_BLOCKED_HOST", mediation, **extra)
-        elif decision == "dry_size":
-            _record(hostname, "DRY_RUN_BLOCKED_SIZE", mediation, **extra)
-        elif decision == "dry_spend":
-            _record(hostname, "DRY_RUN_BLOCKED_SPEND", mediation, **extra)
-        elif decision not in ("block", "block_size", "block_spend"):
-            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-            _record(hostname, action, mediation, **extra)
-            _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
-    return None, (new_argv if redactions else None)
+        action = "ALLOWED" if _cloud_sync else "OBSERVED"
+        _record(hostname, action, mediation, **extra)
+        _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
 
 
 class _VantioPopen(subprocess.Popen):
@@ -2136,13 +1906,7 @@ class _VantioPopen(subprocess.Popen):
         try:
             cli = _http_cli_from_popen(args, kwargs)
             if cli is not None:
-                err, new_argv = _apply_cli_gate(cli[0], cli[1], kwargs)
-                if err is not None:
-                    raise err
-                if new_argv is not None:
-                    args = _rewrite_popen_args(args, kwargs, new_argv)
-        except GateBlockedError:
-            raise
+                _apply_cli_gate(cli[0], cli[1], kwargs)
         except Exception:
             pass
         super().__init__(args, *pargs, **kwargs)
@@ -2152,13 +1916,7 @@ def _observe_os_system(command: Any) -> Any:
     try:
         cli = _http_cli_from_exec(command)
         if cli is not None:
-            err, new_argv = _apply_cli_gate(cli[0], cli[1])
-            if err is not None:
-                raise err
-            if new_argv is not None:
-                command = _rewrite_popen_args(command, {"shell": True}, new_argv)
-    except GateBlockedError:
-        raise
+            _apply_cli_gate(cli[0], cli[1])
     except Exception:
         pass
     return _orig_os_system(command)
@@ -2168,16 +1926,7 @@ async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_spawn(program, args)
         if cli is not None:
-            err, new_argv = _apply_cli_gate(cli[0], cli[1], kwargs)
-            if err is not None:
-                raise err
-            if new_argv is not None:
-                tokens = _rewrite_popen_args([program, *args], kwargs, new_argv)
-                if isinstance(tokens, list) and tokens:
-                    program = tokens[0]
-                    args = tuple(tokens[1:])
-    except GateBlockedError:
-        raise
+            _apply_cli_gate(cli[0], cli[1], kwargs)
     except Exception:
         pass
     return await _orig_asyncio_exec(program, *args, **kwargs)
@@ -2187,13 +1936,7 @@ async def _observe_asyncio_shell(cmd: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_exec(cmd)
         if cli is not None:
-            err, new_argv = _apply_cli_gate(cli[0], cli[1], kwargs)
-            if err is not None:
-                raise err
-            if new_argv is not None:
-                cmd = _rewrite_popen_args(cmd, {**kwargs, "shell": True}, new_argv)
-    except GateBlockedError:
-        raise
+            _apply_cli_gate(cli[0], cli[1], kwargs)
     except Exception:
         pass
     return await _orig_asyncio_shell(cmd, **kwargs)
@@ -2265,8 +2008,6 @@ class _VantioCurl:
         )
         if kind == "pass":
             return self._curl.perform(*args, **kwargs)
-        if kind == "block":
-            raise GateBlockedError(hostname or "")
         if redactions:
             self._curl.setopt(_pycurl.POSTFIELDS, payload)
             object.__setattr__(self, "_vantio_body", payload)
@@ -2285,8 +2026,6 @@ class _VantioCurl:
                 )
             return result
         except Exception as exc:
-            if isinstance(exc, GateBlockedError):
-                raise
             _record_http_exception(
                 hostname,
                 "python_pycurl",
@@ -2369,7 +2108,7 @@ def _write_run_log() -> None:
                 **customer,
             },
             "residual": {
-                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read). With a Phantom Engine API key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Optics does not block, delay, or rewrite. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]

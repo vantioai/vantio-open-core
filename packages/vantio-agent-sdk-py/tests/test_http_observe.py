@@ -1,3 +1,4 @@
+import inspect
 import json
 import os
 import shutil
@@ -9,6 +10,10 @@ from pathlib import Path
 
 from vantio import shield
 from vantio._http_observe import (
+    _apply_cli_gate,
+    _calls,
+    _decide,
+    _dispatch_gate,
     _host_matches_regional,
     _in_scope,
     _is_control_plane_dest,
@@ -1541,4 +1546,48 @@ class InlineRedact310Tests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("python_urllib", {c.get("mediation") for c in data["calls"]})
         finally:
             self._clear_env()
+
+
+class DeadGateArmTests(unittest.TestCase):
+    def test_dispatch_and_cli_gate_have_no_block_or_dry_run_arms(self) -> None:
+        forbidden = (
+            '"block"',
+            "block_size",
+            "block_spend",
+            "dry_block",
+            "dry_size",
+            "dry_spend",
+            "BLOCKED_",
+            "DRY_RUN",
+        )
+        for fn in (_dispatch_gate, _apply_cli_gate):
+            source = inspect.getsource(fn)
+            for token in forbidden:
+                self.assertNotIn(token, source, f"{fn.__name__} still contains {token}")
+
+        self.assertEqual(_decide("api.openai.com", "443", "/v1/chat/completions", 8), "observe")
+        self.assertEqual(_decide("example.invalid", "443", "/", 0), "pass")
+        kind, payload, redactions, record_send = _dispatch_gate(
+            "api.openai.com", "443", "/v1/chat/completions", b"{}", "python_urllib"
+        )
+        self.assertEqual(kind, "send")
+        self.assertEqual(payload, b"{}")
+        self.assertEqual(redactions, [])
+        self.assertTrue(record_send)
+        kind, _payload, _redactions, record_send = _dispatch_gate(
+            "example.invalid", "443", "/", b"{}", "python_urllib"
+        )
+        self.assertEqual(kind, "pass")
+        self.assertFalse(record_send)
+
+        before = len(_calls)
+        try:
+            _apply_cli_gate("curl", ["https://api.openai.com/v1/models"])
+            added = list(_calls[before:])
+        finally:
+            del _calls[before:]
+        self.assertGreaterEqual(len(added), 1)
+        self.assertTrue(all(call.get("action") == "OBSERVED" for call in added))
+        self.assertTrue(all(not str(call.get("action", "")).startswith("BLOCKED") for call in added))
+        self.assertTrue(all("DRY_RUN" not in str(call.get("action", "")) for call in added))
 
