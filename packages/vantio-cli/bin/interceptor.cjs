@@ -4,11 +4,11 @@
 // request() and dispatch(), undici.stream/pipeline/connect/upgrade, Node
 // http/https.request|get and ClientRequest, Node http2.connect / session.request,
 // Node net.Socket.connect / tls.connect, globalThis.WebSocket / undici.WebSocket
-// (outbound frame size is observed; payloads are not parsed), undici.upgrade /
+// (host and outbound frame size; payloads are not parsed), undici.upgrade /
 // CONNECT tunnel writes, and Node child_process spawn/exec of curl, wget,
 // httpie, and aria2c (including env/timeout/nice prefixes, curl -K url=,
-// curl -F stat size, wget -i URL lists, stdin size when stdin is a file;
-// file contents and stdin pipes are not read)
+// curl -F stat size, wget -i URL lists, and stdin size when stdin is a file.
+// File contents and stdin pipes are not read. Optics does not rewrite argv.)
 // to in-scope hosts. Browsers stay outside this wrap.
 //
 // Supported outbound calls are recorded locally: destination, process, size,
@@ -41,13 +41,22 @@ const c = {
   reset:  USE_COLOR ? "\x1b[0m"  : "",
   dim:    USE_COLOR ? "\x1b[2m"  : "",
   bold:   USE_COLOR ? "\x1b[1m"  : "",
-  green:  USE_COLOR ? "\x1b[32m" : "",
   yellow: USE_COLOR ? "\x1b[33m" : "",
-  red:    USE_COLOR ? "\x1b[31m" : "",
   cyan:   USE_COLOR ? "\x1b[36m" : "",
 };
 
 const INGEST_URL = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
+// Keep the path. Do not reduce the URL to its origin.
+function isPublicCloudHost(raw) {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === "vantio.ai" || host === "www.vantio.ai";
+  } catch {
+    return true;
+  }
+}
+const PUBLIC_CLOUD_HOST = isPublicCloudHost(INGEST_URL);
+// Optics is observational. A key in the environment is not an enforcement credential.
 if (process.env.VANTIO_API_KEY) {
   process.stderr.write(
     "[ ∅ VANTIO ] VANTIO_API_KEY is set. Enforcement is provided by Phantom Engine. Optics is observational and this call is not blocked.\n"
@@ -144,27 +153,13 @@ function responseMeta(response) {
   };
 }
 
-// Local defaults. Optics does not fetch a cloud policy.
+// Host lists stay empty. Optics does not load a cloud policy.
 const DEFAULT_POLICY = {
-  enforce:           false,
-  redact_pii:        false,
-  pii_types:         ["ssn", "email", "credit_card", "phone"],
-  allowed_hosts:     [],
-  blocked_hosts:     [],
-  max_request_bytes: 0,
-  spend_cap_usd:     0,
-  dry_run:           false,
+  allowed_hosts: [],
+  blocked_hosts: [],
 };
 
 let policy = { ...DEFAULT_POLICY };
-
-// ── PII detection patterns ───────────────────────────────────────────────────
-const PII_PATTERNS = {
-  ssn:         { re: /\b\d{3}-\d{2}-\d{4}\b/g,                                label: "SSN" },
-  email:       { re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,   label: "EMAIL" },
-  credit_card: { re: /\b(?:\d[ -]?){13,16}\b/g,                              label: "CC" },
-  phone:       { re: /\b\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,             label: "PHONE" },
-};
 
 // Rough cost estimate: ~4 bytes/token (≈1 byte/char for ASCII), blended
 // $5 / 1M tokens. Applied per byte of request + response throughout, so the
@@ -269,175 +264,12 @@ function logFreeObservation(info) {
   log(lines.join("\n"));
 }
 
-// ── Redaction ─────────────────────────────────────────────────────────────────
-// Core regex redactor over a single string. Returns the redacted text and the
-// list of PII categories matched (one entry per span).
-function redactString(text) {
-  // Request redaction is not an Optics behavior. The text is returned unchanged.
-  return { text, redactions: [] };
-}
-
-// Recursively redact only the *string* values of a parsed JSON structure.
-// Numbers/booleans/null are left intact so a bare numeric value such as
-// {"ids":[1234567890123456]} can never be mangled into invalid JSON by the
-// credit-card pattern (which would otherwise match the digits).
-function redactJsonValue(value, redactions) {
-  if (typeof value === "string") {
-    const r = redactString(value);
-    for (const k of r.redactions) redactions.push(k);
-    return r.text;
-  }
-  if (Array.isArray(value)) {
-    return value.map((v) => redactJsonValue(v, redactions));
-  }
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const key of Object.keys(value)) {
-      out[key] = redactJsonValue(value[key], redactions);
-    }
-    return out;
-  }
-  return value;
-}
-
-// JSON-aware body redactor. When the body parses as JSON we walk it and redact
-// only string values, then re-serialize so the output stays valid JSON.
-// Otherwise we fall back to plain text redaction.
-function redactBody(text) {
-  if (typeof text !== "string" || !policy.redact_pii) return { text, redactions: [] };
-  const trimmed = text.trim();
-  if (trimmed && (trimmed[0] === "{" || trimmed[0] === "[")) {
-    try {
-      const parsed = JSON.parse(text);
-      const redactions = [];
-      const out = redactJsonValue(parsed, redactions);
-      return { text: JSON.stringify(out), redactions };
-    } catch {
-      // Not valid JSON despite the leading brace/bracket — fall through to text.
-    }
-  }
-  return redactString(text);
-}
-
-// Names a body type we deliberately do not scan (streaming/multipart/binary
-// blob) so the caller can emit a one-line notice instead of silently passing.
-function unscannableBodyLabel(body) {
-  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) return "ReadableStream";
-  if (typeof FormData !== "undefined" && body instanceof FormData) return "FormData";
-  if (typeof Blob !== "undefined" && body instanceof Blob) return "Blob";
-  return null;
-}
-
-// Maximum bytes we will buffer from a ReadableStream to scan for PII.
-// Requests larger than this threshold pass through unscanned rather than being
-// held in memory, preserving back-pressure for true streaming workloads.
-const MAX_STREAM_SCAN_BYTES = 2 * 1024 * 1024; // 2 MB ? max Latch (2026-08-09); was 64 KB
-
-// Redact a concrete request body value, preserving its original type.
-// Returns { value, bytes, redactions, replaced, unscanned }:
-//   - string / URLSearchParams / Uint8Array / Buffer / ArrayBuffer → decoded to
-//     text, redacted, and re-encoded to the same type. `replaced` is true when
-//     any redaction happened (so the caller knows to swap the body).
-//   - ReadableStream ≤ 64 KB → tee'd, buffered, scanned; redacted copy returned
-//     as Uint8Array when PII found, pass-through branch returned unchanged when not.
-//   - ReadableStream > 64 KB / FormData / Blob → not scanned; `unscanned` is its label.
-// Never throws — on any unexpected shape it returns the body unchanged.
-// This function is async because ReadableStream buffering requires awaiting reads.
-async function redactRequestBody(body) {
-  const none = { value: body, bytes: 0, redactions: [], replaced: false, unscanned: null };
-  if (body == null) return none;
-
-  if (typeof body === "string") {
-    const r = redactBody(body);
-    return { value: r.text, bytes: Buffer.byteLength(r.text), redactions: r.redactions, replaced: r.redactions.length > 0, unscanned: null };
-  }
-
-  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
-    const r = redactBody(body.toString());
-    const value = r.redactions.length > 0 ? new URLSearchParams(r.text) : body;
-    return { value, bytes: Buffer.byteLength(r.text), redactions: r.redactions, replaced: r.redactions.length > 0, unscanned: null };
-  }
-
-  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
-    const text = Buffer.from(body).toString("utf8");
-    const r = redactBody(text);
-    const buf = Buffer.from(r.text, "utf8");
-    const value = r.redactions.length > 0
-      ? (Buffer.isBuffer(body) ? buf : new Uint8Array(buf))
-      : body;
-    return { value, bytes: buf.length, redactions: r.redactions, replaced: r.redactions.length > 0, unscanned: null };
-  }
-
-  if (body instanceof ArrayBuffer) {
-    const text = Buffer.from(new Uint8Array(body)).toString("utf8");
-    const r = redactBody(text);
-    const buf = Buffer.from(r.text, "utf8");
-    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-    return { value: r.redactions.length > 0 ? ab : body, bytes: buf.length, redactions: r.redactions, replaced: r.redactions.length > 0, unscanned: null };
-  }
-
-  // ── ReadableStream: tee + buffer up to MAX_STREAM_SCAN_BYTES ─────────────
-  // We tee the stream so the pass-through branch (b) always carries the full
-  // original content. The scan branch (a) is read until we confirm the body
-  // fits within the scan window. If PII is found we return the redacted text as
-  // a Uint8Array (the stream was small enough that buffering is safe). If no PII
-  // is found we return the pass-through branch so the network call is unaffected.
-  // Streams larger than the threshold fall back to unscanned — no bytes consumed
-  // on the pass-through branch, preserving back-pressure.
-  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) {
-    try {
-      const [scanBranch, passBranch] = body.tee();
-      const reader = scanBranch.getReader();
-      const chunks = [];
-      let total = 0;
-      let oversized = false;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const n = value ? (value.byteLength != null ? value.byteLength : value.length || 0) : 0;
-        total += n;
-        if (total > MAX_STREAM_SCAN_BYTES) { oversized = true; break; }
-        if (value) chunks.push(value);
-      }
-      // Release our scan reader regardless of outcome so GC can clean up.
-      try { reader.cancel(); } catch { /* ignore */ }
-
-      if (!oversized) {
-        // Full body fits — scan and optionally redact.
-        const all = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-        const text = all.toString("utf8");
-        const r = redactBody(text);
-        if (r.redactions.length > 0) {
-          // PII found: return the redacted content as a Uint8Array so the
-          // caller can substitute it for the original stream.
-          const buf = Buffer.from(r.text, "utf8");
-          return { value: new Uint8Array(buf), bytes: buf.length, redactions: r.redactions, replaced: true, unscanned: null };
-        }
-        // No PII: use the pass-through branch (original content, no latency).
-        return { value: passBranch, bytes: total, redactions: [], replaced: false, unscanned: null };
-      }
-      // Oversized — use pass-through branch unmodified; log as unscanned.
-      return { value: passBranch, bytes: 0, redactions: [], replaced: false, unscanned: "ReadableStream" };
-    } catch {
-      // tee() / read failed (e.g. stream already locked) — fall through below.
-    }
-    return { value: body, bytes: 0, redactions: [], replaced: false, unscanned: "ReadableStream" };
-  }
-
-  const label = unscannableBodyLabel(body);
-  if (label) return { value: body, bytes: 0, redactions: [], replaced: false, unscanned: label };
-
-  return none;
-}
-
-function report(_metadata) {
+function report() {
   // Optics records locally. It does not post enforcement events.
 }
 
-// ── Host scope ────────────────────────────────────────────────────────────────
-// A host is in scope for observation when it is a known LLM host or is named
-// on the local policy host lists. Those lists stay empty. Hosts outside this
-// set pass through untouched.
+// A host is in scope when it is a known LLM host. Hosts outside this set pass
+// through untouched. Optics does not block, redact, or meter unrelated traffic.
 function inScope(hostname, port) {
   return (
     catalogInScope(hostname, port, LLM_HOSTS) ||
@@ -446,12 +278,9 @@ function inScope(hostname, port) {
   );
 }
 
-// ── Lane 1 run telemetry (anonymous, explicit opt-in, once-per-process) ────────
-// fetch scheduled inside a process "exit" handler never actually flushes, so the
-// summary ping was effectively dead. Instead we fire a single anonymous "run"
-// ping after the first completed in-scope call is recorded. Fire-and-forget,
-// non-blocking. Disabled unless VANTIO_TELEMETRY=1. VANTIO_TELEMETRY_DISABLED=1
-// and DO_NOT_TRACK=1 override that opt-in.
+// Anonymous opt-in telemetry, once per process, after the first recorded call.
+// Disabled unless VANTIO_TELEMETRY=1. VANTIO_TELEMETRY_DISABLED=1 and
+// DO_NOT_TRACK=1 override that opt-in.
 let _runTelemetrySent = false;
 function sendRunTelemetryOnce(hostname) {
   if (_runTelemetrySent) return;
@@ -460,8 +289,6 @@ function sendRunTelemetryOnce(hostname) {
     sendTelemetry({
       event: "run",
       hosts: hostname ? [hostname] : [],
-      // Completed in-scope call records in this process at send time.
-      // The first completed call reports 1. Later calls do not send again.
       callCount: _calls.length,
       cliVersion: CLI_VERSION,
     });
@@ -491,7 +318,8 @@ async function wrapFetch(backend, input, init) {
     return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
 
-  // Out of scope — pass straight through. Optics does not block, redact, or meter unrelated traffic.
+  // Out of scope (not a known LLM host and not named in policy) — pass straight
+  // through, untouched. Optics does not block, redact, or meter unrelated traffic.
   if (!inScope(hostname, port)) {
     return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
@@ -660,6 +488,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 
     const method = (opts && opts.method) || (opts && opts.body ? "PUT" : "GET");
     const init = { method, headers: opts && opts.headers, body: opts && opts.body };
+
     const reqMeta = extractRequestMeta(href, init);
     const provider = guessProvider(hostname, port);
     const t0 = Date.now();
@@ -718,18 +547,21 @@ globalThis.fetch = function vantioFetch(input, init) {
     return { chunk, encoding, cb };
   }
 
-  // After undici.upgrade / CONNECT, the host is already in scope. Frame
-  // payloads are not parsed. Outbound bytes are observed and the write proceeds.
+  // After undici.upgrade / CONNECT, Gate already decided the host. Frame
+  // payloads are not parsed (Optics never reads the conversation). Outbound
+  // bytes are observed. Optics does not stop the write.
   function wrapTunnelSocket(socket, hostname) {
     if (!socket || typeof socket.write !== "function" || socket.__vantioWsPatched) return;
     socket.__vantioWsPatched = true;
     const origWrite = socket.write.bind(socket);
     const origEnd = typeof socket.end === "function" ? socket.end.bind(socket) : null;
+    let written = 0;
     let frameReported = false;
     const provider = guessProvider(hostname, null);
 
     function gateBytes(n) {
       if (n <= 0) return;
+      written += n;
       spentUsd += n * USD_PER_BYTE;
       if (!frameReported) {
         frameReported = true;
@@ -979,6 +811,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 // the ingest control plane pass through untouched. Node-spawned curl is
 // wrapped separately. Browsers stay residual.
 (function patchNodeHttpHttps() {
+
   function isControlPlaneRequest(args) {
     try {
       const ingest = new URL(INGEST_URL);
@@ -1124,8 +957,8 @@ globalThis.fetch = function vantioFetch(input, init) {
   try { wrapModule(require("node:https"), "https"); } catch { try { wrapModule(require("https"), "https"); } catch { /* ignore */ } }
 })();
 
-// globalThis.WebSocket / undici.WebSocket — observe the handshake. Payloads are not parsed.
-// Outbound frame size only; conversation bytes are not parsed or redacted.
+// globalThis.WebSocket / undici.WebSocket — observe the handshake.
+// Outbound frame size only; conversation bytes are not parsed or rewritten.
 // HTTP/undici already marked via AsyncLocalStorage so those sockets are not
 // ingested twice. Residual: browsers / Chromium / CDP.
 (function patchWebSocket() {
@@ -1177,11 +1010,13 @@ globalThis.fetch = function vantioFetch(input, init) {
     if (!ws || typeof ws.send !== "function" || ws.__vantioWsSendPatched) return;
     ws.__vantioWsSendPatched = true;
     const origSend = ws.send.bind(ws);
+    let written = 0;
     let frameReported = false;
     const provider = guessProvider(hostname, null);
 
     ws.send = function vantioWsSend(data) {
       const n = sendByteLength(data);
+      written += n;
       if (n > 0) spentUsd += n * USD_PER_BYTE;
       if (!frameReported && n > 0) {
         frameReported = true;
@@ -1320,6 +1155,10 @@ globalThis.fetch = function vantioFetch(input, init) {
     });
   }
 
+  function wrapH2Write(stream) {
+    return stream;
+  }
+
   function wrapSession(session, hostname, port) {
     if (!session || typeof session.request !== "function" || session.__vantioPatched) return session;
     const origRequest = session.request.bind(session);
@@ -1345,7 +1184,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           } catch { /* ignore */ }
         });
       }
-      return stream;
+      return wrapH2Write(stream, hostname);
     };
     session.__vantioPatched = true;
     return session;
@@ -1439,12 +1278,13 @@ globalThis.fetch = function vantioFetch(input, init) {
 
     const provider = guessProvider(hostname, port);
     const ts = new Date().toISOString();
-    _calls.push({
+    const baseCall = {
       hostname, provider, method: "CONNECT", path: null, scheme: "tcp",
       request_bytes: null, bytes: 0, status: null, ok: true,
       content_type: null, duration_ms: 0, ts, optics_plane: "app_net",
-      action: "OBSERVED",
-    });
+    };
+
+    _calls.push({ ...baseCall, action: "OBSERVED" });
     report({
       target_host: hostname, pid: process.pid,
       action_taken: "OBSERVED",
@@ -1482,8 +1322,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 
 // Node child_process spawn/exec of curl, wget, httpie, and aria2c —
 // observe before the child starts. File-body and curl -F size come from
-// stat; contents and stdin pipes are not read. The child argv is not rewritten.
-// Residual: browsers.
+// stat; contents and stdin pipes are not read. Argv is not rewritten. Residual: browsers.
 (function patchCurlSpawn() {
   let cp;
   try { cp = require("node:child_process"); } catch { try { cp = require("child_process"); } catch { return; } }
@@ -1966,7 +1805,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     }
   }
 
-  function decideCurl(url, hostname, port) {
+  function decideCurl(url, hostname, port, _dataBytes) {
     if (!hostname || isControlPlaneCurlUrl(url)) return "pass";
     if (!inScope(hostname, port)) return "pass";
     return "observe";
@@ -2005,11 +1844,9 @@ globalThis.fetch = function vantioFetch(input, init) {
   function applyCliGate(tool, argv, options) {
     const parsed = parseCliArgv(tool, argv, options);
     const urls = Array.isArray(parsed.urls) ? parsed.urls : [];
-    if (!urls.length) return;
     for (const url of urls) {
       const dest = destFromCurlUrl(url);
-      const decision = decideCurl(url, dest.hostname, dest.port);
-      if (decision !== "observe") continue;
+      if (decideCurl(url, dest.hostname, dest.port, parsed.dataBytes) !== "observe") continue;
       recordCli(tool, dest.hostname, dest.port, parsed.dataBytes);
       spentUsd += (parsed.dataBytes || 0) * USD_PER_BYTE;
     }
@@ -2060,9 +1897,11 @@ globalThis.fetch = function vantioFetch(input, init) {
       try {
         const { command: file, argv, options } = splitSpawnArgs(args);
         const cli = httpCliFromSpawn(file, argv, options);
-        if (cli) applyCliGate(cli.tool, cli.argv, options);
+        if (cli) {
+          applyCliGate(cli.tool, cli.argv, options);
+        }
       } catch {
-        /* observe must not stop the child */
+        /* observation must not stop the child */
       }
       return origExecFileSync(...args);
     };
@@ -2093,7 +1932,7 @@ globalThis.fetch = function vantioFetch(input, init) {
           applyCliGate(cli.tool, cli.argv, options);
         }
       } catch {
-        /* observe must not stop the child */
+        /* observation must not stop the child */
       }
       return origExecSync(...args);
     };
@@ -2108,8 +1947,6 @@ process.on("exit", () => {
   // when the run recorded nothing.
   const summaryRequested = process.env.VANTIO_SUMMARY === "1";
   const hosts      = [...new Set(_calls.map((x) => x.hostname))];
-  const redacted   = _calls.filter((x) => x.action === "REDACTED").length;
-  const blocked    = _calls.filter((x) => String(x.action).startsWith("BLOCKED")).length;
   const now        = Date.now();
   const totalBytes = _calls.reduce((a, x) => a + (x.bytes || 0), 0);
 
@@ -2182,8 +2019,8 @@ process.on("exit", () => {
         errors,
         by_host,
         by_provider,
-        redacted:      redacted,
-        blocked:       blocked,
+        redacted:      0,
+        blocked:       0,
         est_spend_usd: null,
       },
       residual: {

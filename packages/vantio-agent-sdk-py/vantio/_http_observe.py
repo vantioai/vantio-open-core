@@ -16,9 +16,8 @@ http.client request/putrequest to in-scope hosts (observe only; TLS
 payloads are not read). Also wraps subprocess / os.system / asyncio curl, wget,
 httpie, and aria2c spawns to in-scope hosts (observe only; file-body
 and curl -F size from stat; stdin size when stdin is a file; wget -i URL lines;
-file contents and stdin pipes are not read). Optics does not block, delay, or
-rewrite. A VANTIO_API_KEY does not fetch policy and is not sent for enforcement.
-Browsers stay outside this wrap.
+file contents and stdin pipes are not read; argv is not rewritten). Optics does
+not block, delay, or rewrite. Browsers stay outside this wrap.
 """
 from __future__ import annotations
 
@@ -126,18 +125,11 @@ _orig_asyncio_shell: Any = None
 _calls: list[dict[str, Any]] = []
 _started_ms = 0.0
 _trace_id = ""
-# Gate on the wrap (same job as Node interceptor). Empty / missing key = Optics only.
+# Host lists stay empty. Optics does not load a cloud policy.
 _policy: dict[str, Any] = {
-    "enforce": False,
-    "redact_pii": False,
-    "pii_types": ["ssn", "email", "credit_card", "phone"],
     "allowed_hosts": [],
     "blocked_hosts": [],
-    "max_request_bytes": 0,
-    "spend_cap_usd": 0.0,
-    "dry_run": False,
 }
-_cloud_sync = False
 _spent_usd = 0.0
 # Same estimator as interceptor.cjs (rough token→USD; not a billing meter).
 _USD_PER_BYTE = (5 / 1_000_000) / 4
@@ -145,15 +137,6 @@ _USD_PER_BYTE = (5 / 1_000_000) / 4
 # HTTP orig calls mark this so inner socket.connect is not ingested twice.
 _http_owns_connect: ContextVar[bool] = ContextVar("vantio_http_owns_connect", default=False)
 _http_owns_tls = threading.local()
-
-
-class GateBlockedError(OSError):
-    """Kept so older imports still resolve. Optics does not raise it."""
-
-    def __init__(self, hostname: str) -> None:
-        super().__init__(f"Vantio Gate blocked host: {hostname}")
-        self.hostname = hostname
-        self.code = "VANTIO_GATE_BLOCKED"
 
 
 @contextmanager
@@ -248,18 +231,11 @@ def _in_scope(hostname: str, port: Optional[str] = None) -> bool:
 
 
 def _reset_policy() -> None:
-    global _cloud_sync, _spent_usd
+    global _spent_usd
     _policy.update({
-        "enforce": False,
-        "redact_pii": False,
-        "pii_types": ["ssn", "email", "credit_card", "phone"],
         "allowed_hosts": [],
         "blocked_hosts": [],
-        "max_request_bytes": 0,
-        "spend_cap_usd": 0.0,
-        "dry_run": False,
     })
-    _cloud_sync = False
     _spent_usd = 0.0
 
 
@@ -300,49 +276,6 @@ def _load_policy() -> None:
             "Optics is observational and this call is not blocked.\n"
         )
     return
-
-
-def _ingest(hostname: str, action: str, extra: Optional[dict[str, Any]] = None) -> None:
-    if not _cloud_sync:
-        return
-    key = os.environ.get("VANTIO_API_KEY") or ""
-    ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
-    if not key:
-        return
-    payload = {
-        "eventPayload": {
-            "target_host": hostname,
-            "pid": os.getpid(),
-            "action_taken": action,
-            "timestamp_ns": int(time.time() * 1e9),
-            "bytes_severed": 0,
-            "mediation": "python_wrap",
-            "plane": "optics_gate",
-            **(extra or {}),
-        }
-    }
-    try:
-        body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{ingest}/api/v1/ingest",
-            data=body,
-            headers={
-                "content-type": "application/json",
-                "x-vantio-identity": key,
-            },
-            method="POST",
-        )
-        with _http_handled():
-            _orig_urlopen(req, timeout=2.0).read()
-    except Exception:
-        return
-
-
-def _redact_text(text: str) -> tuple[str, list[str]]:
-    # Request bodies are not rewritten. Enforcement redaction is Phantom Engine.
-    return text, []
-
-
 
 
 def _body_to_text(body: Any) -> tuple[Optional[str], Optional[bytes], int]:
@@ -573,56 +506,6 @@ def _record(
     rec["opticsLabel"] = _human_status(optics)
     apply_customer_outcome(rec)
     _append(rec)
-    ingest_map = {
-        "OBSERVED": None,
-        "ALLOWED": "ALLOWED",
-        "REDACTED": "REDACTED",
-        "BLOCKED_HOST": "BLOCKED_HOST",
-        "BLOCKED_SIZE": "BLOCKED_SIZE",
-        "BLOCKED_SPEND": "BLOCKED_SPEND",
-        "DRY_RUN_BLOCKED_HOST": "DRY_RUN_BLOCKED_HOST",
-        "DRY_RUN_BLOCKED_SIZE": "DRY_RUN_BLOCKED_SIZE",
-        "DRY_RUN_BLOCKED_SPEND": "DRY_RUN_BLOCKED_SPEND",
-    }
-    ingest_action = ingest_map.get(action)
-    if ingest_action:
-        ingest_extra: dict[str, Any] = {"mediation": mediation}
-        if rec.get("bytes_observed") is not None:
-            ingest_extra["bytes_observed"] = rec["bytes_observed"]
-        _ingest(hostname, ingest_action, ingest_extra)
-
-
-def _apply_body(body: Any) -> tuple[Any, list[str], int]:
-    text, raw, length = _body_to_text(body)
-    if text is None:
-        return body, [], length
-    new_text, redactions = _redact_text(text)
-    if not redactions:
-        return body, [], length
-    encoded = new_text.encode("utf-8")
-    if isinstance(body, (bytes, bytearray)):
-        return encoded, redactions, len(encoded)
-    return new_text, redactions, len(encoded)
-
-
-def _httpx_set_content(request: Any, payload: Any) -> None:
-    encoded = payload if isinstance(payload, (bytes, bytearray)) else str(payload).encode("utf-8")
-    encoded = bytes(encoded)
-    try:
-        request._content = encoded
-    except Exception:
-        return
-    try:
-        if _httpx is not None:
-            request.stream = _httpx.ByteStream(encoded)
-    except Exception:
-        pass
-    try:
-        headers = getattr(request, "headers", None)
-        if headers is not None:
-            headers["content-length"] = str(len(encoded))
-    except Exception:
-        pass
 
 
 def _dispatch_gate(
@@ -630,20 +513,17 @@ def _dispatch_gate(
     port: Optional[str],
     path: str,
     body: Any,
-    mediation: str,
+    _mediation: str,
 ) -> tuple[str, Any, list[str], bool]:
-    """Returns (kind, payload, redactions, record_send).
+    """Return (kind, body, redactions, record_send).
 
-    kind is pass or send. _decide returns only pass or observe. In-scope calls
-    are recorded by the caller. Optics does not block, cap, or dry-run.
+    kind is pass or send. Optics does not block, dry-run, or rewrite the body.
+    record_send is true when the caller should store an observation.
     """
-    del mediation
     _, _, length = _body_to_text(body)
-    decision = _decide(hostname, port, path, length)
-    if decision == "pass":
+    if _decide(hostname, port, path, length) == "pass":
         return "pass", body, [], False
-    send_body, redactions, _ = _apply_body(body)
-    return "send", send_body, redactions, True
+    return "send", body, [], True
 
 
 def _account_response_bytes(headers: Any) -> None:
@@ -675,26 +555,12 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
     if kind == "pass":
         return _http_orig(_orig_urlopen, url, data, timeout, *args, **kwargs)
 
-    send_data = data
-    if data is None and hasattr(url, "data"):
-        if redactions:
-            try:
-                url.data = (
-                    payload
-                    if isinstance(payload, (bytes, bytearray))
-                    else str(payload).encode("utf-8")
-                )
-            except Exception:
-                send_data = payload
-    else:
-        send_data = payload
-
     t0 = time.time()
     try:
-        resp = _http_orig(_orig_urlopen, url, send_data, timeout, *args, **kwargs)
+        resp = _http_orig(_orig_urlopen, url, data, timeout, *args, **kwargs)
         _account_response_bytes(getattr(resp, "headers", None))
         if record_send:
-            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            action = "OBSERVED"
             _record_http_response(
                 hostname,
                 action,
@@ -713,7 +579,7 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
             exc,
             t0,
             record_send=record_send,
-            action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+            action="OBSERVED",
             method="POST" if data is not None else "GET",
             path=path,
             scheme=scheme,
@@ -738,25 +604,12 @@ def _observe_opener_open(self, fullurl, data=None, timeout=socket._GLOBAL_DEFAUL
     )
     if kind == "pass":
         return _http_orig(_orig_opener_open, self, fullurl, data, timeout)
-    send_data = data
-    if data is None and hasattr(fullurl, "data"):
-        if redactions:
-            try:
-                fullurl.data = (
-                    payload
-                    if isinstance(payload, (bytes, bytearray))
-                    else str(payload).encode("utf-8")
-                )
-            except Exception:
-                send_data = payload
-    else:
-        send_data = payload
     t0 = time.time()
     try:
-        resp = _http_orig(_orig_opener_open, self, fullurl, send_data, timeout)
+        resp = _http_orig(_orig_opener_open, self, fullurl, data, timeout)
         _account_response_bytes(getattr(resp, "headers", None))
         if record_send:
-            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            action = "OBSERVED"
             _record_http_response(
                 hostname,
                 action,
@@ -775,7 +628,7 @@ def _observe_opener_open(self, fullurl, data=None, timeout=socket._GLOBAL_DEFAUL
             exc,
             t0,
             record_send=record_send,
-            action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+            action="OBSERVED",
             method="POST" if (data is not None or body is not None) else "GET",
             path=path,
             scheme=scheme,
@@ -815,8 +668,6 @@ def _install_requests() -> None:
         )
         if kind == "pass":
             return _http_orig(_orig_requests_send, self, request, **kwargs)
-        if redactions:
-            request.body = payload
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(getattr(request, "url", "")).startswith("https") else "http"
@@ -824,7 +675,7 @@ def _install_requests() -> None:
             resp = _http_orig(_orig_requests_send, self, request, **kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
-                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                action = "OBSERVED"
                 _record_http_response(
                     hostname,
                     action,
@@ -843,7 +694,7 @@ def _install_requests() -> None:
                 exc,
                 t0,
                 record_send=record_send,
-                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+                action="OBSERVED",
                 method=method,
                 path=path,
                 scheme=scheme,
@@ -880,8 +731,6 @@ def _install_httpx() -> None:
         )
         if kind == "pass":
             return _http_orig(_orig_httpx_sync_send, self, request, **kwargs)
-        if redactions:
-            _httpx_set_content(request, payload)
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(request.url).startswith("https") else "http"
@@ -889,7 +738,7 @@ def _install_httpx() -> None:
             resp = _http_orig(_orig_httpx_sync_send, self, request, **kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
-                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                action = "OBSERVED"
                 _record_http_response(
                     hostname,
                     action,
@@ -908,7 +757,7 @@ def _install_httpx() -> None:
                 exc,
                 t0,
                 record_send=record_send,
-                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+                action="OBSERVED",
                 method=method,
                 path=path,
                 scheme=scheme,
@@ -923,8 +772,6 @@ def _install_httpx() -> None:
         )
         if kind == "pass":
             return await _http_orig_async(_orig_httpx_async_send, self, request, **kwargs)
-        if redactions:
-            _httpx_set_content(request, payload)
         t0 = time.time()
         method = str(getattr(request, "method", "GET") or "GET").upper()
         scheme = "https" if str(request.url).startswith("https") else "http"
@@ -932,7 +779,7 @@ def _install_httpx() -> None:
             resp = await _http_orig_async(_orig_httpx_async_send, self, request, **kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
-                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                action = "OBSERVED"
                 _record_http_response(
                     hostname,
                     action,
@@ -951,7 +798,7 @@ def _install_httpx() -> None:
                 exc,
                 t0,
                 record_send=record_send,
-                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+                action="OBSERVED",
                 method=method,
                 path=path,
                 scheme=scheme,
@@ -993,15 +840,6 @@ def _install_aiohttp() -> None:
         if kind == "pass":
             return await _http_orig_async(_orig_aiohttp_request, self, method, str_or_url, **kwargs)
         send_kwargs = dict(kwargs)
-        if redactions:
-            if kwargs.get("json") is not None and isinstance(payload, str):
-                try:
-                    send_kwargs["json"] = json.loads(payload)
-                except json.JSONDecodeError:
-                    send_kwargs.pop("json", None)
-                    send_kwargs["data"] = payload
-            else:
-                send_kwargs["data"] = payload
         t0 = time.time()
         method_s = str(method or "GET").upper()
         try:
@@ -1013,7 +851,7 @@ def _install_aiohttp() -> None:
             resp = await _http_orig_async(_orig_aiohttp_request, self, method, str_or_url, **send_kwargs)
             _account_response_bytes(getattr(resp, "headers", None))
             if record_send:
-                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                action = "OBSERVED"
                 _record_http_response(
                     hostname,
                     action,
@@ -1032,7 +870,7 @@ def _install_aiohttp() -> None:
                 exc,
                 t0,
                 record_send=record_send,
-                action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+                action="OBSERVED",
                 method=method_s,
                 path=path,
                 scheme=scheme,
@@ -1098,7 +936,7 @@ def _record_socket_timing(
     ok: bool,
     error_class: Optional[str] = None,
 ) -> None:
-    action = "ALLOWED" if _cloud_sync else "OBSERVED"
+    action = "OBSERVED"
     extra: dict[str, Any] = {
         "ok": ok,
         "duration_ms": max(0, int((time.perf_counter() - t0) * 1000)),
@@ -1257,15 +1095,14 @@ def _observe_http_client_request(
         return _http_orig(
             _orig_http_request, self, method, url, body, headers or {}, encode_chunked=encode_chunked
         )
-    send_body = payload if redactions else body
     t0 = time.time()
     method_s = str(method or "GET").upper()
     try:
         resp = _http_orig(
-            _orig_http_request, self, method, url, send_body, headers or {}, encode_chunked=encode_chunked
+            _orig_http_request, self, method, url, body, headers or {}, encode_chunked=encode_chunked
         )
         if record_send:
-            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            action = "OBSERVED"
             _record(hostname, action, "python_http_client", method=method_s, path=path, ok=True,
                     duration_ms=int((time.time() - t0) * 1000))
         return resp
@@ -1298,7 +1135,7 @@ def _observe_http_client_putrequest(
         hostname, port, path, None, "python_http_client"
     )
     if kind != "pass" and record_send:
-        action = "ALLOWED" if _cloud_sync else "OBSERVED"
+        action = "OBSERVED"
         _record(hostname, action, "python_http_client", method=str(method or "GET").upper(), path=path)
     return _http_orig(_orig_http_putrequest, self, method, url, skip_host, skip_accept_encoding)
 
@@ -1341,12 +1178,6 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwa
         return _http_orig(_orig_urllib3_request, self, method, url, *args, **kwargs)
     call_args = args
     call_kwargs = kwargs
-    if redactions:
-        if args:
-            call_args = (payload,) + args[1:]
-        else:
-            call_kwargs = dict(kwargs)
-            call_kwargs["body"] = payload
     t0 = time.time()
     method_s = str(method or "GET").upper()
     try:
@@ -1354,7 +1185,7 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwa
             _orig_urllib3_request, self, method, url, *call_args, **call_kwargs
         )
         if record_send:
-            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+            action = "OBSERVED"
             _record_http_response(
                 hostname,
                 action,
@@ -1372,7 +1203,7 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwa
             exc,
             t0,
             record_send=record_send,
-            action="REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+            action="OBSERVED",
             method=method_s,
             path=path,
         )
@@ -1884,7 +1715,7 @@ def _cli_mediation(tool: str) -> str:
 def _apply_cli_gate(
     tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None
 ) -> None:
-    """Record in-scope CLI HTTP tools. The child argv is never rewritten or refused."""
+    """Record in-scope CLI HTTP tools. Optics does not block or rewrite argv."""
     global _spent_usd
     urls, data_bytes = _parse_cli_argv(tool, argv, kwargs)
     if not urls:
@@ -1892,12 +1723,15 @@ def _apply_cli_gate(
     mediation = _cli_mediation(tool)
     for url in urls:
         hostname, port, path = _host_port_from_url(url)
-        decision = _decide(hostname, port, path, data_bytes)
-        if decision != "observe":
+        if _decide(hostname, port, path, data_bytes) != "observe":
             continue
-        extra = {"path": path, "bytes_observed": data_bytes}
-        action = "ALLOWED" if _cloud_sync else "OBSERVED"
-        _record(hostname, action, mediation, **extra)
+        _record(
+            hostname,
+            "OBSERVED",
+            mediation,
+            path=path,
+            bytes_observed=data_bytes,
+        )
         _spent_usd += (data_bytes or 0) * _USD_PER_BYTE
 
 
@@ -2008,14 +1842,11 @@ class _VantioCurl:
         )
         if kind == "pass":
             return self._curl.perform(*args, **kwargs)
-        if redactions:
-            self._curl.setopt(_pycurl.POSTFIELDS, payload)
-            object.__setattr__(self, "_vantio_body", payload)
         t0 = time.time()
         try:
             result = self._curl.perform(*args, **kwargs)
             if record_send:
-                action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
+                action = "OBSERVED"
                 _record(
                     hostname,
                     action,
@@ -2108,7 +1939,7 @@ def _write_run_log() -> None:
                 **customer,
             },
             "residual": {
-                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Optics does not block, delay, or rewrite. Browsers stay outside this wrap.",
+                "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Argv is not rewritten. Optics does not block, delay, or rewrite. Browsers stay outside this wrap.",
             },
         }
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]

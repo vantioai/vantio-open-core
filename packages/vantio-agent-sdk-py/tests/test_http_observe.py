@@ -463,8 +463,6 @@ class PythonSocketWrapTests(unittest.IsolatedAsyncioTestCase):
     async def test_create_connection_blocked_host_never_opens_tcp(self) -> None:
         import socket
 
-        from vantio._http_observe import GateBlockedError
-
         home = tempfile.mkdtemp()
         self._gate_env(home)
         try:
@@ -513,8 +511,6 @@ class PythonSocketWrapTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_socket_connect_blocked_host_never_opens_tcp(self) -> None:
         import socket
-
-        from vantio._http_observe import GateBlockedError
 
         home = tempfile.mkdtemp()
         self._gate_env(home)
@@ -613,8 +609,6 @@ class PythonCurlWrapTests(unittest.IsolatedAsyncioTestCase):
         return ["curl", "-sS", "--max-time", "2", "-X", "POST", "-d", data, url]
 
     async def test_subprocess_curl_blocked_host_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -664,8 +658,6 @@ class PythonCurlWrapTests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_shell_curl_blocked_host_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -691,8 +683,6 @@ class PythonCurlWrapTests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_subprocess_curl_over_max_request_bytes_never_hits(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -768,8 +758,6 @@ class PythonWgetWrapTests(unittest.IsolatedAsyncioTestCase):
         ]
 
     async def test_subprocess_wget_blocked_host_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("wget"):
             self.skipTest("wget is not installed")
         home = tempfile.mkdtemp()
@@ -819,8 +807,6 @@ class PythonWgetWrapTests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_shell_wget_blocked_host_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("wget"):
             self.skipTest("wget is not installed")
         home = tempfile.mkdtemp()
@@ -846,8 +832,6 @@ class PythonWgetWrapTests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_subprocess_wget_over_max_request_bytes_never_hits(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("wget"):
             self.skipTest("wget is not installed")
         home = tempfile.mkdtemp()
@@ -911,8 +895,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
         return handler
 
     async def test_curl_post_file_over_max_never_hits(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -941,8 +923,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_wget_post_file_over_max_never_hits(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("wget"):
             self.skipTest("wget is not installed")
         home = tempfile.mkdtemp()
@@ -971,8 +951,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_timeout_prefix_curl_blocked_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl") or not shutil.which("timeout"):
             self.skipTest("curl or timeout is not installed")
         home = tempfile.mkdtemp()
@@ -994,8 +972,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_curl_config_url_blocked_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -1021,8 +997,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
     async def test_connect_ex_blocked_host_never_opens_tcp(self) -> None:
         import socket
 
-        from vantio._http_observe import GateBlockedError
-
         home = tempfile.mkdtemp()
         self._gate_env(home)
         try:
@@ -1047,8 +1021,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
     async def test_http_client_blocked_never_hits_target(self) -> None:
         import http.client
         from urllib.parse import urlparse
-
-        from vantio._http_observe import GateBlockedError
 
         home = tempfile.mkdtemp()
         self._gate_env(home)
@@ -1126,8 +1098,6 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
             import urllib3
         except ImportError:
             self.skipTest("urllib3 is not installed")
-        from vantio._http_observe import GateBlockedError
-
         home = tempfile.mkdtemp()
         self._gate_env(home)
         try:
@@ -1186,8 +1156,6 @@ class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
         return handler
 
     async def test_curl_stdin_over_max_never_hits(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -1219,8 +1187,6 @@ class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_curl_form_file_over_max_never_ingests_contents(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("curl"):
             self.skipTest("curl is not installed")
         home = tempfile.mkdtemp()
@@ -1252,8 +1218,6 @@ class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_wget_input_file_blocked_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         if not shutil.which("wget"):
             self.skipTest("wget is not installed")
         home = tempfile.mkdtemp()
@@ -1280,8 +1244,6 @@ class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_httpie_blocked_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         home = tempfile.mkdtemp()
         self._gate_env(home)
         try:
@@ -1302,8 +1264,6 @@ class PythonSpawnExtras309Tests(unittest.IsolatedAsyncioTestCase):
             self._clear_env()
 
     async def test_aria2c_blocked_never_starts(self) -> None:
-        from vantio._http_observe import GateBlockedError
-
         home = tempfile.mkdtemp()
         self._gate_env(home)
         try:
@@ -1497,8 +1457,6 @@ class InlineRedact310Tests(unittest.IsolatedAsyncioTestCase):
         except ImportError:
             self.skipTest("pycurl is not installed")
         from io import BytesIO
-        from vantio._http_observe import GateBlockedError
-
         home = tempfile.mkdtemp()
         self._gate_env(home)
         try:
