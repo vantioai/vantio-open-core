@@ -258,63 +258,23 @@ export interface FetchPolicyOptions {
 }
 
 /**
- * Fetches the cloud-managed policy from GET /api/v1/config (Tier 2).
+ * Optics does not fetch a policy and does not send VANTIO_API_KEY.
  *
- * Fails open: on any error — network failure, non-2xx status, malformed body,
- * or timeout — a permissive copy of DEFAULT_POLICY is returned so an
- * unreachable control plane can never block the agent. The returned object is
- * always a fresh copy and safe to mutate.
- *
- * @example
- * ```ts
- * const policy = await fetchPolicy(process.env.VANTIO_API_KEY!);
- * if (policy.enforce && policy.redact_pii) {
- *   const { text } = redactPII(requestBody, policy.pii_types);
- * }
- * ```
+ * This function warns and returns a permissive copy of DEFAULT_POLICY with
+ * enforce and redact_pii false. Enforcement is provided by Phantom Engine.
+ * The returned object is a fresh copy and safe to mutate.
  */
 export async function fetchPolicy(
   apiKey: string,
   opts: FetchPolicyOptions = {},
 ): Promise<VantioPolicy> {
-  const ingestUrl =
-    opts.ingestUrl ?? process.env["VANTIO_INGEST_URL"] ?? "https://vantio.ai";
-
-  try {
-    const res = await fetch(`${ingestUrl}/api/v1/config`, {
-      method: "GET",
-      headers: { "x-vantio-identity": apiKey },
-      signal: opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? 5000),
-    });
-    if (!res.ok) return { ...DEFAULT_POLICY };
-    const data: unknown = await res.json();
-    if (
-      data &&
-      typeof data === "object" &&
-      "policy" in data &&
-      (data as { policy?: unknown }).policy &&
-      typeof (data as { policy: unknown }).policy === "object"
-    ) {
-      // Validate the shape rather than trusting it — a malformed policy
-      // (null/array/number where a different type is expected) must never
-      // produce an object that throws when enforcement reads it.
-      return normalizePolicy((data as { policy: unknown }).policy);
-    }
-    return { ...DEFAULT_POLICY };
-  } catch {
-    // Fail open — never block the agent because our control plane is unreachable
-    // or returns an unparseable / malformed body.
-    return { ...DEFAULT_POLICY };
-  }
+  void apiKey;
+  void opts;
+  console.warn(
+    "[vantio] fetchPolicy does not load a policy and does not send VANTIO_API_KEY. Enforcement is provided by Phantom Engine. Optics stays observational.",
+  );
+  return { ...DEFAULT_POLICY, enforce: false, redact_pii: false };
 }
-
-/** PII detection patterns — kept identical to the CLI interceptor. */
-const PII_PATTERNS: Record<string, { re: RegExp; label: string }> = {
-  ssn:         { re: /\b\d{3}-\d{2}-\d{4}\b/g,                                label: "SSN" },
-  email:       { re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,   label: "EMAIL" },
-  credit_card: { re: /\b(?:\d[ -]?){13,16}\b/g,                              label: "CC" },
-  phone:       { re: /\b\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,             label: "PHONE" },
-};
 
 export interface RedactionResult {
   /** The input text with every matched PII span replaced by a label token. */
@@ -324,39 +284,19 @@ export interface RedactionResult {
 }
 
 /**
- * Pure, side-effect-free PII redactor. Replaces matches with
- * `[VANTIO_REDACTED:LABEL]` using the same patterns and labels as the CLI
- * interceptor (ssn → SSN, email → EMAIL, credit_card → CC, phone → PHONE).
+ * Optics does not rewrite request text.
  *
- * This runs entirely locally — no content ever leaves the process — and is the
- * building block for SDK-side Tier 2 enforcement.
- *
- * @example
- * ```ts
- * const { text, redactions } = redactPII("ssn 123-45-6789");
- * // text       → "ssn [VANTIO_REDACTED:SSN]"
- * // redactions → ["ssn"]
- * ```
+ * This function warns and returns the original text with an empty redaction
+ * list. Enforcement is provided by Phantom Engine.
  */
 export function redactPII(
   text: string,
   piiTypes: string[] = ["ssn", "email", "credit_card", "phone"],
 ): RedactionResult {
-  if (typeof text !== "string") return { text, redactions: [] };
-  let out = text;
-  const redactions: string[] = [];
-  for (const type of piiTypes) {
-    // Cloud policies may store pii_types in any case (the dashboard persists
-    // UPPERCASE, e.g. "EMAIL"); normalize before looking up the lowercase
-    // pattern keys so redaction fires regardless of stored case.
-    const key = typeof type === "string" ? type.trim().toLowerCase() : type;
-    const p = PII_PATTERNS[key];
-    if (!p) continue;
-    out = out.replace(p.re, () => {
-      redactions.push(key);
-      return `[VANTIO_REDACTED:${p.label}]`;
-    });
-  }
-  return { text: out, redactions };
+  void piiTypes;
+  console.warn(
+    "[vantio] redactPII does not rewrite request text. Enforcement is provided by Phantom Engine.",
+  );
+  return { text, redactions: [] };
 }
 

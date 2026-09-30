@@ -76,75 +76,21 @@ export function evaluateRequest(policyRaw, req) {
   const hostname = String(req.hostname || "").toLowerCase();
   const requestBytes = Number(req.request_bytes) || 0;
   const spentUsd = Number(req.spent_usd) || 0;
-
-  const would = [];
-  let would_block = false;
-  let primary_action = "ALLOWED";
-
-  if (!policy.enforce) {
-    return {
-      plane: "Enforce",
-      brand: "Phantom Engine",
-      mode: "evaluate",
-      would_block: false,
-      primary_action: "OBSERVED",
-      reasons: ["enforce=false — policy is open; traffic would only be observed"],
-      policy,
-      input: { hostname, request_bytes: requestBytes, spent_usd: spentUsd },
-      fence: "This MCP never enforces. Wire dry_run + vantio run + Phantom Engine policy for live enforce.",
-    };
-  }
-
-  if (policy.blocked_hosts.includes(hostname)) {
-    would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_HOST";
-    would.push({ action: primary_action, reason: "host_not_permitted" });
-  } else if (
-    policy.allowed_hosts.length > 0 &&
-    !policy.allowed_hosts.includes(hostname)
-  ) {
-    would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_HOST";
-    would.push({ action: primary_action, reason: "not_in_allowed_hosts" });
-  }
-
-  if (policy.max_request_bytes > 0 && requestBytes > policy.max_request_bytes) {
-    would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_SIZE";
-    would.push({
-      action: "DRY_RUN_BLOCKED_SIZE",
-      reason: `request_bytes ${requestBytes} > max_request_bytes ${policy.max_request_bytes}`,
-    });
-  }
-
-  if (policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
-    would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_SPEND";
-    would.push({
-      action: "DRY_RUN_BLOCKED_SPEND",
-      reason: `spent_usd ${spentUsd} >= spend_cap_usd ${policy.spend_cap_usd}`,
-    });
-  }
-
-  if (policy.redact_pii) {
-    would.push({
-      action: "REDACTED",
-      reason: `pii_types=${policy.pii_types.join(",")}`,
-      note: "Redaction applies at runtime in the Phantom Engine interceptor; evaluate does not scan bodies here.",
-    });
-  }
-
+  // This MCP does not preview host, size, or spend blocks. Runtime enforcement
+  // is Phantom Engine, including regional hosts. A preview that only matches
+  // exact names would disagree with that runtime, so the preview is not offered.
   return {
     plane: "Enforce",
     brand: "Phantom Engine",
-    mode: "evaluate",
-    would_block,
-    primary_action: would_block ? primary_action : "ALLOWED",
-    decisions: would.length ? would : [{ action: "ALLOWED", reason: "passes_policy" }],
+    mode: "observe",
+    would_block: false,
+    primary_action: "OBSERVED",
+    reasons: ["This MCP does not preview enforcement. Enforcement is provided by Phantom Engine."],
     policy,
     input: { hostname, request_bytes: requestBytes, spent_usd: spentUsd },
+    decisions: [{ action: "OBSERVED", reason: "optics_observational" }],
     fence:
-      "Dry-run evaluate only. No network call was blocked. Run under vantio run + Phantom Engine policy with dry_run=true to validate, then latch enforce.",
+      "This MCP does not preview or apply policy. No network call was blocked. Enforcement is provided by Phantom Engine.",
   };
 }
 

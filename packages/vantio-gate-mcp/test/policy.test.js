@@ -26,7 +26,7 @@ test("evaluate allows when enforce=false", () => {
   assert.equal(r.primary_action, "OBSERVED");
 });
 
-test("evaluate would block host when enforce=true", () => {
+test("evaluate does not preview a host block", () => {
   const r = evaluateRequest(
     {
       enforce: true,
@@ -40,11 +40,12 @@ test("evaluate would block host when enforce=true", () => {
     },
     { hostname: "api.openai.com", request_bytes: 10 },
   );
-  assert.equal(r.would_block, true);
-  assert.equal(r.primary_action, "DRY_RUN_BLOCKED_HOST");
+  assert.equal(r.would_block, false);
+  assert.equal(r.primary_action, "OBSERVED");
+  assert.match(r.fence, /Phantom Engine/);
 });
 
-test("evaluate would block size", () => {
+test("evaluate does not preview a size block", () => {
   const r = evaluateRequest(
     {
       enforce: true,
@@ -58,6 +59,6 @@ test("evaluate would block size", () => {
     },
     { hostname: "api.openai.com", request_bytes: 500 },
   );
-  assert.equal(r.would_block, true);
-  assert.equal(r.primary_action, "DRY_RUN_BLOCKED_SIZE");
+  assert.equal(r.would_block, false);
+  assert.equal(r.primary_action, "OBSERVED");
 });

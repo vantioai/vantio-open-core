@@ -1,7 +1,8 @@
 """
 Vantio Optics Python SDK — Sight Loop observe.
-Provides shield() decorator/context-manager, report_anomaly() for cloud ingest,
-fetch_policy() for policy retrieval, and redact_pii() for local PII scrubbing.
+Provides shield() decorator/context-manager and report_anomaly() for cloud ingest.
+fetch_policy() does not load a policy. redact_pii() does not rewrite text.
+Enforcement is provided by Phantom Engine.
 Zero dependencies beyond the Python standard library. requests, httpx, and
 aiohttp are optional: if they are installed, shield() observes them the same way
 as urllib.
@@ -14,7 +15,7 @@ import hashlib
 import hmac
 import json
 import os
-import re
+import sys
 import urllib.request
 import urllib.error
 import uuid
@@ -223,11 +224,8 @@ async def report_anomaly(
 @dataclass
 class VantioPolicy:
     """
-    Cloud-managed policy returned by GET /api/v1/config (Tier 2).
-    Mirrors VantioPolicy in @vantio/agent-sdk.
-
-    Enforcement runs locally — this object drives block/redact/cap decisions
-    in your SDK code. Fetch with fetch_policy(); build manually for testing.
+    Local policy shape. Optics does not fetch it and does not apply it.
+    Enforcement is provided by Phantom Engine. Build one manually in tests.
 
     Note: the ``pii_redact`` attribute corresponds to ``redact_pii`` in the
     JSON policy object and in the JS SDK. Named ``pii_redact`` here to avoid
@@ -281,71 +279,20 @@ def fetch_policy(
     timeout: float = 5.0,
 ) -> VantioPolicy:
     """
-    Fetch the cloud-managed policy from GET /api/v1/config.
+    Optics does not fetch a policy and does not send the API key.
 
-    Scope: Phantom Engine and Enterprise, separately provisioned. This is not
-    part of free Optics, which runs local-first with no account and no API key.
-
-    Fails open: on any network failure, non-2xx status, malformed body, or
-    timeout, a permissive default :class:`VantioPolicy` is returned so an
-    unreachable control plane can never block the agent.
-
-    Mirrors ``fetchPolicy()`` in ``@vantio/agent-sdk``.
-
-    Args:
-        api_key:    Your Vantio API key (``VANTIO_API_KEY``).
-        ingest_url: Override the control plane base URL.
-                    Defaults to ``VANTIO_INGEST_URL`` env var or ``https://vantio.ai``.
-        timeout:    Request timeout in seconds (default 5.0).
-
-    Returns:
-        A :class:`VantioPolicy` reflecting the tenant's current policy.
-
-    Example::
-
-        from vantio import fetch_policy, redact_pii
-        import os
-
-        policy = fetch_policy(os.environ["VANTIO_API_KEY"])
-        if policy.pii_redact:
-            result = redact_pii(user_input, policy.pii_types)
-            prompt = result.text   # PII scrubbed before it reaches the LLM
+    This writes a loud line and returns a permissive :class:`VantioPolicy`.
+    Enforcement is provided by Phantom Engine.
     """
-    url = (
-        ingest_url or os.environ.get("VANTIO_INGEST_URL", "https://vantio.ai")
-    ).rstrip("/")
-    try:
-        req = urllib.request.Request(
-            f"{url}/api/v1/config",
-            headers={"x-vantio-identity": api_key},
-            method="GET",
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status != 200:
-                return VantioPolicy()
-            data = json.loads(resp.read().decode("utf-8"))
-            if not isinstance(data, dict) or "policy" not in data:
-                return VantioPolicy()
-            p = data["policy"]
-            return _normalize_policy(p) if isinstance(p, dict) else VantioPolicy()
-    except Exception:
-        # Fail open — the control plane being unreachable must never crash the agent.
-        return VantioPolicy()
+    del api_key, ingest_url, timeout
+    sys.stderr.write(
+        "[ ∅ VANTIO ] fetch_policy does not load a policy and does not send VANTIO_API_KEY. "
+        "Enforcement is provided by Phantom Engine. Optics stays observational.\n"
+    )
+    return VantioPolicy()
 
 
-# ── Local PII redaction (parity with JS SDK redactPII) ────────────────────────
-
-# Patterns kept identical to interceptor.cjs and @vantio/agent-sdk.
-_PY_PII_PATTERNS: dict = {
-    "ssn":         (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-                    "SSN"),
-    "email":       (re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),
-                    "EMAIL"),
-    "credit_card": (re.compile(r"\b(?:\d[ \-]?){13,16}\b"),
-                    "CC"),
-    "phone":       (re.compile(r"\b\(?\d{3}\)?[\-.\s]?\d{3}[\-.\s]?\d{4}\b"),
-                    "PHONE"),
-}
+# ── Local text helper (parity name with JS SDK redactPII) ─────────────────────
 
 
 @dataclass
@@ -354,11 +301,8 @@ class RedactionResult:
     Result of a :func:`redact_pii` call.
 
     Attributes:
-        text:       The input string with matched PII spans replaced by
-                    ``[VANTIO_REDACTED:LABEL]`` tokens.
-        redactions: The PII category name for each redacted span, one entry
-                    per replacement, in the order they appear in *text*.
-                    Empty when no PII was found.
+        text:       The original string. Optics does not rewrite it.
+        redactions: Always empty. Enforcement is provided by Phantom Engine.
     """
     text: str
     redactions: List[str]
@@ -369,50 +313,16 @@ def redact_pii(
     pii_types: Optional[List[str]] = None,
 ) -> RedactionResult:
     """
-    Locally redact PII from *text* using the same patterns as the CLI
-    interceptor and the Node.js SDK (``redactPII``).
+    Optics does not rewrite request text.
 
-    Replaces matches with ``[VANTIO_REDACTED:LABEL]``. Pure and
-    side-effect-free — no content ever leaves the process.
-
-    Mirrors ``redactPII()`` in ``@vantio/agent-sdk``.
-
-    Args:
-        text:      The string to scan and redact.
-        pii_types: PII categories to check. Defaults to all four built-in
-                   categories: ``["ssn", "email", "credit_card", "phone"]``.
-                   Values are normalised to lowercase before lookup, so
-                   ``"EMAIL"`` and ``"email"`` are equivalent.
-
-    Returns:
-        A :class:`RedactionResult` with ``.text`` (redacted string) and
-        ``.redactions`` (list of matched category names).
-
-    Example::
-
-        from vantio import redact_pii
-
-        result = redact_pii("Contact bob@example.com or call 555-123-4567")
-        # result.text       → "Contact [VANTIO_REDACTED:EMAIL] or call [VANTIO_REDACTED:PHONE]"
-        # result.redactions → ["email", "phone"]
+    This writes a loud line and returns the original text with an empty
+    redaction list. Enforcement is provided by Phantom Engine.
     """
-    if pii_types is None:
-        pii_types = ["ssn", "email", "credit_card", "phone"]
+    del pii_types
+    sys.stderr.write(
+        "[ ∅ VANTIO ] redact_pii does not rewrite request text. "
+        "Enforcement is provided by Phantom Engine.\n"
+    )
     if not isinstance(text, str):
         return RedactionResult(text=text, redactions=[])
-
-    out = text
-    redactions: List[str] = []
-
-    for typ in pii_types:
-        key = typ.strip().lower() if isinstance(typ, str) else str(typ)
-        entry = _PY_PII_PATTERNS.get(key)
-        if not entry:
-            continue
-        pattern, label = entry
-        new_out, count = pattern.subn(f"[VANTIO_REDACTED:{label}]", out)
-        if count > 0:
-            redactions.extend([key] * count)
-            out = new_out
-
-    return RedactionResult(text=out, redactions=redactions)
+    return RedactionResult(text=text, redactions=[])

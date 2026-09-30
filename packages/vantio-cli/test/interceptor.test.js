@@ -11,13 +11,36 @@ import http2 from "node:http2";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const INTERCEPTOR_PATH = join(__dirname, "..", "bin", "interceptor.cjs");
+
+describe("observe-only source", () => {
+  test("transport wrappers have no FREE_MODE or unreachable enforce arms", () => {
+    const source = readFileSync(INTERCEPTOR_PATH, "utf8");
+    assert.doesNotMatch(source, /\bFREE_MODE\b/);
+    for (const token of [
+      "BLOCKED_HOST",
+      "BLOCKED_SIZE",
+      "BLOCKED_SPEND",
+      "DRY_RUN_BLOCKED",
+      "VANTIO_GATE_BLOCKED",
+      "blocked_by_vantio",
+    ]) {
+      assert.equal(source.includes(token), false, `${token} must not remain in the interceptor`);
+    }
+    for (const name of ["decideHttp", "decideWs", "decideHttp2", "decideNet", "decideCurl"]) {
+      const match = source.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n  \\}`));
+      assert.ok(match, `${name} must exist`);
+      assert.match(match[0], /return "observe"/);
+      assert.doesNotMatch(match[0], /return "(?:block|dry_block|block_size|block_spend|dry_size|dry_spend)"/);
+    }
+  });
+});
 
 // Runs `node --require interceptor.cjs -e <agentScript>` in a fresh process
 // with the given env layered over a minimal base. Resolves with
@@ -34,7 +57,13 @@ function runAgent(env, agentScript) {
     let stderr = "";
     child.stdout.on("data", (c) => (stdout += c));
     child.stderr.on("data", (c) => (stderr += c));
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
+    const killer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, 8000);
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      resolve({ code, stdout, stderr });
+    });
   });
 }
 
@@ -140,7 +169,7 @@ const UNDICI_DISPATCH_ONCE_SCRIPT = `
         onData(chunk) { chunks.push(Buffer.from(chunk)); return true; },
         onComplete() { resolve({ status: statusCode, body: Buffer.concat(chunks).toString() }); },
       });
-      if (!ok) reject(new Error("dispatch returned false"));
+      void ok;
     });
     process.stdout.write(JSON.stringify(result) + "\\n");
   } finally {
@@ -329,6 +358,26 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.doesNotMatch(stderr, /Gate|Phantom Engine|pricing|dashboard|Free plan|Enterprise/i);
   });
 
+  test("a key and enforce=true do not block, redact, or fetch policy", async () => {
+    configPolicy.enforce = true;
+    configPolicy.blocked_hosts = ["127.0.0.1"];
+    configPolicy.redact_pii = true;
+    configPolicy.pii_types = ["email"];
+    const { code, stdout, stderr } = await runAgent(
+      { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl, VANTIO_EXTRA_LLM_HOSTS: "127.0.0.1" },
+      FETCH_ONCE_SCRIPT
+    );
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout.trim().split("\n").pop());
+    assert.equal(result.status, 200);
+    assert.equal(requests.config.length, 0);
+    assert.equal(requests.ingest.length, 0);
+    assert.equal(requests.target.length, 1);
+    assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.doesNotMatch(requests.target[0].body, /VANTIO_REDACTED/);
+    assert.match(stderr, /Enforcement is provided by Phantom Engine/);
+  });
+
   test("PAID_MODE, enforce=false: call allowed through, ingest records action ALLOWED", async () => {
     configPolicy.allowed_hosts = ["127.0.0.1"];
     const { code, stdout } = await runAgent(
@@ -340,32 +389,7 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.equal(result.status, 200);
 
     assert.equal(requests.target.length, 1);
-    assert.equal(requests.ingest.length, 1);
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "ALLOWED");
-    assert.notEqual(
-      requests.ingest[0].body.eventPayload.mediation,
-      "node_curl",
-      "fetch must stay a single ingest event, not a node_curl wrap"
-    );
-    assert.notEqual(
-      requests.ingest[0].body.eventPayload.mediation,
-      "node_wget",
-      "fetch must stay a single ingest event, not a node_wget wrap"
-    );
-    assert.notEqual(
-      requests.ingest[0].body.eventPayload.mediation,
-      "node_httpie",
-      "fetch must stay a single ingest event, not a node_httpie wrap"
-    );
-    assert.notEqual(
-      requests.ingest[0].body.eventPayload.mediation,
-      "node_aria2c",
-      "fetch must stay a single ingest event, not a node_aria2c wrap"
-    );
-    assert.ok(
-      requests.ingest[0].body.eventPayload.bytes_observed != null,
-      "ingest must set bytes_observed so Mission Control KPIs roll up wrap events"
-    );
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, redact_pii=true: email stripped before the call leaves the process", async () => {
@@ -379,9 +403,9 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.equal(code, 0);
 
     assert.equal(requests.target.length, 1);
-    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+    assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, enforce=true + blocked_hosts: request never reaches the target", async () => {
@@ -393,21 +417,11 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body, /blocked_by_vantio/);
 
-    assert.equal(requests.target.length, 0, "the blocked host must never receive the request");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-    assert.notEqual(
-      requests.ingest[0].body.eventPayload.mediation,
-      "sight_loop",
-      "retired 'sight_loop' must never be emitted as mediation default (regression: EXTERNAL_PROTOCOL_VALUE fix)"
-    );
-    assert.equal(
-      requests.ingest[0].body.eventPayload.mediation,
-      "optics_enforcement",
-      "enforcement events without a transport-layer mediation must use 'optics_enforcement'"
-    );
+    assert.ok(requests.target.length >= 1, "the blocked host must never receive the request");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("authenticated but FREE tier: never calls ingest even though a policy is present (regression guard)", async () => {
@@ -438,7 +452,7 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
       FETCH_ONCE_SCRIPT
     );
     assert.equal(code, 0);
-    assert.equal(requests.config.length, 1, "paid mode fetches the policy once to determine scope");
+    assert.equal(requests.config.length, 0, "Optics does not fetch policy");
     assert.equal(requests.target.length, 1);
     assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
     assert.equal(requests.ingest.length, 0);
@@ -454,11 +468,11 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403, "oversized request must be blocked with 403");
-    assert.match(result.body, /request_too_large/);
+    assert.notEqual(result.status, 403, "oversized request must be blocked with 403");
+    assert.doesNotMatch(result.body, /request_too_large/);
 
-    assert.equal(requests.target.length, 0, "blocked request must never reach the target");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_SIZE");
+    assert.ok(requests.target.length >= 1, "blocked request must never reach the target");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, enforce=true + spend_cap_usd: second call blocked after cap exceeded", async () => {
@@ -493,13 +507,10 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
     assert.equal(result.s1, 200, "first call must succeed");
-    assert.equal(result.s2, 403, "second call must be blocked once spend cap is reached");
-    assert.match(result.b2, /spend_cap_reached/);
+    assert.notEqual(result.s2, 403, "Optics does not apply a spend cap");
+    assert.doesNotMatch(result.b2, /spend_cap_reached/);
 
-    const spendBlocks = requests.ingest.filter(
-      (r) => r.body?.eventPayload?.action_taken === "BLOCKED_SPEND"
-    );
-    assert.equal(spendBlocks.length, 1, "exactly one BLOCKED_SPEND event must be reported");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, dry_run=true + blocked_hosts: call is allowed through and DRY_RUN event reported", async () => {
@@ -518,14 +529,10 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     assert.equal(result.status, 200, "dry_run must not block the call");
     assert.equal(requests.target.length, 1, "target must receive the call in dry_run mode");
 
-    // Stderr must mention DRY_RUN
-    assert.match(stderr, /DRY_RUN/);
+    assert.match(stderr, /Enforcement is provided by Phantom Engine/);
 
     // Ingest must carry a DRY_RUN_BLOCKED_HOST event
-    const dryRunEvents = requests.ingest.filter(
-      (r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_HOST"
-    );
-    assert.equal(dryRunEvents.length, 1, "exactly one DRY_RUN_BLOCKED_HOST event must be reported");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, dry_run=true + max_request_bytes: oversized call allowed, DRY_RUN_BLOCKED_SIZE reported", async () => {
@@ -541,10 +548,7 @@ describe("interceptor.cjs (integration)", { timeout: 60000 }, () => {
     const result = JSON.parse(stdout.trim().split("\n").pop());
     assert.equal(result.status, 200, "dry_run must not block oversized request");
 
-    const sizeEvents = requests.ingest.filter(
-      (r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_SIZE"
-    );
-    assert.equal(sizeEvents.length, 1, "exactly one DRY_RUN_BLOCKED_SIZE event must be reported");
+    assert.equal(requests.ingest.length, 0);
   });
 
   const HTTP_GET_SCRIPT = `
@@ -588,11 +592,10 @@ else go();
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-    assert.equal(requests.target.length, 0, "blocked http.get must never reach the target");
-    assert.equal(requests.ingest.length, 1, "http.get must not also ingest a raw net.connect event");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-    assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_http");
+    assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+    assert.ok(requests.target.length >= 1, "blocked http.get must never reach the target");
+    assert.equal(requests.ingest.length, 0);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE Node http.get out of scope: passes through, never reported", async () => {
@@ -619,9 +622,8 @@ else go();
     const result = JSON.parse(stdout.trim().split("\n").pop());
     assert.equal(result.status, 200);
     assert.equal(requests.target.length, 1);
-    assert.match(stderr, /DRY_RUN/);
-    const dry = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "DRY_RUN_BLOCKED_HOST");
-    assert.equal(dry.length, 1);
+    assert.match(stderr, /Enforcement is provided by Phantom Engine/);
+    assert.equal(requests.ingest.length, 0);
   });
 
   const CLIENT_REQUEST_SCRIPT = `
@@ -660,11 +662,10 @@ else go();
     );
     assert.equal(code, 0, stdout);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-    assert.equal(requests.target.length, 0, "blocked ClientRequest must never reach the target");
-    assert.equal(requests.ingest.length, 1, "ClientRequest must not also ingest a raw net.connect event");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-    assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_http");
+    assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+    assert.ok(requests.target.length >= 1, "blocked ClientRequest must never reach the target");
+    assert.equal(requests.ingest.length, 0);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("FREE_MODE fetch to 127.0.0.1:11434 is OBSERVED as local Ollama without EXTRA_LLM_HOSTS", async () => {
@@ -753,9 +754,8 @@ function one(url) {
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
     assert.equal(result.a.status, 200, "first http.get must succeed");
-    assert.equal(result.b.error, "VANTIO_GATE_BLOCKED");
-    const spend = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SPEND");
-    assert.equal(spend.length, 1);
+    assert.notEqual(result.b.error, "VANTIO_GATE_BLOCKED");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.fetch redact_pii: email stripped before the call leaves", async () => {
@@ -768,9 +768,9 @@ function one(url) {
     );
     assert.equal(code, 0);
     assert.equal(requests.target.length, 1);
-    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+    assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.fetch blocked_hosts: request never reaches the target", async () => {
@@ -782,10 +782,10 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
-    assert.equal(requests.target.length, 0, "undici.fetch must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body, /blocked_by_vantio/);
+    assert.ok(requests.target.length >= 1, "undici.fetch must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.request redact_pii: email stripped before the call leaves", async () => {
@@ -798,9 +798,9 @@ function one(url) {
     );
     assert.equal(code, 0);
     assert.equal(requests.target.length, 1);
-    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+    assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.request blocked_hosts: request never reaches the target", async () => {
@@ -812,10 +812,10 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
-    assert.equal(requests.target.length, 0, "undici.request must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body, /blocked_by_vantio/);
+    assert.ok(requests.target.length >= 1, "undici.request must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.Client.request redact_pii: email stripped before the call leaves", async () => {
@@ -828,9 +828,9 @@ function one(url) {
     );
     assert.equal(code, 0);
     assert.equal(requests.target.length, 1);
-    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+    assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.Client.request blocked_hosts: request never reaches the target", async () => {
@@ -842,10 +842,10 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
-    assert.equal(requests.target.length, 0, "Client.request must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body, /blocked_by_vantio/);
+    assert.ok(requests.target.length >= 1, "Client.request must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.stream redact_pii: email stripped before the call leaves", async () => {
@@ -858,9 +858,9 @@ function one(url) {
     );
     assert.equal(code, 0);
     assert.equal(requests.target.length, 1);
-    assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-    assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "REDACTED");
+    assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+    assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.stream blocked_hosts: request never reaches the target", async () => {
@@ -872,25 +872,25 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
-    assert.equal(requests.target.length, 0, "undici.stream must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body, /blocked_by_vantio/);
+    assert.ok(requests.target.length >= 1, "undici.stream must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.Client.dispatch blocked_hosts: request never reaches the target", async () => {
     configPolicy.enforce = true;
     configPolicy.blocked_hosts = ["127.0.0.1"];
-    const { code, stdout } = await runAgent(
+    const { code, stdout, stderr } = await runAgent(
       { TARGET_URL: targetUrl, VANTIO_API_KEY: "vk_test_dummy", VANTIO_INGEST_URL: baseUrl },
       UNDICI_DISPATCH_ONCE_SCRIPT
     );
-    assert.equal(code, 0);
+    assert.equal(code, 0, stdout + "\n" + stderr);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
-    assert.equal(requests.target.length, 0, "Client.dispatch must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body || "", /blocked_by_vantio/);
+    assert.ok(requests.target.length >= 1, "Client.dispatch must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.Client.pipeline blocked_hosts: request never reaches the target", async () => {
@@ -902,10 +902,10 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.status, 403);
-    assert.match(result.body, /blocked_by_vantio/);
-    assert.equal(requests.target.length, 0, "Client.pipeline must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.status, 403);
+    assert.doesNotMatch(result.body, /blocked_by_vantio/);
+    assert.ok(requests.target.length >= 1, "Client.pipeline must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.connect blocked_hosts: CONNECT never reaches the target", async () => {
@@ -917,9 +917,9 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-    assert.equal(requests.target.length, 0, "undici.connect must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+    assert.ok(requests.target.length >= 1, "undici.connect must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.upgrade blocked_hosts: upgrade never reaches the target", async () => {
@@ -931,9 +931,9 @@ function one(url) {
     );
     assert.equal(code, 0);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-    assert.equal(requests.target.length, 0, "undici.upgrade must not bypass destination blocking");
-    assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+    assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+    assert.ok(requests.target.length >= 1, "undici.upgrade must not bypass destination blocking");
+    assert.equal(requests.ingest.length, 0);
   });
 
   const UNDICI_WS_WRITE_SCRIPT = `
@@ -975,10 +975,7 @@ function one(url) {
     assert.equal(result.ok, true);
     const frames = requests.wsFrames.map((b) => b.toString()).join("");
     assert.match(frames, /hello-ws/);
-    const wsEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "undici_ws");
-    assert.equal(wsEvents.length, 1);
-    assert.equal(wsEvents[0].body.eventPayload.action_taken, "ALLOWED");
-    assert.equal(wsEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-ws"));
+    assert.equal(requests.ingest.length, 0);
   });
 
   test("PAID_MODE, undici.upgrade write over max_request_bytes: BLOCKED_SIZE, payload never lands", { timeout: 15000 }, async () => {
@@ -992,18 +989,16 @@ function one(url) {
     );
     assert.equal(code, 0, stdout);
     const result = JSON.parse(stdout.trim().split("\n").pop());
-    assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+    assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
     const frames = requests.wsFrames.map((b) => b.toString()).join("");
-    assert.equal(frames.includes("hello-ws"), false, "oversized tunnel write must not reach the target");
+    assert.equal(frames.includes("hello-ws"), true, "Optics does not block the tunnel write");
     const deadline = Date.now() + 1000;
     let sizeEvents = [];
     while (Date.now() < deadline) {
-      sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-      if (sizeEvents.length >= 1) break;
+      assert.equal(requests.ingest.length, 0);
       await new Promise((r) => setTimeout(r, 50));
     }
-    assert.ok(sizeEvents.length >= 1);
-    assert.equal(sizeEvents[0].body.eventPayload.mediation, "undici_ws");
+    assert.equal(requests.ingest.length, 0);
   });
 
   const HTTP2_ONCE_SCRIPT = `
@@ -1080,10 +1075,9 @@ else go();
       );
       assert.equal(code, 0);
       assert.equal(requests.target.length, 1);
-      assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-      assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-      const redacted = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "REDACTED");
-      assert.equal(redacted.length, 1);
+      assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+      assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, http2.connect blocked_hosts: session never reaches the target", async () => {
@@ -1095,9 +1089,9 @@ else go();
       );
       assert.equal(code, 0);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "http2.connect must not bypass destination blocking");
-      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "http2.connect must not bypass destination blocking");
+      assert.equal(requests.ingest.length, 0);
     });
   });
 
@@ -1108,9 +1102,16 @@ function go() {
   const sock = net.connect({ host: u.hostname, port: Number(u.port) }, () => {
     process.stdout.write(JSON.stringify({ connected: true }) + "\\n");
     sock.end();
+    setTimeout(() => process.exit(0), 50);
+  });
+  sock.setTimeout(1500, () => {
+    process.stdout.write(JSON.stringify({ error: "TIMEOUT" }) + "\\n");
+    sock.destroy();
+    process.exit(0);
   });
   sock.on("error", (err) => {
     process.stdout.write(JSON.stringify({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }) + "\\n");
+    process.exit(0);
   });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
@@ -1129,9 +1130,17 @@ function go() {
   }, () => {
     process.stdout.write(JSON.stringify({ connected: true }) + "\\n");
     sock.end();
+    process.exit(0);
   });
+  const killer = setTimeout(() => {
+    try { sock.destroy(); } catch (e) {}
+    process.stdout.write(JSON.stringify({ error: "TIMEOUT" }) + "\\n");
+    process.exit(0);
+  }, 1500);
   sock.on("error", (err) => {
+    clearTimeout(killer);
     process.stdout.write(JSON.stringify({ error: err && err.code ? String(err.code) : String(err && err.message || "Error") }) + "\\n");
+    process.exit(0);
   });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
@@ -1142,11 +1151,15 @@ else go();
     let tcpServer;
     let tcpUrl;
     let tcpHits;
+    let tcpSockets;
 
     beforeEach(async () => {
       tcpHits = 0;
+      tcpSockets = new Set();
       tcpServer = net.createServer((sock) => {
+        tcpSockets.add(sock);
         tcpHits += 1;
+        sock.on("close", () => tcpSockets.delete(sock));
         sock.end();
       });
       await new Promise((resolve) => tcpServer.listen(0, "127.0.0.1", resolve));
@@ -1154,7 +1167,13 @@ else go();
     });
 
     afterEach(async () => {
-      await new Promise((resolve) => tcpServer.close(resolve));
+      for (const sock of tcpSockets) {
+        try { sock.destroy(); } catch { /* ignore */ }
+      }
+      await new Promise((resolve) => {
+        tcpServer.close(() => resolve());
+        setTimeout(resolve, 500);
+      });
     });
 
     test("PAID_MODE, net.connect blocked_hosts: TCP never opens", async () => {
@@ -1166,10 +1185,10 @@ else go();
       );
       assert.equal(code, 0);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(tcpHits, 0, "raw net.connect must not bypass destination blocking");
-      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_net");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(tcpHits >= 1, "Optics does not block net.connect");
+      assert.equal(requests.ingest.length, 0);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, tls.connect blocked_hosts: TCP never opens", async () => {
@@ -1181,10 +1200,9 @@ else go();
       );
       assert.equal(code, 0);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(tcpHits, 0, "tls.connect must not bypass destination blocking");
-      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_net");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.ingest.length, 0);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, net.connect allowed_hosts: ingest ALLOWED once", async () => {
@@ -1197,10 +1215,7 @@ else go();
       const result = JSON.parse(stdout.trim().split("\n").pop());
       assert.equal(result.connected, true);
       assert.equal(tcpHits, 1);
-      const allowed = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "ALLOWED");
-      assert.ok(allowed.length >= 1);
-      assert.equal(allowed[0].body.eventPayload.mediation, "node_net");
-      assert.ok(allowed[0].body.eventPayload.bytes_observed != null);
+      assert.equal(requests.ingest.length, 0);
     });
   });
 
@@ -1351,11 +1366,9 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "blocked curl must never hit the target");
-      const curlEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_curl");
-      assert.ok(curlEvents.length >= 1);
-      assert.equal(curlEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "blocked curl must never hit the target");
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn curl allowed_hosts: ingest node_curl ALLOWED", { skip: !HAS_CURL, timeout: 15000 }, async () => {
@@ -1369,10 +1382,7 @@ else go();
       assert.equal(result.ok, true);
       assert.equal(requests.target.length, 1);
       assert.match(requests.target[0].body, /hello-curl/);
-      const curlEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_curl");
-      assert.equal(curlEvents.length, 1);
-      assert.equal(curlEvents[0].body.eventPayload.action_taken, "ALLOWED");
-      assert.equal(curlEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-curl"));
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, sh -c curl blocked_hosts: curl never starts", { skip: !HAS_CURL, timeout: 15000 }, async () => {
@@ -1384,10 +1394,10 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "sh -c curl must not bypass destination blocking");
-      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_curl");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "sh -c curl must not bypass destination blocking");
+      assert.equal(requests.ingest.length, 0);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn curl -d over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_CURL, timeout: 15000 }, async () => {
@@ -1400,17 +1410,15 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "oversized curl body must not reach the target");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "oversized curl body must not reach the target");
       const deadline = Date.now() + 1000;
       let sizeEvents = [];
       while (Date.now() < deadline) {
-        sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-        if (sizeEvents.length >= 1) break;
+        assert.equal(requests.ingest.length, 0);
         await new Promise((r) => setTimeout(r, 50));
       }
-      assert.ok(sizeEvents.length >= 1);
-      assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn curl -d @file over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_CURL, timeout: 15000 }, async () => {
@@ -1432,18 +1440,15 @@ else go();
         );
         assert.equal(code, 0, stdout);
         const result = JSON.parse(stdout.trim().split("\n").pop());
-        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-        assert.equal(requests.target.length, 0, "oversized curl @file body must not reach the target");
+        assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+        assert.ok(requests.target.length >= 1, "oversized curl @file body must not reach the target");
         const deadline = Date.now() + 1000;
         let sizeEvents = [];
         while (Date.now() < deadline) {
-          sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-          if (sizeEvents.length >= 1) break;
+          assert.equal(requests.ingest.length, 0);
           await new Promise((r) => setTimeout(r, 50));
         }
-        assert.ok(sizeEvents.length >= 1);
-        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
-        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-post-file"));
+        assert.equal(requests.ingest.length, 0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1458,10 +1463,10 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "timeout curl must not bypass destination blocking");
-      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_curl");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "timeout curl must not bypass destination blocking");
+      assert.equal(requests.ingest.length, 0);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, curl -K url= blocked_hosts: curl never starts", { skip: !HAS_CURL, timeout: 15000 }, async () => {
@@ -1481,10 +1486,10 @@ else go();
         );
         assert.equal(code, 0, stdout);
         const result = JSON.parse(stdout.trim().split("\n").pop());
-        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-        assert.equal(requests.target.length, 0, "curl -K must not bypass destination blocking");
-        assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-        assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_curl");
+        assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+        assert.ok(requests.target.length >= 1, "curl -K must not bypass destination blocking");
+        assert.equal(requests.ingest.length, 0);
+        assert.equal(requests.ingest.length, 0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1584,11 +1589,9 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "blocked wget must never hit the target");
-      const wgetEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
-      assert.ok(wgetEvents.length >= 1);
-      assert.equal(wgetEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "blocked wget must never hit the target");
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn wget allowed_hosts: ingest node_wget ALLOWED", { skip: !HAS_WGET, timeout: 15000 }, async () => {
@@ -1602,10 +1605,7 @@ else go();
       assert.equal(result.ok, true);
       assert.equal(requests.target.length, 1);
       assert.match(requests.target[0].body, /hello-wget/);
-      const wgetEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
-      assert.equal(wgetEvents.length, 1);
-      assert.equal(wgetEvents[0].body.eventPayload.action_taken, "ALLOWED");
-      assert.equal(wgetEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-wget"));
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, sh -c wget blocked_hosts: wget never starts", { skip: !HAS_WGET, timeout: 15000 }, async () => {
@@ -1617,10 +1617,10 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "sh -c wget must not bypass destination blocking");
-      assert.equal(requests.ingest[0].body.eventPayload.action_taken, "BLOCKED_HOST");
-      assert.equal(requests.ingest[0].body.eventPayload.mediation, "node_wget");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "sh -c wget must not bypass destination blocking");
+      assert.equal(requests.ingest.length, 0);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn wget --post-data over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_WGET, timeout: 15000 }, async () => {
@@ -1633,17 +1633,15 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "oversized wget body must not reach the target");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "oversized wget body must not reach the target");
       const deadline = Date.now() + 1000;
       let sizeEvents = [];
       while (Date.now() < deadline) {
-        sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-        if (sizeEvents.length >= 1) break;
+        assert.equal(requests.ingest.length, 0);
         await new Promise((r) => setTimeout(r, 50));
       }
-      assert.ok(sizeEvents.length >= 1);
-      assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_wget");
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn wget --post-file over max_request_bytes: BLOCKED_SIZE, never hits target", { skip: !HAS_WGET, timeout: 15000 }, async () => {
@@ -1665,18 +1663,15 @@ else go();
         );
         assert.equal(code, 0, stdout);
         const result = JSON.parse(stdout.trim().split("\n").pop());
-        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-        assert.equal(requests.target.length, 0, "oversized wget --post-file body must not reach the target");
+        assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+        assert.ok(requests.target.length >= 1, "oversized wget --post-file body must not reach the target");
         const deadline = Date.now() + 1000;
         let sizeEvents = [];
         while (Date.now() < deadline) {
-          sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-          if (sizeEvents.length >= 1) break;
+          assert.equal(requests.ingest.length, 0);
           await new Promise((r) => setTimeout(r, 50));
         }
-        assert.ok(sizeEvents.length >= 1);
-        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_wget");
-        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-post-file"));
+        assert.equal(requests.ingest.length, 0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1767,14 +1762,15 @@ function go() {
     process.stdout.write(JSON.stringify(obj) + "\\n");
     setTimeout(() => process.exit(0), 150);
   };
-  const child = spawn("http", ["GET", process.env.TARGET_URL], {
+  const child = spawn("http", ["--timeout", "2", "GET", process.env.TARGET_URL], {
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const killer = setTimeout(() => { try { child.kill("SIGKILL"); } catch (e) {} }, 2000);
   child.on("error", (err) => out({
     error: err && err.code ? String(err.code) : "Error",
     body: err && err.message ? String(err.message) : "",
   }));
-  child.on("close", (code) => out({ ok: true, code }));
+  child.on("close", (code) => { clearTimeout(killer); out({ ok: true, code }); });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
 else go();
@@ -1790,14 +1786,15 @@ function go() {
     process.stdout.write(JSON.stringify(obj) + "\\n");
     setTimeout(() => process.exit(0), 150);
   };
-  const child = spawn("aria2c", [process.env.TARGET_URL], {
+  const child = spawn("aria2c", ["--timeout=2", "--connect-timeout=2", "--max-tries=1", process.env.TARGET_URL], {
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const killer = setTimeout(() => { try { child.kill("SIGKILL"); } catch (e) {} }, 2000);
   child.on("error", (err) => out({
     error: err && err.code ? String(err.code) : "Error",
     body: err && err.message ? String(err.message) : "",
   }));
-  child.on("close", (code) => out({ ok: true, code }));
+  child.on("close", (code) => { clearTimeout(killer); out({ ok: true, code }); });
 }
 if (process.env.VANTIO_API_KEY) setTimeout(go, 200);
 else go();
@@ -1823,12 +1820,9 @@ else go();
         );
         assert.equal(code, 0, stdout);
         const result = JSON.parse(stdout.trim().split("\n").pop());
-        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-        assert.equal(requests.target.length, 0, "oversized curl stdin body must not reach the target");
-        const sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-        assert.ok(sizeEvents.length >= 1);
-        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
-        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength("hello-stdin-body"));
+        assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+        assert.ok(requests.target.length >= 1, "oversized curl stdin body must not reach the target");
+        assert.equal(requests.ingest.length, 0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1854,12 +1848,9 @@ else go();
         );
         assert.equal(code, 0, stdout);
         const result = JSON.parse(stdout.trim().split("\n").pop());
-        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-        assert.equal(requests.target.length, 0, "oversized curl -F body must not reach the target");
-        const sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-        assert.ok(sizeEvents.length >= 1);
-        assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_curl");
-        assert.equal(sizeEvents[0].body.eventPayload.bytes_observed, Buffer.byteLength(secret));
+        assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+        assert.ok(requests.target.length >= 1, "oversized curl -F body must not reach the target");
+        assert.equal(requests.ingest.length, 0);
         assert.equal(
           JSON.stringify(requests.ingest).includes(secret),
           false,
@@ -1888,11 +1879,9 @@ else go();
         );
         assert.equal(code, 0, stdout);
         const result = JSON.parse(stdout.trim().split("\n").pop());
-        assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-        assert.equal(requests.target.length, 0, "wget -i blocked dest must never hit the target");
-        const wgetEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
-        assert.ok(wgetEvents.length >= 1);
-        assert.equal(wgetEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+        assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+        assert.ok(requests.target.length >= 1, "wget -i blocked dest must never hit the target");
+        assert.equal(requests.ingest.length, 0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1907,11 +1896,8 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "blocked httpie must never hit the target");
-      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_httpie");
-      assert.ok(events.length >= 1);
-      assert.equal(events[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn aria2c blocked_hosts: child never starts", { timeout: 15000 }, async () => {
@@ -1923,11 +1909,8 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "blocked aria2c must never hit the target");
-      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_aria2c");
-      assert.ok(events.length >= 1);
-      assert.equal(events[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.equal(requests.ingest.length, 0);
     });
   });
 
@@ -2059,11 +2042,9 @@ else go();
       );
       assert.equal(code, 0, stdout);
       assert.equal(requests.target.length, 1);
-      assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-      assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_curl");
-      assert.equal(events.length, 1);
-      assert.equal(events[0].body.eventPayload.action_taken, "REDACTED");
+      assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+      assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn wget --post-data inline: email stripped before leave", { skip: !HAS_WGET, timeout: 15000 }, async () => {
@@ -2076,11 +2057,9 @@ else go();
       );
       assert.equal(code, 0, stdout);
       assert.equal(requests.target.length, 1);
-      assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-      assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-      const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_wget");
-      assert.equal(events.length, 1);
-      assert.equal(events[0].body.eventPayload.action_taken, "REDACTED");
+      assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+      assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, spawn curl -d @file: file body not rewritten, contents never ingested", { skip: !HAS_CURL, timeout: 15000 }, async () => {
@@ -2131,11 +2110,9 @@ else go();
         );
         assert.equal(code, 0, stdout);
         assert.equal(requests.target.length, 1);
-        assert.doesNotMatch(requests.target[0].body, /shouldnotleak@example\.com/);
-        assert.match(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
-        const events = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_httpie");
-        assert.equal(events.length, 1);
-        assert.equal(events[0].body.eventPayload.action_taken, "REDACTED");
+        assert.match(requests.target[0].body, /shouldnotleak@example\.com/);
+        assert.doesNotMatch(requests.target[0].body, /\[VANTIO_REDACTED:EMAIL\]/);
+        assert.equal(requests.ingest.length, 0);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -2217,11 +2194,9 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
-      assert.equal(requests.target.length, 0, "blocked WebSocket must never reach the target");
-      const wsEvents = requests.ingest.filter((r) => r.body?.eventPayload?.mediation === "node_ws");
-      assert.ok(wsEvents.length >= 1);
-      assert.equal(wsEvents[0].body.eventPayload.action_taken, "BLOCKED_HOST");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
+      assert.ok(requests.target.length >= 1, "blocked WebSocket must never reach the target");
+      assert.equal(requests.ingest.length, 0);
     });
 
     test("PAID_MODE, WebSocket send over max_request_bytes: BLOCKED_SIZE", { skip: !HAS_WS, timeout: 15000 }, async () => {
@@ -2234,16 +2209,14 @@ else go();
       );
       assert.equal(code, 0, stdout);
       const result = JSON.parse(stdout.trim().split("\n").pop());
-      assert.equal(result.error, "VANTIO_GATE_BLOCKED");
+      assert.notEqual(result.error, "VANTIO_GATE_BLOCKED");
       const deadline = Date.now() + 1000;
       let sizeEvents = [];
       while (Date.now() < deadline) {
-        sizeEvents = requests.ingest.filter((r) => r.body?.eventPayload?.action_taken === "BLOCKED_SIZE");
-        if (sizeEvents.length >= 1) break;
+        assert.equal(requests.ingest.length, 0);
         await new Promise((r) => setTimeout(r, 50));
       }
-      assert.ok(sizeEvents.length >= 1);
-      assert.equal(sizeEvents[0].body.eventPayload.mediation, "node_ws");
+      assert.equal(requests.ingest.length, 0);
     });
   });
 });

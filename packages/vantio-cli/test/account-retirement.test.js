@@ -290,7 +290,7 @@ describe("local observe does not use the public cloud routes", () => {
     }
   });
 
-  test("an explicit non-public control plane can still load policy", async () => {
+  test("an explicit non-public control plane does not load policy", async () => {
     const hits = [];
     const server = await listen((req, res) => {
       hits.push(req.url || "");
@@ -310,13 +310,14 @@ describe("local observe does not use the public cloud routes", () => {
       setTimeout(() => process.exit(0), 40);
     `;
     try {
-      const { code, stdout } = await runNode(script, {
+      const { code, stdout, stderr } = await runNode(script, {
         INTERCEPTOR_PATH,
         VANTIO_API_KEY: "vk_synthetic_control_plane",
         VANTIO_INGEST_URL: `http://127.0.0.1:${port}`,
       });
       assert.equal(code, 0);
-      assert.match(stdout, new RegExp(`http://127\\.0\\.0\\.1:${port}/api/v1/config`));
+      assert.doesNotMatch(stdout, /\/api\/v1\/config/);
+      assert.match(stderr, /Enforcement is provided by Phantom Engine/);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

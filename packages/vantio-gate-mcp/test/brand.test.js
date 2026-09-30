@@ -235,20 +235,21 @@ test("evaluate preserves primary_action OBSERVED when enforce=false", () => {
   assert.equal(r.would_block, false);
 });
 
-test("evaluate preserves DRY_RUN_BLOCKED_HOST when enforce=true and host blocked", () => {
+test("evaluate does not preview a host block when enforce=true", () => {
   const r = evaluateRequest(
     { ...DEFAULT_POLICY, enforce: true, blocked_hosts: ["blocked.example"] },
     { hostname: "blocked.example" },
   );
-  assert.equal(r.would_block, true);
-  assert.equal(r.primary_action, "DRY_RUN_BLOCKED_HOST");
+  assert.equal(r.would_block, false);
+  assert.equal(r.primary_action, "OBSERVED");
+  assert.match(r.fence, /Phantom Engine/);
 });
 
-test("evaluate preserves DRY_RUN_BLOCKED_SIZE when bytes exceed cap", () => {
+test("evaluate does not preview a size block when bytes exceed a cap", () => {
   const r = evaluateRequest(
     { ...DEFAULT_POLICY, enforce: true, max_request_bytes: 100 },
     { hostname: "api.example.com", request_bytes: 200 },
   );
-  assert.equal(r.would_block, true);
-  assert.equal(r.primary_action, "DRY_RUN_BLOCKED_SIZE");
+  assert.equal(r.would_block, false);
+  assert.equal(r.primary_action, "OBSERVED");
 });
