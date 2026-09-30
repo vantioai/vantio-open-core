@@ -5,16 +5,16 @@
   "producer_classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
   "producer_role": "PLANNING_PRODUCER_ONLY",
   "producer_identity": {
-    "agent": "bc-67390466-de62-5277-ba0b-3f01b390aa8c",
-    "model": "Grok 4.7",
+    "agent": "OMITTED_FROM_PUBLIC_TIP",
+    "model": "OMITTED_FROM_PUBLIC_TIP",
     "role": "PLANNING_PRODUCER",
     "self_certified_council_pass": false,
-    "url": "https://cursor.com/agents/bc-67390466-de62-5277-ba0b-3f01b390aa8c"
+    "url": "OMITTED_FROM_PUBLIC_TIP"
   },
   "council_status": "PENDING_INDEPENDENT_COUNCIL",
   "council_verdict": null,
   "open_core_base": "5064f32f1cdfcb840dfd100e2ce5c712d046550d",
-  "private_phantom_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
+  "private_phantom_tip": "OMITTED_FROM_PUBLIC_TIP",
   "enterprise_tip": "2df2d1f2d2e5a8e65c6d3021b20b94f179e485b7",
   "workstream_4": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
   "vocabulary_status": "c1de02538f66df94d58aef58bf0ec8459ae797ad",
@@ -34,7 +34,7 @@
     "docs/planning/phantom-engine-production/03-P2-PREREQUISITE-COMPATIBILITY.md": "d69b94473633850b9e3eaae30aed1dd53e55e264f36002770595e420807799a6",
     "docs/planning/phantom-engine-production/04-P24-HEALTH-AND-COVERAGE.md": "75657ed3c82c6f0d3ea2edf009e24e357fe3da72cf2a2f62ad5270e63eda4b84",
     "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md": "3f1cb8adbaa36b9e365d065658b67006ead065d6daaa97d22202703b19cb7894",
-    "docs/planning/phantom-engine-production/06-INDEPENDENT-COUNCIL.md": "b2d906ea5250eb89ce4b44d2870cae5a8c1c3a62a764b5928d63d9909e1a0350",
+    "docs/planning/phantom-engine-production/06-INDEPENDENT-COUNCIL.md": "2b819a6872db6ee5ff0402d5b46e50bd0298a1ab5d92c7ef3508cdb01a804629",
     "docs/planning/phantom-engine-production/COVERAGE-MATRIX.json": "e5013a599550e0f272279952ce05bb6d70eace49b4a82f618b3cf45e4ce478a4",
     "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json": "d87665d13c345826cabdfd55f573bfcf8b1e9fd13416157e724ce1e3a7380b00"
   }

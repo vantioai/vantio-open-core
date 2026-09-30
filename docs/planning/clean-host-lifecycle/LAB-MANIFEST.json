@@ -28,14 +28,14 @@
     "assigns_evidence_tier": false
   },
   "producer": {
-    "agent": "bc-696d1176-5194-564e-a77c-9001563d5885",
-    "model": "Grok 4.7",
-    "url": "https://cursor.com/agents/bc-696d1176-5194-564e-a77c-9001563d5885"
+    "agent": "OMITTED_FROM_PUBLIC_TIP",
+    "model": "OMITTED_FROM_PUBLIC_TIP",
+    "url": "OMITTED_FROM_PUBLIC_TIP"
   },
   "files_sha256": [
     {
       "path": "docs/planning/clean-host-lifecycle/00-PROGRAM-BOUNDARY.md",
-      "sha256": "60be8fdeefc03ec1a1e42ef4e23cae3868d9e0627ce1b742243d3ff52dbc65f7"
+      "sha256": "ff599879217464a625404d5aae9ae928a8cde53de27d6ed6deb5f77889039a6d"
     },
     {
       "path": "docs/planning/clean-host-lifecycle/01-ARCHITECTURE.md",
@@ -59,7 +59,7 @@
     },
     {
       "path": "docs/planning/clean-host-lifecycle/06-INDEPENDENT-COUNCIL.md",
-      "sha256": "ba12a6e1f0b09fdd722047966bbe507a4f7570f3fa74d4800b31f9d0bf7f11f4"
+      "sha256": "81d8c7aef467d34c7d676df91ec3bddff7354c9dedaeeb49dfa16b258e3c429f"
     },
     {
       "path": "docs/planning/clean-host-lifecycle/scripts/capture.sh",

@@ -6,13 +6,13 @@
   "producer_classification": "ENTERPRISE_GOVERNANCE_E1_E3_PLAN_READY_FOR_COUNCIL",
   "producer_role": "PLANNING_PRODUCER_ONLY",
   "producer_identity": {
-    "agent": "bc-53037043-9d63-5b25-9945-484d22d0eaa7",
-    "model": "Grok 4.7",
+    "agent": "OMITTED_FROM_PUBLIC_TIP",
+    "model": "OMITTED_FROM_PUBLIC_TIP",
     "reasoning_effort": "xhigh",
     "context": "500k",
     "fast": false,
     "role": "PLANNING_PRODUCER",
-    "url": "https://cursor.com/agents/bc-53037043-9d63-5b25-9945-484d22d0eaa7",
+    "url": "OMITTED_FROM_PUBLIC_TIP",
     "self_certified_council_pass": false
   },
   "council_status": "PENDING_INDEPENDENT_COUNCIL",
@@ -24,7 +24,7 @@
   "writable_path": "docs/planning/enterprise-governance/",
   "phantom_engine": {
     "repo": "vantioai/vantio-phantom-engine",
-    "commit": "631e435315cd780d83d3259e111893c1d0569bc3",
+    "commit": "OMITTED_FROM_PUBLIC_TIP",
     "blobs": {
       "docs/product-spec.md": "f12c0caf7413dc061d705c8fc78ce7d2bcdc525d",
       "docs/PRODUCT_LINEUP.md": "db10eff96899703a6711aefec4281e5517b8784a",
@@ -52,7 +52,7 @@
     "03-E3-APPROVAL-CLASSES.md": "3780e017f0fd6b39eb02dae298aba6ef1bc4947798218de2ef46224ba5d24bb0",
     "04-SUBORDINATION-AND-CUSTOMER-SUFFICIENCY.md": "ba2a544d90486b6619da0d866f0b18631b99ca04682ff0f0d2c8f9152228a0db",
     "05-UNRESOLVED-FOUNDER-DECISIONS.md": "10bac95c7be6f06e02157517606792ce773567721fa1067fd3422206c8fd2c10",
-    "06-INDEPENDENT-COUNCIL.md": "2b0ff0e52caffa0f3ac42cd855d94d92fecbfbbca0e394af683650bd99bf7ba1",
+    "06-INDEPENDENT-COUNCIL.md": "d17d885181ddb219fd8cc2802fa486a4c27df9e3dd0c3cc3c0b5b84e41945207",
     "07-FUTURE-FORCE.md": "724d89b6db41c44e650900d144fff667e693ad90a4354c76eca7408d1f0a39b1",
     "GOVERNANCE-REQUIREMENTS.json": "1bd698e4aa8cc4fc84fb707bb998864cfedcfe45642c9aeaa909554f1377b333"
   },

@@ -12,9 +12,9 @@
   "branch": "cursor/benchmark-framework-b6b6",
   "repository": "vantioai/vantio-open-core",
   "producer": {
-    "agent": "bc-e0913dd4-07fa-5610-a4fe-8178e8f2b6b6",
-    "model": "Grok 4.7",
-    "url": "https://cursor.com/agents/bc-e0913dd4-07fa-5610-a4fe-8178e8f2b6b6"
+    "agent": "OMITTED_FROM_PUBLIC_TIP",
+    "model": "OMITTED_FROM_PUBLIC_TIP",
+    "url": "OMITTED_FROM_PUBLIC_TIP"
   },
   "merge": false,
   "closed": {
@@ -33,7 +33,7 @@
     "02-COMPARATOR-RULES.md": "56fcad44881d67ab9bbdf6896e0654f29fa9c84dfc9c3de869243179adb0c55b",
     "03-SCORE.md": "e0758ba433ff0186b09bc7d6085eb2d90312c938e75e888daa9e3bf781dbd2bd",
     "04-PERFORMANCE-QUALIFICATION.md": "a72d062760f9b972dad6dbded3ebf08056e6c211c257ea79a591c7484af3c8cb",
-    "05-INDEPENDENT-COUNCIL.md": "ec5c7c689ea9493864cedc4325df8ecae4214780152d27b672065e084ba925e2",
+    "05-INDEPENDENT-COUNCIL.md": "70946b9f7442c839914942a80febc689c87a6c041c5a1579bebe6baa75156e32",
     "CLAIM-LADDER.json": "36a18ddeabdee79f6c42898a659b3b23673f71d833e2df8d226712bd879c46e7",
     "COMPARATOR-MATRIX.json": "bba1e4e305739e35e198dbeaec099dbcd3d8434e43ce76b84199209645725da0",
     "PERFORMANCE-SCAFFOLD.json": "674b8616f720e67826e1cbb367b198db82d3b755ed8d2d6a77979f70c97255d3",
@@ -41,6 +41,6 @@
     "scripts/framework-lib.mjs": "6532b7258d39ab3ea7ec5d39123e198bf4e1b2866eb0ea5e295d73ac7a90b1cb",
     "scripts/check-framework.mjs": "ca0802a14d8cee34670f07d6caa0075b36ed70540a9cd4533f589ad85f08d5b4",
     "scripts/check-framework.test.mjs": "b7f07362986e407278736ed97645db602d5c1f4195e7ee10eb4cfeb2bfc48cf1",
-    "scripts/emit-pack.mjs": "7473a4701c53e239502c195d75869560ad06a38d34ab5328805e943717b137c7"
+    "scripts/emit-pack.mjs": "dbde17895b84dd4cab654a9aa36448bac5a70c05b6e9b329ac1f8fbab9773b46"
   }
 }
