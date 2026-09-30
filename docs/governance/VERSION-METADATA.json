@@ -44,10 +44,10 @@
     {
       "id": "gate-mcp",
       "name": "@vantio/gate-mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "manifest": "packages/vantio-gate-mcp/package.json",
       "changelog": "docs/governance/changelogs/gate-mcp.md",
-      "changelog_heading": "## 0.1.0"
+      "changelog_heading": "## 0.1.1"
     },
     {
       "id": "vscode",
