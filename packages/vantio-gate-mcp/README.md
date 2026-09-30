@@ -37,6 +37,8 @@ Cursor / Claude Desktop:
 | `gate_evaluate` | Dry-run host / size / spend decision |
 | `gate_get_policy` | Fetch policy (needs API key) |
 | `gate_residual_risk` | Enforcement-gap ledger |
+
+`gate_get_policy` and `gate_residual_risk` read `VANTIO_API_KEY` and `VANTIO_API_BASE` from the environment. They do not take a key argument or a host argument. When `VANTIO_API_BASE` is unset, the host is `https://api.vantio.ai`.
 | `gate_normalize_policy` | Coerce policy to canonical schema |
 | `gate_explain` | Fence + rules that stick |
 | `gate_upgrade_path` | Optics → Phantom Engine → Enterprise |

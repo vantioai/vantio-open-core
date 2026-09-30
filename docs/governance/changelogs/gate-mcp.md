@@ -6,7 +6,7 @@ This heading exists so a documentation release can require a changelog entry for
 
 CANDIDATE_ONLY_NOT_FOR_PUBLICATION. Source version only. Not an npm release.
 
-`gate_get_policy` and `gate_residual_risk` read `VANTIO_API_KEY` from the environment. They do not take an `api_key` tool argument. Host matching uses a DNS suffix. `dry_run: false` names `BLOCKED_*` actions. `dry_run: true` keeps the `DRY_RUN_` prefix. The tools still do not block network traffic.
+`gate_get_policy` and `gate_residual_risk` read `VANTIO_API_KEY` from the environment. They do not take an `api_key` tool argument. They also do not take an `api_base` tool argument. The control-plane host is `VANTIO_API_BASE`, or `https://api.vantio.ai` when that variable is unset or blank. A caller-supplied host is ignored. Host matching uses a DNS suffix. `dry_run: false` names `BLOCKED_*` actions. `dry_run: true` keeps the `DRY_RUN_` prefix. The tools still do not block network traffic.
 
 ## 0.1.0
 

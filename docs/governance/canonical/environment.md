@@ -5,7 +5,7 @@ Free Optics runs with no account and no API key. Telemetry stays off unless `VAN
 | Variable | Role |
 |---|---|
 | `DO_NOT_TRACK` | Set to `1` to keep telemetry off. |
-| `VANTIO_API_BASE` | Base URL for the Gate MCP control-plane client. Default `https://api.vantio.ai`. Not required for free Optics. |
+| `VANTIO_API_BASE` | Base URL for the Gate MCP control-plane client. Default `https://api.vantio.ai`. Not required for free Optics. `gate_get_policy` and `gate_residual_risk` read this from the environment. They do not take a host argument. |
 | `VANTIO_API_KEY` | Control-plane key for Phantom Engine / Enterprise policy and ingest. Not required for free Optics. |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode. |
 | `VANTIO_CLOUD_INGEST` | Set to `true` or `1` before `reportAnomaly` / `report_anomaly` will send. |

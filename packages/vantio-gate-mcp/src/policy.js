@@ -163,9 +163,17 @@ export function evaluateRequest(policyRaw, req) {
   };
 }
 
-export async function fetchCloudConfig({
-  apiBase = process.env.VANTIO_API_BASE || "https://api.vantio.ai",
-} = {}) {
+const DEFAULT_CONTROL_PLANE_BASE = "https://api.vantio.ai";
+
+// Host that receives VANTIO_API_KEY. Environment only. Arguments are ignored.
+export function controlPlaneBase() {
+  const raw = process.env.VANTIO_API_BASE;
+  if (typeof raw !== "string") return DEFAULT_CONTROL_PLANE_BASE;
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  return trimmed || DEFAULT_CONTROL_PLANE_BASE;
+}
+
+export async function fetchCloudConfig() {
   const key = process.env.VANTIO_API_KEY;
   if (!key) {
     return {
@@ -175,7 +183,7 @@ export async function fetchCloudConfig({
       policy: DEFAULT_POLICY,
     };
   }
-  const base = apiBase.replace(/\/$/, "");
+  const base = controlPlaneBase();
   const res = await fetch(`${base}/api/v1/config`, {
     headers: {
       "x-vantio-identity": key,
@@ -199,9 +207,7 @@ export async function fetchCloudConfig({
   };
 }
 
-export async function fetchResidualRisk({
-  apiBase = process.env.VANTIO_API_BASE || "https://api.vantio.ai",
-} = {}) {
+export async function fetchResidualRisk() {
   const key = process.env.VANTIO_API_KEY;
   if (!key) {
     return {
@@ -210,7 +216,7 @@ export async function fetchResidualRisk({
       hint: "Residual-risk ledger requires VANTIO_API_KEY.",
     };
   }
-  const base = apiBase.replace(/\/$/, "");
+  const base = controlPlaneBase();
   const res = await fetch(`${base}/api/v1/residual-risk`, {
     headers: {
       "x-vantio-identity": key,

@@ -64,14 +64,10 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_get_policy",
-    "Fetch current tenant policy from the Phantom Engine control plane. Requires VANTIO_API_KEY in the environment. Read-only.",
-    {
-      api_base: z.string().optional().describe("Override VANTIO_API_BASE"),
-    },
-    async ({ api_base }) => {
-      const result = await fetchCloudConfig({
-        apiBase: api_base,
-      });
+    "Fetch current tenant policy from the Phantom Engine control plane. Requires VANTIO_API_KEY in the environment. The host is VANTIO_API_BASE, or https://api.vantio.ai when that is unset. Read-only.",
+    {},
+    async () => {
+      const result = await fetchCloudConfig();
       if (!result.ok) return err(JSON.stringify(result, null, 2));
       return text({
         plane: "Enforce",
@@ -85,14 +81,10 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_residual_risk",
-    "Fetch residual-risk / dry-run / enforcement-gap ledger. Requires VANTIO_API_KEY in the environment. Read-only.",
-    {
-      api_base: z.string().optional(),
-    },
-    async ({ api_base }) => {
-      const result = await fetchResidualRisk({
-        apiBase: api_base,
-      });
+    "Fetch residual-risk / dry-run / enforcement-gap ledger. Requires VANTIO_API_KEY in the environment. The host is VANTIO_API_BASE, or https://api.vantio.ai when that is unset. Read-only.",
+    {},
+    async () => {
+      const result = await fetchResidualRisk();
       if (!result.ok) return err(JSON.stringify(result, null, 2));
       return text({
         plane: "Enforce",
