@@ -39,7 +39,7 @@ const policyShape = z
 export function createGateMcpServer() {
   const server = new McpServer({
     name: "vantio-gate",
-    version: "0.1.0",
+    version: "0.1.1",
   });
 
   server.tool(
@@ -64,14 +64,12 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_get_policy",
-    "Fetch current tenant policy from the Phantom Engine control plane. Requires VANTIO_API_KEY. Read-only.",
+    "Fetch current tenant policy from the Phantom Engine control plane. Requires VANTIO_API_KEY in the environment. Read-only.",
     {
-      api_key: z.string().optional().describe("Override VANTIO_API_KEY"),
       api_base: z.string().optional().describe("Override VANTIO_API_BASE"),
     },
-    async ({ api_key, api_base }) => {
+    async ({ api_base }) => {
       const result = await fetchCloudConfig({
-        apiKey: api_key,
         apiBase: api_base,
       });
       if (!result.ok) return err(JSON.stringify(result, null, 2));
@@ -87,14 +85,12 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_residual_risk",
-    "Fetch residual-risk / dry-run / enforcement-gap ledger. Requires VANTIO_API_KEY. Read-only.",
+    "Fetch residual-risk / dry-run / enforcement-gap ledger. Requires VANTIO_API_KEY in the environment. Read-only.",
     {
-      api_key: z.string().optional(),
       api_base: z.string().optional(),
     },
-    async ({ api_key, api_base }) => {
+    async ({ api_base }) => {
       const result = await fetchResidualRisk({
-        apiKey: api_key,
         apiBase: api_base,
       });
       if (!result.ok) return err(JSON.stringify(result, null, 2));

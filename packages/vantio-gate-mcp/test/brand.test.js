@@ -7,7 +7,7 @@
  *   - gate_upgrade_path description is Optics → Phantom Engine → Enterprise (not Optics → Gate → …)
  *   - no Gate $499 / Gate Pro / hosted Gate / four-product ladder anywhere
  *   - package name preserved as @vantio/gate-mcp
- *   - version preserved as 0.1.0
+ *   - source candidate version is 0.1.1 (not a registry publish)
  *   - all required tool names present
  *   - schema / evaluate behavior preserved
  */
@@ -40,8 +40,9 @@ test("package name preserved as @vantio/gate-mcp", () => {
   assert.equal(pkg.name, "@vantio/gate-mcp");
 });
 
-test("version preserved as 0.1.0", () => {
-  assert.equal(pkg.version, "0.1.0");
+test("source candidate version is 0.1.1 and is not a registry publish", () => {
+  assert.equal(pkg.version, "0.1.1");
+  assert.equal(serverMeta.version, "0.1.1");
 });
 
 test("package homepage points to /phantom not /gate", () => {

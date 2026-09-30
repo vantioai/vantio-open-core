@@ -22,6 +22,7 @@ from vantio_install.commands import (
 )
 from vantio_install.pe_apparmor import pe_apparmor_profile_path
 from vantio_install.errors import InstallError
+from vantio_install.stage_remove import remove_stage_nofollow
 from vantio_install.util import sha256_file, write_json
 
 
@@ -161,8 +162,7 @@ class FixtureMutator:
         self._mark_file(self.stage / "STAGE.json", {"archive": target.name, "sha256": observed})
 
     def _remove_stage(self, ctx: dict) -> None:
-        if self.stage.is_dir():
-            shutil.rmtree(self.stage)
+        remove_stage_nofollow(self.stage)
         prefix = self.stage.as_posix()
         files = self.snapshot.get("product_files") or []
         self.snapshot["product_files"] = [item for item in files if not item.startswith(prefix)]

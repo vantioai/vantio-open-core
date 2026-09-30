@@ -149,15 +149,14 @@ export function evaluateRequest(policyRaw, req) {
 }
 
 export async function fetchCloudConfig({
-  apiKey,
   apiBase = process.env.VANTIO_API_BASE || "https://api.vantio.ai",
 } = {}) {
-  const key = apiKey || process.env.VANTIO_API_KEY;
+  const key = process.env.VANTIO_API_KEY;
   if (!key) {
     return {
       ok: false,
       error: "missing_api_key",
-      hint: "Set VANTIO_API_KEY or pass api_key. Free Optics needs no key; Phantom Engine control-plane config requires a key.",
+      hint: "Set VANTIO_API_KEY. Free Optics needs no key; Phantom Engine control-plane config requires a key.",
       policy: DEFAULT_POLICY,
     };
   }
@@ -186,10 +185,9 @@ export async function fetchCloudConfig({
 }
 
 export async function fetchResidualRisk({
-  apiKey,
   apiBase = process.env.VANTIO_API_BASE || "https://api.vantio.ai",
 } = {}) {
-  const key = apiKey || process.env.VANTIO_API_KEY;
+  const key = process.env.VANTIO_API_KEY;
   if (!key) {
     return {
       ok: false,

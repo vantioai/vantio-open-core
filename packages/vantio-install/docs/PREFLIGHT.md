@@ -12,16 +12,16 @@ Docker availability and Docker privilege are different checks.
 - `sudo` when this principal cannot write that socket and `sudo` is on `PATH`. `sudo_available` is true.
 - `UNKNOWN` when neither fact is true.
 
-Root is effective uid 0. The probe does not store the string `root` in `privilege_mode`. A live `apply`, `rollback`, or `uninstall` accepts the command when the effective uid is 0, or when `privilege_mode` is `sudo` and `sudo` is on `PATH`, or when `privilege_mode` is `docker_group` and the principal can write the socket.
+Root is effective uid 0. The probe does not store the string `root` in `privilege_mode`. A live `apply`, `rollback`, or `uninstall` accepts the command only when the effective uid is 0. `privilege_mode` `sudo` means `sudo` is on `PATH`. `privilege_mode` `docker_group` means this principal can write `/var/run/docker.sock`. Neither fact is a live grant, and the installer does not exec sudo.
 
 `PF-DOCKER-PERM` is `PASS` when the principal can write the socket and `privilege_mode` is `docker_group` or `sudo`, or when `privilege_mode` is `sudo` and `sudo` is on `PATH`. The remediation stored on that check is: add the operator to the docker group, or rerun the installer with sudo. Group membership is not assumed. Rerun means `sudo` in front of `vantio-install`, so the installer process is root. It does not mean a Docker command typed by hand.
 
 `PF-DOCKER-PERM` is `BLOCKED` when `privilege_mode` is `UNKNOWN` and the principal cannot write the socket. The plan overall is then `BLOCKED` when no unsupported check fired, the process exit is 2, and `state` stays off `PLANNED`. `PREFLIGHT.json` shows check id `PF-DOCKER-PERM`, the observed `privilege_mode`, and that remediation.
 
-A live command returns `FAILED_SAFE` with the message `Live mutations need root or the documented sudo or docker privilege.` when the effective uid is not 0 and the recorded mode is not a passing `sudo` or `docker_group` fact.
+A live command returns `FAILED_SAFE` with the message `Live mutations need effective root. sudo on PATH is not privilege.` when the effective uid is not 0. A passing `sudo` or `docker_group` fact does not change that.
 
 The installer is the only program on this path that runs Docker. It uses an argv list and `shell` is false. A shell string is refused. The executables it may run are `mkdir`, `npm`, `python3`, `docker`, `tc`, and `apparmor_parser`. `sudo`, `su`, and a shell are refused as the executable. An argument that contains a shell metacharacter is refused. An argv list that differs from the catalog entry for that step is refused.
 
-Raw `docker`, raw `sudo docker`, and a direct call on `docker.sock` are forbidden for customer operators. So is changing the socket mode by hand. When `privilege_mode` is `sudo`, rerun `vantio-install` under `sudo`, or use a principal that can already write the socket. The allowlist does not insert `sudo` in front of `docker`. A host check can still fail when `docker` runs as a user who cannot open the socket.
+Raw `docker`, raw `sudo docker`, and a direct call on `docker.sock` are forbidden for customer operators. So is changing the socket mode by hand. When the effective uid is not 0, rerun `vantio-install` under `sudo` so the process is root. A principal that can already write the socket is still not a live grant until that process is root. The allowlist does not insert `sudo` in front of `docker`. A host check can still fail when `docker` runs as a user who cannot open the socket.
 
 `proof_state` stays `NOT_PROVED`. The proof ceiling stays `INTERNAL_CLEAN_HOST_PROOF`.
