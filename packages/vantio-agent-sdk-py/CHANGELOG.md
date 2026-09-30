@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1.1
+
+CANDIDATE_ONLY_NOT_FOR_PUBLICATION. This heading is source. It is not a PyPI release.
+
+- A bad `VANTIO_INGEST_URL` is reported. With an API key, in-scope calls fail closed. Observation without a key stays fail-open.
+- Concurrent `shield()` calls write separate run files.
+- `http.client` records status after `getresponse()`.
+- Cloud ingest sends `traceId` and `auditMode`, matching the Node interceptor.
+
 ## 3.1.0
 
 - HTTP 400–599 is stored with `ok` false for urllib, requests, httpx, aiohttp, and urllib3. urllib HTTP errors are application outcomes and are not labeled `network_error`.

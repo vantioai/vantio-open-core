@@ -45,6 +45,19 @@ function asBool(v, d) {
 function asStrArray(v, d) {
   return Array.isArray(v) ? v.filter((x) => typeof x === "string") : d.slice();
 }
+export function hostMatches(hostname, listed) {
+  const h = String(hostname || "").toLowerCase();
+  if (!h) return false;
+  const items = Array.isArray(listed) ? listed : [];
+  for (const item of items) {
+    const b = String(item || "").toLowerCase().trim();
+    if (!b) continue;
+    if (h === b) return true;
+    if (b.includes(".") && h.endsWith("." + b)) return true;
+  }
+  return false;
+}
+
 function asNonNegNum(v, d) {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) && n >= 0 ? n : d;
@@ -95,33 +108,35 @@ export function evaluateRequest(policyRaw, req) {
     };
   }
 
-  if (policy.blocked_hosts.includes(hostname)) {
+  const actionName = (kind) => (policy.dry_run ? `DRY_RUN_${kind}` : kind);
+
+  if (hostMatches(hostname, policy.blocked_hosts)) {
     would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_HOST";
+    primary_action = actionName("BLOCKED_HOST");
     would.push({ action: primary_action, reason: "host_not_permitted" });
   } else if (
     policy.allowed_hosts.length > 0 &&
-    !policy.allowed_hosts.includes(hostname)
+    !hostMatches(hostname, policy.allowed_hosts)
   ) {
     would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_HOST";
+    primary_action = actionName("BLOCKED_HOST");
     would.push({ action: primary_action, reason: "not_in_allowed_hosts" });
   }
 
   if (policy.max_request_bytes > 0 && requestBytes > policy.max_request_bytes) {
     would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_SIZE";
+    primary_action = actionName("BLOCKED_SIZE");
     would.push({
-      action: "DRY_RUN_BLOCKED_SIZE",
+      action: actionName("BLOCKED_SIZE"),
       reason: `request_bytes ${requestBytes} > max_request_bytes ${policy.max_request_bytes}`,
     });
   }
 
   if (policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
     would_block = true;
-    primary_action = "DRY_RUN_BLOCKED_SPEND";
+    primary_action = actionName("BLOCKED_SPEND");
     would.push({
-      action: "DRY_RUN_BLOCKED_SPEND",
+      action: actionName("BLOCKED_SPEND"),
       reason: `spent_usd ${spentUsd} >= spend_cap_usd ${policy.spend_cap_usd}`,
     });
   }

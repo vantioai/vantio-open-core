@@ -126,7 +126,7 @@ test("installer denylist and frozen packages stay untouched", () => {
   assert.match(constants, /GA_0\.2\.0_internal_rebind_completed/);
   const cli = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-cli/package.json"), "utf8"));
   const npmSdk = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-agent-sdk/package.json"), "utf8"));
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.equal(npmSdk.version, "0.2.4");
 });
 }

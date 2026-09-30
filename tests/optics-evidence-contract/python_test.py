@@ -299,8 +299,8 @@ class ContractTests(unittest.TestCase):
     def test_scope(self):
         cli = json.loads((ROOT / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8"))
         pyproject = (ROOT / "packages" / "vantio-agent-sdk-py" / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertEqual(cli["version"], "0.3.24")
-        self.assertIn('version = "3.1.0"', pyproject)
+        self.assertEqual(cli["version"], "0.3.25")
+        self.assertIn('version = "3.1.1"', pyproject)
         pkg = json.loads((ROOT / "packages" / "optics-evidence-contract" / "package.json").read_text(encoding="utf-8"))
         self.assertTrue(pkg["private"])
         self.assertNotIn("dependencies", pkg)

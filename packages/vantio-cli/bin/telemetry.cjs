@@ -22,7 +22,22 @@ const { randomUUID } = require("node:crypto");
 // module-level constant would freeze in whatever VANTIO_INGEST_URL happened
 // to be at first require.
 function telemetryBase() {
-  return process.env.VANTIO_INGEST_URL || "https://vantio.ai";
+  const raw = process.env.VANTIO_INGEST_URL;
+  if (raw == null || String(raw).trim() === "") return "https://vantio.ai";
+  try {
+    const url = new URL(String(raw).trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("scheme");
+    }
+    if (!url.hostname) throw new Error("host");
+    return url.origin;
+  } catch {
+    if (!telemetryBase.warned) {
+      telemetryBase.warned = true;
+      process.stderr.write("[ ∅ VANTIO ] VANTIO_INGEST_URL is not a usable http(s) URL. Telemetry was not sent.\n");
+    }
+    return null;
+  }
 }
 
 // Captured at require time — interceptor.cjs requires this module BEFORE it
@@ -55,7 +70,7 @@ function telemetryDisabled() {
 // ephemeral per-run id — this function never throws.
 function getTelemetryId() {
   try {
-    const dir = path.join(os.homedir(), ".vantio");
+    const dir = process.env.VANTIO_HOME || path.join(os.homedir(), ".vantio");
     const idFile = path.join(dir, "telemetry-id");
     try {
       const existing = fs.readFileSync(idFile, "utf8").trim();
@@ -82,6 +97,8 @@ function sendTelemetry(payload = {}) {
   try {
     if (telemetryDisabled()) return;
     if (typeof _fetch !== "function") return; // Node < 18 — nothing to send with.
+    const base = telemetryBase();
+    if (!base) return;
 
     const body = {
       anonymousId: getTelemetryId(),
@@ -102,7 +119,7 @@ function sendTelemetry(payload = {}) {
     if (Number.isFinite(payload.blockedCount)) body.blockedCount = payload.blockedCount;
     if (payload.framework != null) body.framework = String(payload.framework);
 
-    void _fetch(`${telemetryBase()}/api/v1/telemetry`, {
+    void _fetch(`${base}/api/v1/telemetry`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }, // No api key. No auth header.
       body: JSON.stringify(body),

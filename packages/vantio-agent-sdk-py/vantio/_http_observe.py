@@ -118,15 +118,26 @@ _orig_create_connection: Any = None
 _orig_ssl_connect: Any = None
 _orig_http_request: Any = None
 _orig_http_putrequest: Any = None
+_orig_http_getresponse: Any = None
 _orig_urllib3_request: Any = None
 _orig_pycurl_curl: Any = None
 _orig_popen: Any = None
 _orig_os_system: Any = None
 _orig_asyncio_exec: Any = None
 _orig_asyncio_shell: Any = None
+class _ObsSession:
+    def __init__(self, trace_id: str) -> None:
+        self.trace_id = trace_id
+        self.calls: list[dict[str, Any]] = []
+        self.started = time.time()
+
+
 _calls: list[dict[str, Any]] = []
 _started_ms = 0.0
 _trace_id = ""
+_session_stack: ContextVar[tuple] = ContextVar("vantio_obs_stack", default=())
+_enforce_closed = False
+_ingest_invalid = False
 # Gate on the wrap (same job as Node interceptor). Empty / missing key = Optics only.
 _policy: dict[str, Any] = {
     "enforce": False,
@@ -293,12 +304,27 @@ def _is_control_plane_dest(hostname: str, port: Optional[str]) -> bool:
 
 def _load_policy() -> None:
     """Fetch Gate policy before urllib is patched. Fail-open. Optics-only when no key."""
-    global _cloud_sync
+    global _cloud_sync, _enforce_closed, _ingest_invalid
     _reset_policy()
+    _enforce_closed = False
+    _ingest_invalid = False
+    raw = os.environ.get("VANTIO_INGEST_URL")
+    ok, ingest = _parse_ingest_url(raw if raw is not None and str(raw).strip() else None)
     key = os.environ.get("VANTIO_API_KEY") or ""
+    if raw is not None and str(raw).strip() and not ok:
+        _ingest_invalid = True
+        if key.strip():
+            _enforce_closed = True
+            sys.stderr.write(
+                "[ ∅ VANTIO ] VANTIO_INGEST_URL is not a usable http(s) URL. Enforcement fails closed.\n"
+            )
+        else:
+            sys.stderr.write(
+                "[ ∅ VANTIO ] VANTIO_INGEST_URL is not a usable http(s) URL. Observation continues.\n"
+            )
+        return
     if not key.strip():
         return
-    ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
     try:
         req = urllib.request.Request(
             f"{ingest}/api/v1/config",
@@ -348,7 +374,11 @@ def _ingest(hostname: str, action: str, extra: Optional[dict[str, Any]] = None) 
     ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
     if not key:
         return
+    sess = _current_session()
+    trace = sess.trace_id if sess is not None else _trace_id
     payload = {
+        "traceId": trace,
+        "auditMode": os.environ.get("VANTIO_AUDIT_MODE") == "1",
         "eventPayload": {
             "target_host": hostname,
             "pid": os.getpid(),
@@ -473,10 +503,22 @@ def _aiohttp_request_body(kwargs: dict[str, Any]) -> Any:
             return None
     return None
 
+def _parse_ingest_url(raw: Optional[str]) -> tuple[bool, str]:
+    if raw is None or not str(raw).strip():
+        return True, "https://vantio.ai"
+    text = str(raw).strip()
+    parsed = urlparse(text)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False, ""
+    return True, text.rstrip("/")
+
+
 def _decide(hostname: str, port: Optional[str], path: str, body_len: int) -> str:
-    """pass | observe | block | dry_block | block_size | dry_size | block_spend | dry_spend"""
+    """pass | observe | block | dry_block | block_size | dry_size | block_spend | dry_spend | closed"""
     if not hostname or _is_control_plane(hostname, path) or not _in_scope(hostname, port):
         return "pass"
+    if _enforce_closed:
+        return "closed"
     key = os.environ.get("VANTIO_API_KEY") or ""
     if not key.strip():
         return "observe"
@@ -517,9 +559,21 @@ def _host_port_from_url(url: Any) -> tuple[str, Optional[str], str]:
         return "", None, "/"
 
 
+def _current_session() -> Optional[_ObsSession]:
+    stack = _session_stack.get()
+    if not stack:
+        return None
+    top = stack[-1]
+    return top if isinstance(top, _ObsSession) else None
+
+
 def _append(rec: dict[str, Any]) -> None:
+    sess = _current_session()
     with _lock:
-        _calls.append(rec)
+        if sess is not None:
+            sess.calls.append(rec)
+        else:
+            _calls.append(rec)
 
 
 # Machine-token gloss. Customer observed-outcome lines are chosen in _outcome
@@ -756,8 +810,11 @@ def _dispatch_gate(
     decision = _decide(hostname, port, path, length)
     if decision == "pass":
         return "pass", body, [], False
+    if decision == "closed":
+        _record(hostname, "ENFORCEMENT_CLOSED", mediation, path=path, ok=False, request_bytes=length)
+        return "block", "enforcement_closed", [], False
     if decision == "block":
-        _record(hostname, "BLOCKED_HOST", mediation, path=path, ok=False)
+        _record(hostname, "BLOCKED_HOST", mediation, path=path, ok=False, request_bytes=length)
         return "block", "host_not_permitted", [], False
     if decision == "block_size":
         _record(hostname, "BLOCKED_SIZE", mediation, path=path, ok=False)
@@ -1426,9 +1483,15 @@ def _observe_http_client_request(
             _orig_http_request, self, method, url, send_body, headers or {}, encode_chunked=encode_chunked
         )
         if record_send:
-            action = "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED")
-            _record(hostname, action, "python_http_client", method=method_s, path=path, ok=True,
-                    duration_ms=int((time.time() - t0) * 1000))
+            _, _, nbytes = _body_to_text(send_body if redactions else body)
+            self._vantio_pending = {
+                "hostname": hostname,
+                "method": method_s,
+                "path": path,
+                "t0": t0,
+                "action": "REDACTED" if redactions else ("ALLOWED" if _cloud_sync else "OBSERVED"),
+                "request_bytes": nbytes,
+            }
         return resp
     except Exception as exc:
         if isinstance(exc, GateBlockedError):
@@ -1462,33 +1525,73 @@ def _observe_http_client_putrequest(
     )
     if kind == "block":
         raise GateBlockedError(hostname or "")
-    if kind != "pass" and record_send:
-        action = "ALLOWED" if _cloud_sync else "OBSERVED"
-        _record(hostname, action, "python_http_client", method=str(method or "GET").upper(), path=path)
+    if kind != "pass" and record_send and getattr(self, "_vantio_pending", None) is None:
+        self._vantio_pending = {
+            "hostname": hostname,
+            "method": str(method or "GET").upper(),
+            "path": path,
+            "t0": time.time(),
+            "action": "ALLOWED" if _cloud_sync else "OBSERVED",
+            "request_bytes": None,
+        }
     return _http_orig(_orig_http_putrequest, self, method, url, skip_host, skip_accept_encoding)
 
 
+def _observe_http_client_getresponse(self: Any, *args: Any, **kwargs: Any) -> Any:
+    resp = _orig_http_getresponse(self, *args, **kwargs)
+    pending = getattr(self, "_vantio_pending", None)
+    if pending:
+        self._vantio_pending = None
+        status = getattr(resp, "status", None)
+        extra: dict[str, Any] = {
+            "method": pending["method"],
+            "path": pending["path"],
+        }
+        if pending.get("request_bytes") is not None:
+            extra["request_bytes"] = pending["request_bytes"]
+        try:
+            cl = resp.getheader("Content-Length") if hasattr(resp, "getheader") else None
+            if cl is not None and str(cl).strip() != "":
+                extra["bytes"] = int(cl)
+        except (TypeError, ValueError):
+            pass
+        _record_http_response(
+            pending["hostname"],
+            pending["action"],
+            "python_http_client",
+            status,
+            pending["t0"],
+            **extra,
+        )
+    return resp
+
+
 def _install_http_client() -> None:
-    global _orig_http_request, _orig_http_putrequest
+    global _orig_http_request, _orig_http_putrequest, _orig_http_getresponse
     if _orig_http_request is not None:
         return
     _orig_http_request = http.client.HTTPConnection.request
     _orig_http_putrequest = http.client.HTTPConnection.putrequest
+    _orig_http_getresponse = http.client.HTTPConnection.getresponse
     http.client.HTTPConnection.request = _observe_http_client_request  # type: ignore[assignment]
     http.client.HTTPConnection.putrequest = _observe_http_client_putrequest  # type: ignore[assignment]
+    http.client.HTTPConnection.getresponse = _observe_http_client_getresponse  # type: ignore[assignment]
 
 
 def _uninstall_http_client() -> None:
-    global _orig_http_request, _orig_http_putrequest
+    global _orig_http_request, _orig_http_putrequest, _orig_http_getresponse
     try:
         if _orig_http_request is not None:
             http.client.HTTPConnection.request = _orig_http_request
         if _orig_http_putrequest is not None:
             http.client.HTTPConnection.putrequest = _orig_http_putrequest
+        if _orig_http_getresponse is not None:
+            http.client.HTTPConnection.getresponse = _orig_http_getresponse
     except Exception:
         pass
     _orig_http_request = None
     _orig_http_putrequest = None
+    _orig_http_getresponse = None
 
 
 def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
@@ -2482,18 +2585,23 @@ def _uninstall_pycurl() -> None:
     _orig_pycurl_curl = None
 
 
-def _write_run_log() -> None:
-    if not _calls or not _trace_id:
+def _write_run_log(sess: Optional[_ObsSession] = None) -> None:
+    if sess is None:
+        sess = _current_session()
+    calls = sess.calls if sess is not None else _calls
+    trace = sess.trace_id if sess is not None else _trace_id
+    started = sess.started if sess is not None else _started_ms
+    if not calls or not trace:
         return
     try:
         home = os.environ.get("VANTIO_HOME") or os.path.join(os.path.expanduser("~"), ".vantio")
         runs = os.path.join(home, "runs")
         os.makedirs(runs, mode=0o700, exist_ok=True)
         now = datetime.now(timezone.utc)
-        hosts = sorted({c.get("hostname") or "unknown" for c in _calls})
-        mediations = sorted({c.get("mediation") or "python_urllib" for c in _calls})
-        optics_status, application_status = _rollup_status(_calls)
-        customer = summarize_customer_fields(_calls, application_status)
+        hosts = sorted({c.get("hostname") or "unknown" for c in calls})
+        mediations = sorted({c.get("mediation") or "python_urllib" for c in calls})
+        optics_status, application_status = _rollup_status(calls)
+        customer = summarize_customer_fields(calls, application_status)
         payload = {
             "vantio_run_log": "1",
             "schema_version": 2,
@@ -2507,14 +2615,14 @@ def _write_run_log() -> None:
                 "applicationOutcomeLabel": "Observed outcome",
                 "providerResponse": "Provider response",
             },
-            "trace_id": _trace_id,
+            "trace_id": trace,
             "runtime": "python",
             "mediation": ",".join(mediations),
-            "started_at": datetime.fromtimestamp(_started_ms, timezone.utc).isoformat() if _started_ms else now.isoformat(),
+            "started_at": datetime.fromtimestamp(started, timezone.utc).isoformat() if started else now.isoformat(),
             "generated_at": now.isoformat(),
-            "calls": list(_calls),
+            "calls": list(calls),
             "summary": {
-                "total_calls": len(_calls),
+                "total_calls": len(calls),
                 "hosts": hosts,
                 "opticsStatus": optics_status,
                 "applicationStatus": application_status,
@@ -2525,7 +2633,7 @@ def _write_run_log() -> None:
                 "note": "Python wrap observes urllib (urlopen and custom openers), requests/httpx/aiohttp/urllib3/pycurl when installed, http.client, socket.connect / connect_ex / create_connection, and subprocess curl/wget/httpie/aria2c to in-scope LLM hosts. File-body size is counted from stat; contents are not read. Inline argv bodies are rewritten by the Phantom Engine enforcement component (inline args only; file contents are not read). With a Phantom Engine API key it can also block, redact PII, or enforce a spend limit on HTTP bodies. Browsers stay outside this wrap.",
             },
         }
-        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in _trace_id)[:80]
+        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in trace)[:80]
         path = os.path.join(runs, f"{safe}.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2)
@@ -2542,10 +2650,14 @@ def install(trace_id: str) -> None:
     global _depth, _started_ms, _trace_id
     with _lock:
         _depth += 1
-        if _depth == 1:
+        first = _depth == 1
+        if first:
             _calls.clear()
             _started_ms = time.time()
             _trace_id = trace_id
+    _session_stack.set(_session_stack.get() + (_ObsSession(trace_id),))
+    if first:
+        with _lock:
             _load_policy()
             urllib.request.urlopen = _observe_urlopen  # type: ignore[assignment]
             _install_opener()
@@ -2561,6 +2673,11 @@ def install(trace_id: str) -> None:
 
 def uninstall() -> None:
     global _depth
+    stack = _session_stack.get()
+    sess = stack[-1] if stack else None
+    if stack:
+        _session_stack.set(stack[:-1])
+    _write_run_log(sess if isinstance(sess, _ObsSession) else None)
     with _lock:
         if _depth <= 0:
             return
@@ -2576,5 +2693,4 @@ def uninstall() -> None:
             _uninstall_pycurl()
             _uninstall_http_client()
             _uninstall_curl_spawn()
-            _write_run_log()
             _reset_policy()

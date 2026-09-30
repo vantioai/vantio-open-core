@@ -28,10 +28,10 @@ describe("isolation", () => {
     const publish = read(".github/workflows/npm-publish.yml");
     assert.equal(publish.includes("pe-egress"), false);
     const cli = read("packages/vantio-cli/package.json");
-    assert.equal(cli.includes("\"version\": \"0.3.24\""), true);
+    assert.equal(cli.includes("\"version\": \"0.3.25\""), true);
     assert.equal(cli.includes("pe-egress"), false);
     const python = read("packages/vantio-agent-sdk-py/pyproject.toml");
-    assert.equal(python.includes("version = \"3.1.0\""), true);
+    assert.equal(python.includes("version = \"3.1.1\""), true);
     const interceptor = read("packages/vantio-cli/bin/interceptor.cjs");
     assert.equal(interceptor.includes("pe-egress-authority"), false);
   });

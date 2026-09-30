@@ -116,9 +116,9 @@ test("frozen package versions are unchanged and this package stays private", () 
   const candidate = JSON.parse(read("packages/pe-sequential-authority/package.json"));
   const python = read("packages/vantio-agent-sdk-py/pyproject.toml");
   const workspace = read("pnpm-workspace.yaml");
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.equal(nodeSdk.version, "0.2.4");
-  assert.match(python, /version = "3.1.0"/);
+  assert.match(python, /version = "3.1.1"/);
   assert.equal(candidate.private, true);
   assert.equal(candidate.version, "0.0.0-unstable-pre-1.0");
   assert.equal(workspace.includes("pe-sequential-authority"), false);

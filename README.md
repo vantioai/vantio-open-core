@@ -10,7 +10,7 @@ vantio run node agent.js
 That's the integration. Optics intercepts outbound calls to known LLM providers and reports
 destination, process, size, and timing — never prompts or completions.
 
-Python: `pip install vantio-agent-sdk`, then wrap your agent with `@shield`.
+Python: `pip install vantio-agent-sdk`, then wrap your agent with `@shield`. That PyPI package is the Python SDK. The Node package is `@vantio/agent-sdk`. They are two packages with similar names.
 
 Optics is the free Observe tier. [Phantom Engine](https://vantio.ai/phantom-engine) (Enforce + Control)
 extends this to policy enforcement and host-level runtime protection on enrolled Linux systems. Full docs:
@@ -44,7 +44,8 @@ Vantio records *that* a call was made, *when*, *to which provider*, and *how man
 
 - The content of your prompts
 - Model completions or responses
-- Any personally identifiable information
+
+The stored URL path can contain a secret, token, or identifier if the application put one there. Query strings are dropped. The path is kept.
 
 ---
 

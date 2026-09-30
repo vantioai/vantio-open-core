@@ -362,8 +362,8 @@ test("validator sources do not open network clients", () => {
 test("scope stays off the live runtimes", () => {
   const cli = JSON.parse(fs.readFileSync(path.join(ROOT, "packages", "vantio-cli", "package.json"), "utf8"));
   const pyproject = fs.readFileSync(path.join(ROOT, "packages", "vantio-agent-sdk-py", "pyproject.toml"), "utf8");
-  assert.equal(cli.version, "0.3.24");
-  assert.match(pyproject, /version = "3.1.0"/);
+  assert.equal(cli.version, "0.3.25");
+  assert.match(pyproject, /version = "3.1.1"/);
   const pkg = JSON.parse(fs.readFileSync(path.join(CONTRACT, "package.json"), "utf8"));
   assert.equal(pkg.private, true);
   assert.equal(pkg.dependencies, undefined);

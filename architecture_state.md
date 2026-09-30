@@ -1,5 +1,9 @@
 # Vantio Open-Core — Phase I Architecture Ledger
 
+**Historical.** This file is a build log from Phase I. It is not the current product description, not a packaging source, and not a claim about what is shipped. Current product truth lives in the Optics manuals and the package manifests.
+
+
+
 > **Note (2026):** The Tier 02 control plane (`apps/web` API routes, billing, dashboards) has moved to [`vantio-pro`](https://github.com/vantioai/vantio-pro) and the hosted app (`vantio-app`). This ledger retains historical build logs for open-core packages; references to `apps/web` as the live control plane are archival only.
 
 ## Phase I Checklist

@@ -91,7 +91,7 @@ test("frozen product versions and the closed architecture gate stay in place", (
   assert.equal(readJson("packages/vantio-cli/package.json").version, "0.3.24");
   assert.equal(readJson("packages/vantio-agent-sdk/package.json").version, "0.2.4");
   const python = fs.readFileSync(path.join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.match(python, /^version = "3.1.0"$/m);
+  assert.match(python, /^version = "3.1.1"$/m);
   const gates = fs.readFileSync(path.join(ROOT, "docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md"), "utf8");
   assert.match(gates, /\| 8 \| Implementation Force \|.*\| \*\*Closed\. Not started\*\* \|/);
   const decision = fs.readFileSync(

@@ -57,9 +57,9 @@ test("package stays private and off the shipping workspace", () => {
   const promote = fs.readFileSync(path.join(root, "scripts/release/promote_npm.mjs"), "utf8");
   assert.equal(promote.includes("governance-assurance"), false);
   const cli = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-cli/package.json"), "utf8"));
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   const python = fs.readFileSync(path.join(root, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.match(python, /version = "3.1.0"/);
+  assert.match(python, /version = "3.1.1"/);
   const npmSdk = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-agent-sdk/package.json"), "utf8"));
   assert.equal(npmSdk.version, "0.2.4");
   const boundary = fs.readFileSync(path.join(root, "docs/internal/governance-assurance/00-BOUNDARY.md"), "utf8");

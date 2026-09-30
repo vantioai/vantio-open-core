@@ -164,3 +164,32 @@ jobs:
 
       - name: Test Optics docker observe example
         run: python -m unittest deploy/docker/test_observe_example.py -v
+
+  test-mcp-otel-pe:
+    name: gate-mcp, optics-mcp, otel-i3, pe-*
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test gate-mcp, optics-mcp, otel-i3, and pe packages
+        run: |
+          pnpm --filter @vantio/gate-mcp test
+          pnpm --filter @vantio/optics-mcp test
+          node --test tests/optics-otel-i3/*.test.cjs
+          node --test tests/pe-sequential-authority/*.test.cjs
+          node --test tests/pe-progressive-enforcement/*.test.cjs
+          node --test tests/pe-ingress/*.test.cjs
+          node --test tests/pe-host-authority/*.test.cjs
+          node --test tests/pe-egress/*.test.cjs

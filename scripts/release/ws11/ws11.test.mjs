@@ -228,7 +228,7 @@ test("current surfaces characterize with gaps and withhold release success", () 
   assert.equal(python.registry.this_force_refetched, false);
   assert.equal(python.registry.historical_register_state, "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED");
   const cli = optics.units.find((unit) => unit.package === "@vantio/cli");
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.equal(cli.artifacts[0].custody.selector.kind, "git-tag");
   assert.equal(cli.artifacts[0].custody.selector_is_integrity, false);
   const contract = optics.units.find((unit) => unit.package === "@vantio/optics-evidence-contract");
@@ -318,8 +318,8 @@ test("version-matched docs gate and the customer test double agree with the tree
   assert.equal(assemblePeCustomerBundle({ version: "9.9.9", manualText: manual }).ok, false);
   const cli = JSON.parse(readFileSync(join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
   const pyproject = readFileSync(join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.equal(cli.version, "0.3.24");
-  assert.match(pyproject, /version = "3.1.0"/);
+  assert.equal(cli.version, "0.3.25");
+  assert.match(pyproject, /version = "3.1.1"/);
   assert.equal(readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8").includes("scripts/release/ws11/ws11.test.mjs"), true);
 });
 

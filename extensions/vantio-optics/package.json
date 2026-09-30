@@ -4,7 +4,7 @@
   "description": "Observe-only Sight Loop for VS Code — export Optics proof, discover local LLM hosts, and surface the residual upgrade path. Blind by design; no enforce.",
   "version": "0.1.0",
   "publisher": "vantioai",
-  "icon": "media/icon.png",
+  "icon": "media/icon.svg",
   "galleryBanner": {
     "color": "#121826",
     "theme": "dark"

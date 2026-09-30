@@ -20,9 +20,9 @@ test("the proof package is outside the workspace and the frozen packages", () =>
   const workspace = fs.readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
   assert.equal(workspace.includes("pe-host-authority"), false);
   const cli = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-cli/package.json"), "utf8"));
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   const python = fs.readFileSync(path.join(root, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.match(python, /^version = "3.1.0"$/m);
+  assert.match(python, /^version = "3.1.1"$/m);
   const nodeSdk = JSON.parse(fs.readFileSync(path.join(root, "packages/vantio-agent-sdk/package.json"), "utf8"));
   assert.equal(nodeSdk.version, "0.2.4");
 });

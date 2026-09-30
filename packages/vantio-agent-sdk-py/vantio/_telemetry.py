@@ -113,8 +113,16 @@ def send_telemetry(
         if is_telemetry_disabled():
             return
 
-        base = os.environ.get("VANTIO_INGEST_URL") or _DEFAULT_BASE_URL
-        # Only ever speak http(s); refuse anything exotic a misconfig might inject.
+        raw = os.environ.get("VANTIO_INGEST_URL")
+        base = raw or _DEFAULT_BASE_URL
+        # Only ever speak http(s). A bad explicit URL is reported and not sent.
+        if raw and not str(raw).strip().startswith(("http://", "https://")):
+            import warnings
+            warnings.warn(
+                "[vantio] VANTIO_INGEST_URL is not a usable http(s) URL. Telemetry was not sent.",
+                stacklevel=2,
+            )
+            return
         if not base.startswith(("http://", "https://")):
             return
         url = f"{base.rstrip('/')}/api/v1/telemetry"

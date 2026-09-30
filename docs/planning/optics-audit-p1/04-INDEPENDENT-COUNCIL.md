@@ -2,15 +2,17 @@
 
 Audience: review of source changes on this branch.
 
-Status: `PENDING_INDEPENDENT_COUNCIL`
+Status: `PASS_WITH_NONBLOCKING_NOTES`
 
-`council_pass`: false
+`council_pass`: true
+
+`council_verdict`: `PASS_WITH_NONBLOCKING_NOTES`
 
 `merge_state`: `WAITING_FOR_AUTHORIZED_REVIEWER`
 
 Publication: `CANDIDATE_ONLY_NOT_FOR_PUBLICATION`. No npm publish, no PyPI publish, no install.vantio.ai go-live.
 
-The producer wrote this packet and the tests. The producer does not sit this council and does not fill the verdict. Approval has to come from kvantio, and the author of the change is not that reviewer.
+This verdict reviews tip `1bbed9021c9ceb494b34d1d3ab4d625d5e7c32f3`. It is not a GitHub approval and it is not kvantio. kvantio still has to APPROVE before anyone merges.
 
 ## Packet
 
@@ -35,8 +37,8 @@ An outside stage symlink was already refused by `confine` before this change. Th
 
 | Field | Value |
 | --- | --- |
-| Council identity | `PENDING` |
-| Reviewer | `PENDING` — kvantio, non-author |
-| Date | `PENDING` |
-| Result | `PENDING` |
-| Notes | `PENDING` |
+| Council identity | independent read of tip `1bbed9021c9ceb494b34d1d3ab4d625d5e7c32f3` |
+| Reviewer | not kvantio |
+| Date | 2026-09-29 |
+| Result | `PASS_WITH_NONBLOCKING_NOTES` |
+| Notes | The four P1 fixes match the tests on that tip. `remove_stage` refuses a symlink with `lstat` and `O_NOFOLLOW` and leaves the target. Live mutations accept effective uid 0 only. The observe image pins `@vantio/cli@0.3.24` exactly and starts `vantio run node`. The gate-mcp tools no longer take `api_key`. Non-blocking: `api_base` is still a tool argument, so a caller can choose the URL that receives `VANTIO_API_KEY`. The Docker pin is a version string, not a digest. Opening the stage parent follows intermediate path components; the stage entry itself is not followed. |

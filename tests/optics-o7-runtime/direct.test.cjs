@@ -112,7 +112,7 @@ test("frozen releases, the closed gate, and the integration record stay honest",
   assert.equal(JSON.parse(read("packages/vantio-cli/package.json")).version, "0.3.24");
   assert.equal(JSON.parse(read("packages/vantio-cli/package.json")).engines.node, ">=18.3.0");
   assert.equal(JSON.parse(read("packages/vantio-agent-sdk/package.json")).version, "0.2.4");
-  assert.match(read("packages/vantio-agent-sdk-py/pyproject.toml"), /^version = "3.1.0"$/m);
+  assert.match(read("packages/vantio-agent-sdk-py/pyproject.toml"), /^version = "3.1.1"$/m);
   assert.match(read("docs/architecture/optics-foundation/09-IMPLEMENTATION-GATES.md"), /\| 8 \| Implementation Force \|.*\| \*\*Closed\. Not started\*\* \|/);
   assert.match(read("docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md"), /9\. Node SQLite binding\. Not selected\./);
   const record = JSON.parse(read("docs/internal/optics-o7/RUNTIME-INTEGRATION.json"));

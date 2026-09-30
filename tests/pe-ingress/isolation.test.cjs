@@ -121,9 +121,9 @@ test("this force does not edit CLI 0.3.24, Python 3.1.0, or other trees", () => 
     );
   }
   const cli = JSON.parse(fs.readFileSync(path.join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   const python = fs.readFileSync(path.join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.match(python, /^version = "3.1.0"$/m);
+  assert.match(python, /^version = "3.1.1"$/m);
 });
 
 test("internal notes keep the council pending and name the producer classification", () => {

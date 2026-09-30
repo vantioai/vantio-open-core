@@ -82,7 +82,7 @@ test("live packages do not load the lifecycle", () => {
   for (const relative of roots) visit(path.join(ROOT, relative));
   const cli = JSON.parse(fs.readFileSync(path.join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
   const python = fs.readFileSync(path.join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.match(python, /version = "3\.1\.0"/);
 });
 

@@ -34,7 +34,7 @@ class IsolationTests(unittest.TestCase):
 
     def test_cli_and_reader_gates_stay_closed(self):
         cli = json.loads((ROOT / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(cli["version"], "0.3.24")
+        self.assertEqual(cli["version"], "0.3.25")
         gates = (ROOT / "packages" / "optics-reader-compat-gates" / "src" / "gates.cjs").read_text(encoding="utf-8")
         self.assertIn("activates_unit_e: false", gates)
         self.assertIn("activates_unit_d: false", gates)

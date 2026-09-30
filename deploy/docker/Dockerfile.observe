@@ -4,7 +4,7 @@
 ARG BASE_IMAGE=node:22-bookworm-slim
 FROM ${BASE_IMAGE}
 
-RUN npm install -g @vantio/cli@0.3.24
+RUN npm install -g @vantio/cli@0.3.25
 
 WORKDIR /app
 COPY package.json agent.js ./

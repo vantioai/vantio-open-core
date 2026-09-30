@@ -245,7 +245,11 @@ Examples:
 `;
 
 // ── config store (~/.vantio/config.json) ───────────────────────────────────────────────────
-function configDir()  { return join(homedir(), ".vantio"); }
+function configDir()  {
+  const fromEnv = process.env.VANTIO_HOME;
+  if (fromEnv && String(fromEnv).trim()) return String(fromEnv);
+  return join(homedir(), ".vantio");
+}
 function configPath() { return join(configDir(), "config.json"); }
 
 // Compatibility: ~/.vantio/config.json is not read by run,
@@ -669,7 +673,7 @@ function listRuns(dir) {
     process.stdout.write(
       "No run logs found. Run an agent first:\n" +
       "  vantio run node agent.js\n\n" +
-      "Run logs are written to ~/.vantio/runs/ when LLM calls are intercepted.\n"
+      "Run logs are written under VANTIO_HOME/runs, or ~/.vantio/runs when that variable is unset.\n"
     );
     return;
   }

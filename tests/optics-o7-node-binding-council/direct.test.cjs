@@ -72,7 +72,7 @@ test("the decision does not claim runtime proof or open the gate", () => {
 test("frozen manifests and the historical not-selected sentence stay put", () => {
   assert.equal(readJson("packages/vantio-cli/package.json").version, "0.3.24");
   assert.equal(readJson("packages/vantio-agent-sdk/package.json").version, "0.2.4");
-  assert.match(readText("packages/vantio-agent-sdk-py/pyproject.toml"), /^version = "3.1.0"$/m);
+  assert.match(readText("packages/vantio-agent-sdk-py/pyproject.toml"), /^version = "3.1.1"$/m);
   assert.equal(readJson("docs/governance/VERSION-METADATA.json").packages[0].version, "0.3.24");
   assert.equal(decision.release_impact.cli_modified, false);
   assert.equal(decision.release_impact.python_sdk_modified, false);

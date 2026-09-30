@@ -94,9 +94,9 @@ test("frozen package versions stay put and Unit E is not activated", () => {
   const future = JSON.parse(fs.readFileSync(path.join(ROOT, "packages/vantio-cli-pkg02/package.json"), "utf8"));
   const python = fs.readFileSync(path.join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
   const workspace = fs.readFileSync(path.join(ROOT, "pnpm-workspace.yaml"), "utf8");
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.equal(sdk.version, "0.2.4");
-  assert.match(python, /version = "3.1.0"/);
+  assert.match(python, /version = "3.1.1"/);
   assert.equal(future.version, "0.4.0-pkg02-unit-d");
   assert.equal(future.private, true);
   assert.equal(future.vantio.activates_unit_d, true);

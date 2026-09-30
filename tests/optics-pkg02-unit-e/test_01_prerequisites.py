@@ -24,7 +24,7 @@ class PrerequisiteTests(unittest.TestCase):
         self.assertIn('self.assertEqual(call["opticsStatus"], "SUCCESS")', text)
         self.assertIn('self.assertEqual(data["summary"]["opticsStatus"], "SUCCESS")', text)
         pyproject = (SDK_31 / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "3.1.0"', pyproject)
+        self.assertIn('version = "3.1.1"', pyproject)
 
     def test_sealed_3_1_0_shield_bytes_stay_success(self):
         script = textwrap.dedent(

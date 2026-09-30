@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: CLI 0.3.24, published Python 3.0.14, unpublished Python 3.1.0 source as labeled.
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release).
 
 ## Absent on purpose in the current products
 
@@ -28,7 +28,11 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 ## Record gaps
 
 - Node writes a file for zero calls. Python writes only when at least one call was stored. "No file" means different things.
-- CLI readers ignore `VANTIO_HOME`. Writers and the MCP reader honor it.
+- CLI readers (`prove`, `discover`, `search`, `tail`, `diff`, `status`) and the run-log writer honor `VANTIO_HOME`. When it is unset they use `~/.vantio`.
+- A `VANTIO_INGEST_URL` that is not an http(s) URL is reported on stderr. With an API key, in-scope calls fail closed. Without a key, observation continues.
+- Concurrent `shield()` calls write separate run files, one trace id each.
+- `http.client` stores the HTTP status from `getresponse()`, not from `request()`.
+- URL paths are stored and may contain sensitive values. Query strings are not stored.
 - Node provider labels are substring guesses. Published Python labels are `"other"`.
 - The same trace id overwrites one file. Prefix search can hit the wrong file.
 - A crash during the single write can leave a partial file. Write errors are swallowed.

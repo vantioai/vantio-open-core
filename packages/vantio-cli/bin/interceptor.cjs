@@ -48,19 +48,23 @@ const c = {
   cyan:   USE_COLOR ? "\x1b[36m" : "",
 };
 
-const INGEST_URL = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
-// Do not fetch account configuration or paid ingest from the
-// public host. Another VANTIO_INGEST_URL keeps the control-plane client.
-function isPublicCloudHost(raw) {
-  try {
-    const host = new URL(raw).hostname.toLowerCase();
-    return host === "vantio.ai" || host === "www.vantio.ai";
-  } catch {
-    return true;
-  }
+const { parseIngestUrl } = require("./ingest-url.cjs");
+const _parsedIngest = parseIngestUrl(process.env.VANTIO_INGEST_URL);
+const INGEST_INVALID = !_parsedIngest.ok;
+const INGEST_URL = _parsedIngest.ok ? _parsedIngest.href : "";
+const PUBLIC_CLOUD_HOST = _parsedIngest.ok && _parsedIngest.publicHost;
+// A key plus an unusable ingest URL is an enforcement setting we cannot load.
+// That fails closed. Observation without a key stays fail-open.
+const ENFORCE_CLOSED = INGEST_INVALID && !!process.env.VANTIO_API_KEY;
+const API_KEY    = PUBLIC_CLOUD_HOST || INGEST_INVALID ? undefined : process.env.VANTIO_API_KEY;
+if (INGEST_INVALID) {
+  const tail = ENFORCE_CLOSED
+    ? "Enforcement fails closed."
+    : "Observation continues.";
+  process.stderr.write(
+    `[ ∅ VANTIO ] ${_parsedIngest.reason}. ${tail}\n`
+  );
 }
-const PUBLIC_CLOUD_HOST = isPublicCloudHost(INGEST_URL);
-const API_KEY    = PUBLIC_CLOUD_HOST ? undefined : process.env.VANTIO_API_KEY;
 const AUDIT_MODE = process.env.VANTIO_AUDIT_MODE === "1";
 const SUMMARY    = process.env.VANTIO_SUMMARY    === "1";
 const FREE_MODE  = !API_KEY;
@@ -124,10 +128,14 @@ function extractRequestMeta(input, init) {
   }
   let request_bytes = null;
   try {
-    const body = init && init.body;
-    if (typeof body === "string") request_bytes = Buffer.byteLength(body);
-    else if (Buffer.isBuffer(body)) request_bytes = body.length;
-    else if (body instanceof Uint8Array) request_bytes = body.byteLength;
+    request_bytes = countedBodyBytes(init && init.body);
+    if (request_bytes == null && typeof Request !== "undefined" && input instanceof Request) {
+      const header = input.headers && input.headers.get && input.headers.get("content-length");
+      if (header != null && header !== "") {
+        const n = parseInt(header, 10);
+        if (Number.isFinite(n) && n >= 0) request_bytes = n;
+      }
+    }
   } catch {
     request_bytes = null;
   }
@@ -137,6 +145,16 @@ function extractRequestMeta(input, init) {
     scheme,
     request_bytes,
   };
+}
+
+function countedBodyBytes(body) {
+  if (body == null) return null;
+  if (typeof body === "string") return Buffer.byteLength(body);
+  if (Buffer.isBuffer(body)) return body.length;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  if (typeof body.size === "number" && Number.isFinite(body.size)) return body.size;
+  return null;
 }
 
 function responseMeta(response) {
@@ -318,7 +336,7 @@ function logFreeObservation(info) {
 
 // ── Policy load (Tier 2) ──────────────────────────────────────────────────────
 const policyReady = (async () => {
-  if (FREE_MODE) return;
+  if (FREE_MODE || INGEST_INVALID || !INGEST_URL) return;
   try {
     const res = await _originalFetch.call(globalThis, `${INGEST_URL}/api/v1/config`, {
       method: "GET",
@@ -503,7 +521,7 @@ async function redactRequestBody(body) {
         return { value: passBranch, bytes: total, redactions: [], replaced: false, unscanned: null };
       }
       // Oversized — use pass-through branch unmodified; log as unscanned.
-      return { value: passBranch, bytes: 0, redactions: [], replaced: false, unscanned: "ReadableStream" };
+      return { value: passBranch, bytes: total, redactions: [], replaced: false, unscanned: "ReadableStream" };
     } catch {
       // tee() / read failed (e.g. stream already locked) — fall through below.
     }
@@ -809,6 +827,25 @@ async function wrapFetch(backend, input, init) {
     return launchUndiciBackend(() => backend.call(globalThis, input, init));
   }
 
+  if (ENFORCE_CLOSED) {
+    const reqMeta = extractRequestMeta(input, init);
+    _calls.push({
+      hostname,
+      provider: guessProvider(hostname, port),
+      method: reqMeta.method,
+      path: reqMeta.path,
+      scheme: reqMeta.scheme,
+      request_bytes: reqMeta.request_bytes,
+      bytes: 0,
+      status: 403,
+      ok: false,
+      action: "ENFORCEMENT_CLOSED",
+      ts: new Date().toISOString(),
+    });
+    log(`${c.red}[ ∅ VANTIO ] ENFORCEMENT_CLOSED${c.reset} ${hostname} — VANTIO_INGEST_URL is not a usable http(s) URL. The call is refused.`);
+    return blockedResponse("enforcement_closed");
+  }
+
 
   // ── FREE TIER — observe only ────────────────────────────────────────────────
   if (FREE_MODE) {
@@ -925,22 +962,7 @@ async function wrapFetch(backend, input, init) {
     };
     _calls.push(callRec);
 
-    const len = response.headers.get("content-length");
-    if (len != null && len !== "") {
-      const respBytes = parseInt(len, 10) || 0;
-      callRec.bytes = respBytes;
-      spentUsd += (plan.reqBytes + respBytes) * USD_PER_BYTE;
-    } else {
-      // Streaming SSE (no content-length): count request bytes now and the
-      // response bytes in the background from an independent clone.
-      spentUsd += plan.reqBytes * USD_PER_BYTE;
-      trackStreamBytes(response, (total) => { callRec.bytes = total; });
-    }
-
-    if (plan.redactions.length > 0) {
-      log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — stripped ${plan.redactions.length} PII item(s): ${plan.redactions.join(", ")}`);
-    }
-    report({
+    const sendReport = () => report({
       target_host: hostname,
       pid: process.pid,
       action_taken: action,
@@ -955,6 +977,27 @@ async function wrapFetch(backend, input, init) {
       duration_ms: callRec.duration_ms,
       ok: callRec.ok,
     });
+    const len = response.headers.get("content-length");
+    if (len != null && len !== "") {
+      const respBytes = parseInt(len, 10) || 0;
+      callRec.bytes = respBytes;
+      spentUsd += (plan.reqBytes + respBytes) * USD_PER_BYTE;
+      sendReport();
+    } else {
+      // Streaming SSE (no content-length): count request bytes now. Response
+      // bytes land on the call record before the run log is written at exit,
+      // and the control-plane report waits until that count is known.
+      spentUsd += plan.reqBytes * USD_PER_BYTE;
+      trackStreamBytes(response, (total) => {
+        callRec.bytes = total;
+        spentUsd += total * USD_PER_BYTE;
+        sendReport();
+      });
+    }
+
+    if (plan.redactions.length > 0) {
+      log(`${c.green}[ ∅ VANTIO ] REDACTED${c.reset} ${hostname} — stripped ${plan.redactions.length} PII item(s): ${plan.redactions.join(", ")}`);
+    }
   } catch {
     // Accounting/reporting must never break the agent's call.
   }
@@ -1781,6 +1824,7 @@ globalThis.fetch = function vantioFetch(input, init) {
   function decideHttp(hostname, port, args) {
     if (!hostname || isControlPlaneRequest(args)) return "pass";
     if (!inScope(hostname, port)) return "pass";
+    if (ENFORCE_CLOSED) return "closed";
     if (FREE_MODE) return "observe";
     if (policy.enforce) {
       const blocked = hostListed(hostname, policy.blocked_hosts) ||
@@ -1847,6 +1891,13 @@ globalThis.fetch = function vantioFetch(input, init) {
         content_type: null, duration_ms: 0, ts, optics_plane: "app_http",
       };
 
+      if (decision === "closed") {
+        _calls.push({ ...baseCall, action: "ENFORCEMENT_CLOSED", ok: false });
+        log(`${c.red}[ ∅ VANTIO ] ENFORCEMENT_CLOSED${c.reset} ${hostname} — VANTIO_INGEST_URL is not a usable http(s) URL. The call is refused.`);
+        const err = new Error("Vantio enforcement fails closed: VANTIO_INGEST_URL is not a usable http(s) URL.");
+        err.code = "VANTIO_ENFORCEMENT_CLOSED";
+        return blockedClientRequest(err);
+      }
       if (decision === "block") {
         _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
         report({
@@ -2055,6 +2106,7 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 
   function decideWs(hostname, port, url) {
+    if (ENFORCE_CLOSED && hostname && inScope(hostname, port)) return "closed";
     if (!hostname || isControlPlaneWs(url)) return "pass";
     if (!inScope(hostname, port)) return "pass";
     if (FREE_MODE) return "observe";
@@ -2171,6 +2223,13 @@ globalThis.fetch = function vantioFetch(input, init) {
         content_type: null, duration_ms: 0, ts, optics_plane: "app_ws",
       };
 
+      if (decision === "closed") {
+        _calls.push({ ...baseCall, action: "ENFORCEMENT_CLOSED", ok: false });
+        log(`${c.red}[ ∅ VANTIO ] ENFORCEMENT_CLOSED${c.reset} ${hostname} — VANTIO_INGEST_URL is not a usable http(s) URL. The call is refused.`);
+        const err = new Error("Vantio enforcement fails closed: VANTIO_INGEST_URL is not a usable http(s) URL.");
+        err.code = "VANTIO_ENFORCEMENT_CLOSED";
+        throw err;
+      }
       if (decision === "block") {
         _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
         report({
@@ -2276,6 +2335,7 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 
   function decideHttp2(hostname, port) {
+    if (ENFORCE_CLOSED && hostname && inScope(hostname, port)) return "closed";
     if (!hostname || isControlPlaneHost(hostname, port)) return "pass";
     if (!inScope(hostname, port)) return "pass";
     if (FREE_MODE) return "observe";
@@ -2460,6 +2520,11 @@ globalThis.fetch = function vantioFetch(input, init) {
       content_type: null, duration_ms: 0, ts, optics_plane: "app_http2",
     };
 
+    if (decision === "closed") {
+      _calls.push({ ...baseCall, action: "ENFORCEMENT_CLOSED", ok: false });
+      log(`${c.red}[ ∅ VANTIO ] ENFORCEMENT_CLOSED${c.reset} ${hostname} — VANTIO_INGEST_URL is not a usable http(s) URL. The call is refused.`);
+      return stubSession(new Error("Vantio enforcement fails closed: VANTIO_INGEST_URL is not a usable http(s) URL."));
+    }
     if (decision === "block") {
       _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
       reportH2(hostname, "BLOCKED_HOST");
@@ -2510,6 +2575,21 @@ globalThis.fetch = function vantioFetch(input, init) {
       try {
         const dest = destFromAuthority(authority, options);
         const decision = decideHttp2(dest.hostname, dest.port);
+        if (decision === "closed") {
+          const err = new Error("Vantio enforcement fails closed: VANTIO_INGEST_URL is not a usable http(s) URL.");
+          err.code = "VANTIO_ENFORCEMENT_CLOSED";
+          dead = err;
+          _calls.push({
+            hostname: dest.hostname, provider: guessProvider(dest.hostname, dest.port),
+            method: "CONNECT", path: null, scheme: "http2", request_bytes: null,
+            bytes: 0, status: null, ok: false, content_type: null, duration_ms: 0,
+            ts: new Date().toISOString(), optics_plane: "app_http2", action: "ENFORCEMENT_CLOSED",
+          });
+          log(`${c.red}[ ∅ VANTIO ] ENFORCEMENT_CLOSED${c.reset} ${dest.hostname} — VANTIO_INGEST_URL is not a usable http(s) URL. The call is refused.`);
+          process.nextTick(() => pending.emit("error", err));
+          for (const q of queued) process.nextTick(() => q.placeholder.emit("error", err));
+          return;
+        }
         if (decision === "block") {
           const err = blockedErr(dest.hostname);
           dead = err;
@@ -2622,6 +2702,7 @@ globalThis.fetch = function vantioFetch(input, init) {
   }
 
   function decideNet(hostname, port) {
+    if (ENFORCE_CLOSED && hostname && inScope(hostname, port)) return "closed";
     if (!hostname || isControlPlaneHost(hostname, port)) return "pass";
     if (!inScope(hostname, port)) return "pass";
     if (FREE_MODE) return "observe";
@@ -2655,6 +2736,16 @@ globalThis.fetch = function vantioFetch(input, init) {
       content_type: null, duration_ms: 0, ts, optics_plane: "app_net",
     };
 
+    if (decision === "closed") {
+      _calls.push({ ...baseCall, action: "ENFORCEMENT_CLOSED", ok: false });
+      log(`${c.red}[ ∅ VANTIO ] ENFORCEMENT_CLOSED${c.reset} ${hostname} — VANTIO_INGEST_URL is not a usable http(s) URL. The call is refused.`);
+      const err = new Error("Vantio enforcement fails closed: VANTIO_INGEST_URL is not a usable http(s) URL.");
+      err.code = "VANTIO_ENFORCEMENT_CLOSED";
+      process.nextTick(() => {
+        try { socket.emit("error", err); } catch { /* ignore */ }
+      });
+      return socket;
+    }
     if (decision === "block") {
       _calls.push({ ...baseCall, action: "BLOCKED_HOST", ok: false });
       report({
@@ -3222,6 +3313,7 @@ globalThis.fetch = function vantioFetch(input, init) {
   function decideCurl(url, hostname, port, dataBytes) {
     if (!hostname || isControlPlaneCurlUrl(url)) return "pass";
     if (!inScope(hostname, port)) return "pass";
+    if (ENFORCE_CLOSED) return "closed";
     if (FREE_MODE) return "observe";
     if (policy.enforce) {
       const blocked = hostListed(hostname, policy.blocked_hosts)
@@ -3474,8 +3566,8 @@ globalThis.fetch = function vantioFetch(input, init) {
     const nRedact = Array.isArray(redactions) ? redactions.length : 0;
     _calls.push({
       hostname, provider, method: meta.method, path: null, scheme: "http",
-      request_bytes: dataBytes, bytes: dataBytes, status: null,
-      ok: !String(action).startsWith("BLOCKED"),
+      request_bytes: dataBytes, bytes: null, status: null,
+      ok: !String(action).startsWith("BLOCKED") && action !== "ENFORCEMENT_CLOSED",
       content_type: null, duration_ms: 0, ts: new Date().toISOString(),
       action, mediation: meta.mediation, optics_plane: meta.plane,
       redactions: nRedact,
@@ -3511,7 +3603,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       const dest = destFromCurlUrl(url);
       rows.push({ dest, decision: decideCurl(url, dest.hostname, dest.port, parsed.dataBytes) });
     }
-    const hard = rows.filter((r) => r.decision === "block" || r.decision === "block_size" || r.decision === "block_spend");
+    const hard = rows.filter((r) => r.decision === "block" || r.decision === "block_size" || r.decision === "block_spend" || r.decision === "closed");
     const inScope = rows.filter((r) => r.decision !== "pass");
     const toRecord = hard.length ? hard : inScope;
     let blockErr = null;
@@ -3520,7 +3612,13 @@ globalThis.fetch = function vantioFetch(input, init) {
       const dest = row.dest;
       const decision = row.decision;
       lastDecision = decision;
-      if (decision === "block") {
+      if (decision === "closed") {
+        recordCli(tool, dest.hostname, dest.port, "ENFORCEMENT_CLOSED", parsed.dataBytes);
+        if (!blockErr) {
+          blockErr = new Error("Vantio enforcement fails closed: VANTIO_INGEST_URL is not a usable http(s) URL.");
+          blockErr.code = "VANTIO_ENFORCEMENT_CLOSED";
+        }
+      } else if (decision === "block") {
         recordCli(tool, dest.hostname, dest.port, "BLOCKED_HOST", parsed.dataBytes);
         if (!blockErr) blockErr = gateError(dest.hostname, "host_not_permitted");
       } else if (decision === "block_size") {

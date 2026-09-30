@@ -17,7 +17,7 @@ services:
     working_dir: /root
     entrypoint: ["bash", "-lc"]
     command:
-      - npm install -g @vantio/cli@0.3.24 && vantio prove --format=md --list
+      - npm install -g @vantio/cli@0.3.25 && vantio prove --format=md --list
 
 volumes:
   vantio-runs:

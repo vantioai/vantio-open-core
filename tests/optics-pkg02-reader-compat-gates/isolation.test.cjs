@@ -119,9 +119,9 @@ test("frozen package versions stay unchanged and this package stays private", ()
   const gates = JSON.parse(read("packages/optics-reader-compat-gates/package.json"));
   const workspace = read("pnpm-workspace.yaml");
   const frozenDisplay = read("packages/vantio-cli/bin/optics-cx.cjs");
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.equal(nodeSdk.version, "0.2.4");
-  assert.match(python, /version = "3.1.0"/);
+  assert.match(python, /version = "3.1.1"/);
   assert.equal(reader.version, "0.0.0-unstable-pre-1.0");
   assert.equal(gates.private, true);
   assert.equal(gates.version, "0.0.0-unstable-pre-1.0");

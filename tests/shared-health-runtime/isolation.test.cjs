@@ -46,9 +46,9 @@ test("shipping packages and the frozen SDK surfaces do not import the runtime", 
   const cli = JSON.parse(fs.readFileSync(path.join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
   const sdk = JSON.parse(fs.readFileSync(path.join(ROOT, "packages/vantio-agent-sdk/package.json"), "utf8"));
   const python = fs.readFileSync(path.join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
-  assert.equal(cli.version, "0.3.24");
+  assert.equal(cli.version, "0.3.25");
   assert.equal(sdk.version, "0.2.4");
-  assert.match(python, /version = "3.1.0"/);
+  assert.match(python, /version = "3.1.1"/);
   const workspace = fs.readFileSync(path.join(ROOT, "pnpm-workspace.yaml"), "utf8");
   assert.equal(workspace.includes("shared-health-runtime"), false);
 });
