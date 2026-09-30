@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { findForbiddenClaims, loadRequirements } from "./claims.mjs";
 import { allGenerated, characterizeOptics } from "./characterize.mjs";
 import { evaluateDossier, exitCodeFor } from "./evaluate.mjs";
-import { REPO_ROOT, actionUses, buildSbom, privateManualPaths, readSealedPypi, scanManifestLicenses } from "./inventory.mjs";
+import { REPO_ROOT, actionUses, buildSbom, classifyActionUse, privateManualPaths, readSealedPypi, scanManifestLicenses } from "./inventory.mjs";
 import { stableStringify } from "./stable.mjs";
 import { assemblePeCustomerBundle, packageVersionProblems, readText } from "../../../docs/scripts/docs-release-lib.mjs";
 
@@ -283,15 +283,29 @@ test("pin report records SHA-pinned workflow and composite actions and the seale
   assert.equal(report.package_manager.name, "pnpm");
   assert.equal(report.package_manager.version, "11.13.0");
   assert.match(report.package_manager.integrity, /^sha512\./);
-  const floating = report.actions.filter((action) => action.digest_pinned === false);
+  const floating = report.actions.filter((action) => action.pin_kind === "floating");
+  const approvedMain = report.actions.filter((action) => action.pin_kind === "same_repo_refs_heads_main");
   const pinned = report.actions.filter((action) => action.digest_pinned === true);
   assert.deepEqual(
     floating.map((action) => `${action.file} ${action.uses}`),
     [],
   );
+  assert.deepEqual(
+    approvedMain.map((action) => `${action.file} ${action.uses}`),
+    [
+      ".github/workflows/w3-lab-auto-provision.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main # oidc-trust",
+    ],
+  );
+  assert.ok(approvedMain.every((action) => action.digest_pinned === false));
   assert.ok(pinned.length > 0);
-  assert.equal(pinned.length, report.actions.length - floating.length);
+  assert.equal(pinned.length + approvedMain.length, report.actions.length);
   assert.ok(pinned.every((action) => /@[0-9a-f]{40} # \S+$/.test(action.uses)));
+  assert.equal(classifyActionUse("actions/checkout@main").pin_kind, "floating");
+  assert.equal(classifyActionUse("actions/checkout@refs/heads/main").pin_kind, "floating");
+  assert.equal(
+    classifyActionUse("vantioai/vantio-open-core/.github/workflows/other.yml@refs/heads/main # oidc-trust").pin_kind,
+    "floating",
+  );
   assert.equal(
     report.provenance_workflow.attest_action,
     "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2",

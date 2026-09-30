@@ -1,6 +1,6 @@
 name: W3 lab auto cost gate
 
-# Artifact draft for vantioai/vantio-open-core. This packet does not install it.
+# Free-plan cost gate for the lab workflows.
 # Trust subject, after the file is on main:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-auto
 # job_workflow_ref:
@@ -20,6 +20,9 @@ on:
       expected_oop_usd:
         description: Zero only when the Free-plan ceiling check passes.
         value: ${{ jobs.gate.outputs.expected_oop_usd }}
+      gate_json:
+        description: Cost-gate decision. Launch must read this and abort unless expected_oop_usd is 0.
+        value: ${{ jobs.gate.outputs.gate_json }}
   workflow_dispatch:
 
 permissions:
@@ -38,6 +41,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       expected_oop_usd: ${{ steps.eval.outputs.expected_oop_usd }}
+      gate_json: ${{ steps.eval.outputs.gate_json }}
     steps:
       - name: Require main on vantio-open-core
         run: |
@@ -91,7 +95,12 @@ jobs:
           status=$?
           set -e
           oop=$(python3 -c 'import json; print(json.load(open("w3-lab-auto-cost-gate.json"))["expected_oop_usd"])')
-          echo "expected_oop_usd=$oop" >> "$GITHUB_OUTPUT"
+          {
+            echo "expected_oop_usd=$oop"
+            echo "gate_json<<W3_GATE_JSON"
+            cat "$GITHUB_WORKSPACE/w3-lab-auto-cost-gate.json"
+            echo "W3_GATE_JSON"
+          } >> "$GITHUB_OUTPUT"
           test "$status" -eq 0
           test "$oop" = "0"
 

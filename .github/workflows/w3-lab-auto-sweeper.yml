@@ -1,6 +1,6 @@
 name: W3 lab auto sweeper
 
-# Artifact draft. Not installed by this packet.
+# Lab sweeper. Runs on main. It does not launch instances.
 # Trust subject:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-auto
 # job_workflow_ref:
@@ -10,9 +10,9 @@ name: W3 lab auto sweeper
 #
 # GitHub cron is every 30 minutes: */30 * * * *
 # The instance shutdown command is the primary stop. This job is the backstop.
-# It deletes only owned lab resources in us-east-2. scripts/aws/w3_lab_auto.py
-# sweep exits held and does not call TerminateInstances. A green run does not
-# set NONINTERACTIVE_TEARDOWN_READY.
+# It deletes only owned lab resources in us-east-2 whose tags include
+# vantio:destroyable=true and whose sweeper plan says delete. A green run
+# does not set NONINTERACTIVE_TEARDOWN_READY.
 
 on:
   schedule:
@@ -72,9 +72,15 @@ jobs:
           use-existing-credentials: false
           output-credentials: false
 
-      - name: Held sweep
+      - name: Sweep owned expired lab resources
         run: |
           set -euo pipefail
           python3 scripts/aws/w3_lab_auto.py sweep
-          echo "sweep must stay held in this packet" >&2
-          exit 1
+
+      - name: Upload sweep evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-auto-sweep-${{ github.run_id }}
+          path: w3-lab-auto-sweep.json
+          if-no-files-found: warn

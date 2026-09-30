@@ -99,6 +99,7 @@ jobs:
           python3 scripts/aws/test_verify_w3_lab_teardown.py -v
           python3 scripts/aws/test_preflight_w3_lab_teardown.py -v
           python3 scripts/aws/test_w3_lab_teardown_workflow.py -v
+          python3 scripts/aws/test_w3_lab_auto.py -v
 
   candidate-artifacts:
     name: Build release candidates (no registry write)

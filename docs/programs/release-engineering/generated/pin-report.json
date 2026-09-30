@@ -3,186 +3,283 @@
     {
       "digest_pinned": true,
       "file": ".github/actions/vantio-prove/action.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/actions/vantio-prove/action.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/docs-release-governance.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/docs-release-governance.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
       "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
       "uses": "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/mcp-registry-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
       "uses": "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/vantio-prove-example.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "same_repo_refs_heads_main",
+      "uses": "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main # oidc-trust"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
-      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
-    },
-    {
-      "digest_pinned": true,
-      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
     },
     {
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     }
   ],
@@ -283,7 +380,7 @@
       "version": "0.0.0-unstable-pre-1.0"
     }
   ],
-  "workflow_count": 8,
+  "workflow_count": 11,
   "workflow_triggers_push": {
     "ci.yml": true,
     "enterprise-slsa-provenance.yml": true,
