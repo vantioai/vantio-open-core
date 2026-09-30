@@ -29,6 +29,13 @@
       "disposition": "FROZEN_DEBT",
       "reviewed_on": "2026-09-27",
       "reason": "The rollback test asserts the sealed 3.1.0 workflow field on the legacy file. The match is a compatibility needle. The path stays in the legacy scan and in hits. It is not an intentional leftover and it is not added to legacy_scan.exclude_prefixes."
+    },
+    {
+      "path": "packages/vantio-cli/test/interceptor.test.js",
+      "count": 0,
+      "disposition": "REMOVED",
+      "reviewed_on": "2026-09-30",
+      "reason": "The two sight_loop needles were assertions on a BLOCKED_HOST ingest event. Optics no longer emits that enforcement event, so those assertions are gone. The CLI still does not emit sight_loop. The path is no longer in hits."
     }
   ],
   "intentional_leftovers": {
@@ -300,10 +307,6 @@
     {
       "path": "packages/vantio-cli/test/inspect.test.js",
       "count": 1
-    },
-    {
-      "path": "packages/vantio-cli/test/interceptor.test.js",
-      "count": 2
     },
     {
       "path": "packages/vantio-gate-mcp/src/policy.js",

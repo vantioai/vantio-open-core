@@ -63,6 +63,10 @@ const API_KEY = undefined;
 const AUDIT_MODE = process.env.VANTIO_AUDIT_MODE === "1";
 const SUMMARY    = process.env.VANTIO_SUMMARY    === "1";
 const FREE_MODE  = true;
+// NOT_DONE: several transport wrappers still contain host, size, and spend
+// branches after `if (FREE_MODE) return "observe"`. FREE_MODE is constant true,
+// so those branches do not run. They are not the live Optics path. A later
+// edit can delete them without changing what this process does.
 if (process.env.VANTIO_API_KEY) {
   process.stderr.write(
     "[ ∅ VANTIO ] VANTIO_API_KEY is set. Enforcement is provided by Phantom Engine. Optics is observational and this call is not blocked.\n"
@@ -649,105 +653,6 @@ async function enforceRequest(hostname, input, init) {
     reqBytes: reqMeta.request_bytes || 0,
     redactions: [],
   };
-  // 1. Host allow/block policy. blocked_hosts blocks ANY in-scope host; a
-  //    non-empty allow-list blocks any in-scope host not on it. (Out-of-scope
-  //    hosts never reach here — they pass through before enforcement.)
-  if (policy.enforce) {
-    if (hostListed(hostname, policy.blocked_hosts)) {
-      if (policy.dry_run) {
-        _calls.push({ hostname, action: "DRY_RUN_BLOCKED_HOST" });
-        log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (host_not_permitted); dry_run=true passes through`);
-        report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
-                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
-        // Fall through — allow call in dry_run mode
-      } else {
-        return blockHost(hostname);
-      }
-    } else if (policy.allowed_hosts.length > 0 && !hostListed(hostname, policy.allowed_hosts)) {
-      if (policy.dry_run) {
-        _calls.push({ hostname, action: "DRY_RUN_BLOCKED_HOST" });
-        log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (not_in_allowed_hosts); dry_run=true passes through`);
-        report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_HOST",
-                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
-      } else {
-        return blockHost(hostname);
-      }
-    }
-  }
-
-  // 2. Read + optionally redact the request body (any body type or location).
-  let redactions = [];
-  let reqBytes = 0;
-  let newInput = input;
-  let newInit = init;
-
-  if (init && init.body != null) {
-    const r = await redactRequestBody(init.body);
-    reqBytes = r.bytes;
-    redactions = r.redactions;
-    if (r.unscanned) {
-      log(`${c.dim}[ ∅ VANTIO ] ${hostname} — ${r.unscanned} request body not scanned for PII (passed through)${c.reset}`);
-      // Opaque bodies are not scanned. Record the gap when redaction is on.
-      if (policy.redact_pii) {
-        report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
-                 gap_type: "unscanned_body", body_type: r.unscanned,
-                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
-      }
-    } else if (r.replaced) {
-      newInit = { ...init, body: r.value };
-    }
-  } else if (typeof Request !== "undefined" && input instanceof Request) {
-    // The body rides on the Request object. Read a clone so the original stays
-    // usable, redact, and rebuild the Request with the redacted body.
-    let text = "";
-    try {
-      text = await input.clone().text();
-    } catch {
-      text = "";
-    }
-    if (text) {
-      const r = redactBody(text);
-      reqBytes = Buffer.byteLength(r.text);
-      redactions = r.redactions;
-      if (r.redactions.length > 0) {
-        newInput = new Request(input, { body: r.text });
-      }
-    } else if (input.body) {
-      // A streaming body on the Request that text() could not materialize.
-      log(`${c.dim}[ ∅ VANTIO ] ${hostname} — streaming request body not scanned for PII (passed through)${c.reset}`);
-      if (policy.redact_pii) {
-        report({ target_host: hostname, pid: process.pid, action_taken: "ENFORCEMENT_GAP",
-                 gap_type: "unscanned_body", body_type: "ReadableStream",
-                 timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
-      }
-    }
-  }
-
-  // 3. Request size policy
-  if (policy.enforce && policy.max_request_bytes > 0 && reqBytes > policy.max_request_bytes) {
-    if (policy.dry_run) {
-      _calls.push({ hostname, action: "DRY_RUN_BLOCKED_SIZE" });
-      log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (${reqBytes}B > cap ${policy.max_request_bytes}B); dry_run=true passes through`);
-      report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SIZE",
-               timestamp_ns: Date.now() * 1e6, bytes_severed: reqBytes });
-    } else {
-      return blockSize(hostname, reqBytes);
-    }
-  }
-
-  // 4. Spend cap policy
-  if (policy.enforce && policy.spend_cap_usd > 0 && spentUsd >= policy.spend_cap_usd) {
-    if (policy.dry_run) {
-      _calls.push({ hostname, action: "DRY_RUN_BLOCKED_SPEND" });
-      log(`${c.yellow}[ ∅ VANTIO ] DRY_RUN${c.reset} ${hostname} — would BLOCK (spend cap $${policy.spend_cap_usd} reached); dry_run=true passes through`);
-      report({ target_host: hostname, pid: process.pid, action_taken: "DRY_RUN_BLOCKED_SPEND",
-               timestamp_ns: Date.now() * 1e6, bytes_severed: 0 });
-    } else {
-      return blockSpend(hostname);
-    }
-  }
-
-  return { blocked: false, input: newInput, init: newInit, reqBytes, redactions };
 }
 
 function destFromHref(href) {

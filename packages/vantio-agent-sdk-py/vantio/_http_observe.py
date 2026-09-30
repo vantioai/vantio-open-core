@@ -301,47 +301,6 @@ def _load_policy() -> None:
             "Optics is observational and this call is not blocked.\n"
         )
     return
-    ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
-    try:
-        req = urllib.request.Request(
-            f"{ingest}/api/v1/config",
-            headers={"x-vantio-identity": key},
-            method="GET",
-        )
-        with _orig_urlopen(req, timeout=5.0) as resp:
-            if getattr(resp, "status", 200) != 200:
-                return
-            data = json.loads(resp.read().decode("utf-8"))
-        if not isinstance(data, dict):
-            return
-        _cloud_sync = data.get("tier") in ("PRO", "ENTERPRISE")
-        raw = data.get("policy") if isinstance(data.get("policy"), dict) else {}
-
-        def _bool(v: Any, d: bool) -> bool:
-            return v if isinstance(v, bool) else d
-
-        def _str_list(v: Any) -> list[str]:
-            return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
-
-        def _nonneg(v: Any, d: float) -> float:
-            try:
-                n = float(v)
-                return n if n >= 0 else d
-            except (TypeError, ValueError):
-                return d
-
-        _policy.update({
-            "enforce": _bool(raw.get("enforce"), False),
-            "redact_pii": _bool(raw.get("redact_pii"), False),
-            "pii_types": _str_list(raw.get("pii_types")) or ["ssn", "email", "credit_card", "phone"],
-            "allowed_hosts": _str_list(raw.get("allowed_hosts")),
-            "blocked_hosts": _str_list(raw.get("blocked_hosts")),
-            "max_request_bytes": int(_nonneg(raw.get("max_request_bytes"), 0)),
-            "spend_cap_usd": float(_nonneg(raw.get("spend_cap_usd"), 0.0)),
-            "dry_run": _bool(raw.get("dry_run"), False),
-        })
-    except Exception:
-        _reset_policy()
 
 
 def _ingest(hostname: str, action: str, extra: Optional[dict[str, Any]] = None) -> None:
@@ -385,13 +344,6 @@ def _redact_text(text: str) -> tuple[str, list[str]]:
     return text, []
 
 
-def _redact_text_removed(text: str) -> tuple[str, list[str]]:
-    if not text or not _policy.get("redact_pii"):
-        return text, []
-    from vantio.sdk import redact_pii  # noqa: PLC0415
-
-    result = redact_pii(text, _policy.get("pii_types") or None)
-    return result.text, list(result.redactions)
 
 
 def _body_to_text(body: Any) -> tuple[Optional[str], Optional[bytes], int]:
@@ -485,24 +437,6 @@ def _decide(hostname: str, port: Optional[str], path: str, body_len: int) -> str
     """pass | observe. Optics does not block, cap spend, or apply a host list."""
     if not hostname or _is_control_plane(hostname, path) or not _in_scope(hostname, port):
         return "pass"
-    return "observe"
-    key = os.environ.get("VANTIO_API_KEY") or ""
-    if not key.strip():
-        return "observe"
-    if _policy.get("enforce"):
-        blocked_list = set(_policy.get("blocked_hosts") or [])
-        allowed_list = set(_policy.get("allowed_hosts") or [])
-        blocked = _host_listed(hostname, blocked_list) or (
-            len(allowed_list) > 0 and not _host_listed(hostname, allowed_list)
-        )
-        if blocked:
-            return "dry_block" if _policy.get("dry_run") else "block"
-        cap = int(_policy.get("max_request_bytes") or 0)
-        if cap > 0 and body_len > cap:
-            return "dry_size" if _policy.get("dry_run") else "block_size"
-        spend_cap = float(_policy.get("spend_cap_usd") or 0.0)
-        if spend_cap > 0 and _spent_usd >= spend_cap:
-            return "dry_spend" if _policy.get("dry_run") else "block_spend"
     return "observe"
 
 
@@ -760,6 +694,11 @@ def _dispatch_gate(
     kind: pass | block | send
     payload: original body, a block reason string, or the (possibly redacted) body
     record_send: False when a dry-run event was already recorded
+
+    NOT_DONE: the block, block_size, block_spend, and dry_* arms below do not
+    run. _decide returns only "pass" or "observe". Those arms are not the live
+    Optics path. A later edit can delete them without changing what this
+    process does.
     """
     _, _, length = _body_to_text(body)
     decision = _decide(hostname, port, path, length)
@@ -2088,111 +2027,6 @@ def _rewrite_curl_form_value(value: str, treat_at_as_file: bool, take_redact: An
 def _rewrite_inline_cli_bodies(tool: str, argv: list[str]) -> tuple[list[str], list[str]]:
     # Spawned curl, wget, httpie, and aria2c are observed. Their argv is not rewritten.
     return [str(a) for a in argv], []
-    out = [str(a) for a in argv]
-    redactions: list[str] = []
-
-    def take_redact(v: str) -> str:
-        text, found = _redact_text(str(v))
-        if found:
-            redactions.extend(found)
-            return text
-        return v
-
-    if tool == "aria2c":
-        return out, redactions
-    if tool == "httpie":
-        i = 0
-        while i < len(out):
-            a = out[i]
-            if a == "--raw" and i + 1 < len(out):
-                out[i + 1] = take_redact(out[i + 1])
-                i += 2
-                continue
-            if a.startswith("--raw="):
-                out[i] = "--raw=" + take_redact(a[len("--raw="):])
-                i += 1
-                continue
-            if a.startswith("-") and a != "-":
-                i += 1
-                continue
-            if a.startswith("http://") or a.startswith("https://"):
-                i += 1
-                continue
-            out[i] = _rewrite_httpie_item(a, take_redact)
-            i += 1
-        return out, redactions
-    if tool == "wget":
-        i = 0
-        while i < len(out):
-            a = out[i]
-            if a in ("--post-data", "--body-data"):
-                if i + 1 < len(out):
-                    out[i + 1] = take_redact(out[i + 1])
-                i += 2
-                continue
-            if a.startswith("--post-data="):
-                out[i] = "--post-data=" + take_redact(a[len("--post-data="):])
-                i += 1
-                continue
-            if a.startswith("--body-data="):
-                out[i] = "--body-data=" + take_redact(a[len("--body-data="):])
-                i += 1
-                continue
-            i += 1
-        return out, redactions
-    i = 0
-    while i < len(out):
-        a = out[i]
-        if a in _CURL_DATA_AT_FILE:
-            value = out[i + 1] if i + 1 < len(out) else ""
-            if not (_CURL_DATA_AT_FILE[a] and str(value).startswith("@")):
-                if i + 1 < len(out):
-                    out[i + 1] = take_redact(value)
-            i += 2
-            continue
-        eq_handled = False
-        for flag, at_file in _CURL_DATA_AT_FILE.items():
-            if flag.startswith("--") and a.startswith(flag + "="):
-                value = a[len(flag) + 1:]
-                if not (at_file and value.startswith("@")):
-                    out[i] = flag + "=" + take_redact(value)
-                eq_handled = True
-                break
-        if eq_handled:
-            i += 1
-            continue
-        if a.startswith("-d") and len(a) > 2 and not a.startswith("--"):
-            value = a[2:]
-            if not value.startswith("@"):
-                out[i] = "-d" + take_redact(value)
-            i += 1
-            continue
-        if a in ("-F", "--form"):
-            if i + 1 < len(out):
-                out[i + 1] = _rewrite_curl_form_value(out[i + 1], True, take_redact)
-            i += 2
-            continue
-        if a.startswith("--form="):
-            out[i] = "--form=" + _rewrite_curl_form_value(a[len("--form="):], True, take_redact)
-            i += 1
-            continue
-        if a.startswith("-F") and len(a) > 2 and not a.startswith("--"):
-            out[i] = "-F" + _rewrite_curl_form_value(a[2:], True, take_redact)
-            i += 1
-            continue
-        if a == "--form-string":
-            if i + 1 < len(out):
-                out[i + 1] = _rewrite_curl_form_value(out[i + 1], False, take_redact)
-            i += 2
-            continue
-        if a.startswith("--form-string="):
-            out[i] = "--form-string=" + _rewrite_curl_form_value(
-                a[len("--form-string="):], False, take_redact
-            )
-            i += 1
-            continue
-        i += 1
-    return out, redactions
 
 
 def _splice_cli_tokens(tokens: list[str], rewritten_argv: list[str]) -> list[str]:
