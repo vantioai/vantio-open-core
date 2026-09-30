@@ -46,12 +46,12 @@ Use the wheel commands above. A sealed sdist installs the same two scripts only 
 
 `--no-index` without `--no-build-isolation` still builds in an isolated environment, looks up hatchling there, and fails with `No matching distribution found for hatchling`. When hatchling is absent, install the wheel.
 
-The product bundle is a separate sealed directory that is already on the host. `INSTALL.md` is the next step. The bundle pins stay Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0. This package does not change those versions. The installer reads the bundle. It does not fetch it.
+The product bundle is a separate sealed directory that is already on the host. `INSTALL.md` is the next step. The bundle pins stay Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0. This package does not change those versions. The installer reads the bundle. It does not fetch it. Before plan or apply, place the sealed bytes per `ARTIFACT-PATH.md` and verify `SHA256SUMS`.
 
 The following are forbidden on this path:
 
 - Cloning `vantio-open-core`, including a floating `main` checkout, and any private clone of that repository
-- A Phantom Box path, or any other company-host path, as the install location or the working directory
+- A company-host path as the install location or the working directory
 - Pulling Phantom Engine from GHCR, including tag 0.1.0
 - The source launcher `bin/vantio-install`, which expects this package tree on disk
 
