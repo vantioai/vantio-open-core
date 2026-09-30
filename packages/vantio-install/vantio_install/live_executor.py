@@ -59,6 +59,7 @@ from vantio_install.agent_sdk import (
     remove_agent_sdks,
 )
 from vantio_install.errors import InstallError
+from vantio_install.oci_load import OciArchiveError, OciLoadPlan, load_output_rejected, materialize, plan_load
 from vantio_install.host import probe_tracefs_mounted
 from vantio_install.manifest import artifact_paths, load_manifest
 from vantio_install.optics_cli import (
@@ -318,11 +319,29 @@ def _require_apparmor_parser_argv(op_type: str, argv: list[str]) -> None:
         _fail("The AppArmor parser argv is not the observe profile path.", failure_class="FAILED_SAFE")
 
 
+def oci_plan_for(grant: LiveGrant) -> OciLoadPlan:
+    """The docker load file for this grant. The sealed archive stays put."""
+    staged = grant.stage / grant.archive.name
+    source = staged if staged.is_file() else grant.archive
+    pin = constants.FROZEN_PINS
+    try:
+        return plan_load(
+            source,
+            grant.stage,
+            fallback_digest=pin["pe_manifest_digest"],
+            image_tag=pin["pe_local_tag"],
+        )
+    except OciArchiveError as exc:
+        _fail(str(exc), failure_class="FAILED_SAFE")
+        raise AssertionError("oci plan failure always raises")
+
+
 def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
     """Argv for process operations. None means a confined filesystem operation."""
     pin = constants.FROZEN_PINS
     prefix = str(grant.prefix)
     iface = grant.iface
+    load_plan = oci_plan_for(grant) if op_type in {"docker_load", "docker_tag"} else None
     mapping: dict[str, list[str] | None] = {
         "mkdir_prefix": mkdir_argv(prefix),
         "mkdir_stage": mkdir_argv(str(grant.stage)),
@@ -331,8 +350,11 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
         "install_agent_sdk_npm": npm_install_argv(str(grant.sdk_npm), prefix),
         "install_agent_sdk_py": pip_wheel_argv(str(grant.sdk_wheel), prefix),
         "stage_pe_archive": None,
-        "docker_load": docker_load_argv(str(grant.stage / grant.archive.name)),
-        "docker_tag": docker_tag_argv(pin["pe_manifest_digest"], pin["pe_local_tag"]),
+        "docker_load": docker_load_argv(str(load_plan.load_path if load_plan else grant.stage / grant.archive.name)),
+        "docker_tag": docker_tag_argv(
+            load_plan.image_digest if load_plan else pin["pe_manifest_digest"],
+            pin["pe_local_tag"],
+        ),
         "write_observe_config": None,
         "o7_init": None,
         "tc_clsact": tc_clsact_argv(iface),
@@ -593,6 +615,8 @@ def dispatch(
     _append_op(grant, {"op": op_type, "phase": "PENDING", "transaction_id": grant.transaction_id})
     result: ExecResult | None = None
     if expected is not None:
+        if op_type == "docker_load":
+            _materialize_load(grant)
         result = run_allowlisted(expected, timeout, runner)
         if runner is None:
             result = _recover_absent_target(op_type, grant, result)
@@ -603,6 +627,14 @@ def dispatch(
                 failure_class="INTERRUPTED",
                 state="INTERRUPTED",
                 exit_code=constants.EXIT_INTERRUPTED,
+            )
+        if op_type == "docker_load" and load_output_rejected(result.stdout, result.stderr):
+            failure = "ROLLBACK_REQUIRED" if result.returncode == 0 else "FAILED_SAFE"
+            _append_op(grant, {"op": op_type, "phase": failure, "transaction_id": grant.transaction_id})
+            _fail(
+                "docker load printed an unpack error, so the layer is not on the host. "
+                "The installer does not change Docker's storage driver.",
+                failure_class=failure,
             )
     else:
         _filesystem(op_type, grant)
@@ -638,6 +670,16 @@ def dispatch(
         verified["docker_exit_code"] = result.returncode
     _append_op(grant, verified)
     return delta
+
+
+def _materialize_load(grant: LiveGrant) -> None:
+    plan = oci_plan_for(grant)
+    if not plan.rewrite:
+        return
+    try:
+        materialize(plan)
+    except OciArchiveError as exc:
+        _fail(str(exc), failure_class="FAILED_SAFE")
 
 
 def execute_step(grant: LiveGrant, step_id: str, kind: str, runner, observer) -> tuple[list[dict], list[list[str]]]:
@@ -960,7 +1002,7 @@ class ProductionObserver:
             if op_type in {"remove_stage", "remove_observe_config", "remove_o7_record"}:
                 return "VERIFIED"
             if op_type == "docker_load":
-                return _docker_image_present(constants.FROZEN_PINS["pe_manifest_digest"])
+                return _docker_image_present(oci_plan_for(grant).image_digest)
             if op_type == "docker_tag":
                 return _docker_image_present(grant.tag)
             if op_type in {"start_pe_observe", "restart_pe_observe"}:
@@ -1012,7 +1054,11 @@ class ProductionObserver:
         if op_type == "docker_tag":
             return {
                 "images": [
-                    {"tag": pin["pe_local_tag"], "digest": pin["pe_manifest_digest"], "role": "phantom_engine"}
+                    {
+                        "tag": pin["pe_local_tag"],
+                        "digest": oci_plan_for(grant).image_digest,
+                        "role": "phantom_engine",
+                    }
                 ]
             }
         if op_type == "start_pe_observe":

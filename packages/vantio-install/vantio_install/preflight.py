@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from vantio_install import constants
+from vantio_install.oci_load import describe_archive
 from vantio_install.manifest import (
     artifact_paths,
     hash_named,
@@ -96,6 +97,35 @@ def _forbidden_cidr(value: str) -> bool:
     if text in _FORBIDDEN_CIDRS or text.endswith("/0"):
         return True
     return False
+
+
+def _oci_load_check(archive: Path) -> dict:
+    """Record whether apply must correct the OCI layer media type before docker load."""
+    facts = describe_archive(archive)
+    if facts.get("blocked"):
+        return _check(
+            "PF-OCI-LOAD",
+            "sealed OCI tar can be loaded on the installed Docker",
+            "BLOCKED",
+            facts,
+            {"rewrite": False, "storage_driver_change": False},
+            "Restore the sealed archive. The installer does not change Docker's storage driver.",
+        )
+    if facts.get("rewrite"):
+        remediation = (
+            "Apply writes a temporary load archive with the layer media type set to match the bytes. "
+            "The sealed file stays in place. Docker's storage driver stays as installed."
+        )
+    else:
+        remediation = "No layer media-type correction is required. Docker's storage driver stays as installed."
+    return _check(
+        "PF-OCI-LOAD",
+        "sealed OCI tar can be loaded on the installed Docker",
+        "PASS",
+        facts,
+        {"storage_driver_change": False},
+        remediation,
+    )
 
 
 def aggregate(checks: list[dict]) -> str:
@@ -399,6 +429,7 @@ def run_preflight(
             "Use the sealed archive for the frozen tip. Tip drift needs a new seal.",
         )
     )
+    checks.append(_oci_load_check(paths["pe_archive"]))
 
     source = str(config.get("artifact_source", "sealed_archive"))
     ghcr = source == "ghcr" or "ghcr.io" in source or source.endswith(":0.1.0")

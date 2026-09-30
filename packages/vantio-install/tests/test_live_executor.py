@@ -986,6 +986,34 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(caught.exception.failure_class, "ROLLBACK_REQUIRED")
         self.assertNotEqual(caught.exception.state, "HEALTHY")
 
+    def test_docker_load_exit_zero_with_unpack_error_is_not_success(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        self.arm(harness)
+
+        def runner(argv, timeout):
+            return ExecResult(
+                0,
+                False,
+                "Loaded image: vantio-phantom-engine:example\n"
+                "Error unpacking image: archive/tar: invalid tar header\n",
+                "",
+            )
+
+        class Observer:
+            def verify(self, op_type, grant):
+                raise AssertionError("an unpack error must not be verified")
+
+            def observed_delta(self, op_type, grant):
+                return {}
+
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "docker_load", catalog_argv("docker_load", grant), runner=runner, observer=Observer())
+        self.assertEqual(caught.exception.failure_class, "ROLLBACK_REQUIRED")
+        self.assertIn("unpack error", str(caught.exception))
+        self.assertIn("storage driver", str(caught.exception))
+
     def test_live_timeout_is_interrupted(self) -> None:
         harness = self.planned()
         self.set_env("1")

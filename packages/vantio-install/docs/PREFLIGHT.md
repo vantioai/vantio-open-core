@@ -24,4 +24,6 @@ The installer is the only program on this path that runs Docker. It uses an argv
 
 Raw `docker`, raw `sudo docker`, and a direct call on `docker.sock` are forbidden for customer operators. So is changing the socket mode by hand. When the effective uid is not 0, rerun `vantio-install` under `sudo` so the process is root. A principal that can already write the socket is still not a live grant until that process is root. The allowlist does not insert `sudo` in front of `docker`. A host check can still fail when `docker` runs as a user who cannot open the socket.
 
+`PF-OCI-LOAD` reads the sealed Phantom Engine OCI tar. It passes when the archive is not an OCI layout, when every layer's media type already matches its bytes, or when a mismatch can be corrected at apply. The correction writes a temporary load archive. The sealed file stays the file you hashed. Docker keeps the storage driver Ubuntu installed. The check blocks when the file is an OCI layout the installer cannot correct, for example a missing layer blob. Restore the sealed archive in that case.
+
 `proof_state` stays `NOT_PROVED`. The proof ceiling stays `INTERNAL_CLEAN_HOST_PROOF`.

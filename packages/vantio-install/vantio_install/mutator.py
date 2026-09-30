@@ -22,6 +22,7 @@ from vantio_install.commands import (
 )
 from vantio_install.pe_apparmor import pe_apparmor_profile_path
 from vantio_install.errors import InstallError
+from vantio_install.oci_load import OciArchiveError, materialize, plan_load
 from vantio_install.stage_remove import remove_stage_nofollow
 from vantio_install.util import sha256_file, write_json
 
@@ -170,7 +171,18 @@ class FixtureMutator:
     def _docker_load(self, ctx: dict) -> None:
         pin = constants.FROZEN_PINS
         archive = self.stage / pin["pe_archive_name"]
-        load_argv = docker_load_argv(str(archive))
+        try:
+            plan = plan_load(
+                archive,
+                self.stage,
+                fallback_digest=pin["pe_manifest_digest"],
+                image_tag=pin["pe_local_tag"],
+            )
+            if plan.rewrite:
+                materialize(plan)
+        except OciArchiveError as exc:
+            raise InstallError(str(exc), exit_code=4, state="FAILED_SAFE") from exc
+        load_argv = docker_load_argv(str(plan.load_path))
         self.recorded_argv.append(load_argv)
         self.snapshot.setdefault("recorded_argv", []).append(load_argv)
         images = self.snapshot.setdefault("images", [])
@@ -178,7 +190,7 @@ class FixtureMutator:
             images.append(
                 {
                     "tag": pin["pe_local_tag"],
-                    "digest": pin["pe_manifest_digest"],
+                    "digest": plan.image_digest,
                     "role": "phantom_engine",
                 }
             )
