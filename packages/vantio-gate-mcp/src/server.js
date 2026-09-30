@@ -44,7 +44,7 @@ export function createGateMcpServer() {
 
   server.tool(
     "gate_evaluate",
-    "Dry-run evaluate a hostname/bytes/spend against a Phantom Engine enforce policy. Never blocks network I/O. Pass policy JSON or omit to use defaults / last fetched shape.",
+    "Record that this MCP does not preview or apply enforcement. Enforcement is provided by Phantom Engine. Never blocks network I/O.",
     {
       hostname: z.string().describe("Destination hostname, e.g. api.openai.com"),
       request_bytes: z.number().optional().describe("Request body size in bytes"),
@@ -133,9 +133,8 @@ export function createGateMcpServer() {
         workflow: "Rules that stick",
         sku: "Included in Phantom Engine ($799/node/mo — Observe + Enforce + Control)",
         does: [
-          "Evaluate host allow/block, size caps, spend caps, PII redact flags",
-          "Dry-run decisions without blocking (this MCP)",
-          "Live enforce when wired through vantio run + Phantom Engine policy",
+          "Say that this MCP does not preview or apply enforcement",
+          "Point live enforcement at Phantom Engine",
         ],
         does_not: [
           "Block or redact traffic from inside this MCP",
@@ -144,7 +143,7 @@ export function createGateMcpServer() {
           "Capture prompts or completions",
         ],
         enable_live:
-          "Set policy.dry_run=true, run agents under vantio run + Phantom Engine policy, review DRY_RUN_* events, then set enforce=true.",
+          "Enforcement is provided by Phantom Engine on enrolled Linux hosts. This MCP does not latch enforce=true.",
         pricing: "https://vantio.ai/pricing",
         phantom: "https://vantio.ai/phantom",
         // Legacy compatibility alias: same Phantom Engine destination as `phantom`.

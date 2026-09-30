@@ -11,11 +11,10 @@
 // and Phantom Engine enforcement component PII rewrite of inline argv bodies — not file contents or stdin pipes)
 // to in-scope hosts. Browsers stay outside this wrap.
 //
-// Supported outbound calls are recorded locally.
-// The public host is not an account or ingest service. A key does not fetch
-// configuration from that host. An explicit VANTIO_INGEST_URL pointing at a
-// different control plane, together with VANTIO_API_KEY, still loads policy
-// from that plane and applies it in this process.
+// Supported outbound calls are recorded locally: destination, process, size,
+// timing, and status. Optics does not block, delay, rewrite, or wait on policy.
+// Enforcement is provided by Phantom Engine. A VANTIO_API_KEY does not fetch
+// policy and is not sent for enforcement.
 
 "use strict";
 
@@ -49,8 +48,7 @@ const c = {
 };
 
 const INGEST_URL = process.env.VANTIO_INGEST_URL || "https://vantio.ai";
-// Do not fetch account configuration or paid ingest from the
-// public host. Another VANTIO_INGEST_URL keeps the control-plane client.
+// Keep the path. Do not reduce the URL to its origin.
 function isPublicCloudHost(raw) {
   try {
     const host = new URL(raw).hostname.toLowerCase();
@@ -60,10 +58,16 @@ function isPublicCloudHost(raw) {
   }
 }
 const PUBLIC_CLOUD_HOST = isPublicCloudHost(INGEST_URL);
-const API_KEY    = PUBLIC_CLOUD_HOST ? undefined : process.env.VANTIO_API_KEY;
+// Optics is observational. The key is not an enforcement credential in this process.
+const API_KEY = undefined;
 const AUDIT_MODE = process.env.VANTIO_AUDIT_MODE === "1";
 const SUMMARY    = process.env.VANTIO_SUMMARY    === "1";
-const FREE_MODE  = !API_KEY;
+const FREE_MODE  = true;
+if (process.env.VANTIO_API_KEY) {
+  process.stderr.write(
+    "[ ∅ VANTIO ] VANTIO_API_KEY is set. Enforcement is provided by Phantom Engine. Optics is observational and this call is not blocked.\n"
+  );
+}
 // Stable for the life of this process (set by `vantio run` into child env).
 const RUN_TRACE_ID = process.env.VANTIO_TRACE_ID || randomUUID();
 // Explicit phantom-box soak only — do NOT infer from localhost (breaks unit tests
@@ -316,51 +320,15 @@ function logFreeObservation(info) {
   log(lines.join("\n"));
 }
 
-// ── Policy load (Tier 2) ──────────────────────────────────────────────────────
-const policyReady = (async () => {
-  if (FREE_MODE) return;
-  try {
-    const res = await _originalFetch.call(globalThis, `${INGEST_URL}/api/v1/config`, {
-      method: "GET",
-      headers: { "x-vantio-identity": API_KEY },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data === "object" && data.policy) {
-        // Validate the merged policy rather than trusting it verbatim so a
-        // malformed cloud payload can never make enforcement throw.
-        policy = normalizePolicy({ ...policy, ...data.policy });
-        cloudSyncActive = isPaidTier(data.tier) || SOAK_LOCAL;
-        log(`${c.dim}[ ∅ VANTIO ]${c.reset} Policy loaded — enforce=${policy.enforce}, redact=${policy.redact_pii}`);
-        if (LOCAL_GATE || SOAK_LOCAL) {
-          log(`${c.dim}[ ∅ VANTIO ] Local control plane — ${INGEST_URL}${c.reset}`);
-        }
-      }
-    }
-  } catch {
-    // Policy fetch failed — fail open (observe only). Never block the agent
-    // because our control plane is unreachable.
-  }
-})();
+// Optics does not fetch policy and does not wait on it.
+const policyReady = Promise.resolve();
 
 // ── Redaction ─────────────────────────────────────────────────────────────────
 // Core regex redactor over a single string. Returns the redacted text and the
 // list of PII categories matched (one entry per span).
 function redactString(text) {
-  let out = text;
-  const redactions = [];
-  for (const type of policy.pii_types) {
-    // Policies may store pii_types in any case. Normalize before lookup.
-    const key = typeof type === "string" ? type.trim().toLowerCase() : type;
-    const p = PII_PATTERNS[key];
-    if (!p) continue;
-    out = out.replace(p.re, () => {
-      redactions.push(key);
-      return `[VANTIO_REDACTED:${p.label}]`;
-    });
-  }
-  return { text: out, redactions };
+  // Request redaction is not an Optics behavior. The text is returned unchanged.
+  return { text, redactions: [] };
 }
 
 // Recursively redact only the *string* values of a parsed JSON structure.
@@ -672,6 +640,15 @@ function blockSpend(hostname) {
 // reported as DRY_RUN_* events but the call is never blocked. Use this to
 // validate a new policy against live traffic before enabling hard enforcement.
 async function enforceRequest(hostname, input, init) {
+  // Optics does not block, redact, or apply a spend cap. The original request passes through.
+  const reqMeta = extractRequestMeta(input, init);
+  return {
+    blocked: false,
+    input,
+    init,
+    reqBytes: reqMeta.request_bytes || 0,
+    redactions: [],
+  };
   // 1. Host allow/block policy. blocked_hosts blocks ANY in-scope host; a
   //    non-empty allow-list blocks any in-scope host not on it. (Out-of-scope
   //    hosts never reach here — they pass through before enforcement.)

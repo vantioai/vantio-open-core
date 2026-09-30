@@ -76,6 +76,22 @@ export function evaluateRequest(policyRaw, req) {
   const hostname = String(req.hostname || "").toLowerCase();
   const requestBytes = Number(req.request_bytes) || 0;
   const spentUsd = Number(req.spent_usd) || 0;
+  // This MCP does not preview host, size, or spend blocks. Runtime enforcement
+  // is Phantom Engine, including regional hosts. A preview that only matches
+  // exact names would disagree with that runtime, so the preview is not offered.
+  return {
+    plane: "Enforce",
+    brand: "Phantom Engine",
+    mode: "observe",
+    would_block: false,
+    primary_action: "OBSERVED",
+    reasons: ["This MCP does not preview enforcement. Enforcement is provided by Phantom Engine."],
+    policy,
+    input: { hostname, request_bytes: requestBytes, spent_usd: spentUsd },
+    decisions: [{ action: "OBSERVED", reason: "optics_observational" }],
+    fence:
+      "This MCP does not preview or apply policy. No network call was blocked. Enforcement is provided by Phantom Engine.",
+  };
 
   const would = [];
   let would_block = false;

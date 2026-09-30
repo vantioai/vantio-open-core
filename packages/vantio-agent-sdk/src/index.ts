@@ -277,6 +277,12 @@ export async function fetchPolicy(
   apiKey: string,
   opts: FetchPolicyOptions = {},
 ): Promise<VantioPolicy> {
+  void apiKey;
+  void opts;
+  console.warn(
+    "[vantio] fetchPolicy does not load a policy and does not send VANTIO_API_KEY. Enforcement is provided by Phantom Engine. Optics stays observational.",
+  );
+  return { ...DEFAULT_POLICY, enforce: false, redact_pii: false };
   const ingestUrl =
     opts.ingestUrl ?? process.env["VANTIO_INGEST_URL"] ?? "https://vantio.ai";
 
@@ -342,6 +348,11 @@ export function redactPII(
   text: string,
   piiTypes: string[] = ["ssn", "email", "credit_card", "phone"],
 ): RedactionResult {
+  void piiTypes;
+  console.warn(
+    "[vantio] redactPII does not rewrite request text. Enforcement is provided by Phantom Engine.",
+  );
+  return { text, redactions: [] };
   if (typeof text !== "string") return { text, redactions: [] };
   let out = text;
   const redactions: string[] = [];

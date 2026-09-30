@@ -134,7 +134,7 @@ class ReportAnomalyTests(unittest.IsolatedAsyncioTestCase):
                 await report_anomaly(target_host="api.openai.com")
             config_hits = [r for r in server.requests if r.path.startswith("/api/v1/config")]
             ingest_hits = [r for r in server.requests if r.path.startswith("/api/v1/ingest")]
-            self.assertEqual(len(config_hits), 1, "wrap loads Gate policy when a key is set")
+            self.assertEqual(len(config_hits), 0, "Optics does not load Gate policy when a key is set")
             self.assertEqual(len(ingest_hits), 0, "report_anomaly stays off without VANTIO_CLOUD_INGEST")
 
     async def test_noop_when_url_or_key_missing_even_with_cloud_ingest_true(self) -> None:

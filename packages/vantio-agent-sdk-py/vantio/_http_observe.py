@@ -292,12 +292,15 @@ def _is_control_plane_dest(hostname: str, port: Optional[str]) -> bool:
 
 
 def _load_policy() -> None:
-    """Fetch Gate policy before urllib is patched. Fail-open. Optics-only when no key."""
-    global _cloud_sync
+    """Optics does not fetch policy and does not send VANTIO_API_KEY for enforcement."""
     _reset_policy()
     key = os.environ.get("VANTIO_API_KEY") or ""
-    if not key.strip():
-        return
+    if key.strip():
+        sys.stderr.write(
+            "[ ∅ VANTIO ] VANTIO_API_KEY is set. Enforcement is provided by Phantom Engine. "
+            "Optics is observational and this call is not blocked.\n"
+        )
+    return
     ingest = (os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai").rstrip("/")
     try:
         req = urllib.request.Request(
@@ -378,6 +381,11 @@ def _ingest(hostname: str, action: str, extra: Optional[dict[str, Any]] = None) 
 
 
 def _redact_text(text: str) -> tuple[str, list[str]]:
+    # Request bodies are not rewritten. Enforcement redaction is Phantom Engine.
+    return text, []
+
+
+def _redact_text_removed(text: str) -> tuple[str, list[str]]:
     if not text or not _policy.get("redact_pii"):
         return text, []
     from vantio.sdk import redact_pii  # noqa: PLC0415
@@ -474,9 +482,10 @@ def _aiohttp_request_body(kwargs: dict[str, Any]) -> Any:
     return None
 
 def _decide(hostname: str, port: Optional[str], path: str, body_len: int) -> str:
-    """pass | observe | block | dry_block | block_size | dry_size | block_spend | dry_spend"""
+    """pass | observe. Optics does not block, cap spend, or apply a host list."""
     if not hostname or _is_control_plane(hostname, path) or not _in_scope(hostname, port):
         return "pass"
+    return "observe"
     key = os.environ.get("VANTIO_API_KEY") or ""
     if not key.strip():
         return "observe"
@@ -2077,6 +2086,8 @@ def _rewrite_curl_form_value(value: str, treat_at_as_file: bool, take_redact: An
 
 
 def _rewrite_inline_cli_bodies(tool: str, argv: list[str]) -> tuple[list[str], list[str]]:
+    # Spawned curl, wget, httpie, and aria2c are observed. Their argv is not rewritten.
+    return [str(a) for a in argv], []
     out = [str(a) for a in argv]
     redactions: list[str] = []
 

@@ -123,19 +123,19 @@ describe("fetchPolicy()", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  test("returns the normalized cloud policy on a 200 with a policy body", async () => {
-    let seenHeader: string | undefined;
+  test("does not send the key or adopt a cloud enforce flag", async () => {
+    let hits = 0;
     responder = (req, res) => {
-      seenHeader = req.headers["x-vantio-identity"] as string | undefined;
+      hits += 1;
       const payload = JSON.stringify({ policy: { enforce: true, blocked_hosts: ["evil.com"] } });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(payload);
+      void req;
     };
     const policy = await fetchPolicy("vk_test_key", { ingestUrl: baseUrl });
-    assert.equal(seenHeader, "vk_test_key");
-    assert.equal(policy.enforce, true);
-    assert.deepEqual(policy.blocked_hosts, ["evil.com"]);
-    // Untouched fields still come from the default, proving normalizePolicy ran.
+    assert.equal(hits, 0);
+    assert.equal(policy.enforce, false);
+    assert.deepEqual(policy.blocked_hosts, []);
     assert.equal(policy.spend_cap_usd, 0);
   });
 
@@ -160,14 +160,14 @@ describe("fetchPolicy()", () => {
     assert.deepEqual(policy.pii_types, ["ssn", "email", "credit_card", "phone"]);
   });
 
-  test("respects a caller-supplied timeout", async () => {
+  test("does not wait on a control plane that never answers", async () => {
     responder = () => {
-      /* never respond — force the timeout path */
+      /* never respond — Optics must not wait */
     };
     const start = Date.now();
     const policy = await fetchPolicy("vk_test_key", { ingestUrl: baseUrl, timeoutMs: 200 });
     const elapsed = Date.now() - start;
     assert.equal(policy.enforce, false);
-    assert.ok(elapsed < 2000, `expected the 200ms timeout to fire quickly, took ${elapsed}ms`);
+    assert.ok(elapsed < 200, `policy fetch must not wait, took ${elapsed}ms`);
   });
 });
