@@ -1,5 +1,6 @@
 # Optics observe example. Build context is this directory.
-# The CLI pin is exact and matches packages/vantio-cli. It is not a range.
+# The CLI pin is exact. It is the published installer version, 0.3.24.
+# The source candidate in packages/vantio-cli is not what this image installs.
 # CANDIDATE_ONLY_NOT_FOR_PUBLICATION: this file does not publish the package.
 ARG BASE_IMAGE=node:22-bookworm-slim
 FROM ${BASE_IMAGE}

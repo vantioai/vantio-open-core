@@ -157,7 +157,7 @@ describe("vantio status", () => {
       assert.equal(code, 0, stderr);
       const body = JSON.parse(stdout);
       assert.equal(body.schema_status, "unstable-pre-1.0");
-      assert.equal(body.install.version, "0.3.24");
+      assert.equal(body.install.version, "0.3.25");
       assert.equal(body.registry.checked, false);
       assert.equal(body.registry.opticsStatus, "NOT_OBSERVED");
       assert.equal(body.telemetry.posture, "disabled");

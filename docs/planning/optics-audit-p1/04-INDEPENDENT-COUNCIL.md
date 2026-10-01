@@ -21,7 +21,7 @@ The producer wrote this packet and the tests. The producer does not sit this cou
 | Observe image used `@vantio/cli@^0.3.1`, copied the repo context, and ran `vantio run npm start`, which does not attach the Node interceptor | Reproduced. Exact pin `0.3.24`, strict `.dockerignore`, `vantio run node agent.js`. | `deploy/docker/test_observe_example.py` |
 | `gate_get_policy` and `gate_residual_risk` accepted `api_key` and sent that value | Reproduced. The key is `VANTIO_API_KEY` only. Source version `@vantio/gate-mcp` `0.1.1` is a candidate, not a registry release. | `packages/vantio-gate-mcp/test/api_key_env.test.js` |
 
-CLI `0.3.25` and Python `3.1.1` are not staged. Those packages were not changed. The observe example pins the CLI version already in this tree, `0.3.24`.
+Source candidates `@vantio/cli` `0.3.25` and Python `vantio-agent-sdk` `3.1.1` are staged in this tree. They are not npm or PyPI releases. The observe example still installs published CLI `0.3.24`.
 
 ## Residual
 

@@ -341,7 +341,7 @@
       "id": "cli",
       "manifest": "packages/vantio-cli/package.json",
       "name": "@vantio/cli",
-      "version": "0.3.24"
+      "version": "0.3.25"
     },
     {
       "id": "node-sdk",
@@ -353,7 +353,7 @@
       "id": "python-sdk",
       "manifest": "packages/vantio-agent-sdk-py/pyproject.toml",
       "name": "vantio-agent-sdk",
-      "version": "3.1.0"
+      "version": "3.1.1"
     },
     {
       "id": "optics-mcp",

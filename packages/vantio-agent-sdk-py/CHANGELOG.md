@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.1
+
+CANDIDATE_ONLY_NOT_FOR_PUBLICATION. This heading is source. It is not a PyPI release.
+
+This heading stages the source version label. It does not change SDK behavior. The sealed publisher stays on 3.1.0. Enforcement removal and the http.client status fix are separate changes.
+
 ## 3.1.0
 
 - HTTP 400–599 is stored with `ok` false for urllib, requests, httpx, aiohttp, and urllib3. urllib HTTP errors are application outcomes and are not labeled `network_error`.
