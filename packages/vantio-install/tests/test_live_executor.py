@@ -1703,6 +1703,7 @@ class LiveExecutorTests(unittest.TestCase):
             sdk_wheel=root / "sdk.whl",
             container_name="vantio-pe-test",
             observe_config=root / "observe-config.json",
+            npm_action="present",
         )
 
     def test_remove_stage_refuses_symlink_and_does_not_follow_it(self) -> None:
