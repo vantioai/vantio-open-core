@@ -8,6 +8,17 @@ export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "__pycache__", ".pytest_cache"]);
 const BINDING_ACTION = /@(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})(?:\s+#\s*\S+)?$/i;
 const ACTION_USES_LINE = /^\s*(?:-\s+)?uses:\s*(\S+)(?:\s+#\s*(\S+))?\s*$/gm;
+// Same-repo reusable workflow at refs/heads/main. The lab billing role trusts
+// job_workflow_ref ...@refs/heads/main, so a commit SHA pin would fail AssumeRole.
+// This is one exact string, not a general floating-ref allowance.
+const SAME_REPO_MAIN_WORKFLOW =
+  "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main # oidc-trust";
+
+export function classifyActionUse(uses) {
+  if (BINDING_ACTION.test(uses)) return { digest_pinned: true, pin_kind: "digest" };
+  if (uses === SAME_REPO_MAIN_WORKFLOW) return { digest_pinned: false, pin_kind: "same_repo_refs_heads_main" };
+  return { digest_pinned: false, pin_kind: "floating" };
+}
 
 export function sha256Text(text) {
   return createHash("sha256").update(text).digest("hex");
@@ -230,7 +241,7 @@ export function buildInventory(root) {
   for (const file of actionPaths) {
     for (const uses of actionUses(readText(root, file))) {
       if (uses.startsWith("./")) continue;
-      actions.push({ file, uses, digest_pinned: BINDING_ACTION.test(uses) });
+      actions.push({ file, uses, ...classifyActionUse(uses) });
     }
   }
   const publish = {};

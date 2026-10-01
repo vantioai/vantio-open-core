@@ -1,0 +1,126 @@
+name: W3 lab auto provision
+
+# Lab provision. Dispatch only from main. The cost gate must pass first.
+# Trust subject:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# job_workflow_ref:
+#   vantioai/vantio-open-core/.github/workflows/w3-lab-auto-provision.yml@refs/heads/main
+# Role: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+# Requested session: 3600 seconds. Role maximum: 3600 seconds.
+#
+# The cost gate runs first, in its own workflow file, under the billing-read
+# role. Launch runs only when that gate outputs expected_oop_usd=0.
+# scripts/aws/w3_lab_auto.py launch calls RunInstances only after the cost
+# gate file says expected_oop_usd is 0. NONINTERACTIVE_TEARDOWN_READY stays false.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_type:
+        description: Free-eligible amd64 type. t3.micro or t3.small.
+        required: true
+        default: t3.micro
+        type: choice
+        options:
+          - t3.micro
+          - t3.small
+      stop_after_minutes:
+        description: Self-stop delay in minutes. 1 through 420.
+        required: true
+        default: "420"
+        type: string
+      associate_public_ipv4:
+        description: Assign a public IPv4. Leave false unless the lab must be reached without an instance profile.
+        required: true
+        default: false
+        type: boolean
+      purpose:
+        description: Empty, or c8-noninteractive-teardown for a C8 fixture.
+        required: false
+        default: ""
+        type: string
+      expires_in_minutes:
+        description: Minutes until vantio:expires-at. Empty uses stop_after_minutes. 1 through 420.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-auto-provision
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Pre-run cost check
+    uses: vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main # oidc-trust
+    permissions:
+      contents: read
+      id-token: write
+
+  launch:
+    name: Launch one lab in us-east-2
+    needs: gate
+    if: needs.gate.outputs.expected_oop_usd == '0'
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 30
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout launch script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-provision
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+          role-session-name: w3-lab-auto-provision-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "3600"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Launch one tagged lab instance
+        env:
+          INSTANCE_TYPE: ${{ inputs.instance_type }}
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
+          EXPIRES_IN_MINUTES: ${{ inputs.expires_in_minutes }}
+          ASSOCIATE_PUBLIC_IPV4: ${{ inputs.associate_public_ipv4 }}
+          PURPOSE: ${{ inputs.purpose }}
+          COST_GATE_JSON: ${{ needs.gate.outputs.gate_json }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$COST_GATE_JSON" > "$RUNNER_TEMP/cost-gate.json"
+          COST_GATE_FILE="$RUNNER_TEMP/cost-gate.json" python3 scripts/aws/w3_lab_auto.py launch
+
+      - name: Upload launch evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-auto-launch-${{ github.run_id }}
+          path: w3-lab-auto-launch.json
+          if-no-files-found: warn

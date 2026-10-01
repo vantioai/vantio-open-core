@@ -1,0 +1,86 @@
+name: W3 lab auto sweeper
+
+# Lab sweeper. Runs on main. It does not launch instances.
+# Trust subject:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# job_workflow_ref:
+#   vantioai/vantio-open-core/.github/workflows/w3-lab-auto-sweeper.yml@refs/heads/main
+# Role: arn:aws:iam::960577828987:role/vantio-w3-lab-sweeper
+# Requested session: 900 seconds. Role maximum: 3600 seconds.
+#
+# GitHub cron is every 30 minutes: */30 * * * *
+# The instance shutdown command is the primary stop. This job is the backstop.
+# It deletes only owned lab resources in us-east-2 whose tags include
+# vantio:destroyable=true and whose sweeper plan says delete. A green run
+# does not set NONINTERACTIVE_TEARDOWN_READY.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-auto-sweeper
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Delete expired owned lab resources
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 15
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            schedule|workflow_dispatch) ;;
+            *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout sweeper script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-sweeper
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-sweeper
+          role-session-name: w3-lab-auto-sweeper-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "900"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Sweep owned expired lab resources
+        run: |
+          set -euo pipefail
+          python3 scripts/aws/w3_lab_auto.py sweep
+
+      - name: Upload sweep evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-auto-sweep-${{ github.run_id }}
+          path: w3-lab-auto-sweep.json
+          if-no-files-found: warn
