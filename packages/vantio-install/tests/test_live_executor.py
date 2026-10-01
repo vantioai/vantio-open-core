@@ -44,7 +44,7 @@ from vantio_install.agent_sdk import (  # noqa: E402
 )
 from vantio_install.optics_cli import observed_optics_cli_version  # noqa: E402
 from vantio_install.util import sha256_file  # noqa: E402
-from vantio_install.commands import observe_apparmor_opt  # noqa: E402
+from vantio_install.commands import apt_install_npm_argv, observe_apparmor_opt  # noqa: E402
 from vantio_install.pe_apparmor import pe_apparmor_profile_path, profile_text  # noqa: E402
 
 ENV = "VANTIO_INSTALL_ALLOW_LIVE"
@@ -58,6 +58,7 @@ class Lab:
         self.running = False
         self.cmd: list[str] = []
         self.npm = False
+        self.npm_cli = False
         self.pip = False
         self.clsact: list[str] = []
         self.verified: list[str] = []
@@ -84,6 +85,8 @@ class Lab:
             self.cmd = list(argv)
         elif argv[:2] == ["npm", "install"]:
             self.npm = True
+        elif argv == ["npm", "--version"] or (argv[:2] == ["apt-get", "install"] and argv[-1] == "npm"):
+            self.npm_cli = True
         elif argv[:3] == ["python3", "-m", "pip"]:
             self.pip = True
         elif argv[:3] == ["tc", "qdisc", "replace"]:
@@ -104,6 +107,8 @@ class Lab:
             return "VERIFIED" if grant.stage.is_dir() else "NOT_VERIFIED"
         if op_type == "mkdir_evidence":
             return "VERIFIED" if grant.evidence.is_dir() else "NOT_VERIFIED"
+        if op_type == "ensure_npm":
+            return "VERIFIED" if self.npm_cli else "NOT_VERIFIED"
         if op_type == "install_optics_cli":
             return "VERIFIED" if self.npm else "NOT_VERIFIED"
         if op_type == "install_agent_sdk_npm":
@@ -986,6 +991,34 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(caught.exception.failure_class, "ROLLBACK_REQUIRED")
         self.assertNotEqual(caught.exception.state, "HEALTHY")
 
+    def test_docker_load_exit_zero_with_unpack_error_is_not_success(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        self.arm(harness)
+
+        def runner(argv, timeout):
+            return ExecResult(
+                0,
+                False,
+                "Loaded image: vantio-phantom-engine:example\n"
+                "Error unpacking image: archive/tar: invalid tar header\n",
+                "",
+            )
+
+        class Observer:
+            def verify(self, op_type, grant):
+                raise AssertionError("an unpack error must not be verified")
+
+            def observed_delta(self, op_type, grant):
+                return {}
+
+        with self.assertRaises(InstallError) as caught:
+            dispatch(grant, "docker_load", catalog_argv("docker_load", grant), runner=runner, observer=Observer())
+        self.assertEqual(caught.exception.failure_class, "ROLLBACK_REQUIRED")
+        self.assertIn("unpack error", str(caught.exception))
+        self.assertIn("storage driver", str(caught.exception))
+
     def test_live_timeout_is_interrupted(self) -> None:
         harness = self.planned()
         self.set_env("1")
@@ -1670,6 +1703,7 @@ class LiveExecutorTests(unittest.TestCase):
             sdk_wheel=root / "sdk.whl",
             container_name="vantio-pe-test",
             observe_config=root / "observe-config.json",
+            npm_action="present",
         )
 
     def test_remove_stage_refuses_symlink_and_does_not_follow_it(self) -> None:
@@ -1732,6 +1766,92 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertIn("symlink", str(caught.exception).lower())
         self.assertEqual(secret.read_text(encoding="utf-8"), "keep\n")
         self.assertTrue(stage.is_symlink())
+
+    def test_detached_observe_waits_until_the_loader_is_healthy(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        pins = list(constants.BPF_PINS)
+        samples = [
+            {
+                "lifecycle": "detached",
+                "security_ok": True,
+                "pins": pins[:1],
+                "pins_error": False,
+                "loader": False,
+                "clsact": True,
+            },
+            {
+                "lifecycle": "detached",
+                "security_ok": True,
+                "pins": pins,
+                "pins_error": False,
+                "loader": True,
+                "clsact": True,
+            },
+        ]
+        cursor = {"index": 0}
+
+        def sampler(_grant: object) -> dict:
+            item = samples[min(cursor["index"], len(samples) - 1)]
+            cursor["index"] += 1
+            return item
+
+        times = iter((0.0, 0.5, 1.0))
+        observer = ProductionObserver(
+            observe_sampler=sampler,
+            clock=lambda: next(times),
+            sleeper=lambda _seconds: None,
+        )
+        self.assertEqual(observer.verify("start_pe_observe", grant), "VERIFIED")
+        self.assertGreaterEqual(cursor["index"], 2)
+
+    def test_stopped_observe_is_not_healthy_while_pins_remain(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        seen = {"count": 0}
+
+        def sampler(_grant: object) -> dict:
+            seen["count"] += 1
+            return {
+                "lifecycle": "stopped",
+                "security_ok": False,
+                "pins": list(constants.BPF_PINS),
+                "pins_error": False,
+                "loader": True,
+                "clsact": True,
+            }
+
+        observer = ProductionObserver(
+            observe_sampler=sampler,
+            clock=lambda: 0.0,
+            sleeper=lambda _seconds: None,
+            observe_wait_s=20,
+        )
+        self.assertEqual(observer.verify("start_pe_observe", grant), "NOT_VERIFIED")
+        self.assertEqual(seen["count"], 1)
+
+    def test_ubuntu_npm_remediation_installs_only_the_npm_package(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        self.arm(harness)
+        host = json.loads(harness.tx_file("HOST-SNAPSHOT.json").read_text(encoding="utf-8"))
+        host["npm_version"] = None
+        host["effective_uid"] = 0
+        host["node_version"] = "v18.19.1"
+        grant = self.grant_for(harness, host=host)
+        self.assertEqual(grant.npm_action, "remediate")
+        argv = catalog_argv("ensure_npm", grant)
+        self.assertEqual(argv, apt_install_npm_argv())
+        lab = Lab()
+        delta = dispatch(grant, "ensure_npm", argv, runner=lab.runner, observer=lab)
+        self.assertEqual(lab.calls, [argv])
+        self.assertEqual(delta, {})
+        with self.assertRaises(InstallError):
+            reject_argv(["apt-get", "update"])
+        with self.assertRaises(InstallError):
+            reject_argv(["apt-get", "install", "-y", "--no-install-recommends", "curl"])
 
 
 if __name__ == "__main__":

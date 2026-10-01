@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ from vantio_install.docker_object import (
 from vantio_install.commands import (
     apparmor_parser_load_argv,
     apparmor_parser_remove_argv,
+    apt_install_npm_argv,
     docker_load_argv,
     docker_rmi_argv,
     docker_start_argv,
@@ -36,6 +38,7 @@ from vantio_install.commands import (
     docker_tag_argv,
     mkdir_argv,
     npm_install_argv,
+    npm_version_argv,
     observe_apparmor_opt,
     observe_binds,
     observe_container_argv,
@@ -45,8 +48,8 @@ from vantio_install.commands import (
     tc_clsact_del_argv,
 )
 from vantio_install.pe_apparmor import (
+    OBSERVE_INSPECT_FORMAT,
     apparmor_profile_loaded,
-    inspect_is_observe_container,
     pe_apparmor_profile_path,
     profile_text,
 )
@@ -59,6 +62,7 @@ from vantio_install.agent_sdk import (
     remove_agent_sdks,
 )
 from vantio_install.errors import InstallError
+from vantio_install.oci_load import OciArchiveError, OciLoadPlan, load_output_rejected, materialize, plan_load
 from vantio_install.host import probe_tracefs_mounted
 from vantio_install.manifest import artifact_paths, load_manifest
 from vantio_install.optics_cli import (
@@ -69,7 +73,13 @@ from vantio_install.optics_cli import (
 )
 from vantio_install.paths import assert_safe_root
 from vantio_install.state_machine import RESIDUAL_STATES
-from vantio_install.preflight import run_preflight
+from vantio_install.observe_health import (
+    OBSERVE_READY_POLL_S,
+    OBSERVE_READY_WAIT_S,
+    observe_sample_from_inspect,
+    wait_for_observe_host,
+)
+from vantio_install.preflight import npm_requirement, run_preflight
 from vantio_install.stage_remove import remove_stage_nofollow
 from vantio_install.util import read_json, sha256_file, write_json
 
@@ -77,9 +87,10 @@ _ENV_GATE = "VANTIO_INSTALL_ALLOW_LIVE"
 _IFACE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,14}$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "busybox", "sudo", "su"}
 _META = (";", "|", "&", "`", "$(", "\n", "\r", ">", "<")
-_ALLOWED_EXE = {"mkdir", "npm", "python3", "docker", "tc", "apparmor_parser"}
+_ALLOWED_EXE = {"mkdir", "npm", "python3", "docker", "tc", "apparmor_parser", "apt-get"}
 
 STEP_OPERATIONS = {
+    "ensure_node": ("ensure_npm",),
     "install_optics_cli": ("mkdir_prefix", "install_optics_cli"),
     "install_agent_sdks": ("install_agent_sdk_npm", "install_agent_sdk_py"),
     "stage_pe_archive": ("mkdir_stage", "stage_pe_archive"),
@@ -191,6 +202,7 @@ class LiveGrant:
     sdk_wheel: Path
     container_name: str
     observe_config: Path
+    npm_action: str
 
 
 def _fail(message: str, *, failure_class: str = "FAILED_SAFE", state: str = "FAILED_SAFE", exit_code: int = 4) -> None:
@@ -215,6 +227,11 @@ def reject_argv(argv: object) -> list[str]:
     exe = Path(argv[0]).name
     if exe in _SHELLS or exe not in _ALLOWED_EXE:
         _fail(f"Executable {exe} is not on the live allowlist.", failure_class="FAILED_SAFE")
+    if exe == "apt-get" and list(argv) != apt_install_npm_argv():
+        _fail(
+            "apt-get is allowlisted only to install the Ubuntu npm package.",
+            failure_class="FAILED_SAFE",
+        )
     for item in argv:
         if any(token in item for token in _META):
             _fail("An argument contains a shell metacharacter and is refused.", failure_class="FAILED_SAFE")
@@ -318,12 +335,37 @@ def _require_apparmor_parser_argv(op_type: str, argv: list[str]) -> None:
         _fail("The AppArmor parser argv is not the observe profile path.", failure_class="FAILED_SAFE")
 
 
+def oci_plan_for(grant: LiveGrant) -> OciLoadPlan:
+    """The docker load file for this grant. The sealed archive stays put."""
+    staged = grant.stage / grant.archive.name
+    source = staged if staged.is_file() else grant.archive
+    pin = constants.FROZEN_PINS
+    try:
+        return plan_load(
+            source,
+            grant.stage,
+            fallback_digest=pin["pe_manifest_digest"],
+            image_tag=pin["pe_local_tag"],
+        )
+    except OciArchiveError as exc:
+        _fail(str(exc), failure_class="FAILED_SAFE")
+        raise AssertionError("oci plan failure always raises")
+
+
 def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
     """Argv for process operations. None means a confined filesystem operation."""
     pin = constants.FROZEN_PINS
     prefix = str(grant.prefix)
     iface = grant.iface
+    if grant.npm_action == "present":
+        ensure_npm = npm_version_argv()
+    elif grant.npm_action == "remediate":
+        ensure_npm = apt_install_npm_argv()
+    else:
+        ensure_npm = None
+    load_plan = oci_plan_for(grant) if op_type in {"docker_load", "docker_tag"} else None
     mapping: dict[str, list[str] | None] = {
+        "ensure_npm": ensure_npm,
         "mkdir_prefix": mkdir_argv(prefix),
         "mkdir_stage": mkdir_argv(str(grant.stage)),
         "mkdir_evidence": mkdir_argv(str(grant.evidence)),
@@ -331,8 +373,11 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
         "install_agent_sdk_npm": npm_install_argv(str(grant.sdk_npm), prefix),
         "install_agent_sdk_py": pip_wheel_argv(str(grant.sdk_wheel), prefix),
         "stage_pe_archive": None,
-        "docker_load": docker_load_argv(str(grant.stage / grant.archive.name)),
-        "docker_tag": docker_tag_argv(pin["pe_manifest_digest"], pin["pe_local_tag"]),
+        "docker_load": docker_load_argv(str(load_plan.load_path if load_plan else grant.stage / grant.archive.name)),
+        "docker_tag": docker_tag_argv(
+            load_plan.image_digest if load_plan else pin["pe_manifest_digest"],
+            pin["pe_local_tag"],
+        ),
         "write_observe_config": None,
         "o7_init": None,
         "tc_clsact": tc_clsact_argv(iface),
@@ -356,6 +401,11 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
     if op_type not in mapping:
         _fail(f"Operation {op_type} is not on the live allowlist.", failure_class="FAILED_SAFE")
     argv = mapping[op_type]
+    if op_type == "ensure_npm" and argv is None:
+        _fail(
+            "Install the Ubuntu npm package. The nodejs package does not include the npm binary.",
+            failure_class="FAILED_SAFE",
+        )
     if argv is not None:
         reject_argv(argv)
         _reject_forbidden_live_argv(argv)
@@ -422,6 +472,10 @@ def _runtime_tx(grant: LiveGrant) -> dict:
 def run_allowlisted(argv: list[str], timeout: int, runner) -> ExecResult:
     checked = reject_argv(argv)
     if runner is None:
+        env = None
+        if Path(checked[0]).name == "apt-get":
+            env = os.environ.copy()
+            env["DEBIAN_FRONTEND"] = "noninteractive"
         try:
             completed = subprocess.run(
                 checked,
@@ -429,10 +483,17 @@ def run_allowlisted(argv: list[str], timeout: int, runner) -> ExecResult:
                 check=False,
                 capture_output=True,
                 timeout=timeout,
+                env=env,
             )
         except subprocess.TimeoutExpired as exc:
             return ExecResult(124, True, _captured_text(exc.stdout), _captured_text(exc.stderr))
         except OSError as exc:
+            if Path(checked[0]).name == "apt-get":
+                _fail(
+                    "The Ubuntu npm package could not be installed because apt-get is not on PATH. "
+                    "Install the Ubuntu npm package. The nodejs package does not include the npm binary.",
+                    failure_class="FAILED_SAFE",
+                )
             _fail(f"The live command could not start: {exc.__class__.__name__}.", failure_class="FAILED_SAFE")
         return ExecResult(
             completed.returncode,
@@ -590,9 +651,16 @@ def dispatch(
     if op_type in {"docker_load", "docker_tag", "stage_pe_archive", "start_pe_observe"}:
         _rehash_archive(grant)
     _rehash_inputs(op_type, grant)
+    if op_type == "ensure_npm" and grant.npm_action == "remediate" and runner is None and os.geteuid() != 0:
+        _fail(
+            "Install the Ubuntu npm package. The nodejs package does not include the npm binary.",
+            failure_class="FAILED_SAFE",
+        )
     _append_op(grant, {"op": op_type, "phase": "PENDING", "transaction_id": grant.transaction_id})
     result: ExecResult | None = None
     if expected is not None:
+        if op_type == "docker_load":
+            _materialize_load(grant)
         result = run_allowlisted(expected, timeout, runner)
         if runner is None:
             result = _recover_absent_target(op_type, grant, result)
@@ -603,6 +671,14 @@ def dispatch(
                 failure_class="INTERRUPTED",
                 state="INTERRUPTED",
                 exit_code=constants.EXIT_INTERRUPTED,
+            )
+        if op_type == "docker_load" and load_output_rejected(result.stdout, result.stderr):
+            failure = "ROLLBACK_REQUIRED" if result.returncode == 0 else "FAILED_SAFE"
+            _append_op(grant, {"op": op_type, "phase": failure, "transaction_id": grant.transaction_id})
+            _fail(
+                "docker load printed an unpack error, so the layer is not on the host. "
+                "The installer does not change Docker's storage driver.",
+                failure_class=failure,
             )
     else:
         _filesystem(op_type, grant)
@@ -640,6 +716,16 @@ def dispatch(
     return delta
 
 
+def _materialize_load(grant: LiveGrant) -> None:
+    plan = oci_plan_for(grant)
+    if not plan.rewrite:
+        return
+    try:
+        materialize(plan)
+    except OciArchiveError as exc:
+        _fail(str(exc), failure_class="FAILED_SAFE")
+
+
 def execute_step(grant: LiveGrant, step_id: str, kind: str, runner, observer) -> tuple[list[dict], list[list[str]]]:
     table = STEP_OPERATIONS if kind == "apply" else ROLLBACK_OPERATIONS
     if step_id not in table:
@@ -648,7 +734,8 @@ def execute_step(grant: LiveGrant, step_id: str, kind: str, runner, observer) ->
     recorded: list[list[str]] = []
     for op_type in table[step_id]:
         argv = catalog_argv(op_type, grant)
-        delta = dispatch(grant, op_type, argv, runner=runner, observer=observer)
+        timeout = 180 if op_type == "ensure_npm" else 60
+        delta = dispatch(grant, op_type, argv, runner=runner, observer=observer, timeout=timeout)
         deltas.append(delta)
         if argv:
             recorded.append(argv)
@@ -879,6 +966,7 @@ def authorize_live(
         sdk_wheel=paths["agent_sdk_py_wheel"],
         container_name=f"vantio-pe-{str(tx['transaction_id'])[-12:]}",
         observe_config=tx_dir / "observe-config.json",
+        npm_action=npm_requirement(host)["action"],
     )
 
 
@@ -890,11 +978,27 @@ class ProductionObserver:
     fixture path so they do not touch securityfs.
     """
 
-    def __init__(self, apparmor_profiles: Path | None = None) -> None:
+    def __init__(
+        self,
+        apparmor_profiles: Path | None = None,
+        *,
+        observe_sampler: Callable[[LiveGrant], dict] | None = None,
+        observe_wait_s: float = OBSERVE_READY_WAIT_S,
+        observe_poll_s: float = OBSERVE_READY_POLL_S,
+        clock: Callable[[], float] | None = None,
+        sleeper: Callable[[float], None] | None = None,
+    ) -> None:
         self.apparmor_profiles = apparmor_profiles
+        self.observe_sampler = observe_sampler
+        self.observe_wait_s = observe_wait_s
+        self.observe_poll_s = observe_poll_s
+        self.clock = clock
+        self.sleeper = sleeper
 
     def verify(self, op_type: str, grant: LiveGrant) -> str:
         try:
+            if op_type == "ensure_npm":
+                return "VERIFIED" if shutil.which("npm") else "NOT_VERIFIED"
             if op_type == "install_optics_cli":
                 expected = constants.FROZEN_PINS["optics_cli_version"]
                 return "VERIFIED" if optics_cli_verified(grant.prefix, expected) else "NOT_VERIFIED"
@@ -960,19 +1064,23 @@ class ProductionObserver:
             if op_type in {"remove_stage", "remove_observe_config", "remove_o7_record"}:
                 return "VERIFIED"
             if op_type == "docker_load":
-                return _docker_image_present(constants.FROZEN_PINS["pe_manifest_digest"])
+                return _docker_image_present(oci_plan_for(grant).image_digest)
             if op_type == "docker_tag":
                 return _docker_image_present(grant.tag)
             if op_type in {"start_pe_observe", "restart_pe_observe"}:
-                running = _docker_running_observe(grant.container_name) == "VERIFIED"
-                pins, pin_errors = _host_pins()
-                loader = _loader_running()
-                clsact = _tc_has_clsact(grant.iface) == "VERIFIED"
-                if pin_errors:
-                    return "UNKNOWN"
-                if running and pins == list(constants.BPF_PINS) and loader and clsact:
-                    return "VERIFIED"
-                return "NOT_VERIFIED"
+
+                def sample() -> dict:
+                    if self.observe_sampler is not None:
+                        return self.observe_sampler(grant)
+                    return _observe_sample(grant.container_name, grant.iface)
+
+                return wait_for_observe_host(
+                    sample,
+                    wait_s=self.observe_wait_s,
+                    poll_s=self.observe_poll_s,
+                    clock=self.clock or time.monotonic,
+                    sleeper=self.sleeper or time.sleep,
+                )
             if op_type == "unpin_bpf_maps":
                 pins, pin_errors = _host_pins()
                 if pin_errors:
@@ -994,6 +1102,11 @@ class ProductionObserver:
 
     def observed_delta(self, op_type: str, grant: LiveGrant) -> dict:
         pin = constants.FROZEN_PINS
+        if op_type == "ensure_npm":
+            version = _observed_npm_version()
+            if version:
+                return {"npm_version": version}
+            return {}
         if op_type == "install_optics_cli":
             version = observed_optics_cli_version(grant.prefix)
             if version:
@@ -1012,7 +1125,11 @@ class ProductionObserver:
         if op_type == "docker_tag":
             return {
                 "images": [
-                    {"tag": pin["pe_local_tag"], "digest": pin["pe_manifest_digest"], "role": "phantom_engine"}
+                    {
+                        "tag": pin["pe_local_tag"],
+                        "digest": oci_plan_for(grant).image_digest,
+                        "role": "phantom_engine",
+                    }
                 ]
             }
         if op_type == "start_pe_observe":
@@ -1074,18 +1191,32 @@ def _docker_image_present(tag: str) -> str:
     return "VERIFIED" if text else "NOT_VERIFIED"
 
 
-_INSPECT_FORMAT = "{{.State.Running}} {{.HostConfig.Privileged}} {{.AppArmorProfile}} {{json .Config.Cmd}}"
-
-
 def _docker_inspect_line(name: str) -> str | None:
-    return _read_only(["docker", "inspect", "--format", _INSPECT_FORMAT, name])
+    return _read_only(["docker", "inspect", "--format", OBSERVE_INSPECT_FORMAT, name])
 
 
-def _docker_running_observe(name: str) -> str:
+def _observe_sample(name: str, iface: str) -> dict:
     text = _docker_inspect_line(name)
-    if text and inspect_is_observe_container(text):
-        return "VERIFIED"
-    return "NOT_VERIFIED"
+    lifecycle, security_ok = observe_sample_from_inspect(text)
+    pins, pin_errors = _host_pins()
+    return {
+        "lifecycle": lifecycle,
+        "security_ok": security_ok,
+        "pins": pins,
+        "pins_error": bool(pin_errors),
+        "loader": _loader_running(),
+        "clsact": _tc_has_clsact(iface) == "VERIFIED",
+    }
+
+
+def _observed_npm_version() -> str | None:
+    npm = shutil.which("npm")
+    if not npm:
+        return None
+    text = _read_only([npm, "--version"])
+    if not text:
+        return None
+    return text.strip() or None
 
 
 def _docker_stopped(name: str) -> str:
