@@ -220,7 +220,7 @@
       "digest_pinned": false,
       "file": ".github/workflows/w3-lab-auto-provision.yml",
       "pin_kind": "same_repo_refs_heads_main",
-      "uses": "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main # oidc-trust"
+      "uses": "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust"
     },
     {
       "digest_pinned": true,
