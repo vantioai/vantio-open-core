@@ -38,11 +38,18 @@ _SECRET_LINES = (
 
 
 class ObserveExampleTests(unittest.TestCase):
-    def test_cli_pin_is_exact_and_matches_the_tree(self) -> None:
-        cli = (DOCKER.parents[1] / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8")
+    def test_cli_pin_is_exact_and_matches_the_published_installer(self) -> None:
+        root = DOCKER.parents[1]
+        cli = (root / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8")
         version = re.search(r'"version":\s*"([^"]+)"', cli)
         self.assertIsNotNone(version)
-        expected = version.group(1)
+        source = version.group(1)
+        self.assertIsNotNone(_EXACT.fullmatch(source), source)
+        constants = (root / "packages" / "vantio-install" / "vantio_install" / "constants.py").read_text(encoding="utf-8")
+        published = re.search(r'"optics_cli_version":\s*"([^"]+)"', constants)
+        self.assertIsNotNone(published)
+        expected = published.group(1)
+        self.assertEqual(expected, "0.3.24")
         pins = []
         for path in (DOCKERFILE, COMPOSE):
             for match in _PIN.finditer(path.read_text(encoding="utf-8")):
