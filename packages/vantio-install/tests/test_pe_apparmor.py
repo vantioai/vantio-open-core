@@ -65,14 +65,14 @@ class ObserveApparmorFixtures(unittest.TestCase):
 
     def test_inspect_requires_named_profile_and_refuses_privileged(self) -> None:
         cmd = '["--iface","ens5"]'
-        good = f"true false vantio-pe-observe {cmd}"
+        good = f"running 42 true false vantio-pe-observe {cmd}"
         self.assertTrue(inspect_is_observe_container(good))
-        self.assertFalse(inspect_is_observe_container(f"true false docker-default {cmd}"))
-        self.assertFalse(inspect_is_observe_container(f"true false unconfined {cmd}"))
-        self.assertFalse(inspect_is_observe_container(f"true true vantio-pe-observe {cmd}"))
-        self.assertFalse(inspect_is_observe_container(f"false false vantio-pe-observe {cmd}"))
-        self.assertFalse(inspect_is_observe_container(f"true false vantio-pe-observe {cmd} --enforce"))
-        self.assertFalse(inspect_is_observe_container("true false vantio-pe-observe"))
+        self.assertFalse(inspect_is_observe_container(f"running 42 true false docker-default {cmd}"))
+        self.assertFalse(inspect_is_observe_container(f"running 42 true false unconfined {cmd}"))
+        self.assertFalse(inspect_is_observe_container(f"running 42 true true vantio-pe-observe {cmd}"))
+        self.assertFalse(inspect_is_observe_container(f"exited 0 false false vantio-pe-observe {cmd}"))
+        self.assertFalse(inspect_is_observe_container(f"running 42 true false vantio-pe-observe {cmd} --enforce"))
+        self.assertFalse(inspect_is_observe_container("running 42 true false vantio-pe-observe"))
 
     def test_profile_list_match_is_exact(self) -> None:
         directory = Path(tempfile.mkdtemp(prefix="vantio-aa-"))

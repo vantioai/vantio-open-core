@@ -203,19 +203,39 @@ def _blank_residual() -> dict:
     return {"result": "UNKNOWN", "items": [], "scope": None, "probe_errors": []}
 
 
-def _planned_steps() -> list[dict]:
+def _planned_steps(npm: dict) -> list[dict]:
     rows = []
     for index, step_id in enumerate(constants.APPLY_STEPS, start=1):
-        rows.append(
-            {
-                "ord": index,
-                "id": step_id,
-                "mutation": step_id in constants.HOST_MUTATION_STEPS,
-                "mode": "observe-only",
-                "enforcement": "NOT_ENABLED",
-            }
-        )
+        row = {
+            "ord": index,
+            "id": step_id,
+            "mutation": step_id in constants.HOST_MUTATION_STEPS,
+            "mode": "observe-only",
+            "enforcement": "NOT_ENABLED",
+        }
+        if step_id == "ensure_node":
+            row["npm_action"] = npm["action"]
+            if npm.get("argv"):
+                row["argv"] = npm["argv"]
+            if npm["action"] == "remediate":
+                row["mutation"] = True
+                row["prerequisite"] = npm["prerequisite"]
+        rows.append(row)
     return rows
+
+
+def _plan_prerequisites(npm: dict) -> list[dict]:
+    if not npm.get("prerequisite"):
+        return []
+    row = {
+        "id": "PF-NPM",
+        "package": "npm",
+        "text": npm["prerequisite"],
+        "action": npm["action"],
+    }
+    if npm.get("argv"):
+        row["argv"] = npm["argv"]
+    return [row]
 
 
 def _digests() -> dict:
@@ -312,11 +332,12 @@ def _load_host(fixture: Path | None) -> dict:
     return probe_live()
 
 
-def _plan_document(tx_id: str, gate: str, missing: list[str], layout: dict[str, Path]) -> dict:
+def _plan_document(tx_id: str, gate: str, missing: list[str], layout: dict[str, Path], npm: dict) -> dict:
     ready = gate in {"PREFLIGHT_READY", "PREFLIGHT_READY_WITH_LIMITATIONS"}
     return {
         "transaction_id": tx_id,
-        "planned_steps": _planned_steps() if ready else [],
+        "planned_steps": _planned_steps(npm) if ready else [],
+        "prerequisites": _plan_prerequisites(npm),
         "artifact_digests": _digests(),
         "missing_manifest_fields": missing,
         "layout": {key: str(value) for key, value in layout.items()},
@@ -361,6 +382,7 @@ def plan(ctx: dict) -> tuple[int, dict]:
                     preflight_status=tx.get("preflight_status"),
                     limitations=tx.get("limitations") or [],
                     planned_steps=plan_doc["planned_steps"],
+                    prerequisites=plan_doc.get("prerequisites") or [],
                     artifact_digests=plan_doc["artifact_digests"],
                     replayed=True,
                 )
@@ -403,7 +425,7 @@ def plan(ctx: dict) -> tuple[int, dict]:
             "UNSUPPORTED": "UNSUPPORTED",
         }[report["overall"]]
         _move(tx, gate, stamp)
-        plan_doc = _plan_document(tx_id, gate, missing, layout)
+        plan_doc = _plan_document(tx_id, gate, missing, layout, report["npm"])
         if gate in {"PREFLIGHT_READY", "PREFLIGHT_READY_WITH_LIMITATIONS"}:
             _move(tx, "PLANNED", stamp)
         tx["phase"] = "plan"
@@ -429,6 +451,7 @@ def plan(ctx: dict) -> tuple[int, dict]:
             preflight_status=report["overall"],
             limitations=report["limitations"],
             planned_steps=plan_doc["planned_steps"],
+            prerequisites=plan_doc["prerequisites"],
             artifact_digests=plan_doc["artifact_digests"],
             failed_or_limiting_checks=[row["id"] for row in report["failed_or_limiting_checks"]],
         )

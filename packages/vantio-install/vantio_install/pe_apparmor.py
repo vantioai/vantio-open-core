@@ -108,16 +108,52 @@ def apparmor_profile_loaded(name: str, profiles_path: Path | None = None) -> boo
     return False
 
 
+# Status, host pid, running, privileged, AppArmor profile, container cmd.
+# docker run -d exits 0 for a detached container and for a process that has
+# already exited. Status and pid are what separate those two.
+OBSERVE_INSPECT_FORMAT = (
+    "{{.State.Status}} {{.State.Pid}} {{.State.Running}} "
+    "{{.HostConfig.Privileged}} {{.AppArmorProfile}} {{json .Config.Cmd}}"
+)
+
+_OBSERVE_STATUSES = frozenset(
+    {"created", "restarting", "running", "removing", "paused", "exited", "dead"}
+)
+
+
+def parse_observe_inspect(text: str) -> dict | None:
+    """Parse one observe inspect line. None means the line is not that shape."""
+    parts = text.strip().split(" ", 5)
+    if len(parts) != 6:
+        return None
+    status, pid, running, privileged, profile, cmd = parts
+    status = status.casefold()
+    if status not in _OBSERVE_STATUSES or not pid.isdigit():
+        return None
+    if running not in {"true", "false"} or privileged not in {"true", "false"}:
+        return None
+    return {
+        "status": status,
+        "pid": int(pid),
+        "running": running == "true",
+        "privileged": privileged == "true",
+        "profile": profile,
+        "cmd": cmd,
+    }
+
+
 def inspect_is_observe_container(text: str) -> bool:
-    """Docker inspect line: running, privileged, AppArmor profile, cmd JSON."""
-    parts = text.split(" ", 3)
-    if len(parts) != 4:
+    """True when the container is running, unprivileged, and on the observe profile."""
+    parsed = parse_observe_inspect(text)
+    if parsed is None:
         return False
-    running, privileged, profile, cmd = parts
-    if running != "true" or privileged != "false":
+    if parsed["status"] != "running" or not parsed["running"] or parsed["pid"] <= 0:
         return False
-    if profile != constants.PE_OBSERVE_APPARMOR_PROFILE:
+    if parsed["privileged"]:
         return False
+    if parsed["profile"] != constants.PE_OBSERVE_APPARMOR_PROFILE:
+        return False
+    cmd = parsed["cmd"]
     if "--enforce" in cmd or "--privileged" in cmd or "VANTIO_PHANTOM_DENY" in cmd:
         return False
     return True

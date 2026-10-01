@@ -83,6 +83,15 @@ def npm_install_argv(tarball: str, prefix: str) -> list[str]:
     return ["npm", "install", "--global", "--prefix", prefix, tarball]
 
 
+def npm_version_argv() -> list[str]:
+    return ["npm", "--version"]
+
+
+def apt_install_npm_argv() -> list[str]:
+    """Ubuntu npm package only. The nodejs package does not ship the npm binary."""
+    return ["apt-get", "install", "-y", "--no-install-recommends", "npm"]
+
+
 def pip_wheel_argv(wheel: str, prefix: str) -> list[str]:
     return [
         "python3",

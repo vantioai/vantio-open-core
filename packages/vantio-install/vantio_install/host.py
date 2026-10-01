@@ -46,6 +46,8 @@ def ready_host(**overrides: object) -> dict:
         "mem_total_kib": 16 * 1024 * 1024,
         "ifaces": {"ens5": "up"},
         "node_version": "v20.11.0",
+        "npm_version": "9.2.0",
+        "effective_uid": 0,
     }
     host.update(empty_runtime_state())
     host.update(overrides)
@@ -98,6 +100,8 @@ def probe_live() -> dict:
     host["mem_total_kib"] = _mem_total_kib()
     host["ifaces"] = _ifaces()
     host["node_version"] = _node_version()
+    host["npm_version"] = _npm_version()
+    host["effective_uid"] = os.geteuid()
     host["probe_note"] = "LIVE_READ_ONLY"
     return host
 
@@ -183,6 +187,13 @@ def _node_version() -> str | None:
     if not node:
         return None
     return _read_text([node, "--version"])
+
+
+def _npm_version() -> str | None:
+    npm = shutil.which("npm")
+    if not npm:
+        return None
+    return _read_text([npm, "--version"])
 
 
 def _read_text(argv: list[str]) -> str | None:

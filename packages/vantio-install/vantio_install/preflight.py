@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from vantio_install import constants
+from vantio_install.commands import apt_install_npm_argv, npm_version_argv
 from vantio_install.oci_load import describe_archive
 from vantio_install.manifest import (
     artifact_paths,
@@ -17,6 +18,10 @@ from vantio_install.manifest import (
 )
 
 _FORBIDDEN_CIDRS = {"0.0.0.0/0", "::/0", "0.0.0.0", "*"}
+
+NPM_PREREQUISITE = (
+    "Install the Ubuntu npm package. The nodejs package does not include the npm binary."
+)
 
 
 def _check(check_id: str, title: str, result: str, observed: dict, expected: dict, remediation: str) -> dict:
@@ -126,6 +131,45 @@ def _oci_load_check(archive: Path) -> dict:
         {"storage_driver_change": False},
         remediation,
     )
+
+
+def npm_requirement(host: dict) -> dict:
+    """Decide whether npm is present, installed by this plan, or a plan blocker.
+
+    Ubuntu 24.04's nodejs package does not ship npm. When Node.js 18 or newer
+    is already on the host and this process is root, the plan installs the
+    Ubuntu npm package. Any other missing npm stops the plan and names that
+    package.
+    """
+    version = host.get("npm_version")
+    present = isinstance(version, str) and bool(version) and version not in {"ABSENT", "UNKNOWN"}
+    node = _parse_node(host.get("node_version"))
+    node_ok = node is not None and node >= (18, 0, 0)
+    ubuntu = str(host.get("os_id", "")) == "ubuntu" and str(host.get("os_version_id", "")).startswith("24.04")
+    root = host.get("effective_uid") == 0
+    if present:
+        return {
+            "result": "PASS",
+            "action": "present",
+            "prerequisite": None,
+            "argv": npm_version_argv(),
+            "package": "npm",
+        }
+    if ubuntu and node_ok and root:
+        return {
+            "result": "PASS",
+            "action": "remediate",
+            "prerequisite": NPM_PREREQUISITE,
+            "argv": apt_install_npm_argv(),
+            "package": "npm",
+        }
+    return {
+        "result": "BLOCKED",
+        "action": "blocked",
+        "prerequisite": NPM_PREREQUISITE,
+        "argv": None,
+        "package": "npm",
+    }
 
 
 def aggregate(checks: list[dict]) -> str:
@@ -535,6 +579,27 @@ def run_preflight(
         )
     )
 
+    npm = npm_requirement(host)
+    npm_observed = {
+        "npm_version_or_absent": host.get("npm_version") or "ABSENT",
+        "action": npm["action"],
+        "package": "npm",
+    }
+    if npm["prerequisite"]:
+        npm_observed["prerequisite"] = npm["prerequisite"]
+    if npm["argv"]:
+        npm_observed["argv"] = npm["argv"]
+    checks.append(
+        _check(
+            "PF-NPM",
+            "npm is on PATH, or root on Ubuntu 24.04 will install the Ubuntu npm package",
+            npm["result"],
+            npm_observed,
+            {"npm": "present"},
+            npm["prerequisite"] or "npm is already on PATH.",
+        )
+    )
+
     enterprise = str(config.get("enterprise_inclusion", "OPTIONAL_SOURCE_ONLY_NOT_PACKAGED_AUTHORITY"))
     claims_packaged = "PACKAGED_AUTHORITY" in enterprise and "NOT_PACKAGED" not in enterprise
     checks.append(
@@ -606,6 +671,7 @@ def run_preflight(
     return {
         "overall": overall,
         "checks": checks,
+        "npm": npm,
         "limitations": limitations_from(checks),
         "failed_or_limiting_checks": [row for row in checks if row["result"] != "PASS"],
         "proof_ceiling": constants.PROOF_CEILING,

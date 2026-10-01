@@ -319,6 +319,15 @@ class LiveMutator:
         self.recorded_argv: list[list[str]] = []
 
     def apply_step(self, step_id: str, ctx: dict) -> None:
+        if step_id == "ensure_node":
+            deltas, argv = execute_step(self.grant, step_id, "apply", self.runner, self.observer)
+            for delta in deltas:
+                self._merge(delta)
+            self.recorded_argv.extend(argv)
+            self.snapshot.setdefault("recorded_argv", []).extend(argv)
+            if self.grant.npm_action == "remediate":
+                self.mutation_count += 1
+            return
         self._run(step_id, "apply")
 
     def rollback_step(self, step_id: str, ctx: dict) -> None:
