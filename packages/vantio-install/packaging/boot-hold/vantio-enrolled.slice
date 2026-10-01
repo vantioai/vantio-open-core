@@ -1,0 +1,6 @@
+[Unit]
+Description=Enrolled workloads
+DefaultDependencies=no
+Before=slices.target
+
+[Slice]

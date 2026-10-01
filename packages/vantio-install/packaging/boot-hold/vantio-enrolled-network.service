@@ -1,0 +1,13 @@
+[Unit]
+Description=Create the enrolled Docker network vantio-enrolled (10.250.250.0/24)
+After=docker.service vantio-boot-hold.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=VANTIO_BOOT_HOLD_LIVE=1
+ExecStart=/usr/bin/python3 -m vantio_install.boot_hold ensure-network
+
+[Install]
+WantedBy=multi-user.target
