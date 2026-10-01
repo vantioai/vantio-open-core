@@ -293,7 +293,7 @@ test("pin report records SHA-pinned workflow and composite actions and the seale
   assert.deepEqual(
     approvedMain.map((action) => `${action.file} ${action.uses}`),
     [
-      ".github/workflows/w3-lab-auto-provision.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@refs/heads/main # oidc-trust",
+      ".github/workflows/w3-lab-auto-provision.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust",
     ],
   );
   assert.ok(approvedMain.every((action) => action.digest_pinned === false));
