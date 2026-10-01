@@ -26,10 +26,11 @@ from vantio_install.boot_hold.graph import graph_errors, parse_unit  # noqa: E40
 from vantio_install.boot_hold.identity import Caller  # noqa: E402
 from vantio_install.boot_hold.net import commands_are_scoped  # noqa: E402
 from vantio_install.boot_hold.policy import _trusted, default_policy, load_policy, save_policy  # noqa: E402
-from vantio_install.boot_hold.readiness import evaluate_ready, probe_loader  # noqa: E402
+from vantio_install.boot_hold.readiness import evaluate_ready, perform_deny_self_check, probe_loader  # noqa: E402
 from vantio_install.boot_hold.service import (  # noqa: E402
     apply_boot,
     configure,
+    enable_from_apply,
     enroll_compose,
     enroll_docker,
     enroll_systemd,
@@ -47,6 +48,19 @@ READY = {
     "loader_cmdline": "/vantio-loader --iface ens5 --enforce --cgroup-skb-enforce",
     "loader_health": "OK",
     "bpf_programs": "cgroup_skb_egress_enforce tag abc",
+    "enforcement_attachment": {
+        "attached": True,
+        "program": "cgroup_skb_egress_enforce",
+        "cgroup": "/sys/fs/cgroup/vantio-enrolled.slice",
+    },
+    "policy_loaded": True,
+    "deny_self_check": {
+        "attempted": True,
+        "enrolled_denied": True,
+        "unenrolled_allowed": True,
+        "mechanism": "phantom-engine",
+        "hold_bypassed": True,
+    },
 }
 NOT_READY = {"bpf_pins": [], "loader_cmdline": "", "loader_health": "", "bpf_programs": ""}
 
@@ -233,6 +247,18 @@ class BootHoldTest(unittest.TestCase):
         )
         self.assertEqual(glass["audit_reason"], "BREAK_GLASS")
         self.assertEqual(glass["health"], "DEGRADED")
+        self.assertIn("packet-hold-ipv4", glass["released"])
+        self.assertIn("packet-hold-ipv6", glass["released"])
+        self.assertIn("file-hold", glass["released"])
+        self.assertIn("start-gate:stay-down.service", glass["released"])
+        cleared = (self.root / "etc/systemd/system/stay-down.service.d/vantio-boot-hold.conf").read_text(encoding="utf-8")
+        self.assertNotIn("vantio-pe-enforce-ready.service", cleared)
+        self.assertNotIn("Requires=", cleared)
+        docker_unit = (self.root / "etc/systemd/system/vantio-enrolled-docker@.service").read_text(encoding="utf-8")
+        self.assertNotIn("vantio-pe-enforce-ready.service", docker_unit)
+        audit = (self.root / "var/lib/vantio/boot-hold/audit.log").read_text(encoding="utf-8")
+        self.assertIn("start-gate:stay-down.service", audit)
+        self.assertIn("packet-hold-ipv4", audit)
         self.assertEqual(status_body(self.root)["reboot_row"], "NOT_PROVED")
         with self.assertRaises(BootHoldError):
             release(
@@ -406,6 +432,74 @@ class BootHoldTest(unittest.TestCase):
         self.assertIn("maintenance window", audit)
         mode = stat.S_IMODE((self.root / "etc/vantio/boot-hold.json").stat().st_mode)
         self.assertEqual(mode & 0o022, 0)
+
+    def test_running_loader_without_attachment_stays_held(self) -> None:
+        unattached = dict(READY)
+        unattached["enforcement_attachment"] = {"attached": False, "program": "", "cgroup": ""}
+        verdict = evaluate_ready(unattached)
+        self.assertFalse(verdict["enforce_ready"])
+        self.assertEqual(verdict["reason"], "loader-running-not-attached")
+        self.assertTrue(verdict["loader_up"])
+        self.assertTrue(verdict["program_loaded"])
+        apply_boot(self.root, self.caller, Rec(), self.python)
+        with self.assertRaises(BootHoldError) as caught:
+            release(
+                self.root,
+                self.caller,
+                Rec(),
+                require_ready=True,
+                break_glass=False,
+                operator_flag=False,
+                facts_probe=lambda: unattached,
+            )
+        self.assertIn("not attached", str(caught.exception))
+        self.assertEqual(status_body(self.root)["state"], "HELD")
+        no_deny = dict(READY)
+        no_deny["deny_self_check"] = dict(READY["deny_self_check"])
+        no_deny["deny_self_check"]["enrolled_denied"] = False
+        self.assertEqual(evaluate_ready(no_deny)["reason"], "deny-self-check-failed")
+        self.assertFalse(evaluate_ready(no_deny)["enforce_ready"])
+
+    def test_deny_self_check_requires_both_paths(self) -> None:
+        calls: list[list[str]] = []
+
+        def runner(argv: list[str]) -> int:
+            calls.append(list(argv))
+            if argv[:2] == ["iptables", "-I"]:
+                return 0
+            if "--slice" in argv and "vantio-enrolled.slice" in argv:
+                return 1
+            if "--slice" in argv and "system.slice" in argv:
+                return 0
+            return 0
+
+        result = perform_deny_self_check(runner, host="192.0.2.1", port=443, attached=True)
+        self.assertTrue(result["hold_bypassed"])
+        self.assertTrue(result["enrolled_denied"])
+        self.assertTrue(result["unenrolled_allowed"])
+        self.assertTrue(any(call[0] == "iptables" and "-D" in call for call in calls))
+        self.assertTrue(any("--path" in call and "vantio-enrolled.slice" in call for call in calls))
+        before = len(calls)
+        skipped = perform_deny_self_check(runner, host="192.0.2.1", port=443, attached=False)
+        self.assertFalse(skipped["hold_bypassed"])
+        self.assertEqual(len(calls), before)
+
+    def test_apply_enables_hold_and_keeps_opt_out(self) -> None:
+        body = enable_from_apply(self.root, self.caller, self.runner, self.python)
+        self.assertEqual(body["state"], "HELD")
+        unit = self.root / "etc/systemd/system/vantio-boot-hold.service"
+        link = self.root / "etc/systemd/system/sysinit.target.wants/vantio-boot-hold.service"
+        self.assertTrue(unit.is_file())
+        self.assertTrue(link.is_symlink())
+        self.assertTrue(any("--path" in call and "vantio-enrolled.slice" in call for call in self.runner.calls))
+        opted = self.root / "opt-out-host"
+        save_policy(opted, {"enabled": False, "hold": True, "ordering": True})
+        quiet = Rec()
+        again = enable_from_apply(opted, self.caller, quiet, self.python)
+        self.assertNotEqual(again["state"], "HELD")
+        self.assertFalse(any(len(call) > 1 and call[1] == "-I" for call in quiet.calls))
+        self.assertFalse(json.loads((opted / "etc/vantio/boot-hold.json").read_text(encoding="utf-8"))["enabled"])
+        self.assertEqual(status_body(opted)["health"], "OPTED_OUT")
 
     def test_evaluate_ready_rejects_partial_facts(self) -> None:
         self.assertTrue(evaluate_ready(READY)["enforce_ready"])

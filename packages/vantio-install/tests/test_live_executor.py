@@ -168,7 +168,7 @@ class Lab:
             return "VERIFIED" if not self.loaded and self.tagged is None else "NOT_VERIFIED"
         if op_type == "tc_clsact_del":
             return "VERIFIED" if grant.iface not in self.clsact else "NOT_VERIFIED"
-        if op_type.startswith("remove_"):
+        if op_type.startswith("remove_") or op_type in {"install_boot_hold", "remove_boot_hold"}:
             return "VERIFIED"
         return "NOT_VERIFIED"
 

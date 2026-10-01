@@ -85,8 +85,10 @@ After=vantio-boot-hold.service
 """
 
 
-def enrolled_docker_service(policy: dict) -> str:
+def enrolled_docker_service(policy: dict, *, start_gate: bool = True) -> str:
     hold, ordering = mechanisms_active(policy)
+    if not start_gate:
+        hold, ordering = False, False
     after = ["docker.service", "vantio-enrolled-network.service"]
     requires = ["docker.service", "vantio-enrolled-network.service"]
     if hold:
@@ -128,8 +130,10 @@ WantedBy=multi-user.target
 """
 
 
-def compose_service(name: str, project_dir: str, policy: dict) -> str:
+def compose_service(name: str, project_dir: str, policy: dict, *, start_gate: bool = True) -> str:
     hold, ordering = mechanisms_active(policy)
+    if not start_gate:
+        hold, ordering = False, False
     after = ["docker.service", "vantio-enrolled-network.service"]
     requires = ["docker.service", "vantio-enrolled-network.service"]
     if hold:

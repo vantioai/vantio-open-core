@@ -36,12 +36,16 @@ A PE repository change is not required for open-core to install the units. If th
 
 The boot units set `VANTIO_BOOT_HOLD_LIVE=1` so apply, release, and loader start actually touch the host. Fixture tests leave that variable unset and pass a fake root, so they record commands instead of changing packet filters. The enforce-ready unit does not set `VANTIO_BOOT_HOLD_ALLOW_FACTS` or `VANTIO_BOOT_HOLD_ALLOW_CALLER_FIXTURE`.
 
-The open-core probe treats enforce-ready as all of:
+The open-core probe treats enforce-ready as all of the following. A running loader is not enough:
 
 - a live `vantio-loader` command line containing `--enforce`
 - the pinned names `vantio_trace_map`, `vantio_enrolled_cgroups`, `vantio_debug_counters`, `vantio_debug_last_comm`, `vantio_tls_severed_pids`
-- `bpftool prog show` containing `cgroup_skb_egress_enforce`
+- `bpftool map show` containing `vantio_enforce` (policy loaded)
+- `bpftool cgroup show /sys/fs/cgroup/vantio-enrolled.slice` containing `cgroup_skb_egress_enforce` (attached, not only loaded)
 - loader health `OK` (process state R, S, or D)
+- a deny self-check: enrolled connect fails and the same connect outside the slice succeeds, after a one-destination exception in the hold chain that is removed before release
+
+A loader that is running while that cgroup show does not list the program keeps the hold.
 
 Unknown on any of those keeps the hold. The parent should confirm on the sealed loader that attaching `cgroup_skb` to `/sys/fs/cgroup/vantio-enrolled.slice` covers descendant cgroups under that slice. This note does not record that confirmation.
 

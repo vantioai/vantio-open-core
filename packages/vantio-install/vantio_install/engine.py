@@ -9,6 +9,7 @@ from pathlib import Path
 
 from vantio_install import bpf_pins, constants
 from vantio_install.errors import InstallError
+from vantio_install.boot_hold.service import status_body
 from vantio_install.health import component_template, derive
 from vantio_install.host import load_fixture, probe_live
 from vantio_install.manifest import artifact_paths, bundle_digest, load_manifest, missing_manifest_fields
@@ -509,7 +510,13 @@ def _live_grant(ctx: dict, tx: dict, tx_dir: Path, config: dict, bundle: Path, h
     )
 
 
-def _step_ctx(tx: dict, config: dict, bundle: Path, hooks: dict, observe_path: Path) -> dict:
+def _boot_hold_root(ctx: dict, state_dir: Path) -> str:
+    if ctx.get("fixture_host"):
+        return str(state_dir / "boot-hold-host")
+    return "/"
+
+
+def _step_ctx(tx: dict, config: dict, bundle: Path, hooks: dict, observe_path: Path, boot_hold_root: str) -> dict:
     return {
         "transaction_id": tx["transaction_id"],
         "config": config,
@@ -519,6 +526,7 @@ def _step_ctx(tx: dict, config: dict, bundle: Path, hooks: dict, observe_path: P
         "simulate_probe_errors": hooks.get("simulate_probe_errors") or [],
         "uninstall_leave": hooks.get("uninstall_leave") or [],
         "bpffs_root": hooks.get("bpffs_root") or "",
+        "boot_hold_root": boot_hold_root,
     }
 
 
@@ -592,7 +600,7 @@ def apply(ctx: dict) -> tuple[int, dict]:
             _move(tx, "APPLYING", stamp)
         mutator, stage, prefix = _mutator(ctx, snapshot, config, grant)
         observe_path = tx_dir / "observe-config.json"
-        step_ctx = _step_ctx(tx, config, bundle, hooks, observe_path)
+        step_ctx = _step_ctx(tx, config, bundle, hooks, observe_path, _boot_hold_root(ctx, state_dir))
         tx["mutation_in_progress"] = True
         tx["owner_pid"] = os.getpid()
         tx["phase"] = "apply"
@@ -655,6 +663,8 @@ def apply(ctx: dict) -> tuple[int, dict]:
                             "transaction_id": tx["transaction_id"],
                             "as_of_et": stamp,
                             "evidence_paths": [str(evidence)],
+                            "boot_hold": status_body(Path(step_ctx["boot_hold_root"])),
+                            "reboot_row": "NOT_PROVED",
                         }
                     )
                     write_json(tx_dir / "HEALTH.json", health)
@@ -818,7 +828,7 @@ def rollback(ctx: dict) -> tuple[int, dict]:
             _move(tx, "ROLLING_BACK", stamp)
         mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
         prefix = getattr(mutator, "prefix", _prefix)
-        step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json")
+        step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json", _boot_hold_root(ctx, ctx["state_dir"]))
         tx["mutation_in_progress"] = True
         tx["owner_pid"] = os.getpid()
         tx["phase"] = "rollback"
@@ -912,7 +922,7 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
         if tx["state"] == "INTERRUPTED" or tx["state"] in {"HEALTHY", "DEGRADED", "FAILED_SAFE"} or tx["state"] in RESIDUAL_STATES:
             _move(tx, "UNINSTALLING", stamp)
         mutator, _stage, _prefix = _mutator(ctx, snapshot, config, grant)
-        step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json")
+        step_ctx = _step_ctx(tx, config, bundle, hooks, tx_dir / "observe-config.json", _boot_hold_root(ctx, ctx["state_dir"]))
         tx["scope"] = scope
         tx["phase"] = "uninstall"
         tx["mutation_in_progress"] = True

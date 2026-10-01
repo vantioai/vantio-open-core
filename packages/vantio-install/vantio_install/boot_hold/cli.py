@@ -14,7 +14,8 @@ from vantio_install.boot_hold.errors import BootHoldError
 from vantio_install.boot_hold.graph import graph_errors
 from vantio_install.boot_hold.identity import read_host_caller
 from vantio_install.boot_hold.policy import default_policy
-from vantio_install.boot_hold.readiness import default_bpftool, probe_host
+from vantio_install.boot_hold.policy import load_policy
+from vantio_install.boot_hold.readiness import assemble_host_facts, default_bpftool, probe_host
 from vantio_install.boot_hold.service import (
     apply_boot,
     configure,
@@ -31,6 +32,7 @@ from vantio_install.boot_hold.service import (
     release,
     start_loader,
     status_body,
+    live_boot_hold_runner,
 )
 from vantio_install.boot_hold.units import static_units
 from vantio_install import constants as install_constants
@@ -65,6 +67,16 @@ def _live(root: Path) -> bool:
     return root == Path("/") and os.geteuid() == 0 and os.environ.get("VANTIO_BOOT_HOLD_LIVE") == "1"
 
 
+def _capture(argv: list[str]) -> str:
+    try:
+        completed = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout or ""
+
+
 def _facts_probe(root: Path, facts_path: str | None):
     def probe() -> dict:
         if facts_path and os.environ.get("VANTIO_BOOT_HOLD_ALLOW_FACTS") == "1":
@@ -72,7 +84,17 @@ def _facts_probe(root: Path, facts_path: str | None):
             if not isinstance(data, dict):
                 return {}
             return data
-        return probe_host(root, bpftool=default_bpftool)
+        if not _live(root):
+            return probe_host(root, bpftool=default_bpftool)
+        policy, _notes = load_policy(root)
+        return assemble_host_facts(
+            root,
+            prog_show=_capture(["bpftool", "prog", "show"]),
+            cgroup_show=_capture(["bpftool", "cgroup", "show", "/sys/fs/cgroup/vantio-enrolled.slice"]),
+            map_show=_capture(["bpftool", "map", "show"]),
+            runner=live_boot_hold_runner,
+            deny_probe=policy.get("deny_probe") if isinstance(policy.get("deny_probe"), dict) else None,
+        )
 
     return probe
 

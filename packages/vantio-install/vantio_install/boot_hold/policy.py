@@ -62,6 +62,10 @@ def load_policy(root: Path) -> tuple[dict, list[str]]:
         policy["hold"] = False
     if data.get("ordering") is False:
         policy["ordering"] = False
+    probe = data.get("deny_probe")
+    if isinstance(probe, dict) and isinstance(probe.get("host"), str) and probe.get("host") and isinstance(probe.get("port"), int):
+        if probe["host"] not in {"0.0.0.0", "::", "0.0.0.0/0", "::/0"} and 0 < int(probe["port"]) < 65536:
+            policy["deny_probe"] = {"host": probe["host"], "port": int(probe["port"])}
     notes: list[str] = []
     if policy["enabled"] is False:
         notes.append("A root admin opted out of the boot hold.")
@@ -77,6 +81,8 @@ def save_policy(root: Path, policy: dict) -> None:
     body["enabled"] = bool(policy.get("enabled", True))
     body["hold"] = bool(policy.get("hold", True))
     body["ordering"] = bool(policy.get("ordering", True))
+    if isinstance(policy.get("deny_probe"), dict):
+        body["deny_probe"] = policy["deny_probe"]
     path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(path, 0o644)
     if root == Path("/"):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -28,7 +29,13 @@ from vantio_install.boot_hold.errors import BootHoldError
 from vantio_install.boot_hold.files import allow_profile, deny_profile, dropin_text
 from vantio_install.boot_hold.identity import Caller, require_operator
 from vantio_install.boot_hold.net import install_hold, remove_hold
-from vantio_install.boot_hold.policy import load_policy, mechanisms_active, require_explicit_matrix, save_policy
+from vantio_install.boot_hold.policy import (
+    config_path,
+    load_policy,
+    mechanisms_active,
+    require_explicit_matrix,
+    save_policy,
+)
 from vantio_install.boot_hold.readiness import evaluate_ready
 from vantio_install.boot_hold.registry import (
     compose_text_gated,
@@ -42,7 +49,7 @@ from vantio_install.boot_hold.registry import (
     validate_protected_path,
     validate_unit_name,
 )
-from vantio_install.boot_hold.units import compose_service, static_units, wants_links
+from vantio_install.boot_hold.units import compose_service, enrolled_docker_service, static_units, wants_links
 
 Runner = Callable[[list[str]], int]
 
@@ -116,7 +123,15 @@ def _unit_dropin_path(root: Path, unit: str) -> Path:
     return root / "etc/systemd/system" / f"{unit}.d" / DROPIN_NAME
 
 
-def write_workload_dropins(root: Path, registry: dict, policy: dict, *, file_hold: bool, apparmor: bool) -> None:
+def write_workload_dropins(
+    root: Path,
+    registry: dict,
+    policy: dict,
+    *,
+    file_hold: bool,
+    apparmor: bool,
+    start_gate: bool = True,
+) -> None:
     hold, ordering = mechanisms_active(policy)
     for row in registry.get("workloads") or []:
         if not row.get("enrolled") or row.get("kind") != "systemd":
@@ -128,6 +143,7 @@ def write_workload_dropins(root: Path, registry: dict, policy: dict, *, file_hol
             protected_paths=list(row.get("protected_paths") or []),
             apparmor=apparmor and file_hold and hold,
             hide_paths=file_hold and hold,
+            start_gate=start_gate,
         )
         if not hold and not ordering:
             path = _unit_dropin_path(root, unit)
@@ -414,40 +430,155 @@ def release(
                 "network_hold": True,
                 "file_profile": load_hold_state(root).get("file_profile", "deny"),
                 "released": False,
-                "last_reason": "not-enforce-ready",
+                "last_reason": verdict.get("reason") or "not-enforce-ready",
             },
         )
-        body = envelope("release", "HELD", HELD_MESSAGE, health="DEGRADED", ready=verdict)
+        message = HELD_MESSAGE
+        if verdict.get("reason") == "loader-running-not-attached":
+            message += " The loader is running and enforcement is not attached, so the hold stays."
+        elif verdict.get("reason") == "deny-self-check-failed":
+            message += " The live deny check did not pass, so the hold stays."
+        body = envelope("release", "HELD", message, health="DEGRADED", ready=verdict)
         _write_json(root / HEALTH_REL, body)
         append_audit(root, caller, "release", "REFUSED", {"ready": verdict})
-        raise BootHoldError(HELD_MESSAGE, exit_code=4, state="HELD")
+        raise BootHoldError(message, exit_code=4, state="HELD")
     reason = "enforce-ready" if require_ready else "BREAK_GLASS"
-    paths = protected_paths(registry)
-    if paths:
-        _write_profile(root, allow_profile(), runner)
-    remove_hold(runner, policy)
-    write_workload_dropins(root, registry, policy, file_hold=False, apparmor=False)
-    install_tree(root, python, policy)
-    _daemon_reload(runner)
-    for row in registry.get("workloads") or []:
-        if row.get("enrolled") and row.get("kind") == "systemd":
-            _try_restart_active(runner, str(row["unit"]))
+    released = _lift_hold(
+        root,
+        registry,
+        policy,
+        runner,
+        python,
+        clear_start_gate=break_glass,
+    )
     save_hold_state(root, {"network_hold": False, "file_profile": "allow", "released": True, "last_reason": reason})
     if reason == "BREAK_GLASS":
+        released_text = ", ".join(released)
         message = (
-            "A root operator released the hold with break-glass. "
-            "The release is in the audit log. The reboot row stays NOT_PROVED."
+            "A root operator released the boot hold in one action. "
+            f"Released: {released_text}. "
+            "Start gates no longer require enforce-ready. "
+            "The audit log records that list. The reboot row stays NOT_PROVED."
         )
         health = "DEGRADED"
         state = "RELEASED"
     else:
-        message = "The hold released after Phantom Engine reported enforce-ready. The reboot row stays NOT_PROVED."
+        message = (
+            "The hold released after the enforce-ready check, including the live deny check. "
+            "The reboot row stays NOT_PROVED."
+        )
         health = "HANDOFF"
         state = "RELEASED"
-    body = envelope("release", state, message, health=health, ready=verdict, audit_reason=reason)
+    body = envelope(
+        "release",
+        state,
+        message,
+        health=health,
+        ready=verdict,
+        audit_reason=reason,
+        released=released,
+    )
     _write_json(root / HEALTH_REL, body)
-    append_audit(root, caller, "release", reason, {"ready": verdict})
+    append_audit(root, caller, "release", reason, {"ready": verdict, "released": released})
     return body
+
+
+def _lift_hold(
+    root: Path,
+    registry: dict,
+    policy: dict,
+    runner: Runner,
+    python: str,
+    *,
+    clear_start_gate: bool,
+) -> list[str]:
+    """Remove the packet hold and, on break-glass, the start dependencies."""
+
+    released = ["packet-hold-ipv4", "packet-hold-ipv6", "file-hold"]
+    if protected_paths(registry):
+        _write_profile(root, allow_profile(), runner)
+    remove_hold(runner, policy)
+    write_workload_dropins(
+        root,
+        registry,
+        policy,
+        file_hold=False,
+        apparmor=False,
+        start_gate=not clear_start_gate,
+    )
+    for row in registry.get("workloads") or []:
+        if not row.get("enrolled"):
+            continue
+        if row.get("kind") == "systemd":
+            unit = str(row["unit"])
+            if clear_start_gate:
+                released.append(f"start-gate:{unit}")
+                runner(["systemctl", "reset-failed", unit])
+            else:
+                _try_restart_active(runner, unit)
+        elif row.get("kind") == "compose" and clear_start_gate:
+            directory = Path(str(row.get("project_dir") or ""))
+            unit_name = f"vantio-enrolled-compose-{directory.name}.service"
+            unit_path = root / "etc/systemd/system" / unit_name
+            if directory.name:
+                unit_path.write_text(compose_service(directory.name, str(directory), policy, start_gate=False), encoding="utf-8")
+                released.append(f"start-gate:{unit_name}")
+                runner(["systemctl", "reset-failed", unit_name])
+    if clear_start_gate:
+        docker_unit = root / "etc/systemd/system/vantio-enrolled-docker@.service"
+        docker_unit.parent.mkdir(parents=True, exist_ok=True)
+        docker_unit.write_text(enrolled_docker_service(policy, start_gate=False), encoding="utf-8")
+        released.append("start-gate:vantio-enrolled-docker@.service")
+        for row in registry.get("workloads") or []:
+            if row.get("enrolled") and row.get("kind") == "docker":
+                unit = f"vantio-enrolled-docker@{row.get('container')}.service"
+                released.append(f"start-gate:{unit}")
+                runner(["systemctl", "reset-failed", unit])
+    else:
+        install_tree(root, python, policy)
+    _daemon_reload(runner)
+    return released
+
+
+def enable_from_apply(root: Path, caller: Caller, runner: Runner, python: str) -> dict[str, Any]:
+    """Install and enable the hold during vantio-install apply.
+
+    A trusted opt-out file is left as the admin wrote it. Apply does not
+    turn the hold back on.
+    """
+
+    if not config_path(root).exists():
+        save_policy(root, {"enabled": True, "hold": True, "ordering": True})
+    return apply_boot(root, caller, runner, python)
+
+
+def live_boot_hold_runner(argv: list[str]) -> int:
+    """Run one boot-hold command on the host. Host-wide packet changes are refused."""
+
+    allowed_root = {"iptables", "ip6tables", "apparmor_parser", "/usr/sbin/apparmor_parser", "systemctl", "systemd-run", "bpftool"}
+    if not argv or argv[0] not in allowed_root:
+        raise BootHoldError("Refusing a boot-hold command outside the enrolled hold.")
+    if argv[0] == "systemctl" and (len(argv) < 2 or argv[1] not in {"daemon-reload", "is-active", "try-restart", "reset-failed"}):
+        raise BootHoldError("Refusing a systemctl command that is not part of the boot hold.")
+    blob = " ".join(argv)
+    if "-P" in argv or "0.0.0.0/0" in blob or "::/0" in blob:
+        raise BootHoldError("Refusing a host-wide hold command.")
+    completed = subprocess.run(argv, check=False)
+    return int(completed.returncode)
+
+
+def remove_from_apply(root: Path, caller: Caller, runner: Runner) -> None:
+    """Rollback/uninstall removes units and packet rules. An opt-out file stays."""
+
+    _authorize(root, caller, "remove")
+    policy, _notes = load_policy(root)
+    remove_hold(runner, policy)
+    for rel in list(static_units("/usr/bin/python3", policy)) + list(wants_links()):
+        path = root / rel
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+    save_hold_state(root, {"network_hold": False, "file_profile": "off", "released": True, "last_reason": "removed"})
+    append_audit(root, caller, "remove", "OK", {"released": ["packet-hold-ipv4", "packet-hold-ipv6", "units"]})
 
 
 def enroll_systemd(root: Path, caller: Caller, unit: str, paths: list[str], python: str) -> dict[str, Any]:

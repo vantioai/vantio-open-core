@@ -96,6 +96,7 @@ APPLY_STEPS = (
     "stage_pe_archive",
     "docker_load",
     "write_observe_config",
+    "install_boot_hold",
     "start_pe_observe",
     "mark_applied",
     "collect_health",
@@ -109,6 +110,7 @@ HOST_MUTATION_STEPS = frozenset(
         "stage_pe_archive",
         "docker_load",
         "write_observe_config",
+        "install_boot_hold",
         "start_pe_observe",
     }
 )

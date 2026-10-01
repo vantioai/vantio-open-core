@@ -4,14 +4,16 @@ Enrolled workloads stay held from early boot until Phantom Engine is enforce-rea
 
 The hold is a host mechanism. It is installed by `vantio-boot-hold.service` before Docker and containerd start. It does not read Phantom Engine BPF pins to install itself, and it does not need the Phantom Engine container to be running. Those pins are empty after a reboot until the loader attaches.
 
-`vantio-boot-hold status` prints one JSON object. While the hold is in the packet filter and Phantom Engine is not enforce-ready, `state` is `HELD` and `health` is `DEGRADED`. The message tells you SSH is up and how a root operator releases the hold. `reboot_row` stays `NOT_PROVED`. This command does not mark a reboot exposure run as passed.
+`vantio-install apply` installs and enables this hold. You do not run a second install command to get it. A trusted opt-out file is left alone, so apply does not turn the hold back on.
+
+`vantio-boot-hold status` prints one JSON object. The same object is copied into the installer `HEALTH.json` as `boot_hold`. While the hold is in the packet filter and Phantom Engine is not enforce-ready, `state` is `HELD` and `health` is `DEGRADED`. The message tells you SSH is up and how a root operator releases the hold. `reboot_row` stays `NOT_PROVED`. This command does not mark a reboot exposure run as passed.
 
 ## What runs, and in what order
 
 1. `vantio-boot-hold.service` runs from `sysinit.target`, before `docker.service` and `containerd.service`. It creates `vantio-enrolled.slice`, loads the AppArmor profile `vantio-boot-hold` in deny mode for the protected paths you enrolled, and inserts scoped iptables and ip6tables rules.
 2. Docker starts. A drop-in orders Docker after the hold. Docker does not `Requires=` the hold, so a hold failure does not take Docker down. Enrolled containers stay stopped because their restart policy is `no`.
 3. `vantio-pe-loader.service` starts Phantom Engine after the hold and after Docker. The loader command is a root-owned JSON list in `/etc/vantio/pe-loader.argv.json`. If that file is missing, the loader unit fails and enrolled workloads stay held.
-4. `vantio-pe-enforce-ready.service` releases the hold only after the probe sees the loader process with `--enforce`, the pinned map names, the program `cgroup_skb_egress_enforce`, and loader health `OK`. If that probe fails, the unit fails, the hold stays, and enrolled units that require it stay stopped.
+4. `vantio-pe-enforce-ready.service` releases the hold only after a live check: the loader is up with `--enforce`, the pinned map names are present, policy is loaded (`vantio_enforce` is in the map list), `cgroup_skb_egress_enforce` is attached to `vantio-enrolled.slice`, loader health is OK, and a deny self-check sees the enrolled connect fail while the same connect from outside the slice succeeds. The self-check opens one scoped exception in the hold chain for that destination, then removes it. A loader that is running but not attached does not pass. If the check fails, the unit fails, the hold stays, and enrolled units that require it stay stopped. Set `deny_probe` in `/etc/vantio/boot-hold.json` to the host and port the self-check uses. Without that probe target the check does not pass and the hold stays.
 5. Enrolled workloads start from their own systemd units after enforce-ready.
 
 Ordering and the hold are both on unless a root admin changes them. You can exercise one at a time with `configure`. Turning both off is an opt-out.
@@ -114,7 +116,7 @@ Release is a root action on the host and it is written to `/var/lib/vantio/boot-
 
 - After the probe passes, `vantio-pe-enforce-ready.service` runs `vantio-boot-hold release --require-enforce-ready`.
 - If the probe fails, that command refuses and the hold stays.
-- A root operator at the console can run `vantio-boot-hold release --break-glass --i-am-root-operator`. That release is logged as `BREAK_GLASS`. Health stays `DEGRADED` because Phantom Engine was not enforce-ready.
+- A root operator at the console can run `vantio-boot-hold release --break-glass --i-am-root-operator`. That one action removes the packet hold, clears the file hold, and drops `Requires=` on enforce-ready and on the boot-hold unit for enrolled systemd, Docker, and Compose units. The audit line lists each item released, including `packet-hold-ipv4`, `packet-hold-ipv6`, `file-hold`, and `start-gate:<unit>`. Health stays `DEGRADED` because Phantom Engine was not enforce-ready. The next boot installs the hold again unless you opted out.
 
 The command refuses a caller whose cgroup is under `vantio-enrolled.slice`, a caller outside the host init namespace, and any caller who is not root. An enrolled workload cannot release the hold. There is no silent release.
 

@@ -47,13 +47,14 @@ def dropin_text(
     protected_paths: list[str],
     apparmor: bool,
     hide_paths: bool,
+    start_gate: bool = True,
 ) -> str:
     after: list[str] = []
     requires: list[str] = []
-    if hold:
+    if start_gate and hold:
         after.append("vantio-boot-hold.service")
         requires.append("vantio-boot-hold.service")
-    if ordering:
+    if start_gate and ordering:
         after.append("vantio-pe-enforce-ready.service")
         requires.append("vantio-pe-enforce-ready.service")
     lines = ["[Unit]", "Description=Vantio enrolled workload gate"]
