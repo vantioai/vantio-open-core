@@ -37,7 +37,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "lint": "node --check bin/vantio.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs && node --check bin/optics-cx.cjs",
+    "lint": "node --check bin/vantio.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs && node --check bin/optics-cx.cjs && node --check bin/ingest-url.cjs",
     "test": "node --test"
   },
   "engines": {

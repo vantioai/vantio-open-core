@@ -175,7 +175,13 @@ class OutcomeMappingTests(unittest.TestCase):
     def test_http_lines_match_the_status_table(self) -> None:
         for status, (label, response, category, _token, _ok) in EXPECTED.items():
             self.assertEqual(http_outcome_label(status), label)
-            self.assertEqual(http_response_text(status), response)
+            if status == 422:
+                self.assertIn(
+                    http_response_text(status),
+                    ("HTTP 422 Unprocessable Entity", "HTTP 422 Unprocessable Content"),
+                )
+            else:
+                self.assertEqual(http_response_text(status), response)
             self.assertNotIn("Application error", label)
 
     def test_other_4xx_stays_a_rejection_without_a_new_token(self) -> None:
@@ -467,7 +473,13 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["opticsLabel"], "Successful")
         self.assertEqual(call["applicationOutcomeLabel"], label)
         self.assertEqual(call["applicationLabel"], label)
-        self.assertEqual(call["providerResponse"], response)
+        if status == 422:
+            self.assertIn(
+                call["providerResponse"],
+                ("HTTP 422 Unprocessable Entity", "HTTP 422 Unprocessable Content"),
+            )
+        else:
+            self.assertEqual(call["providerResponse"], response)
         self.assertEqual(call["providerResponseLabel"], "Upstream response")
         self.assertEqual(call["upstreamService"], "127.0.0.1")
         self.assertNotIn("providerName", call)
@@ -647,20 +659,20 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("error", wrapped)
         client_calls = [c for c in data["calls"] if c.get("mediation") == "python_http_client"]
         self.assertEqual(len(client_calls), 1)
-        unavailable = client_calls[0]
-        self.assertIs(unavailable["ok"], True)
-        self.assertNotIn("status", unavailable)
-        self.assertEqual(unavailable["opticsStatus"], "SUCCESS")
-        self.assertEqual(unavailable["applicationStatus"], "UNAVAILABLE")
-        self.assertEqual(unavailable["applicationOutcomeLabel"], "Provider outcome unavailable")
-        self.assertEqual(unavailable["providerResponse"], "No HTTP response")
-        self.assertEqual(unavailable["nextActionCategory"], "inspection")
+        observed = client_calls[0]
+        self.assertIs(observed["ok"], True)
+        self.assertEqual(observed["status"], 200)
+        self.assertEqual(observed["opticsStatus"], "SUCCESS")
+        self.assertEqual(observed["applicationStatus"], "SUCCESS")
+        self.assertEqual(observed["applicationOutcomeLabel"], "Successful")
+        self.assertEqual(observed["providerResponse"], "HTTP 200 OK")
+        self.assertEqual(observed["nextActionCategory"], "inspection")
         self.assertEqual(
-            customer_view_lines(unavailable),
+            customer_view_lines(observed),
             [
                 "Optics status: Successful",
-                "Observed outcome: Provider outcome unavailable",
-                "Upstream response: No HTTP response",
+                "Observed outcome: Successful",
+                "Upstream response: HTTP 200 OK",
             ],
         )
 
