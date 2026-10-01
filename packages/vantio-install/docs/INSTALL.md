@@ -2,6 +2,8 @@
 
 `vantio-install` and `vantio-verify` come from the sealed wheel in `QUICKSTART.md`. Both commands are on `PATH` before you use this page. The product bundle is already on the host. The installer reads that directory. It does not fetch it.
 
+`NETWORK-TRANSFER-ALLOWLIST.md` describes the temporary copy of the sealed Phantom Engine archive onto that host.
+
 Set `iface` in the config to a network interface that is up on that host, and set `workload_roots` to absolute directories you own. `artifact_source` stays `sealed_archive`.
 
 `vantio-install plan --bundle <bundle> --config <config> --json` checks the host, the artifact hashes, and the config. It writes `PLAN.json` and `PREFLIGHT.json` under the evidence directory. It does not install Optics or start Phantom Engine.
