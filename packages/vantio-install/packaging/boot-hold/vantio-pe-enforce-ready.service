@@ -1,0 +1,15 @@
+[Unit]
+Description=Release the enrolled hold only after Phantom Engine is enforce-ready
+DefaultDependencies=no
+After=vantio-pe-loader.service vantio-boot-hold.service
+Requires=vantio-pe-loader.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=180
+Environment=VANTIO_BOOT_HOLD_LIVE=1
+ExecStart=/usr/bin/python3 -m vantio_install.boot_hold release --require-enforce-ready --wait-seconds 120
+
+[Install]
+WantedBy=multi-user.target

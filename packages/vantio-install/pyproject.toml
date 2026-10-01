@@ -32,6 +32,7 @@ classifiers = [
 [project.scripts]
 vantio-install = "vantio_install.cli:main"
 vantio-verify = "vantio_install.verifier:main"
+vantio-boot-hold = "vantio_install.boot_hold.cli:main"
 
 # Sealed sdist file set. Independent of a git checkout. The source launcher
 # under bin/ is omitted on purpose.

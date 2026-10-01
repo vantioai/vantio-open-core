@@ -11,12 +11,15 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from vantio_install import bpf_pins, constants
+from vantio_install.boot_hold.identity import read_host_caller
+from vantio_install.boot_hold.service import enable_from_apply, live_boot_hold_runner, remove_from_apply
 from vantio_install.docker_object import (
     FAILED_SAFE as DOCKER_FAILED_SAFE,
     IDEMPOTENT_ABSENT,
@@ -96,6 +99,7 @@ STEP_OPERATIONS = {
     "stage_pe_archive": ("mkdir_stage", "stage_pe_archive"),
     "docker_load": ("docker_load", "docker_tag"),
     "write_observe_config": ("mkdir_evidence", "write_observe_config", "o7_init"),
+    "install_boot_hold": ("install_boot_hold",),
     "start_pe_observe": ("tc_clsact", "write_pe_apparmor", "load_pe_apparmor", "start_pe_observe"),
 }
 
@@ -111,6 +115,7 @@ ROLLBACK_OPERATIONS = {
     "docker_load": ("docker_rmi",),
     "stage_pe_archive": ("remove_stage",),
     "write_observe_config": ("remove_observe_config", "remove_o7_record"),
+    "install_boot_hold": ("remove_boot_hold",),
     "install_agent_sdks": ("remove_sdks",),
     "install_optics_cli": ("remove_optics",),
 }
@@ -379,6 +384,8 @@ def catalog_argv(op_type: str, grant: LiveGrant) -> list[str] | None:
             pin["pe_local_tag"],
         ),
         "write_observe_config": None,
+        "install_boot_hold": None,
+        "remove_boot_hold": None,
         "o7_init": None,
         "tc_clsact": tc_clsact_argv(iface),
         "write_pe_apparmor": None,
@@ -517,6 +524,14 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
         shutil.copyfile(grant.archive, target)
         if sha256_file(target) != pin["pe_archive_sha256"]:
             _fail("The staged archive does not match the pin after copy.", failure_class="ROLLBACK_REQUIRED")
+        return
+    if op_type == "install_boot_hold":
+        if os.geteuid() == 0:
+            enable_from_apply(Path("/"), read_host_caller(), live_boot_hold_runner, sys.executable or "/usr/bin/python3")
+        return
+    if op_type == "remove_boot_hold":
+        if os.geteuid() == 0:
+            remove_from_apply(Path("/"), read_host_caller(), live_boot_hold_runner)
         return
     if op_type == "write_observe_config":
         path = confine(grant.observe_config, [grant.tx_dir])
@@ -1020,6 +1035,13 @@ class ProductionObserver:
                 if target.is_file() and sha256_file(target) == constants.FROZEN_PINS["pe_archive_sha256"]:
                     return "VERIFIED"
                 return "NOT_VERIFIED"
+            if op_type == "install_boot_hold":
+                unit = Path("/etc/systemd/system/vantio-boot-hold.service")
+                link = Path("/etc/systemd/system/sysinit.target.wants/vantio-boot-hold.service")
+                return "VERIFIED" if unit.is_file() and link.is_symlink() else "NOT_VERIFIED"
+            if op_type == "remove_boot_hold":
+                unit = Path("/etc/systemd/system/vantio-boot-hold.service")
+                return "VERIFIED" if not unit.exists() else "NOT_VERIFIED"
             if op_type == "write_observe_config":
                 payload = read_json(grant.observe_config)
                 if payload.get("enforcement") == "NOT_ENABLED" and "--enforce" not in (payload.get("cmd") or []):

@@ -1,0 +1,13 @@
+[Unit]
+Description=Start enrolled container %i after the boot gate
+After=docker.service vantio-enrolled-network.service vantio-boot-hold.service vantio-pe-enforce-ready.service
+Requires=docker.service vantio-enrolled-network.service vantio-boot-hold.service vantio-pe-enforce-ready.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/docker start %i
+ExecStop=/usr/bin/docker stop %i
+
+[Install]
+WantedBy=multi-user.target

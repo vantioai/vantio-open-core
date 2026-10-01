@@ -21,6 +21,8 @@ from vantio_install.commands import (
     observe_env,
 )
 from vantio_install.pe_apparmor import pe_apparmor_profile_path
+from vantio_install.boot_hold.identity import Caller
+from vantio_install.boot_hold.service import enable_from_apply, remove_from_apply
 from vantio_install.errors import InstallError
 from vantio_install.oci_load import OciArchiveError, materialize, plan_load
 from vantio_install.stage_remove import remove_stage_nofollow
@@ -46,6 +48,7 @@ class FixtureMutator:
             "stage_pe_archive": self._stage_pe,
             "docker_load": self._docker_load,
             "write_observe_config": self._write_config,
+            "install_boot_hold": self._install_boot_hold,
             "start_pe_observe": self._start,
         }.get(step_id)
         if handler:
@@ -58,6 +61,7 @@ class FixtureMutator:
             "stage_pe_archive": self._remove_stage,
             "docker_load": self._docker_rmi,
             "write_observe_config": self._remove_config,
+            "install_boot_hold": self._remove_boot_hold,
             "start_pe_observe": self._stop,
         }.get(step_id)
         if handler:
@@ -69,6 +73,7 @@ class FixtureMutator:
     def uninstall(self, scope: str, ctx: dict) -> None:
         leave = set(ctx.get("uninstall_leave") or [])
         if scope in {"pe", "all"}:
+            self._remove_boot_hold(ctx)
             if "container" not in leave:
                 self._stop(ctx)
             if "image" not in leave:
@@ -201,6 +206,36 @@ class FixtureMutator:
         self.snapshot["images"] = [
             row for row in self.snapshot.get("images") or [] if row.get("tag") != tag
         ]
+
+    def _boot_caller(self) -> Caller:
+        return Caller(0, 1, "vantio-install", "0::/system.slice/vantio-install.service\n", "systemd")
+
+    def _boot_runner(self, calls: list[list[str]]):
+        def run(argv: list[str]) -> int:
+            calls.append(list(argv))
+            if len(argv) >= 2 and argv[1] in {"-C", "-N", "-D", "-X"}:
+                return 1
+            if argv and argv[0] in {"apparmor_parser", "/usr/sbin/apparmor_parser"} and "-V" in argv:
+                return 1
+            return 0
+
+        return run
+
+    def _install_boot_hold(self, ctx: dict) -> None:
+        root = Path(str(ctx.get("boot_hold_root") or ""))
+        if not str(root):
+            raise InstallError("Boot hold install is missing its layout root.", exit_code=4, state="FAILED_SAFE")
+        calls: list[list[str]] = []
+        body = enable_from_apply(root, self._boot_caller(), self._boot_runner(calls), "python3")
+        self.snapshot["boot_hold"] = {"state": body.get("state"), "health": body.get("health"), "commands": calls}
+
+    def _remove_boot_hold(self, ctx: dict) -> None:
+        root = Path(str(ctx.get("boot_hold_root") or ""))
+        if not str(root):
+            return
+        calls: list[list[str]] = []
+        remove_from_apply(root, self._boot_caller(), self._boot_runner(calls))
+        self.snapshot["boot_hold"] = {"state": "REMOVED", "commands": calls}
 
     def _write_config(self, ctx: dict) -> None:
         path = Path(ctx["observe_config_path"])
@@ -335,7 +370,7 @@ class LiveMutator:
 
     def uninstall(self, scope: str, ctx: dict) -> None:
         if scope in {"pe", "all"}:
-            for step_id in ("start_pe_observe", "docker_load", "stage_pe_archive", "write_observe_config"):
+            for step_id in ("install_boot_hold", "start_pe_observe", "docker_load", "stage_pe_archive", "write_observe_config"):
                 self._run(step_id, "rollback")
         if scope in {"optics", "all"}:
             for step_id in ("install_agent_sdks", "install_optics_cli"):

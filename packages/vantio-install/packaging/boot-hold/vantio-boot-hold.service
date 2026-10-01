@@ -1,0 +1,16 @@
+[Unit]
+Description=Hold enrolled workloads before Docker and before workload services
+DefaultDependencies=no
+After=local-fs.target
+Before=docker.service containerd.service vantio-pe-loader.service
+# SSH, systemd-networkd, resolved, and SSM are not ordered behind this unit.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=30
+Environment=VANTIO_BOOT_HOLD_LIVE=1
+ExecStart=/usr/bin/python3 -m vantio_install.boot_hold apply-boot
+
+[Install]
+WantedBy=sysinit.target

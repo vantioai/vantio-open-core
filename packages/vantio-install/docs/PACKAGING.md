@@ -10,6 +10,7 @@ Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0 are pins in `
 
 - `vantio-install` calls `vantio_install.cli:main`
 - `vantio-verify` calls `vantio_install.verifier:main`
+- `vantio-boot-hold` calls `vantio_install.boot_hold.cli:main`
 
 `bin/vantio-install` is a source launcher. The sdist include list omits `bin/`. The sealed wheel's console scripts are the customer commands.
 

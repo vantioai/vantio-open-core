@@ -1,0 +1,6 @@
+[
+  "/usr/bin/docker",
+  "start",
+  "-a",
+  "vantio-pe"
+]

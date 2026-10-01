@@ -318,6 +318,46 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertTrue(replay.get("replayed"))
         self.assertEqual(len(harness.snapshot()["containers"]), 1)
 
+    def test_apply_installs_and_enables_boot_hold(self) -> None:
+        harness = self.make()
+        plan_code, plan_body = harness.run("plan")
+        self.assertEqual(plan_code, 0, plan_body)
+        code, body = harness.run("apply", yes=True)
+        self.assertEqual(code, 0, body)
+        self.assertEqual(body["state"], "HEALTHY")
+        self.assertEqual(body["enforcement"], "NOT_ENABLED")
+        layout = harness.state / "boot-hold-host"
+        self.assertTrue((layout / "etc/systemd/system/vantio-boot-hold.service").is_file())
+        self.assertTrue((layout / "etc/systemd/system/sysinit.target.wants/vantio-boot-hold.service").is_symlink())
+        health = json.loads(harness.tx_file("HEALTH.json").read_text(encoding="utf-8"))
+        self.assertEqual(health["reboot_row"], "NOT_PROVED")
+        self.assertEqual(health["boot_hold"]["state"], "HELD")
+        self.assertEqual(health["boot_hold"]["reboot_row"], "NOT_PROVED")
+        joined = " ".join(" ".join(item) for item in harness.snapshot()["boot_hold"]["commands"])
+        self.assertIn("--path vantio-enrolled.slice", joined)
+        self.assertNotIn("0.0.0.0/0", joined)
+
+    def test_apply_honors_boot_hold_opt_out(self) -> None:
+        harness = self.make()
+        layout = harness.state / "boot-hold-host"
+        config = layout / "etc/vantio/boot-hold.json"
+        config.parent.mkdir(parents=True)
+        config.write_text(
+            json.dumps({"enabled": False, "hold": True, "ordering": True, "cgroup_slice": "vantio-enrolled.slice", "enrolled_subnet_v4": "10.250.250.0/24", "enrolled_subnet_v6": "fd76:616e:7469::/64"})
+            + "\n",
+            encoding="utf-8",
+        )
+        os.chmod(config, 0o644)
+        code, body = harness.run("plan")
+        self.assertEqual(code, 0, body)
+        code, body = harness.run("apply", yes=True)
+        self.assertEqual(code, 0, body)
+        health = json.loads(harness.tx_file("HEALTH.json").read_text(encoding="utf-8"))
+        self.assertEqual(health["boot_hold"]["health"], "OPTED_OUT")
+        self.assertFalse(json.loads(config.read_text(encoding="utf-8"))["enabled"])
+        joined = " ".join(" ".join(item) for item in harness.snapshot()["boot_hold"]["commands"])
+        self.assertNotIn(" -I ", f" {joined} ")
+
     def test_interrupted_resume_and_digest_mismatch(self) -> None:
         harness = self.make()
         harness.run("plan")

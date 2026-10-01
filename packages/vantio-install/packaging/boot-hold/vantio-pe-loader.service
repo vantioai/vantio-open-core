@@ -1,0 +1,16 @@
+[Unit]
+Description=Start Phantom Engine as early as the enrolled hold allows
+DefaultDependencies=no
+After=local-fs.target vantio-boot-hold.service docker.service
+Wants=docker.service
+Before=vantio-pe-enforce-ready.service
+
+[Service]
+Type=simple
+Restart=no
+Environment=VANTIO_BOOT_HOLD_LIVE=1
+ExecStart=/usr/bin/python3 -m vantio_install.boot_hold start-loader
+ExecStop=/bin/kill -TERM $MAINPID
+
+[Install]
+WantedBy=multi-user.target
