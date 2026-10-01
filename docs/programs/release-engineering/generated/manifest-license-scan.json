@@ -3,6 +3,12 @@
   "findings": [
     {
       "accepted": false,
+      "id": "license-missing:deploy/docker/package.json",
+      "name": "vantio-optics-observe-example",
+      "path": "deploy/docker/package.json"
+    },
+    {
+      "accepted": false,
       "id": "license-missing:package.json",
       "name": "vantio-open-core",
       "path": "package.json"
@@ -105,6 +111,7 @@
     }
   ],
   "scanned": [
+    "deploy/docker/package.json",
     "extensions/vantio-optics/package.json",
     "package.json",
     "packages/governance-assurance/package.json",

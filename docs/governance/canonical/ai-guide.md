@@ -9,7 +9,7 @@ Use this guide when editing Vantio Optics documentation in this repository. Pack
     "@vantio/agent-sdk": "0.2.4",
     "vantio-agent-sdk": "3.1.0",
     "@vantio/optics-mcp": "0.1.2",
-    "@vantio/gate-mcp": "0.1.0",
+    "@vantio/gate-mcp": "0.1.1",
     "vantio-optics": "0.1.0",
     "@vantio/optics-evidence-contract": "0.0.0-unstable-pre-1.0"
   }

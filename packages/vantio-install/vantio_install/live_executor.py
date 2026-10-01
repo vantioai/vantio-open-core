@@ -70,6 +70,7 @@ from vantio_install.optics_cli import (
 from vantio_install.paths import assert_safe_root
 from vantio_install.state_machine import RESIDUAL_STATES
 from vantio_install.preflight import run_preflight
+from vantio_install.stage_remove import remove_stage_nofollow
 from vantio_install.util import read_json, sha256_file, write_json
 
 _ENV_GATE = "VANTIO_INSTALL_ALLOW_LIVE"
@@ -244,14 +245,14 @@ def _env_open(env: dict[str, str]) -> bool:
 
 
 def _privilege_ok(host: dict, euid: int) -> bool:
-    if euid == 0:
-        return True
-    mode = str(host.get("privilege_mode", "UNKNOWN"))
-    if mode == "sudo" and host.get("sudo_available") is True:
-        return True
-    if mode == "docker_group" and host.get("principal_can_talk_to_docker") is True:
-        return True
-    return False
+    """Live mutations require effective root.
+
+    ``privilege_mode`` ``sudo`` means ``sudo`` is on ``PATH``. ``docker_group``
+    means this principal can write the Docker socket. Neither fact is a grant,
+    and this function does not exec sudo.
+    """
+    del host
+    return euid == 0
 
 
 def _iface_ok(host: dict, iface: str) -> bool:
@@ -485,9 +486,7 @@ def _filesystem(op_type: str, grant: LiveGrant) -> None:
         )
         return
     if op_type == "remove_stage":
-        if grant.stage.exists():
-            confine(grant.stage, [grant.stage.parent])
-            shutil.rmtree(grant.stage)
+        remove_stage_nofollow(grant.stage)
         return
     if op_type == "remove_observe_config":
         path = confine(grant.observe_config, [grant.tx_dir])
@@ -708,7 +707,10 @@ def authorize_live(
             failure_class="FAILED_SAFE",
         )
     if not _privilege_ok(host, euid):
-        _fail("Live mutations need root or the documented sudo or docker privilege.", failure_class="FAILED_SAFE")
+        _fail(
+            "Live mutations need effective root. sudo on PATH is not privilege.",
+            failure_class="FAILED_SAFE",
+        )
     if not _observe_only(config):
         _fail("Live mutations run observe-only. Enforcement stays off.", failure_class="FAILED_SAFE")
     arch = str(host.get("uname_m", "UNKNOWN"))

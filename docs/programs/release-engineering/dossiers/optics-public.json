@@ -356,12 +356,12 @@
             "selector_is_integrity": false
           },
           "distribution": "public",
-          "filename": "@vantio-gate-mcp-0.1.0.source",
+          "filename": "@vantio-gate-mcp-0.1.1.source",
           "hash_status": "UNRECORDED",
           "role": "source-tree",
           "sha256": null,
           "source_commit": "UNRECORDED",
-          "version": "0.1.0"
+          "version": "0.1.1"
         }
       ],
       "clean_env": {
@@ -369,8 +369,8 @@
       },
       "distribution": "public",
       "docs_gate": {
-        "docs_version": "0.1.0",
-        "manifest_version": "0.1.0",
+        "docs_version": "0.1.1",
+        "manifest_version": "0.1.1",
         "status": "MATCH"
       },
       "ordinary_client": {
@@ -386,10 +386,10 @@
         "from_version": null,
         "rollback_sha256": null,
         "to_sha256": null,
-        "to_version": "0.1.0",
+        "to_version": "0.1.1",
         "verified": false
       },
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "artifacts": [
