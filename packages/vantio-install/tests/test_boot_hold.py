@@ -28,6 +28,7 @@ from vantio_install.boot_hold.net import commands_are_scoped  # noqa: E402
 from vantio_install.boot_hold.policy import _trusted, default_policy, load_policy, save_policy  # noqa: E402
 from vantio_install.boot_hold.lifecycle import enforcement_lifecycle  # noqa: E402
 from vantio_install.boot_hold.readiness import (  # noqa: E402
+    assemble_host_facts,
     attachment_from_log,
     evaluate_ready,
     new_block_count,
@@ -47,12 +48,15 @@ from vantio_install.boot_hold.service import (  # noqa: E402
     loader_argv,
     observe_unenrolled,
     opt_out,
+    observe_profile_path,
     prepare_enforce,
     release,
+    reload_observe_profile,
     status_body,
 )
 from vantio_install.boot_hold.units import static_units  # noqa: E402
 from vantio_install.constants import PROOF_CEILING, PROOF_STATE  # noqa: E402
+from vantio_install.pe_apparmor import profile_text  # noqa: E402
 
 READY = {
     "bpf_pins": list(BPF_PINS),
@@ -434,6 +438,12 @@ class BootHoldTest(unittest.TestCase):
         ready = units["etc/systemd/system/vantio-pe-enforce-ready.service"]
         self.assertIn("--require-enforce-ready", ready)
         self.assertIn("Requires=vantio-pe-loader.service", ready)
+        loader = units["etc/systemd/system/vantio-pe-loader.service"]
+        self.assertIn("After=local-fs.target apparmor.service vantio-boot-hold.service docker.service", loader)
+        self.assertIn("Restart=on-failure", loader)
+        self.assertIn("StartLimitBurst=5", loader)
+        self.assertNotIn("Restart=no", loader)
+        self.assertIn("vantio-boot-hold.service", loader)
 
     def test_loader_argv_missing_does_not_release(self) -> None:
         apply_boot(self.root, self.caller, Rec(), self.python)
@@ -853,6 +863,94 @@ class EnforceReadyRegressions(unittest.TestCase):
     def test_probe_interface_names_fit_ifnamesiz(self) -> None:
         self.assertLessEqual(len(HOST_IFACE), 15)
         self.assertLessEqual(len(PEER_IFACE), 15)
+
+    def test_stale_loader_log_is_not_attachment_without_a_process(self) -> None:
+        root = self_root()
+        log = "\n".join(
+            [
+                "tc enforce : SCOPED (drop enrolled) iface 'ens5'",
+                "Path enforce maps loaded: 1 exact",
+                "cgroup_skb: attached to cgroup id=1 path=/sys/fs/cgroup/vantio.slice/vantio-enrolled.slice",
+            ]
+        )
+        facts = assemble_host_facts(
+            root,
+            prog_show="",
+            cgroup_show="",
+            map_show="",
+            loader_log=log,
+            pins_current=False,
+        )
+        self.assertEqual(facts["loader_cmdline"], "")
+        self.assertFalse(facts["enforcement_attachment"]["attached"])
+        self.assertEqual(facts["enforce_mode"], "")
+        self.assertNotIn("cgroup_skb_egress_enforce", facts["bpf_programs"])
+        self.assertFalse(facts["policy_loaded"])
+        verdict = evaluate_ready(facts)
+        self.assertFalse(verdict["enforce_ready"])
+        self.assertFalse(verdict["program_attached"])
+        self.assertFalse(verdict["loader_up"])
+
+    def test_live_loader_still_accepts_the_attach_line(self) -> None:
+        root = self_root()
+        proc = root / "proc" / "42"
+        proc.mkdir(parents=True)
+        (proc / "cmdline").write_bytes(b"/vantio-loader\x00--enforce\x00--iface\x00ens5\x00")
+        (proc / "stat").write_text("42 (vantio-loader) S 1 1 1\n", encoding="utf-8")
+        log = "cgroup_skb: attached to cgroup id=1 path=/sys/fs/cgroup/vantio.slice/vantio-enrolled.slice\n"
+        facts = assemble_host_facts(root, prog_show="", cgroup_show="", map_show="", loader_log=log)
+        self.assertTrue(facts["enforcement_attachment"]["attached"])
+        self.assertIn("vantio-loader", facts["loader_cmdline"])
+
+    def test_reboot_reloads_the_durable_observe_profile(self) -> None:
+        root = self_root()
+        stage = root / "var/lib/vantio/pe-stage"
+        profile = stage / "apparmor" / "vantio-pe-observe"
+        profile.parent.mkdir(parents=True)
+        profile.write_text(profile_text(), encoding="utf-8")
+        config = root / "var/lib/vantio/config"
+        config.mkdir(parents=True)
+        (config / "observe.json").write_text(
+            json.dumps({"stage_dir": "/var/lib/vantio/pe-stage"}),
+            encoding="utf-8",
+        )
+        calls: list[list[str]] = []
+
+        def runner(argv: list[str]) -> int:
+            calls.append(list(argv))
+            return 0
+
+        body = reload_observe_profile(root, runner)
+        self.assertTrue(body["loaded"])
+        self.assertEqual(calls, [["apparmor_parser", "-Kr", str(profile)]])
+        self.assertEqual(observe_profile_path(root), profile)
+
+    def test_profile_reload_refuses_a_symlink_or_a_changed_profile(self) -> None:
+        root = self_root()
+        stage = root / "var/lib/vantio/pe-stage" / "apparmor"
+        stage.mkdir(parents=True)
+        target = root / "other-profile"
+        target.write_text(profile_text(), encoding="utf-8")
+        link = stage / "vantio-pe-observe"
+        link.symlink_to(target)
+        with self.assertRaises(BootHoldError) as missing:
+            reload_observe_profile(root, lambda _argv: 0)
+        self.assertIn("not on disk", str(missing.exception))
+        link.unlink()
+        link.write_text(profile_text() + "\n# changed\n", encoding="utf-8")
+        with self.assertRaises(BootHoldError) as changed:
+            reload_observe_profile(root, lambda _argv: 0)
+        self.assertIn("does not match", str(changed.exception))
+
+    def test_profile_reload_failure_does_not_count_as_loaded(self) -> None:
+        root = self_root()
+        profile = root / "var/lib/vantio/pe-stage" / "apparmor" / "vantio-pe-observe"
+        profile.parent.mkdir(parents=True)
+        profile.write_text(profile_text(), encoding="utf-8")
+        with self.assertRaises(BootHoldError) as caught:
+            reload_observe_profile(root, lambda _argv: 1)
+        self.assertIn("did not load", str(caught.exception))
+        self.assertEqual(caught.exception.state, "HELD")
 
     def test_policy_id_ignores_unrelated_flags(self) -> None:
         self.assertEqual(

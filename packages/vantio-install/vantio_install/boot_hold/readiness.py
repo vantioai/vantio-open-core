@@ -469,13 +469,20 @@ def assemble_host_facts(
     del deny_probe
     pins = probe_pins(root)
     cmdline, health = probe_loader(root)
+    # Docker keeps the previous container log, and events.ndjson stays on disk
+    # after the process is gone. Those lines are not a live attachment.
+    loader_live = "vantio-loader" in cmdline
+    live_log = loader_log if loader_live else ""
     attachment = attachment_from_show(cgroup_show)
     if not attachment["attached"]:
-        attachment = attachment_from_log(loader_log)
+        attachment = attachment_from_log(live_log)
     pins_complete = all(name in pins for name in BPF_PINS)
-    mode = enforce_mode_from_log(loader_log)
+    mode = enforce_mode_from_log(live_log)
     policy_loaded = policy_from_maps(map_show, pins_complete) or (
-        pins_complete and mode in {"scoped", "node-wide"} and "Path enforce maps loaded:" in loader_log
+        loader_live
+        and pins_complete
+        and mode in {"scoped", "node-wide"}
+        and "Path enforce maps loaded:" in live_log
     )
     loaded_policy_id = policy_id_from_cmdline(cmdline)
     programs = prog_show

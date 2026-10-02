@@ -1656,6 +1656,123 @@ class LiveExecutorTests(unittest.TestCase):
             self.assertTrue(all(row["docker_object"] == "IDEMPOTENT_ABSENT" for row in verified), command)
             self.assertTrue(all(row["docker_exit_code"] == 1 for row in verified), command)
 
+    def _tc_completed(self, code: int, out: str, err: str = "", *, text: bool):
+        if text:
+            return type("Completed", (), {"returncode": code, "stdout": out, "stderr": err})()
+        return type("Completed", (), {"returncode": code, "stdout": out.encode(), "stderr": err.encode()})()
+
+    def test_absent_clsact_delete_reaches_verified(self) -> None:
+        """A reboot leaves no clsact qdisc. tc qdisc del then exits non-zero.
+
+        That exit used to stop uninstall at FAILED_SAFE even though the qdisc
+        was already gone. Removal is verified only when show confirms absence.
+        """
+
+        harness, grant = self._rolling_grant("UNINSTALLING", "uninstall")
+        iface = grant.iface
+        calls: list[list[str]] = []
+
+        def fake_run(argv, **kwargs):
+            argv = list(argv)
+            calls.append(argv)
+            text = bool(kwargs.get("text"))
+            if argv[:4] == ["tc", "filter", "del", "dev"] and argv[4] == iface:
+                return self._tc_completed(2, "", "Error: Filter not found.", text=text)
+            if argv[:5] == ["tc", "qdisc", "show", "dev", iface]:
+                return self._tc_completed(0, "", text=text)
+            if argv[:5] == ["tc", "qdisc", "del", "dev", iface] and argv[-1] == "clsact":
+                return self._tc_completed(2, "", "Error: Cannot find specified qdisc.\n", text=text)
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor.subprocess.run", fake_run):
+            dispatch(grant, "tc_clsact_del", None, runner=None, observer=ProductionObserver())
+        self.assertEqual(calls[0][:5], ["tc", "filter", "del", "dev", iface])
+        self.assertEqual(calls[0][-1], "egress")
+        self.assertEqual(calls[1][-1], "ingress")
+        self.assertEqual(calls[2][:3], ["tc", "qdisc", "del"])
+        ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
+        verified = [row for row in ops if row.get("phase") == "VERIFIED"]
+        self.assertEqual([row["op"] for row in verified], ["tc_clsact_del"])
+        self.assertEqual(verified[0]["docker_object"], "IDEMPOTENT_ABSENT")
+        self.assertEqual(verified[0]["docker_exit_code"], 2)
+        self.assertFalse(any(row.get("phase") == "FAILED_SAFE" for row in ops))
+
+    def test_clsact_delete_detaches_before_the_qdisc_goes(self) -> None:
+        harness, grant = self._rolling_grant("UNINSTALLING", "uninstall")
+        iface = grant.iface
+        state = {"clsact": True, "egress": False, "ingress": False}
+        calls: list[list[str]] = []
+
+        def fake_run(argv, **kwargs):
+            argv = list(argv)
+            calls.append(argv)
+            text = bool(kwargs.get("text"))
+            if argv[:4] == ["tc", "filter", "del", "dev"] and argv[4] == iface and argv[-1] in {"egress", "ingress"}:
+                state[argv[-1]] = True
+                return self._tc_completed(0, "", text=text)
+            if argv[:5] == ["tc", "qdisc", "show", "dev", iface]:
+                body = f"qdisc clsact 0: dev {iface}\n" if state["clsact"] else ""
+                return self._tc_completed(0, body, text=text)
+            if argv[:5] == ["tc", "qdisc", "del", "dev", iface] and argv[-1] == "clsact":
+                if not (state["egress"] and state["ingress"]):
+                    return self._tc_completed(2, "", "RTNETLINK answers: Device or resource busy", text=text)
+                state["clsact"] = False
+                return self._tc_completed(0, "", text=text)
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor.subprocess.run", fake_run):
+            dispatch(grant, "tc_clsact_del", None, runner=None, observer=ProductionObserver())
+        self.assertFalse(state["clsact"])
+        self.assertLess(calls.index(["tc", "filter", "del", "dev", iface, "egress"]), calls.index(["tc", "qdisc", "del", "dev", iface, "clsact"]))
+        ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(any(row["op"] == "tc_clsact_del" and row["phase"] == "VERIFIED" for row in ops))
+
+    def test_clsact_that_remains_after_detach_is_not_verified(self) -> None:
+        harness, grant = self._rolling_grant("UNINSTALLING", "uninstall")
+        iface = grant.iface
+
+        def fake_run(argv, **kwargs):
+            argv = list(argv)
+            text = bool(kwargs.get("text"))
+            if argv[:4] == ["tc", "filter", "del", "dev"]:
+                return self._tc_completed(0, "", text=text)
+            if argv[:5] == ["tc", "qdisc", "show", "dev", iface]:
+                return self._tc_completed(0, f"qdisc clsact 0: dev {iface}\n", text=text)
+            if argv[:5] == ["tc", "qdisc", "del", "dev", iface]:
+                return self._tc_completed(2, "", "RTNETLINK answers: Device or resource busy", text=text)
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor.subprocess.run", fake_run):
+            with self.assertRaises(InstallError) as caught:
+                dispatch(grant, "tc_clsact_del", None, runner=None, observer=ProductionObserver())
+        self.assertEqual(caught.exception.failure_class, "FAILED_SAFE")
+        self.assertIn("tc_clsact_del", str(caught.exception))
+        ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(any(row["op"] == "tc_clsact_del" and row["phase"] == "FAILED_SAFE" for row in ops))
+        self.assertFalse(any(row.get("phase") == "VERIFIED" for row in ops))
+
+    def test_failed_qdisc_show_does_not_count_as_clsact_absent(self) -> None:
+        harness, grant = self._rolling_grant("UNINSTALLING", "uninstall")
+        iface = grant.iface
+
+        def fake_run(argv, **kwargs):
+            argv = list(argv)
+            text = bool(kwargs.get("text"))
+            if argv[:4] == ["tc", "filter", "del", "dev"]:
+                return self._tc_completed(0, "", text=text)
+            if argv[:5] == ["tc", "qdisc", "show", "dev", iface]:
+                return self._tc_completed(1, "", "Cannot find device", text=text)
+            if argv[:5] == ["tc", "qdisc", "del", "dev", iface]:
+                return self._tc_completed(1, "", "Cannot find device", text=text)
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor.subprocess.run", fake_run):
+            with self.assertRaises(InstallError) as caught:
+                dispatch(grant, "tc_clsact_del", None, runner=None, observer=ProductionObserver())
+        self.assertEqual(caught.exception.failure_class, "FAILED_SAFE")
+        ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertFalse(any(row.get("phase") == "VERIFIED" for row in ops))
+
     def test_rm_that_leaves_the_container_records_residual(self) -> None:
         harness, grant = self._rolling_grant("ROLLING_BACK", "rollback")
         name = grant.container_name

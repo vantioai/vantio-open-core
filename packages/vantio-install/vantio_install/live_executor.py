@@ -50,6 +50,7 @@ from vantio_install.commands import (
     pip_wheel_argv,
     tc_clsact_argv,
     tc_clsact_del_argv,
+    tc_filter_del_argv,
 )
 from vantio_install.pe_apparmor import (
     OBSERVE_INSPECT_FORMAT,
@@ -684,6 +685,8 @@ def dispatch(
     if expected is not None:
         if op_type == "docker_load":
             _materialize_load(grant)
+        if op_type == "tc_clsact_del":
+            _detach_iface_filters(grant.iface, timeout, runner)
         result = run_allowlisted(expected, timeout, runner)
         if runner is None:
             result = _recover_absent_target(op_type, grant, result)
@@ -1358,6 +1361,10 @@ def _recover_absent_target(op_type: str, grant: LiveGrant, result: ExecResult) -
     """
     if result.timed_out:
         return result
+    if op_type == "tc_clsact_del" and result.returncode != 0:
+        if _clsact_confirmed_absent(grant.iface):
+            result.disposition = IDEMPOTENT_ABSENT
+        return result
     if op_type in {"docker_stop", "docker_rm"}:
         inspection = inspect_container(grant.container_name)
         result.disposition = classify_docker_object_operation(
@@ -1413,3 +1420,43 @@ def _tc_has_clsact(iface: str) -> str:
     if text and "clsact" in text:
         return "VERIFIED"
     return "NOT_VERIFIED"
+
+
+def _clsact_confirmed_absent(iface: str) -> bool:
+    """True only when qdisc show succeeded and did not list clsact.
+
+    A failed show is not absence. Uninstall must not treat that as removed.
+    """
+
+    if not _IFACE.fullmatch(iface):
+        return False
+    argv = ["tc", "qdisc", "show", "dev", iface]
+    checked = reject_argv(argv)
+    try:
+        completed = subprocess.run(
+            checked,
+            shell=False,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if completed.returncode != 0:
+        return False
+    return "clsact" not in (completed.stdout or "")
+
+
+def _detach_iface_filters(iface: str, timeout: int, runner) -> None:
+    """Drop egress and ingress filters before deleting clsact.
+
+    Their exit status is not success. A missing filter is normal after a
+    reboot. If the qdisc is still present after the delete, the host check
+    fails closed.
+    """
+
+    if not _IFACE.fullmatch(iface):
+        return
+    for direction in ("egress", "ingress"):
+        run_allowlisted(tc_filter_del_argv(iface, direction), timeout, runner)
