@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vantio_install import bpf_pins, constants
-from vantio_install.boot_hold.constants import HEALTH_REL
+from vantio_install.boot_hold.constants import ENFORCE_CONTAINER_REL, HEALTH_REL
 from vantio_install.boot_hold.identity import read_host_caller
 from vantio_install.boot_hold.service import enable_from_apply, live_boot_hold_runner, remove_from_apply
 from vantio_install.docker_object import (
@@ -97,6 +97,7 @@ from vantio_install.util import read_json, sha256_file, write_json
 
 _ENV_GATE = "VANTIO_INSTALL_ALLOW_LIVE"
 _IFACE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,14}$")
+_ENFORCE_CONTAINER_NAME = re.compile(r"^vantio-pe(?:-[A-Za-z0-9][A-Za-z0-9_.-]{0,40})?$")
 _SHELLS = {"sh", "bash", "dash", "zsh", "busybox", "sudo", "su"}
 _META = (";", "|", "&", "`", "$(", "\n", "\r", ">", "<")
 _ALLOWED_EXE = {"mkdir", "npm", "python3", "docker", "tc", "apparmor_parser", "apt-get"}
@@ -687,6 +688,8 @@ def dispatch(
             _materialize_load(grant)
         if op_type == "tc_clsact_del":
             _detach_iface_filters(grant.iface, timeout, runner)
+        if op_type == "docker_stop":
+            _stop_recorded_enforce_container(grant, timeout, runner)
         result = run_allowlisted(expected, timeout, runner)
         if runner is None:
             result = _recover_absent_target(op_type, grant, result)
@@ -1446,6 +1449,42 @@ def _clsact_confirmed_absent(iface: str) -> bool:
     if completed.returncode != 0:
         return False
     return "clsact" not in (completed.stdout or "")
+
+
+def _recorded_enforce_container() -> str:
+    """Name prepare-enforce wrote. Anything else is not stopped from here."""
+
+    path = Path("/") / ENFORCE_CONTAINER_REL
+    try:
+        name = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if _ENFORCE_CONTAINER_NAME.fullmatch(name) is None:
+        return ""
+    return name
+
+
+def _stop_recorded_enforce_container(grant: LiveGrant, timeout: int, runner) -> None:
+    """Stop the enforce container before the image delete.
+
+    prepare-enforce starts ``vantio-pe`` and the loader unit keeps that name.
+    The transaction container is the observe name, which is already gone, so
+    ``docker rmi`` fails while ``vantio-pe`` is still running.
+    """
+
+    if runner is not None:
+        return
+    name = _recorded_enforce_container()
+    if not name or name == grant.container_name:
+        return
+    for argv in (["docker", "stop", name], ["docker", "rm", name]):
+        run_allowlisted(argv, timeout, runner)
+    inspection = inspect_container(name)
+    if inspection.state != "absent":
+        _fail(
+            "The enforce container is still on the host, so the image is not removed.",
+            failure_class="FAILED_SAFE",
+        )
 
 
 def _detach_iface_filters(iface: str, timeout: int, runner) -> None:

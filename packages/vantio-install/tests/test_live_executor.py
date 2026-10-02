@@ -1773,6 +1773,75 @@ class LiveExecutorTests(unittest.TestCase):
         ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertFalse(any(row.get("phase") == "VERIFIED" for row in ops))
 
+    def test_uninstall_stops_the_enforce_container_before_the_image(self) -> None:
+        harness, grant = self._rolling_grant("UNINSTALLING", "uninstall")
+        tx_name = grant.container_name
+        self.assertNotEqual(tx_name, "vantio-pe")
+        calls: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            argv = list(argv)
+            calls.append(argv)
+            absent = b"Error response from daemon: no such object: " + argv[-1].encode() + b"\n"
+            if argv[:2] == ["docker", "stop"] and argv[-1] == "vantio-pe":
+                return type("Completed", (), {"returncode": 0, "stdout": b"vantio-pe\n", "stderr": b""})()
+            if argv[:2] == ["docker", "rm"] and argv[-1] == "vantio-pe":
+                return type("Completed", (), {"returncode": 0, "stdout": b"vantio-pe\n", "stderr": b""})()
+            if argv[:2] == ["docker", "inspect"]:
+                return type("Completed", (), {"returncode": 1, "stdout": b"", "stderr": absent})()
+            if argv[:2] in (["docker", "stop"], ["docker", "rm"]) and argv[-1] == tx_name:
+                return type("Completed", (), {"returncode": 1, "stdout": b"", "stderr": absent})()
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor._recorded_enforce_container", return_value="vantio-pe"):
+            with patch("vantio_install.live_executor.subprocess.run", fake_run):
+                with patch("vantio_install.docker_object.subprocess.run", fake_run):
+                    dispatch(grant, "docker_stop", None, runner=None, observer=ProductionObserver())
+        stop_at = calls.index(["docker", "stop", "vantio-pe"])
+        rm_at = calls.index(["docker", "rm", "vantio-pe"])
+        tx_at = calls.index(["docker", "stop", tx_name])
+        self.assertLess(stop_at, rm_at)
+        self.assertLess(rm_at, tx_at)
+        ops = [json.loads(line) for line in harness.tx_file("LIVE-OPS.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(any(row["op"] == "docker_stop" and row["phase"] == "VERIFIED" for row in ops))
+
+    def test_enforce_container_that_remains_blocks_uninstall(self) -> None:
+        _harness, grant = self._rolling_grant("UNINSTALLING", "uninstall")
+        body = json.dumps(
+            {"Name": "/vantio-pe", "State": {"Running": True, "Status": "running"}, "Config": {"Labels": {}}}
+        ).encode()
+
+        def fake_run(argv, **_kwargs):
+            argv = list(argv)
+            if argv[:2] == ["docker", "stop"] and argv[-1] == "vantio-pe":
+                return type("Completed", (), {"returncode": 0, "stdout": b"vantio-pe\n", "stderr": b""})()
+            if argv[:2] == ["docker", "rm"] and argv[-1] == "vantio-pe":
+                return type("Completed", (), {"returncode": 1, "stdout": b"", "stderr": b"Error: container is running"})()
+            if argv[:2] == ["docker", "inspect"] and argv[-1] == "vantio-pe":
+                return type("Completed", (), {"returncode": 0, "stdout": body, "stderr": b""})()
+            raise AssertionError(argv)
+
+        with patch("vantio_install.live_executor._recorded_enforce_container", return_value="vantio-pe"):
+            with patch("vantio_install.live_executor.subprocess.run", fake_run):
+                with patch("vantio_install.docker_object.subprocess.run", fake_run):
+                    with self.assertRaises(InstallError) as caught:
+                        dispatch(grant, "docker_stop", None, runner=None, observer=ProductionObserver())
+        self.assertEqual(caught.exception.failure_class, "FAILED_SAFE")
+        self.assertIn("enforce container", str(caught.exception))
+
+    def test_recorded_enforce_name_rejects_other_containers(self) -> None:
+        from vantio_install.live_executor import _recorded_enforce_container
+
+        root = Path(tempfile.mkdtemp(prefix="vantio-enforce-name-"))
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        path = root / "enforce-container-name"
+        path.write_text("ubuntu\n", encoding="utf-8")
+        with patch("vantio_install.live_executor.ENFORCE_CONTAINER_REL", str(path)):
+            self.assertEqual(_recorded_enforce_container(), "")
+        path.write_text("vantio-pe\n", encoding="utf-8")
+        with patch("vantio_install.live_executor.ENFORCE_CONTAINER_REL", str(path)):
+            self.assertEqual(_recorded_enforce_container(), "vantio-pe")
+
     def test_rm_that_leaves_the_container_records_residual(self) -> None:
         harness, grant = self._rolling_grant("ROLLING_BACK", "rollback")
         name = grant.container_name
