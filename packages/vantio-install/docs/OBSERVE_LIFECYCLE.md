@@ -9,7 +9,7 @@ A successful observe install has all of these at the same time:
 - The container status is `running`, the host pid is greater than 0, and the AppArmor profile is `vantio-pe-observe`.
 - That pid's command is `vantio-loader` for the interface in the plan, without `--enforce`.
 - The five known bpffs pins exist, and each one's mtime is at or after this container's start. Pins left by an earlier install do not count.
-- The clsact qdisc is on that interface, and a bpf filter is attached on egress.
+- The clsact qdisc is on that interface. The egress program is attached. On kernel 7 the sealed loader attaches it with tcx, so `tc filter show` can be empty. The loader prints the audit banner only after that attach returns, and that banner is the attachment proof. A classic `tc filter` line that contains `bpf` also counts.
 - The loader log has loaded the observe path maps and the enforce path maps, says the policy is observe-only audit, names the same interface, and has reached the line that tells you to press Ctrl-C.
 - Boot hold status is `HELD`. A hold that has released itself as enforce-ready is not an observe pass. Observe-only apply does not run the enforce deny check.
 - The cgroup sock-owner attachment is recorded when the log has it. The loader keeps running if that best-effort attach warns, so the warning alone does not fail the install. The required network path is the bpf filter on the named interface.

@@ -81,6 +81,7 @@ from vantio_install.state_machine import RESIDUAL_STATES
 from vantio_install.observe_health import (
     OBSERVE_READY_POLL_S,
     OBSERVE_READY_WAIT_S,
+    egress_program_attached,
     facts_from_logs,
     host_check_failure_text,
     observe_sample_from_inspect,
@@ -1239,8 +1240,8 @@ def _docker_inspect_line(name: str) -> str | None:
 
 def _write_host_check(grant: LiveGrant, sample: dict | None) -> None:
     body = dict(sample or {})
-    excerpt = str(body.get("log_excerpt") or "")
-    body["log_excerpt"] = excerpt[-2000:]
+    body["log_head"] = str(body.get("log_head") or "")[:2500]
+    body["log_excerpt"] = str(body.get("log_excerpt") or "")[-2000:]
     if body.get("pins_error"):
         body["gaps"] = ["bpffs-unreadable"]
     else:
@@ -1255,6 +1256,7 @@ def _observe_sample(name: str, iface: str) -> dict:
     pins, pin_errors = _host_pins()
     started = parse_docker_time(str(parsed.get("started_at") or ""))
     logs = _docker_logs(name) or ""
+    log_facts = facts_from_logs(logs, iface)
     pid = int(parsed.get("pid") or 0)
     sample = {
         "lifecycle": lifecycle,
@@ -1264,15 +1266,16 @@ def _observe_sample(name: str, iface: str) -> dict:
         "pins_current": pins_are_current(_pin_mtimes(), started) if not pin_errors else False,
         "loader": _loader_pid_is_observe(pid, iface),
         "clsact": _tc_has_clsact(iface) == "VERIFIED",
-        "programs": _tc_bpf_egress(iface),
         "boot_hold": _boot_hold_marker(),
         "exit_code": parsed.get("exit_code"),
         "started_at": parsed.get("started_at") or "",
         "finished_at": parsed.get("finished_at") or "",
         "container_id": parsed.get("container_id") or "",
+        "log_head": logs[:2500],
         "log_excerpt": logs[-2000:],
     }
-    sample.update(facts_from_logs(logs, iface))
+    sample.update(log_facts)
+    sample["programs"] = egress_program_attached(_tc_filter_text(iface), logs, iface)
     return sample
 
 
@@ -1305,11 +1308,10 @@ def _loader_pid_is_observe(pid: int, iface: str) -> bool:
     return "vantio-loader" in text and f"--iface {iface}" in text
 
 
-def _tc_bpf_egress(iface: str) -> bool:
+def _tc_filter_text(iface: str) -> str | None:
     if not _IFACE.fullmatch(iface):
-        return False
-    text = _read_only(["tc", "filter", "show", "dev", iface, "egress"])
-    return bool(text and "bpf" in text.lower())
+        return None
+    return _read_only(["tc", "filter", "show", "dev", iface, "egress"])
 
 
 def _docker_logs(name: str) -> str | None:

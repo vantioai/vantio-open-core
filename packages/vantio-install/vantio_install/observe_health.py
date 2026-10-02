@@ -95,16 +95,24 @@ def pins_are_current(mtimes: list[float], started_epoch: float | None) -> bool:
 
 
 def facts_from_logs(text: str, iface: str) -> dict[str, bool]:
-    """Read the sealed loader's own startup lines. Empty logs are not ready."""
+    """Read the sealed loader's own startup lines. Empty logs are not ready.
+
+    The audit banner is printed only after the egress program attach returns.
+    On kernel 7, aya 0.13 attaches that program with tcx, and ``tc filter show``
+    stays empty while the program is live. The banner is the attachment proof
+    for this sealed loader. The observe-only debug line is stderr and can stay
+    buffered, so the audit banner is also the policy proof.
+    """
     observe_paths = "Path observe maps loaded:" in text
     enforce_paths = "Path enforce maps loaded:" in text
-    audit = "AUDIT (log only)" in text
-    observe_mode = "observe-only mode" in text
-    enforce_on = "NODE-WIDE" in text or "SCOPED (drop enrolled)" in text
+    named = f"iface '{iface}'" in text
+    audit = "AUDIT (log only)" in text and named
+    enforce_on = "NODE-WIDE DLP" in text or "SCOPED (drop enrolled)" in text
     return {
         "paths_active": observe_paths and enforce_paths,
-        "policy_loaded": audit and observe_mode and not enforce_on,
-        "iface_ok": f"iface '{iface}'" in text,
+        "policy_loaded": audit and not enforce_on,
+        "iface_ok": named,
+        "tc_attached": audit and not enforce_on,
         "cgroup_attached": "sock owner attached:" in text and "/sys/fs/cgroup" in text,
         "self_check": (
             "Phantom Engine active" in text
@@ -112,6 +120,13 @@ def facts_from_logs(text: str, iface: str) -> dict[str, bool]:
             and "failed to pin" not in text
         ),
     }
+
+
+def egress_program_attached(tc_text: str | None, logs: str, iface: str) -> bool:
+    """True when classic tc shows bpf, or the sealed loader printed the post-attach banner."""
+    if tc_text and "bpf" in tc_text.lower():
+        return True
+    return facts_from_logs(logs, iface)["tc_attached"]
 
 
 def ready_observe_sample() -> dict:

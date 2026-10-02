@@ -12,6 +12,7 @@ sys.path.insert(0, str(PACKAGE))
 from vantio_install import constants  # noqa: E402
 from vantio_install.observe_health import (  # noqa: E402
     OBSERVE_READY_WAIT_S,
+    egress_program_attached,
     facts_from_logs,
     host_check_failure_text,
     observe_lifecycle,
@@ -280,6 +281,14 @@ class ObserveHealthTests(unittest.TestCase):
         self.assertTrue(facts["cgroup_attached"])
         denied = _active_log("ens5").replace("AUDIT (log only)", "NODE-WIDE DLP (drop all)")
         self.assertFalse(facts_from_logs(denied, "ens5")["policy_loaded"])
+        banner_only = _active_log("ens5").replace(
+            "[DEBUG] Absolute Control path DENY disabled (VANTIO_PHANTOM_DENY!=1); observe-only mode\n",
+            "",
+        )
+        self.assertTrue(facts_from_logs(banner_only, "ens5")["policy_loaded"])
+        self.assertTrue(egress_program_attached(None, banner_only, "ens5"))
+        self.assertTrue(egress_program_attached("filter protocol all pref 49152 bpf", "", "ens5"))
+        self.assertFalse(egress_program_attached("", "Phantom Engine active\n", "ens5"))
 
     def test_each_incomplete_state_asks_for_rollback(self) -> None:
         cases = [
