@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vantio_install import bpf_pins, constants
+from vantio_install.boot_hold.constants import HEALTH_REL
 from vantio_install.boot_hold.identity import read_host_caller
 from vantio_install.boot_hold.service import enable_from_apply, live_boot_hold_runner, remove_from_apply
 from vantio_install.docker_object import (
@@ -53,6 +54,7 @@ from vantio_install.commands import (
 from vantio_install.pe_apparmor import (
     OBSERVE_INSPECT_FORMAT,
     apparmor_profile_loaded,
+    parse_observe_inspect,
     pe_apparmor_profile_path,
     profile_text,
 )
@@ -79,7 +81,12 @@ from vantio_install.state_machine import RESIDUAL_STATES
 from vantio_install.observe_health import (
     OBSERVE_READY_POLL_S,
     OBSERVE_READY_WAIT_S,
+    facts_from_logs,
+    host_check_failure_text,
     observe_sample_from_inspect,
+    parse_docker_time,
+    pins_are_current,
+    readiness_gaps,
     wait_for_observe_host,
 )
 from vantio_install.preflight import npm_requirement, run_preflight
@@ -715,6 +722,13 @@ def dispatch(
         failure = "ROLLBACK_REQUIRED" if result.returncode == 0 else "FAILED_SAFE"
         _append_op(grant, {"op": op_type, "phase": failure, "transaction_id": grant.transaction_id})
         if failure == "ROLLBACK_REQUIRED":
+            sample = getattr(observer, "last_observe_sample", None) if observer is not None else None
+            if op_type in {"start_pe_observe", "restart_pe_observe"}:
+                _write_host_check(grant, sample if isinstance(sample, dict) else None)
+                _fail(
+                    host_check_failure_text(op_type, sample if isinstance(sample, dict) else None),
+                    failure_class="ROLLBACK_REQUIRED",
+                )
             _fail(
                 f"{op_type} returned exit 0 and the host check did not verify it. Rollback is required.",
                 failure_class="ROLLBACK_REQUIRED",
@@ -1009,6 +1023,7 @@ class ProductionObserver:
         self.observe_poll_s = observe_poll_s
         self.clock = clock
         self.sleeper = sleeper
+        self.last_observe_sample: dict | None = None
 
     def verify(self, op_type: str, grant: LiveGrant) -> str:
         try:
@@ -1093,8 +1108,11 @@ class ProductionObserver:
 
                 def sample() -> dict:
                     if self.observe_sampler is not None:
-                        return self.observe_sampler(grant)
-                    return _observe_sample(grant.container_name, grant.iface)
+                        current = self.observe_sampler(grant)
+                    else:
+                        current = _observe_sample(grant.container_name, grant.iface)
+                    self.last_observe_sample = current
+                    return current
 
                 return wait_for_observe_host(
                     sample,
@@ -1155,6 +1173,9 @@ class ProductionObserver:
                 ]
             }
         if op_type == "start_pe_observe":
+            sample = self.last_observe_sample
+            if not isinstance(sample, dict):
+                sample = _observe_sample(grant.container_name, grant.iface)
             delta: dict = {
                 "containers": [
                     {
@@ -1167,12 +1188,11 @@ class ProductionObserver:
                     }
                 ]
             }
-            if _loader_running():
+            if sample.get("loader") is True:
                 delta["processes"] = ["vantio-loader"]
-            pins, pin_errors = _host_pins()
-            if pins and not pin_errors:
-                delta["bpf_pins"] = pins
-            if _tc_has_clsact(grant.iface) == "VERIFIED":
+            if sample.get("pins") == list(constants.BPF_PINS) and sample.get("pins_current") is True:
+                delta["bpf_pins"] = list(sample["pins"])
+            if sample.get("clsact") is True:
                 delta["clsact_ifaces"] = [grant.iface]
             return delta
         if op_type in {"docker_stop", "docker_rm"}:
@@ -1217,18 +1237,96 @@ def _docker_inspect_line(name: str) -> str | None:
     return _read_only(["docker", "inspect", "--format", OBSERVE_INSPECT_FORMAT, name])
 
 
+def _write_host_check(grant: LiveGrant, sample: dict | None) -> None:
+    body = dict(sample or {})
+    excerpt = str(body.get("log_excerpt") or "")
+    body["log_excerpt"] = excerpt[-2000:]
+    if body.get("pins_error"):
+        body["gaps"] = ["bpffs-unreadable"]
+    else:
+        body["gaps"] = readiness_gaps(body)
+    write_json(grant.tx_dir / "HOST-CHECK.json", body)
+
+
 def _observe_sample(name: str, iface: str) -> dict:
     text = _docker_inspect_line(name)
     lifecycle, security_ok = observe_sample_from_inspect(text)
+    parsed = parse_observe_inspect(text or "") or {}
     pins, pin_errors = _host_pins()
-    return {
+    started = parse_docker_time(str(parsed.get("started_at") or ""))
+    logs = _docker_logs(name) or ""
+    pid = int(parsed.get("pid") or 0)
+    sample = {
         "lifecycle": lifecycle,
         "security_ok": security_ok,
         "pins": pins,
         "pins_error": bool(pin_errors),
-        "loader": _loader_running(),
+        "pins_current": pins_are_current(_pin_mtimes(), started) if not pin_errors else False,
+        "loader": _loader_pid_is_observe(pid, iface),
         "clsact": _tc_has_clsact(iface) == "VERIFIED",
+        "programs": _tc_bpf_egress(iface),
+        "boot_hold": _boot_hold_marker(),
+        "exit_code": parsed.get("exit_code"),
+        "started_at": parsed.get("started_at") or "",
+        "finished_at": parsed.get("finished_at") or "",
+        "container_id": parsed.get("container_id") or "",
+        "log_excerpt": logs[-2000:],
     }
+    sample.update(facts_from_logs(logs, iface))
+    return sample
+
+
+def _pin_mtimes() -> list[float]:
+    root = bpf_pins.default_bpffs()
+    found: list[float] = []
+    for name in constants.BPF_PINS:
+        path = root / name
+        try:
+            found.append(path.lstat().st_mtime)
+        except OSError:
+            return []
+    return found
+
+
+def _loader_pid_is_observe(pid: int, iface: str) -> bool:
+    """True only for this container's pid, not some other vantio-loader."""
+    if pid <= 0:
+        return False
+    try:
+        comm = Path(f"/proc/{pid}/comm").read_text(encoding="utf-8", errors="replace").strip()
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return False
+    if comm != "vantio-loader":
+        return False
+    text = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+    if "--enforce" in text or "--node-wide-enforcement" in text or "VANTIO_PHANTOM_DENY" in text:
+        return False
+    return "vantio-loader" in text and f"--iface {iface}" in text
+
+
+def _tc_bpf_egress(iface: str) -> bool:
+    if not _IFACE.fullmatch(iface):
+        return False
+    text = _read_only(["tc", "filter", "show", "dev", iface, "egress"])
+    return bool(text and "bpf" in text.lower())
+
+
+def _docker_logs(name: str) -> str | None:
+    return _read_only(["docker", "logs", name])
+
+
+def _boot_hold_marker() -> str:
+    path = Path("/") / HEALTH_REL
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    if payload.get("released") is True or payload.get("state") == "HANDOFF":
+        return "RELEASED" if payload.get("released") is True else "HANDOFF"
+    return str(payload.get("state") or "")
 
 
 def _observed_npm_version() -> str | None:
@@ -1304,26 +1402,6 @@ def _captured_text(value: object) -> str:
 
 def _host_pins() -> tuple[list[str], list[str]]:
     return bpf_pins.scan_known_pins(bpf_pins.default_bpffs())
-
-
-def _loader_running() -> bool:
-    proc = Path("/proc")
-    if not proc.is_dir():
-        return False
-    try:
-        entries = list(proc.iterdir())
-    except OSError:
-        return False
-    for entry in entries:
-        if not entry.name.isdigit():
-            continue
-        comm = entry / "comm"
-        try:
-            if comm.is_file() and comm.read_text(encoding="utf-8", errors="replace").strip() == "vantio-loader":
-                return True
-        except OSError:
-            continue
-    return False
 
 
 def _tc_has_clsact(iface: str) -> str:
