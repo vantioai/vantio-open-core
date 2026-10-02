@@ -28,6 +28,7 @@ from vantio_install.boot_hold.net import commands_are_scoped  # noqa: E402
 from vantio_install.boot_hold.policy import _trusted, default_policy, load_policy, save_policy  # noqa: E402
 from vantio_install.boot_hold.lifecycle import enforcement_lifecycle  # noqa: E402
 from vantio_install.boot_hold.readiness import (  # noqa: E402
+    attachment_from_log,
     evaluate_ready,
     new_block_count,
     perform_deny_self_check,
@@ -837,6 +838,15 @@ class EnforceReadyRegressions(unittest.TestCase):
         self.assertEqual(body["state"], "HELD")
         self.assertEqual(calls[0][0], "docker")
         self.assertIn("--cgroup-skb-enforce", calls[0])
+
+    def test_scoped_banner_without_attach_line_is_not_attachment(self) -> None:
+        log = "tc enforce : SCOPED (drop enrolled) iface 'ens5'\nPath enforce maps loaded: 1 exact\n"
+        self.assertFalse(attachment_from_log(log)["attached"])
+        attached = attachment_from_log(
+            "cgroup_skb: attached to cgroup id=1 path=/sys/fs/cgroup/vantio-enrolled.slice\n"
+        )
+        self.assertTrue(attached["attached"])
+        self.assertEqual(attached["program"], "cgroup_skb_egress_enforce")
 
     def test_policy_id_ignores_unrelated_flags(self) -> None:
         self.assertEqual(

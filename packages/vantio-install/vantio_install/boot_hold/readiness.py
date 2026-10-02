@@ -231,6 +231,23 @@ def attachment_from_show(text: str) -> dict:
     }
 
 
+def attachment_from_log(text: str) -> dict:
+    """Sealed loader line used when bpftool is not installed.
+
+    A scoped banner by itself is not attachment. The line has to name the
+    enrolled slice and say the cgroup program attached.
+    """
+
+    for line in text.splitlines():
+        if SLICE in line and "cgroup_skb" in line and "attached" in line:
+            return {
+                "attached": True,
+                "program": ENFORCE_PROGRAM,
+                "cgroup": f"/sys/fs/cgroup/{SLICE}",
+            }
+    return {"attached": False, "program": "", "cgroup": ""}
+
+
 def policy_from_maps(text: str, pins_complete: bool) -> bool:
     return bool(pins_complete and "vantio_enforce" in text)
 
@@ -443,10 +460,17 @@ def assemble_host_facts(
     pins = probe_pins(root)
     cmdline, health = probe_loader(root)
     attachment = attachment_from_show(cgroup_show)
+    if not attachment["attached"]:
+        attachment = attachment_from_log(loader_log)
     pins_complete = all(name in pins for name in BPF_PINS)
-    policy_loaded = policy_from_maps(map_show, pins_complete)
     mode = enforce_mode_from_log(loader_log)
+    policy_loaded = policy_from_maps(map_show, pins_complete) or (
+        pins_complete and mode in {"scoped", "node-wide"} and "Path enforce maps loaded:" in loader_log
+    )
     loaded_policy_id = policy_id_from_cmdline(cmdline)
+    programs = prog_show
+    if attachment["attached"] and ENFORCE_PROGRAM not in programs:
+        programs = f"{programs}\n{ENFORCE_PROGRAM}".strip()
     check = interpret_self_check(attached=False, enrolled_rc=None, unenrolled_rc=None, hold_bypassed=False)
     if attachment["attached"] and runner is not None and events is not None:
         check = perform_live_deny_self_check(runner, attached=True, events=events)
@@ -454,7 +478,7 @@ def assemble_host_facts(
         "bpf_pins": pins,
         "loader_cmdline": cmdline,
         "loader_health": health,
-        "bpf_programs": prog_show,
+        "bpf_programs": programs,
         "enforcement_attachment": attachment,
         "policy_loaded": policy_loaded,
         "deny_self_check": check,
