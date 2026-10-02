@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
 from collections.abc import Callable
@@ -12,7 +13,10 @@ from typing import Any
 
 from vantio_install.boot_hold.audit import append_audit
 from vantio_install.boot_hold.constants import (
+    COMMAND_REL,
     DROPIN_NAME,
+    ENFORCE_CONTAINER_REL,
+    EXPECTED_POLICY_REL,
     HEALTH_REL,
     HELD_MESSAGE,
     HOLD_STATE_REL,
@@ -25,6 +29,7 @@ from vantio_install.boot_hold.constants import (
     SLICE,
     SLICE_PATH,
 )
+from vantio_install.boot_hold.lifecycle import enforcement_lifecycle
 from vantio_install.boot_hold.errors import BootHoldError
 from vantio_install.boot_hold.files import allow_profile, deny_profile, dropin_text
 from vantio_install.boot_hold.identity import Caller, require_operator
@@ -36,7 +41,9 @@ from vantio_install.boot_hold.policy import (
     require_explicit_matrix,
     save_policy,
 )
-from vantio_install.boot_hold.readiness import evaluate_ready
+from vantio_install.boot_hold.readiness import evaluate_ready, policy_id_from_cmdline, probe_loader
+from vantio_install.commands import enforce_container_argv
+from vantio_install.constants import FROZEN_PINS
 from vantio_install.boot_hold.registry import (
     compose_text_gated,
     empty_registry,
@@ -171,6 +178,11 @@ def install_tree(root: Path, python: str, policy: dict) -> list[str]:
         written.append(rel)
     cgroup = root / "sys/fs/cgroup" / SLICE
     cgroup.mkdir(parents=True, exist_ok=True)
+    command = root / COMMAND_REL
+    command.parent.mkdir(parents=True, exist_ok=True)
+    command.write_text(f"#!/bin/sh\nexec {python} -m vantio_install.boot_hold \"$@\"\n", encoding="utf-8")
+    os.chmod(command, 0o755)
+    written.append(COMMAND_REL)
     return written
 
 
@@ -261,6 +273,16 @@ def status_body(root: Path, *, lookup: str | None = None) -> dict[str, Any]:
         health = "DEGRADED"
         overall = "HOLD_OFF"
         message = "The network hold is off because a root admin set hold to off. Ordering may still gate starts. The audit log records that change."
+    health_doc = _read_json(root / HEALTH_REL)
+    ready = health_doc.get("ready") if isinstance(health_doc.get("ready"), dict) else {}
+    lifecycle = enforcement_lifecycle(
+        opted_out=overall == "OPTED_OUT",
+        break_glass=state.get("last_reason") == "BREAK_GLASS",
+        failed_safe=overall == "FAILED_SAFE",
+        hold_active=held,
+        observe_ready=False,
+        ready=ready if isinstance(ready, dict) else None,
+    )
     workloads = workload_view(registry, held=held)
     if lookup:
         match = find_workload(registry, lookup)
@@ -287,6 +309,8 @@ def status_body(root: Path, *, lookup: str | None = None) -> dict[str, Any]:
         notes=notes,
         unprotected_rule="A workload that is absent from the enrollment registry is unprotected.",
         file_profile=state.get("file_profile", "UNKNOWN"),
+        enforcement_lifecycle=lifecycle,
+        protected=False,
     )
 
 
@@ -766,6 +790,72 @@ def configure(root: Path, caller: Caller, runner: Runner, *, hold: bool, orderin
     save_policy(root, {"enabled": True, "hold": hold, "ordering": ordering})
     append_audit(root, caller, "configure", "OK", {"hold": hold, "ordering": ordering})
     return apply_boot(root, caller, runner, python)
+
+
+_IFACE_NAME = re.compile(r"^[A-Za-z0-9_.:-]{1,15}$")
+_OBJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,40}$")
+
+
+def prepare_enforce(
+    root: Path,
+    caller: Caller,
+    *,
+    iface: str,
+    name: str,
+    observe_name: str,
+    docker_run: Callable[[list[str]], int],
+) -> dict[str, Any]:
+    """Create the slice, record the policy id, and start the enforce container.
+
+    The container is not placed in the enrolled slice. The hold stays on.
+    """
+
+    _authorize(root, caller, "prepare-enforce")
+    if not _IFACE_NAME.fullmatch(iface):
+        raise BootHoldError("The interface name is not usable.", state="FAILED_SAFE")
+    if not _OBJECT_NAME.fullmatch(name):
+        raise BootHoldError("The container name is not usable.", state="FAILED_SAFE")
+    if observe_name and not _OBJECT_NAME.fullmatch(observe_name):
+        raise BootHoldError("The observe container name is not usable.", state="FAILED_SAFE")
+    cmdline, _health = probe_loader(root)
+    if "vantio-loader" in cmdline and "--enforce" not in cmdline.split() and not observe_name:
+        raise BootHoldError(
+            "An observe loader is running. Pass --observe-name before starting enforcement. The hold stays on.",
+            state="HELD",
+        )
+    tag = str(FROZEN_PINS["pe_local_tag"])
+    argv = enforce_container_argv(tag=tag, iface=iface, name=name)
+    if "--privileged" in argv or "--cgroup-parent" in argv:
+        raise BootHoldError("The enforce container argv is not the supported form.", state="FAILED_SAFE")
+    (root / "sys/fs/cgroup" / SLICE).mkdir(parents=True, exist_ok=True)
+    policy_id = policy_id_from_cmdline(" ".join(argv))
+    policy_path = root / EXPECTED_POLICY_REL
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(policy_id + "\n", encoding="utf-8")
+    os.chmod(policy_path, 0o644)
+    name_path = root / ENFORCE_CONTAINER_REL
+    name_path.write_text(name + "\n", encoding="utf-8")
+    os.chmod(name_path, 0o644)
+    _write_json(root / LOADER_ARGV_REL, ["/usr/bin/docker", "start", "-a", name])
+    os.chmod(root / LOADER_ARGV_REL, 0o644)
+    if observe_name and observe_name != name:
+        if docker_run(["docker", "stop", observe_name]) != 0 or docker_run(["docker", "rm", observe_name]) != 0:
+            raise BootHoldError(
+                "The observe container did not stop. Enforcement was not started. The hold stays on.",
+                state="HELD",
+            )
+    if docker_run(argv) != 0:
+        raise BootHoldError("The enforce container did not start. The hold stays on.", state="HELD")
+    append_audit(root, caller, "prepare-enforce", "STARTED", {"container": name, "policy_id": policy_id})
+    return envelope(
+        "prepare-enforce",
+        "HELD",
+        "The enforce container is started and the enrolled slice exists. The hold stays on until the live deny check passes.",
+        enforcement_lifecycle="ENFORCEMENT_LOADING",
+        protected=False,
+        container=name,
+        policy_id=policy_id,
+    )
 
 
 def ensure_network(root: Path, caller: Caller, runner: Runner) -> dict[str, Any]:
