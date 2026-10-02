@@ -35,6 +35,7 @@ from vantio_install.boot_hold.readiness import (  # noqa: E402
     policy_id_from_cmdline,
     probe_loader,
 )
+from vantio_install.boot_hold.probe_link import HOST_IFACE, PEER_IFACE  # noqa: E402
 from vantio_install.commands import enforce_container_argv  # noqa: E402
 from vantio_install.boot_hold.service import (  # noqa: E402
     apply_boot,
@@ -847,6 +848,10 @@ class EnforceReadyRegressions(unittest.TestCase):
         )
         self.assertTrue(attached["attached"])
         self.assertEqual(attached["program"], "cgroup_skb_egress_enforce")
+
+    def test_probe_interface_names_fit_ifnamesiz(self) -> None:
+        self.assertLessEqual(len(HOST_IFACE), 15)
+        self.assertLessEqual(len(PEER_IFACE), 15)
 
     def test_policy_id_ignores_unrelated_flags(self) -> None:
         self.assertEqual(

@@ -10,7 +10,7 @@ from pathlib import Path
 
 NS = "vantio-deny-probe"
 HOST_IFACE = "vantio-probe"
-PEER_IFACE = "vantio-probe-peer"
+PEER_IFACE = "vantio-peer"
 HOST_CIDR = "198.51.100.1/30"
 PEER_CIDR = "198.51.100.2/30"
 PROBE_HOST = "198.51.100.2"
