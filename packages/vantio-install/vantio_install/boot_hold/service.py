@@ -176,7 +176,7 @@ def install_tree(root: Path, python: str, policy: dict) -> list[str]:
             path.unlink()
         path.symlink_to(target)
         written.append(rel)
-    cgroup = root / "sys/fs/cgroup" / SLICE
+    cgroup = root / "sys/fs/cgroup/vantio.slice/vantio-enrolled.slice"
     cgroup.mkdir(parents=True, exist_ok=True)
     command = root / COMMAND_REL
     command.parent.mkdir(parents=True, exist_ok=True)
@@ -378,7 +378,7 @@ def apply_boot(root: Path, caller: Caller, runner: Runner, python: str) -> dict[
         _write_json(root / HEALTH_REL, body)
         append_audit(root, caller, "apply-boot", "FAILED", {"message": str(exc)})
         raise
-    (root / "sys/fs/cgroup" / "vantio-enrolled.slice").mkdir(parents=True, exist_ok=True)
+    (root / "sys/fs/cgroup/vantio.slice/vantio-enrolled.slice").mkdir(parents=True, exist_ok=True)
     _daemon_reload(runner)
     save_hold_state(
         root,
@@ -827,7 +827,7 @@ def prepare_enforce(
     argv = enforce_container_argv(tag=tag, iface=iface, name=name)
     if "--privileged" in argv or "--cgroup-parent" in argv:
         raise BootHoldError("The enforce container argv is not the supported form.", state="FAILED_SAFE")
-    (root / "sys/fs/cgroup" / SLICE).mkdir(parents=True, exist_ok=True)
+    (root / "sys/fs/cgroup/vantio.slice/vantio-enrolled.slice").mkdir(parents=True, exist_ok=True)
     events = root / "var/lib/vantio/pe-events"
     events.mkdir(parents=True, exist_ok=True)
     os.chmod(events, 0o755)

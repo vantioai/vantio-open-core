@@ -104,7 +104,7 @@ The Phantom Engine loader enrolls that slice. A root-owned `/etc/vantio/pe-loade
 ["/usr/bin/docker", "start", "-a", "vantio-pe"]
 ```
 
-Create the Phantom Engine container with `vantio-boot-hold prepare-enforce --iface IFACE --observe-name OBSERVE`. That command creates `vantio-enrolled.slice` first, stops the observe container you name, and starts `vantio-pe` with host networking, `--cgroupns=host`, the host cgroup tree mounted, `--restart=no`, `--enforce`, `--cgroup-skb-enforce`, and `--startup-enroll-cgroup /sys/fs/cgroup/vantio-enrolled.slice`. The container stays out of `vantio-enrolled.slice`. The open-core unit starts it again on the next boot. The image tag stays the pinned seal tag. This package does not invent a seal.
+Create the Phantom Engine container with `vantio-boot-hold prepare-enforce --iface IFACE --observe-name OBSERVE`. That command creates `vantio-enrolled.slice` first, stops the observe container you name, and starts `vantio-pe` with host networking, `--cgroupns=host`, the host cgroup tree mounted, `--restart=no`, `--enforce`, `--cgroup-skb-enforce`, and `--startup-enroll-cgroup /sys/fs/cgroup/vantio.slice/vantio-enrolled.slice`. The container stays out of `vantio-enrolled.slice`. The open-core unit starts it again on the next boot. The image tag stays the pinned seal tag. This package does not invent a seal.
 
 SSH, `systemd-networkd`, resolved, SSM, Docker, and the hold units themselves cannot be enrolled.
 

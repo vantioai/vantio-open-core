@@ -9,8 +9,11 @@ PROOF_STATE = install_constants.PROOF_STATE
 PROOF_CEILING = install_constants.PROOF_CEILING
 
 SLICE = "vantio-enrolled.slice"
+# systemd nests a dashed slice under the parent slice. The unit name stays
+# vantio-enrolled.slice. The cgroup path is not /vantio-enrolled.slice.
+CGROUP_REL = "vantio.slice/vantio-enrolled.slice"
 CGROUP_ROOT = "/sys/fs/cgroup"
-SLICE_PATH = f"{CGROUP_ROOT}/{SLICE}"
+SLICE_PATH = f"{CGROUP_ROOT}/{CGROUP_REL}"
 CHAIN = "VANTIO_BOOT_HOLD"
 SUBNET_V4 = "10.250.250.0/24"
 SUBNET_V6 = "fd76:616e:7469::/64"

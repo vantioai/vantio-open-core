@@ -22,7 +22,7 @@ def observe_binds() -> list[str]:
 ENFORCE_CGROUP_BIND = "/sys/fs/cgroup:/sys/fs/cgroup"
 ENFORCE_EVENTS_BIND = "/var/lib/vantio/pe-events:/var/lib/vantio/pe-events"
 ENFORCE_EVENTS_FILE = "/var/lib/vantio/pe-events/events.ndjson"
-ENFORCE_SLICE = "/sys/fs/cgroup/vantio-enrolled.slice"
+ENFORCE_SLICE = "/sys/fs/cgroup/vantio.slice/vantio-enrolled.slice"
 
 
 def enforce_container_argv(*, tag: str, iface: str, name: str) -> list[str]:

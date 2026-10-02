@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from vantio_install.boot_hold.constants import CONFIG_REL, SLICE, SUBNET_V4, SUBNET_V6
+from vantio_install.boot_hold.constants import CGROUP_REL, CONFIG_REL, SUBNET_V4, SUBNET_V6
 from vantio_install.boot_hold.errors import BootHoldError
 
 
@@ -15,7 +15,7 @@ def default_policy() -> dict:
         "enabled": True,
         "hold": True,
         "ordering": True,
-        "cgroup_slice": SLICE,
+        "cgroup_slice": CGROUP_REL,
         "enrolled_subnet_v4": SUBNET_V4,
         "enrolled_subnet_v6": SUBNET_V6,
     }
