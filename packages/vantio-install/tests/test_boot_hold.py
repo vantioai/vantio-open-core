@@ -26,7 +26,16 @@ from vantio_install.boot_hold.graph import graph_errors, parse_unit  # noqa: E40
 from vantio_install.boot_hold.identity import Caller  # noqa: E402
 from vantio_install.boot_hold.net import commands_are_scoped  # noqa: E402
 from vantio_install.boot_hold.policy import _trusted, default_policy, load_policy, save_policy  # noqa: E402
-from vantio_install.boot_hold.readiness import evaluate_ready, perform_deny_self_check, probe_loader  # noqa: E402
+from vantio_install.boot_hold.lifecycle import enforcement_lifecycle  # noqa: E402
+from vantio_install.boot_hold.readiness import (  # noqa: E402
+    attachment_from_log,
+    evaluate_ready,
+    new_block_count,
+    perform_deny_self_check,
+    policy_id_from_cmdline,
+    probe_loader,
+)
+from vantio_install.commands import enforce_container_argv  # noqa: E402
 from vantio_install.boot_hold.service import (  # noqa: E402
     apply_boot,
     configure,
@@ -37,6 +46,7 @@ from vantio_install.boot_hold.service import (  # noqa: E402
     loader_argv,
     observe_unenrolled,
     opt_out,
+    prepare_enforce,
     release,
     status_body,
 )
@@ -54,12 +64,21 @@ READY = {
         "cgroup": "/sys/fs/cgroup/vantio-enrolled.slice",
     },
     "policy_loaded": True,
+    "enforce_mode": "scoped",
+    "pins_current": True,
+    "expected_policy_id": "--iface ens5 --enforce --cgroup-skb-enforce",
+    "loaded_policy_id": "--iface ens5 --enforce --cgroup-skb-enforce",
     "deny_self_check": {
         "attempted": True,
         "enrolled_denied": True,
         "unenrolled_allowed": True,
         "mechanism": "phantom-engine",
         "hold_bypassed": True,
+        "block_events": 1,
+        "control_block_events": 0,
+        "exception_removed": True,
+        "enrolled_in_slice": True,
+        "unenrolled_outside_slice": True,
     },
 }
 NOT_READY = {"bpf_pins": [], "loader_cmdline": "", "loader_health": "", "bpf_programs": ""}
@@ -606,6 +625,239 @@ class BootHoldTest(unittest.TestCase):
         self.assertIn("enrolled workload", payload["message"])
         audit = (self.root / "var/lib/vantio/boot-hold/audit.log").read_text(encoding="utf-8")
         self.assertIn("REFUSED", audit)
+
+
+class EnforceReadyRegressions(unittest.TestCase):
+    def _check(self, *, enrolled_rc: int, unenrolled_rc: int, before: str, mid: str, after: str, enrolled_cg: str, unenrolled_cg: str) -> dict:
+        snapshots = [before, mid, after]
+
+        def events() -> str:
+            return snapshots.pop(0)
+
+        def reader(marker: str) -> str:
+            return enrolled_cg if marker == "enrolled" else unenrolled_cg
+
+        def runner(argv: list[str]) -> int:
+            if argv[:2] == ["iptables", "-I"]:
+                return 0
+            if argv[:2] == ["iptables", "-D"]:
+                return 0
+            if "--slice" in argv and "vantio-enrolled.slice" in argv:
+                return enrolled_rc
+            if "--slice" in argv and "system.slice" in argv:
+                return unenrolled_rc
+            return 1
+
+        return perform_deny_self_check(
+            runner,
+            host="198.51.100.2",
+            port=18080,
+            attached=True,
+            events=events,
+            cgroup_reader=reader,
+        )
+
+    def test_probe_outside_enrolled_does_not_pass(self) -> None:
+        result = self._check(
+            enrolled_rc=1,
+            unenrolled_rc=0,
+            before="",
+            mid="1  CG/SKB  BLOCKED  60 B",
+            after="1  CG/SKB  BLOCKED  60 B",
+            enrolled_cg="0::/system.slice/ssh.service",
+            unenrolled_cg="0::/system.slice/ssh.service",
+        )
+        self.assertEqual(result["mechanism"], "probe-outside-enrolled")
+        self.assertFalse(evaluate_ready({**READY, "deny_self_check": result})["enforce_ready"])
+
+    def test_probe_inside_enrolled_with_event_passes(self) -> None:
+        line = "9  0x1  CG/SKB   BLOCKED         60 B  1"
+        result = self._check(
+            enrolled_rc=1,
+            unenrolled_rc=0,
+            before="old  CG/SKB   BLOCKED         60 B  0",
+            mid="old  CG/SKB   BLOCKED         60 B  0\n" + line,
+            after="old  CG/SKB   BLOCKED         60 B  0\n" + line,
+            enrolled_cg="0::/vantio-enrolled.slice/run.scope",
+            unenrolled_cg="0::/system.slice/run.scope",
+        )
+        self.assertEqual(result["mechanism"], "phantom-engine")
+        self.assertEqual(result["block_events"], 1)
+        self.assertTrue(evaluate_ready({**READY, "deny_self_check": result})["enforce_ready"])
+
+    def test_policy_absent_stays_unready(self) -> None:
+        facts = dict(READY)
+        facts["policy_loaded"] = False
+        self.assertFalse(evaluate_ready(facts)["enforce_ready"])
+
+    def test_wrong_policy_version_stays_unready(self) -> None:
+        facts = dict(READY)
+        facts["loaded_policy_id"] = "--iface ens5 --enforce"
+        verdict = evaluate_ready(facts)
+        self.assertFalse(verdict["enforce_ready"])
+        self.assertEqual(verdict["reason"], "policy-version-mismatch")
+
+    def test_wrong_dest_is_control_unreachable(self) -> None:
+        result = self._check(
+            enrolled_rc=1,
+            unenrolled_rc=1,
+            before="",
+            mid="1  CG/SKB  BLOCKED  60 B",
+            after="1  CG/SKB  BLOCKED  60 B",
+            enrolled_cg="0::/vantio-enrolled.slice",
+            unenrolled_cg="0::/system.slice",
+        )
+        self.assertEqual(result["mechanism"], "control-unreachable")
+        self.assertFalse(evaluate_ready({**READY, "deny_self_check": result})["enforce_ready"])
+
+    def test_audit_mode_is_not_enforce(self) -> None:
+        facts = dict(READY)
+        facts["enforce_mode"] = "audit"
+        facts["loader_cmdline"] = "/vantio-loader --iface ens5"
+        verdict = evaluate_ready(facts)
+        self.assertEqual(verdict["reason"], "audit-not-enforce")
+        self.assertFalse(verdict["enforce_ready"])
+
+    def test_boot_hold_timeout_without_event_does_not_pass(self) -> None:
+        result = self._check(
+            enrolled_rc=1,
+            unenrolled_rc=0,
+            before="",
+            mid="",
+            after="",
+            enrolled_cg="0::/vantio-enrolled.slice",
+            unenrolled_cg="0::/system.slice",
+        )
+        self.assertEqual(result["mechanism"], "unattributed-timeout")
+        self.assertEqual(result["block_events"], 0)
+        self.assertFalse(evaluate_ready({**READY, "deny_self_check": result})["enforce_ready"])
+
+    def test_stale_block_line_does_not_count(self) -> None:
+        stale = "1  CG/SKB  BLOCKED  60 B"
+        self.assertEqual(new_block_count(stale, stale), 0)
+        result = self._check(
+            enrolled_rc=1,
+            unenrolled_rc=0,
+            before=stale,
+            mid=stale,
+            after=stale,
+            enrolled_cg="0::/vantio-enrolled.slice",
+            unenrolled_cg="0::/system.slice",
+        )
+        self.assertEqual(result["mechanism"], "unattributed-timeout")
+
+    def test_unenrolled_control_must_be_allowed(self) -> None:
+        result = self._check(
+            enrolled_rc=1,
+            unenrolled_rc=1,
+            before="",
+            mid='{"EventType":"CGROUP_BLOCK","ActionTaken":"BLOCKED"}',
+            after='{"EventType":"CGROUP_BLOCK","ActionTaken":"BLOCKED"}',
+            enrolled_cg="0::/vantio-enrolled.slice",
+            unenrolled_cg="0::/system.slice",
+        )
+        self.assertFalse(result["unenrolled_allowed"])
+        self.assertNotEqual(result["mechanism"], "phantom-engine")
+
+    def test_delayed_attachment_then_ready(self) -> None:
+        waiting = dict(READY)
+        waiting["enforcement_attachment"] = {"attached": False, "program": "", "cgroup": ""}
+        self.assertEqual(evaluate_ready(waiting)["reason"], "loader-running-not-attached")
+        self.assertTrue(evaluate_ready(READY)["enforce_ready"])
+
+    def test_attached_without_policy_stays_unready(self) -> None:
+        facts = dict(READY)
+        facts["policy_loaded"] = False
+        facts["bpf_pins"] = []
+        verdict = evaluate_ready(facts)
+        self.assertTrue(verdict["program_attached"])
+        self.assertFalse(verdict["enforce_ready"])
+
+    def test_attached_policy_and_unenrolled_probe_stays_unready(self) -> None:
+        result = self._check(
+            enrolled_rc=0,
+            unenrolled_rc=0,
+            before="",
+            mid="",
+            after="",
+            enrolled_cg="0::/user.slice/session.scope",
+            unenrolled_cg="0::/system.slice",
+        )
+        self.assertEqual(result["mechanism"], "probe-outside-enrolled")
+        facts = dict(READY)
+        facts["deny_self_check"] = result
+        self.assertFalse(evaluate_ready(facts)["enforce_ready"])
+
+    def test_lifecycle_keeps_observe_separate(self) -> None:
+        self.assertEqual(enforcement_lifecycle(observe_ready=True), "OBSERVE_READY")
+        self.assertEqual(
+            enforcement_lifecycle(observe_ready=True, ready={"enforce_ready": True}),
+            "ENFORCEMENT_READY",
+        )
+        self.assertEqual(enforcement_lifecycle(hold_active=True), "HELD")
+        self.assertEqual(
+            enforcement_lifecycle(hold_active=True, ready={"loader_up": True, "program_attached": True}),
+            "ENFORCEMENT_ATTACHED_NOT_PROVED",
+        )
+        self.assertEqual(
+            enforcement_lifecycle(ready={"loader_up": True, "program_loaded": False}),
+            "ENFORCEMENT_LOADING",
+        )
+        self.assertEqual(enforcement_lifecycle(break_glass=True, ready={"enforce_ready": True}), "BREAK_GLASS")
+        self.assertEqual(enforcement_lifecycle(opted_out=True), "OPTED_OUT")
+        self.assertEqual(enforcement_lifecycle(failed_safe=True, opted_out=True), "FAILED_SAFE")
+        self.assertEqual(enforcement_lifecycle(), "DEGRADED")
+
+    def test_prepare_enforce_keeps_the_slice_out_of_the_container(self) -> None:
+        argv = enforce_container_argv(tag="vantio-phantom-engine:pe-residuals-06696d5", iface="ens5", name="vantio-pe")
+        self.assertIn("--cgroupns", argv)
+        self.assertIn("host", argv)
+        self.assertIn("/sys/fs/cgroup:/sys/fs/cgroup", argv)
+        self.assertIn("--cgroup-skb-enforce", argv)
+        self.assertIn("--output-file", argv)
+        self.assertIn("/var/lib/vantio/pe-events/events.ndjson", argv)
+        self.assertIn("--startup-enroll-cgroup", argv)
+        self.assertNotIn("--cgroup-parent", argv)
+        self.assertNotIn("--privileged", argv)
+        calls: list[list[str]] = []
+
+        def docker_run(argv_in: list[str]) -> int:
+            calls.append(list(argv_in))
+            return 0
+
+        body = prepare_enforce(
+            self_root(),
+            Caller(euid=0, pid=1, comm="test", cgroup_text="0::/system.slice", pid1_comm="systemd"),
+            iface="ens5",
+            name="vantio-pe",
+            observe_name="",
+            docker_run=docker_run,
+        )
+        self.assertEqual(body["enforcement_lifecycle"], "ENFORCEMENT_LOADING")
+        self.assertFalse(body["protected"])
+        self.assertEqual(body["state"], "HELD")
+        self.assertEqual(calls[0][0], "docker")
+        self.assertIn("--cgroup-skb-enforce", calls[0])
+
+    def test_scoped_banner_without_attach_line_is_not_attachment(self) -> None:
+        log = "tc enforce : SCOPED (drop enrolled) iface 'ens5'\nPath enforce maps loaded: 1 exact\n"
+        self.assertFalse(attachment_from_log(log)["attached"])
+        attached = attachment_from_log(
+            "cgroup_skb: attached to cgroup id=1 path=/sys/fs/cgroup/vantio-enrolled.slice\n"
+        )
+        self.assertTrue(attached["attached"])
+        self.assertEqual(attached["program"], "cgroup_skb_egress_enforce")
+
+    def test_policy_id_ignores_unrelated_flags(self) -> None:
+        self.assertEqual(
+            policy_id_from_cmdline("/vantio-loader --iface ens5 --enforce --cgroup-skb-enforce --startup-enroll-cgroup /sys/fs/cgroup/vantio-enrolled.slice"),
+            "--iface ens5 --enforce --cgroup-skb-enforce --startup-enroll-cgroup /sys/fs/cgroup/vantio-enrolled.slice",
+        )
+
+
+def self_root() -> Path:
+    path = Path(tempfile.mkdtemp(prefix="vantio-prepare-"))
+    return path
 
 
 def _restore_env(previous: dict[str, str | None]) -> None:

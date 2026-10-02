@@ -19,6 +19,60 @@ def observe_binds() -> list[str]:
     return [OBSERVE_BPFFS_BIND, OBSERVE_TRACEFS_BIND]
 
 
+ENFORCE_CGROUP_BIND = "/sys/fs/cgroup:/sys/fs/cgroup"
+ENFORCE_EVENTS_BIND = "/var/lib/vantio/pe-events:/var/lib/vantio/pe-events"
+ENFORCE_EVENTS_FILE = "/var/lib/vantio/pe-events/events.ndjson"
+ENFORCE_SLICE = "/sys/fs/cgroup/vantio-enrolled.slice"
+
+
+def enforce_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
+    """Enforcement container. Same profile and caps as observe, with the slice visible.
+
+    The container stays out of the enrolled slice. The loader enrolls that slice.
+    """
+    argv = [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        name,
+        "--restart",
+        "no",
+        "--network",
+        "host",
+        "--cgroupns",
+        "host",
+        "--cap-add",
+        "NET_ADMIN",
+        "--cap-add",
+        "BPF",
+        "--cap-add",
+        "SYS_ADMIN",
+        "--security-opt",
+        observe_apparmor_opt(),
+    ]
+    for bind in [*observe_binds(), ENFORCE_CGROUP_BIND, ENFORCE_EVENTS_BIND]:
+        argv.extend(["-v", bind])
+    argv.extend(
+        [
+            "-e",
+            "VANTIO_TELEMETRY_DISABLED=1",
+            "-e",
+            "DO_NOT_TRACK=1",
+            tag,
+            "--iface",
+            iface,
+            "--enforce",
+            "--cgroup-skb-enforce",
+            "--startup-enroll-cgroup",
+            ENFORCE_SLICE,
+            "--output-file",
+            ENFORCE_EVENTS_FILE,
+        ]
+    )
+    return argv
+
+
 def observe_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
     """Observe-only container. Named AppArmor profile, three caps, bpffs and tracefs binds."""
     argv = [

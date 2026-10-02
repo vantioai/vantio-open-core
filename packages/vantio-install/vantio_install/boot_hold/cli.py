@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from vantio_install.boot_hold.constants import BPF_PINS, ENFORCE_CONTAINER_REL, EXPECTED_POLICY_REL
 from vantio_install.boot_hold.errors import BootHoldError
 from vantio_install.boot_hold.graph import graph_errors
 from vantio_install.boot_hold.identity import read_host_caller
@@ -29,11 +30,13 @@ from vantio_install.boot_hold.service import (
     observe_unenrolled,
     opt_in,
     opt_out,
+    prepare_enforce,
     release,
     start_loader,
     status_body,
     live_boot_hold_runner,
 )
+from vantio_install.observe_health import parse_docker_time, pins_are_current
 from vantio_install.boot_hold.units import static_units
 from vantio_install import constants as install_constants
 
@@ -77,9 +80,42 @@ def _capture(argv: list[str]) -> str:
     return completed.stdout or ""
 
 
+def _read_rel(root: Path, rel: str) -> str:
+    try:
+        return (root / rel).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _pins_current(container: str) -> bool:
+    if not container:
+        return False
+    started = parse_docker_time(_capture(["docker", "inspect", "-f", "{{.State.StartedAt}}", container]).strip())
+    mtimes: list[float] = []
+    for name in BPF_PINS:
+        path = Path("/sys/fs/bpf") / name
+        try:
+            mtimes.append(path.lstat().st_mtime)
+        except OSError:
+            return False
+    return pins_are_current(mtimes, started)
+
+
+def _event_text(container: str) -> str:
+    parts: list[str] = []
+    path = Path("/var/lib/vantio/pe-events/events.ndjson")
+    try:
+        parts.append(path.read_text(encoding="utf-8", errors="replace")[-200000:])
+    except OSError:
+        pass
+    if container:
+        parts.append(_capture(["docker", "logs", "--tail", "200", container]))
+    return "\n".join(parts)
+
+
 def _facts_probe(root: Path, facts_path: str | None):
     def probe() -> dict:
-        if facts_path and os.environ.get("VANTIO_BOOT_HOLD_ALLOW_FACTS") == "1":
+        if facts_path and os.environ.get("VANTIO_BOOT_HOLD_ALLOW_FACTS") == "1" and not _live(root):
             data = json.loads(Path(facts_path).read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 return {}
@@ -87,6 +123,7 @@ def _facts_probe(root: Path, facts_path: str | None):
         if not _live(root):
             return probe_host(root, bpftool=default_bpftool)
         policy, _notes = load_policy(root)
+        container = _read_rel(root, ENFORCE_CONTAINER_REL)
         return assemble_host_facts(
             root,
             prog_show=_capture(["bpftool", "prog", "show"]),
@@ -94,9 +131,22 @@ def _facts_probe(root: Path, facts_path: str | None):
             map_show=_capture(["bpftool", "map", "show"]),
             runner=live_boot_hold_runner,
             deny_probe=policy.get("deny_probe") if isinstance(policy.get("deny_probe"), dict) else None,
+            loader_log=_event_text(container),
+            events=lambda: _event_text(container),
+            pins_current=_pins_current(container),
+            expected_policy_id=_read_rel(root, EXPECTED_POLICY_REL),
         )
 
     return probe
+
+
+def _docker_exec(argv: list[str]) -> int:
+    if len(argv) < 2 or argv[0] != "docker" or argv[1] not in {"run", "stop", "rm"}:
+        raise BootHoldError("Refusing a command that is not a docker run, stop, or rm.")
+    if "--privileged" in argv:
+        raise BootHoldError("Refusing a privileged container.")
+    completed = subprocess.run(argv, check=False)
+    return int(completed.returncode)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -118,6 +168,11 @@ def _parser() -> argparse.ArgumentParser:
     release_cmd.add_argument("--i-am-root-operator", action="store_true")
     release_cmd.add_argument("--wait-seconds", type=int, default=0)
     release_cmd.add_argument("--facts", default="")
+
+    prepare = sub.add_parser("prepare-enforce", parents=[parent])
+    prepare.add_argument("--iface", required=True)
+    prepare.add_argument("--name", default="vantio-pe")
+    prepare.add_argument("--observe-name", default="")
 
     enroll_unit = sub.add_parser("enroll-systemd", parents=[parent])
     enroll_unit.add_argument("--unit", required=True)
@@ -197,6 +252,20 @@ def main(argv: list[str] | None = None) -> int:
                 os.execv(argv_exec[0], argv_exec)
         elif command == "ensure-network":
             payload = ensure_network(root, caller, runner)
+        elif command == "prepare-enforce":
+
+            def _accept_docker(argv: list[str]) -> int:
+                runner.calls.append(list(argv))
+                return 0
+
+            payload = prepare_enforce(
+                root,
+                caller,
+                iface=args.iface,
+                name=args.name,
+                observe_name=args.observe_name,
+                docker_run=_docker_exec if _live(root) else _accept_docker,
+            )
         elif command == "release":
             payload = release(
                 root,
