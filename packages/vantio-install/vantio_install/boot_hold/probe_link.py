@@ -34,6 +34,15 @@ _LISTENER = (
 )
 
 
+def _note(detail: str) -> None:
+    path = Path("/run/vantio/probe-setup.txt")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(detail + "\n", encoding="utf-8")
+    except OSError:
+        return
+
+
 @dataclass
 class LocalProbe:
     host: str
@@ -41,19 +50,25 @@ class LocalProbe:
     ready: bool
     detail: str
     _proc: subprocess.Popen[str] | None
+    _sleeper: subprocess.Popen[str] | None = None
 
     def close(self) -> None:
-        proc = self._proc
+        for proc in (self._proc, self._sleeper):
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         self._proc = None
-        if proc is not None and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        self._sleeper = None
         ip = _ip()
-        subprocess.run([ip, "netns", "del", NS], check=False, capture_output=True, text=True)
         subprocess.run([ip, "link", "del", HOST_IFACE], check=False, capture_output=True, text=True)
+        link = Path("/run/netns") / NS
+        try:
+            link.unlink()
+        except OSError:
+            return
 
 
 def _ip() -> str:
@@ -76,47 +91,76 @@ def _reachable(host: str, port: int) -> bool:
         return False
 
 
+def _fail(detail: str, sleeper: subprocess.Popen[str] | None) -> LocalProbe:
+    _note(detail)
+    probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, detail[:400], None, sleeper)
+    probe.close()
+    return probe
+
+
 def open_local_probe() -> LocalProbe:
-    """Stand up a listener the unenrolled path can reach. Failure leaves nothing behind."""
+    """Stand up a listener the unenrolled path can reach. Failure leaves nothing behind.
+
+    The namespace is a symlinked process netns, the same shape as the clean-host
+    pass. ``ip netns add`` is not required.
+    """
 
     ip = _ip()
-    run_netns = Path("/run/netns")
-    run_netns.mkdir(parents=True, exist_ok=True)
-    _run([ip, "netns", "del", NS])
+    Path("/run/netns").mkdir(parents=True, exist_ok=True)
     _run([ip, "link", "del", HOST_IFACE])
+    link = Path("/run/netns") / NS
+    try:
+        link.unlink()
+    except OSError:
+        pass
+    sleeper = subprocess.Popen(
+        ["unshare", "--net", "sleep", "40"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    time.sleep(0.1)
+    if sleeper.poll() is not None:
+        err = ""
+        if sleeper.stderr is not None:
+            err = (sleeper.stderr.read() or "").strip()
+        return _fail(f"unshare exited {sleeper.returncode} {err}"[:400], None)
+    try:
+        link.symlink_to(f"/proc/{sleeper.pid}/ns/net")
+    except OSError as exc:
+        return _fail(f"netns symlink failed: {exc}", sleeper)
     steps = (
-        [ip, "netns", "add", NS],
         [ip, "link", "add", HOST_IFACE, "type", "veth", "peer", "name", PEER_IFACE],
-        [ip, "link", "set", PEER_IFACE, "netns", NS],
         [ip, "addr", "add", HOST_CIDR, "dev", HOST_IFACE],
         [ip, "link", "set", HOST_IFACE, "up"],
-        [ip, "netns", "exec", NS, ip, "addr", "add", PEER_CIDR, "dev", PEER_IFACE],
-        [ip, "netns", "exec", NS, ip, "link", "set", PEER_IFACE, "up"],
-        [ip, "netns", "exec", NS, ip, "link", "set", "lo", "up"],
+        [ip, "link", "set", PEER_IFACE, "netns", NS],
+        [ip, "netns", "exec", NS, "ip", "link", "set", "lo", "up"],
+        [ip, "netns", "exec", NS, "ip", "addr", "add", PEER_CIDR, "dev", PEER_IFACE],
+        [ip, "netns", "exec", NS, "ip", "link", "set", PEER_IFACE, "up"],
     )
     for argv in steps:
         completed = _run(argv)
         if completed.returncode != 0:
             detail = ((completed.stderr or completed.stdout or "").strip() or "exit")[:240]
-            probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, f"{' '.join(argv)} :: {detail}", None)
-            probe.close()
-            return probe
+            return _fail(f"{' '.join(argv)} :: {detail}", sleeper)
     proc = subprocess.Popen(
         [ip, "netns", "exec", NS, "/usr/bin/python3", "-c", _LISTENER],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
     )
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, "listener-exited", proc)
-            probe.close()
-            return probe
+            err = ""
+            if proc.stderr is not None:
+                err = (proc.stderr.read() or "").strip()[:200]
+            return _fail(f"listener-exited {err}".strip(), sleeper)
         if _reachable(PROBE_HOST, PROBE_PORT):
-            return LocalProbe(PROBE_HOST, PROBE_PORT, True, "ready", proc)
+            _note("ready")
+            return LocalProbe(PROBE_HOST, PROBE_PORT, True, "ready", proc, sleeper)
         time.sleep(0.05)
-    probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, "listener-unreachable", proc)
-    probe.close()
-    return probe
+    proc.terminate()
+    return _fail("listener-unreachable", sleeper)

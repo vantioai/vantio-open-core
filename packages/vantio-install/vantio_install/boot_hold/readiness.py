@@ -101,6 +101,7 @@ def evaluate_ready(facts: dict) -> dict:
         "loader_health_ok": health_ok,
         "live_deny": live_deny,
         "deny_mechanism": str(check.get("mechanism") or ""),
+        "probe_detail": str(check.get("probe_detail") or ""),
         "reason": reason,
     }
 
