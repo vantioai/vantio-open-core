@@ -352,8 +352,15 @@ def clear_probe_markers() -> None:
 
 
 def exception_argv(binary: str, host: str, port: int, *, delete: bool) -> list[str]:
+    """One destination inside the hold chain. The chain is already cgroup-scoped.
+
+    A second cgroup match inside that chain is rejected by iptables-nft
+    (RULE_INSERT Invalid argument). Packets reach the chain only from the
+    enrolled slice or the enrolled subnet.
+    """
+
     action = ["-D", "VANTIO_BOOT_HOLD"] if delete else ["-I", "VANTIO_BOOT_HOLD", "1"]
-    return [binary, *action, "-p", "tcp", "-d", host, "--dport", str(port), "-m", "cgroup", "--path", SLICE, "-j", "RETURN"]
+    return [binary, *action, "-p", "tcp", "-d", host, "--dport", str(port), "-j", "RETURN"]
 
 
 def perform_deny_self_check(
