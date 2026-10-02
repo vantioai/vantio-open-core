@@ -172,6 +172,18 @@ def tc_clsact_del_argv(iface: str) -> list[str]:
     return ["tc", "qdisc", "del", "dev", iface, "clsact"]
 
 
+def tc_filter_del_argv(iface: str, direction: str) -> list[str]:
+    """Detach one clsact or tcx direction before the qdisc delete.
+
+    ``egress`` and ``ingress`` are the allowlisted directions. A still-attached
+    program can make ``tc qdisc del clsact`` return busy.
+    """
+
+    if direction not in {"egress", "ingress"}:
+        raise ValueError("The filter direction is not egress or ingress.")
+    return ["tc", "filter", "del", "dev", iface, direction]
+
+
 def docker_start_argv(name: str) -> list[str]:
     return ["docker", "start", name]
 

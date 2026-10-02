@@ -34,13 +34,16 @@ def pe_loader_service(python: str) -> str:
     return f"""[Unit]
 Description=Start Phantom Engine as early as the enrolled hold allows
 DefaultDependencies=no
-After=local-fs.target vantio-boot-hold.service docker.service
+After=local-fs.target apparmor.service vantio-boot-hold.service docker.service
 Wants=docker.service
 Before=vantio-pe-enforce-ready.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
-Restart=no
+Restart=on-failure
+RestartSec=2
 Environment=VANTIO_BOOT_HOLD_LIVE=1
 ExecStart={_py(python, "start-loader")}
 ExecStop=/bin/kill -TERM $MAINPID

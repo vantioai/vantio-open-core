@@ -32,6 +32,7 @@ from vantio_install.boot_hold.service import (
     opt_out,
     prepare_enforce,
     release,
+    reload_observe_profile,
     start_loader,
     status_body,
     live_boot_hold_runner,
@@ -68,6 +69,13 @@ class RecordingRunner:
 
 def _live(root: Path) -> bool:
     return root == Path("/") and os.geteuid() == 0 and os.environ.get("VANTIO_BOOT_HOLD_LIVE") == "1"
+
+
+def _apparmor_load(argv: list[str]) -> int:
+    if argv[:2] != ["apparmor_parser", "-Kr"]:
+        raise BootHoldError("Refusing an AppArmor command that is not a profile load.", state="HELD")
+    completed = subprocess.run(argv, check=False)
+    return int(completed.returncode)
 
 
 def _capture(argv: list[str], *, stderr: bool = False) -> str:
@@ -249,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         elif command == "apply-boot":
             payload = apply_boot(root, caller, runner, python)
         elif command == "start-loader":
+            if _live(root):
+                reload_observe_profile(root, _apparmor_load)
             payload = start_loader(root, caller)
             if _live(root):
                 argv_exec = loader_argv(root)

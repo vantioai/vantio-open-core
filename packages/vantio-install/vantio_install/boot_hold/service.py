@@ -42,8 +42,9 @@ from vantio_install.boot_hold.policy import (
     save_policy,
 )
 from vantio_install.boot_hold.readiness import evaluate_ready, policy_id_from_cmdline, probe_loader
-from vantio_install.commands import enforce_container_argv
-from vantio_install.constants import FROZEN_PINS
+from vantio_install.commands import apparmor_parser_load_argv, enforce_container_argv
+from vantio_install.constants import FROZEN_PINS, PE_OBSERVE_APPARMOR_PROFILE
+from vantio_install.pe_apparmor import pe_apparmor_profile_path, profile_text
 from vantio_install.boot_hold.registry import (
     compose_text_gated,
     empty_registry,
@@ -901,3 +902,69 @@ def start_loader(root: Path, caller: Caller) -> dict[str, Any]:
     argv = loader_argv(root)
     append_audit(root, caller, "start-loader", "EXEC", {"argv0": argv[0]})
     return envelope("start-loader", "EXEC", "Starting the Phantom Engine loader command.", argv=argv)
+
+
+def _stage_candidates(root: Path) -> list[Path]:
+    """Stage directories that can hold the observe profile across a reboot."""
+
+    found: list[Path] = []
+    config = root / "var/lib/vantio/config/observe.json"
+    if config.is_file() and not config.is_symlink():
+        try:
+            data = json.loads(config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        stage = data.get("stage_dir") if isinstance(data, dict) else None
+        if isinstance(stage, str) and stage.startswith("/") and ".." not in Path(stage).parts:
+            mapped = Path(stage) if root == Path("/") else root / stage.lstrip("/")
+            found.append(mapped)
+    found.append(root / "var/lib/vantio/pe-stage")
+    found.append(root / "var/lib/vantio/install/pe-stage")
+    return found
+
+
+def observe_profile_path(root: Path) -> Path | None:
+    """Regular file for the observe profile. A symlink is not that file."""
+
+    for stage in _stage_candidates(root):
+        path = pe_apparmor_profile_path(stage)
+        if path.is_symlink() or path.parent.is_symlink():
+            continue
+        if path.is_file() and path.name == PE_OBSERVE_APPARMOR_PROFILE:
+            return path
+    return None
+
+
+def reload_observe_profile(root: Path, runner: Callable[[list[str]], int]) -> dict[str, Any]:
+    """Load the durable observe profile before Docker starts the container.
+
+    The profile is written under the stage directory and loaded at apply.
+    It is not installed under /etc/apparmor.d, so AppArmor does not bring it
+    back on boot. Docker then refuses ``apparmor=vantio-pe-observe``.
+    """
+
+    path = observe_profile_path(root)
+    if path is None:
+        raise BootHoldError(
+            "The observe AppArmor profile is not on disk, so the loader stays stopped and the hold stays on.",
+            state="HELD",
+        )
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise BootHoldError(
+            "The observe AppArmor profile could not be read, so the loader stays stopped and the hold stays on.",
+            state="HELD",
+        ) from exc
+    if text != profile_text():
+        raise BootHoldError(
+            "The observe AppArmor profile on disk does not match the installer profile. The loader stays stopped and the hold stays on.",
+            state="HELD",
+        )
+    argv = apparmor_parser_load_argv(str(path))
+    if runner(argv) != 0:
+        raise BootHoldError(
+            "The observe AppArmor profile did not load. The loader stays stopped and the hold stays on.",
+            state="HELD",
+        )
+    return {"loaded": True, "path": str(path)}
