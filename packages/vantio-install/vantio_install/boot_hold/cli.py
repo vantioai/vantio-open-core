@@ -130,7 +130,7 @@ def _facts_probe(root: Path, facts_path: str | None):
         return assemble_host_facts(
             root,
             prog_show=_capture(["bpftool", "prog", "show"]),
-            cgroup_show=_capture(["bpftool", "cgroup", "show", "/sys/fs/cgroup/vantio-enrolled.slice"]),
+            cgroup_show=_capture(["bpftool", "cgroup", "show", "/sys/fs/cgroup/vantio.slice/vantio-enrolled.slice"]),
             map_show=_capture(["bpftool", "map", "show"]),
             runner=live_boot_hold_runner,
             deny_probe=policy.get("deny_probe") if isinstance(policy.get("deny_probe"), dict) else None,

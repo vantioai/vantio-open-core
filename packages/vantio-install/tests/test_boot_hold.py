@@ -186,7 +186,7 @@ class BootHoldTest(unittest.TestCase):
         apply_boot(self.root, self.caller, self.runner, self.python)
         blob = [" ".join(call) for call in self.runner.calls]
         joined = "\n".join(blob)
-        self.assertIn("--path vantio-enrolled.slice", joined)
+        self.assertIn("--path vantio.slice/vantio-enrolled.slice", joined)
         self.assertIn("-s 10.250.250.0/24", joined)
         self.assertIn("-s fd76:616e:7469::/64", joined)
         self.assertEqual(commands_are_scoped(self.runner.calls), [])
@@ -333,7 +333,7 @@ class BootHoldTest(unittest.TestCase):
 
         both = Rec()
         configure(self.root, self.caller, both, hold=True, ordering=True, python=self.python)
-        self.assertTrue(any("--path" in call and "vantio-enrolled.slice" in call for call in both.calls))
+        self.assertTrue(any("--path" in call and any("vantio-enrolled.slice" in part for part in call) for call in both.calls))
         both_units = static_units(self.python, default_policy())
         self.assertEqual(graph_errors(both_units, ordering=True, hold=True), [])
         with self.assertRaises(BootHoldError):
@@ -512,7 +512,7 @@ class BootHoldTest(unittest.TestCase):
         link = self.root / "etc/systemd/system/sysinit.target.wants/vantio-boot-hold.service"
         self.assertTrue(unit.is_file())
         self.assertTrue(link.is_symlink())
-        self.assertTrue(any("--path" in call and "vantio-enrolled.slice" in call for call in self.runner.calls))
+        self.assertTrue(any("--path" in call and any("vantio-enrolled.slice" in part for part in call) for call in self.runner.calls))
         opted = self.root / "opt-out-host"
         save_policy(opted, {"enabled": False, "hold": True, "ordering": True})
         quiet = Rec()

@@ -334,7 +334,7 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertEqual(health["boot_hold"]["state"], "HELD")
         self.assertEqual(health["boot_hold"]["reboot_row"], "NOT_PROVED")
         joined = " ".join(" ".join(item) for item in harness.snapshot()["boot_hold"]["commands"])
-        self.assertIn("--path vantio-enrolled.slice", joined)
+        self.assertIn("--path vantio.slice/vantio-enrolled.slice", joined)
         self.assertNotIn("0.0.0.0/0", joined)
 
     def test_apply_honors_boot_hold_opt_out(self) -> None:
