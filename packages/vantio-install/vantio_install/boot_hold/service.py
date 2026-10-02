@@ -828,6 +828,9 @@ def prepare_enforce(
     if "--privileged" in argv or "--cgroup-parent" in argv:
         raise BootHoldError("The enforce container argv is not the supported form.", state="FAILED_SAFE")
     (root / "sys/fs/cgroup" / SLICE).mkdir(parents=True, exist_ok=True)
+    events = root / "var/lib/vantio/pe-events"
+    events.mkdir(parents=True, exist_ok=True)
+    os.chmod(events, 0o755)
     policy_id = policy_id_from_cmdline(" ".join(argv))
     policy_path = root / EXPECTED_POLICY_REL
     policy_path.parent.mkdir(parents=True, exist_ok=True)

@@ -813,6 +813,8 @@ class EnforceReadyRegressions(unittest.TestCase):
         self.assertIn("host", argv)
         self.assertIn("/sys/fs/cgroup:/sys/fs/cgroup", argv)
         self.assertIn("--cgroup-skb-enforce", argv)
+        self.assertIn("--output-file", argv)
+        self.assertIn("/var/lib/vantio/pe-events/events.ndjson", argv)
         self.assertIn("--startup-enroll-cgroup", argv)
         self.assertNotIn("--cgroup-parent", argv)
         self.assertNotIn("--privileged", argv)

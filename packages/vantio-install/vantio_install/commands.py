@@ -20,6 +20,8 @@ def observe_binds() -> list[str]:
 
 
 ENFORCE_CGROUP_BIND = "/sys/fs/cgroup:/sys/fs/cgroup"
+ENFORCE_EVENTS_BIND = "/var/lib/vantio/pe-events:/var/lib/vantio/pe-events"
+ENFORCE_EVENTS_FILE = "/var/lib/vantio/pe-events/events.ndjson"
 ENFORCE_SLICE = "/sys/fs/cgroup/vantio-enrolled.slice"
 
 
@@ -49,7 +51,7 @@ def enforce_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
         "--security-opt",
         observe_apparmor_opt(),
     ]
-    for bind in [*observe_binds(), ENFORCE_CGROUP_BIND]:
+    for bind in [*observe_binds(), ENFORCE_CGROUP_BIND, ENFORCE_EVENTS_BIND]:
         argv.extend(["-v", bind])
     argv.extend(
         [
@@ -64,6 +66,8 @@ def enforce_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
             "--cgroup-skb-enforce",
             "--startup-enroll-cgroup",
             ENFORCE_SLICE,
+            "--output-file",
+            ENFORCE_EVENTS_FILE,
         ]
     )
     return argv

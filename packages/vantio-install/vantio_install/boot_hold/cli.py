@@ -101,6 +101,18 @@ def _pins_current(container: str) -> bool:
     return pins_are_current(mtimes, started)
 
 
+def _event_text(container: str) -> str:
+    parts: list[str] = []
+    path = Path("/var/lib/vantio/pe-events/events.ndjson")
+    try:
+        parts.append(path.read_text(encoding="utf-8", errors="replace")[-200000:])
+    except OSError:
+        pass
+    if container:
+        parts.append(_capture(["docker", "logs", "--tail", "200", container]))
+    return "\n".join(parts)
+
+
 def _facts_probe(root: Path, facts_path: str | None):
     def probe() -> dict:
         if facts_path and os.environ.get("VANTIO_BOOT_HOLD_ALLOW_FACTS") == "1" and not _live(root):
@@ -119,8 +131,8 @@ def _facts_probe(root: Path, facts_path: str | None):
             map_show=_capture(["bpftool", "map", "show"]),
             runner=live_boot_hold_runner,
             deny_probe=policy.get("deny_probe") if isinstance(policy.get("deny_probe"), dict) else None,
-            loader_log=_capture(["docker", "logs", "--tail", "400", container]) if container else "",
-            events=(lambda: _capture(["docker", "logs", "--tail", "400", container])) if container else None,
+            loader_log=_event_text(container),
+            events=lambda: _event_text(container),
             pins_current=_pins_current(container),
             expected_policy_id=_read_rel(root, EXPECTED_POLICY_REL),
         )
