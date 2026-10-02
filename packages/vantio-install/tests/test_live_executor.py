@@ -46,6 +46,7 @@ from vantio_install.optics_cli import observed_optics_cli_version  # noqa: E402
 from vantio_install.util import sha256_file  # noqa: E402
 from vantio_install.commands import apt_install_npm_argv, observe_apparmor_opt  # noqa: E402
 from vantio_install.pe_apparmor import pe_apparmor_profile_path, profile_text  # noqa: E402
+from vantio_install.observe_health import host_check_failure_text, ready_observe_sample  # noqa: E402
 
 ENV = "VANTIO_INSTALL_ALLOW_LIVE"
 
@@ -1771,25 +1772,11 @@ class LiveExecutorTests(unittest.TestCase):
         harness = self.planned()
         self.set_env("1")
         grant = self.grant_for(harness)
-        pins = list(constants.BPF_PINS)
-        samples = [
-            {
-                "lifecycle": "detached",
-                "security_ok": True,
-                "pins": pins[:1],
-                "pins_error": False,
-                "loader": False,
-                "clsact": True,
-            },
-            {
-                "lifecycle": "detached",
-                "security_ok": True,
-                "pins": pins,
-                "pins_error": False,
-                "loader": True,
-                "clsact": True,
-            },
-        ]
+        early = ready_observe_sample()
+        early["pins"] = list(constants.BPF_PINS)[:1]
+        early["loader"] = False
+        early["programs"] = False
+        samples = [early, ready_observe_sample()]
         cursor = {"index": 0}
 
         def sampler(_grant: object) -> dict:
@@ -1831,6 +1818,28 @@ class LiveExecutorTests(unittest.TestCase):
         )
         self.assertEqual(observer.verify("start_pe_observe", grant), "NOT_VERIFIED")
         self.assertEqual(seen["count"], 1)
+        text = host_check_failure_text("start_pe_observe", observer.last_observe_sample)
+        self.assertIn("container-stopped", text)
+        self.assertIn("pins-left-after-stop", text)
+        self.assertIn("Rollback is required.", text)
+
+    def test_stale_pins_are_named_in_the_rollback_reason(self) -> None:
+        harness = self.planned()
+        self.set_env("1")
+        grant = self.grant_for(harness)
+        stale = ready_observe_sample()
+        stale["pins_current"] = False
+
+        observer = ProductionObserver(
+            observe_sampler=lambda _grant: stale,
+            clock=lambda: 20.0,
+            sleeper=lambda _seconds: None,
+            observe_wait_s=20,
+        )
+        self.assertEqual(observer.verify("start_pe_observe", grant), "NOT_VERIFIED")
+        text = host_check_failure_text("start_pe_observe", observer.last_observe_sample)
+        self.assertIn("pins-stale", text)
+        self.assertIn("Rollback is required.", text)
 
     def test_ubuntu_npm_remediation_installs_only_the_npm_package(self) -> None:
         harness = self.planned()

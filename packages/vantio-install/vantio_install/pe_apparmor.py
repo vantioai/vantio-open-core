@@ -108,12 +108,17 @@ def apparmor_profile_loaded(name: str, profiles_path: Path | None = None) -> boo
     return False
 
 
-# Status, host pid, running, privileged, AppArmor profile, container cmd.
+# Status, host pid, running, privileged, AppArmor profile, exit code,
+# start time, finish time, container id, then the container cmd.
 # docker run -d exits 0 for a detached container and for a process that has
-# already exited. Status and pid are what separate those two.
+# already exited. Status, pid, and exit code are what separate those two.
+# A six-field line from older callers still parses. Exit code and times are
+# then absent.
 OBSERVE_INSPECT_FORMAT = (
     "{{.State.Status}} {{.State.Pid}} {{.State.Running}} "
-    "{{.HostConfig.Privileged}} {{.AppArmorProfile}} {{json .Config.Cmd}}"
+    "{{.HostConfig.Privileged}} {{.AppArmorProfile}} "
+    "{{.State.ExitCode}} {{.State.StartedAt}} {{.State.FinishedAt}} {{.Id}} "
+    "{{json .Config.Cmd}}"
 )
 
 _OBSERVE_STATUSES = frozenset(
@@ -123,10 +128,21 @@ _OBSERVE_STATUSES = frozenset(
 
 def parse_observe_inspect(text: str) -> dict | None:
     """Parse one observe inspect line. None means the line is not that shape."""
-    parts = text.strip().split(" ", 5)
-    if len(parts) != 6:
+    raw = text.strip()
+    fields = raw.split(" ", 9)
+    if len(fields) == 10:
+        status, pid, running, privileged, profile, exit_text, started_at, finished_at, container_id, cmd = fields
+        if not exit_text.isdigit():
+            return None
+        exit_code: int | None = int(exit_text)
+    elif len(raw.split(" ", 5)) == 6:
+        status, pid, running, privileged, profile, cmd = raw.split(" ", 5)
+        exit_code = None
+        started_at = ""
+        finished_at = ""
+        container_id = ""
+    else:
         return None
-    status, pid, running, privileged, profile, cmd = parts
     status = status.casefold()
     if status not in _OBSERVE_STATUSES or not pid.isdigit():
         return None
@@ -139,6 +155,10 @@ def parse_observe_inspect(text: str) -> dict | None:
         "privileged": privileged == "true",
         "profile": profile,
         "cmd": cmd,
+        "exit_code": exit_code,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "container_id": container_id,
     }
 
 
