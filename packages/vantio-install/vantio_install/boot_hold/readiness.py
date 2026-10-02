@@ -308,11 +308,11 @@ def enforce_mode_from_log(text: str) -> str:
 
     mode = ""
     for line in text.splitlines():
-        if "AUDIT (log only)" in line:
+        if "AUDIT (log only)" in line or '"ActionTaken":"AUDIT"' in line or '"ActionTaken": "AUDIT"' in line:
             mode = "audit"
-        if "SCOPED (drop enrolled)" in line:
+        if "SCOPED (drop enrolled)" in line or '"ActionTaken":"SCOPED"' in line or '"ActionTaken": "SCOPED"' in line:
             mode = "scoped"
-        if "NODE-WIDE DLP" in line:
+        if "NODE-WIDE DLP" in line or '"ActionTaken":"NODE_WIDE"' in line or '"ActionTaken": "NODE_WIDE"' in line:
             mode = "node-wide"
     return mode
 
@@ -418,13 +418,15 @@ def perform_live_deny_self_check(runner, *, attached: bool, events: Callable[[],
     probe = open_local_probe()
     try:
         if not probe.ready:
-            return interpret_self_check(
+            failed = interpret_self_check(
                 attached=True,
                 enrolled_rc=None,
                 unenrolled_rc=None,
                 hold_bypassed=False,
                 mechanism="probe-setup-failed",
             )
+            failed["probe_detail"] = probe.detail
+            return failed
         clear_probe_markers()
         result = perform_deny_self_check(
             runner,

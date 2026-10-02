@@ -70,14 +70,17 @@ def _live(root: Path) -> bool:
     return root == Path("/") and os.geteuid() == 0 and os.environ.get("VANTIO_BOOT_HOLD_LIVE") == "1"
 
 
-def _capture(argv: list[str]) -> str:
+def _capture(argv: list[str], *, stderr: bool = False) -> str:
     try:
         completed = subprocess.run(argv, check=False, capture_output=True, text=True, timeout=8)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     if completed.returncode != 0:
         return ""
-    return completed.stdout or ""
+    text = completed.stdout or ""
+    if stderr and completed.stderr:
+        text = f"{text}\n{completed.stderr}"
+    return text
 
 
 def _read_rel(root: Path, rel: str) -> str:
@@ -109,7 +112,7 @@ def _event_text(container: str) -> str:
     except OSError:
         pass
     if container:
-        parts.append(_capture(["docker", "logs", "--tail", "200", container]))
+        parts.append(_capture(["docker", "logs", "--tail", "200", container], stderr=True))
     return "\n".join(parts)
 
 

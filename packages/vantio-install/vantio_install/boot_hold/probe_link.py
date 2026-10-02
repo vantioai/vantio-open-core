@@ -6,6 +6,7 @@ import socket
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 NS = "vantio-deny-probe"
 HOST_IFACE = "vantio-probe"
@@ -50,8 +51,17 @@ class LocalProbe:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 proc.kill()
-        subprocess.run(["ip", "netns", "del", NS], check=False, capture_output=True, text=True)
-        subprocess.run(["ip", "link", "del", HOST_IFACE], check=False, capture_output=True, text=True)
+        ip = _ip()
+        subprocess.run([ip, "netns", "del", NS], check=False, capture_output=True, text=True)
+        subprocess.run([ip, "link", "del", HOST_IFACE], check=False, capture_output=True, text=True)
+
+
+def _ip() -> str:
+    if Path("/usr/sbin/ip").is_file():
+        return "/usr/sbin/ip"
+    if Path("/sbin/ip").is_file():
+        return "/sbin/ip"
+    return "ip"
 
 
 def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
@@ -69,32 +79,36 @@ def _reachable(host: str, port: int) -> bool:
 def open_local_probe() -> LocalProbe:
     """Stand up a listener the unenrolled path can reach. Failure leaves nothing behind."""
 
-    _run(["ip", "netns", "del", NS])
-    _run(["ip", "link", "del", HOST_IFACE])
+    ip = _ip()
+    run_netns = Path("/run/netns")
+    run_netns.mkdir(parents=True, exist_ok=True)
+    _run([ip, "netns", "del", NS])
+    _run([ip, "link", "del", HOST_IFACE])
     steps = (
-        ["ip", "netns", "add", NS],
-        ["ip", "link", "add", HOST_IFACE, "type", "veth", "peer", "name", PEER_IFACE],
-        ["ip", "link", "set", PEER_IFACE, "netns", NS],
-        ["ip", "addr", "add", HOST_CIDR, "dev", HOST_IFACE],
-        ["ip", "link", "set", HOST_IFACE, "up"],
-        ["ip", "netns", "exec", NS, "ip", "addr", "add", PEER_CIDR, "dev", PEER_IFACE],
-        ["ip", "netns", "exec", NS, "ip", "link", "set", PEER_IFACE, "up"],
-        ["ip", "netns", "exec", NS, "ip", "link", "set", "lo", "up"],
+        [ip, "netns", "add", NS],
+        [ip, "link", "add", HOST_IFACE, "type", "veth", "peer", "name", PEER_IFACE],
+        [ip, "link", "set", PEER_IFACE, "netns", NS],
+        [ip, "addr", "add", HOST_CIDR, "dev", HOST_IFACE],
+        [ip, "link", "set", HOST_IFACE, "up"],
+        [ip, "netns", "exec", NS, ip, "addr", "add", PEER_CIDR, "dev", PEER_IFACE],
+        [ip, "netns", "exec", NS, ip, "link", "set", PEER_IFACE, "up"],
+        [ip, "netns", "exec", NS, ip, "link", "set", "lo", "up"],
     )
     for argv in steps:
         completed = _run(argv)
         if completed.returncode != 0:
-            probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, " ".join(argv), None)
+            detail = ((completed.stderr or completed.stdout or "").strip() or "exit")[:240]
+            probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, f"{' '.join(argv)} :: {detail}", None)
             probe.close()
             return probe
     proc = subprocess.Popen(
-        ["ip", "netns", "exec", NS, "python3", "-c", _LISTENER],
+        [ip, "netns", "exec", NS, "/usr/bin/python3", "-c", _LISTENER],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         text=True,
         start_new_session=True,
     )
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             probe = LocalProbe(PROBE_HOST, PROBE_PORT, False, "listener-exited", proc)
