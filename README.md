@@ -81,4 +81,4 @@ Free Optics needs **no account and no API key**.
 Optics is the free Observe tier. [Phantom Engine](https://vantio.ai/phantom-engine) (Enforce + Control)
 extends this to policy enforcement and host-level runtime protection on enrolled Linux systems.
 
-Residual risk closes with **Vantio Phantom Engine** ($799/node/mo) — see [vantio.ai/pricing](https://vantio.ai/pricing). Enterprise governance is available on top — talk to sales.
+Residual risk closes with **Vantio Phantom Engine**. Contact Vantio — see [vantio.ai/pricing](https://vantio.ai/pricing). Enterprise: Contact Vantio.

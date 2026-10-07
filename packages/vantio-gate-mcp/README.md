@@ -48,8 +48,8 @@ Cursor / Claude Desktop:
 ## Upgrade path
 
 1. **Optics** (free) — observe only (`@vantio/optics-mcp`)
-2. **Phantom Engine** ($799/node/mo) — Observe, Enforce, and Control in one purchase
-3. **Enterprise** — governance add-on; talk to sales
+2. **Phantom Engine** (Contact Vantio) — Observe, Enforce, and Control in one purchase
+3. **Enterprise** (Contact Vantio) — governance add-on
 
 https://vantio.ai/phantom · https://vantio.ai/pricing
 

@@ -155,7 +155,7 @@ any code changes.
 | Tier | What's bypassable |
 |------|-------------------|
 | **Free · Vantio Optics (this tier)** | Any process not started with `vantio run` / `shield()`; Python without `vantio-agent-sdk`; native socket calls the interceptor does not mediate |
-| **Vantio Phantom Engine** ($799/node/mo) | Raw sockets and unenrolled processes not on an enrolled Linux host |
+| **Vantio Phantom Engine** (Contact Vantio) | Raw sockets and unenrolled processes not on an enrolled Linux host |
 | **Vantio Enterprise** | Same host scope; adds ledger, dual-control, and certifications |
 
 Run `vantio discover --local` to see what Optics can observe on your machine. Residual risk closes with **Vantio Phantom Engine** — see [observe-only.md](./observe-only.md).
