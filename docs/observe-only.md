@@ -52,7 +52,7 @@ Phantom Engine Enforce workflow: **Rules that stick** — author policy, dry-run
 
 ---
 
-## What Optics does not cover → Vantio Phantom Engine ($799/node/mo)
+## What Optics does not cover → Vantio Phantom Engine (Contact Vantio)
 
 If you need protection on machines you own when a process skips the app wrap:
 

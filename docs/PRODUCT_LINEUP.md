@@ -2,7 +2,7 @@
 
 > Architecture first, then SKU. Peer products — not nested dolls that each close every gap below them.
 
-**Vantio Optics** (Free) · **Vantio Phantom Engine** ($799/node/mo) · **Vantio Enterprise** (talk to sales)
+**Vantio Optics** (Free) · **Vantio Phantom Engine** (Contact Vantio) · **Vantio Enterprise** (Contact Vantio)
 
 Talk-track: Optics helps you see. Phantom Engine protects the machines you own — Observe, Enforce, and Control together, one purchase. Enterprise adds governance when you need proof and process on top.
 
@@ -15,8 +15,8 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 | Product | Job | What is still open |
 |---------|-----|--------------------|
 | **Optics** (Free) | **Observe** · Sight Loop | No block; traffic that never hits the interceptor is never recorded |
-| **Phantom Engine** ($799/node/mo) | **Enforce + Control** on Linux hosts you enroll | Privileged disable of loader; pod-network caveats; only on enrolled hosts |
-| **Enterprise** (talk to sales) | Governance on that protection | Same host scope; certifications not held |
+| **Phantom Engine** (Contact Vantio) | **Enforce + Control** on Linux hosts you enroll | Privileged disable of loader; pod-network caveats; only on enrolled hosts |
+| **Enterprise** (Contact Vantio) | Governance on that protection | Same host scope; certifications not held |
 
 | Product | What you see in data |
 |---------|----------------------|
@@ -36,12 +36,12 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 - Workflow: **Sight Loop**
 - SDK: `@vantio/agent-sdk` (Node.js), `vantio-agent-sdk` (Python)
 
-### Enforce + Control · Vantio Phantom Engine ($799/node/mo)
+### Enforce + Control · Vantio Phantom Engine (Contact Vantio)
 
 - Protection on **Linux machines you own** — Observe, Enforce, and Control together, one purchase
 - Includes all Enforce functions: block by hostname, PII redaction, spend/size caps, policy-as-code
 - Rogue Reconciliation when the host sees a transmission with no app-layer record
-- Enterprise adds ledger, evidence, and dual-control depth — talk to sales
+- Enterprise adds ledger, evidence, and dual-control depth. Contact Vantio
 - This repo does not ship Phantom Engine. See `vantio-phantom-engine`.
 
 > **Note on Gate:** Gate is the internal name for the Enforce function set inside Phantom Engine.

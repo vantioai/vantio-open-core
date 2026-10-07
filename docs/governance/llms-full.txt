@@ -85,7 +85,7 @@ Free Optics needs **no account and no API key**.
 Optics is the free Observe tier. [Phantom Engine](https://vantio.ai/phantom-engine) (Enforce + Control)
 extends this to policy enforcement and host-level runtime protection on enrolled Linux systems.
 
-Residual risk closes with **Vantio Phantom Engine** ($799/node/mo) — see [vantio.ai/pricing](https://vantio.ai/pricing). Enterprise governance is available on top — talk to sales.
+Residual risk closes with **Vantio Phantom Engine**. Contact Vantio — see [vantio.ai/pricing](https://vantio.ai/pricing). Enterprise: Contact Vantio.
 # END README.md
 
 # BEGIN packages/vantio-cli/README.md
@@ -512,9 +512,9 @@ Python needs [`vantio-agent-sdk`](https://pypi.org/project/vantio-agent-sdk) on 
 
 **Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions. Optics is free. Optics does not block, redact, or cap spend on its own.
 
-Optics helps you see. [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Observe, Enforce, and Control in one purchase, at $799/node/mo. [Enterprise](https://vantio.ai/enterprise) adds governance when you need proof and process on top — talk to sales. Continuous Assurance is how the suite stays true after install; it is not a separate product.
+Optics helps you see. [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Observe, Enforce, and Control in one purchase. Contact Vantio. [Enterprise](https://vantio.ai/enterprise) adds governance when you need proof and process on top. Contact Vantio. Continuous Assurance is how the suite stays true after install; it is not a separate product.
 
-> **Optics** (Free) · **Phantom Engine** ($799/node/mo) · **Enterprise** (talk to sales)
+> **Optics** (Free) · **Phantom Engine** (Contact Vantio) · **Enterprise** (Contact Vantio)
 
 ```bash
 pip install vantio-agent-sdk
@@ -560,7 +560,7 @@ Anonymous usage telemetry stays off unless you set `VANTIO_TELEMETRY=1`. The wir
 
 ## 3.0.14 — packaging metadata only
 
-This patch corrects PyPI project URLs and long-description product model: Optics (free), Phantom Engine ($799/node/mo — Observe, Enforce, and Control), Enterprise (talk to sales). Does not market any other standalone public SKU. SDK behavior is unchanged from 3.0.13.
+This patch corrected PyPI project URLs and the long description to the public ladder. It does not market another standalone public SKU. SDK behavior is unchanged from 3.0.13.
 
 ## v3.0.x — Breaking change from v2.x
 
@@ -769,7 +769,7 @@ Python support is `pip install vantio-agent-sdk`, then `@shield` or `vantio run 
 
 Browser paths stay outside this wrap.
 
-Phantom Engine is Enforce + Control on enrolled Linux hosts ($799/node/mo). Enterprise is governance on top of that protection and is talk-to-sales. Free Optics needs no account and no API key.
+Phantom Engine is Enforce + Control on enrolled Linux hosts. Contact Vantio. Enterprise is governance on top of that protection. Contact Vantio. Free Optics needs no account and no API key.
 
 Telemetry is disabled by default. Set `VANTIO_TELEMETRY=1` to opt in. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` override that opt-in.
 

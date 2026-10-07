@@ -8,7 +8,7 @@ Python support is `pip install vantio-agent-sdk`, then `@shield` or `vantio run 
 
 Browser paths stay outside this wrap.
 
-Phantom Engine is Enforce + Control on enrolled Linux hosts ($799/node/mo). Enterprise is governance on top of that protection and is talk-to-sales. Free Optics needs no account and no API key.
+Phantom Engine is Enforce + Control on enrolled Linux hosts. Contact Vantio. Enterprise is governance on top of that protection. Contact Vantio. Free Optics needs no account and no API key.
 
 Telemetry is disabled by default. Set `VANTIO_TELEMETRY=1` to opt in. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` override that opt-in.
 
