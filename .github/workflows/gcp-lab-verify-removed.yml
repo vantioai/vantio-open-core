@@ -1,0 +1,92 @@
+name: GCP lab verify removed
+
+# Read-only. VERIFIED_REMOVED only when that instance is gone or terminated
+# and no disk name still contains it. This does not delete anything.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_name:
+        description: Instance name. Must start with vantio-gcp-lab-.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-lab-one-vm
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Read whether the lab VM is gone
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 10
+    steps:
+      - name: Require main on vantio-open-core
+        env:
+          INSTANCE_NAME: ${{ inputs.instance_name }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$INSTANCE_NAME" in
+            vantio-gcp-lab-*) ;;
+            *) echo "refusing name" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static GCP keys
+        env:
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          test -n "$GCP_LAB_PROJECT"
+          test -n "$GCP_LAB_WIF_PROVIDER"
+          test -n "$GCP_LAB_SERVICE_ACCOUNT"
+
+      - name: Checkout verify script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Describe removal
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          INSTANCE_NAME: ${{ inputs.instance_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/lab_auto.py verify-removed | tee "$RUNNER_TEMP/gcp-lab-verify-removed.json"
+
+      - name: Upload removal evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-verify-removed-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-verify-removed.json
+          if-no-files-found: warn

@@ -1,0 +1,99 @@
+name: GCP lab collect
+
+# Copy the guest probe off the VM over the serial console.
+# The result is a GitHub artifact named gcp-lab-collect-*. Nothing is written
+# to the AWS lab or to a Navera project. Phantom Engine is not installed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_name:
+        description: Instance name. Must start with vantio-gcp-lab-.
+        required: true
+        type: string
+      instance_zone:
+        description: Zone. us-central1-a.
+        required: true
+        default: us-central1-a
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-lab-one-vm
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Copy the probe off the guest
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 15
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$INSTANCE_NAME" in
+            vantio-gcp-lab-*) ;;
+            *) echo "refusing name" >&2; exit 1 ;;
+          esac
+        env:
+          INSTANCE_NAME: ${{ inputs.instance_name }}
+
+      - name: Refuse static GCP keys
+        env:
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          test -n "$GCP_LAB_PROJECT"
+          test -n "$GCP_LAB_WIF_PROVIDER"
+          test -n "$GCP_LAB_SERVICE_ACCOUNT"
+
+      - name: Checkout collect script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Read serial output
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          INSTANCE_NAME: ${{ inputs.instance_name }}
+          INSTANCE_ZONE: ${{ inputs.instance_zone }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/lab_auto.py collect | tee "$RUNNER_TEMP/gcp-lab-collect.json"
+
+      - name: Upload collect evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-collect-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-collect.json
+          if-no-files-found: warn
