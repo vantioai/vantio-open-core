@@ -112,10 +112,10 @@ class FakeAws:
 
 
 class CapabilityTests(unittest.TestCase):
-    def test_shipped_switch_is_off(self) -> None:
+    def test_enablement_switches_match_the_checklist(self) -> None:
         caps = lab.load_lab_capabilities()
-        self.assertFalse(caps["max_life_hours_36"])
-        self.assertFalse(caps["ssh_instance_connect"])
+        self.assertTrue(caps["max_life_hours_36"])
+        self.assertTrue(caps["ssh_instance_connect"])
         self.assertFalse(caps["ssm"])
 
     def test_arm_preflight_does_not_call_aws(self) -> None:
@@ -132,9 +132,10 @@ class CapabilityTests(unittest.TestCase):
                     os.environ.pop("EVIDENCE_PATH", None)
                 else:
                     os.environ["EVIDENCE_PATH"] = old
-            self.assertEqual(status, 2)
+            self.assertEqual(status, 0)
             body = json.loads(path.read_text())
-            self.assertEqual(body["status"], "BLOCKED_IAM")
+            self.assertEqual(body["status"], "READY")
+            self.assertTrue(body["proceed"])
             self.assertFalse(body["mutated"])
 
     def test_long_soak_preflight_stops_before_aws(self) -> None:
@@ -149,8 +150,10 @@ class CapabilityTests(unittest.TestCase):
                 os.environ.pop("EVIDENCE_PATH", None)
                 os.environ.pop("SOAK_HOURS", None)
                 os.environ.pop("EXECUTE", None)
-            self.assertEqual(status, 2)
-            self.assertEqual(json.loads(path.read_text())["reason"], "max_life_hours_36_not_enabled")
+            self.assertEqual(status, 0)
+            body = json.loads(path.read_text())
+            self.assertTrue(body["proceed"])
+            self.assertEqual(body["status"], "READY")
 
 
 class GuardTests(unittest.TestCase):
@@ -195,15 +198,15 @@ class GuardTests(unittest.TestCase):
         }
         old = dict(young)
         old["launch_time"] = (NOW - timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.assertEqual(lab.sweeper_action(young, NOW), "skip_life_not_enabled")
-        self.assertEqual(lab.sweeper_action(old, NOW), "skip_life_not_enabled")
+        self.assertEqual(lab.sweeper_action(young, NOW), "keep")
+        self.assertEqual(lab.sweeper_action(old, NOW), "delete_launch_age")
         with tempfile.TemporaryDirectory() as tmp:
             cap = Path(tmp) / "caps.json"
-            cap.write_text(json.dumps({"max_life_hours_36": True, "ssh_instance_connect": False, "ssm": False}))
+            cap.write_text(json.dumps({"max_life_hours_36": False, "ssh_instance_connect": False, "ssm": False}))
             os.environ["W3_LAB_CAPABILITIES"] = str(cap)
             try:
-                self.assertEqual(lab.sweeper_action(young, NOW), "keep")
-                self.assertEqual(lab.sweeper_action(old, NOW), "delete_launch_age")
+                self.assertEqual(lab.sweeper_action(young, NOW), "skip_life_not_enabled")
+                self.assertEqual(lab.sweeper_action(old, NOW), "skip_life_not_enabled")
             finally:
                 os.environ.pop("W3_LAB_CAPABILITIES", None)
 
@@ -266,9 +269,13 @@ class ArmCollectTests(unittest.TestCase):
 
     def test_arm_stops_when_the_switch_is_off(self) -> None:
         runner = FakeAws()
-        os.environ["INSTANCE_ID"] = INSTANCE
-        with self.assertRaises(lab.GuardAbort) as caught:
-            steps.execute_arm(runner)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "caps.json"
+            path.write_text(json.dumps({"ssh_instance_connect": False, "max_life_hours_36": False, "ssm": False}))
+            os.environ["W3_LAB_CAPABILITIES"] = str(path)
+            os.environ["INSTANCE_ID"] = INSTANCE
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_arm(runner)
         self.assertEqual(caught.exception.reason, "ssh_instance_connect_not_enabled")
         self.assertEqual(runner.calls, [])
 
@@ -368,6 +375,44 @@ class ArmCollectTests(unittest.TestCase):
         self.assertEqual(result["status"], "VERIFIED_REMOVED")
         self.assertEqual(digest, hashlib.sha256(body).hexdigest())
         self.assertFalse(any("terminate-instances" in " ".join(call) for call in runner.calls))
+
+
+class SoakDurabilityTests(unittest.TestCase):
+    def test_check_lines_survive_the_rest_of_the_console(self) -> None:
+        digest = "a" * 64
+        other = "b" * 64
+        console = "\n".join(
+            [
+                "boot",
+                f"vantio-lab-check seq=1 name=arm result=pass sha256={digest}",
+                "Power down",
+                f"vantio-lab-check seq=2 name=soak result=fail sha256={other}",
+                "BEGIN OPENSSH PRIVATE KEY",
+            ]
+        )
+        checks = steps.parse_check_lines(console, source="console")
+        self.assertEqual([item["seq"] for item in checks], [1, 2])
+        self.assertEqual(checks[1]["result"], "fail")
+        self.assertNotIn("PRIVATE", json.dumps(checks))
+
+    def test_idle_discovery_does_not_launch(self) -> None:
+        runner = FakeAws()
+        runner.state = "terminated"
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ.pop("INSTANCE_ID", None)
+            try:
+                result = steps.execute_collect_due(runner, NOW)
+            finally:
+                os.environ.pop("EVIDENCE_PATH", None)
+        self.assertEqual(result["status"], "IDLE")
+        self.assertEqual(result["check_count"], 0)
+        self.assertFalse(any("run-instances" in " ".join(call) for call in runner.calls))
+
+    def test_record_check_script_parses(self) -> None:
+        script = ROOT / "scripts/aws/lab-guests/record-check.sh"
+        completed = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 class WorkflowTextTests(unittest.TestCase):

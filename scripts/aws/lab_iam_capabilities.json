@@ -1,7 +1,7 @@
 {
   "schema": "vantio.w3-lab-iam-capabilities/v1",
-  "max_life_hours_36": false,
-  "ssh_instance_connect": false,
+  "max_life_hours_36": true,
+  "ssh_instance_connect": true,
   "ssm": false,
-  "note": "Live IAM was not re-read on 2026-10-08. These stay false until the console change in the founder review is applied and this file is updated in that same change."
+  "note": "Draft enablement. Merge only after the 2026-10-08 console checklist is applied. SSM stays off."
 }

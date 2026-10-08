@@ -22,7 +22,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -30,6 +30,9 @@ import w3_lab_auto as lab
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MARKER_LINE = re.compile(r"^vantio-lab-marker seal=[0-9a-f]{64} pin=[0-9a-f]{64}$")
+CHECK_LINE = re.compile(
+    r"^vantio-lab-check seq=([0-9]{1,6}) name=([A-Za-z0-9_-]{1,40}) result=(pass|fail|skip) sha256=([0-9a-f]{64})$"
+)
 SECRET = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"
     r"|AKIA[0-9A-Z]{16}"
@@ -65,6 +68,32 @@ def require_global_32(cidr: str) -> str:
     if not isinstance(address, ipaddress.IPv4Address) or not address.is_global:
         raise lab.GuardAbort("cidr")
     return str(network)
+
+
+def parse_check_lines(text: str, *, source: str) -> list[dict[str, Any]]:
+    """Pull check records out of console or guest text. Other lines are ignored."""
+    found: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
+    for raw in text.splitlines():
+        match = CHECK_LINE.fullmatch(raw.strip())
+        if match is None:
+            continue
+        seq = int(match.group(1))
+        digest = match.group(4)
+        if (seq, digest) in seen:
+            continue
+        seen.add((seq, digest))
+        found.append(
+            {
+                "name": match.group(2),
+                "result": match.group(3),
+                "seq": seq,
+                "sha256": digest,
+                "source": source,
+            }
+        )
+    found.sort(key=lambda item: int(item["seq"]))
+    return found
 
 
 def redact(text: str) -> tuple[str, bool]:
@@ -471,8 +500,10 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
     )
     text, redacted = redact(console_text(console))
     marker = next((line for line in text.splitlines() if MARKER_LINE.fullmatch(line)), None)
+    checks = parse_check_lines(text, source="console")
     payload.update(
         {
+            "checks": checks,
             "collect_channel": "console",
             "console_redacted": redacted,
             "console_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
@@ -482,7 +513,11 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
         }
     )
     if caps["ssh_instance_connect"] and public_ipv4(instance) and os.environ.get("W3_RUNNER_CIDR", "").strip():
-        script = "cat /var/lib/vantio-lab/marker.json\n"
+        script = (
+            "cat /var/lib/vantio-lab/marker.json 2>/dev/null || true\n"
+            "printf '%s\\n' '---CHECKS---'\n"
+            "cat /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true\n"
+        )
         stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
         opened = open_ssh(
             runner,
@@ -496,9 +531,86 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
         )
         payload["mutated"] = bool(opened.get("opened"))
         payload["collect_channel"] = "console+ssh" if opened.get("opened") else "console"
-        guest = redact(str(opened.get("stdout") or ""))[0].strip()
-        if guest.startswith("{") and "PRIVATE" not in guest:
-            payload["guest_marker_sha256"] = hashlib.sha256(guest.encode("utf-8")).hexdigest()
+        guest = redact(str(opened.get("stdout") or ""))[0]
+        marker_part, _, check_part = guest.partition("---CHECKS---")
+        marker_part = marker_part.strip()
+        if marker_part.startswith("{") and "PRIVATE" not in marker_part:
+            payload["guest_marker_sha256"] = hashlib.sha256(marker_part.encode("utf-8")).hexdigest()
+        pulled = parse_check_lines(check_part, source="guest-file")
+        by_key = {(item["seq"], item["sha256"]): item for item in checks}
+        for item in pulled:
+            by_key[(item["seq"], item["sha256"])] = item
+        payload["checks"] = sorted(by_key.values(), key=lambda item: int(item["seq"]))
+    lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
+    return payload
+
+
+def due_instance_ids(described: Mapping[str, Any], now: datetime) -> list[str]:
+    found: list[str] = []
+    reservations = described.get("Reservations") or []
+    if not isinstance(reservations, list):
+        return found
+    for reservation in reservations:
+        if not isinstance(reservation, Mapping):
+            continue
+        instances = reservation.get("Instances") or []
+        if not isinstance(instances, list):
+            continue
+        for instance in instances:
+            if not isinstance(instance, Mapping):
+                continue
+            tags = lab._tag_list(instance.get("Tags"))
+            if not lab.lab_tags_owned(tags):
+                continue
+            launch = instance.get("LaunchTime")
+            try:
+                started = lab.parse_time(launch)
+            except (TypeError, ValueError):
+                continue
+            if now - started > timedelta(hours=48):
+                continue
+            instance_id = instance.get("InstanceId")
+            if isinstance(instance_id, str) and lab.ID_SHAPES["instance"].match(instance_id):
+                found.append(instance_id)
+    return found
+
+
+def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner = default_ssh, keygen: Keygen = default_keygen) -> dict[str, Any]:
+    """Copy check lines off every recent owned lab. Idle is a valid result."""
+    identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
+    lab.require_identity(identity)
+    described = lab.aws_json(runner, ["aws", "ec2", "describe-instances", "--region", lab.REGION])
+    rows: list[dict[str, Any]] = []
+    previous = os.environ.get("INSTANCE_ID")
+    try:
+        for instance_id in due_instance_ids(described, now):
+            os.environ["INSTANCE_ID"] = instance_id
+            try:
+                one = execute_collect(runner, ssh_runner=ssh_runner, keygen=keygen)
+            except lab.GuardAbort as exc:
+                one = {"checks": [], "instance_id": instance_id, "reason": exc.reason, "status": "FAILED"}
+            rows.append(
+                {
+                    "checks": one.get("checks") or [],
+                    "instance_id": instance_id,
+                    "status": one.get("status"),
+                }
+            )
+    finally:
+        if previous is None:
+            os.environ.pop("INSTANCE_ID", None)
+        else:
+            os.environ["INSTANCE_ID"] = previous
+    checks = [item for row in rows for item in row["checks"]]
+    payload = base_evidence("collect-due")
+    payload.update(
+        {
+            "check_count": len(checks),
+            "checks": checks,
+            "instances": rows,
+            "status": "COLLECTED" if rows else "IDLE",
+        }
+    )
     lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
     return payload
 
@@ -636,7 +748,7 @@ def close_ssh(runner: Runner) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
-            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|close-ssh|collect|teardown|verify-removed",
+            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|close-ssh|collect|collect-due|teardown|verify-removed",
             file=sys.stderr,
         )
         return 1
@@ -654,6 +766,9 @@ def main(argv: list[str]) -> int:
             return close_ssh(lab.default_runner)
         if command == "collect":
             execute_collect(lab.default_runner)
+            return 0
+        if command == "collect-due":
+            execute_collect_due(lab.default_runner, now)
             return 0
         if command == "teardown":
             execute_teardown(lab.default_runner, now)

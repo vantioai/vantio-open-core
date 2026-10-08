@@ -1,19 +1,22 @@
 name: W3 lab auto collect
 
-# Read one owned lab after a soak. The job starts, collects, and exits.
-# It does not stay running for the soak. Schedule or dispatch it later and
-# find the host by instance id. Trust subject:
+# Copy soak check lines off owned labs. Each guest check is printed to the
+# EC2 console as it runs, which is off the guest disk. This job pulls those
+# lines. An empty instance id, including the schedule, discovers recent owned
+# labs. This job does not launch an instance.
+# Trust subject:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-auto
 # Role: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
-# Console text stays in the runner. The artifact keeps a hash and the marker
-# line. SSH stays off until lab_iam_capabilities.json enables it.
 
 on:
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       instance_id:
-        description: Owned lab instance id.
-        required: true
+        description: Owned lab instance id. Empty discovers recent owned labs.
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -34,7 +37,10 @@ jobs:
       - name: Require main on vantio-open-core
         run: |
           set -euo pipefail
-          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|schedule) ;;
+            *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
+          esac
           test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-collect.yml@refs/heads/main"
@@ -55,6 +61,7 @@ jobs:
             scripts/aws/w3_lab_auto.py
             scripts/aws/w3_lab_steps.py
             scripts/aws/lab_iam_capabilities.json
+            scripts/aws/lab-guests/record-check.sh
           sparse-checkout-cone-mode: false
 
       - name: Assume vantio-w3-lab-provision
@@ -88,7 +95,13 @@ jobs:
           W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           EVIDENCE_PATH: w3-lab-collect.json
-        run: python3 scripts/aws/w3_lab_steps.py collect
+        run: |
+          set -euo pipefail
+          if [ -n "${INSTANCE_ID}" ]; then
+            python3 scripts/aws/w3_lab_steps.py collect
+          else
+            python3 scripts/aws/w3_lab_steps.py collect-due
+          fi
 
       - name: Close the runner SSH rule
         if: always() && steps.assume.outcome == 'success'
