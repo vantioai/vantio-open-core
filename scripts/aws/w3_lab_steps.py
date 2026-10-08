@@ -1,0 +1,672 @@
+#!/usr/bin/env python3
+"""Arm, collect, teardown, and long-soak decisions for the Free lab.
+
+Launch of a host that lives past seven hours, and SSH from a runner, stay
+off until scripts/aws/lab_iam_capabilities.json says the console change is
+recorded. This file does not call AWS in that default state.
+
+Collect, teardown, and verify-removed do call AWS when invoked. They refuse
+resources that do not carry the owned lab tags. A private key is never
+written into the evidence JSON.
+
+Audience: INTERNAL_RESTRICTED
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import ipaddress
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Mapping
+
+import w3_lab_auto as lab
+
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+MARKER_LINE = re.compile(r"^vantio-lab-marker seal=[0-9a-f]{64} pin=[0-9a-f]{64}$")
+SECRET = re.compile(
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"
+    r"|AKIA[0-9A-Z]{16}"
+    r"|ghp_[A-Za-z0-9]{20,}",
+    re.S,
+)
+DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
+Runner = lab.Runner
+SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
+Keygen = Callable[[Path], tuple[Path, str]]
+
+
+def require_instance_id(value: str) -> str:
+    if lab.ID_SHAPES["instance"].match(value) is None or value in lab.DENYLIST_IDS:
+        raise lab.GuardAbort("instance_id")
+    return value
+
+
+def require_hex64(value: str, field: str) -> str:
+    if HEX64.fullmatch(value) is None:
+        raise lab.GuardAbort(field)
+    return value
+
+
+def require_global_32(cidr: str) -> str:
+    try:
+        network = ipaddress.ip_network(cidr, strict=True)
+    except ValueError:
+        raise lab.GuardAbort("cidr") from None
+    if network.version != 4 or network.prefixlen != 32:
+        raise lab.GuardAbort("cidr")
+    address = network.network_address
+    if not isinstance(address, ipaddress.IPv4Address) or not address.is_global:
+        raise lab.GuardAbort("cidr")
+    return str(network)
+
+
+def redact(text: str) -> tuple[str, bool]:
+    cleaned, count = SECRET.subn("[redacted]", text)
+    return cleaned, count > 0
+
+
+def github_output(name: str, value: str) -> None:
+    path = os.environ.get("GITHUB_OUTPUT", "").strip()
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(f"{name}={value}\n")
+
+
+def evidence_path(default: str) -> Path:
+    return Path(os.environ.get("EVIDENCE_PATH", default))
+
+
+def base_evidence(step: str) -> dict[str, Any]:
+    return {
+        "account_id": lab.ACCOUNT_ID,
+        "mutated": False,
+        "noninteractive_teardown_ready": False,
+        "region": lab.REGION,
+        "step": step,
+    }
+
+
+def dry_run(runner: Runner, args: list[str]) -> str:
+    probe = [*args, "--dry-run"]
+    lab.refuse_forbidden_command(probe)
+    proc = runner(probe)
+    text = f"{proc.stderr or ''}{proc.stdout or ''}"
+    if "DryRunOperation" in text:
+        return "allowed"
+    if "UnauthorizedOperation" in text or "AccessDenied" in text:
+        return "denied"
+    raise lab.GuardAbort("dry_run")
+
+
+def authorize_args(group_id: str, cidr: str, *, revoke: bool) -> list[str]:
+    if lab.ID_SHAPES["security-group"].match(group_id) is None:
+        raise lab.GuardAbort("security_group")
+    action = "revoke-security-group-ingress" if revoke else "authorize-security-group-ingress"
+    permissions = [
+        {
+            "FromPort": 22,
+            "IpProtocol": "tcp",
+            "IpRanges": [{"CidrIp": require_global_32(cidr), "Description": "runner-ssh"}],
+            "ToPort": 22,
+        }
+    ]
+    return [
+        "aws",
+        "ec2",
+        action,
+        "--region",
+        lab.REGION,
+        "--group-id",
+        group_id,
+        "--ip-permissions",
+        json.dumps(permissions, separators=(",", ":")),
+    ]
+
+
+def first_instance(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    reservations = payload.get("Reservations") or []
+    if not isinstance(reservations, list):
+        return None
+    for reservation in reservations:
+        if not isinstance(reservation, Mapping):
+            continue
+        instances = reservation.get("Instances") or []
+        if not isinstance(instances, list):
+            continue
+        for instance in instances:
+            if isinstance(instance, Mapping):
+                return instance
+    return None
+
+
+def describe_instance(runner: Runner, instance_id: str) -> Mapping[str, Any] | None:
+    args = [
+        "aws",
+        "ec2",
+        "describe-instances",
+        "--region",
+        lab.REGION,
+        "--instance-ids",
+        instance_id,
+        "--output",
+        "json",
+    ]
+    lab.refuse_forbidden_command(args)
+    proc = runner(args)
+    text = f"{proc.stderr or ''}{proc.stdout or ''}"
+    if proc.returncode != 0:
+        if "InvalidInstanceID.NotFound" in text:
+            return None
+        raise lab.GuardAbort("describe_instance")
+    payload = json.loads(proc.stdout or "{}")
+    if not isinstance(payload, dict):
+        raise lab.GuardAbort("describe_instance")
+    return first_instance(payload)
+
+
+def instance_state(instance: Mapping[str, Any]) -> str:
+    state = instance.get("State")
+    if isinstance(state, Mapping) and isinstance(state.get("Name"), str):
+        return str(state["Name"])
+    return ""
+
+
+def public_ipv4(instance: Mapping[str, Any]) -> str:
+    value = instance.get("PublicIpAddress")
+    if isinstance(value, str) and value:
+        return value
+    return ""
+
+
+def security_group_id(instance: Mapping[str, Any]) -> str:
+    groups = instance.get("SecurityGroups")
+    if not isinstance(groups, list) or len(groups) != 1 or not isinstance(groups[0], Mapping):
+        raise lab.GuardAbort("security_group")
+    group_id = groups[0].get("GroupId")
+    if not isinstance(group_id, str) or lab.ID_SHAPES["security-group"].match(group_id) is None:
+        raise lab.GuardAbort("security_group")
+    return group_id
+
+
+def availability_zone(instance: Mapping[str, Any]) -> str:
+    placement = instance.get("Placement")
+    if not isinstance(placement, Mapping):
+        raise lab.GuardAbort("availability_zone")
+    zone = placement.get("AvailabilityZone")
+    if not isinstance(zone, str) or not zone.startswith("us-east-2"):
+        raise lab.GuardAbort("availability_zone")
+    return zone
+
+
+def console_text(payload: Mapping[str, Any]) -> str:
+    raw = payload.get("Output")
+    if not isinstance(raw, str) or raw == "":
+        return ""
+    try:
+        return base64.b64decode(raw, validate=True).decode("utf-8", "replace")
+    except ValueError:
+        return raw
+
+
+def default_keygen(directory: Path) -> tuple[Path, str]:
+    private = directory / "lab-ed25519"
+    proc = subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "vantio-lab", "-f", str(private)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not private.exists():
+        raise lab.GuardAbort("keygen")
+    public = private.with_suffix(private.suffix + ".pub").read_text(encoding="utf-8").strip()
+    return private, public
+
+
+def default_ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, input=script, capture_output=True, text=True, check=False)
+
+
+def shred_file(path: Path) -> None:
+    if not path.exists():
+        return
+    subprocess.run(["shred", "-u", str(path)], capture_output=True, check=False)
+    if path.exists():
+        path.write_bytes(b"\0" * max(path.stat().st_size, 1))
+        path.unlink()
+
+
+def write_stamp(path: Path, stamp: Mapping[str, Any]) -> None:
+    path.write_text(json.dumps(stamp, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def revoke_quietly(runner: Runner, group_id: str, cidr: str) -> None:
+    args = authorize_args(group_id, cidr, revoke=True)
+    lab.refuse_forbidden_command(args)
+    proc = runner(args)
+    if proc.returncode == 0:
+        return
+    text = f"{proc.stderr or ''}{proc.stdout or ''}"
+    if "InvalidPermission.NotFound" in text:
+        return
+    raise lab.GuardAbort("revoke_ssh")
+
+
+def open_ssh(
+    runner: Runner,
+    instance: Mapping[str, Any],
+    cidr: str,
+    stamp_path: Path,
+    keygen: Keygen,
+    ssh_runner: SshRunner,
+    remote_argv: list[str],
+    script: str,
+) -> dict[str, Any]:
+    """Authorize one /32, push a one-minute key, run the command, then close."""
+    group_id = security_group_id(instance)
+    instance_id = str(instance.get("InstanceId"))
+    zone = availability_zone(instance)
+    host = public_ipv4(instance)
+    if not host:
+        raise lab.GuardAbort("no_public_ipv4")
+    require_global_32(cidr)
+    authorize = authorize_args(group_id, cidr, revoke=False)
+    revoke = authorize_args(group_id, cidr, revoke=True)
+    connect = [
+        "aws",
+        "ec2-instance-connect",
+        "send-ssh-public-key",
+        "--region",
+        lab.REGION,
+        "--instance-id",
+        instance_id,
+        "--availability-zone",
+        zone,
+        "--instance-os-user",
+        "ubuntu",
+        "--ssh-public-key",
+        "probe",
+    ]
+    # Revoke must dry-run as allowed before any ingress is opened. The live
+    # role can authorize and cannot revoke; opening that port would leave it.
+    if (
+        dry_run(runner, revoke) == "denied"
+        or dry_run(runner, authorize) == "denied"
+        or dry_run(runner, connect) == "denied"
+    ):
+        return {"opened": False, "reason": "ssh_permission_denied"}
+    directory = stamp_path.parent
+    private, public = keygen(directory)
+    stamp = {"authorized": True, "cidr": cidr, "group_id": group_id, "instance_id": instance_id}
+    write_stamp(stamp_path, stamp)
+    try:
+        lab.aws_json(runner, authorize)
+        send = connect[:-1] + [public]
+        lab.aws_json(runner, send)
+        known = directory / "known_hosts"
+        ssh_args = [
+            "ssh",
+            "-i",
+            str(private),
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            f"UserKnownHostsFile={known}",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            f"ubuntu@{host}",
+            *remote_argv,
+        ]
+        proc = ssh_runner(ssh_args, script)
+        if proc.returncode != 0:
+            raise lab.GuardAbort("ssh")
+        return {"opened": True, "stdout": proc.stdout or ""}
+    finally:
+        revoke_quietly(runner, group_id, cidr)
+        stamp["authorized"] = False
+        write_stamp(stamp_path, stamp)
+        shred_file(private)
+        shred_file(private.with_suffix(private.suffix + ".pub"))
+
+
+def preflight_arm() -> int:
+    caps = lab.load_lab_capabilities()
+    proceed = caps["ssh_instance_connect"]
+    payload = base_evidence("arm")
+    payload.update(
+        {
+            "proceed": proceed,
+            "reason": None if proceed else "ssh_instance_connect_not_enabled",
+            "ssm": "not_enabled" if not caps["ssm"] else "not_implemented",
+            "status": "READY" if proceed else "BLOCKED_IAM",
+        }
+    )
+    lab.write_json_with_hash(evidence_path("w3-lab-arm.json"), payload)
+    github_output("proceed", "true" if proceed else "false")
+    return 0 if proceed else 2
+
+
+def preflight_long_soak() -> int:
+    raw_hours = os.environ.get("SOAK_HOURS", "36").strip()
+    execute = lab.parse_bool(os.environ.get("EXECUTE", "false"))
+    try:
+        hours = int(raw_hours)
+    except ValueError:
+        hours = 0
+    caps = lab.load_lab_capabilities()
+    reason = None
+    if hours < 1 or hours > 36:
+        reason = "soak_hours"
+    elif hours <= 7:
+        reason = "use_provision_workflow"
+    elif not caps["max_life_hours_36"]:
+        reason = "max_life_hours_36_not_enabled"
+    elif not execute:
+        reason = "execute_not_requested"
+    proceed = reason is None
+    payload = base_evidence("long-soak")
+    payload.update(
+        {
+            "execute": execute,
+            "proceed": proceed,
+            "reason": reason,
+            "soak_hours": hours,
+            "status": "READY" if proceed else "BLOCKED_IAM",
+        }
+    )
+    lab.write_json_with_hash(evidence_path("w3-lab-long-soak.json"), payload)
+    github_output("proceed", "true" if proceed else "false")
+    return 0 if proceed else 2
+
+
+def execute_arm(
+    runner: Runner,
+    *,
+    keygen: Keygen = default_keygen,
+    ssh_runner: SshRunner = default_ssh,
+) -> dict[str, Any]:
+    payload = base_evidence("arm")
+    try:
+        if not lab.load_lab_capabilities()["ssh_instance_connect"]:
+            raise lab.GuardAbort("ssh_instance_connect_not_enabled")
+        instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
+        seal = require_hex64(os.environ.get("SEAL", "").strip(), "seal")
+        pin = require_hex64(os.environ.get("PUBLIC_PIN", "").strip(), "public_pin")
+        cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
+        payload.update({"instance_id": instance_id, "public_pin": pin, "seal": seal})
+        identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
+        lab.require_identity(identity)
+        instance = describe_instance(runner, instance_id)
+        if instance is None:
+            raise lab.GuardAbort("instance_absent")
+        tags = lab._tag_list(instance.get("Tags"))
+        if not lab.lab_tags_owned(tags):
+            raise lab.GuardAbort("not_owned")
+        if instance_state(instance) != "running":
+            raise lab.GuardAbort("instance_state")
+        if not public_ipv4(instance):
+            raise lab.GuardAbort("no_public_ipv4")
+        script_path = Path(os.environ.get("W3_MARKER_SCRIPT", str(DEFAULT_MARKER)))
+        script = script_path.read_text(encoding="utf-8")
+        stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
+        result = open_ssh(
+            runner,
+            instance,
+            cidr,
+            stamp_path,
+            keygen,
+            ssh_runner,
+            ["bash", "-s", "--", seal, pin],
+            script,
+        )
+        payload.update(
+            {
+                "mutated": bool(result.get("opened")),
+                "reason": result.get("reason"),
+                "status": "ARMED" if result.get("opened") else "BLOCKED_IAM",
+            }
+        )
+        if not result.get("opened"):
+            raise lab.GuardAbort(str(result.get("reason") or "ssh"))
+    except lab.GuardAbort as exc:
+        payload.update({"reason": exc.reason, "status": payload.get("status") or "FAILED"})
+        lab.write_json_with_hash(evidence_path("w3-lab-arm.json"), payload)
+        raise
+    lab.write_json_with_hash(evidence_path("w3-lab-arm.json"), payload)
+    return payload
+
+
+def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keygen: Keygen = default_keygen) -> dict[str, Any]:
+    instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
+    identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
+    lab.require_identity(identity)
+    instance = describe_instance(runner, instance_id)
+    payload = base_evidence("collect")
+    payload["instance_id"] = instance_id
+    caps = lab.load_lab_capabilities()
+    payload["ssm"] = "not_enabled" if not caps["ssm"] else "not_implemented"
+    if instance is None:
+        payload.update({"reason": "instance_absent", "status": "NOT_FOUND"})
+        lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
+        raise lab.GuardAbort("instance_absent")
+    tags = lab._tag_list(instance.get("Tags"))
+    if not lab.lab_tags_owned(tags):
+        payload.update({"reason": "not_owned", "status": "NOT_OWNED"})
+        lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
+        raise lab.GuardAbort("not_owned")
+    console = lab.aws_json(
+        runner,
+        ["aws", "ec2", "get-console-output", "--region", lab.REGION, "--instance-id", instance_id, "--latest"],
+    )
+    text, redacted = redact(console_text(console))
+    marker = next((line for line in text.splitlines() if MARKER_LINE.fullmatch(line)), None)
+    payload.update(
+        {
+            "collect_channel": "console",
+            "console_redacted": redacted,
+            "console_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "marker_line": marker,
+            "marker_found": marker is not None,
+            "status": "COLLECTED",
+        }
+    )
+    if caps["ssh_instance_connect"] and public_ipv4(instance) and os.environ.get("W3_RUNNER_CIDR", "").strip():
+        script = "cat /var/lib/vantio-lab/marker.json\n"
+        stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
+        opened = open_ssh(
+            runner,
+            instance,
+            os.environ["W3_RUNNER_CIDR"].strip(),
+            stamp_path,
+            keygen,
+            ssh_runner,
+            ["bash", "-s"],
+            script,
+        )
+        payload["mutated"] = bool(opened.get("opened"))
+        payload["collect_channel"] = "console+ssh" if opened.get("opened") else "console"
+        guest = redact(str(opened.get("stdout") or ""))[0].strip()
+        if guest.startswith("{") and "PRIVATE" not in guest:
+            payload["guest_marker_sha256"] = hashlib.sha256(guest.encode("utf-8")).hexdigest()
+    lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
+    return payload
+
+
+def related_owned(resources: list[Mapping[str, Any]], name: str) -> list[Mapping[str, Any]]:
+    chosen: list[Mapping[str, Any]] = []
+    for resource in resources:
+        tags = resource.get("tags")
+        if not isinstance(tags, Mapping) or not lab.lab_tags_owned(tags):
+            continue
+        if tags.get("Name") == name:
+            chosen.append(resource)
+    return chosen
+
+
+def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
+    instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
+    identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
+    lab.require_identity(identity)
+    instance = describe_instance(runner, instance_id)
+    payload = base_evidence("teardown")
+    payload["instance_id"] = instance_id
+    if instance is None:
+        payload.update({"reason": "instance_absent", "status": "NOT_FOUND"})
+        lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+        raise lab.GuardAbort("instance_absent")
+    tags = lab._tag_list(instance.get("Tags"))
+    if not lab.lab_tags_owned(tags):
+        payload.update({"reason": "not_owned", "status": "NOT_OWNED"})
+        lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+        raise lab.GuardAbort("not_owned")
+    name = str(tags.get("Name"))
+    state = instance_state(instance)
+    called: list[str] = []
+    if state in lab.OCCUPYING_STATES:
+        called.extend(
+            lab._delete_resource(
+                {"type": "instance", "id": instance_id, "region": lab.REGION, "tags": tags},
+                runner,
+            )
+        )
+    census = lab.census_from_aws(runner)
+    for resource in related_owned(census, name):
+        if resource.get("type") == "instance":
+            continue
+        called.extend(lab._delete_resource(resource, runner))
+    check = execute_verify(runner, now, write=False)
+    payload.update(
+        {
+            "called": called,
+            "mutated": bool(called),
+            "name": name,
+            "slot_clear": check["slot_clear"],
+            "status": check["status"],
+        }
+    )
+    lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+    return payload
+
+
+def execute_verify(runner: Runner, now: datetime, *, write: bool = True) -> dict[str, Any]:
+    del now
+    instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
+    identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
+    lab.require_identity(identity)
+    instance = describe_instance(runner, instance_id)
+    census = lab.census_from_aws(runner)
+    occupying = lab.occupying_instance_ids(lab.aws_json(runner, lab.describe_occupying_args()))
+    name = None
+    owned = False
+    state = "absent"
+    if instance is not None:
+        tags = lab._tag_list(instance.get("Tags"))
+        owned = lab.lab_tags_owned(tags)
+        name = tags.get("Name") if owned else None
+        state = instance_state(instance)
+    leftovers = []
+    if isinstance(name, str):
+        leftovers = [
+            {"id": item.get("id"), "type": item.get("type")}
+            for item in related_owned(census, name)
+            if not (item.get("type") == "instance" and item.get("id") == instance_id and state == "terminated")
+        ]
+    name_hint = os.environ.get("LAB_NAME", "").strip()
+    if instance is None and name_hint.startswith(lab.NAME_PREFIX):
+        leftovers = [
+            {"id": item.get("id"), "type": item.get("type")}
+            for item in related_owned(census, name_hint)
+        ]
+        owned = True
+    if instance is not None and not owned:
+        status = "NOT_OWNED"
+    elif instance is not None and state == "terminated" and owned and not leftovers:
+        status = "VERIFIED_REMOVED"
+    elif instance is None and name_hint.startswith(lab.NAME_PREFIX) and not leftovers and instance_id not in occupying:
+        status = "VERIFIED_REMOVED"
+    elif instance is None:
+        status = "INSTANCE_ABSENT"
+    else:
+        status = "NOT_REMOVED"
+    payload = base_evidence("verify-removed")
+    payload.update(
+        {
+            "instance_id": instance_id,
+            "instance_state": state,
+            "leftovers": leftovers,
+            "other_occupying_instance_ids": [item for item in occupying if item != instance_id],
+            "owned": owned,
+            "slot_clear": occupying == [],
+            "status": status,
+        }
+    )
+    if write:
+        lab.write_json_with_hash(evidence_path("w3-lab-verify-removed.json"), payload)
+    return payload
+
+
+def close_ssh(runner: Runner) -> int:
+    stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
+    if not stamp_path.exists():
+        return 0
+    stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
+    if not isinstance(stamp, dict) or stamp.get("authorized") is not True:
+        return 0
+    group_id = stamp.get("group_id")
+    cidr = stamp.get("cidr")
+    if not isinstance(group_id, str) or not isinstance(cidr, str):
+        raise lab.GuardAbort("stamp")
+    revoke_quietly(runner, group_id, cidr)
+    stamp["authorized"] = False
+    write_stamp(stamp_path, stamp)
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        print(
+            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|close-ssh|collect|teardown|verify-removed",
+            file=sys.stderr,
+        )
+        return 1
+    command = argv[1]
+    now = datetime.now(timezone.utc)
+    try:
+        if command == "preflight-arm":
+            return preflight_arm()
+        if command == "preflight-long-soak":
+            return preflight_long_soak()
+        if command == "arm":
+            execute_arm(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
+            return 0
+        if command == "close-ssh":
+            return close_ssh(lab.default_runner)
+        if command == "collect":
+            execute_collect(lab.default_runner)
+            return 0
+        if command == "teardown":
+            execute_teardown(lab.default_runner, now)
+            return 0
+        if command == "verify-removed":
+            result = execute_verify(lab.default_runner, now)
+            return 0 if result["status"] == "VERIFIED_REMOVED" else 2
+    except lab.GuardAbort as exc:
+        print(exc.reason, file=sys.stderr)
+        return 2
+    print(f"unknown command {command}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

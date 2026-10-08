@@ -10,7 +10,7 @@
     "release_success": false,
     "requirements": [
       {
-        "detail": "pin python-build-hatchling is unpinned; pin node-toolchain is unpinned; pin cli-tarball is unrecorded; pin .github/workflows/w3-lab-auto-provision.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust is unpinned",
+        "detail": "pin python-build-hatchling is unpinned; pin node-toolchain is unpinned; pin cli-tarball is unrecorded; pin .github/workflows/w3-lab-auto-long-soak.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust is unpinned; pin .github/workflows/w3-lab-auto-provision.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust is unpinned",
         "id": "R1",
         "status": "GAP"
       },

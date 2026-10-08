@@ -1,0 +1,80 @@
+name: W3 lab release one unattached address
+
+# Describe 3.131.219.111 and release it only when it is unattached and has
+# no lab tags. This workflow does not launch an instance.
+# Trust subject:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# Role: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+# DescribeAddresses is on that role. ReleaseAddress is denied until the
+# console checklist removes that explicit deny. A denied release leaves
+# the address in place.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-eip-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release the address only when it is clear
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 10
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-eip-release.yml@refs/heads/main"
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+            scripts/aws/w3_lab_eip.py
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-provision
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+          role-session-name: w3-lab-eip-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "900"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Describe and release only when clear
+        env:
+          EVIDENCE_PATH: w3-lab-eip.json
+        run: python3 scripts/aws/w3_lab_eip.py release-if-clear
+
+      - name: Upload address evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-eip-${{ github.run_id }}
+          path: |
+            w3-lab-eip.json
+            w3-lab-eip.json.sha256
+          if-no-files-found: error
