@@ -105,6 +105,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_auto.py -v
           python3 scripts/aws/test_w3_lab_steps.py -v
           python3 scripts/aws/test_lab_oidc_trigger.py -v
+          python3 scripts/aws/test_w3_lab_eip.py -v
 
   candidate-artifacts:
     name: Build release candidates (no registry write)

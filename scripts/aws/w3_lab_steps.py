@@ -278,6 +278,7 @@ def open_ssh(
         raise lab.GuardAbort("no_public_ipv4")
     require_global_32(cidr)
     authorize = authorize_args(group_id, cidr, revoke=False)
+    revoke = authorize_args(group_id, cidr, revoke=True)
     connect = [
         "aws",
         "ec2-instance-connect",
@@ -293,7 +294,13 @@ def open_ssh(
         "--ssh-public-key",
         "probe",
     ]
-    if dry_run(runner, authorize) == "denied" or dry_run(runner, connect) == "denied":
+    # Revoke must dry-run as allowed before any ingress is opened. The live
+    # role can authorize and cannot revoke; opening that port would leave it.
+    if (
+        dry_run(runner, revoke) == "denied"
+        or dry_run(runner, authorize) == "denied"
+        or dry_run(runner, connect) == "denied"
+    ):
         return {"opened": False, "reason": "ssh_permission_denied"}
     directory = stamp_path.parent
     private, public = keygen(directory)
