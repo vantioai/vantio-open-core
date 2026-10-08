@@ -11,6 +11,7 @@ Audience: INTERNAL_RESTRICTED
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -29,7 +30,10 @@ ROLE_PROVISION = "vantio-w3-lab-provision"
 ENVIRONMENT = "w3-lab-auto"
 MAX_SESSION_SECONDS = 3600
 MAX_LIFE_MINUTES = 420
+LONG_MAX_LIFE_MINUTES = 36 * 60
 MAX_LIFE = timedelta(hours=7)
+ALLOWED_MAX_LIFE_HOURS = frozenset({"7", "36"})
+OCCUPYING_STATES = frozenset({"pending", "running", "stopping", "stopped", "shutting-down"})
 EXPIRY_BUFFER = timedelta(hours=8)
 WORST_CASE_RUN_USD = Decimal("2.00")
 ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small")
@@ -177,13 +181,13 @@ def parse_bool(value: Any, *, default: bool = False) -> bool:
     raise ValueError("boolean")
 
 
-def bounded_minutes(value: Any, field: str) -> int:
+def bounded_minutes(value: Any, field: str, *, limit: int = MAX_LIFE_MINUTES) -> int:
     if isinstance(value, bool) or isinstance(value, str) and value.strip().lstrip("-").isdigit():
         if isinstance(value, str):
             value = int(value.strip())
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(field)
-    if value < 1 or value > MAX_LIFE_MINUTES:
+    if value < 1 or value > limit:
         raise ValueError(field)
     return value
 
@@ -191,8 +195,8 @@ def bounded_minutes(value: Any, field: str) -> int:
 def build_user_data(stop_after_minutes: int) -> str:
     if isinstance(stop_after_minutes, bool) or not isinstance(stop_after_minutes, int):
         raise ValueError("stop_after_minutes must be an int")
-    if stop_after_minutes < 1 or stop_after_minutes > MAX_LIFE_MINUTES:
-        raise ValueError("stop_after_minutes must be from 1 through 420")
+    if stop_after_minutes < 1 or stop_after_minutes > LONG_MAX_LIFE_MINUTES:
+        raise ValueError("stop_after_minutes must be from 1 through 2160")
     return (
         "#!/bin/bash\n"
         f"shutdown -h +{stop_after_minutes} || "
@@ -200,15 +204,40 @@ def build_user_data(stop_after_minutes: int) -> str:
     )
 
 
-def _tags(spec_purpose: str | None, expiry: str, name: str) -> dict[str, str]:
+def _tags(spec_purpose: str | None, expiry: str, name: str, max_life_hours: str = "7") -> dict[str, str]:
+    if max_life_hours not in ALLOWED_MAX_LIFE_HOURS:
+        raise ValueError("max_life_hours")
     tags = dict(EXACT_TAGS)
     tags["Name"] = name
     tags["vantio:expires-at"] = expiry
+    tags["vantio:max-life-hours"] = max_life_hours
     if spec_purpose is not None:
         if spec_purpose != PURPOSE_VALUE:
             raise ValueError("purpose")
         tags[PURPOSE_TAG] = spec_purpose
     return tags
+
+
+def lab_tags_owned(tags: Mapping[str, Any] | None) -> bool:
+    """True when the tags are the sweeper's lab, including a 36-hour life tag."""
+    if not isinstance(tags, Mapping):
+        return False
+    for key, expected in EXACT_TAGS.items():
+        if key == "vantio:max-life-hours":
+            if str(tags.get(key)) not in ALLOWED_MAX_LIFE_HOURS:
+                return False
+            continue
+        if tags.get(key) != expected:
+            return False
+    name = tags.get("Name")
+    return isinstance(name, str) and name.startswith(NAME_PREFIX)
+
+
+def max_life_delta(tags: Mapping[str, Any]) -> timedelta:
+    raw = str(tags.get("vantio:max-life-hours"))
+    if raw not in ALLOWED_MAX_LIFE_HOURS:
+        raise ValueError("max_life_hours")
+    return timedelta(hours=int(raw))
 
 
 def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
@@ -218,8 +247,15 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     instance_type = spec.get("instance_type", "t3.micro")
     if instance_type not in ALLOWED_INSTANCE_TYPES:
         raise ValueError("instance_type")
-    minutes = bounded_minutes(spec.get("stop_after_minutes", MAX_LIFE_MINUTES), "stop_after_minutes")
-    expires_in = bounded_minutes(spec.get("expires_in_minutes", minutes), "expires_in_minutes")
+    max_life_hours = spec.get("max_life_hours", "7")
+    if isinstance(max_life_hours, int) and not isinstance(max_life_hours, bool):
+        max_life_hours = str(max_life_hours)
+    if not isinstance(max_life_hours, str) or max_life_hours not in ALLOWED_MAX_LIFE_HOURS:
+        raise ValueError("max_life_hours")
+    life_limit = LONG_MAX_LIFE_MINUTES if max_life_hours == "36" else MAX_LIFE_MINUTES
+    default_stop = life_limit
+    minutes = bounded_minutes(spec.get("stop_after_minutes", default_stop), "stop_after_minutes", limit=life_limit)
+    expires_in = bounded_minutes(spec.get("expires_in_minutes", minutes), "expires_in_minutes", limit=life_limit)
     user_data = build_user_data(minutes)
     name = spec.get("name", f"{NAME_PREFIX}plan")
     if not isinstance(name, str) or not name.startswith(NAME_PREFIX):
@@ -229,7 +265,7 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         raise ValueError("purpose")
     expiry = format_expiry(now + timedelta(minutes=expires_in))
     public_ip = parse_bool(spec.get("associate_public_ipv4", False))
-    tags = _tags(purpose, expiry, name)
+    tags = _tags(purpose, expiry, name, max_life_hours)
     block_device = {
         "DeviceName": "/dev/sda1",
         "Ebs": {
@@ -291,17 +327,18 @@ def sweeper_action(resource: Mapping[str, Any], now: datetime) -> str:
     if shape.match(resource_id) is None:
         return "skip_bad_id"
     tags = resource.get("tags")
-    if not isinstance(tags, Mapping):
-        return "skip_not_owned"
-    for key, expected in EXACT_TAGS.items():
-        if tags.get(key) != expected:
-            return "skip_not_owned"
-    name = tags.get("Name")
-    if not isinstance(name, str) or not name.startswith(NAME_PREFIX):
+    if not isinstance(tags, Mapping) or not lab_tags_owned(tags):
         return "skip_not_owned"
     purpose = tags.get(PURPOSE_TAG)
     if purpose is not None and purpose != PURPOSE_VALUE:
         return "skip_bad_purpose"
+    if str(tags.get("vantio:max-life-hours")) == "36":
+        try:
+            long_life_enabled = load_lab_capabilities()["max_life_hours_36"]
+        except GuardAbort:
+            long_life_enabled = False
+        if not long_life_enabled:
+            return "skip_life_not_enabled"
     if resource_type == "instance" and not resource.get("launch_time"):
         return "delete_missing_launch_time"
     created = resource.get("launch_time") or resource.get("created_at")
@@ -310,7 +347,7 @@ def sweeper_action(resource: Mapping[str, Any], now: datetime) -> str:
             started = parse_time(created)
         except ValueError:
             return "delete_missing_expiry"
-        if now - started >= MAX_LIFE:
+        if now - started >= max_life_delta(tags):
             return "delete_launch_age"
     raw_expiry = tags.get("vantio:expires-at")
     if not isinstance(raw_expiry, str) or raw_expiry == "":
@@ -607,9 +644,14 @@ def execute_launch(
         subnet_id=LAB_SUBNET_ID,
     )
     launch_args[launch_args.index("file://user-data.sh")] = f"file://{user_data_path}"
-    launched = aws_json(runner, launch_args)
+    try:
+        launched = aws_json(runner, launch_args)
+    except GuardAbort:
+        rollback_security_group(runner, group_id)
+        raise
     instances = launched.get("Instances")
     if not isinstance(instances, list) or not instances:
+        rollback_security_group(runner, group_id)
         raise GuardAbort("instance")
     instance_id = instances[0].get("InstanceId")
     if not isinstance(instance_id, str) or ID_SHAPES["instance"].match(instance_id) is None:
@@ -796,19 +838,94 @@ def _read_gate_file(path: str) -> dict[str, Any]:
     return payload
 
 
+def write_json_with_hash(path: Path, payload: Mapping[str, Any]) -> str:
+    body = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    path.write_text(body, encoding="utf-8")
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    path.with_name(path.name + ".sha256").write_text(f"{digest}  {path.name}\n", encoding="utf-8")
+    return digest
+
+
+def load_lab_capabilities(path: Path | None = None) -> dict[str, bool]:
+    """Read the repo switch that stays false until a console IAM change is recorded."""
+    file = path or Path(os.environ.get("W3_LAB_CAPABILITIES", str(Path(__file__).with_name("lab_iam_capabilities.json"))))
+    try:
+        data = json.loads(file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise GuardAbort("capabilities") from None
+    if not isinstance(data, dict):
+        raise GuardAbort("capabilities")
+    return {
+        "max_life_hours_36": data.get("max_life_hours_36") is True,
+        "ssh_instance_connect": data.get("ssh_instance_connect") is True,
+        "ssm": data.get("ssm") is True,
+    }
+
+
+def occupying_instance_ids(described: Mapping[str, Any]) -> list[str]:
+    found: list[str] = []
+    reservations = described.get("Reservations") or []
+    if not isinstance(reservations, list):
+        raise GuardAbort("slot_check")
+    for reservation in reservations:
+        if not isinstance(reservation, Mapping):
+            continue
+        instances = reservation.get("Instances") or []
+        if not isinstance(instances, list):
+            continue
+        for instance in instances:
+            if not isinstance(instance, Mapping):
+                continue
+            state = instance.get("State")
+            name = state.get("Name") if isinstance(state, Mapping) else ""
+            if name in OCCUPYING_STATES:
+                instance_id = instance.get("InstanceId")
+                if isinstance(instance_id, str):
+                    found.append(instance_id)
+    return found
+
+
+def describe_occupying_args() -> list[str]:
+    return [
+        "aws",
+        "ec2",
+        "describe-instances",
+        "--region",
+        REGION,
+        "--filters",
+        "Name=instance-state-name,Values=pending,running,stopping,stopped,shutting-down",
+    ]
+
+
+def rollback_security_group(runner: Runner, group_id: str) -> None:
+    if not group_id.startswith("sg-"):
+        raise GuardAbort("security_group")
+    try:
+        aws_json(runner, ["aws", "ec2", "delete-security-group", "--region", REGION, "--group-id", group_id])
+    except GuardAbort:
+        raise GuardAbort("rollback_security_group") from None
+
+
 def _launch_spec_from_env() -> dict[str, Any]:
     purpose = os.environ.get("PURPOSE", "").strip()
     run_id = os.environ.get("GITHUB_RUN_ID", "local").strip() or "local"
     if not re.fullmatch(r"[A-Za-z0-9-]{1,40}", run_id):
         raise GuardAbort("name")
+    max_life_hours = os.environ.get("MAX_LIFE_HOURS", "7").strip() or "7"
+    if max_life_hours not in ALLOWED_MAX_LIFE_HOURS:
+        raise GuardAbort("max_life_hours")
+    if max_life_hours == "36" and not load_lab_capabilities()["max_life_hours_36"]:
+        raise GuardAbort("max_life_hours_36_not_enabled")
+    default_stop = "2160" if max_life_hours == "36" else "420"
     spec: dict[str, Any] = {
         "instance_type": os.environ.get("INSTANCE_TYPE", "t3.micro"),
-        "stop_after_minutes": os.environ.get("STOP_AFTER_MINUTES", "420"),
+        "stop_after_minutes": os.environ.get("STOP_AFTER_MINUTES", default_stop),
         "associate_public_ipv4": os.environ.get("ASSOCIATE_PUBLIC_IPV4", "false"),
         "name": f"{NAME_PREFIX}{run_id}",
         "region": REGION,
         "subnet_id": LAB_SUBNET_ID,
         "vpc_id": LAB_VPC_ID,
+        "max_life_hours": max_life_hours,
     }
     if purpose:
         spec["purpose"] = purpose
@@ -819,29 +936,47 @@ def _launch_spec_from_env() -> dict[str, Any]:
 
 
 def launch_from_env(runner: Runner, now: datetime) -> dict[str, Any]:
-    gate_path = os.environ.get("COST_GATE_FILE", "").strip()
-    if not gate_path:
-        raise GuardAbort("unknown_billing")
+    evidence_path = Path(os.environ.get("EVIDENCE_PATH", "w3-lab-auto-launch.json"))
+    occupying: list[str] = []
     try:
-        gate = _read_gate_file(gate_path)
-    except (OSError, json.JSONDecodeError):
-        raise GuardAbort("unknown_billing") from None
-    failure = gate_failure(resolve_gate(gate, now))
-    if failure:
-        raise GuardAbort(failure)
-    identity = aws_json(runner, ["aws", "sts", "get-caller-identity"])
-    evidence = execute_launch(
-        _launch_spec_from_env(),
-        _read_gate_file(gate_path),
-        identity,
-        runner,
-        now,
-        user_data_path=Path(os.environ.get("USER_DATA_PATH", "user-data.sh")),
-    )
-    Path(os.environ.get("EVIDENCE_PATH", "w3-lab-auto-launch.json")).write_text(
-        json.dumps(evidence, indent=2) + "\n",
-        encoding="utf-8",
-    )
+        gate_path = os.environ.get("COST_GATE_FILE", "").strip()
+        if not gate_path:
+            raise GuardAbort("unknown_billing")
+        try:
+            gate = _read_gate_file(gate_path)
+        except (OSError, json.JSONDecodeError):
+            raise GuardAbort("unknown_billing") from None
+        failure = gate_failure(resolve_gate(gate, now))
+        if failure:
+            raise GuardAbort(failure)
+        spec = _launch_spec_from_env()
+        identity = aws_json(runner, ["aws", "sts", "get-caller-identity"])
+        described = aws_json(runner, describe_occupying_args())
+        occupying = occupying_instance_ids(described)
+        if occupying:
+            raise GuardAbort("slot_occupied")
+        evidence = execute_launch(
+            spec,
+            gate,
+            identity,
+            runner,
+            now,
+            user_data_path=Path(os.environ.get("USER_DATA_PATH", "user-data.sh")),
+        )
+    except GuardAbort as exc:
+        write_json_with_hash(
+            evidence_path,
+            {
+                "account_id": ACCOUNT_ID,
+                "error": exc.reason,
+                "launched": False,
+                "noninteractive_teardown_ready": False,
+                "occupying_instance_ids": occupying,
+                "region": REGION,
+            },
+        )
+        raise
+    write_json_with_hash(evidence_path, evidence)
     return evidence
 
 
@@ -849,10 +984,7 @@ def sweep_from_env(runner: Runner, now: datetime) -> dict[str, Any]:
     identity = aws_json(runner, ["aws", "sts", "get-caller-identity"])
     require_identity(identity)
     evidence = execute_sweep(identity, census_from_aws(runner), runner, now)
-    Path(os.environ.get("EVIDENCE_PATH", "w3-lab-auto-sweep.json")).write_text(
-        json.dumps(evidence, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    write_json_with_hash(Path(os.environ.get("EVIDENCE_PATH", "w3-lab-auto-sweep.json")), evidence)
     return evidence
 
 

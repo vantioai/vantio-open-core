@@ -1,0 +1,163 @@
+name: W3 lab auto long soak
+
+# Launch one Free-lab host whose life tag is 36 hours, then exit.
+# A later collect workflow reads it. This file does not stay online for the soak.
+# The capability switch ships false, so a dispatch writes BLOCKED_IAM and does
+# not call the cost gate or RunInstances.
+# Trust subject, after the switch is true and this file is on main:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# Billing role stays on the cost-gate workflow. Launch uses vantio-w3-lab-provision.
+
+on:
+  workflow_dispatch:
+    inputs:
+      soak_hours:
+        description: Hours until expiry. 8 through 36. Seven hours and under use the provision workflow.
+        required: true
+        default: "36"
+        type: string
+      instance_type:
+        description: Free-eligible amd64 type.
+        required: true
+        default: t3.micro
+        type: choice
+        options:
+          - t3.micro
+          - t3.small
+      associate_public_ipv4:
+        description: Assign a public IPv4 so a later arm can open SSH for one runner address.
+        required: true
+        default: false
+        type: boolean
+      execute:
+        description: Leave false. True launches only when the 36-hour capability switch is also true.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-free-ec2
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Refuse until the 36-hour tag is recorded
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      proceed: ${{ steps.cap.outputs.proceed }}
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-long-soak.yml@refs/heads/main"
+
+      - name: Checkout the capability switch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+            scripts/aws/w3_lab_steps.py
+            scripts/aws/lab_iam_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Read the capability switch
+        id: cap
+        env:
+          SOAK_HOURS: ${{ inputs.soak_hours }}
+          EXECUTE: ${{ inputs.execute }}
+          EVIDENCE_PATH: w3-lab-long-soak.json
+        run: python3 scripts/aws/w3_lab_steps.py preflight-long-soak
+
+      - name: Upload the preflight evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-long-soak-preflight-${{ github.run_id }}
+          path: |
+            w3-lab-long-soak.json
+            w3-lab-long-soak.json.sha256
+          if-no-files-found: error
+
+  gate:
+    name: Pre-run cost check
+    needs: preflight
+    if: needs.preflight.outputs.proceed == 'true'
+    uses: vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust
+    permissions:
+      contents: read
+      id-token: write
+
+  launch:
+    name: Launch one 36-hour lab and exit
+    needs: [preflight, gate]
+    if: needs.preflight.outputs.proceed == 'true' && needs.gate.outputs.expected_oop_usd == '0'
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 30
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout launch script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+            scripts/aws/lab_iam_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-provision
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+          role-session-name: w3-lab-auto-long-soak-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "3600"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Launch one tagged lab and exit
+        env:
+          INSTANCE_TYPE: ${{ inputs.instance_type }}
+          STOP_AFTER_MINUTES: "2160"
+          MAX_LIFE_HOURS: "36"
+          ASSOCIATE_PUBLIC_IPV4: ${{ inputs.associate_public_ipv4 }}
+          COST_GATE_JSON: ${{ needs.gate.outputs.gate_json }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$COST_GATE_JSON" > "$RUNNER_TEMP/cost-gate.json"
+          COST_GATE_FILE="$RUNNER_TEMP/cost-gate.json" python3 scripts/aws/w3_lab_auto.py launch
+
+      - name: Upload launch evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-long-soak-launch-${{ github.run_id }}
+          path: |
+            w3-lab-auto-launch.json
+            w3-lab-auto-launch.json.sha256
+          if-no-files-found: warn

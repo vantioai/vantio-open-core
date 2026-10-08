@@ -1,0 +1,107 @@
+name: W3 lab auto collect
+
+# Read one owned lab after a soak. The job starts, collects, and exits.
+# It does not stay running for the soak. Schedule or dispatch it later and
+# find the host by instance id. Trust subject:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# Role: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+# Console text stays in the runner. The artifact keeps a hash and the marker
+# line. SSH stays off until lab_iam_capabilities.json enables it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_id:
+        description: Owned lab instance id.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-free-ec2
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Collect one owned lab
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 20
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-collect.yml@refs/heads/main"
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout collect script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+            scripts/aws/w3_lab_steps.py
+            scripts/aws/lab_iam_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Assume vantio-w3-lab-provision
+        id: assume
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+          role-session-name: w3-lab-auto-collect-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "900"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Read the runner address when SSH is enabled
+        id: runner
+        run: |
+          set -euo pipefail
+          enabled=$(python3 -c 'import json; print("true" if json.load(open("scripts/aws/lab_iam_capabilities.json")).get("ssh_instance_connect") is True else "false")')
+          if [ "$enabled" = "true" ]; then
+            ip=$(curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+            echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
+          else
+            echo "cidr=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect console evidence
+        env:
+          INSTANCE_ID: ${{ inputs.instance_id }}
+          W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+          EVIDENCE_PATH: w3-lab-collect.json
+        run: python3 scripts/aws/w3_lab_steps.py collect
+
+      - name: Close the runner SSH rule
+        if: always() && steps.assume.outcome == 'success'
+        env:
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+        run: python3 scripts/aws/w3_lab_steps.py close-ssh
+
+      - name: Upload collect evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-collect-${{ github.run_id }}
+          path: |
+            w3-lab-collect.json
+            w3-lab-collect.json.sha256
+          if-no-files-found: error

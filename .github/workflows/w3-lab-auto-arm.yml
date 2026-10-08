@@ -1,0 +1,124 @@
+name: W3 lab auto arm
+
+# Arm one owned lab instance from a GitHub-hosted runner.
+# Trust subject, when this file is on main:
+#   repo:vantioai/vantio-open-core:environment:w3-lab-auto
+# Role, only after lab_iam_capabilities.json sets ssh_instance_connect true:
+#   arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+# The default file leaves that switch false, so this workflow writes
+# BLOCKED_IAM and does not call AWS. A private key is never uploaded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_id:
+        description: Owned lab instance id.
+        required: true
+        type: string
+      seal:
+        description: Working seal, 64 hex characters.
+        required: true
+        default: f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753
+        type: string
+      public_pin:
+        description: Public installer pin, 64 hex characters.
+        required: true
+        default: e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: w3-lab-free-ec2
+  cancel-in-progress: false
+
+jobs:
+  arm:
+    name: Arm one owned lab
+    runs-on: ubuntu-latest
+    environment: w3-lab-auto
+    timeout-minutes: 20
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-arm.yml@refs/heads/main"
+
+      - name: Refuse static AWS keys
+        run: |
+          set -euo pipefail
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout arm script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_auto.py
+            scripts/aws/w3_lab_steps.py
+            scripts/aws/lab_iam_capabilities.json
+            scripts/aws/lab-guests/marker.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Read the SSH switch
+        id: cap
+        env:
+          EVIDENCE_PATH: w3-lab-arm.json
+        run: python3 scripts/aws/w3_lab_steps.py preflight-arm
+
+      - name: Assume vantio-w3-lab-provision
+        id: assume
+        if: steps.cap.outputs.proceed == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+          role-session-name: w3-lab-auto-arm-${{ github.run_id }}
+          aws-region: us-east-2
+          role-duration-seconds: "3600"
+          audience: sts.amazonaws.com
+          allowed-account-ids: "960577828987"
+          use-existing-credentials: false
+          output-credentials: false
+
+      - name: Read the runner address
+        id: runner
+        if: steps.cap.outputs.proceed == 'true'
+        run: |
+          set -euo pipefail
+          ip=$(curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+          echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
+
+      - name: Arm the guest marker
+        if: steps.cap.outputs.proceed == 'true'
+        env:
+          INSTANCE_ID: ${{ inputs.instance_id }}
+          SEAL: ${{ inputs.seal }}
+          PUBLIC_PIN: ${{ inputs.public_pin }}
+          W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+          EVIDENCE_PATH: w3-lab-arm.json
+        run: python3 scripts/aws/w3_lab_steps.py arm
+
+      - name: Close the runner SSH rule
+        if: always() && steps.assume.outcome == 'success'
+        env:
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+        run: python3 scripts/aws/w3_lab_steps.py close-ssh
+
+      - name: Upload arm evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-arm-${{ github.run_id }}
+          path: |
+            w3-lab-arm.json
+            w3-lab-arm.json.sha256
+          if-no-files-found: error

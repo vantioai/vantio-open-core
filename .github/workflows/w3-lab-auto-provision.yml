@@ -10,6 +10,8 @@ name: W3 lab auto provision
 #
 # The cost gate runs first, in its own workflow file, under the billing-read
 # role. Launch runs only when that gate outputs expected_oop_usd=0.
+# Launch aborts before RunInstances when any instance in us-east-2 is pending,
+# running, stopping, stopped, or shutting down. That is the one-EC2 slot.
 # scripts/aws/w3_lab_auto.py launch calls RunInstances only after the cost
 # gate file says expected_oop_usd is 0. NONINTERACTIVE_TEARDOWN_READY stays false.
 
@@ -50,7 +52,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: w3-lab-auto-provision
+  group: w3-lab-free-ec2
   cancel-in-progress: false
 
 jobs:
@@ -122,5 +124,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: w3-lab-auto-launch-${{ github.run_id }}
-          path: w3-lab-auto-launch.json
+          path: |
+            w3-lab-auto-launch.json
+            w3-lab-auto-launch.json.sha256
           if-no-files-found: warn
