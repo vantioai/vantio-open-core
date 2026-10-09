@@ -133,9 +133,9 @@ class StageAInstallerTests(unittest.TestCase):
 
     def test_frozen_identities_and_cli_package_untouched(self) -> None:
         pins = constants.FROZEN_PINS
-        self.assertEqual(pins["pe_source_commit"], "df61d976a81f44e6165b87d40c493a850a247891")
-        self.assertEqual(pins["pe_archive_sha256"], "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753")
-        self.assertEqual(pins["pe_manifest_digest"], "sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c")
+        self.assertEqual(pins["pe_source_commit"], "06696d5020700693b0154c59d0e072a24f648378")
+        self.assertEqual(pins["pe_archive_sha256"], "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e")
+        self.assertEqual(pins["pe_manifest_digest"], "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19")
         self.assertEqual(pins["optics_cli_version"], "0.3.24")
         self.assertEqual(pins["optics_cli_sha256"], "82fe13ad6fc916ac67a670bd95fbf18b24389ecb383d81246e1d52cb96712a1f")
         self.assertEqual(pins["agent_sdk_npm_version"], "0.2.4")

@@ -138,28 +138,28 @@ FROZEN_PINS = {
     "agent_sdk_py_wheel_sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
     "agent_sdk_py_sdist": "vantio_agent_sdk-3.1.0.tar.gz",
     "agent_sdk_py_sdist_sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
-    "pe_source_commit": "df61d976a81f44e6165b87d40c493a850a247891",
+    "pe_source_commit": "06696d5020700693b0154c59d0e072a24f648378",
     "pe_prior_candidate_commit": "fab81efc08110506ff90847495197e7051a253b5",
-    "pe_archive_name": "vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar",
-    "pe_archive_sha256": "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753",
-    "pe_manifest_digest": "sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c",
-    "pe_config_digest": "sha256:5210c0ef1f3763d3ac5536d34014169d14699c2a12e528bfc28ee5d7a1a6a34c",
-    "pe_loader_sha256": "f49c5dc1b49a7ab758a26f1b9b5a06191516326db7d1ff60c72c01bdec5e3fc6",
+    "pe_archive_name": "vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar",
+    "pe_archive_sha256": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
+    "pe_manifest_digest": "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19",
+    "pe_config_digest": "sha256:1c7bbbd08a87639334b18e841e6b2be67e6de4c9864deaf768dfae723ea517b0",
+    "pe_loader_sha256": "f19b43f26a4b42671bb8d4f0aeb4b97bac7f52ae78442241f6e30d8ef385694f",
     "pe_layer_digests": [
         "sha256:774043ccc8ccd0d0833a9ee0792142ab7ad93df971e59dd248fbf82db16d0150",
-        "sha256:2bcb0f32a7bc4b8ae39a1f2f75f736b6505b08db616f8244cf1f92a0f0c56afc",
-        "sha256:1ceab224f3c84826371072efd4b220d89d1080f6b0a2c0141eb082e1fb2ce9f4",
+        "sha256:1a6bdb81d7e0937f4806047859066a399a52bfedfca104091f3d1f6a02fd176c",
+        "sha256:769a1b3da566912c6a7f3766d159125b07fdeeba8a5e156c06c98e31ead5d2db",
     ],
-    "pe_local_tag": "vantio-phantom-engine:policy-allow-df61d97",
+    "pe_local_tag": "vantio-phantom-engine:pe-residuals-06696d5",
     "pe_platform": "linux/amd64",
 }
 
 # Sealed identity the live gate compares to the pin table at call time.
 # Archive file bytes are compared to FROZEN_PINS["pe_archive_sha256"].
 LIVE_CANONICAL_IDENTITY = {
-    "pe_source_commit": "df61d976a81f44e6165b87d40c493a850a247891",
-    "pe_archive_sha256": "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753",
-    "pe_manifest_digest": "sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c",
+    "pe_source_commit": "06696d5020700693b0154c59d0e072a24f648378",
+    "pe_archive_sha256": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
+    "pe_manifest_digest": "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19",
 }
 
 # Observe-only PE container profile. docker-default denies /sys/fs/bpf pin writes.

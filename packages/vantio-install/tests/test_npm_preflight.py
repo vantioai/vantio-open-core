@@ -15,7 +15,7 @@ from vantio_install import constants  # noqa: E402
 from vantio_install.commands import apt_install_npm_argv  # noqa: E402
 from vantio_install.preflight import NPM_PREREQUISITE  # noqa: E402
 
-SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
+SEAL = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 
 
 class NpmPreflightTests(unittest.TestCase):
