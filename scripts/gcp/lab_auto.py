@@ -38,7 +38,6 @@ IMAGE_PROJECT = "ubuntu-os-cloud"
 BOOT_DISK_GB = "10GB"
 MAX_LIFE_MINUTES = 120
 WORST_CASE_RUN_USD = Decimal("1.00")
-CAP_FUNCTION = "vantio-lab-unlink-billing"
 LABEL_LAB = "vantio-lab"
 LABEL_OWNER = "vantio-owner"
 LABEL_EXPIRES = "vantio-expires-epoch"
@@ -403,64 +402,70 @@ def _run_json(argv: list[str]) -> Any:
     return json.loads(text)
 
 
-def collect_live_payload(project_id: str) -> dict[str, Any]:
-    """Read-only describes. Caller has already required GCP_LAB_EXECUTE=1."""
-    project = _run_json(["gcloud", "projects", "describe", project_id, "--format=json"])
-    billing = _run_json(["gcloud", "billing", "projects", "describe", project_id, "--format=json"])
-    policy = _run_json(["gcloud", "projects", "get-iam-policy", project_id, "--format=json"])
-    account_name = str(billing.get("billingAccountName") or "")
-    account_id = account_name.split("/")[-1] if account_name else ""
-    budgets: list[Any] = []
-    if account_id:
-        listed = _run_json(
-            ["gcloud", "billing", "budgets", "list", f"--billing-account={account_id}", "--format=json"]
-        )
-        budgets = listed if isinstance(listed, list) else []
-    matched = None
-    for budget in budgets:
-        if isinstance(budget, dict) and budget_project_ids(budget) == [project_id]:
-            matched = budget
-            break
-    try:
-        function = _run_json(
-            [
-                "gcloud",
-                "functions",
-                "describe",
-                CAP_FUNCTION,
-                "--gen2",
-                f"--region={REGION}",
-                f"--project={project_id}",
-                "--format=json",
-            ]
-        )
-        cap_armed = isinstance(function, dict) and bool(function.get("name"))
-    except subprocess.CalledProcessError:
-        cap_armed = False
-    instances = _run_json(
-        ["gcloud", "compute", "instances", "list", f"--project={project_id}", "--format=json"]
-    )
-    disks = _run_json(["gcloud", "compute", "disks", "list", f"--project={project_id}", "--format=json"])
-    if not isinstance(instances, list):
-        instances = []
-    if not isinstance(disks, list):
-        disks = []
-    labels = project.get("labels") if isinstance(project, dict) else {}
-    credit = credit_usd_from_labels(labels)
-    amount = budget_amount_usd(matched) if isinstance(matched, dict) else None
+def _cents_label(labels: Mapping[str, Any] | None, key: str) -> Decimal | None:
+    if not isinstance(labels, Mapping):
+        return None
+    raw = labels.get(key)
+    if not isinstance(raw, str) or not raw.isdigit():
+        return None
+    return Decimal(raw) / Decimal("100")
+
+
+def payload_from_project_reads(
+    project: Mapping[str, Any],
+    billing: Mapping[str, Any],
+    policy: Mapping[str, Any] | None,
+    instances: Sequence[Mapping[str, Any]],
+    disks: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Build the cost-gate payload from one project's own reads.
+
+    Does not list billing-account budgets and does not describe any other project.
+    """
+    labels = project.get("labels") if isinstance(project.get("labels"), Mapping) else {}
+    project_id = project.get("projectId")
+    credit = _cents_label(labels, LABEL_CREDIT)
+    budget = _cents_label(labels, "vantio-budget-cents")
+    active = [
+        item
+        for item in instances
+        if str(item.get("status") or "").upper() != "TERMINATED"
+    ]
     return {
         "lab_project_id": project_id,
         "billing_account_open": billing.get("billingEnabled") is True,
         "navera_identity_present": iam_has_navera(policy),
         "credit_remaining_usd": format(credit, "f") if credit is not None else None,
-        "budget_present": matched is not None,
-        "budget_project_ids": budget_project_ids(matched) if isinstance(matched, dict) else [],
-        "budget_amount_usd": format(amount, "f") if amount is not None else None,
-        "cap_armed": cap_armed,
+        "budget_present": budget is not None,
+        "budget_project_ids": [project_id] if budget is not None and valid_lab_project(project_id) else [],
+        "budget_amount_usd": format(budget, "f") if budget is not None else None,
+        "cap_armed": labels.get("vantio-cap") == "alerts-only",
         "spend_month_usd": None,
-        "instance_count": len([item for item in instances if str(item.get("status") or "").upper() != "TERMINATED"]),
-        "disk_count": len(disks),
+        "instance_count": len(active),
+        "disk_count": len(list(disks)),
     }
+
+
+def collect_live_payload(project_id: str) -> dict[str, Any]:
+    """Read-only describes of the lab project only."""
+    project = _run_json(["gcloud", "projects", "describe", project_id, "--format=json"])
+    billing = _run_json(["gcloud", "billing", "projects", "describe", project_id, "--format=json"])
+    policy = _run_json(["gcloud", "projects", "get-iam-policy", project_id, "--format=json"])
+    instances = _run_json(
+        ["gcloud", "compute", "instances", "list", f"--project={project_id}", "--format=json"]
+    )
+    disks = _run_json(["gcloud", "compute", "disks", "list", f"--project={project_id}", "--format=json"])
+    if not isinstance(project, dict):
+        project = {}
+    if not isinstance(billing, dict):
+        billing = {}
+    if not isinstance(policy, dict):
+        policy = {}
+    if not isinstance(instances, list):
+        instances = []
+    if not isinstance(disks, list):
+        disks = []
+    return payload_from_project_reads(project, billing, policy, instances, disks)
 
 
 def _github_output(name: str, value: str) -> None:

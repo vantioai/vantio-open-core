@@ -5,8 +5,10 @@ name: GCP lab cost gate
 #   repo:vantioai/vantio-open-core:ref:refs/heads/main
 #   job_workflow_ref:
 #   vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main
-# expected_oop_usd is 0 only when the lab project cap can cover a $1 ceiling.
-# A green gate does not start a VM and does not install Phantom Engine.
+# expected_oop_usd is 0 only when this lab project's own labels and billing
+# link can cover a $1 ceiling. The job does not list another project's IAM
+# and does not bind a billing-account role. A green gate does not start a VM
+# and does not install Phantom Engine.
 
 on:
   workflow_call:

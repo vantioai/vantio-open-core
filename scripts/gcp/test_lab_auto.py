@@ -205,6 +205,27 @@ class LabAutoTest(unittest.TestCase):
         )
         self.assertEqual(lab.credit_usd_from_labels({"vantio-credit-cents": "30000"}), Decimal("300"))
 
+    def test_gate_reads_only_the_lab_project(self) -> None:
+        payload = lab.payload_from_project_reads(
+            {
+                "projectId": "vantio-lab-oct08",
+                "labels": {
+                    "vantio-credit-cents": "10000",
+                    "vantio-budget-cents": "500",
+                    "vantio-cap": "alerts-only",
+                },
+            },
+            {"billingEnabled": True, "billingAccountName": "billingAccounts/012345-6789AB-CDEF01"},
+            {"bindings": [{"role": "roles/owner", "members": ["user:zachary@vantio.ai"]}]},
+            [],
+            [],
+        )
+        self.assertEqual(payload["budget_project_ids"], ["vantio-lab-oct08"])
+        self.assertTrue(payload["cap_armed"])
+        self.assertIs(payload["navera_identity_present"], False)
+        decision = lab.evaluate_cost_gate(payload)
+        self.assertEqual(decision["expected_oop_usd"], "0")
+
     def test_capabilities_file_is_json(self) -> None:
         raw = json.loads((lab.HERE / "lab_capabilities.json").read_text(encoding="utf-8"))
         self.assertIs(raw["launch_enabled"], False)
