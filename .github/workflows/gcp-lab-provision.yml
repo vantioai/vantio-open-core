@@ -26,7 +26,7 @@ concurrency:
 jobs:
   gate:
     name: Pre-run cost check
-    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main
+    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust
     permissions:
       contents: read
       id-token: write
