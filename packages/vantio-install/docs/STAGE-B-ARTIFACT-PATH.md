@@ -28,10 +28,10 @@ Optional Python sdist, only if you include it:
 
 Sealed Phantom Engine archive:
 
-- Path: `artifacts/phantom-engine/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar`
-- SHA-256: `f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753`
-- Source commit: `df61d976a81f44e6165b87d40c493a850a247891`
-- Manifest digest: `sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c`
+- Path: `artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar`
+- SHA-256: `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`
+- Source commit: `06696d5020700693b0154c59d0e072a24f648378`
+- Manifest digest: `sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19`
 
 `artifacts/phantom-engine/PHANTOM-ARTIFACT-MANIFEST.json` records that commit, that archive hash, and that manifest digest. `SHA256SUMS` lists every file in the bundle. A mismatch stops `plan`.
 

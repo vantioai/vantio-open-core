@@ -8,7 +8,7 @@ Recorded status: `published` is false. The claim ceiling is `INTERNAL_CLEAN_HOST
 
 ## Origin
 
-Origin is the sealed archive already on the operator workstation, in a directory you choose on that workstation. The source commit recorded for that archive is `df61d976a81f44e6165b87d40c493a850a247891`. That commit is an identity pin. This page does not tell you to obtain the bytes from a repository checkout or from a container registry.
+Origin is the sealed archive already on the operator workstation, in a directory you choose on that workstation. The source commit recorded for that archive is `06696d5020700693b0154c59d0e072a24f648378`. That commit is an identity pin. This page does not tell you to obtain the bytes from a repository checkout or from a container registry.
 
 This repository does not contain the archive. If the file is not already on the workstation, stop. Do not upload the archive to create a copy, and do not publish a download URL for it.
 
@@ -16,11 +16,11 @@ This repository does not contain the archive. If the file is not already on the 
 
 Use this basename exactly. Do not shorten it. Do not substitute another file and keep this name.
 
-- Basename: `vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar`
-- Relative path after placement: `artifacts/phantom-engine/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar`
-- SHA-256: `f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753`
-- Source commit: `df61d976a81f44e6165b87d40c493a850a247891`
-- Manifest digest: `sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c`
+- Basename: `vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar`
+- Relative path after placement: `artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar`
+- SHA-256: `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`
+- Source commit: `06696d5020700693b0154c59d0e072a24f648378`
+- Manifest digest: `sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19`
 - `published` is false
 
 This procedure does not change frozen versions. Optics CLI stays 0.3.24. Agent SDK npm stays 0.2.4. Agent SDK Python stays 3.1.0. The source commit, SHA-256, and manifest digest stay the values above.
@@ -28,13 +28,13 @@ This procedure does not change frozen versions. Optics CLI stays 0.3.24. Agent S
 The staging checksum line is the digest, two spaces, then the basename:
 
 ```text
-f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753  vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar
+e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e  vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar
 ```
 
 The bundle checksum line is the same digest, two spaces, then the relative path:
 
 ```text
-f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753  artifacts/phantom-engine/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar
+e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e  artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar
 ```
 
 ## Hash verify
@@ -42,11 +42,11 @@ f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753  artifacts/phan
 On the workstation, in the directory that already holds the archive and `SHA256SUMS`, verify before you open a network allow. Both commands must exit 0. The first command checks the locked digest from this page. The second checks the staging `SHA256SUMS`. `sha256sum` is the last command in the pipeline, so a mismatch still exits non-zero.
 
 ```bash
-echo "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753  vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar" | sha256sum -c -
+echo "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e  vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar" | sha256sum -c -
 sha256sum -c SHA256SUMS
 ```
 
-Each output must show `vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar: OK`. The staging `SHA256SUMS` must contain the staging line in the identity section. A checksum file that matches the bytes but not the locked digest is a hash mismatch.
+Each output must show `vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar: OK`. The staging `SHA256SUMS` must contain the staging line in the identity section. A checksum file that matches the bytes but not the locked digest is a hash mismatch.
 
 If the archive is missing, stop. If `SHA256SUMS` is missing, stop. If the digest does not match, that is a hash mismatch. Stop. Do not open the allow, and do not copy the file.
 
@@ -62,7 +62,7 @@ The same boundary works on a firewall that is not AWS. Allow TCP port 22, or the
 
 ## Destination
 
-The destination is the bundle directory already on the customer host. This page calls that directory `./bundle/` relative to the login directory you use for the copy. The archive lands at `artifacts/phantom-engine/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar` under that bundle. The bundle `SHA256SUMS` stays at the bundle root.
+The destination is the bundle directory already on the customer host. This page calls that directory `./bundle/` relative to the login directory you use for the copy. The archive lands at `artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar` under that bundle. The bundle `SHA256SUMS` stays at the bundle root.
 
 Do not replace the bundle `SHA256SUMS` with the staging checksum file. The staging file names the basename beside the archive. The bundle file names the relative path. Both lines carry the same digest. If the bundle file is missing, stop. If the bundle line is missing, or the digest on that line differs, stop. Do not write a new digest to force a match, and do not create `MANIFEST.json` from this page.
 
@@ -91,21 +91,21 @@ aws ec2 authorize-security-group-ingress \
 # 2. COPY
 ssh -i SSH_IDENTITY ubuntu@CUSTOMER_HOST 'mkdir -p ./vantio-sealed-media'
 scp -i SSH_IDENTITY \
-  ./vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar \
+  ./vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar \
   ./SHA256SUMS \
   ubuntu@CUSTOMER_HOST:./vantio-sealed-media/
 
 # 3. VERIFY
 ssh -i SSH_IDENTITY ubuntu@CUSTOMER_HOST \
   'cd ./vantio-sealed-media && \
-   echo "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753  vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar" | sha256sum -c - > ./transfer-verify.txt && \
+   echo "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e  vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar" | sha256sum -c - > ./transfer-verify.txt && \
    sha256sum -c SHA256SUMS >> ./transfer-verify.txt'
 
 # 4. PLACE
 ssh -i SSH_IDENTITY ubuntu@CUSTOMER_HOST \
-  'grep -F "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753  artifacts/phantom-engine/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar" ./bundle/SHA256SUMS && \
+  'grep -F "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e  artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar" ./bundle/SHA256SUMS && \
    mkdir -p ./bundle/artifacts/phantom-engine && \
-   mv ./vantio-sealed-media/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar \
+   mv ./vantio-sealed-media/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar \
       ./bundle/artifacts/phantom-engine/'
 
 # 5. REVOKE
@@ -114,7 +114,7 @@ aws ec2 revoke-security-group-ingress \
   --protocol tcp --port 22 --cidr OPERATOR_PUBLIC_IP/32
 ```
 
-After verify exits 0, read `./vantio-sealed-media/transfer-verify.txt` on the customer host. It must contain `vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar: OK` for the locked digest and for `SHA256SUMS`. If verify exits non-zero, do not place the archive. Keep the transcript if it was written. Revoke the temporary allow. The checksum command stays at the end of its pipeline, and the shell uses `&&`, so a mismatch does not continue. Do not pipe `sha256sum -c` into `tee` or any later command that would hide a non-zero exit.
+After verify exits 0, read `./vantio-sealed-media/transfer-verify.txt` on the customer host. It must contain `vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar: OK` for the locked digest and for `SHA256SUMS`. If verify exits non-zero, do not place the archive. Keep the transcript if it was written. Revoke the temporary allow. The checksum command stays at the end of its pipeline, and the shell uses `&&`, so a mismatch does not continue. Do not pipe `sha256sum -c` into `tee` or any later command that would hide a non-zero exit.
 
 Place checks the bundle checksum line before it moves the file. If that grep exits non-zero, the archive stays in `./vantio-sealed-media/` and you do not treat the handoff as complete. Revoke the temporary allow.
 
@@ -124,7 +124,7 @@ Each case below stops the handoff. You do not place the archive into `artifacts/
 
 - The archive is missing. Stop. Do not copy an empty path.
 - `SHA256SUMS` is missing on the workstation or on the customer host. Stop.
-- The digest does not match `f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753`. That is a hash mismatch. Stop. A `SHA256SUMS` file that matches some other bytes, and not the locked digest, stops the handoff the same way.
+- The digest does not match `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`. That is a hash mismatch. Stop. A `SHA256SUMS` file that matches some other bytes, and not the locked digest, stops the handoff the same way.
 - A different source commit, a different SHA-256, or a different manifest digest is the wrong version. Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0 stay as they are. Stop. Do not rename the other file to this basename.
 - An archive whose name is not linux-amd64, or a host that is not x86_64, is the wrong architecture. Stop. Do not rename the file so the name says linux-amd64.
 - The copy is incomplete. The destination file is shorter than the sealed original, or `sha256sum -c` did not exit 0. Stop. Do not place an incomplete file.
@@ -147,11 +147,11 @@ Do not edit the archive, splice it, or pad it. Do not change the digest so the c
 On the customer host, verify writes `./vantio-sealed-media/transfer-verify.txt`. That file is the checksum transcript. Keep it. Also write `transfer-evidence.txt` next to it with these lines:
 
 ```text
-basename: vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar
-relative: artifacts/phantom-engine/vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar
-sha256: f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753
-source_commit: df61d976a81f44e6165b87d40c493a850a247891
-manifest_digest: sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c
+basename: vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar
+relative: artifacts/phantom-engine/vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar
+sha256: e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e
+source_commit: 06696d5020700693b0154c59d0e072a24f648378
+manifest_digest: sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19
 published: false
 claim_ceiling: INTERNAL_CLEAN_HOST_PROOF
 gap: GAP-CB-DEP-013
