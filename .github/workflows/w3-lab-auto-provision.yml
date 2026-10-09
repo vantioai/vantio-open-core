@@ -47,7 +47,7 @@ on:
         default: ""
         type: string
       image_id:
-        description: Pinned Canonical Ubuntu 24.04 AMI. The provision role already launched this id.
+        description: Ubuntu pin ami-0fa99aa8f97f9e30b, or the official Debian 12 amd64 id from the sitting summary.
         required: false
         default: ami-0fa99aa8f97f9e30b
         type: string

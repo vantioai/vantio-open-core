@@ -377,5 +377,64 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertIn("shutdown -h +15", lab.build_user_data(15))
 
 
+class DebianImageTests(unittest.TestCase):
+    def test_official_debian12_image_is_accepted(self) -> None:
+        ami = "ami-0deb120000000001"
+        payload = {
+            "Images": [
+                {
+                    "ImageId": ami,
+                    "State": "available",
+                    "OwnerId": lab.DEBIAN_OWNER,
+                    "Name": "debian-12-amd64-20251008-2233",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                    "ProductCodes": [],
+                }
+            ]
+        }
+        self.assertEqual(lab.require_available_image(payload, ami), ami)
+
+    def test_debian_daily_name_is_rejected(self) -> None:
+        payload = {
+            "Images": [
+                {
+                    "ImageId": "ami-0deb120000000002",
+                    "State": "available",
+                    "OwnerId": lab.DEBIAN_OWNER,
+                    "Name": "debian-12-amd64-daily-20251008",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                }
+            ]
+        }
+        with self.assertRaises(lab.GuardAbort) as caught:
+            lab.require_available_image(payload, "ami-0deb120000000002")
+        self.assertEqual(caught.exception.reason, "image_rejected")
+
+    def test_other_owner_is_still_rejected(self) -> None:
+        payload = {
+            "Images": [
+                {
+                    "ImageId": "ami-0deb120000000003",
+                    "State": "available",
+                    "OwnerId": "137112412989",
+                    "Name": "debian-12-amd64-20251008-2233",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                }
+            ]
+        }
+        with self.assertRaises(lab.GuardAbort) as caught:
+            lab.require_available_image(payload, "ami-0deb120000000003")
+        self.assertEqual(caught.exception.reason, "image_owner")
+
+
 if __name__ == "__main__":
     unittest.main()
