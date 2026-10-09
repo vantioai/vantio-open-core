@@ -732,9 +732,9 @@ def execute_verify(runner: Runner, now: datetime, *, write: bool = True) -> dict
 
 
 def _ssh_failure(proc: subprocess.CompletedProcess[str]) -> None:
-    tail = ((proc.stderr or "") + "\n" + (proc.stdout or ""))[-500:]
-    redacted, _changed = redact(tail)
-    flat = " ".join(redacted.split())[:180]
+    raw = (proc.stderr or "") + "\n" + (proc.stdout or "")
+    redacted, _changed = redact(raw)
+    flat = " ".join(redacted.split())[-180:]
     raise lab.GuardAbort("ssh" if not flat else f"ssh {flat}")
 
 
