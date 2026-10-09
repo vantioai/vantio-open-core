@@ -130,7 +130,7 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("enterprise_rows")
         if key == "bundle_tag" and re.fullmatch(r"lab-bundle/[A-Za-z0-9._-]{1,64}", value) is None:
             raise TriggerError("bundle_tag")
-        if key == "battery" and value not in ("enterprise", "descendant-b1"):
+        if key == "battery" and value not in ("enterprise", "descendant-b1", "upgrade-rollback"):
             raise TriggerError("battery")
         if key == "instance_type" and value not in ("t3.micro", "t3.small"):
             raise TriggerError("instance_type")

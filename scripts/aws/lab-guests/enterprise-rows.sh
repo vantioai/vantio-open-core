@@ -79,11 +79,24 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   sleep 2
 done
 test "$ready" = 1
+mode=${2:-enterprise}
+if [ "$mode" = "upgrade-rollback" ]; then
+  set +e
+  sudo python3 "$here/upgrade_rollback.py" "$here" > /tmp/upgrade-rollback.out 2>&1
+  rc=$?
+  set -e
+  cat /tmp/upgrade-rollback.out
+  chmod a+r /tmp/upgrade-rollback.out /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  if [ ! -s /tmp/enterprise-pe-rows.json ]; then
+    cp /tmp/upgrade-rollback.out /tmp/enterprise-pe-rows.json
+  fi
+  printf 'PY_RC=%s\n' "$rc"
+  exit "$rc"
+fi
 load=$(sudo docker load -i "$here/seal.oci.tar" 2>&1)
 printf '%s\n' "$load"
 image=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
 test "$image" = "$image_name"
-mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
   printf 'IMAGE_LINE=%s\n' "$image"
