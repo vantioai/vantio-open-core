@@ -4,15 +4,16 @@ name: Verify W3 lab teardown role
 # Ordinary pushes and pull requests do not run this workflow.
 #
 # preflight has no environment key. It fails unless w3-lab-teardown already
-# exists with required reviewer zacharybalicki (269605088) and a deployment
-# branch policy of only main. verify is the only job that sets
-# environment: w3-lab-teardown, and only after preflight succeeds.
+# exists with no required reviewers and a deployment branch policy of only
+# main. verify is the only job that sets environment: w3-lab-teardown, and
+# only after preflight succeeds.
 # GitHub auto-creates an unprotected environment when a job that sets
 # environment: is scheduled and the name is missing. Do not dispatch until
-# the protected environment already exists.
+# the environment already exists with that branch policy.
 #
-# Trust subject, enforced by that protected environment:
-#   repo:vantioai/vantio-open-core:environment:w3-lab-teardown
+# Trust subject GitHub issues for verify after the 2026-10-08 customization
+# (repo, context, job_workflow_ref):
+#   repo:vantioai/vantio-open-core:environment:w3-lab-teardown:job_workflow_ref:vantioai/vantio-open-core/.github/workflows/w3-lab-teardown-verify.yml@refs/heads/main
 # The role session is at most 3600 seconds. There are no long-lived AWS keys.
 #
 # This workflow does not provision a Class B or product lab, does not create
