@@ -19,14 +19,12 @@ from typing import Any
 
 ENVIRONMENT_NAME = "w3-lab-teardown"
 REPOSITORY = "vantioai/vantio-open-core"
-REQUIRED_REVIEWER_LOGIN = "zacharybalicki"
-REQUIRED_REVIEWER_ID = 269605088
 ALLOWED_BRANCH = "main"
 FOUNDER_INSTRUCTION = (
-    "Create the protected environment w3-lab-teardown BEFORE any dispatch. "
+    "The environment w3-lab-teardown must already exist BEFORE any dispatch. "
     "GitHub auto-creates an unprotected environment when a job with environment: is scheduled and the name is missing. "
-    "If an unprotected w3-lab-teardown environment was created, delete it, then create the protected environment "
-    f"with required reviewer {REQUIRED_REVIEWER_LOGIN} ({REQUIRED_REVIEWER_ID}) and a deployment branch policy of only {ALLOWED_BRANCH}."
+    "If an unprotected w3-lab-teardown environment was created, delete it, then create the environment "
+    f"with no required reviewers and a deployment branch policy of only {ALLOWED_BRANCH}."
 )
 
 
@@ -43,27 +41,13 @@ def load_object(path: Path) -> dict[str, Any]:
     return payload
 
 
-def reviewer_record(reviewer: dict[str, Any]) -> dict[str, Any]:
-    nested = reviewer.get("reviewer")
-    if isinstance(nested, dict):
-        return nested
-    return reviewer
+def required_reviewers_configured(environment: dict[str, Any]) -> bool:
+    """True when a required-reviewer rule is present or its reviewer list is unreadable.
 
-
-def reviewer_is_required_founder(reviewer: Any) -> bool:
-    if not isinstance(reviewer, dict):
-        return False
-    person = reviewer_record(reviewer)
-    login = person.get("login")
-    reviewer_id = person.get("id")
-    login_ok = login == REQUIRED_REVIEWER_LOGIN
-    id_ok = reviewer_id == REQUIRED_REVIEWER_ID
-    if login is not None and reviewer_id is not None:
-        return bool(login_ok and id_ok)
-    return bool(login_ok or id_ok)
-
-
-def has_required_reviewer(environment: dict[str, Any]) -> bool:
+    An empty reviewer list, or no required-reviewer rule at all, is the
+    Founder state: the teardown proof runs without a person approving it.
+    A malformed reviewer list fails closed.
+    """
     rules = environment.get("protection_rules")
     if not isinstance(rules, list):
         return False
@@ -71,9 +55,7 @@ def has_required_reviewer(environment: dict[str, Any]) -> bool:
         if not isinstance(rule, dict) or rule.get("type") != "required_reviewers":
             continue
         reviewers = rule.get("reviewers")
-        if not isinstance(reviewers, list):
-            continue
-        if any(reviewer_is_required_founder(reviewer) for reviewer in reviewers):
+        if not isinstance(reviewers, list) or len(reviewers) > 0:
             return True
     return False
 
@@ -106,16 +88,17 @@ def evaluate(environment: dict[str, Any], policies: dict[str, Any]) -> tuple[boo
         if isinstance(message, str) and message:
             return False, f"environment lookup failed: {message}. " + FOUNDER_INSTRUCTION
         return False, "environment w3-lab-teardown does not exist. " + FOUNDER_INSTRUCTION
-    if not has_required_reviewer(environment):
+    if required_reviewers_configured(environment):
         return False, (
-            f"required reviewer {REQUIRED_REVIEWER_LOGIN} ({REQUIRED_REVIEWER_ID}) is absent. " + FOUNDER_INSTRUCTION
+            "a required reviewer is still set on w3-lab-teardown. "
+            "Remove the reviewer and keep the deployment branch policy on main only. " + FOUNDER_INSTRUCTION
         )
     ok, detail = branch_policy_only_main(environment, policies)
     if not ok:
         return False, detail + ". " + FOUNDER_INSTRUCTION
     return True, (
-        f"environment {ENVIRONMENT_NAME} on {REPOSITORY} has required reviewer "
-        f"{REQUIRED_REVIEWER_LOGIN} ({REQUIRED_REVIEWER_ID}) and allows only branch {ALLOWED_BRANCH}"
+        f"environment {ENVIRONMENT_NAME} on {REPOSITORY} has no required reviewers "
+        f"and allows only branch {ALLOWED_BRANCH}"
     )
 
 

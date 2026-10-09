@@ -23,18 +23,26 @@ def environment(**overrides) -> dict:
     payload = {
         "name": "w3-lab-teardown",
         "protection_rules": [
-            {
-                "type": "required_reviewers",
-                "prevent_self_review": False,
-                "reviewers": [
-                    {"type": "User", "reviewer": {"login": "zacharybalicki", "id": 269605088}},
-                ],
-            },
             {"type": "branch_policy"},
         ],
         "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
     }
     payload.update(overrides)
+    return payload
+
+
+def with_reviewer(login: str = "someone", reviewer_id: int = 1) -> dict:
+    payload = environment()
+    payload["protection_rules"] = [
+        {
+            "type": "required_reviewers",
+            "prevent_self_review": False,
+            "reviewers": [
+                {"type": "User", "reviewer": {"login": login, "id": reviewer_id}},
+            ],
+        },
+        {"type": "branch_policy"},
+    ]
     return payload
 
 
@@ -48,14 +56,22 @@ class PreflightTests(unittest.TestCase):
         ok, detail = preflight.evaluate(environment(), branches("main"))
         self.assertTrue(ok)
         self.assertIn("only branch main", detail)
+        self.assertIn("no required reviewers", detail)
 
-    def test_additional_reviewer_still_passes(self) -> None:
+    def test_empty_reviewer_list_still_passes(self) -> None:
         payload = environment()
-        payload["protection_rules"][0]["reviewers"].append(
-            {"type": "User", "reviewer": {"login": "other", "id": 1}}
-        )
-        ok, _detail = preflight.evaluate(payload, branches("main"))
+        payload["protection_rules"] = [
+            {"type": "required_reviewers", "reviewers": []},
+            {"type": "branch_policy"},
+        ]
+        ok, detail = preflight.evaluate(payload, branches("main"))
         self.assertTrue(ok)
+        self.assertIn("no required reviewers", detail)
+
+    def test_any_required_reviewer_fails(self) -> None:
+        ok, detail = preflight.evaluate(with_reviewer(), branches("main"))
+        self.assertFalse(ok)
+        self.assertIn("required reviewer is still set", detail)
 
     def test_missing_environment_fails_with_founder_instruction(self) -> None:
         ok, detail = preflight.evaluate({"message": "Not Found", "status": "404"}, {"message": "Not Found"})
@@ -71,24 +87,23 @@ class PreflightTests(unittest.TestCase):
             {"total_count": 0, "branch_policies": []},
         )
         self.assertFalse(ok)
-        self.assertIn("269605088", detail)
+        self.assertIn("deployment_branch_policy is missing", detail)
+        self.assertIn("no required reviewers", detail)
 
-    def test_wrong_reviewer_fails(self) -> None:
+    def test_founder_reviewer_fails(self) -> None:
+        ok, detail = preflight.evaluate(with_reviewer("zacharybalicki", 269605088), branches("main"))
+        self.assertFalse(ok)
+        self.assertIn("required reviewer is still set", detail)
+
+    def test_malformed_reviewer_list_fails(self) -> None:
         payload = environment()
-        payload["protection_rules"][0]["reviewers"] = [
-            {"type": "User", "reviewer": {"login": "someone-else", "id": 42}}
+        payload["protection_rules"] = [
+            {"type": "required_reviewers"},
+            {"type": "branch_policy"},
         ]
         ok, detail = preflight.evaluate(payload, branches("main"))
         self.assertFalse(ok)
-        self.assertIn("absent", detail)
-
-    def test_mismatched_login_and_id_fails(self) -> None:
-        payload = environment()
-        payload["protection_rules"][0]["reviewers"] = [
-            {"type": "User", "reviewer": {"login": "zacharybalicki", "id": 42}}
-        ]
-        ok, _detail = preflight.evaluate(payload, branches("main"))
-        self.assertFalse(ok)
+        self.assertIn("required reviewer is still set", detail)
 
     def test_extra_branch_fails(self) -> None:
         ok, detail = preflight.evaluate(environment(), branches("main", "develop"))
