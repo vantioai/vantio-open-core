@@ -16,6 +16,8 @@ const {
   humanStatus,
   displayCall,
   rollupCalls,
+  rollupObservedLabel,
+  sumMeasuredBytes,
   telemetryPosture,
   withSchema,
 } = require("./optics-cx.cjs");
@@ -245,7 +247,11 @@ Examples:
 `;
 
 // ── config store (~/.vantio/config.json) ───────────────────────────────────────────────────
-function configDir()  { return join(homedir(), ".vantio"); }
+function configDir() {
+  const override = process.env.VANTIO_HOME;
+  if (typeof override === "string" && override.trim()) return override;
+  return join(homedir(), ".vantio");
+}
 function configPath() { return join(configDir(), "config.json"); }
 
 // Compatibility: ~/.vantio/config.json is not read by run,
@@ -429,7 +435,7 @@ function generateHtmlReport(log) {
   const calls      = Array.isArray(log.calls) ? log.calls : [];
   const summary    = log.summary || {};
   const totalCalls = summary.total_calls ?? calls.length;
-  const totalBytes = summary.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0);
+  const totalBytes = byteTotal(summary, calls);
   const hosts      = Array.isArray(summary.hosts) ? summary.hosts
                      : [...new Set(calls.map((c) => c.hostname || "?"))];
   const rollup     = rollupCalls(calls);
@@ -447,7 +453,7 @@ function generateHtmlReport(log) {
           <td class="num">${i + 1}</td>
           <td class="mono">${escHtml(view.hostname || "—")}</td>
           <td>${escHtml(view.opticsLabel)}</td>
-          <td>${escHtml(view.applicationLabel)}</td>
+          <td>${escHtml(view.applicationOutcomeLabel)}</td>
           <td class="num">${escHtml(http)}</td>
           <td class="num">${view.bytes != null ? Number(view.bytes).toLocaleString() : "—"}</td>
           <td class="mono">${escHtml(view.ts || "—")}</td>
@@ -496,7 +502,7 @@ function generateHtmlReport(log) {
 
     <div class="privacy-banner">
       ✓ <strong>Prompts and completions are never stored.</strong>
-      This report contains hostnames, byte counts, process IDs, trace IDs, Optics status, and Application outcome. CLI v${cliVer}.
+      This report contains hostnames, byte counts, process IDs, trace IDs, Optics status, and Observed outcome. CLI v${cliVer}.
     </div>
 
     <h2>Run identity</h2>
@@ -512,10 +518,10 @@ function generateHtmlReport(log) {
     <h2>Summary</h2>
     <div class="metrics">
       <div class="metric"><div class="metric-value">${totalCalls.toLocaleString()}</div><div class="metric-label">Total calls</div></div>
-      <div class="metric"><div class="metric-value">${totalBytes > 0 ? formatBytes(totalBytes) : "—"}</div><div class="metric-label">Total bytes</div></div>
+      <div class="metric"><div class="metric-value">${totalBytes == null ? "—" : (totalBytes > 0 ? formatBytes(totalBytes) : "0 B")}</div><div class="metric-label">Total bytes</div></div>
       <div class="metric"><div class="metric-value">${hosts.length}</div><div class="metric-label">Unique hosts</div></div>
       <div class="metric"><div class="metric-value">${escHtml(humanStatus(rollup.opticsStatus))}</div><div class="metric-label">Optics status</div></div>
-      <div class="metric"><div class="metric-value">${escHtml(humanStatus(rollup.applicationStatus))}</div><div class="metric-label">Application outcome</div></div>
+      <div class="metric"><div class="metric-value">${escHtml(rollupObservedLabel(calls))}</div><div class="metric-label">Observed outcome</div></div>
     </div>
 
     <h2>Call log (${totalCalls.toLocaleString()} call${totalCalls === 1 ? "" : "s"})</h2>
@@ -524,7 +530,7 @@ function generateHtmlReport(log) {
       : `<table>
       <thead><tr>
         <th class=\"num\">#</th><th>Host</th><th>Optics status</th>
-        <th>Application outcome</th><th class=\"num\">HTTP</th><th class=\"num\">Bytes</th><th>Timestamp</th>
+        <th>Observed outcome</th><th class=\"num\">HTTP</th><th class=\"num\">Bytes</th><th>Timestamp</th>
       </tr></thead>
       <tbody>
 ${rows}
@@ -540,9 +546,17 @@ ${rows}
 </html>`;
 }
 
+function byteTotal(summary, calls) {
+  if (summary && summary.bytes_complete === false) return null;
+  if (summary && typeof summary.total_bytes === "number") return summary.total_bytes;
+  if (summary && summary.total_bytes === null) return null;
+  return sumMeasuredBytes(calls).total;
+}
+
 function proofJson(log) {
   const calls = Array.isArray(log.calls) ? log.calls : [];
   const rollup = rollupCalls(calls);
+  const measured = byteTotal(log.summary, calls);
   return withSchema({
     command: "prove",
     trace_id: log.trace_id || null,
@@ -555,7 +569,7 @@ function proofJson(log) {
     applicationStatus: rollup.applicationStatus,
     summary: {
       total_calls: log.summary?.total_calls ?? calls.length,
-      total_bytes: log.summary?.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0),
+      total_bytes: measured,
       opticsStatus: rollup.opticsStatus,
       applicationStatus: rollup.applicationStatus,
     },
@@ -575,6 +589,8 @@ function publicCall(call) {
     httpStatus: view.httpStatus,
     opticsStatus: view.opticsStatus,
     applicationStatus: view.applicationStatus,
+    applicationOutcomeLabel: view.applicationOutcomeLabel,
+    providerResponse: view.providerResponse,
   };
 }
 
@@ -582,7 +598,7 @@ function generateMarkdownReport(log) {
   const calls      = Array.isArray(log.calls) ? log.calls : [];
   const summary    = log.summary || {};
   const totalCalls = summary.total_calls ?? calls.length;
-  const totalBytes = summary.total_bytes ?? calls.reduce((a, c) => a + (c.bytes || 0), 0);
+  const totalBytes = byteTotal(summary, calls);
   const hosts      = Array.isArray(summary.hosts) ? summary.hosts
                      : [...new Set(calls.map((c) => c.hostname || "?"))];
   const rollup     = rollupCalls(calls);
@@ -590,7 +606,7 @@ function generateMarkdownReport(log) {
   const rows = calls.map((c, i) => {
     const view = displayCall(c);
     const http = view.httpStatus != null ? view.httpStatus : "—";
-    return `| ${i + 1} | \`${view.hostname || "—"}\` | ${view.opticsLabel} | ${view.applicationLabel} | ${http} | ${view.bytes != null ? Number(view.bytes).toLocaleString() : "—"} | \`${view.ts || "—"}\` |`;
+    return `| ${i + 1} | \`${view.hostname || "—"}\` | ${view.opticsLabel} | ${view.applicationOutcomeLabel} | ${http} | ${view.bytes != null ? Number(view.bytes).toLocaleString() : "—"} | \`${view.ts || "—"}\` |`;
   }).join("\n");
 
   return `# Vantio Optics | Free Observability for AI Agents
@@ -598,7 +614,7 @@ function generateMarkdownReport(log) {
 > Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 
 **Privacy notice:** This report contains hostnames, byte counts, process IDs,
-trace IDs, Optics status, and Application outcome. Prompts and completions are never stored.
+trace IDs, Optics status, and Observed outcome. Prompts and completions are never stored.
 CLI v${log.cli_version || "—"}.
 
 ---
@@ -621,10 +637,10 @@ CLI v${log.cli_version || "—"}.
 | Metric | Value |
 |--------|-------|
 | Total calls | **${totalCalls.toLocaleString()}** |
-| Total bytes | ${totalBytes > 0 ? totalBytes.toLocaleString() : "—"} |
+| Total bytes | ${totalBytes == null ? "—" : totalBytes.toLocaleString()} |
 | Unique hosts | ${hosts.length} |
 | Optics status | ${humanStatus(rollup.opticsStatus)} |
-| Application outcome | ${humanStatus(rollup.applicationStatus)} |
+| Observed outcome | ${rollupObservedLabel(calls)} |
 
 Hosts: ${hosts.map((h) => `\`${h}\``).join(", ") || "—"}
 
@@ -632,7 +648,7 @@ Hosts: ${hosts.map((h) => `\`${h}\``).join(", ") || "—"}
 
 ## Call log (${totalCalls} call${totalCalls === 1 ? "" : "s"})
 
-| # | Host | Optics status | Application outcome | HTTP | Bytes | Timestamp |
+| # | Host | Optics status | Observed outcome | HTTP | Bytes | Timestamp |
 |---|------|---------------|---------------------|------|-------|-----------|
 ${rows || "| — | — | — | — | — | — | — |"}
 
@@ -707,7 +723,10 @@ function findRunByPrefix(dir, prefix, cmd = "prove") {
     return { path: null, empty: true };
   }
   const norm = prefix.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const matches = files.filter((f) => f.includes(norm));
+  const stems = files.map((f) => ({ file: f, stem: f.replace(/\.json$/, "") }));
+  const exact = stems.filter((item) => item.stem === norm);
+  const chosen = exact.length ? exact : stems.filter((item) => item.stem.startsWith(norm));
+  const matches = chosen.map((item) => item.file);
   if (matches.length === 0) return { path: null, empty: true };
   if (matches.length > 1) {
     process.stderr.write(`vantio ${cmd}: '${prefix}' matches ${matches.length} runs. Use a longer prefix:\n`);
@@ -1039,7 +1058,7 @@ function callSearchBlob(call, traceId) {
 }
 
 // Column widths shared by the header and every row. Trace ID is never truncated.
-const CALL_COLS = { ts: 24, host: 28, optics: 16, outcome: 18, route: 36, bytes: 10 };
+const CALL_COLS = { ts: 24, host: 28, optics: 16, outcome: 40, route: 36, bytes: 10 };
 
 function formatCallLine(call, traceId) {
   const view = displayCall(call);
@@ -1051,7 +1070,7 @@ function formatCallLine(call, traceId) {
   const ts = view.ts || "—";
   const tid = traceId ? String(traceId) : "—";
   return `${col(ts, CALL_COLS.ts)}  ${col(host, CALL_COLS.host)}  ${col(view.opticsLabel, CALL_COLS.optics)}  ` +
-    `${col(view.applicationLabel, CALL_COLS.outcome)}  ${col(route, CALL_COLS.route)}  ${col(bytes, CALL_COLS.bytes)}  ${tid}`;
+    `${col(view.applicationOutcomeLabel, CALL_COLS.outcome)}  ${col(route, CALL_COLS.route)}  ${col(bytes, CALL_COLS.bytes)}  ${tid}`;
 }
 
 function printCallHeader() {
@@ -1059,7 +1078,7 @@ function printCallHeader() {
     col("TIMESTAMP", CALL_COLS.ts) + "  " +
     col("HOST", CALL_COLS.host) + "  " +
     col("OPTICS STATUS", CALL_COLS.optics) + "  " +
-    col("APP OUTCOME", CALL_COLS.outcome) + "  " +
+    col("OBSERVED OUTCOME", CALL_COLS.outcome) + "  " +
     col("METHOD / PATH", CALL_COLS.route) + "  " +
     col("BYTES", CALL_COLS.bytes) + "  TRACE ID";
   process.stdout.write(`${hdr}\n${"-".repeat(hdr.length)}\n`);
@@ -1470,7 +1489,7 @@ function demoCommand(args) {
     "  method: POST /v1/chat/completions\n" +
     "  http_status: 200\n" +
     `  Optics status: ${view.opticsLabel}\n` +
-    `  Application outcome: ${view.applicationLabel}\n` +
+    `  Observed outcome: ${view.applicationOutcomeLabel}\n` +
     `  duration_ms: ${DEMO_DURATION_MS}\n` +
     `  trace_id: ${traceId}\n\n` +
     `Next: vantio prove --run=${traceId}\n`

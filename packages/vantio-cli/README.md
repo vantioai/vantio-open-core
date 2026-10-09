@@ -135,7 +135,7 @@ vantio tail --all                      # every call in the run
 vantio diff <run-a> <run-b>            # hosts added/removed, call and byte deltas
 ```
 
-`vantio tail --json --follow` is a usage error. Proofs and search results separate **Optics status** from **Application outcome**. The HTTP code is shown as HTTP status. A stored `ok` flag is not used.
+`vantio tail --json --follow` is a usage error. Proofs and search results separate **Optics status** from **Observed outcome**. The HTTP code is shown as HTTP status. A stored `ok` flag is not used. A missing response size stays absent and is not stored as zero.
 
 ```bash
 vantio demo                            # POST /v1/chat/completions, HTTP 200, no network

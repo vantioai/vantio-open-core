@@ -81,33 +81,53 @@ function catalogInScope(hostname, port, hosts) {
   );
 }
 
+const PROVIDER_BY_HOST = Object.freeze({
+  "api.openai.com": "openai",
+  "api.anthropic.com": "anthropic",
+  "generativelanguage.googleapis.com": "google",
+  "api.cohere.ai": "cohere",
+  "api.cohere.com": "cohere",
+  "api.mistral.ai": "mistral",
+  "api.groq.com": "groq",
+  "api.together.xyz": "together",
+  "api.perplexity.ai": "perplexity",
+  "inference.ai.azure.com": "azure_openai",
+  "openai.azure.com": "azure_openai",
+  "api.x.ai": "xai",
+  "api.deepseek.com": "deepseek",
+  "api.fireworks.ai": "fireworks",
+  "openrouter.ai": "openrouter",
+  "api.cerebras.ai": "cerebras",
+  "api.voyageai.com": "voyage",
+  "api.sambanova.ai": "sambanova",
+  "api.deepinfra.com": "deepinfra",
+  "router.huggingface.co": "huggingface",
+  "api-inference.huggingface.co": "huggingface",
+  "api.replicate.com": "replicate",
+  "ollama.com": "ollama",
+  "integrate.api.nvidia.com": "nvidia",
+});
+
+function hostMatchesCatalog(hostname, listed) {
+  const h = String(hostname || "").toLowerCase();
+  const b = String(listed || "").toLowerCase();
+  if (!h || !b) return false;
+  return h === b || h.endsWith("." + b);
+}
+
 function guessProvider(hostname, port) {
   const h = String(hostname || "").toLowerCase();
   if (!h) return "unknown";
-  if (isOllamaLocal(hostname, port) || h === "ollama.com" || h.endsWith(".ollama.com")) return "ollama";
-  if (h.includes("openai") || h === "api.openai.com") return "openai";
-  if (h.includes("anthropic")) return "anthropic";
-  if (h.includes("aiplatform")) return "vertex";
-  if (h.includes("googleapis") || h.includes("generativelanguage")) return "google";
-  if (h.includes("cohere")) return "cohere";
-  if (h.includes("mistral")) return "mistral";
-  if (h.includes("groq")) return "groq";
-  if (h.includes("together")) return "together";
-  if (h.includes("perplexity")) return "perplexity";
-  if (h.includes("azure") || h.includes("openai.azure")) return "azure_openai";
-  if (h.includes("x.ai") || h.endsWith(".x.ai")) return "xai";
-  if (h.includes("deepseek")) return "deepseek";
-  if (h.includes("fireworks")) return "fireworks";
-  if (h.includes("openrouter")) return "openrouter";
-  if (h.includes("cerebras")) return "cerebras";
-  if (h.includes("voyageai")) return "voyage";
-  if (h.includes("sambanova")) return "sambanova";
-  if (h.includes("deepinfra")) return "deepinfra";
-  if (h.includes("bedrock")) return "bedrock";
-  if (h.includes("huggingface") || h.endsWith(".huggingface.cloud")) return "huggingface";
-  if (h.includes("replicate")) return "replicate";
-  if (h.includes("nvidia")) return "nvidia";
-  if (h.includes("localhost") || h.startsWith("127.")) return "local";
+  if (isOllamaLocal(hostname, port)) return "ollama";
+  if (/^bedrock-(runtime(-fips)?|agent-runtime(-fips)?)\.[a-z0-9-]+\.amazonaws\.com$/.test(h)) return "bedrock";
+  if (/^bedrock-mantle\.[a-z0-9-]+\.api\.aws$/.test(h)) return "bedrock";
+  if (h === "aiplatform.googleapis.com" || h.endsWith("-aiplatform.googleapis.com")) return "vertex";
+  if (/^aiplatform\.(us|eu)\.rep\.googleapis\.com$/.test(h)) return "vertex";
+  if (h === "endpoints.huggingface.cloud" || h.endsWith(".endpoints.huggingface.cloud")) return "huggingface";
+  for (const listed of Object.keys(PROVIDER_BY_HOST)) {
+    if (hostMatchesCatalog(h, listed)) return PROVIDER_BY_HOST[listed];
+  }
+  if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]") return "local";
   return "other";
 }
 

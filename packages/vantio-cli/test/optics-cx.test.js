@@ -89,7 +89,7 @@ describe("vantio demo", () => {
       assert.match(stdout, /POST \/v1\/chat\/completions/);
       assert.match(stdout, /http_status: 200/);
       assert.match(stdout, /Optics status: Successful/);
-      assert.match(stdout, /Application outcome: Successful/);
+      assert.match(stdout, /Observed outcome: Successful/);
       assert.match(stdout, /duration_ms: 0/);
       assert.match(stdout, /Prompts and completions are never stored/);
       assert.doesNotMatch(stdout, ENFORCEMENT);
@@ -219,11 +219,11 @@ describe("vantio status", () => {
 describe("stored HTTP fixtures", () => {
   const cases = [
     ["success", 200, true, "SUCCESS", "Successful"],
-    ["401", 401, true, "APPLICATION_ERROR", "Application error"],
-    ["403", 403, false, "APPLICATION_ERROR", "Application error"],
-    ["429", 429, true, "APPLICATION_ERROR", "Application error"],
-    ["500", 500, true, "APPLICATION_ERROR", "Application error"],
-    ["offline", null, true, "UNAVAILABLE", "Unavailable"],
+    ["401", 401, true, "APPLICATION_ERROR", "Provider authentication failed"],
+    ["403", 403, false, "APPLICATION_ERROR", "Provider denied the request"],
+    ["429", 429, true, "APPLICATION_ERROR", "Provider rate-limited the request"],
+    ["500", 500, true, "APPLICATION_ERROR", "Provider service error"],
+    ["offline", null, true, "UNAVAILABLE", "Provider outcome unavailable"],
   ];
 
   for (const [name, status, ok, token, label] of cases) {
@@ -242,7 +242,7 @@ describe("stored HTTP fixtures", () => {
         const md = await runCli(["prove", "--run", `0x${name}fixture`, "--format=md"], { HOME: home });
         assert.equal(md.code, 0, md.stderr);
         assert.match(md.stdout, /Optics status/);
-        assert.match(md.stdout, /Application outcome/);
+        assert.match(md.stdout, /Observed outcome/);
         assert.match(md.stdout, new RegExp(label));
         assert.doesNotMatch(md.stdout, ENFORCEMENT);
         const searched = await runCli(["search", "--run", `0x${name}fixture`, "openai", "--json"], { HOME: home });
@@ -331,7 +331,8 @@ describe("tail lines and follow", () => {
       assert.equal(all.code, 0, all.stderr);
       assert.match(all.stdout, /showing 3 of 3/);
       assert.match(all.stdout, /embeddings/);
-      assert.match(all.stdout, /Application error/);
+      assert.match(all.stdout, /Provider authentication failed/);
+      assert.match(all.stdout, /Provider service error/);
       assert.doesNotMatch(all.stdout, ENFORCEMENT);
       const both = await runCli(["tail", "--all", "-n", "1"], { HOME: home });
       assert.equal(both.code, 1);
