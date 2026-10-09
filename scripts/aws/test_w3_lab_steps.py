@@ -596,6 +596,14 @@ class EnterpriseBundleTests(unittest.TestCase):
         self.assertNotIn("release", text)
         self.assertNotIn("lab-bundle/enterprise-pe-2026-10-08", text)
 
+    def test_row_pull_sends_a_fresh_instance_connect_key(self) -> None:
+        text = Path(steps.__file__).read_text(encoding="utf-8")
+        pull = text.find('ubuntu@{host}:/tmp/enterprise-pe-rows.json')
+        note = text.rfind("Instance Connect keys last 60 seconds", 0, pull)
+        refresh = text.rfind("connect + [public]", 0, pull)
+        self.assertGreater(note, 0)
+        self.assertGreater(refresh, note)
+
     def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
         self.assertEqual(enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
         self.assertEqual(enterprise_bundle.PUBLIC_INSTALLER_PIN, PIN)

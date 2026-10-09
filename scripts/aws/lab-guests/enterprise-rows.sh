@@ -92,9 +92,12 @@ if [ "$mode" = "descendant-b1" ]; then
   rc=$?
   set -e
   cat /tmp/descendant-b1.out
+  chmod a+r /tmp/descendant-b1.out 2>/dev/null || true
   if [ ! -s /tmp/enterprise-pe-rows.json ]; then
     cp /tmp/descendant-b1.out /tmp/enterprise-pe-rows.json
   fi
+  chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
     sudo reboot || true

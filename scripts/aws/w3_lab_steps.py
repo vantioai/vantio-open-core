@@ -925,6 +925,9 @@ def execute_enterprise_rows(
             else:
                 ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
+            # Instance Connect keys last 60 seconds. The guest script can run longer.
+            # A new scp is a new connection, so send the key again before the pull.
+            lab.aws_json(runner, connect + [public])
             pulled = ssh_runner(
                 ["scp", *base[:-1], f"ubuntu@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
                 "",
