@@ -172,6 +172,97 @@ class OfflineDeliverTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 od.content_range(0, 9, 8)
 
+    def _passing_repeat(self, repeat: int) -> dict:
+        return {
+            "repeat": repeat,
+            "enterprise_rc": 0,
+            "descendant_rc": 0,
+            "b1_pass": True,
+            "reboot_observed": True,
+            "kernel_btf": True,
+            "kernel_bpffs": True,
+            "kernel_cgroup_v2": True,
+            "kernel_lsm": "lockdown,capability,landlock",
+            "seal_checked": True,
+            "rows": {"grant": {"result": "pass"}, "revoke": {"probe": {"nobody_errno": 13}}},
+        }
+
+    def test_full_battery_is_two_complete_repeats(self) -> None:
+        self.assertEqual(od.battery_schedule(), ["enterprise", "descendant-b1", "enterprise", "descendant-b1"])
+        self.assertEqual(od.FULL_BATTERY, ("kernel", "seal", "enterprise", "descendant-b1"))
+        repeats = [self._passing_repeat(1), self._passing_repeat(2)]
+        self.assertTrue(od.full_set_passes(repeats))
+        short = [self._passing_repeat(1)]
+        self.assertFalse(od.full_set_passes(short))
+        missing_grant = [self._passing_repeat(1), self._passing_repeat(2)]
+        missing_grant[1] = dict(missing_grant[1])
+        missing_grant[1]["rows"] = {"revoke": {"probe": {"nobody_errno": 13}}}
+        self.assertFalse(od.full_set_passes(missing_grant))
+        kept = od.allow_record({"repeats": repeats, "full_set": True, "hostname": "secret-host"})
+        self.assertNotIn("hostname", kept)
+        self.assertEqual(len(kept["repeats"]), 2)
+        self.assertIn("grant", kept["repeats"][0]["rows"])
+        self.assertIn("revoke", kept["repeats"][0]["rows"])
+
+    def test_teardown_deletes_the_bucket_when_listing_fails(self) -> None:
+        calls: list[tuple[str, ...]] = []
+        original_list = od._list_instances
+        original_delete = od.delete_objects
+        original_created = od._creation_epoch
+        original_write = od.write_evidence
+
+        def boom(_project: str) -> list[dict]:
+            raise SystemExit("instances")
+
+        def record(names, *, missing_ok: bool) -> None:
+            calls.append(tuple(names))
+            self.assertTrue(missing_ok)
+
+        od._list_instances = boom
+        od.delete_objects = record
+        od._creation_epoch = lambda _project, _name: None
+        od.write_evidence = lambda *_args, **_kwargs: None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(SystemExit):
+                    od.teardown_if_present(
+                        {
+                            "GCP_LAB_EXECUTE": "1",
+                            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+                            "GITHUB_RUN_ID": "12",
+                            "EVIDENCE_DIR": tmp,
+                        }
+                    )
+        finally:
+            od._list_instances = original_list
+            od.delete_objects = original_delete
+            od._creation_epoch = original_created
+            od.write_evidence = original_write
+        self.assertEqual(calls, [("12/seal.oci.tar", "12/contract.tar")])
+
+    def test_allowlist_rejects_secret_shaped_short_fields(self) -> None:
+        kept = od.allow_record(
+            {
+                "account_id": "-----BEGINPRIVATEKEY-----",
+                "step": "ghp_" + "a" * 20,
+                "name": "not-a-lab-vm",
+                "snapshot": "evil",
+                "seal_sha256": od.POLICY_ALLOW_SEAL,
+            }
+        )
+        self.assertEqual(kept, {"seal_sha256": od.POLICY_ALLOW_SEAL})
+
+    def test_prune_drops_a_poisoned_hash_sidecar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "handoff.json").write_text("not-json", encoding="utf-8")
+            (directory / "handoff.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            (directory / "gcp-plumb.json").write_text("{}\n", encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse((directory / "handoff.json").exists())
+            self.assertFalse((directory / "handoff.json.sha256").exists())
+            self.assertFalse((directory / "gcp-plumb.json").exists())
+
     def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
