@@ -146,6 +146,12 @@
     },
     {
       "digest_pinned": true,
+      "file": ".github/workflows/founder-approval-guard.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-collect.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
@@ -710,7 +716,7 @@
       "version": "0.0.0-unstable-pre-1.0"
     }
   ],
-  "workflow_count": 23,
+  "workflow_count": 24,
   "workflow_triggers_push": {
     "ci.yml": true,
     "enterprise-slsa-provenance.yml": true,
