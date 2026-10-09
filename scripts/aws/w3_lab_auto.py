@@ -38,6 +38,8 @@ EXPIRY_BUFFER = timedelta(hours=8)
 WORST_CASE_RUN_USD = Decimal("2.00")
 ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small")
 CANONICAL_OWNER = "099720109477"
+DEBIAN_OWNER = "136693071363"
+DEBIAN_NAME_RE = re.compile(r"^debian-12-amd64-[0-9]{8}-[0-9]{4}$")
 # Last OIDC launch that RunInstances allowed. Run 36831748889, 2026-10-01.
 PINNED_IMAGE_ID = "ami-0fa99aa8f97f9e30b"
 IMAGE_ID_RE = re.compile(r"^ami-[0-9a-f]{8,17}$")
@@ -494,22 +496,38 @@ def describe_image_id_args(image_id: str) -> list[str]:
     ]
 
 
+def _machine_image_ok(image: Mapping[str, Any]) -> bool:
+    if image.get("Architecture") != "x86_64" or image.get("RootDeviceType") != "ebs" or image.get("Public") is not True:
+        return False
+    if image.get("VirtualizationType") not in (None, "hvm"):
+        return False
+    if image.get("ProductCodes"):
+        return False
+    return True
+
+
 def require_available_image(payload: Mapping[str, Any], image_id: str) -> str:
-    """Accept one available Canonical Ubuntu 24.04 image. This does not launch."""
+    """Accept the pinned Ubuntu image, or one official Debian 12 amd64 image.
+
+    This does not launch. Debian 12 must be owned by 136693071363 and named
+    debian-12-amd64-YYYYMMDD-HHMM. The default launch id stays the Ubuntu pin.
+    """
     images = payload.get("Images")
     if not isinstance(images, list) or len(images) != 1 or not isinstance(images[0], Mapping):
         raise GuardAbort("image_unavailable")
     image = images[0]
     if image.get("ImageId") != image_id or image.get("State") != "available":
         raise GuardAbort("image_unavailable")
+    name = image.get("Name")
+    if image.get("OwnerId") == DEBIAN_OWNER:
+        if not isinstance(name, str) or DEBIAN_NAME_RE.fullmatch(name) is None or not _machine_image_ok(image):
+            raise GuardAbort("image_rejected")
+        return image_id
     if image.get("OwnerId") != CANONICAL_OWNER:
         raise GuardAbort("image_owner")
-    if image.get("Architecture") != "x86_64" or image.get("RootDeviceType") != "ebs" or image.get("Public") is not True:
+    if not _machine_image_ok(image):
         raise GuardAbort("image_rejected")
-    name = image.get("Name")
     if not isinstance(name, str) or "ubuntu-noble-24.04-amd64-server" not in name or "pro" in name.lower():
-        raise GuardAbort("image_rejected")
-    if image.get("ProductCodes"):
         raise GuardAbort("image_rejected")
     return image_id
 
