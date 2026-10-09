@@ -9,11 +9,11 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parents[1]
 DOC_PATH = PACKAGE / "docs" / "NETWORK-TRANSFER-ALLOWLIST.md"
 
-BASENAME = "vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar"
+BASENAME = "vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar"
 RELATIVE = "artifacts/phantom-engine/" + BASENAME
-SHA256 = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
-SOURCE_COMMIT = "06696d5020700693b0154c59d0e072a24f648378"
-MANIFEST_DIGEST = "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19"
+SHA256 = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
+SOURCE_COMMIT = "df61d976a81f44e6165b87d40c493a850a247891"
+MANIFEST_DIGEST = "sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c"
 SUPERSEDED_BASENAME = "vantio-phantom-engine-customer-staging-fab81efc0811-linux-amd64.oci.tar"
 
 _ABSOLUTE_PATH = re.compile(
