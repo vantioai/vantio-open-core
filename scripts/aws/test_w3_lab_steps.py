@@ -22,7 +22,7 @@ import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
 NOW = datetime(2026, 9, 30, 16, 0, tzinfo=timezone.utc)
-SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
+SEAL = "99ca4477cc846abf8b0278241e1a0143a0d646b185e69e6b6aeb0c905e4eaded"
 PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 INSTANCE = "i-0123456789abcdef0"
 SECRET = "SUPER-SECRET-PRIVATE"
@@ -435,7 +435,8 @@ class WorkflowTextTests(unittest.TestCase):
             text = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
             self.assertNotIn("pull_request:", text, name)
             self.assertNotIn("0.0.0.0/0", text, name)
-            self.assertIn("group: w3-lab-free-ec2", text, name)
+            self.assertIn("group: vantio-lab-slot", text, name)
+            self.assertIn("cancel-in-progress: false", text, name)
             self.assertNotRegex(text, r"(?m)^\s*AWS_ACCESS_KEY_ID:", name)
         arm = (ROOT / ".github/workflows/w3-lab-auto-arm.yml").read_text(encoding="utf-8")
         self.assertIn("close-ssh", arm)

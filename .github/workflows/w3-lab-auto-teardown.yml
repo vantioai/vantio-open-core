@@ -20,7 +20,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: w3-lab-free-ec2
+  group: vantio-lab-slot
   cancel-in-progress: false
 
 jobs:

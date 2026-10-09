@@ -7,7 +7,7 @@ set -euo pipefail
 seal=${1:?}
 here=$(cd "$(dirname "$0")" && pwd)
 stage=/opt/vantio-enterprise
-image_name=vantio-phantom-engine:policy-allow-df61d97
+image_name=vantio-phantom-engine:descendant-anchor-f645045
 trust_sha=2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876
 if ! printf '%s' "$seal" | grep -Eq '^[0-9a-f]{64}$'; then
   exit 2
@@ -64,7 +64,7 @@ if find "$stage" -name 'private-key.pem' | grep -q .; then
   exit 3
 fi
 sudo DEBIAN_FRONTEND=noninteractive apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-cryptography docker.io
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-cryptography docker.io gcc
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "linux-tools-$(uname -r)" linux-tools-common || true
 sudo mkdir -p /etc/docker
 printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json >/dev/null
@@ -86,9 +86,10 @@ test "$image" = "$image_name"
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
+  gcc -O2 -o "$here/descendant_probe" "$here/descendant_probe.c"
   printf 'IMAGE_LINE=%s\n' "$image"
   set +e
-  sudo env VANTIO_IMAGE="$image" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
+  sudo env VANTIO_IMAGE="$image" VANTIO_PROBE="$here/descendant_probe" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
   rc=$?
   set -e
   cat /tmp/descendant-b1.out

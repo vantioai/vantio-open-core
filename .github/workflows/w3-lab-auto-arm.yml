@@ -26,7 +26,7 @@ on:
       seal:
         description: Working seal, 64 hex characters.
         required: true
-        default: f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753
+        default: 99ca4477cc846abf8b0278241e1a0143a0d646b185e69e6b6aeb0c905e4eaded
         type: string
       public_pin:
         description: Public installer pin, 64 hex characters.
@@ -57,7 +57,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: w3-lab-free-ec2
+  group: vantio-lab-slot
   cancel-in-progress: false
 
 jobs:
@@ -95,6 +95,7 @@ jobs:
             scripts/aws/lab-guests/marker.sh
             scripts/aws/lab-guests/enterprise-rows.sh
             scripts/aws/lab-guests/descendant_b1.py
+            scripts/aws/lab-guests/descendant_probe.c
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
