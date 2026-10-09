@@ -40,10 +40,6 @@ SECRET = re.compile(
     r"|ghp_[A-Za-z0-9]{20,}",
     re.S,
 )
-# Public half only. Dry-run needs a real key; "probe" is rejected before IAM is evaluated.
-PROBE_SSH_PUBLIC_KEY = (
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMF7uswZcdVjHBWyAs5om8Age1RTPS6g7J33J5VoouRQ vantio-lab-dry-run"
-)
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
 DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "enterprise-rows.sh"
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
@@ -332,15 +328,11 @@ def open_ssh(
         "--instance-os-user",
         "ubuntu",
         "--ssh-public-key",
-        PROBE_SSH_PUBLIC_KEY,
     ]
-    # Revoke must dry-run as allowed before any ingress is opened. The live
-    # role can authorize and cannot revoke; opening that port would leave it.
-    if (
-        dry_run(runner, revoke) == "denied"
-        or dry_run(runner, authorize) == "denied"
-        or dry_run(runner, connect) == "denied"
-    ):
+    # Revoke must dry-run as allowed before any ingress is opened.
+    # send-ssh-public-key rejects --dry-run in the AWS CLI, so that call is
+    # not probed. A denied send still hits the finally block that revokes.
+    if dry_run(runner, revoke) == "denied" or dry_run(runner, authorize) == "denied":
         return {"opened": False, "reason": "ssh_permission_denied"}
     directory = stamp_path.parent
     private, public = keygen(directory)
@@ -348,7 +340,7 @@ def open_ssh(
     write_stamp(stamp_path, stamp)
     try:
         lab.aws_json(runner, authorize)
-        send = connect[:-1] + [public]
+        send = connect + [public]
         lab.aws_json(runner, send)
         known = directory / "known_hosts"
         ssh_args = [
@@ -839,13 +831,8 @@ def execute_enterprise_rows(
             "--instance-os-user",
             "ubuntu",
             "--ssh-public-key",
-            PROBE_SSH_PUBLIC_KEY,
         ]
-        if (
-            dry_run(runner, revoke) == "denied"
-            or dry_run(runner, authorize) == "denied"
-            or dry_run(runner, connect) == "denied"
-        ):
+        if dry_run(runner, revoke) == "denied" or dry_run(runner, authorize) == "denied":
             payload.update({"reason": "ssh_permission_denied", "status": "BLOCKED_IAM"})
             raise lab.GuardAbort("ssh_permission_denied")
         directory = stamp_path.parent
@@ -855,7 +842,7 @@ def execute_enterprise_rows(
         try:
             write_stamp(stamp_path, stamp)
             lab.aws_json(runner, authorize)
-            lab.aws_json(runner, connect[:-1] + [public])
+            lab.aws_json(runner, connect + [public])
             base = _ssh_base(private, known, host)
 
             def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
