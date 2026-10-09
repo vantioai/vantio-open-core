@@ -3,10 +3,18 @@ name: W3 lab auto arm
 # Arm one owned lab instance from a GitHub-hosted runner.
 # Trust subject, when this file is on main:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-auto
-# Role, only after lab_iam_capabilities.json sets ssh_instance_connect true:
-#   arn:aws:iam::960577828987:role/vantio-w3-lab-provision
-# The default file leaves that switch false, so this workflow writes
-# BLOCKED_IAM and does not call AWS. A private key is never uploaded.
+#   :job_workflow_ref:vantioai/vantio-open-core/.github/workflows/w3-lab-auto-arm.yml@refs/heads/main
+# Role: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
+# This file stays the arm workflow so that subject does not change.
+#
+# enterprise_rows defaults to false. The marker path is unchanged.
+# When it is true, the job downloads a private release from
+# vantio-enterprise-private with the environment secret
+# W3_LAB_PRIVATE_BUNDLE_TOKEN (contents:read on that repo only), checks the
+# seal and the non-production trust file, then copies them over Instance
+# Connect. The token is not an AWS credential and is not written to evidence.
+# A missing secret fails closed before AssumeRole. The row JSON uploaded
+# from this public repo is the guest result only, after redaction.
 
 on:
   workflow_dispatch:
@@ -25,6 +33,16 @@ on:
         required: true
         default: e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e
         type: string
+      enterprise_rows:
+        description: Run the Enterprise row proof on this owned host. Default is the marker only.
+        required: false
+        default: false
+        type: boolean
+      bundle_tag:
+        description: Private release tag. Used only when enterprise rows are on.
+        required: false
+        default: lab-bundle/enterprise-pe-2026-10-08
+        type: string
 
 permissions:
   contents: read
@@ -39,7 +57,7 @@ jobs:
     name: Arm one owned lab
     runs-on: ubuntu-latest
     environment: w3-lab-auto
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Require main on vantio-open-core
         run: |
@@ -64,8 +82,10 @@ jobs:
           sparse-checkout: |
             scripts/aws/w3_lab_auto.py
             scripts/aws/w3_lab_steps.py
+            scripts/aws/enterprise_bundle.py
             scripts/aws/lab_iam_capabilities.json
             scripts/aws/lab-guests/marker.sh
+            scripts/aws/lab-guests/enterprise-rows.sh
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
@@ -74,9 +94,19 @@ jobs:
           EVIDENCE_PATH: w3-lab-arm.json
         run: python3 scripts/aws/w3_lab_steps.py preflight-arm
 
+      - name: Prepare the private bundle
+        id: bundle
+        if: inputs.enterprise_rows
+        env:
+          W3_LAB_PRIVATE_BUNDLE_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          W3_BUNDLE_TAG: ${{ inputs.bundle_tag }}
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EVIDENCE_PATH: w3-lab-bundle.json
+        run: python3 scripts/aws/w3_lab_steps.py prepare-bundle
+
       - name: Assume vantio-w3-lab-provision
         id: assume
-        if: steps.cap.outputs.proceed == 'true'
+        if: success() && steps.cap.outputs.proceed == 'true' && (inputs.enterprise_rows == false || steps.bundle.outputs.ready == 'true')
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: arn:aws:iam::960577828987:role/vantio-w3-lab-provision
@@ -90,14 +120,14 @@ jobs:
 
       - name: Read the runner address
         id: runner
-        if: steps.cap.outputs.proceed == 'true'
+        if: success() && steps.cap.outputs.proceed == 'true' && (inputs.enterprise_rows == false || steps.bundle.outputs.ready == 'true')
         run: |
           set -euo pipefail
           ip=$(curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
           echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
 
       - name: Arm the guest marker
-        if: steps.cap.outputs.proceed == 'true'
+        if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == false
         env:
           INSTANCE_ID: ${{ inputs.instance_id }}
           SEAL: ${{ inputs.seal }}
@@ -106,6 +136,19 @@ jobs:
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           EVIDENCE_PATH: w3-lab-arm.json
         run: python3 scripts/aws/w3_lab_steps.py arm
+
+      - name: Run the Enterprise rows
+        if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == true
+        env:
+          INSTANCE_ID: ${{ inputs.instance_id }}
+          SEAL: ${{ inputs.seal }}
+          PUBLIC_PIN: ${{ inputs.public_pin }}
+          W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          W3_ROWS_PATH: w3-lab-enterprise-rows.json
+          EVIDENCE_PATH: w3-lab-arm.json
+        run: python3 scripts/aws/w3_lab_steps.py arm-enterprise
 
       - name: Close the runner SSH rule
         if: always() && steps.assume.outcome == 'success'
@@ -122,3 +165,22 @@ jobs:
             w3-lab-arm.json
             w3-lab-arm.json.sha256
           if-no-files-found: error
+
+      - name: Stage enterprise row evidence
+        if: always() && inputs.enterprise_rows
+        run: |
+          set -euo pipefail
+          mkdir -p row-evidence
+          for name in w3-lab-bundle.json w3-lab-bundle.json.sha256 w3-lab-enterprise-rows.json w3-lab-enterprise-rows.json.sha256; do
+            if [ -f "$name" ]; then
+              cp "$name" row-evidence/
+            fi
+          done
+
+      - name: Upload enterprise row evidence
+        if: always() && inputs.enterprise_rows
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-enterprise-rows-${{ github.run_id }}
+          path: row-evidence/
+          if-no-files-found: warn

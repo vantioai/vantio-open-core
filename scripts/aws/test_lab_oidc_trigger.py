@@ -96,6 +96,38 @@ class TriggerTests(unittest.TestCase):
         with self.assertRaises(trigger.TriggerError):
             trigger.parse_fields(["instance_id=i-0123456789abcdef0\n--extra"])
 
+    def test_enterprise_rows_dispatch_does_not_launch(self) -> None:
+        seen: dict[str, object] = {}
+
+        def gh(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            seen["argv"] = list(argv)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        status = trigger.main(
+            [
+                "dispatch",
+                "arm",
+                "--execute",
+                "--field",
+                "instance_id=i-0123456789abcdef0",
+                "--field",
+                "enterprise_rows=true",
+            ],
+            environ={"PATH": "/usr/bin", "AWS_ACCESS_KEY_ID": "AKIAEXAMPLE"},
+            gh_runner=gh,
+        )
+        self.assertEqual(status, 0)
+        argv = seen["argv"]
+        assert isinstance(argv, list)
+        self.assertIn("w3-lab-auto-arm.yml", argv)
+        self.assertIn("enterprise_rows=true", argv)
+        self.assertNotIn("w3-lab-auto-provision.yml", argv)
+        self.assertNotIn("aws", argv)
+
+    def test_bundle_tag_outside_the_lab_prefix_is_refused(self) -> None:
+        with self.assertRaises(trigger.TriggerError):
+            trigger.validate_fields("arm", {"bundle_tag": "v1.2.3"})
+
     def test_watch_plan_is_not_a_dispatch(self) -> None:
         status = trigger.main(["watch", "--run-id", "123"], environ={"PATH": "/usr/bin"}, gh_runner=None)
         self.assertEqual(status, 0)

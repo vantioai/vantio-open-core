@@ -53,7 +53,7 @@ STEPS: dict[str, dict[str, object]] = {
     "arm": {
         "workflow": "w3-lab-auto-arm.yml",
         "launches": False,
-        "inputs": ("instance_id", "seal", "public_pin"),
+        "inputs": ("instance_id", "seal", "public_pin", "enterprise_rows", "bundle_tag"),
     },
     "collect": {
         "workflow": "w3-lab-auto-collect.yml",
@@ -124,6 +124,10 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError(key)
         if key == "execute" and value not in ("true", "false"):
             raise TriggerError("execute")
+        if key == "enterprise_rows" and value not in ("true", "false"):
+            raise TriggerError("enterprise_rows")
+        if key == "bundle_tag" and re.fullmatch(r"lab-bundle/[A-Za-z0-9._-]{1,64}", value) is None:
+            raise TriggerError("bundle_tag")
         if key == "instance_type" and value not in ("t3.micro", "t3.small"):
             raise TriggerError("instance_type")
         if key == "associate_public_ipv4" and value not in ("true", "false"):

@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+import enterprise_bundle
 import w3_lab_auto as lab
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -40,6 +41,8 @@ SECRET = re.compile(
     re.S,
 )
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
+DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "enterprise-rows.sh"
+GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
 SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
 Keygen = Callable[[Path], tuple[Path, str]]
@@ -728,6 +731,183 @@ def execute_verify(runner: Runner, now: datetime, *, write: bool = True) -> dict
     return payload
 
 
+def _store_guest_rows(path: Path, text: str) -> None:
+    token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
+    redacted, _changed = redact(text)
+    if token and token in redacted:
+        raise lab.GuardAbort("token_in_evidence")
+    if "PRIVATE KEY" in redacted:
+        raise lab.GuardAbort("token_in_evidence")
+    try:
+        parsed = json.loads(redacted)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        lab.write_json_with_hash(path, parsed)
+        return
+    path.write_text(redacted if redacted.endswith("\n") else redacted + "\n", encoding="utf-8")
+
+
+def _ssh_base(private: Path, known: Path, host: str) -> list[str]:
+    return [
+        "-i",
+        str(private),
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        f"UserKnownHostsFile={known}",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=15",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=40",
+        f"ubuntu@{host}",
+    ]
+
+
+def execute_enterprise_rows(
+    runner: Runner,
+    *,
+    keygen: Keygen = default_keygen,
+    ssh_runner: SshRunner = default_ssh,
+    checker: Callable[[Path], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Copy a checked bundle to one owned host and run the row script.
+
+    prepare-bundle must already have accepted the directory. This command
+    still re-checks the seal and the trust file before it opens SSH.
+    """
+    payload = base_evidence("arm-enterprise")
+    stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
+    private: Path | None = None
+    try:
+        if not lab.load_lab_capabilities()["ssh_instance_connect"]:
+            raise lab.GuardAbort("ssh_instance_connect_not_enabled")
+        instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
+        seal = require_hex64(os.environ.get("SEAL", "").strip(), "seal")
+        pin = require_hex64(os.environ.get("PUBLIC_PIN", "").strip(), "public_pin")
+        if seal != enterprise_bundle.POLICY_ALLOW_SEAL or pin != enterprise_bundle.PUBLIC_INSTALLER_PIN:
+            raise lab.GuardAbort("bundle_wrong_seal")
+        cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
+        bundle_dir = Path(os.environ.get("W3_BUNDLE_DIR", ""))
+        if not bundle_dir.is_dir():
+            raise lab.GuardAbort("bundle_layout")
+        check = checker or enterprise_bundle.inspect_bundle
+        inspected = dict(check(bundle_dir))
+        payload.update(inspected)
+        payload.update({"instance_id": instance_id, "public_pin": pin, "seal": seal})
+        identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
+        lab.require_identity(identity)
+        instance = describe_instance(runner, instance_id)
+        if instance is None:
+            raise lab.GuardAbort("instance_absent")
+        tags = lab._tag_list(instance.get("Tags"))
+        if not lab.lab_tags_owned(tags):
+            raise lab.GuardAbort("not_owned")
+        if instance_state(instance) != "running":
+            raise lab.GuardAbort("instance_state")
+        host = public_ipv4(instance)
+        if not host:
+            raise lab.GuardAbort("no_public_ipv4")
+        group_id = security_group_id(instance)
+        zone = availability_zone(instance)
+        authorize = authorize_args(group_id, cidr, revoke=False)
+        revoke = authorize_args(group_id, cidr, revoke=True)
+        connect = [
+            "aws",
+            "ec2-instance-connect",
+            "send-ssh-public-key",
+            "--region",
+            lab.REGION,
+            "--instance-id",
+            instance_id,
+            "--availability-zone",
+            zone,
+            "--instance-os-user",
+            "ubuntu",
+            "--ssh-public-key",
+            "probe",
+        ]
+        if (
+            dry_run(runner, revoke) == "denied"
+            or dry_run(runner, authorize) == "denied"
+            or dry_run(runner, connect) == "denied"
+        ):
+            payload.update({"reason": "ssh_permission_denied", "status": "BLOCKED_IAM"})
+            raise lab.GuardAbort("ssh_permission_denied")
+        directory = stamp_path.parent
+        private, public = keygen(directory)
+        known = directory / "known_hosts"
+        stamp = {"authorized": True, "cidr": cidr, "group_id": group_id, "instance_id": instance_id}
+        try:
+            write_stamp(stamp_path, stamp)
+            lab.aws_json(runner, authorize)
+            lab.aws_json(runner, connect[:-1] + [public])
+            base = _ssh_base(private, known, host)
+
+            def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
+                return ssh_runner(["ssh", *base, *argv], script)
+
+            def copy_to(local: Path, name: str) -> None:
+                if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+                    raise lab.GuardAbort("bundle_layout")
+                proc = ssh_runner(
+                    ["scp", *base[:-1], str(local), f"ubuntu@{host}:{GUEST_BUNDLE}/{name}"],
+                    "",
+                )
+                if proc.returncode != 0:
+                    raise lab.GuardAbort("ssh")
+
+            made = remote(["mkdir", "-p", GUEST_BUNDLE], "")
+            if made.returncode != 0:
+                raise lab.GuardAbort("ssh")
+            copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
+            copy_to(bundle_dir / "contract.tar", "contract.tar")
+            script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
+            copy_to(script_path, "enterprise-rows.sh")
+            ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
+            rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
+            pulled = ssh_runner(
+                ["scp", *base[:-1], f"ubuntu@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
+                "",
+            )
+            if pulled.returncode == 0 and rows_local.is_file():
+                guest_text = rows_local.read_text(encoding="utf-8", errors="replace")
+            else:
+                guest_text = (ran.stdout or "") + (ran.stderr or "")
+            _store_guest_rows(rows_local, guest_text)
+            payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
+            payload["guest_rc"] = ran.returncode
+            payload["mutated"] = True
+            if ran.returncode != 0:
+                payload.update({"reason": "guest", "status": "FAILED"})
+                raise lab.GuardAbort("guest")
+            payload["status"] = "ENTERPRISE_ROWS"
+        finally:
+            if private is not None:
+                shred_file(private)
+                shred_file(private.with_suffix(private.suffix + ".pub"))
+                private = None
+            if stamp_path.is_file():
+                revoke_quietly(runner, group_id, cidr)
+                stamp["authorized"] = False
+                write_stamp(stamp_path, stamp)
+    except lab.GuardAbort as exc:
+        if not payload.get("reason"):
+            payload["reason"] = exc.reason
+        if not payload.get("status"):
+            payload["status"] = "FAILED"
+        lab.write_json_with_hash(evidence_path("w3-lab-arm.json"), payload)
+        raise
+    lab.write_json_with_hash(evidence_path("w3-lab-arm.json"), payload)
+    return payload
+
+
 def close_ssh(runner: Runner) -> int:
     stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
     if not stamp_path.exists():
@@ -748,7 +928,7 @@ def close_ssh(runner: Runner) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
-            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|close-ssh|collect|collect-due|teardown|verify-removed",
+            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
             file=sys.stderr,
         )
         return 1
@@ -761,6 +941,12 @@ def main(argv: list[str]) -> int:
             return preflight_long_soak()
         if command == "arm":
             execute_arm(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
+            return 0
+        if command == "prepare-bundle":
+            enterprise_bundle.prepare_bundle()
+            return 0
+        if command == "arm-enterprise":
+            execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
             return 0
         if command == "close-ssh":
             return close_ssh(lab.default_runner)

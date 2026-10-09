@@ -438,6 +438,261 @@ class WorkflowTextTests(unittest.TestCase):
         soak = (ROOT / ".github/workflows/w3-lab-auto-long-soak.yml").read_text(encoding="utf-8")
         self.assertIn("default: false", soak)
         self.assertIn("w3-lab-auto-cost-gate.yml@main # oidc-trust", soak)
+        self.assertFalse((ROOT / ".github/workflows/w3-lab-auto-enterprise-pe.yml").exists())
+        self.assertIn("enterprise_rows:", arm)
+        self.assertIn("default: false", arm)
+        self.assertIn("W3_LAB_PRIVATE_BUNDLE_TOKEN", arm)
+        self.assertIn("w3-lab-auto-arm.yml@refs/heads/main", arm)
+        self.assertNotIn("0.0.0.0/0", arm)
+
+
+def _trust(root: bool = True) -> bytes:
+    return json.dumps(
+        {
+            "keys": [
+                {
+                    "algorithm": "ed25519",
+                    "created": "2026-10-02",
+                    "environment": "NON-PRODUCTION",
+                    "fingerprint_sha256": "ab",
+                    "key_class": "test",
+                    "key_id": "test-nonprod-ed25519-2026-10-02",
+                    "label": "TEST",
+                    "not_a_production_root": root,
+                    "public_key_b64": "AA==",
+                }
+            ]
+        }
+    ).encode()
+
+
+def _tar_bytes(members: list[tuple[str, bytes]]) -> bytes:
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for name, body in members:
+            info = tarfile.TarInfo(name)
+            info.size = len(body)
+            tar.addfile(info, io.BytesIO(body))
+    return buffer.getvalue()
+
+
+class EnterpriseBundleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._env = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._env)
+
+    def _write_bundle(self, directory: Path, *, root: bool = True, seal: bytes = b"seal-bytes", extra: tuple[str, bytes] | None = None) -> str:
+        trust = _trust(root)
+        members = [
+            ("guest_rows.py", b"print('rows')\n"),
+            ("fixtures/grant.json", b"{}\n"),
+            ("vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json", trust),
+        ]
+        if extra is not None:
+            members.append(extra)
+        contract = _tar_bytes(members)
+        (directory / "contract.tar").write_bytes(contract)
+        (directory / "seal.oci.tar").write_bytes(seal)
+        seal_sha = hashlib.sha256(seal).hexdigest()
+        trust_sha = hashlib.sha256(trust).hexdigest()
+        manifest = {
+            "schema": "vantio.lab-enterprise-pe-bundle/v1",
+            "seal_sha256": seal_sha,
+            "contract_sha256": hashlib.sha256(contract).hexdigest(),
+            "enterprise_sha": "56a6048c9b1d9907dc4f5879bdaa485d909dae1f",
+            "trust_key_id": "test-nonprod-ed25519-2026-10-02",
+            "not_a_production_root": True,
+        }
+        (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        return trust_sha
+
+    def test_missing_token_does_not_require_aws_and_stays_out_of_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "bundle.json")
+            os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "dest")
+            os.environ.pop("W3_LAB_PRIVATE_BUNDLE_TOKEN", None)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.enterprise_bundle.prepare_bundle()
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+        self.assertEqual(caught.exception.reason, "missing_token")
+        self.assertIn("BLOCKED_BUNDLE", body)
+        self.assertNotIn("ghp_", body)
+
+    def test_production_root_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            trust_sha = self._write_bundle(directory, root=False)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.enterprise_bundle.inspect_bundle(
+                    directory,
+                    expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
+                    expected_trust=trust_sha,
+                )
+        self.assertEqual(caught.exception.reason, "bundle_production_root")
+
+    def test_private_key_member_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self._write_bundle(directory, extra=("vantio_enterprise_protocol/private-key.pem", b"nope"))
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.enterprise_bundle.inspect_bundle(
+                    directory,
+                    expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
+                    expected_trust="a" * 64,
+                )
+        self.assertEqual(caught.exception.reason, "bundle_private_key")
+
+    def test_public_pin_cannot_stand_in_for_the_seal(self) -> None:
+        with self.assertRaises(lab.GuardAbort) as caught:
+            steps.enterprise_bundle.inspect_bundle(Path("."), expected_seal=PIN)
+        self.assertEqual(caught.exception.reason, "bundle_wrong_seal")
+
+    def test_matching_bundle_is_ready_and_hides_the_token(self) -> None:
+        token = "github_pat_test_token_value"
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            trust_sha = self._write_bundle(source)
+            seal_sha = hashlib.sha256(b"seal-bytes").hexdigest()
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = token
+            os.environ["W3_BUNDLE_TAG"] = "lab-bundle/enterprise-pe-2026-10-08"
+            os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "dest")
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "bundle.json")
+
+            def fetch(dest: Path) -> None:
+                dest.mkdir(parents=True, exist_ok=True)
+                for name in ("manifest.json", "seal.oci.tar", "contract.tar"):
+                    (dest / name).write_bytes((source / name).read_bytes())
+
+            result = steps.enterprise_bundle.prepare_bundle(
+                fetcher=fetch,
+                expected_seal=seal_sha,
+                expected_trust=trust_sha,
+            )
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+        self.assertEqual(result["status"], "BUNDLE_READY")
+        self.assertNotIn(token, body)
+        self.assertEqual(result["not_a_production_root"], True)
+
+    def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
+        self.assertEqual(steps.enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
+        self.assertEqual(steps.enterprise_bundle.PUBLIC_INSTALLER_PIN, PIN)
+        self.assertEqual(
+            steps.enterprise_bundle.TRACKING_2A_SEAL,
+            "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a",
+        )
+        self.assertEqual(
+            steps.enterprise_bundle.TRUST_BUNDLE_SHA256,
+            "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876",
+        )
+
+
+class EnterpriseRowSessionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._env = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._env)
+
+    def _env_ready(self, tmp: str) -> None:
+        path = Path(tmp) / "caps.json"
+        path.write_text(json.dumps({"ssh_instance_connect": True, "max_life_hours_36": True, "ssm": False}))
+        os.environ["W3_LAB_CAPABILITIES"] = str(path)
+        os.environ["INSTANCE_ID"] = INSTANCE
+        os.environ["SEAL"] = SEAL
+        os.environ["PUBLIC_PIN"] = PIN
+        os.environ["W3_RUNNER_CIDR"] = "1.1.1.1/32"
+        os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "arm.json")
+        os.environ["W3_STAMP"] = str(Path(tmp) / "stamp.json")
+        os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "bundle")
+        os.environ["W3_ROWS_PATH"] = str(Path(tmp) / "rows.json")
+        Path(os.environ["W3_BUNDLE_DIR"]).mkdir()
+
+    def test_bad_bundle_does_not_call_aws(self) -> None:
+        runner = FakeAws()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "missing")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(runner)
+        self.assertEqual(caught.exception.reason, "bundle_layout")
+        self.assertEqual(runner.calls, [])
+
+    def test_guest_failure_still_revokes_and_shreds(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text(SECRET + "\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            self.assertNotIn(SECRET, " ".join(args))
+            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
+                return completed(code=1, stdout="guest failed")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(json.dumps({"guest": "failed", "convergence_ms": 5597.3}), encoding="utf-8")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL, "not_a_production_root": True},
+                )
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+            self.assertFalse((Path(tmp) / "lab-ed25519").exists())
+        self.assertEqual(caught.exception.reason, "guest")
+        self.assertIn("FAILED", body)
+        self.assertNotIn(SECRET, body)
+        joined = [" ".join(call) for call in runner.calls]
+        self.assertTrue(any("revoke-security-group-ingress" in item and "--dry-run" not in item for item in joined))
+
+    def test_rows_upload_keeps_the_guest_result(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(
+                    json.dumps({"convergence_ms": 5597.3, "revoke": {"probe": {"nobody_errno": 13}}}),
+                    encoding="utf-8",
+                )
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            result = steps.execute_enterprise_rows(
+                runner,
+                keygen=keygen,
+                ssh_runner=ssh,
+                checker=lambda _path: {"seal_sha256": SEAL},
+            )
+            rows = json.loads(Path(os.environ["W3_ROWS_PATH"]).read_text(encoding="utf-8"))
+        self.assertEqual(result["status"], "ENTERPRISE_ROWS")
+        self.assertEqual(rows["convergence_ms"], 5597.3)
+        self.assertFalse((Path(tmp) / "seal.oci.tar").exists())
+
+    def test_guest_script_parses(self) -> None:
+        script = ROOT / "scripts/aws/lab-guests/enterprise-rows.sh"
+        completed_run = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+        self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
 
 
 if __name__ == "__main__":
