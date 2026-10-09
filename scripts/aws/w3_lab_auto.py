@@ -532,6 +532,33 @@ def require_available_image(payload: Mapping[str, Any], image_id: str) -> str:
     return image_id
 
 
+def image_facts(payload: Mapping[str, Any], image_id: str) -> dict[str, Any]:
+    """Name, owner, and snapshot ids for an image require_available_image already accepted."""
+    require_available_image(payload, image_id)
+    images = payload.get("Images")
+    image = images[0] if isinstance(images, list) else {}
+    if not isinstance(image, Mapping):
+        raise GuardAbort("image_unavailable")
+    snaps: list[str] = []
+    mappings = image.get("BlockDeviceMappings")
+    if isinstance(mappings, list):
+        for item in mappings:
+            if not isinstance(item, Mapping):
+                continue
+            ebs = item.get("Ebs")
+            if not isinstance(ebs, Mapping):
+                continue
+            snap = ebs.get("SnapshotId")
+            if isinstance(snap, str) and snap.startswith("snap-"):
+                snaps.append(snap)
+    name = image.get("Name")
+    return {
+        "image_name": name if isinstance(name, str) else "",
+        "image_owner": str(image.get("OwnerId") or ""),
+        "snapshot_ids": snaps,
+    }
+
+
 def resolve_pinned_image(runner: Runner, image_id: str) -> str:
     if IMAGE_ID_RE.fullmatch(image_id) is None:
         raise GuardAbort("image_id")
@@ -1021,15 +1048,28 @@ def launch_from_env(runner: Runner, now: datetime) -> dict[str, Any]:
         identity = aws_json(runner, ["aws", "sts", "get-caller-identity"])
         require_identity(identity)
         if os.environ.get("DESCRIBE_ONLY", "false").strip().lower() == "true":
-            image_id = resolve_pinned_image(runner, str(spec["image_id"]))
+            requested = str(spec["image_id"])
+            if IMAGE_ID_RE.fullmatch(requested) is None:
+                raise GuardAbort("image_id")
+            try:
+                described = aws_json(runner, describe_image_id_args(requested))
+            except GuardAbort as exc:
+                if "InvalidAMIID.NotFound" in exc.reason or "InvalidAMIID.Unavailable" in exc.reason:
+                    raise GuardAbort("image_unavailable") from None
+                raise
+            image_id = require_available_image(described, requested)
+            facts = image_facts(described, image_id)
             evidence = {
                 "account_id": ACCOUNT_ID,
+                "describe_only": True,
                 "image_id": image_id,
+                "image_name": facts["image_name"],
+                "image_owner": facts["image_owner"],
                 "image_state": "available",
                 "launched": False,
                 "noninteractive_teardown_ready": False,
                 "region": REGION,
-                "describe_only": True,
+                "snapshot_ids": facts["snapshot_ids"],
             }
             write_json_with_hash(evidence_path, evidence)
             return evidence
