@@ -193,10 +193,58 @@
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
       "digest_pinned": false,
       "file": ".github/workflows/gcp-lab-provision.yml",
       "pin_kind": "same_repo_refs_heads_main",
       "uses": "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,

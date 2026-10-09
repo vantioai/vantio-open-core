@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """GCP lab guards for one e2-micro in a Vantio-only project.
 
-This module does not install Phantom Engine and does not call GCP unless
-GCP_LAB_EXECUTE=1. launch_enabled and sweeper_enabled ship false.
+The generic provision path does not install Phantom Engine and does not call
+GCP unless GCP_LAB_EXECUTE=1. launch_enabled and sweeper_enabled ship false.
+Offline delivery lives in scripts/gcp/offline_deliver.py.
 Evidence from these workflows is the gcp-lab artifact prefix.
 """
 

@@ -230,6 +230,8 @@ class LabAutoTest(unittest.TestCase):
     def test_capabilities_file_is_json(self) -> None:
         raw = json.loads((lab.HERE / "lab_capabilities.json").read_text(encoding="utf-8"))
         self.assertIs(raw["launch_enabled"], False)
+        self.assertIs(raw["sweeper_enabled"], False)
+        self.assertIs(raw["offline_delivery_enabled"], True)
 
 
 if __name__ == "__main__":
