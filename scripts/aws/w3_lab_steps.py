@@ -916,9 +916,12 @@ def execute_enterprise_rows(
             if battery == "descendant-b1":
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
-                remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
-                _wait_for_reboot(runner, instance_id, remote, connect + [public])
-                ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
+                pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
+                if pre.returncode != 0:
+                    ran = pre
+                else:
+                    _wait_for_reboot(runner, instance_id, remote, connect + [public])
+                    ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
             else:
                 ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))

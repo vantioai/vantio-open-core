@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 
 STAGE = Path(sys.argv[1] if len(sys.argv) > 1 else "/opt/vantio-enterprise")
@@ -174,6 +175,16 @@ def measure(phase: str) -> dict:
 
 
 def main() -> int:
+    try:
+        return _main()
+    except SystemExit:
+        raise
+    except Exception:
+        OUT_PATH.write_text(json.dumps({"error": traceback.format_exc()}, indent=2) + "\n", encoding="utf-8")
+        return 1
+
+
+def _main() -> int:
     if PHASE == "pre":
         body = measure("pre")
         PRE_PATH.parent.mkdir(parents=True, exist_ok=True)
