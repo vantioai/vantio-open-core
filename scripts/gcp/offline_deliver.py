@@ -237,6 +237,8 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 if (
                     isinstance(name, str)
                     and re.fullmatch(r"[A-Za-z0-9.+_-]{1,120}", name)
+                    and not name.lower().startswith("ghp_")
+                    and "private" not in name.lower()
                     and isinstance(digest, str)
                     and HEX64_RE.fullmatch(digest)
                 ):
@@ -312,9 +314,10 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             if len(rows) == BATTERY_REPEATS:
                 kept["repeats"] = rows
             continue
-        if key == "full_set" and isinstance(value, bool):
-            kept[key] = value
+        if key == "full_set":
             continue
+    if "repeats" in kept:
+        kept["full_set"] = full_set_passes(kept["repeats"])
     return kept
 
 
@@ -1067,13 +1070,19 @@ RAW_GUEST_NAMES = (
 )
 
 
+def _remove_evidence_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+        return
+    path.unlink(missing_ok=True)
+
+
 def drop_guest_copies(directory: Path) -> None:
     """Guest files are folded into the redacted evidence JSON. The raw copies
     must not sit in the directory that becomes a public artifact."""
     for name in RAW_GUEST_NAMES:
-        path = directory / name
-        path.unlink(missing_ok=True)
-        path.with_name(name + ".sha256").unlink(missing_ok=True)
+        _remove_evidence_path(directory / name)
+        _remove_evidence_path(directory / f"{name}.sha256")
 
 
 def prune_evidence(directory: Path) -> list[str]:
@@ -1100,15 +1109,23 @@ def prune_evidence(directory: Path) -> list[str]:
             path.with_name(path.name + ".sha256").unlink(missing_ok=True)
             continue
         if not isinstance(payload, dict):
-            path.unlink()
-            path.with_name(path.name + ".sha256").unlink(missing_ok=True)
+            _remove_evidence_path(path)
+            _remove_evidence_path(path.with_name(path.name + ".sha256"))
             continue
-        write_evidence(path, payload)
+        try:
+            write_evidence(path, payload)
+        except SystemExit:
+            _remove_evidence_path(path)
+            _remove_evidence_path(path.with_name(path.name + ".sha256"))
+            continue
         kept.append(path.name)
     for path in list(directory.iterdir()):
-        stem = path.name[:-7] if path.name.endswith(".sha256") else path.name
-        if stem not in EVIDENCE_FILES:
-            path.unlink(missing_ok=True)
+        if path.name.endswith(".sha256"):
+            if not (directory / path.name[:-7]).is_file():
+                _remove_evidence_path(path)
+            continue
+        if path.name not in EVIDENCE_FILES:
+            _remove_evidence_path(path)
     return sorted(kept)
 
 

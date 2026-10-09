@@ -252,6 +252,17 @@ class OfflineDeliverTest(unittest.TestCase):
         )
         self.assertEqual(kept, {"seal_sha256": od.POLICY_ALLOW_SEAL})
 
+    def test_prune_does_not_republish_a_false_full_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            one = {"full_set": True, "repeats": [self._passing_repeat(1)], "hostname": "box"}
+            (directory / "gcp-lab-rows.json").write_text(json.dumps(one), encoding="utf-8")
+            od.prune_evidence(directory)
+            body = json.loads((directory / "gcp-lab-rows.json").read_text(encoding="utf-8"))
+            self.assertNotIn("full_set", body)
+            self.assertNotIn("repeats", body)
+            self.assertNotIn("hostname", body)
+
     def test_prune_drops_a_poisoned_hash_sidecar(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
@@ -262,6 +273,13 @@ class OfflineDeliverTest(unittest.TestCase):
             self.assertFalse((directory / "handoff.json").exists())
             self.assertFalse((directory / "handoff.json.sha256").exists())
             self.assertFalse((directory / "gcp-plumb.json").exists())
+            (directory / "teardown.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            nested = directory / "gcp-plumb.json"
+            nested.mkdir()
+            (nested / "enterprise-rows.json").write_text('{"token":"ghp_' + "a" * 20 + '"}\n', encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse((directory / "teardown.json.sha256").exists())
+            self.assertFalse(nested.exists())
 
     def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
