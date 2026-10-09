@@ -39,10 +39,18 @@ on:
         default: false
         type: boolean
       bundle_tag:
-        description: Private release tag. Used only when enterprise rows are on.
+        description: Unused. The bundle is read from a pinned private commit, not a tag.
         required: false
         default: lab-bundle/enterprise-pe-2026-10-08
         type: string
+      battery:
+        description: enterprise keeps the grant and revoke rows. descendant-b1 runs the moved-child deny and repeats it after reboot.
+        required: false
+        default: enterprise
+        type: choice
+        options:
+          - enterprise
+          - descendant-b1
 
 permissions:
   contents: read
@@ -57,7 +65,7 @@ jobs:
     name: Arm one owned lab
     runs-on: ubuntu-latest
     environment: w3-lab-auto
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Require main on vantio-open-core
         run: |
@@ -86,6 +94,7 @@ jobs:
             scripts/aws/lab_iam_capabilities.json
             scripts/aws/lab-guests/marker.sh
             scripts/aws/lab-guests/enterprise-rows.sh
+            scripts/aws/lab-guests/descendant_b1.py
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
@@ -147,6 +156,7 @@ jobs:
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           W3_ROWS_PATH: w3-lab-enterprise-rows.json
+          W3_BATTERY: ${{ inputs.battery }}
           EVIDENCE_PATH: w3-lab-arm.json
         run: python3 scripts/aws/w3_lab_steps.py arm-enterprise
 

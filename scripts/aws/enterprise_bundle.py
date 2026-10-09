@@ -30,6 +30,9 @@ TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
 BUNDLE_SCHEMA = "vantio.lab-enterprise-pe-bundle/v1"
 BUNDLE_REPO = "vantioai/vantio-enterprise-private"
 DEFAULT_BUNDLE_TAG = "lab-bundle/enterprise-pe-2026-10-08"
+# The release tag is deleted. These bytes live on this commit, which is not a tag.
+BUNDLE_COMMIT = "6aed2881377132290c10e16e016a28072765250d"
+BUNDLE_FILES = ("manifest.json", "seal.oci.tar", "contract.tar")
 BUNDLE_TAG = re.compile(r"^lab-bundle/[A-Za-z0-9._-]{1,64}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -176,6 +179,39 @@ def _read_contract(path: Path) -> bytes:
     return trust_body
 
 
+def commit_download_args(name: str, commit: str) -> list[str]:
+    if name not in BUNDLE_FILES or HEX40.fullmatch(commit) is None:
+        raise lab.GuardAbort("bundle_download")
+    return [
+        "gh",
+        "api",
+        "-H",
+        "Accept: application/vnd.github.raw",
+        f"repos/{BUNDLE_REPO}/contents/lab-bundle/{name}?ref={commit}",
+    ]
+
+
+def download_commit_assets(token: str, commit: str, dest: Path) -> None:
+    """Download the three bundle files from a commit. The token stays in the environment."""
+    if not token or HEX40.fullmatch(commit) is None:
+        raise lab.GuardAbort("bundle_download")
+    dest.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.pop("GH_TOKEN", None)
+    env.pop("GITHUB_TOKEN", None)
+    env["GH_TOKEN"] = token
+    for name in BUNDLE_FILES:
+        proc = subprocess.run(
+            commit_download_args(name, commit),
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+        if proc.returncode != 0 or not proc.stdout:
+            raise lab.GuardAbort("bundle_download")
+        (dest / name).write_bytes(proc.stdout)
+
+
 def download_release_assets(token: str, tag: str, dest: Path) -> None:
     """Download three release assets. The token stays in the environment."""
     if not token or BUNDLE_TAG.fullmatch(tag) is None:
@@ -233,14 +269,15 @@ def prepare_bundle(
     tag = os.environ.get("W3_BUNDLE_TAG", DEFAULT_BUNDLE_TAG).strip()
     dest = Path(os.environ.get("W3_BUNDLE_DIR", "enterprise-bundle"))
     payload: dict[str, object] = base_evidence("bundle")
-    payload["tag"] = tag
+    payload["bundle_commit"] = BUNDLE_COMMIT
+    payload["tag"] = ""
     try:
         if token.strip() == "":
             raise lab.GuardAbort("missing_token")
-        if BUNDLE_TAG.fullmatch(tag) is None:
+        if tag and BUNDLE_TAG.fullmatch(tag) is None:
             raise lab.GuardAbort("bundle_tag")
         if fetcher is None:
-            download_release_assets(token, tag, dest)
+            download_commit_assets(token, BUNDLE_COMMIT, dest)
         else:
             fetcher(dest)
         payload.update(inspect_bundle(dest, expected_seal=expected_seal, expected_trust=expected_trust))

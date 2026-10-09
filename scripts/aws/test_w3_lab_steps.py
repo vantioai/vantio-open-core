@@ -585,6 +585,17 @@ class EnterpriseBundleTests(unittest.TestCase):
         self.assertNotIn(token, body)
         self.assertEqual(result["not_a_production_root"], True)
 
+    def test_bundle_download_uses_the_pinned_commit_and_not_a_tag(self) -> None:
+        args = enterprise_bundle.commit_download_args(
+            "seal.oci.tar",
+            enterprise_bundle.BUNDLE_COMMIT,
+        )
+        text = " ".join(args)
+        self.assertIn(enterprise_bundle.BUNDLE_COMMIT, text)
+        self.assertIn("application/vnd.github.raw", text)
+        self.assertNotIn("release", text)
+        self.assertNotIn("lab-bundle/enterprise-pe-2026-10-08", text)
+
     def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
         self.assertEqual(enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
         self.assertEqual(enterprise_bundle.PUBLIC_INSTALLER_PIN, PIN)
