@@ -66,13 +66,17 @@ class FakeAws:
         if "get-caller-identity" in text:
             return completed({"Account": lab.ACCOUNT_ID, "Arn": "arn:aws:sts::960577828987:assumed-role/vantio-w3-lab-provision/s"})
         if "describe-images" in text:
+            image_id = "ami-0123456789abcdef0"
+            if "--image-ids" in args:
+                image_id = args[args.index("--image-ids") + 1]
             return completed(
                 {
                     "Images": [
                         {
                             "Architecture": "x86_64",
                             "CreationDate": "2026-09-01T00:00:00.000Z",
-                            "ImageId": "ami-0123456789abcdef0",
+                            "ImageId": image_id,
+                            "State": "available",
                             "Name": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260901",
                             "OwnerId": lab.CANONICAL_OWNER,
                             "ProductCodes": [],

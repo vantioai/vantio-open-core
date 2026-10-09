@@ -46,6 +46,16 @@ on:
         required: false
         default: ""
         type: string
+      image_id:
+        description: Pinned Canonical Ubuntu 24.04 AMI. The provision role already launched this id.
+        required: false
+        default: ami-0fa99aa8f97f9e30b
+        type: string
+      describe_only:
+        description: Describe the AMI and exit. Does not call RunInstances.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -113,6 +123,8 @@ jobs:
           EXPIRES_IN_MINUTES: ${{ inputs.expires_in_minutes }}
           ASSOCIATE_PUBLIC_IPV4: ${{ inputs.associate_public_ipv4 }}
           PURPOSE: ${{ inputs.purpose }}
+          IMAGE_ID: ${{ inputs.image_id }}
+          DESCRIBE_ONLY: ${{ inputs.describe_only }}
           COST_GATE_JSON: ${{ needs.gate.outputs.gate_json }}
         run: |
           set -euo pipefail

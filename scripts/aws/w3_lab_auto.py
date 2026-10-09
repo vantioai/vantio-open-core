@@ -38,6 +38,9 @@ EXPIRY_BUFFER = timedelta(hours=8)
 WORST_CASE_RUN_USD = Decimal("2.00")
 ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small")
 CANONICAL_OWNER = "099720109477"
+# Last OIDC launch that RunInstances allowed. Run 36831748889, 2026-10-01.
+PINNED_IMAGE_ID = "ami-0fa99aa8f97f9e30b"
+IMAGE_ID_RE = re.compile(r"^ami-[0-9a-f]{8,17}$")
 FORBIDDEN_ACCOUNT_ID = "934814114565"
 LAB_SUBNET_ID = "subnet-04b16afe18c8e3895"
 LAB_VPC_ID = "vpc-0a139b3db139e7430"
@@ -477,6 +480,52 @@ def run_instances_args(
     ]
 
 
+def describe_image_id_args(image_id: str) -> list[str]:
+    if IMAGE_ID_RE.fullmatch(image_id) is None:
+        raise GuardAbort("image_id")
+    return [
+        "aws",
+        "ec2",
+        "describe-images",
+        "--region",
+        REGION,
+        "--image-ids",
+        image_id,
+    ]
+
+
+def require_available_image(payload: Mapping[str, Any], image_id: str) -> str:
+    """Accept one available Canonical Ubuntu 24.04 image. This does not launch."""
+    images = payload.get("Images")
+    if not isinstance(images, list) or len(images) != 1 or not isinstance(images[0], Mapping):
+        raise GuardAbort("image_unavailable")
+    image = images[0]
+    if image.get("ImageId") != image_id or image.get("State") != "available":
+        raise GuardAbort("image_unavailable")
+    if image.get("OwnerId") != CANONICAL_OWNER:
+        raise GuardAbort("image_owner")
+    if image.get("Architecture") != "x86_64" or image.get("RootDeviceType") != "ebs" or image.get("Public") is not True:
+        raise GuardAbort("image_rejected")
+    name = image.get("Name")
+    if not isinstance(name, str) or "ubuntu-noble-24.04-amd64-server" not in name or "pro" in name.lower():
+        raise GuardAbort("image_rejected")
+    if image.get("ProductCodes"):
+        raise GuardAbort("image_rejected")
+    return image_id
+
+
+def resolve_pinned_image(runner: Runner, image_id: str) -> str:
+    if IMAGE_ID_RE.fullmatch(image_id) is None:
+        raise GuardAbort("image_id")
+    try:
+        described = aws_json(runner, describe_image_id_args(image_id))
+    except GuardAbort as exc:
+        if "InvalidAMIID.NotFound" in exc.reason or "InvalidAMIID.Unavailable" in exc.reason:
+            raise GuardAbort("image_unavailable") from None
+        raise
+    return require_available_image(described, image_id)
+
+
 def describe_images_args() -> list[str]:
     return [
         "aws",
@@ -631,8 +680,8 @@ def execute_launch(
     if plan["tags"].get("vantio:destroyable") != "true":
         raise GuardAbort("untagged")
     user_data_path.write_text(plan["user_data"], encoding="utf-8")
-    images = aws_json(runner, describe_images_args())
-    image_id = select_image(images)
+    requested = str(spec.get("image_id") or PINNED_IMAGE_ID)
+    image_id = resolve_pinned_image(runner, requested)
     created = aws_json(runner, create_security_group_args(plan, LAB_VPC_ID))
     group_id = created.get("GroupId")
     if not isinstance(group_id, str) or not group_id.startswith("sg-"):
@@ -919,6 +968,7 @@ def _launch_spec_from_env() -> dict[str, Any]:
     default_stop = "2160" if max_life_hours == "36" else "420"
     spec: dict[str, Any] = {
         "instance_type": os.environ.get("INSTANCE_TYPE", "t3.micro"),
+        "image_id": os.environ.get("IMAGE_ID", PINNED_IMAGE_ID).strip() or PINNED_IMAGE_ID,
         "stop_after_minutes": os.environ.get("STOP_AFTER_MINUTES", default_stop),
         "associate_public_ipv4": os.environ.get("ASSOCIATE_PUBLIC_IPV4", "false"),
         "name": f"{NAME_PREFIX}{run_id}",
@@ -951,6 +1001,20 @@ def launch_from_env(runner: Runner, now: datetime) -> dict[str, Any]:
             raise GuardAbort(failure)
         spec = _launch_spec_from_env()
         identity = aws_json(runner, ["aws", "sts", "get-caller-identity"])
+        require_identity(identity)
+        if os.environ.get("DESCRIBE_ONLY", "false").strip().lower() == "true":
+            image_id = resolve_pinned_image(runner, str(spec["image_id"]))
+            evidence = {
+                "account_id": ACCOUNT_ID,
+                "image_id": image_id,
+                "image_state": "available",
+                "launched": False,
+                "noninteractive_teardown_ready": False,
+                "region": REGION,
+                "describe_only": True,
+            }
+            write_json_with_hash(evidence_path, evidence)
+            return evidence
         described = aws_json(runner, describe_occupying_args())
         occupying = occupying_instance_ids(described)
         if occupying:

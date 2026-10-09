@@ -34,6 +34,11 @@ on:
         required: true
         default: false
         type: boolean
+      image_id:
+        description: Pinned Canonical Ubuntu 24.04 AMI. The provision role already launched this id.
+        required: false
+        default: ami-0fa99aa8f97f9e30b
+        type: string
 
 permissions:
   contents: read
@@ -146,6 +151,7 @@ jobs:
           STOP_AFTER_MINUTES: "2160"
           MAX_LIFE_HOURS: "36"
           ASSOCIATE_PUBLIC_IPV4: ${{ inputs.associate_public_ipv4 }}
+          IMAGE_ID: ${{ inputs.image_id }}
           COST_GATE_JSON: ${{ needs.gate.outputs.gate_json }}
         run: |
           set -euo pipefail

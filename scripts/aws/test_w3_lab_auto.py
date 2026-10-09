@@ -7,6 +7,7 @@ These tests use a fake AWS runner. They do not call AWS.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,7 @@ def completed(payload: dict | None = None, *, code: int = 0, stderr: str = "") -
 class FakeAws:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
+        self.image_state = "available"
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(list(args))
@@ -37,11 +39,15 @@ class FakeAws:
         if "get-caller-identity" in text:
             return completed({"Account": lab.ACCOUNT_ID, "Arn": "arn:aws:iam::960577828987:role/vantio-w3-lab-provision"})
         if "describe-images" in text:
+            image_id = "ami-0123456789abcdef0"
+            if "--image-ids" in args:
+                image_id = args[args.index("--image-ids") + 1]
             return completed(
                 {
                     "Images": [
                         {
-                            "ImageId": "ami-0123456789abcdef0",
+                            "ImageId": image_id,
+                            "State": self.image_state,
                             "OwnerId": lab.CANONICAL_OWNER,
                             "Name": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260901",
                             "Architecture": "x86_64",
@@ -318,10 +324,52 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertEqual(run[run.index("--count") + 1], "1")
         self.assertEqual(run[run.index("--instance-initiated-shutdown-behavior") + 1], "terminate")
         self.assertEqual(run[run.index("--region") + 1], "us-east-2")
+        self.assertEqual(run[run.index("--image-id") + 1], lab.PINNED_IMAGE_ID)
         self.assertIn(lab.LAB_SUBNET_ID, " ".join(run))
         self.assertNotIn(lab.FORBIDDEN_ACCOUNT_ID, " ".join(run))
         self.assertNotIn("iam-instance-profile", " ".join(run))
         self.assertEqual(runner.commands().count("run-instances"), 1)
+
+    def test_deregistered_image_does_not_create_a_group(self) -> None:
+        runner = FakeAws()
+        runner.image_state = "deregistered"
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(lab.GuardAbort) as caught:
+                lab.execute_launch(
+                    {"name": "vantio-w3-lab-auto-gone", "image_id": lab.PINNED_IMAGE_ID},
+                    passing_gate(),
+                    {"Account": lab.ACCOUNT_ID},
+                    runner,
+                    NOW,
+                    user_data_path=Path(tmp) / "user-data.sh",
+                )
+        self.assertEqual(caught.exception.reason, "image_unavailable")
+        self.assertNotIn("run-instances", runner.commands())
+        self.assertNotIn("create-security-group", runner.commands())
+
+    def test_describe_only_does_not_launch(self) -> None:
+        runner = FakeAws()
+        saved = {key: os.environ.get(key) for key in ("COST_GATE_FILE", "DESCRIBE_ONLY", "IMAGE_ID", "EVIDENCE_PATH")}
+        with tempfile.TemporaryDirectory() as tmp:
+            gate = Path(tmp) / "gate.json"
+            gate.write_text(json.dumps(passing_gate()), encoding="utf-8")
+            os.environ["COST_GATE_FILE"] = str(gate)
+            os.environ["DESCRIBE_ONLY"] = "true"
+            os.environ["IMAGE_ID"] = lab.PINNED_IMAGE_ID
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "out.json")
+            try:
+                result = lab.launch_from_env(runner, NOW)
+            finally:
+                for key, value in saved.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+        self.assertEqual(result["image_id"], lab.PINNED_IMAGE_ID)
+        self.assertEqual(result["image_state"], "available")
+        self.assertFalse(result["launched"])
+        self.assertNotIn("run-instances", runner.commands())
+        self.assertNotIn("create-security-group", runner.commands())
 
     def test_false_string_does_not_request_a_public_address(self) -> None:
         plan = lab.plan_launch({"associate_public_ipv4": "false", "name": "vantio-w3-lab-auto-plan"}, NOW)
