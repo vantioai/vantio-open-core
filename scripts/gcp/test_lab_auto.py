@@ -99,12 +99,11 @@ class LabAutoTest(unittest.TestCase):
         self.assertEqual(decision["expected_oop_usd"], "0")
         self.assertEqual(decision["spend_source"], "empty_project_no_vms_or_disks")
 
-    def test_launch_armed_sweeper_off(self) -> None:
+    def test_switches_ship_false(self) -> None:
         capabilities = lab.load_capabilities()
-        self.assertIs(capabilities["launch_enabled"], True)
+        self.assertIs(capabilities["launch_enabled"], False)
         self.assertIs(capabilities["sweeper_enabled"], False)
-        self.assertTrue(lab.flag_enabled(capabilities, "launch_enabled"))
-        self.assertFalse(lab.flag_enabled(capabilities, "sweeper_enabled"))
+        self.assertFalse(lab.flag_enabled(capabilities, "launch_enabled"))
 
     def test_provision_stays_off_without_calling_gcp(self) -> None:
         self.assertEqual(lab.execute_provision({}), 2)
@@ -230,8 +229,7 @@ class LabAutoTest(unittest.TestCase):
 
     def test_capabilities_file_is_json(self) -> None:
         raw = json.loads((lab.HERE / "lab_capabilities.json").read_text(encoding="utf-8"))
-        self.assertIs(raw["launch_enabled"], True)
-        self.assertIs(raw["sweeper_enabled"], False)
+        self.assertIs(raw["launch_enabled"], False)
 
 
 if __name__ == "__main__":

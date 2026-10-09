@@ -1,5 +1,5 @@
 {
-  "launch_enabled": true,
+  "launch_enabled": false,
   "sweeper_enabled": false,
-  "note": "launch_enabled is true for one founder-ordered e2-micro in vantio-lab-oct08. Set it false after that VM is VERIFIED_REMOVED."
+  "note": "Both switches stay false. A true value is a later change Zach approves. This file does not start a VM and does not spend."
 }
