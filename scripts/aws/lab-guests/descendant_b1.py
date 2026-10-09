@@ -174,14 +174,27 @@ def measure(phase: str) -> dict:
     }
 
 
+def _publish(body: dict) -> None:
+    text = json.dumps(body, indent=2) + "\n"
+    OUT_PATH.write_text(text, encoding="utf-8")
+    try:
+        os.chmod(OUT_PATH, 0o644)
+    except OSError:
+        pass
+    print(text, flush=True)
+
+
 def main() -> int:
     try:
-        return _main()
-    except SystemExit:
+        code = _main()
+    except SystemExit as exc:
+        _publish({"harness_error": f"SystemExit {exc.code}", "detail": str(exc)})
         raise
     except Exception:
-        OUT_PATH.write_text(json.dumps({"error": traceback.format_exc()}, indent=2) + "\n", encoding="utf-8")
+        _publish({"harness_error": traceback.format_exc()})
         return 1
+    print(f"DESCENDANT_EXIT {code}", flush=True)
+    return code
 
 
 def _main() -> int:
@@ -189,7 +202,7 @@ def _main() -> int:
         body = measure("pre")
         PRE_PATH.parent.mkdir(parents=True, exist_ok=True)
         PRE_PATH.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
-        OUT_PATH.write_text(json.dumps({"pre": body, "reboot_requested": True}, indent=2) + "\n", encoding="utf-8")
+        _publish({"pre": body, "reboot_requested": True})
         os.sync()
         return 0
     pre = {}
@@ -205,7 +218,7 @@ def _main() -> int:
         "descendant_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")),
         "b1_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")) and not same_boot,
     }
-    OUT_PATH.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    _publish(result)
     return 0 if result["b1_pass"] else 1
 
 
