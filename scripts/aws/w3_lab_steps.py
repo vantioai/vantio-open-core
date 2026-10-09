@@ -865,9 +865,12 @@ def execute_enterprise_rows(
                 if proc.returncode != 0:
                     _ssh_failure(proc)
 
-            made = remote(["mkdir", "-p", GUEST_BUNDLE], "")
+            made = remote(["sudo", "mkdir", "-p", GUEST_BUNDLE], "")
             if made.returncode != 0:
                 _ssh_failure(made)
+            owned = remote(["sudo", "chown", "-R", "ubuntu:ubuntu", "/var/lib/vantio-lab"], "")
+            if owned.returncode != 0:
+                _ssh_failure(owned)
             copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
             copy_to(bundle_dir / "contract.tar", "contract.tar")
             script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))

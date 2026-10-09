@@ -10,7 +10,8 @@ fi
 if ! printf '%s' "$pin" | grep -Eq '^[0-9a-f]{64}$'; then
   exit 2
 fi
-mkdir -p /var/lib/vantio-lab
+sudo mkdir -p /var/lib/vantio-lab
+sudo chown ubuntu:ubuntu /var/lib/vantio-lab
 printf '%s\n' "{\"seal\":\"${seal}\",\"pin\":\"${pin}\"}" > /var/lib/vantio-lab/marker.json
 line="vantio-lab-marker seal=${seal} pin=${pin}"
 printf '%s\n' "$line"
