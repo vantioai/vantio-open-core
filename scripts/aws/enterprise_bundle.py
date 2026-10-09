@@ -267,7 +267,7 @@ def prepare_bundle(
 
     token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
     tag = os.environ.get("W3_BUNDLE_TAG", DEFAULT_BUNDLE_TAG).strip()
-    env_seal = os.environ.get("W3_EXPECTED_SEAL", "").strip()
+    env_seal = os.environ.get("W3_EXPECTED_SEAL", "").strip().lower()
     if env_seal:
         expected_seal = env_seal
     env_commit = os.environ.get("W3_BUNDLE_COMMIT", "").strip()

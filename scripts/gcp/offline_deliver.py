@@ -184,7 +184,7 @@ def _member_refused(name: str) -> bool:
     return ".." in name.split("/")
 
 
-def verify_seal_file(path: Path, expected: str = POLICY_ALLOW_SEAL) -> str:
+def verify_seal_file(path: Path, expected: str) -> str:
     if expected in (PUBLIC_INSTALLER_PIN, TRACKING_2A_SEAL) or HEX64_RE.fullmatch(expected) is None:
         raise SystemExit("bundle_seal")
     if not path.is_file():
@@ -972,7 +972,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "network": NETWORK,
             "public_ip": False,
             "reboot_observed": True,
-            "seal_sha256": POLICY_ALLOW_SEAL,
+            "seal_sha256": seal,
             "snapshot": SNAPSHOT,
             "subnet": SUBNET,
             "trust_sha256": TRUST_SHA256,
