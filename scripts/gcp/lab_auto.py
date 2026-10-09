@@ -394,8 +394,19 @@ def removal_status(instances: Sequence[Mapping[str, Any]], disks: Sequence[Mappi
     return "VERIFIED_REMOVED"
 
 
+def _run_checked(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(argv, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        if completed.stderr:
+            print(completed.stderr, file=sys.stderr, end="" if completed.stderr.endswith("\n") else "\n")
+        raise subprocess.CalledProcessError(
+            completed.returncode, argv, output=completed.stdout, stderr=completed.stderr
+        )
+    return completed
+
+
 def _run_json(argv: list[str]) -> Any:
-    completed = subprocess.run(argv, check=True, capture_output=True, text=True)
+    completed = _run_checked(argv)
     text = completed.stdout.strip()
     if not text:
         return []
@@ -487,7 +498,7 @@ Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
 
 def _default_runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, check=True, capture_output=True, text=True)
+    return _run_checked(argv)
 
 
 def execute_provision(env: Mapping[str, str], runner: Runner | None = None) -> int:
