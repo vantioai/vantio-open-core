@@ -108,11 +108,31 @@ jobs:
           python3 scripts/aws/w3_lab_steps.py prepare-bundle
           python3 scripts/gcp/offline_deliver.py assert-bundle
 
+      - name: Require the vantio-lab-oct08 workload identity provider
+        env:
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+        run: |
+          set -euo pipefail
+          test -n "$GCP_LAB_WIF_PROVIDER"
+          python3 - << 'PY'
+          import os, re, sys
+          provider = os.environ["GCP_LAB_WIF_PROVIDER"]
+          if re.fullmatch(r"projects/[0-9]{6,20}/locations/global/workloadIdentityPools/github-actions/providers/github", provider) is None:
+              sys.exit("refusing provider")
+          PY
+
       - name: Authenticate as the handoff writer
+        id: handoff-auth
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER || 'projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
           service_account: vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com
+
+      - name: Confirm the handoff identity is vantio-lab-oct08
+        run: |
+          set -euo pipefail
+          project="${GOOGLE_CLOUD_PROJECT:-${CLOUDSDK_CORE_PROJECT:-}}"
+          test "$project" = "vantio-lab-oct08"
 
       - name: Install gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
@@ -132,6 +152,12 @@ jobs:
       - name: Delete the local bundle
         if: always()
         run: rm -rf "${{ runner.temp }}/enterprise-bundle"
+
+      - name: Keep only allowlisted evidence
+        if: always()
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: python3 scripts/gcp/offline_deliver.py prune-evidence
 
       - name: Upload digest evidence
         if: always()
@@ -183,6 +209,7 @@ jobs:
           test -n "$GCP_LAB_WIF_PROVIDER"
           test -n "$GCP_LAB_SERVICE_ACCOUNT"
           test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+          test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
 
       - name: Checkout delivery scripts
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -208,6 +235,15 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         with:
           version: "588.0.0"
+
+      - name: Bind the provider to vantio-lab-oct08
+        env:
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+        run: |
+          set -euo pipefail
+          number=$(gcloud projects describe vantio-lab-oct08 --format='value(projectNumber)')
+          test -n "$number"
+          test "$GCP_LAB_WIF_PROVIDER" = "projects/${number}/locations/global/workloadIdentityPools/github-actions/providers/github"
 
       - name: Cost gate
         env:
@@ -307,6 +343,12 @@ jobs:
         if: always()
         run: rm -rf "${{ runner.temp }}/enterprise-bundle"
 
+      - name: Keep only allowlisted evidence
+        if: always()
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: python3 scripts/gcp/offline_deliver.py prune-evidence
+
       - name: Upload row evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -346,6 +388,7 @@ jobs:
           test -n "$GCP_LAB_WIF_PROVIDER"
           test -n "$GCP_LAB_SERVICE_ACCOUNT"
           test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+          test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
 
       - name: Checkout teardown script
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -375,6 +418,12 @@ jobs:
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: python3 scripts/gcp/offline_deliver.py teardown-if-present
+
+      - name: Keep only allowlisted evidence
+        if: always()
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: python3 scripts/gcp/offline_deliver.py prune-evidence
 
       - name: Upload teardown evidence
         if: always()

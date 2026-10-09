@@ -151,13 +151,26 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertGreater(amount, Decimal("0"))
         self.assertLess(amount, Decimal("0.10"))
 
-    def test_evidence_redacts_tokens(self) -> None:
+    def test_evidence_allowlist_drops_unknown_and_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "row.json"
-            od.write_evidence(path, {"note": "ghp_" + "a" * 20})
+            od.write_evidence(
+                path,
+                {
+                    "note": "ghp_" + "a" * 20,
+                    "seal_sha256": od.POLICY_ALLOW_SEAL,
+                    "claim_cap": od.CLAIM_CAP,
+                    "guest": {"private": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"},
+                },
+            )
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("ghp_", text)
-            self.assertIn("[redacted]", text)
+            self.assertNotIn("PRIVATE KEY", text)
+            self.assertNotIn("note", text)
+            self.assertIn(od.POLICY_ALLOW_SEAL, text)
+            self.assertEqual(od.content_range(0, 4, 8), "bytes 0-3/8")
+            with self.assertRaises(SystemExit):
+                od.content_range(0, 9, 8)
 
     def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -236,6 +249,11 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("if: ${{ !inputs.run_batteries }}", text)
         self.assertNotIn("gcp-lab-one-vm", text)
         self.assertNotIn("default: f882dd81", text)
+        self.assertNotIn("910881070503", text)
+        self.assertNotIn("uploadType=media", (ROOT / "scripts/gcp/offline_deliver.py").read_text(encoding="utf-8"))
+        self.assertIn('test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"', text)
+        self.assertIn("vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com", text)
+        self.assertNotIn("projects/910881070503", text)
         for name in (
             "gcp-lab-teardown.yml",
             "gcp-lab-sweeper.yml",
