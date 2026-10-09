@@ -1,0 +1,40 @@
+name: Founder approval guard
+
+# Required check. Fails any PR that changes the public installer pin or
+# customer-facing install docs unless a repository admin applied the
+# founder-approved label after the latest push.
+# pull_request_target runs this file and the script from the BASE branch, so
+# a PR cannot edit the guard to pass itself. PR code is never checked out.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: write   # only to remove a stale founder-approved label after a push
+  issues: read
+
+concurrency:
+  group: founder-approval-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  founder-approval:
+    name: Founder approval guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout base branch guard only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/founder-approval-paths.txt
+            scripts/ci/founder_approval_guard.py
+          sparse-checkout-cone-mode: false
+      - name: Check protected paths and approval
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/founder_approval_guard.py
