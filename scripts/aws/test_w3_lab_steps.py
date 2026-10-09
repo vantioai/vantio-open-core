@@ -693,6 +693,15 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(rows["convergence_ms"], 5597.3)
         self.assertFalse((Path(tmp) / "seal.oci.tar").exists())
 
+    def test_ssh_failure_redacts_before_it_truncates(self) -> None:
+        secret = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"
+        proc = completed(code=1, stderr=("x" * 400) + secret + "\nPermission denied (publickey)")
+        with self.assertRaises(lab.GuardAbort) as caught:
+            steps._ssh_failure(proc)
+        self.assertNotIn("BEGIN OPENSSH", caught.exception.reason)
+        self.assertNotIn("abc", caught.exception.reason)
+        self.assertIn("publickey", caught.exception.reason)
+
     def test_guest_script_parses(self) -> None:
         script = ROOT / "scripts/aws/lab-guests/enterprise-rows.sh"
         completed_run = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)

@@ -731,6 +731,13 @@ def execute_verify(runner: Runner, now: datetime, *, write: bool = True) -> dict
     return payload
 
 
+def _ssh_failure(proc: subprocess.CompletedProcess[str]) -> None:
+    raw = (proc.stderr or "") + "\n" + (proc.stdout or "")
+    redacted, _changed = redact(raw)
+    flat = " ".join(redacted.split())[-180:]
+    raise lab.GuardAbort("ssh" if not flat else f"ssh {flat}")
+
+
 def _store_guest_rows(path: Path, text: str) -> None:
     token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
     redacted, _changed = redact(text)
@@ -856,11 +863,11 @@ def execute_enterprise_rows(
                     "",
                 )
                 if proc.returncode != 0:
-                    raise lab.GuardAbort("ssh")
+                    _ssh_failure(proc)
 
             made = remote(["mkdir", "-p", GUEST_BUNDLE], "")
             if made.returncode != 0:
-                raise lab.GuardAbort("ssh")
+                _ssh_failure(made)
             copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
             copy_to(bundle_dir / "contract.tar", "contract.tar")
             script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
