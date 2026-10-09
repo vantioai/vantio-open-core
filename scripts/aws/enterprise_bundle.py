@@ -267,17 +267,24 @@ def prepare_bundle(
 
     token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
     tag = os.environ.get("W3_BUNDLE_TAG", DEFAULT_BUNDLE_TAG).strip()
+    env_seal = os.environ.get("W3_EXPECTED_SEAL", "").strip()
+    if env_seal:
+        expected_seal = env_seal
+    env_commit = os.environ.get("W3_BUNDLE_COMMIT", "").strip()
+    commit = env_commit or BUNDLE_COMMIT
     dest = Path(os.environ.get("W3_BUNDLE_DIR", "enterprise-bundle"))
     payload: dict[str, object] = base_evidence("bundle")
-    payload["bundle_commit"] = BUNDLE_COMMIT
+    payload["bundle_commit"] = commit
     payload["tag"] = ""
     try:
         if token.strip() == "":
             raise lab.GuardAbort("missing_token")
         if tag and BUNDLE_TAG.fullmatch(tag) is None:
             raise lab.GuardAbort("bundle_tag")
+        if HEX40.fullmatch(commit) is None:
+            raise lab.GuardAbort("bundle_download")
         if fetcher is None:
-            download_commit_assets(token, BUNDLE_COMMIT, dest)
+            download_commit_assets(token, commit, dest)
         else:
             fetcher(dest)
         payload.update(inspect_bundle(dest, expected_seal=expected_seal, expected_trust=expected_trust))

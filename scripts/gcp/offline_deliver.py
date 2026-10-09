@@ -76,7 +76,7 @@ SECRET_RE = re.compile(
 PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
-    "hash-debs|create-instance|run-batteries|delete-handoff|remove-oslogin-key|"
+    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|delete-handoff|remove-oslogin-key|"
     "teardown-if-present"
 )
 
@@ -251,8 +251,30 @@ def verify_contract_trust(path: Path, expected_trust: str) -> str:
     return sha256_file(path)
 
 
-def assert_bundle_dir(directory: Path) -> dict[str, str]:
-    seal = verify_seal_file(directory / "seal.oci.tar")
+def expected_seal(env: Mapping[str, str]) -> str:
+    raw = env.get("EXPECTED_SEAL", "").strip().lower()
+    if HEX64_RE.fullmatch(raw) is None or raw in (PUBLIC_INSTALLER_PIN, TRACKING_2A_SEAL):
+        raise SystemExit("seal")
+    return raw
+
+
+def batteries_requested(env: Mapping[str, str]) -> bool:
+    raw = env.get("RUN_BATTERIES", "false").strip().lower()
+    if raw not in ("true", "false"):
+        raise SystemExit("batteries")
+    return raw == "true"
+
+
+def refuse_batteries(env: Mapping[str, str]) -> str:
+    """Batteries wait for a new seal. The current policy-allow seal stays plumbing-only."""
+    seal = expected_seal(env)
+    if batteries_requested(env) and seal == POLICY_ALLOW_SEAL:
+        raise SystemExit("batteries_refused_old_seal")
+    return seal
+
+
+def assert_bundle_dir(directory: Path, expected: str) -> dict[str, str]:
+    seal = verify_seal_file(directory / "seal.oci.tar", expected)
     contract = verify_contract_trust(directory / "contract.tar", TRUST_SHA256)
     return {"seal_sha256": seal, "contract_sha256": contract, "trust_sha256": TRUST_SHA256}
 
@@ -387,6 +409,8 @@ def guest_command(seal: str, mode: str, phase: str = "") -> str:
     if HEX64_RE.fullmatch(seal) is None or seal in (PUBLIC_INSTALLER_PIN, TRACKING_2A_SEAL):
         raise SystemExit("seal")
     script = f"{GUEST_DIR}/enterprise-rows.sh"
+    if mode == "plumb" and phase == "":
+        return f"bash {script} {seal} plumb"
     if mode == "enterprise" and phase == "":
         return f"bash {script} {seal} enterprise"
     if mode == "descendant-b1" and phase in ("pre", "post"):
@@ -545,7 +569,7 @@ def _gate_ok(env: Mapping[str, str]) -> dict[str, Any]:
 
 def assert_bundle_command(env: Mapping[str, str]) -> int:
     directory = Path(env.get("W3_BUNDLE_DIR", ""))
-    checked = assert_bundle_dir(directory)
+    checked = assert_bundle_dir(directory, expected_seal(env))
     evidence = _evidence_dir(env)
     write_evidence(evidence / "bundle-digests.json", {**checked, "claim_cap": CLAIM_CAP})
     github_output("seal_sha256", checked["seal_sha256"])
@@ -559,7 +583,7 @@ def upload_handoff(env: Mapping[str, str]) -> int:
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     names = object_names(env.get("GITHUB_RUN_ID", ""))
     directory = Path(env.get("W3_BUNDLE_DIR", ""))
-    checked = assert_bundle_dir(directory)
+    checked = assert_bundle_dir(directory, expected_seal(env))
     paths = (directory / "seal.oci.tar", directory / "contract.tar")
     via = [upload_one(BUCKET, name, path) for name, path in zip(names, paths)]
     payload = {
@@ -610,7 +634,10 @@ def download_handoff(env: Mapping[str, str]) -> int:
     try:
         download_one(BUCKET, names[0], seal_path)
         download_one(BUCKET, names[1], contract_path)
-        seal = verify_seal_file(seal_path)
+        seal = verify_seal_file(seal_path, expected_seal(env))
+        fetched = env.get("FETCHED_SEAL", "").strip().lower()
+        if fetched and fetched != seal:
+            raise SystemExit("seal")
         contract = verify_contract_trust(contract_path, TRUST_SHA256)
         if contract != expected_contract:
             raise SystemExit("contract_sha")
@@ -752,7 +779,7 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     deb_dir = Path(env.get("DEB_DIR", ""))
     guest = Path(env.get("GUEST_SCRIPT", ""))
     descendant = Path(env.get("DESCENDANT_SCRIPT", ""))
-    checked = assert_bundle_dir(bundle)
+    checked = assert_bundle_dir(bundle, expected_seal(env))
     if checked["contract_sha256"] != env.get("EXPECTED_CONTRACT_SHA256", "").strip():
         raise SystemExit("contract_sha")
     if dest.exists():
@@ -777,40 +804,113 @@ def _run_guest(project: str, name: str, command: str, reason: str) -> subprocess
     return completed
 
 
+def _wait_until_running(project: str, name: str) -> None:
+    deadline = time.time() + 180
+    status = ""
+    while time.time() < deadline:
+        described = _run(
+            [
+                "gcloud",
+                "compute",
+                "instances",
+                "describe",
+                name,
+                f"--project={project}",
+                f"--zone={ZONE}",
+                "--format=value(status)",
+            ]
+        )
+        status = (described.stdout or "").strip()
+        if described.returncode == 0 and status == "RUNNING":
+            break
+        time.sleep(5)
+    if status != "RUNNING":
+        raise SystemExit("instance_status")
+    _wait_ssh(project, name, 300)
+
+
+def plumb_guest(env: Mapping[str, str]) -> int:
+    """Copy the bundle over IAP and re-check the digest. Does not run batteries."""
+    _enabled(env)
+    if batteries_requested(env):
+        raise SystemExit("batteries")
+    project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    _gate_ok(env)
+    seal = expected_seal(env)
+    name = instance_name(env.get("GITHUB_RUN_ID", ""))
+    evidence = _evidence_dir(env)
+    bundle = Path(env.get("W3_BUNDLE_DIR", ""))
+    guest = Path(env.get("GUEST_SCRIPT", ""))
+    checked = assert_bundle_dir(bundle, seal)
+    if checked["contract_sha256"] != env.get("EXPECTED_CONTRACT_SHA256", "").strip():
+        raise SystemExit("contract_sha")
+    payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
+    if payload_dir.exists():
+        shutil.rmtree(payload_dir)
+    payload_dir.mkdir(parents=True)
+    try:
+        shutil.copy2(bundle / "seal.oci.tar", payload_dir / "seal.oci.tar")
+        shutil.copy2(bundle / "contract.tar", payload_dir / "contract.tar")
+        script_dest = payload_dir / "enterprise-rows.sh"
+        shutil.copy2(guest, script_dest)
+        script_dest.chmod(0o755)
+        _wait_until_running(project, name)
+        made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
+        if made.returncode != 0:
+            raise SystemExit("ssh")
+        _scp_to(
+            project,
+            name,
+            [payload_dir / "seal.oci.tar", payload_dir / "contract.tar", script_dest],
+        )
+        for local_name in ("seal.oci.tar", "contract.tar"):
+            (payload_dir / local_name).unlink(missing_ok=True)
+        ran = _ssh(project, name, guest_command(seal, "plumb"))
+        if ran.returncode != 0:
+            print(redact((ran.stdout or "") + (ran.stderr or ""))[-4000:], file=sys.stderr)
+            raise SystemExit("plumb")
+        local = evidence / "gcp-plumb.json"
+        if not _scp_from(project, name, "/tmp/gcp-plumb.json", local):
+            raise SystemExit("plumb")
+        body = _load_json_file(local)
+        if not isinstance(body, dict) or body.get("seal_sha256") != seal or body.get("batteries") is not False:
+            raise SystemExit("seal")
+        result = {
+            "batteries": False,
+            "claim_cap": CLAIM_CAP,
+            "cloud": "gcp",
+            "mode": "plumb",
+            "network": NETWORK,
+            "public_ip": False,
+            "seal_sha256": seal,
+            "status": "PLUMB_DIGEST_MATCH",
+            "trust_sha256": TRUST_SHA256,
+            "vm_digest_match": True,
+        }
+        write_evidence(evidence / "gcp-lab-rows.json", result)
+        print(json.dumps(result))
+        return 0
+    finally:
+        if payload_dir.exists():
+            shutil.rmtree(payload_dir, ignore_errors=True)
+        remove_os_login_key()
+
+
 def run_batteries(env: Mapping[str, str]) -> int:
     _enabled(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     _gate_ok(env)
+    if not batteries_requested(env):
+        raise SystemExit("batteries")
     name = instance_name(env.get("GITHUB_RUN_ID", ""))
-    seal = POLICY_ALLOW_SEAL
+    seal = refuse_batteries(env)
     evidence = _evidence_dir(env)
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
     debs = _stage_payload(env, payload_dir)
     guest_rc = 1
     descendant_rc = 1
     try:
-        deadline = time.time() + 180
-        status = ""
-        while time.time() < deadline:
-            described = _run(
-                [
-                    "gcloud",
-                    "compute",
-                    "instances",
-                    "describe",
-                    name,
-                    f"--project={project}",
-                    f"--zone={ZONE}",
-                    "--format=value(status)",
-                ]
-            )
-            status = (described.stdout or "").strip()
-            if described.returncode == 0 and status == "RUNNING":
-                break
-            time.sleep(5)
-        if status != "RUNNING":
-            raise SystemExit("instance_status")
-        _wait_ssh(project, name, 300)
+        _wait_until_running(project, name)
         made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
         if made.returncode != 0:
             raise SystemExit("ssh")
@@ -1010,8 +1110,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return download_handoff(env)
         if command == "hash-debs":
             return hash_debs(env)
+        if command == "check-dispatch":
+            refuse_batteries(env)
+            print(json.dumps({"batteries": batteries_requested(env), "seal_sha256": expected_seal(env)}))
+            return 0
         if command == "create-instance":
             return create_instance(env)
+        if command == "plumb-guest":
+            return plumb_guest(env)
         if command == "run-batteries":
             return run_batteries(env)
         if command == "delete-handoff":

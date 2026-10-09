@@ -1,7 +1,10 @@
 name: GCP lab provision
 
-# Offline Phantom Engine delivery for t311u item 2.
+# Offline Phantom Engine delivery for t311u item 2, updated by t313u.
 # One Debian 12 e2-micro on vantio-lab-offline, no public IP, over IAP.
+# The expected seal digest is a workflow input. The default dispatch proves
+# fetch, bucket handoff, IAP copy, and the on-VM digest check, then teardown.
+# Batteries stay off for the current policy-allow seal and wait for a new one.
 # The sealed bundle goes to gs://vantio-lab-oct08-handoff and is deleted
 # after the deliver job re-checks it. It is never a workflow artifact.
 # Workload identity still requires this file on main:
@@ -12,10 +15,24 @@ name: GCP lab provision
 on:
   workflow_dispatch:
     inputs:
+      seal:
+        description: Expected seal sha256, 64 hex characters.
+        required: true
+        type: string
+      bundle_commit:
+        description: Private bundle commit, 40 hex characters.
+        required: false
+        default: 6aed2881377132290c10e16e016a28072765250d
+        type: string
+      run_batteries:
+        description: Run portable PE batteries after the digest check. Refused for the current policy-allow seal.
+        required: false
+        default: false
+        type: boolean
       stop_after_minutes:
         description: Guest shutdown delay in minutes. 1 through 120.
         required: true
-        default: "120"
+        default: "60"
         type: string
 
 permissions:
@@ -23,7 +40,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: gcp-lab-one-vm
+  group: vantio-gce-slot
   cancel-in-progress: false
 
 jobs:
@@ -74,6 +91,10 @@ jobs:
         env:
           W3_LAB_PRIVATE_BUNDLE_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          W3_EXPECTED_SEAL: ${{ inputs.seal }}
+          W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          RUN_BATTERIES: ${{ inputs.run_batteries }}
           EVIDENCE_PATH: ${{ runner.temp }}/gcp-lab-evidence/prepare-bundle.json
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: |
@@ -83,6 +104,7 @@ jobs:
             exit 2
           fi
           mkdir -p "$EVIDENCE_DIR"
+          python3 scripts/gcp/offline_deliver.py check-dispatch
           python3 scripts/aws/w3_lab_steps.py prepare-bundle
           python3 scripts/gcp/offline_deliver.py assert-bundle
 
@@ -103,6 +125,7 @@ jobs:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: vantio-lab-oct08
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EXPECTED_SEAL: ${{ inputs.seal }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: python3 scripts/gcp/offline_deliver.py upload-handoff
 
@@ -119,7 +142,7 @@ jobs:
           if-no-files-found: warn
 
   deliver:
-    name: Deliver offline VM and run batteries
+    name: Deliver offline VM
     needs: fetch
     if: needs.fetch.result == 'success'
     runs-on: ubuntu-latest
@@ -193,10 +216,13 @@ jobs:
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
           EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
         run: python3 scripts/gcp/offline_deliver.py download-handoff
 
       - name: Download pinned offline packages
+        if: inputs.run_batteries
         env:
           DEB_DIR: ${{ runner.temp }}/offline-debs
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
@@ -217,7 +243,26 @@ jobs:
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           python3 scripts/gcp/offline_deliver.py create-instance
 
-      - name: Copy the bundle over IAP and run the batteries
+      - name: Copy the bundle over IAP and re-check the digest
+        if: ${{ !inputs.run_batteries }}
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          RUN_BATTERIES: "false"
+          FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
+          EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+          GUEST_SCRIPT: scripts/gcp/lab-guests/enterprise-rows.sh
+        run: |
+          set -euo pipefail
+          export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
+          python3 scripts/gcp/offline_deliver.py plumb-guest
+
+      - name: Run the batteries on a new seal
+        if: inputs.run_batteries
         env:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
@@ -225,6 +270,9 @@ jobs:
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           DEB_DIR: ${{ runner.temp }}/offline-debs
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          RUN_BATTERIES: "true"
+          FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
           EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
           GUEST_SCRIPT: scripts/gcp/lab-guests/enterprise-rows.sh
           DESCENDANT_SCRIPT: scripts/aws/lab-guests/descendant_b1.py

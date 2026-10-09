@@ -134,6 +134,10 @@ class OfflineDeliverTest(unittest.TestCase):
             od.guest_command(od.POLICY_ALLOW_SEAL, "descendant-b1", "post"),
             f"bash /tmp/vantio-lab/enterprise-rows.sh {od.POLICY_ALLOW_SEAL} descendant-b1 post",
         )
+        self.assertEqual(
+            od.guest_command("ab" * 32, "plumb"),
+            f"bash /tmp/vantio-lab/enterprise-rows.sh {'ab' * 32} plumb",
+        )
         self.assertTrue(od.reboot_ready("abc", "def"))
         self.assertFalse(od.reboot_ready("abc", "abc"))
 
@@ -164,6 +168,20 @@ class OfflineDeliverTest(unittest.TestCase):
             with tarfile.open(directory / "debs.tar") as tar:
                 self.assertEqual(tar.getnames(), ["docker.io_1.deb"])
 
+    def test_batteries_wait_for_a_new_seal(self) -> None:
+        plumbing = {"EXPECTED_SEAL": od.POLICY_ALLOW_SEAL, "RUN_BATTERIES": "false"}
+        self.assertEqual(od.refuse_batteries(plumbing), od.POLICY_ALLOW_SEAL)
+        self.assertFalse(od.batteries_requested(plumbing))
+        with self.assertRaises(SystemExit):
+            od.refuse_batteries({"EXPECTED_SEAL": od.POLICY_ALLOW_SEAL, "RUN_BATTERIES": "true"})
+        new_seal = "ab" * 32
+        self.assertEqual(
+            od.refuse_batteries({"EXPECTED_SEAL": new_seal, "RUN_BATTERIES": "true"}),
+            new_seal,
+        )
+        with self.assertRaises(SystemExit):
+            od.expected_seal({"EXPECTED_SEAL": od.PUBLIC_INSTALLER_PIN})
+
     def test_guest_script_is_offline(self) -> None:
         text = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
         self.assertNotIn("apt-get update", text)
@@ -176,6 +194,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn(od.TRUST_SHA256, text)
         self.assertIn(od.IMAGE_NAME, text)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", text)
+        self.assertLess(text.index('mode=${2:-plumb}'), text.index("apt-get install"))
 
     def test_deb_fetch_uses_the_pinned_snapshot(self) -> None:
         text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
@@ -198,8 +217,23 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("upload-handoff", text)
         self.assertIn("download-handoff", text)
         self.assertIn("create-instance", text)
+        self.assertIn("plumb-guest", text)
         self.assertIn("run-batteries", text)
         self.assertIn("teardown-if-present", text)
+        self.assertIn("vantio-gce-slot", text)
+        self.assertIn("EXPECTED_SEAL: ${{ inputs.seal }}", text)
+        self.assertIn("if: ${{ !inputs.run_batteries }}", text)
+        self.assertNotIn("gcp-lab-one-vm", text)
+        self.assertNotIn("default: f882dd81", text)
+        for name in (
+            "gcp-lab-teardown.yml",
+            "gcp-lab-sweeper.yml",
+            "gcp-lab-collect.yml",
+            "gcp-lab-verify-removed.yml",
+        ):
+            other = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            self.assertIn("vantio-gce-slot", other)
+            self.assertNotIn("gcp-lab-one-vm", other)
         self.assertIn("fetch_offline_debs.sh", text)
         self.assertEqual(text.count("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN"), 1)
         self.assertNotIn("aws-actions", text)

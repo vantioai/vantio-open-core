@@ -56,6 +56,36 @@ with tarfile.open(path, "r:*") as tar:
 if not found:
     raise SystemExit(5)
 PY
+mode=${2:-plumb}
+phase=${3:-pre}
+if [ "$mode" = "plumb" ]; then
+  python3 - "$here/seal.oci.tar" "$trust_sha" <<'PY'
+import hashlib
+import json
+import os
+import pathlib
+import sys
+
+seal_path, trust = sys.argv[1], sys.argv[2]
+digest = hashlib.sha256(pathlib.Path(seal_path).read_bytes()).hexdigest()
+body = {
+    "batteries": False,
+    "claim_cap": "INTERNAL_CLEAN_HOST_PROOF",
+    "mode": "plumb",
+    "seal_sha256": digest,
+    "trust_sha256": trust,
+}
+path = pathlib.Path("/tmp/gcp-plumb.json")
+path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+os.chmod(path, 0o644)
+print(digest)
+PY
+  exit 0
+fi
+if [ "$mode" != "enterprise" ] && [ "$mode" != "descendant-b1" ]; then
+  echo "battery" >&2
+  exit 2
+fi
 if [ -f "$here/debs.tar" ]; then
   if tar -tf "$here/debs.tar" | grep -E '(^/|(^|/)\.\.(/|$))' >/dev/null; then
     echo "debs tar refused" >&2
@@ -133,8 +163,6 @@ load=$(sudo docker load -i "$here/seal.oci.tar" 2>&1)
 printf '%s\n' "$load"
 image=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
 test "$image" = "$image_name"
-mode=${2:-enterprise}
-phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
   printf 'IMAGE_LINE=%s\n' "$image"
   set +e
