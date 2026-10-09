@@ -40,6 +40,10 @@ SECRET = re.compile(
     r"|ghp_[A-Za-z0-9]{20,}",
     re.S,
 )
+# Public half only. Dry-run needs a real key; "probe" is rejected before IAM is evaluated.
+PROBE_SSH_PUBLIC_KEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMF7uswZcdVjHBWyAs5om8Age1RTPS6g7J33J5VoouRQ vantio-lab-dry-run"
+)
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
 DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "enterprise-rows.sh"
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
@@ -135,7 +139,11 @@ def dry_run(runner: Runner, args: list[str]) -> str:
         return "allowed"
     if "UnauthorizedOperation" in text or "AccessDenied" in text:
         return "denied"
-    raise lab.GuardAbort("dry_run")
+    code = ""
+    matched = re.search(r"\(([A-Za-z0-9.]+)\)", text)
+    if matched:
+        code = matched.group(1)
+    raise lab.GuardAbort("dry_run" if not code else f"dry_run_{code}")
 
 
 def authorize_args(group_id: str, cidr: str, *, revoke: bool) -> list[str]:
@@ -324,7 +332,7 @@ def open_ssh(
         "--instance-os-user",
         "ubuntu",
         "--ssh-public-key",
-        "probe",
+        PROBE_SSH_PUBLIC_KEY,
     ]
     # Revoke must dry-run as allowed before any ingress is opened. The live
     # role can authorize and cannot revoke; opening that port would leave it.
@@ -831,7 +839,7 @@ def execute_enterprise_rows(
             "--instance-os-user",
             "ubuntu",
             "--ssh-public-key",
-            "probe",
+            PROBE_SSH_PUBLIC_KEY,
         ]
         if (
             dry_run(runner, revoke) == "denied"
