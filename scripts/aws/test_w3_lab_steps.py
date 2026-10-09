@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "aws"))
 
+import enterprise_bundle  # noqa: E402
 import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
@@ -522,7 +523,7 @@ class EnterpriseBundleTests(unittest.TestCase):
             os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "dest")
             os.environ.pop("W3_LAB_PRIVATE_BUNDLE_TOKEN", None)
             with self.assertRaises(lab.GuardAbort) as caught:
-                steps.enterprise_bundle.prepare_bundle()
+                enterprise_bundle.prepare_bundle()
             body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
         self.assertEqual(caught.exception.reason, "missing_token")
         self.assertIn("BLOCKED_BUNDLE", body)
@@ -533,7 +534,7 @@ class EnterpriseBundleTests(unittest.TestCase):
             directory = Path(tmp)
             trust_sha = self._write_bundle(directory, root=False)
             with self.assertRaises(lab.GuardAbort) as caught:
-                steps.enterprise_bundle.inspect_bundle(
+                enterprise_bundle.inspect_bundle(
                     directory,
                     expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
                     expected_trust=trust_sha,
@@ -545,7 +546,7 @@ class EnterpriseBundleTests(unittest.TestCase):
             directory = Path(tmp)
             self._write_bundle(directory, extra=("vantio_enterprise_protocol/private-key.pem", b"nope"))
             with self.assertRaises(lab.GuardAbort) as caught:
-                steps.enterprise_bundle.inspect_bundle(
+                enterprise_bundle.inspect_bundle(
                     directory,
                     expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
                     expected_trust="a" * 64,
@@ -554,7 +555,7 @@ class EnterpriseBundleTests(unittest.TestCase):
 
     def test_public_pin_cannot_stand_in_for_the_seal(self) -> None:
         with self.assertRaises(lab.GuardAbort) as caught:
-            steps.enterprise_bundle.inspect_bundle(Path("."), expected_seal=PIN)
+            enterprise_bundle.inspect_bundle(Path("."), expected_seal=PIN)
         self.assertEqual(caught.exception.reason, "bundle_wrong_seal")
 
     def test_matching_bundle_is_ready_and_hides_the_token(self) -> None:
@@ -574,7 +575,7 @@ class EnterpriseBundleTests(unittest.TestCase):
                 for name in ("manifest.json", "seal.oci.tar", "contract.tar"):
                     (dest / name).write_bytes((source / name).read_bytes())
 
-            result = steps.enterprise_bundle.prepare_bundle(
+            result = enterprise_bundle.prepare_bundle(
                 fetcher=fetch,
                 expected_seal=seal_sha,
                 expected_trust=trust_sha,
@@ -585,14 +586,14 @@ class EnterpriseBundleTests(unittest.TestCase):
         self.assertEqual(result["not_a_production_root"], True)
 
     def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
-        self.assertEqual(steps.enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
-        self.assertEqual(steps.enterprise_bundle.PUBLIC_INSTALLER_PIN, PIN)
+        self.assertEqual(enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
+        self.assertEqual(enterprise_bundle.PUBLIC_INSTALLER_PIN, PIN)
         self.assertEqual(
-            steps.enterprise_bundle.TRACKING_2A_SEAL,
+            enterprise_bundle.TRACKING_2A_SEAL,
             "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a",
         )
         self.assertEqual(
-            steps.enterprise_bundle.TRUST_BUNDLE_SHA256,
+            enterprise_bundle.TRUST_BUNDLE_SHA256,
             "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876",
         )
 

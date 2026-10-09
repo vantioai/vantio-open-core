@@ -26,7 +26,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-import enterprise_bundle
 import w3_lab_auto as lab
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -798,6 +797,8 @@ def execute_enterprise_rows(
         instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
         seal = require_hex64(os.environ.get("SEAL", "").strip(), "seal")
         pin = require_hex64(os.environ.get("PUBLIC_PIN", "").strip(), "public_pin")
+        import enterprise_bundle
+
         if seal != enterprise_bundle.POLICY_ALLOW_SEAL or pin != enterprise_bundle.PUBLIC_INSTALLER_PIN:
             raise lab.GuardAbort("bundle_wrong_seal")
         cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
@@ -948,6 +949,8 @@ def main(argv: list[str]) -> int:
             execute_arm(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
             return 0
         if command == "prepare-bundle":
+            import enterprise_bundle
+
             enterprise_bundle.prepare_bundle()
             return 0
         if command == "arm-enterprise":
