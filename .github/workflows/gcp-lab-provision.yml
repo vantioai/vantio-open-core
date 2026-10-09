@@ -1,10 +1,13 @@
 name: GCP lab provision
 
-# One e2-micro in us-central1-a. Dispatch from main only.
-# The cost gate runs first. Create runs only when expected_oop_usd is 0
-# and scripts/gcp/lab_capabilities.json has launch_enabled set to true.
-# That switch ships false, so this workflow refuses before it creates anything.
-# No public IP. No VM service account. No JSON key. Phantom Engine is not installed.
+# Offline Phantom Engine delivery for t311u item 2.
+# One Debian 12 e2-micro on vantio-lab-offline, no public IP, over IAP.
+# The sealed bundle goes to gs://vantio-lab-oct08-handoff and is deleted
+# after the deliver job re-checks it. It is never a workflow artifact.
+# Workload identity still requires this file on main:
+#   vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main
+# Fetch uses environment w3-lab-auto and vantio-lab-handoff.
+# Deliver and teardown use environment gcp-lab and vantio-lab-gha.
 
 on:
   workflow_dispatch:
@@ -12,7 +15,7 @@ on:
       stop_after_minutes:
         description: Guest shutdown delay in minutes. 1 through 120.
         required: true
-        default: "30"
+        default: "120"
         type: string
 
 permissions:
@@ -24,20 +27,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  gate:
-    name: Pre-run cost check
-    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust
-    permissions:
-      contents: read
-      id-token: write
-
-  provision:
-    name: Provision one lab VM
-    needs: gate
-    if: needs.gate.outputs.expected_oop_usd == '0'
+  fetch:
+    name: Fetch sealed bundle to private bucket
     runs-on: ubuntu-latest
-    environment: gcp-lab
+    environment: w3-lab-auto
     timeout-minutes: 20
+    outputs:
+      seal_sha256: ${{ steps.publish.outputs.seal_sha256 }}
+      contract_sha256: ${{ steps.publish.outputs.contract_sha256 }}
     steps:
       - name: Require main on vantio-open-core
         run: |
@@ -45,6 +42,99 @@ jobs:
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
           test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
           test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
+
+      - name: Refuse static cloud keys
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] || [ -n "${AWS_SECRET_ACCESS_KEY:-}" ] || [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+            echo "static AWS credentials are present" >&2
+            exit 1
+          fi
+
+      - name: Checkout bundle checker
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/aws/w3_lab_steps.py
+            scripts/aws/w3_lab_auto.py
+            scripts/aws/enterprise_bundle.py
+            scripts/aws/lab_iam_capabilities.json
+            scripts/gcp/offline_deliver.py
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Prepare and verify the private bundle
+        env:
+          W3_LAB_PRIVATE_BUNDLE_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EVIDENCE_PATH: ${{ runner.temp }}/gcp-lab-evidence/prepare-bundle.json
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: |
+          set -euo pipefail
+          if [ -z "${W3_LAB_PRIVATE_BUNDLE_TOKEN}" ]; then
+            echo "missing_token" >&2
+            exit 2
+          fi
+          mkdir -p "$EVIDENCE_DIR"
+          python3 scripts/aws/w3_lab_steps.py prepare-bundle
+          python3 scripts/gcp/offline_deliver.py assert-bundle
+
+      - name: Authenticate as the handoff writer
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER || 'projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+          service_account: vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Upload the bundle to the private handoff bucket
+        id: publish
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: vantio-lab-oct08
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: python3 scripts/gcp/offline_deliver.py upload-handoff
+
+      - name: Delete the local bundle
+        if: always()
+        run: rm -rf "${{ runner.temp }}/enterprise-bundle"
+
+      - name: Upload digest evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-handoff-digests-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-evidence/
+          if-no-files-found: warn
+
+  deliver:
+    name: Deliver offline VM and run batteries
+    needs: fetch
+    if: needs.fetch.result == 'success'
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 90
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
+          test -n "${{ needs.fetch.outputs.seal_sha256 }}"
+          test -n "${{ needs.fetch.outputs.contract_sha256 }}"
 
       - name: Refuse static GCP keys
         env:
@@ -60,17 +150,23 @@ jobs:
           test -n "$GCP_LAB_PROJECT"
           test -n "$GCP_LAB_WIF_PROVIDER"
           test -n "$GCP_LAB_SERVICE_ACCOUNT"
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
 
-      - name: Checkout provision script
+      - name: Checkout delivery scripts
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           sparse-checkout: |
+            scripts/gcp/offline_deliver.py
             scripts/gcp/lab_auto.py
             scripts/gcp/lab_capabilities.json
+            scripts/gcp/fetch_offline_debs.sh
+            scripts/gcp/lab-guests/enterprise-rows.sh
+            scripts/aws/lab-guests/descendant_b1.py
           sparse-checkout-cone-mode: false
 
-      - name: Authenticate with workload identity
+      - name: Authenticate as vantio-lab-gha
+        id: auth
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
           workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
@@ -81,23 +177,152 @@ jobs:
         with:
           version: "588.0.0"
 
-      - name: Re-check the cap and refuse while launch is off
+      - name: Cost gate
         env:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          python3 scripts/gcp/lab_auto.py cost-gate | tee "$EVIDENCE_DIR/cost-gate.json"
+
+      - name: Download the bundle, re-verify it, and delete it
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+        run: python3 scripts/gcp/offline_deliver.py download-handoff
+
+      - name: Download pinned offline packages
+        env:
+          DEB_DIR: ${{ runner.temp }}/offline-debs
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: |
+          set -euo pipefail
+          bash scripts/gcp/fetch_offline_debs.sh "$DEB_DIR"
+          DEB_DIR="$DEB_DIR" python3 scripts/gcp/offline_deliver.py hash-debs
+
+      - name: Create the offline VM
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
         run: |
           set -euo pipefail
-          python3 scripts/gcp/lab_auto.py cost-gate | tee "$RUNNER_TEMP/gcp-lab-provision-gate.json"
-          export GCP_LAB_GATE_JSON="$(cat "$RUNNER_TEMP/gcp-lab-provision-gate.json")"
-          python3 scripts/gcp/lab_auto.py provision | tee "$RUNNER_TEMP/gcp-lab-provision.json"
+          export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
+          python3 scripts/gcp/offline_deliver.py create-instance
 
-      - name: Upload provision evidence
+      - name: Copy the bundle over IAP and run the batteries
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          DEB_DIR: ${{ runner.temp }}/offline-debs
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+          GUEST_SCRIPT: scripts/gcp/lab-guests/enterprise-rows.sh
+          DESCENDANT_SCRIPT: scripts/aws/lab-guests/descendant_b1.py
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
+        run: |
+          set -euo pipefail
+          export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
+          python3 scripts/gcp/offline_deliver.py run-batteries
+
+      - name: Delete the handoff prefix
+        if: always() && steps.auth.outcome == 'success'
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: python3 scripts/gcp/offline_deliver.py delete-handoff
+
+      - name: Remove the OS Login key
+        if: always() && steps.auth.outcome == 'success'
+        run: python3 scripts/gcp/offline_deliver.py remove-oslogin-key
+
+      - name: Delete the local bundle
+        if: always()
+        run: rm -rf "${{ runner.temp }}/enterprise-bundle"
+
+      - name: Upload row evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: gcp-lab-provision-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/gcp-lab-provision-gate.json
-            ${{ runner.temp }}/gcp-lab-provision.json
+          name: gcp-lab-rows-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-evidence/
+          if-no-files-found: warn
+
+  teardown:
+    name: Teardown and verify removal
+    needs: [fetch, deliver]
+    if: always()
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 25
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
+
+      - name: Refuse static GCP keys
+        env:
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          test -n "$GCP_LAB_PROJECT"
+          test -n "$GCP_LAB_WIF_PROVIDER"
+          test -n "$GCP_LAB_SERVICE_ACCOUNT"
+          test "$GCP_LAB_PROJECT" = "vantio-lab-oct08"
+
+      - name: Checkout teardown script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/gcp/offline_deliver.py
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Authenticate as vantio-lab-gha
+        id: auth
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Delete the VM and verify it is gone
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+        run: python3 scripts/gcp/offline_deliver.py teardown-if-present
+
+      - name: Upload teardown evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-teardown-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-evidence/
           if-no-files-found: warn
