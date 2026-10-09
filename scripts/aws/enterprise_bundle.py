@@ -31,8 +31,8 @@ BUNDLE_SCHEMA = "vantio.lab-enterprise-pe-bundle/v1"
 BUNDLE_REPO = "vantioai/vantio-enterprise-private"
 DEFAULT_BUNDLE_TAG = "lab-bundle/enterprise-pe-2026-10-08"
 # The release tag is deleted. These bytes live on this commit, which is not a tag.
-BUNDLE_COMMIT = "6aed2881377132290c10e16e016a28072765250d"
-BUNDLE_FILES = ("manifest.json", "seal.oci.tar", "contract.tar")
+BUNDLE_COMMIT = "6f3e86d11f37451081445cc7e7a243fd2e57e604"
+BUNDLE_FILES = ("manifest.json", "seal.oci.tar", "contract.tar", "public-pin.oci.tar")
 BUNDLE_TAG = re.compile(r"^lab-bundle/[A-Za-z0-9._-]{1,64}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")

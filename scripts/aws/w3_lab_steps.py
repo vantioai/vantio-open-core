@@ -43,6 +43,7 @@ SECRET = re.compile(
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
 DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "enterprise-rows.sh"
 DEFAULT_DESCENDANT_GUEST = Path(__file__).resolve().with_name("lab-guests") / "descendant_b1.py"
+DEFAULT_UPGRADE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "upgrade_rollback.py"
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
 SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
@@ -910,10 +911,15 @@ def execute_enterprise_rows(
             script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
             copy_to(script_path, "enterprise-rows.sh")
             battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
-            if battery not in ("enterprise", "descendant-b1"):
+            if battery not in ("enterprise", "descendant-b1", "upgrade-rollback"):
                 raise lab.GuardAbort("battery")
             payload["battery"] = battery
-            if battery == "descendant-b1":
+            if battery == "upgrade-rollback":
+                copy_to(bundle_dir / "public-pin.oci.tar", "public-pin.oci.tar")
+                upgrade = Path(os.environ.get("W3_UPGRADE_SCRIPT", str(DEFAULT_UPGRADE_GUEST)))
+                copy_to(upgrade, "upgrade_rollback.py")
+                ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "upgrade-rollback"], "")
+            elif battery == "descendant-b1":
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
                 pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
@@ -943,7 +949,12 @@ def execute_enterprise_rows(
             if ran.returncode != 0:
                 payload.update({"reason": "guest", "status": "FAILED"})
                 raise lab.GuardAbort("guest")
-            payload["status"] = "DESCENDANT_B1" if battery == "descendant-b1" else "ENTERPRISE_ROWS"
+            if battery == "descendant-b1":
+                payload["status"] = "DESCENDANT_B1"
+            elif battery == "upgrade-rollback":
+                payload["status"] = "UPGRADE_ROLLBACK"
+            else:
+                payload["status"] = "ENTERPRISE_ROWS"
         finally:
             if private is not None:
                 shred_file(private)

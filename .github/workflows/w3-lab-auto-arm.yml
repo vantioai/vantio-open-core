@@ -51,6 +51,7 @@ on:
         options:
           - enterprise
           - descendant-b1
+          - upgrade-rollback
 
 permissions:
   contents: read
@@ -95,6 +96,7 @@ jobs:
             scripts/aws/lab-guests/marker.sh
             scripts/aws/lab-guests/enterprise-rows.sh
             scripts/aws/lab-guests/descendant_b1.py
+            scripts/aws/lab-guests/upgrade_rollback.py
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
