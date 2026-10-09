@@ -99,16 +99,16 @@ class SealRecipeTest(unittest.TestCase):
         combined = "\n".join((docs / name).read_text(encoding="utf-8") for name in names)
         artifact = (docs / "ARTIFACT-PATH.md").read_text(encoding="utf-8")
         stage_b = (docs / "STAGE-B-ARTIFACT-PATH.md").read_text(encoding="utf-8")
-        basename = "vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar"
+        basename = "vantio-phantom-engine-policy-allow-df61d97-linux-amd64.oci.tar"
         self.assertIn(basename, artifact)
         self.assertIn(basename, stage_b)
         self.assertIn(
-            "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
+            "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753",
             artifact,
         )
-        self.assertIn("06696d5020700693b0154c59d0e072a24f648378", artifact)
+        self.assertIn("df61d976a81f44e6165b87d40c493a850a247891", artifact)
         self.assertIn(
-            "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19",
+            "sha256:ef67950f2635f2d2a90fb9fdfc9213be56a118dc5b56af72dd95df8b8031154c",
             artifact,
         )
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", artifact)
