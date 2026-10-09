@@ -48,6 +48,8 @@ STEPS: dict[str, dict[str, object]] = {
             "associate_public_ipv4",
             "purpose",
             "expires_in_minutes",
+            "image_id",
+            "describe_only",
         ),
     },
     "arm": {
@@ -78,7 +80,7 @@ STEPS: dict[str, dict[str, object]] = {
     "long-soak": {
         "workflow": "w3-lab-auto-long-soak.yml",
         "launches": True,
-        "inputs": ("soak_hours", "instance_type", "associate_public_ipv4", "execute"),
+        "inputs": ("soak_hours", "instance_type", "associate_public_ipv4", "execute", "image_id"),
     },
 }
 
@@ -132,6 +134,10 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("instance_type")
         if key == "associate_public_ipv4" and value not in ("true", "false"):
             raise TriggerError("associate_public_ipv4")
+        if key == "describe_only" and value not in ("true", "false"):
+            raise TriggerError("describe_only")
+        if key == "image_id" and re.fullmatch(r"ami-[0-9a-f]{8,17}", value) is None:
+            raise TriggerError("image_id")
 
 
 def dispatch_argv(step: str, fields: Mapping[str, str]) -> list[str]:
@@ -148,7 +154,7 @@ def dispatch_argv(step: str, fields: Mapping[str, str]) -> list[str]:
 
 
 def needs_slot_ack(step: str, fields: Mapping[str, str]) -> bool:
-    if step == "launch":
+    if step == "launch" and fields.get("describe_only") != "true":
         return True
     if step == "long-soak" and fields.get("execute") == "true":
         return True
@@ -161,7 +167,7 @@ def plan_payload(step: str, fields: Mapping[str, str], source_env: Mapping[str, 
         "argv": dispatch_argv(step, fields),
         "aws_env_stripped": stripped,
         "executed": False,
-        "launches_ec2": bool(STEPS[step]["launches"]),
+        "launches_ec2": bool(STEPS[step]["launches"]) and not (step == "launch" and fields.get("describe_only") == "true"),
         "ref": REF,
         "repo": REPO,
         "step": step,

@@ -124,6 +124,33 @@ class TriggerTests(unittest.TestCase):
         self.assertNotIn("w3-lab-auto-provision.yml", argv)
         self.assertNotIn("aws", argv)
 
+    def test_describe_only_does_not_need_the_slot_ack(self) -> None:
+        seen: dict[str, object] = {}
+
+        def gh(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            seen["argv"] = list(argv)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        status = trigger.main(
+            [
+                "dispatch",
+                "launch",
+                "--execute",
+                "--field",
+                "describe_only=true",
+                "--field",
+                "image_id=ami-0fa99aa8f97f9e30b",
+            ],
+            environ={"PATH": "/usr/bin"},
+            gh_runner=gh,
+        )
+        self.assertEqual(status, 0)
+        argv = seen["argv"]
+        assert isinstance(argv, list)
+        self.assertIn("describe_only=true", argv)
+        self.assertIn("image_id=ami-0fa99aa8f97f9e30b", argv)
+        self.assertNotIn("run-instances", argv)
+
     def test_bundle_tag_outside_the_lab_prefix_is_refused(self) -> None:
         with self.assertRaises(trigger.TriggerError):
             trigger.validate_fields("arm", {"bundle_tag": "v1.2.3"})
