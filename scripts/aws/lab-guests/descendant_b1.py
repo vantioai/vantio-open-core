@@ -195,7 +195,7 @@ def main() -> int:
         "b1_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")) and not same_boot,
     }
     OUT_PATH.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    return 0
+    return 0 if result["b1_pass"] else 1
 
 
 if __name__ == "__main__":

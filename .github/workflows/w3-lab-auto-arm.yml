@@ -94,6 +94,7 @@ jobs:
             scripts/aws/lab_iam_capabilities.json
             scripts/aws/lab-guests/marker.sh
             scripts/aws/lab-guests/enterprise-rows.sh
+            scripts/aws/lab-guests/descendant_b1.py
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
