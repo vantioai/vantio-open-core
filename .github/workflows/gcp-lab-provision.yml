@@ -141,10 +141,19 @@ jobs:
           path: ${{ runner.temp }}/gcp-lab-evidence/
           if-no-files-found: warn
 
-  deliver:
-    name: Deliver offline VM
+  gate:
+    name: Pre-run cost check
     needs: fetch
     if: needs.fetch.result == 'success'
+    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust
+    permissions:
+      contents: read
+      id-token: write
+
+  deliver:
+    name: Deliver offline VM
+    needs: [fetch, gate]
+    if: needs.fetch.result == 'success' && needs.gate.outputs.expected_oop_usd == '0'
     runs-on: ubuntu-latest
     environment: gcp-lab
     timeout-minutes: 90
