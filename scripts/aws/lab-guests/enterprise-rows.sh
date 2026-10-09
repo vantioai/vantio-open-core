@@ -83,4 +83,15 @@ load=$(sudo docker load -i "$here/seal.oci.tar" 2>&1)
 printf '%s\n' "$load"
 image=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
 test "$image" = "$image_name"
+mode=${2:-enterprise}
+phase=${3:-pre}
+if [ "$mode" = "descendant-b1" ]; then
+  sudo env VANTIO_IMAGE="$image" python3 "$here/descendant_b1.py" "$stage" "$phase"
+  rc=$?
+  if [ "$phase" = "pre" ]; then
+    sync
+    sudo reboot || true
+  fi
+  exit "$rc"
+fi
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"

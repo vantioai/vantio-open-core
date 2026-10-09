@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -41,6 +42,7 @@ SECRET = re.compile(
 )
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
 DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "enterprise-rows.sh"
+DEFAULT_DESCENDANT_GUEST = Path(__file__).resolve().with_name("lab-guests") / "descendant_b1.py"
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
 SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
@@ -776,6 +778,37 @@ def _ssh_base(private: Path, known: Path, host: str) -> list[str]:
     ]
 
 
+def _wait_for_reboot(
+    runner: Runner,
+    instance_id: str,
+    remote: Callable[[list[str], str], subprocess.CompletedProcess[str]],
+    connect_with_key: list[str],
+) -> None:
+    """Wait until SSH drops for the reboot, then comes back with a new key."""
+    deadline = time.time() + 300
+    dropped = False
+    while time.time() < deadline:
+        probe = remote(["true"], "")
+        if probe.returncode != 0:
+            dropped = True
+            break
+        time.sleep(2)
+    if not dropped:
+        raise lab.GuardAbort("reboot_timeout")
+    while time.time() < deadline:
+        instance = describe_instance(runner, instance_id)
+        if instance is not None and instance_state(instance) == "running":
+            try:
+                lab.aws_json(runner, connect_with_key)
+            except lab.GuardAbort:
+                time.sleep(5)
+                continue
+            if remote(["true"], "").returncode == 0:
+                return
+        time.sleep(5)
+    raise lab.GuardAbort("reboot_timeout")
+
+
 def execute_enterprise_rows(
     runner: Runner,
     *,
@@ -876,7 +909,18 @@ def execute_enterprise_rows(
             copy_to(bundle_dir / "contract.tar", "contract.tar")
             script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
             copy_to(script_path, "enterprise-rows.sh")
-            ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
+            battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
+            if battery not in ("enterprise", "descendant-b1"):
+                raise lab.GuardAbort("battery")
+            payload["battery"] = battery
+            if battery == "descendant-b1":
+                descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
+                copy_to(descendant, "descendant_b1.py")
+                remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
+                _wait_for_reboot(runner, instance_id, remote, connect + [public])
+                ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
+            else:
+                ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             pulled = ssh_runner(
                 ["scp", *base[:-1], f"ubuntu@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
@@ -893,7 +937,7 @@ def execute_enterprise_rows(
             if ran.returncode != 0:
                 payload.update({"reason": "guest", "status": "FAILED"})
                 raise lab.GuardAbort("guest")
-            payload["status"] = "ENTERPRISE_ROWS"
+            payload["status"] = "DESCENDANT_B1" if battery == "descendant-b1" else "ENTERPRISE_ROWS"
         finally:
             if private is not None:
                 shred_file(private)
