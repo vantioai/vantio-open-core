@@ -55,6 +55,7 @@ class FakeAws:
                             "Public": True,
                             "CreationDate": "2026-09-01T00:00:00.000Z",
                             "ProductCodes": [],
+                            "BlockDeviceMappings": [{"Ebs": {"SnapshotId": "snap-0123456789abcdef0"}}],
                         }
                     ]
                 }
@@ -347,6 +348,28 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertNotIn("run-instances", runner.commands())
         self.assertNotIn("create-security-group", runner.commands())
 
+    def test_debian_describe_records_the_official_name_and_snapshot(self) -> None:
+        payload = {
+            "Images": [
+                {
+                    "ImageId": "ami-063d15a058243cf84",
+                    "State": "available",
+                    "OwnerId": lab.DEBIAN_OWNER,
+                    "Name": "debian-12-amd64-20261006-2623",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                    "ProductCodes": [],
+                    "BlockDeviceMappings": [{"Ebs": {"SnapshotId": "snap-0a01c7c7b7c87682a"}}],
+                }
+            ]
+        }
+        facts = lab.image_facts(payload, "ami-063d15a058243cf84")
+        self.assertEqual(facts["image_name"], "debian-12-amd64-20261006-2623")
+        self.assertEqual(facts["image_owner"], lab.DEBIAN_OWNER)
+        self.assertEqual(facts["snapshot_ids"], ["snap-0a01c7c7b7c87682a"])
+
     def test_describe_only_does_not_launch(self) -> None:
         runner = FakeAws()
         saved = {key: os.environ.get(key) for key in ("COST_GATE_FILE", "DESCRIBE_ONLY", "IMAGE_ID", "EVIDENCE_PATH")}
@@ -367,6 +390,9 @@ class LaunchShapeTests(unittest.TestCase):
                         os.environ[key] = value
         self.assertEqual(result["image_id"], lab.PINNED_IMAGE_ID)
         self.assertEqual(result["image_state"], "available")
+        self.assertEqual(result["image_owner"], lab.CANONICAL_OWNER)
+        self.assertIn("ubuntu-noble-24.04-amd64-server", result["image_name"])
+        self.assertEqual(result["snapshot_ids"], ["snap-0123456789abcdef0"])
         self.assertFalse(result["launched"])
         self.assertNotIn("run-instances", runner.commands())
         self.assertNotIn("create-security-group", runner.commands())
