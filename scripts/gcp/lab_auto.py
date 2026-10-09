@@ -301,6 +301,7 @@ def provision_argv(plan: Mapping[str, Any], script_path: str) -> list[str]:
         "--boot-disk-type=pd-balanced",
         "--no-address",
         "--no-service-account",
+        "--no-scopes",
         "--shielded-secure-boot",
         "--shielded-vtpm",
         "--shielded-integrity-monitoring",

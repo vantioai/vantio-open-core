@@ -138,6 +138,7 @@ class LabAutoTest(unittest.TestCase):
         argv = lab.provision_argv(plan, "/tmp/startup.sh")
         self.assertIn("--no-address", argv)
         self.assertIn("--no-service-account", argv)
+        self.assertIn("--no-scopes", argv)
         self.assertIn("--shielded-secure-boot", argv)
         joined = " ".join(argv)
         self.assertNotIn("navera", joined)
