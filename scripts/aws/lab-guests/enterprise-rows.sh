@@ -86,9 +86,16 @@ test "$image" = "$image_name"
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
-  sudo env VANTIO_IMAGE="$image" python3 "$here/descendant_b1.py" "$stage" "$phase"
+  printf 'IMAGE_LINE=%s\n' "$image"
+  set +e
+  sudo env VANTIO_IMAGE="$image" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
   rc=$?
-  if [ "$phase" = "pre" ]; then
+  set -e
+  cat /tmp/descendant-b1.out
+  if [ ! -s /tmp/enterprise-pe-rows.json ]; then
+    cp /tmp/descendant-b1.out /tmp/enterprise-pe-rows.json
+  fi
+  if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
     sudo reboot || true
   fi
