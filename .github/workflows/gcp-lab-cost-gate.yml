@@ -1,0 +1,106 @@
+name: GCP lab cost gate
+
+# Read-only gate for the Vantio GCP lab. Dispatch or call from main only.
+# Workload identity, after the file is on main:
+#   repo:vantioai/vantio-open-core:ref:refs/heads/main
+#   job_workflow_ref:
+#   vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main
+# expected_oop_usd is 0 only when this lab project's own labels and billing
+# link can cover a $1 ceiling. The job does not list another project's IAM
+# and does not bind a billing-account role. A green gate does not start a VM
+# and does not install Phantom Engine.
+
+on:
+  workflow_call:
+    outputs:
+      expected_oop_usd:
+        description: Zero only when the lab cap check passes.
+        value: ${{ jobs.gate.outputs.expected_oop_usd }}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-lab-cost-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Abort unless expected out-of-pocket is $0
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 10
+    outputs:
+      expected_oop_usd: ${{ steps.eval.outputs.expected_oop_usd }}
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch|workflow_call) ;;
+            *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse static GCP keys
+        env:
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          test -n "$GCP_LAB_PROJECT"
+          test -n "$GCP_LAB_WIF_PROVIDER"
+          test -n "$GCP_LAB_SERVICE_ACCOUNT"
+
+      - name: Checkout gate script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Evaluate the lab cap
+        id: eval
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/lab_auto.py cost-gate | tee "$RUNNER_TEMP/gcp-lab-cost-gate.json"
+          python3 - "$RUNNER_TEMP/gcp-lab-cost-gate.json" "$GITHUB_OUTPUT" << 'PY'
+          import json, sys
+          decision = json.load(open(sys.argv[1], encoding="utf-8"))
+          with open(sys.argv[2], "a", encoding="utf-8") as handle:
+              handle.write(f"expected_oop_usd={decision['expected_oop_usd']}\n")
+          if decision["expected_oop_usd"] != "0":
+              raise SystemExit(2)
+          PY
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-cost-gate-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-cost-gate.json
+          if-no-files-found: warn

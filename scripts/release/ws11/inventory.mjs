@@ -8,16 +8,18 @@ export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..
 const SKIP_DIRS = new Set([".git", "node_modules", "dist", "__pycache__", ".pytest_cache"]);
 const BINDING_ACTION = /@(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})(?:\s+#\s*\S+)?$/i;
 const ACTION_USES_LINE = /^\s*(?:-\s+)?uses:\s*(\S+)(?:\s+#\s*(\S+))?\s*$/gm;
-// Same-repo reusable workflow called at @main. GitHub accepts a branch, tag,
+// Same-repo reusable workflows called at @main. GitHub accepts a branch, tag,
 // or commit in uses, and rejects @refs/heads/main with HTTP 422. The OIDC
 // job_workflow_ref for that branch is still ...@refs/heads/main. A commit SHA
-// would change that claim. This is one exact string, not a general floating-ref allowance.
-const SAME_REPO_MAIN_WORKFLOW =
-  "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust";
+// would change that claim. These are exact strings, not a general floating-ref allowance.
+const SAME_REPO_MAIN_WORKFLOWS = new Set([
+  "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust",
+  "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust",
+]);
 
 export function classifyActionUse(uses) {
   if (BINDING_ACTION.test(uses)) return { digest_pinned: true, pin_kind: "digest" };
-  if (uses === SAME_REPO_MAIN_WORKFLOW) return { digest_pinned: false, pin_kind: "same_repo_refs_heads_main" };
+  if (SAME_REPO_MAIN_WORKFLOWS.has(uses)) return { digest_pinned: false, pin_kind: "same_repo_refs_heads_main" };
   return { digest_pinned: false, pin_kind: "floating" };
 }
 

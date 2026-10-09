@@ -1,0 +1,96 @@
+name: GCP lab sweeper
+
+# Backstop for the guest shutdown. Cron is every 30 minutes, plus dispatch.
+# Deletes only an owned vantio-gcp-lab- VM whose expiry label is in the past,
+# and only after scripts/gcp/lab_capabilities.json sets sweeper_enabled to true.
+# That switch ships false, so a run lists nothing to delete until Zach changes it.
+# Empty repository variables exit 0 with SWEEPER_NOT_ARMED and do not authenticate.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-lab-one-vm
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Delete expired owned lab VMs
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 15
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          case "$GITHUB_EVENT_NAME" in
+            schedule|workflow_dispatch) ;;
+            *) echo "unexpected event $GITHUB_EVENT_NAME" >&2; exit 1 ;;
+          esac
+
+      - name: Stop when the lab is not armed
+        id: arm
+        env:
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          if [ -z "$GCP_LAB_PROJECT" ] || [ -z "$GCP_LAB_WIF_PROVIDER" ] || [ -z "$GCP_LAB_SERVICE_ACCOUNT" ]; then
+            echo "SWEEPER_NOT_ARMED"
+            echo "armed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "armed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout sweeper script
+        if: steps.arm.outputs.armed == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Authenticate with workload identity
+        if: steps.arm.outputs.armed == 'true'
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        if: steps.arm.outputs.armed == 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Sweep owned instances
+        if: steps.arm.outputs.armed == 'true'
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/lab_auto.py sweep | tee "$RUNNER_TEMP/gcp-lab-sweep.json"
+
+      - name: Upload sweep evidence
+        if: always() && steps.arm.outputs.armed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-sweep-${{ github.run_id }}
+          path: ${{ runner.temp }}/gcp-lab-sweep.json
+          if-no-files-found: warn

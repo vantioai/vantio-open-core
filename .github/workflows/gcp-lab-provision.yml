@@ -1,0 +1,103 @@
+name: GCP lab provision
+
+# One e2-micro in us-central1-a. Dispatch from main only.
+# The cost gate runs first. Create runs only when expected_oop_usd is 0
+# and scripts/gcp/lab_capabilities.json has launch_enabled set to true.
+# That switch ships false, so this workflow refuses before it creates anything.
+# No public IP. No VM service account. No JSON key. Phantom Engine is not installed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stop_after_minutes:
+        description: Guest shutdown delay in minutes. 1 through 120.
+        required: true
+        default: "30"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-lab-one-vm
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Pre-run cost check
+    uses: vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust
+    permissions:
+      contents: read
+      id-token: write
+
+  provision:
+    name: Provision one lab VM
+    needs: gate
+    if: needs.gate.outputs.expected_oop_usd == '0'
+    runs-on: ubuntu-latest
+    environment: gcp-lab
+    timeout-minutes: 20
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Refuse static GCP keys
+        env:
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
+            echo "static GCP credentials are present" >&2
+            exit 1
+          fi
+          test -n "$GCP_LAB_PROJECT"
+          test -n "$GCP_LAB_WIF_PROVIDER"
+          test -n "$GCP_LAB_SERVICE_ACCOUNT"
+
+      - name: Checkout provision script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/gcp/lab_auto.py
+            scripts/gcp/lab_capabilities.json
+          sparse-checkout-cone-mode: false
+
+      - name: Authenticate with workload identity
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          version: "588.0.0"
+
+      - name: Re-check the cap and refuse while launch is off
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gcp/lab_auto.py cost-gate | tee "$RUNNER_TEMP/gcp-lab-provision-gate.json"
+          export GCP_LAB_GATE_JSON="$(cat "$RUNNER_TEMP/gcp-lab-provision-gate.json")"
+          python3 scripts/gcp/lab_auto.py provision | tee "$RUNNER_TEMP/gcp-lab-provision.json"
+
+      - name: Upload provision evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gcp-lab-provision-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/gcp-lab-provision-gate.json
+            ${{ runner.temp }}/gcp-lab-provision.json
+          if-no-files-found: warn
