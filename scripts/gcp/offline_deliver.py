@@ -368,7 +368,7 @@ def iap_ssh_argv(project: str, name: str, command: str) -> list[str]:
         "--quiet",
         "--strict-host-key-checking=no",
         "--ssh-flag=-oServerAliveInterval=30",
-        "--ssh-flag=-oServerAliveCountMax=120",
+        "--ssh-flag=-oServerAliveCountMax=20",
         "--command",
         command,
     ]
@@ -399,7 +399,7 @@ def iap_scp_argv(project: str, sources: Sequence[str], destination: str) -> list
         "--quiet",
         "--strict-host-key-checking=no",
         "--ssh-flag=-oServerAliveInterval=30",
-        "--ssh-flag=-oServerAliveCountMax=120",
+        "--ssh-flag=-oServerAliveCountMax=20",
         *list(sources),
         destination,
     ]
@@ -765,6 +765,23 @@ def _load_json_file(path: Path) -> Any:
         return None
 
 
+RAW_GUEST_NAMES = (
+    "gcp-plumb.json",
+    "enterprise-rows.json",
+    "kernel-facts.json",
+    "descendant-b1.json",
+)
+
+
+def drop_guest_copies(directory: Path) -> None:
+    """Guest files are folded into the redacted evidence JSON. The raw copies
+    must not sit in the directory that becomes a public artifact."""
+    for name in RAW_GUEST_NAMES:
+        path = directory / name
+        path.unlink(missing_ok=True)
+        path.with_name(name + ".sha256").unlink(missing_ok=True)
+
+
 def _stored_guest(path: Path, fallback: str) -> Any:
     if path.is_file():
         parsed = _load_json_file(path)
@@ -891,6 +908,7 @@ def plumb_guest(env: Mapping[str, str]) -> int:
         print(json.dumps(result))
         return 0
     finally:
+        drop_guest_copies(evidence)
         if payload_dir.exists():
             shutil.rmtree(payload_dir, ignore_errors=True)
         remove_os_login_key()
@@ -981,6 +999,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
         print(json.dumps({"enterprise_rc": guest_rc, "descendant_rc": descendant_rc, "claim_cap": CLAIM_CAP}))
         return 0
     finally:
+        drop_guest_copies(evidence)
         if payload_dir.exists():
             shutil.rmtree(payload_dir, ignore_errors=True)
         remove_os_login_key()

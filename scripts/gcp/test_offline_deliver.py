@@ -159,6 +159,17 @@ class OfflineDeliverTest(unittest.TestCase):
             self.assertNotIn("ghp_", text)
             self.assertIn("[redacted]", text)
 
+    def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            for name in od.RAW_GUEST_NAMES:
+                (directory / name).write_text('{"token": "ghp_' + "a" * 20 + '"}\n', encoding="utf-8")
+            (directory / "gcp-lab-rows.json").write_text("{}\n", encoding="utf-8")
+            od.drop_guest_copies(directory)
+            self.assertTrue((directory / "gcp-lab-rows.json").is_file())
+            for name in od.RAW_GUEST_NAMES:
+                self.assertFalse((directory / name).exists())
+
     def test_deb_pack_is_flat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
