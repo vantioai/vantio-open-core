@@ -225,6 +225,25 @@ def kill_loader() -> int:
     return proc.returncode
 
 
+def standin_after_sigkill() -> dict:
+    """SIGKILL does not remove the mode-0 fail-closed bind mount. That is acceptable."""
+    record = Path("/run/vantio-failclosed-mounts")
+    text = ""
+    if record.is_file():
+        try:
+            text = record.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+    proc = rows.sudo(["findmnt", "-n", "-T", "/var/lib/vantio-pe-clean-host/d/secret"])
+    mount = (proc.stdout or "").strip()
+    remains = bool(text.strip()) or "vantio-sealed" in mount
+    return {
+        "standin_mount_remains": remains,
+        "standin_record_present": bool(text.strip()),
+        "note": "SIGKILL leaves the mode-0 stand-in bind mount in place. That is acceptable.",
+    }
+
+
 def loader_running() -> bool:
     return rows.run(["pgrep", "-x", "vantio-loader"]).returncode == 0
 
@@ -257,6 +276,7 @@ def run_2c() -> dict:
     time.sleep(0.4)
     attributed_before = isinstance(first.get("pid"), int) and attributed(first["pid"], "DENIED")
     kill_loader()
+    standin = standin_after_sigkill()
     restarted = rows.start_loader(adapter)
     if restarted["rc"] != 0:
         raise SystemExit(f"restart loader {restarted['rc']}")
@@ -280,6 +300,7 @@ def run_2c() -> dict:
     graded["deny_after"] = second
     graded["attributed_before"] = attributed_before
     graded["attributed_after"] = attributed_after
+    graded["standin_after_sigkill"] = standin
     return graded
 
 
@@ -287,6 +308,7 @@ def run_2d() -> dict:
     _adapter, digest = prepare_enforce()
     up = child_open(True)
     kill_loader()
+    standin = standin_after_sigkill()
     if loader_running():
         raise SystemExit("loader_still_up")
     enrolled = child_open(True)
@@ -304,6 +326,7 @@ def run_2d() -> dict:
     graded["unenrolled_after"] = unenrolled
     graded["file_after_enrolled"] = enrolled.get("file_errno")
     graded["file_attributed"] = file_attributed
+    graded["standin_after_sigkill"] = standin
     return graded
 
 
@@ -322,6 +345,7 @@ def run_2e() -> dict:
 def run_2f() -> dict:
     _adapter, digest = prepare_enforce()
     kill_loader()
+    standin = standin_after_sigkill()
     still = loader_running()
     enrolled = child_open(True)
     unenrolled = child_open(False)
@@ -341,6 +365,7 @@ def run_2f() -> dict:
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
     graded["file_attributed"] = file_attributed
+    graded["standin_after_sigkill"] = standin
     graded["bpf_pin_sample"] = pins
     graded["policy_malformed"] = False
     return graded
