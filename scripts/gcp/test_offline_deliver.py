@@ -203,6 +203,8 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertEqual(len(kept["repeats"]), 2)
         self.assertIn("grant", kept["repeats"][0]["rows"])
         self.assertIn("revoke", kept["repeats"][0]["rows"])
+        duplicated = [self._passing_repeat(1), self._passing_repeat(1)]
+        self.assertFalse(od.full_set_passes(duplicated))
 
     def test_teardown_deletes_the_bucket_when_listing_fails(self) -> None:
         calls: list[tuple[str, ...]] = []
@@ -280,6 +282,26 @@ class OfflineDeliverTest(unittest.TestCase):
             od.prune_evidence(directory)
             self.assertFalse((directory / "teardown.json.sha256").exists())
             self.assertFalse(nested.exists())
+
+    def test_prune_unlinks_guest_symlinks_and_survives_bad_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "evidence"
+            directory.mkdir()
+            outside = root / "outside"
+            outside.mkdir()
+            secret = outside / "secret.txt"
+            secret.write_text("ghp_" + "a" * 20, encoding="utf-8")
+            link = directory / "gcp-plumb.json"
+            link.symlink_to(outside, target_is_directory=True)
+            (directory / "debs.json").write_bytes(b"\xff\xfe")
+            (directory / "handoff.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse(link.exists())
+            self.assertTrue(secret.is_file())
+            self.assertFalse((directory / "debs.json").exists())
+            self.assertFalse((directory / "handoff.json.sha256").exists())
+            self.assertEqual(list(directory.iterdir()), [])
 
     def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

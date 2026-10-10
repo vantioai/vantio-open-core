@@ -394,7 +394,12 @@ def battery_schedule(repeats: int = BATTERY_REPEATS) -> list[str]:
 def full_set_passes(repeats: Sequence[Mapping[str, Any]]) -> bool:
     if len(repeats) != BATTERY_REPEATS:
         return False
+    indexes: list[int] = []
     for entry in repeats:
+        index = entry.get("repeat")
+        if not isinstance(index, int) or isinstance(index, bool):
+            return False
+        indexes.append(index)
         if entry.get("enterprise_rc") != 0 or entry.get("descendant_rc") != 0:
             return False
         if entry.get("b1_pass") is not True or entry.get("reboot_observed") is not True:
@@ -406,7 +411,7 @@ def full_set_passes(repeats: Sequence[Mapping[str, Any]]) -> bool:
         rows = entry.get("rows")
         if not isinstance(rows, dict) or "grant" not in rows or "revoke" not in rows:
             return False
-    return True
+    return indexes == list(range(1, BATTERY_REPEATS + 1))
 
 
 def write_evidence(path: Path, payload: Mapping[str, Any]) -> None:
@@ -1071,10 +1076,20 @@ RAW_GUEST_NAMES = (
 
 
 def _remove_evidence_path(path: Path) -> None:
-    if path.is_dir():
-        shutil.rmtree(path, ignore_errors=True)
-        return
-    path.unlink(missing_ok=True)
+    """Remove a file, directory, or symlink without following the link."""
+    try:
+        if path.is_symlink():
+            path.unlink(missing_ok=True)
+            return
+        if path.is_dir():
+            shutil.rmtree(path)
+            return
+        path.unlink(missing_ok=True)
+    except OSError:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            return
 
 
 def drop_guest_copies(directory: Path) -> None:
@@ -1089,43 +1104,44 @@ def prune_evidence(directory: Path) -> list[str]:
     """Leave only allowlisted evidence files, rewritten through the key allowlist."""
     drop_guest_copies(directory)
     kept: list[str] = []
-    for path in list(directory.iterdir()):
-        if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
-            continue
-        if not path.is_file():
-            path.unlink(missing_ok=True)
-            continue
-        stem = path.name[:-7] if path.name.endswith(".sha256") else path.name
-        if stem not in EVIDENCE_FILES:
-            path.unlink()
-            continue
-        if path.suffix != ".json":
-            continue
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            path.unlink()
-            path.with_name(path.name + ".sha256").unlink(missing_ok=True)
-            continue
-        if not isinstance(payload, dict):
-            _remove_evidence_path(path)
-            _remove_evidence_path(path.with_name(path.name + ".sha256"))
-            continue
-        try:
-            write_evidence(path, payload)
-        except SystemExit:
-            _remove_evidence_path(path)
-            _remove_evidence_path(path.with_name(path.name + ".sha256"))
-            continue
-        kept.append(path.name)
-    for path in list(directory.iterdir()):
-        if path.name.endswith(".sha256"):
-            if not (directory / path.name[:-7]).is_file():
+    try:
+        for path in list(directory.iterdir()):
+            try:
+                if path.is_symlink() or path.is_dir() or not path.is_file():
+                    _remove_evidence_path(path)
+                    continue
+                stem = path.name[:-7] if path.name.endswith(".sha256") else path.name
+                if stem not in EVIDENCE_FILES:
+                    _remove_evidence_path(path)
+                    continue
+                if path.suffix != ".json":
+                    continue
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+                    _remove_evidence_path(path)
+                    _remove_evidence_path(path.with_name(path.name + ".sha256"))
+                    continue
+                if not isinstance(payload, dict):
+                    _remove_evidence_path(path)
+                    _remove_evidence_path(path.with_name(path.name + ".sha256"))
+                    continue
+                write_evidence(path, payload)
+                kept.append(path.name)
+            except (OSError, UnicodeError, ValueError, SystemExit):
                 _remove_evidence_path(path)
-            continue
-        if path.name not in EVIDENCE_FILES:
-            _remove_evidence_path(path)
+                _remove_evidence_path(path.with_name(path.name + ".sha256"))
+    finally:
+        for path in list(directory.iterdir()):
+            if path.is_symlink() or path.is_dir():
+                _remove_evidence_path(path)
+                continue
+            if path.name.endswith(".sha256"):
+                if not (directory / path.name[:-7]).is_file():
+                    _remove_evidence_path(path)
+                continue
+            if path.name not in EVIDENCE_FILES:
+                _remove_evidence_path(path)
     return sorted(kept)
 
 
