@@ -469,6 +469,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("python3-cryptography", text)
         self.assertIn("ca-certificates", text)
         self.assertLess(text.index("apt-get install -y --no-install-recommends ca-certificates"), text.index("snapshot.debian.org"))
+        self.assertLess(text.index("--download-only"), text.index("apt-get download ca-certificates"))
         self.assertIn("ca-certificates.crt", text)
 
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
