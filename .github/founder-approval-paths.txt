@@ -1,0 +1,18 @@
+# Paths that change the public installer pin or customer-facing install docs.
+# A pull request touching any of these needs the founder-approved label,
+# applied by a repository admin after the latest push.
+# fnmatch globs, matched against the repo-relative path (old and new path on renames).
+packages/vantio-install/vantio_install/constants.py
+packages/vantio-install/README.md
+packages/vantio-install/docs/*
+packages/vantio-install/bin/*
+packages/vantio-install/config/*
+packages/vantio-install/pyproject.toml
+README.md
+docs/quickstart.md
+docs/getting-started-tier01.md
+docs/products/*
+# The guard protects itself.
+.github/founder-approval-paths.txt
+.github/workflows/founder-approval-guard.yml
+scripts/ci/founder_approval_guard.py

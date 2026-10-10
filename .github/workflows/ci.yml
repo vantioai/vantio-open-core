@@ -108,6 +108,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_eip.py -v
           python3 scripts/gcp/test_lab_auto.py -v
           python3 scripts/gcp/test_offline_deliver.py -v
+          python3 scripts/ci/test_founder_approval_guard.py -v
 
   candidate-artifacts:
     name: Build release candidates (no registry write)
