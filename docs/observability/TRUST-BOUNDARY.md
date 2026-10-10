@@ -14,7 +14,9 @@ The OTLP attribute `vantio.attestation` is the label `in-process`. A receiver ca
 
 The boundary that would close this is a source identity signed outside the observed process, checked before send. The signer is Phantom Engine, or the Enterprise evidence signer, over the canonical event bytes. The exporter rejects an event whose signature does not verify. A co-resident caller does not hold that key, so it cannot mint the signature. The in-process token is not that key.
 
-This repository does not implement that check. No production signing root is used here. A test key shipped beside the exporter would not close the gap: the same process can read it.
+`canonicalEventBytes` and `checkBeforeSend` are that check. `checkBeforeSend` runs before a batch is sent when `externalTrust.publicKey` is set. A missing or invalid signature is not sent. `trust.authorized: true` is refused. `PRODUCT_OTLP_EXPORT_AUTHORIZED` stays false, and the OTLP label stays `in-process`, including after a signature verifies. The public key has to be the Phantom Engine or Enterprise signer key, supplied from outside this process. A key generated beside the exporter does not close the residual, because the same process can read a private key that lives with it.
+
+No production signing root is used here.
 
 A valid base64 value is checked before a host name is lowercased. Lowercasing first hid a mixed-case base64 canary from the decoder. A string that was already case-folded in the base64 alphabet does not decode back to the original text, so it is not that canary.
 

@@ -12,6 +12,7 @@ const { SCHEMA_VERSION } = require("./schema.cjs");
 const { project } = require("./privacy.cjs");
 const { logsJson, logsProto, tracesJson, tracesProto } = require("./otlp.cjs");
 const { syslogLine } = require("./syslog.cjs");
+const { checkBeforeSend } = require("./source-signature.cjs");
 
 function producerToken() {
   return randomBytes(16).toString("hex");
@@ -50,6 +51,58 @@ function digestEvent(event) {
   const encoded = stableEvent(event, new Set());
   if (encoded == null) return null;
   return createHash("sha256").update(encoded).digest("hex");
+}
+
+function canonicalEventBytes(event) {
+  const encoded = stableEvent(event, new Set());
+  if (!encoded) return null;
+  return Buffer.from(encoded);
+}
+
+function contentTypeOf(headers) {
+  return String(headers["content-type"] || "").toLowerCase();
+}
+
+function looksLikeHtml(body) {
+  const head = body.slice(0, 64).toString("utf8").trim().toLowerCase();
+  return head.startsWith("<!doctype") || head.startsWith("<html") || head.startsWith("<head") || head.startsWith("<body");
+}
+
+function notOtlp() {
+  return Object.assign(new Error("NOT_OTLP"), { code: "HTTP_NOT_OTLP" });
+}
+
+function otlpHttpError(protocol, statusCode, headers, body) {
+  if (statusCode < 200 || statusCode >= 300) {
+    return Object.assign(new Error("HTTP_STATUS"), { code: `HTTP_${statusCode}` });
+  }
+  const type = contentTypeOf(headers);
+  if (type.includes("text/html") || looksLikeHtml(body)) return notOtlp();
+  if (protocol === "otlp-http-protobuf") {
+    if (type.includes("json") || type.includes("text/")) return notOtlp();
+    if (body.length && (body[0] === 0x7b || body[0] === 0x3c)) return notOtlp();
+    return null;
+  }
+  if (type.includes("protobuf") || type.includes("octet-stream")) return notOtlp();
+  const text = body.toString("utf8").trim();
+  if (text === "") return type.includes("json") ? null : notOtlp();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return notOtlp();
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return notOtlp();
+  for (const key of Object.keys(parsed)) {
+    if (key !== "partialSuccess") return notOtlp();
+  }
+  if (parsed.partialSuccess == null) return null;
+  const partial = parsed.partialSuccess;
+  if (!partial || typeof partial !== "object" || Array.isArray(partial)) return notOtlp();
+  for (const key of Object.keys(partial)) {
+    if (key !== "rejectedSpans" && key !== "rejectedLogRecords" && key !== "errorMessage") return notOtlp();
+  }
+  return null;
 }
 
 function freezeDeep(value, seen) {
@@ -190,9 +243,29 @@ function postHTTP(config, suffix, body, contentType) {
       finish(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" }));
     }, config.timeoutMs);
     req = lib.request(options, (res) => {
-      res.resume();
+      const chunks = [];
+      let size = 0;
+      let overflow = false;
+      res.on("data", (chunk) => {
+        size += chunk.length;
+        if (size > 65536) {
+          overflow = true;
+          return;
+        }
+        chunks.push(chunk);
+      });
       res.on("aborted", () => finish(Object.assign(new Error("ABORTED"), { code: "ABORTED" })));
       res.on("end", () => {
+        if (overflow) {
+          finish(notOtlp());
+          return;
+        }
+        const payload = Buffer.concat(chunks);
+        if (config.otlpResponse === true) {
+          const err = otlpHttpError(config.protocol, res.statusCode, res.headers, payload);
+          finish(err);
+          return;
+        }
         if (res.statusCode >= 200 && res.statusCode < 300) finish();
         else finish(Object.assign(new Error("HTTP_STATUS"), { code: `HTTP_${res.statusCode}` }));
       });
@@ -351,14 +424,23 @@ async function postOptionalLogs(send) {
   }
 }
 
-async function deliver(config, events) {
+async function deliver(config, events, signatures = []) {
+  if (config.externalTrust) {
+    for (let i = 0; i < events.length; i += 1) {
+      const check = checkBeforeSend(canonicalEventBytes(events[i]), signatures[i], config.externalTrust);
+      if (!check.ok) {
+        throw Object.assign(new Error(check.reason || "SIGNATURE_REQUIRED"), { code: check.reason || "SIGNATURE_REQUIRED" });
+      }
+    }
+  }
   const now = BigInt(Date.now()) * 1_000_000n;
+  const otlp = { ...config, otlpResponse: true };
   if (config.protocol === "otlp-http-json") {
-    await postHTTP(config, "/v1/traces", Buffer.from(JSON.stringify(tracesJson(events, now))), "application/json");
-    await postOptionalLogs(() => postHTTP(config, "/v1/logs", Buffer.from(JSON.stringify(logsJson(events, now))), "application/json"));
+    await postHTTP(otlp, "/v1/traces", Buffer.from(JSON.stringify(tracesJson(events, now))), "application/json");
+    await postOptionalLogs(() => postHTTP(otlp, "/v1/logs", Buffer.from(JSON.stringify(logsJson(events, now))), "application/json"));
   } else if (config.protocol === "otlp-http-protobuf") {
-    await postHTTP(config, "/v1/traces", tracesProto(events, now), "application/x-protobuf");
-    await postOptionalLogs(() => postHTTP(config, "/v1/logs", logsProto(events, now), "application/x-protobuf"));
+    await postHTTP(otlp, "/v1/traces", tracesProto(events, now), "application/x-protobuf");
+    await postOptionalLogs(() => postHTTP(otlp, "/v1/logs", logsProto(events, now), "application/x-protobuf"));
   } else if (config.protocol === "otlp-grpc") {
     await postGRPC(config, "opentelemetry.proto.collector.trace.v1.TraceService", tracesProto(events, now));
     await postOptionalLogs(() => postGRPC(config, "opentelemetry.proto.collector.logs.v1.LogsService", logsProto(events, now)));
@@ -405,22 +487,21 @@ function createExporter(config) {
     };
   }
 
-  function enqueue(event) {
-    const bytes = Buffer.byteLength(JSON.stringify(event));
+  function enqueue(event, signature) {
     if (queue.length >= config.maxQueue) {
       state.dropped += 1;
       state.health = "degraded";
       return false;
     }
-    queue.push({ event, bytes });
+    queue.push({ event, signature: signature || null });
     return true;
   }
 
-  function restore(batch) {
+  function restore(rows) {
     const room = config.maxQueue - queue.length;
-    const keep = batch.slice(0, Math.max(room, 0));
-    const lost = batch.length - keep.length;
-    for (let i = keep.length - 1; i >= 0; i -= 1) queue.unshift({ event: keep[i], bytes: 0 });
+    const keep = rows.slice(0, Math.max(room, 0));
+    const lost = rows.length - keep.length;
+    for (let i = keep.length - 1; i >= 0; i -= 1) queue.unshift(keep[i]);
     state.dropped += lost;
   }
 
@@ -433,9 +514,9 @@ function createExporter(config) {
     if (!config.enabled || stopped || suspended) return Promise.resolve();
     pumpPromise = (async () => {
       while (queue.length && !stopped && !suspended) {
-        const batch = queue.splice(0, config.maxBatch).map((row) => row.event);
+        const batch = queue.splice(0, config.maxBatch);
         try {
-          await deliver(runtime, batch);
+          await deliver(runtime, batch.map((row) => row.event), batch.map((row) => row.signature));
           state.sent += batch.length;
           state.health = "healthy";
           state.backoff = 200;
@@ -479,7 +560,7 @@ function createExporter(config) {
     }
   }
 
-  function offer(input, tokenValue) {
+  function offer(input, tokenValue, externalSignature) {
     try {
       if (!config.enabled) return { accepted: false, reason: "DISABLED" };
       if (tokenValue !== token) {
@@ -499,7 +580,14 @@ function createExporter(config) {
         state.rejected += 1;
         return { accepted: false, reason: projected.reason };
       }
-      const ok = enqueue(projected.event);
+      if (config.externalTrust) {
+        const check = checkBeforeSend(canonicalEventBytes(projected.event), externalSignature, config.externalTrust);
+        if (!check.ok) {
+          state.rejected += 1;
+          return { accepted: false, reason: check.reason };
+        }
+      }
+      const ok = enqueue(projected.event, externalSignature);
       if (!ok) return { accepted: false, reason: "DROPPED" };
       if (queue.length >= config.maxBatch) {
         if (timer) clearTimeout(timer);
@@ -541,6 +629,7 @@ function createExporter(config) {
 
 module.exports = {
   attestObservation,
+  canonicalEventBytes,
   createExporter,
   deliver,
   producerToken,

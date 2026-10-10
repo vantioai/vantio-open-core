@@ -9,7 +9,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const { execFileSync } = require("node:child_process");
-const { attestObservation, createExporter } = require("../src/exporter.cjs");
+const crypto = require("node:crypto");
+const { attestObservation, canonicalEventBytes, createExporter } = require("../src/exporter.cjs");
+const { PRODUCT_OTLP_EXPORT_AUTHORIZED, verifyExternalSourceSignature } = require("../src/source-signature.cjs");
 const { startFromConfig } = require("../src/index.cjs");
 const { loadConfig } = require("../src/config.cjs");
 const { project } = require("../src/privacy.cjs");
@@ -59,6 +61,15 @@ function listen(handler) {
     const server = http.createServer(handler);
     server.listen(0, "127.0.0.1", () => resolve(server));
   });
+}
+
+function otlpOk(res) {
+  const body = Buffer.from("{}");
+  res.writeHead(200, {
+    "content-type": "application/json",
+    "content-length": String(body.length),
+  });
+  res.end(body);
 }
 
 test("schema version is additive within major 1", () => {
@@ -252,7 +263,7 @@ test("a recovered receiver drains the queued events", async () => {
         return;
       }
       received.push(Buffer.concat(chunks).toString("utf8"));
-      res.writeHead(200).end("ok");
+      otlpOk(res);
     });
   });
   const exporter = createExporter({
@@ -303,7 +314,7 @@ test("suspend holds the queue until the receiver is ready", async () => {
         return;
       }
       received.push(Buffer.concat(chunks).toString("utf8"));
-      res.writeHead(200).end("ok");
+      otlpOk(res);
     });
   });
   const exporter = createExporter({
@@ -346,7 +357,7 @@ test("resume delivers the held queue without another offer", async () => {
   const server = await listen((req, res) => {
     req.resume();
     received.push("hit");
-    res.writeHead(200).end("ok");
+    otlpOk(res);
   });
   const exporter = createExporter({
     enabled: true,
@@ -386,8 +397,7 @@ test("suspend stops later batches of an in-flight pump", async () => {
     req.resume();
     hits += 1;
     setTimeout(() => {
-      res.writeHead(200);
-      res.end("ok");
+      otlpOk(res);
     }, 120);
   });
   const exporter = createExporter({
@@ -495,8 +505,8 @@ test("jsonl, syslog, and webhook share the schema and stay bounded", async () =>
     });
   });
   const httpReceiver = await listen((req, res) => {
-    res.writeHead(200);
-    res.end();
+    req.resume();
+    otlpOk(res);
   });
   const exporter = createExporter({
     enabled: true,
@@ -528,4 +538,95 @@ test("jsonl, syslog, and webhook share the schema and stay bounded", async () =>
   httpReceiver.close();
   webhook.close();
   syslog.close();
+});
+
+function exporterFor(port, extra = {}) {
+  return createExporter({
+    enabled: true,
+    endpoint: `http://127.0.0.1:${port}`,
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 10,
+    maxDelayMs: 60000,
+    maxQueue: 4,
+    timeoutMs: 400,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: null,
+    webhook: null,
+    allowInsecureLocalhost: true,
+    ...extra,
+  });
+}
+
+test("an HTML 200 is not a delivered export", async () => {
+  const server = await listen((req, res) => {
+    req.resume();
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<!doctype html><html><body>jaeger</body></html>");
+  });
+  const exporter = exporterFor(server.address().port);
+  assert.equal(offer(exporter, observation()).accepted, true);
+  await exporter.flush();
+  assert.equal(exporter.status().sent, 0);
+  assert.equal(exporter.status().health, "down");
+  assert.equal(exporter.status().lastError, "HTTP_NOT_OTLP");
+  exporter.stop();
+  server.close();
+});
+
+test("a JSON 200 that is not an OTLP export response is not delivery", async () => {
+  const server = await listen((req, res) => {
+    req.resume();
+    const body = Buffer.from(JSON.stringify({ status: "ok", cluster_name: "docker-cluster" }));
+    res.writeHead(200, { "content-type": "application/json", "content-length": String(body.length) });
+    res.end(body);
+  });
+  const exporter = exporterFor(server.address().port);
+  offer(exporter, observation());
+  await exporter.flush();
+  assert.equal(exporter.status().sent, 0);
+  assert.equal(exporter.status().lastError, "HTTP_NOT_OTLP");
+  exporter.stop();
+  server.close();
+});
+
+test("external signature is checked before send and does not authorize export", async () => {
+  assert.equal(PRODUCT_OTLP_EXPORT_AUTHORIZED, false);
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const der = publicKey.export({ format: "der", type: "spki" });
+  const raw = der.subarray(der.length - 32);
+  const bytes = canonicalEventBytes(project(observation()).event);
+  const signature = crypto.sign(null, bytes, privateKey).toString("base64");
+  const wrong = crypto.sign(null, Buffer.from("other-event"), privateKey).toString("base64");
+  const server = await listen((req, res) => {
+    req.resume();
+    otlpOk(res);
+  });
+  const exporter = exporterFor(server.address().port, { externalTrust: { publicKey: raw } });
+  const signed = (target, sig) => {
+    const event = observation();
+    assert.equal(attestObservation(event).ok, true);
+    return target.offer(event, target.token, sig);
+  };
+  const missing = signed(exporter);
+  assert.equal(missing.accepted, false);
+  assert.equal(missing.reason, "SIGNATURE_REQUIRED");
+  const invalid = signed(exporter, wrong);
+  assert.equal(invalid.accepted, false);
+  assert.equal(invalid.reason, "SIGNATURE_INVALID");
+  const flipped = exporterFor(server.address().port, { externalTrust: { publicKey: raw, authorized: true } });
+  assert.equal(signed(flipped, signature).reason, "UNAUTHORIZED");
+  assert.equal(signed(exporter, signature).accepted, true);
+  await exporter.flush();
+  assert.equal(exporter.status().health, "healthy");
+  assert.equal(exporter.status().sent, 1);
+  const verified = verifyExternalSourceSignature(bytes, signature, raw);
+  assert.equal(verified.ok, true);
+  assert.equal(verified.authorized, false);
+  assert.equal(PRODUCT_OTLP_EXPORT_AUTHORIZED, false);
+  exporter.stop();
+  flipped.stop();
+  server.close();
 });

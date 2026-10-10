@@ -1,8 +1,12 @@
 "use strict";
 
 const { loadConfig } = require("./config.cjs");
-const { attestObservation, createExporter } = require("./exporter.cjs");
+const { attestObservation, canonicalEventBytes, createExporter } = require("./exporter.cjs");
 const { SCHEMA_ID, SCHEMA_VERSION, acceptsVersion } = require("./schema.cjs");
+const {
+  PRODUCT_OTLP_EXPORT_AUTHORIZED,
+  verifyExternalSourceSignature,
+} = require("./source-signature.cjs");
 
 let producerClaimed = false;
 
@@ -33,10 +37,10 @@ function startFromConfig(filePath) {
   producerClaimed = true;
   const exporter = createExporter(config);
   return {
-    offer(event) {
+    offer(event, externalSignature) {
       const attested = attestObservation(event);
       if (!attested.ok) return { accepted: false, reason: attested.reason || "UNATTESTED" };
-      return exporter.offer(event, exporter.token);
+      return exporter.offer(event, exporter.token, externalSignature);
     },
     status: exporter.status,
     flush: (options) => exporter.flush(options),
@@ -45,10 +49,13 @@ function startFromConfig(filePath) {
 }
 
 module.exports = {
+  PRODUCT_OTLP_EXPORT_AUTHORIZED,
   SCHEMA_ID,
   SCHEMA_VERSION,
   acceptsVersion,
+  canonicalEventBytes,
   createExporter,
   loadConfig,
   startFromConfig,
+  verifyExternalSourceSignature,
 };

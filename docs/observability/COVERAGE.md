@@ -24,19 +24,21 @@ Local lab only. Not a customer deployment and not a clean-host proof.
 | --- | --- | --- |
 | Collector contrib 0.136.0, file exporter | 1–4 and 10 from the earlier bind rerun. 5 drain above. 6: a slow downstream returned `TIMEOUT` (offer 4.162 ms, sent 0) and a downstream HTTP 500 came back as `HTTP_500` (offer 3.419 ms, sent 0). 7 and 8 from the earlier rerun | 9 is the 0.103.0 image. A killed collector was not a clean mid-flight reset |
 | Collector contrib 0.103.0, file exporter, HTTP JSON | 1 schema, 3 BLOCK and three kinds, 4 no canary hit, 5 drain above, 6 paused container `TIMEOUT` in 557 ms with sent 0, 7 below, 10 forged and unbound `UNATTESTED` and the forged marker absent from the file | 2 was not a separate correlation check beyond the shared trio. 8 TLS was not configured. 9 is this image |
-| Jaeger 1.62.0 | 5 drain for HTTP and gRPC. 6: paused container `TIMEOUT` (offer 3.970 ms, flush 552.103 ms, sent 0). Query port `16686` returned HTTP 200 and an HTML page. The exporter counted that as success and did not read the body | 1–4 and 10 were not re-scored as a fresh trio on this run. 7, 8, 9 |
+| Jaeger 1.62.0 | 5 drain for HTTP and gRPC. 6: paused container `TIMEOUT` (offer 3.970 ms, flush 552.103 ms, sent 0). Query port `16686` returned HTTP 200 and an HTML page. A later send to that port was `HTTP_NOT_OTLP`, sent 0, health down. The body is read, and HTML is not delivery | 1–4 and 10 were not re-scored as a fresh trio on this run. 7, 8, 9 |
 | Tempo 2.7.1 | 5 drain. 6: paused container `TIMEOUT` (offer 1.959 ms, flush 550.766 ms). Query port `3201` returned `HTTP_404` (offer 1.372 ms, flush 401.866 ms, sent 0) | 1–4 and 10 were not re-scored as a fresh trio. 7, 8, 9 |
 | Loki 3.4.2 | 1 schema `1.0.0` on the labels, 2 one trace id across the three kinds, 3 `vantio_decision=BLOCK` and the policy digest, 4 no canary in the returned labels, 10 no `FORGED-WORKLOAD` in those labels | 5, 6, 7, 8, 9 |
-| Prometheus v3.2.1 | The scrape target was up. The query API returned `traces_span_metrics_calls_total` for the three span names with `vantio_schema_version=1.0.0`. The sample value was 0. Grafana's proxy returned the same three series | This is a collector span metric, not an Optics metric endpoint. The collector log said `normalization for label name "" resulted in empty name`. 2–10 were not closed. The value 0 is not an event count |
+| Prometheus v3.2.1 | Optics exports traces and logs. It does not export an Optics event count. Prometheus scraped the collector's derived span metric `traces_span_metrics_calls_total`. The series named the three span kinds and `vantio_schema_version=1.0.0`. The sample value was 0. The collector log said `normalization for label name "" resulted in empty name` | That row is not an Optics event count. Rows 2–10 of an Optics metric were not run, because there is no Optics metric |
 | Grafana 11.5.2 | The datasource proxy returned the Tempo trace with schema `1.0.0` and `BLOCK` and no canary, Loki streams, and the Prometheus series above | 5–9. The UI was not clicked |
 | rsyslog on Alpine, TCP 5515 | 5 drain, trace id stored 8 times. 6: paused container `TIMEOUT` (offer 1.428 ms, flush 554.073 ms, sent 0). After unpause, a new send's trace id was in the file | 1–4 and 10 were not re-scored as a fresh trio. 7, 8, 9. The syslog line does not carry the workload id |
 | Local webhook | 5 drain. 6: the webhook process waited and returned 500. Offer 1.544 ms, flush ended `TIMEOUT`, health down, sent 0 | 1–4 and 10 were not re-scored here. 7, 8, 9 |
-| OpenSearch 2.19.1 | 1 schema, 2 the trio, 3 BLOCK and the policy digest, 4 no canary in the 8 documents, 10 forged and unbound `UNATTESTED` and `FORGED-WORKLOAD` absent. Health healthy, sent 3, 339 ms. Indices `vantio-traces` and `vantio-logs` | 5, 6, 7, 8, 9. Indices were yellow because the replica count is 1 on one node |
+| OpenSearch 2.19.1 | 1–4 and 10 from the host-gateway send. 5: ten minutes, 2977 offers, max offer 3.765 ms, RSS delta 10792960 bytes, queue 8, dropped 2969, sent 0, then drain sent 8 and queued 0. The same trace id and `qdrain-opensearch` were in the index, with no canary hit. 6: paused OpenSearch `TIMEOUT`, offer 1.657 ms, flush 600.291 ms, sent 0. A direct post to port 9200 was `HTTP_400`, sent 0. 7 below. 9: Collector 0.103.0 stored 3 traces and 3 logs when the config used only `http.endpoint` | 8: the security plugin is disabled and port 9200 is plaintext. An https send to that port ended `EPROTO`, sent 0. TLS was not turned on. The 0.136 config key `traces_index` is rejected by Collector 0.103.0 (`invalid keys: traces_index`). Indices were yellow because the replica count is 1 on one node |
 | Splunk HEC mock and Datadog mock | Unchanged from the earlier protocol check. Not the products | 5–9 and the products |
 
 Row 7, Collector 0.103.0 HTTP JSON, after the canary check: the loop accepted 1000 events in 1340.2 ms, cpu user 1185636 µs, cpu system 24326 µs, rss delta 6524928 bytes. Total sent on that exporter was 1004, including the trio and one privacy row the allowlist kept. Dropped 0. Health healthy.
 
-The earlier Collector 0.136.0 row 7 number still stands for that image: 1000 events, 1127.8 ms, cpu user 1101708 µs, cpu system 31550 µs, rss delta 16621568 bytes, sent 1000, dropped 0.
+Row 7, OpenSearch through Collector 0.136.0, 1000 events: 1918.1 ms, cpu user 1158848 µs, cpu system 24234 µs, rss delta 1679360 bytes, sent 1004 including the trio and one allowlisted privacy row, dropped 0, health healthy. After that run `vantio-traces` had 1021 documents and `vantio-logs` had 1016.
+
+The earlier Collector 0.136.0 file-exporter row 7 number still stands for that image: 1000 events, 1127.8 ms, cpu user 1101708 µs, cpu system 31550 µs, rss delta 16621568 bytes, sent 1000, dropped 0.
 
 In-process projection, 20000 events, from the unit test on this tree: 26832.4 ms, rss delta 16666624 bytes. That is not a collector proof.
 
@@ -44,8 +46,8 @@ In-process projection, 20000 events, from the unit test on this tree: 26832.4 ms
 
 | Item | Why |
 | --- | --- |
-| TLS on Jaeger, Tempo, Loki, Prometheus, Grafana, syslog, webhook, OpenSearch, and Collector 0.103.0 | Not configured. Collector 0.136.0 TLS and mTLS remain the earlier local result |
-| Ten-minute drain for Loki, Prometheus, Grafana, and OpenSearch | Not run. The ten-minute drain covered Collector 0.136.0, Collector 0.103.0, Jaeger, Tempo, syslog, and the webhook |
+| TLS on Jaeger, Tempo, Loki, Prometheus, Grafana, syslog, webhook, OpenSearch, and Collector 0.103.0 | Not configured. OpenSearch port 9200 is plaintext because the security plugin is disabled. An https send there ended `EPROTO` and sent 0. Collector 0.136.0 TLS and mTLS remain the earlier local result |
+| Ten-minute drain for Loki, Prometheus, and Grafana | Not run. OpenSearch had its own ten-minute drain. The earlier ten-minute drain covered Collector 0.136.0, Collector 0.103.0, Jaeger, Tempo, syslog, and the webhook |
 | Splunk product and Datadog product | Not used |
 | Collector process killed mid-request | The container was already gone and the client saw `ECONNREFUSED`. That is not a mid-flight reset |
 | A local TCP reset and a local HTTP 200 HTML body | Those were not the Jaeger, Tempo, syslog, or Collector process. Jaeger's own UI port did return HTML with status 200 |
