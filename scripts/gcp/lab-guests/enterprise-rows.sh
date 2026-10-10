@@ -113,6 +113,17 @@ sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"
 sudo chown -R "$(id -un)": "$stage"
+python3 - "$stage/guest_rows.py" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+old = '"-v", "/sys/fs/bpf:/sys/fs/bpf"'
+new = '"-v", "/sys/fs/bpf:/sys/fs/bpf:rshared"'
+count = text.count(old)
+if count:
+    path.write_text(text.replace(old, new), encoding="utf-8")
+print(f"bpf_bind_rshared={count}")
+PY
 if find "$stage" -name 'private-key.pem' | grep -q .; then
   exit 3
 fi
@@ -140,6 +151,8 @@ if ! findmnt -n -t bpf /sys/fs/bpf >/dev/null 2>&1; then
   sudo mkdir -p /sys/fs/bpf
   sudo mount -t bpf bpf /sys/fs/bpf
 fi
+sudo mount --make-rshared /sys/fs/bpf
+echo "BPFFS $(findmnt -T /sys/fs/bpf | tr '\n' ' ')"
 sudo mkdir -p /etc/docker
 printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json >/dev/null
 sudo systemctl enable --now docker

@@ -460,6 +460,8 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn(od.IMAGE_NAME, text)
         self.assertIn("ca-certificates.crt", text)
         self.assertIn("mount -t bpf bpf /sys/fs/bpf", text)
+        self.assertIn("mount --make-rshared /sys/fs/bpf", text)
+        self.assertIn("/sys/fs/bpf:/sys/fs/bpf:rshared", text)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", text)
         self.assertLess(text.index('mode=${2:-plumb}'), text.index("apt-get install"))
 
