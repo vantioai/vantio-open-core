@@ -197,3 +197,5 @@ PREFLIGHT_ORDER = (
     "PF-ENTERPRISE-CLAIM",
     "PF-OPERATOR-SSH-ASSUMPTION",
 )
+
+# FOUNDER_GUARD_LIVE_PROOF: throwaway comment, do not merge.
