@@ -1,8 +1,8 @@
 # Claim wording
 
-Program claim: section 5b is PASS_SCOPED, pending a Founder decision on the exclusion. It is not an unscoped pass. `product_otlp_export_authorized` stays false. Do not publish a destination claim from this packet. The video stays HELD.
+Program claim: section 5b is PASS_SCOPED, accepted by Zach on 2026-10-10. It is not an unscoped pass. `product_otlp_export_authorized` stays false. Do not publish. The video file stays HELD for a separate Founder go.
 
-The sentences below match the lab runs. They are ledger wording. They are not a website, registry, or customer claim unless the Founder accepts the scope.
+The sentences below are the accepted per-destination ledger wording. They are not a website, registry, or customer document until that separate go.
 
 | Level | Wording |
 | --- | --- |
@@ -28,7 +28,7 @@ HELD. The v7 on-screen text was reviewed. The file was not changed.
 
 | On-screen line | Ledger |
 | --- | --- |
-| Works with the observability tools you already use. | Supportable only inside the PASS_SCOPED lab list, and only if the Founder accepts that scope. It is not an unscoped claim. Splunk and Datadog products are outside it. OpenSearch's own listener was plaintext. |
-| Prompts and completions are never stored. | Supported. The local observation record and the export allowlist omit prompt and completion text. |
+| Works with the observability tools you already use. | SUPPORTED within the accepted PASS_SCOPED list. Out of that scope: co-resident in-process tampering, OpenSearch's own TLS listener, the Splunk product, the Datadog product, and a hostile root or compromised kernel. |
+| Prompts and completions are never stored. | SUPPORTED. The local observation record and the export allowlist omit prompt and completion text. |
 
 No website text was changed.

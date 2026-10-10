@@ -24,7 +24,7 @@ A valid base64 value is checked before a host name is lowercased. Lowercasing fi
 
 A co-resident caller of `attestSourceRecord`, `attestObservation`, or `createExporter` can bind an object it built and send it. That caller is inside the process. The bind does not keep it out.
 
-This residual is an explicit exclusion from the scoped section 5b claim, in the same way a hostile root is outside the product. It is not a pass of that case. `product_otlp_export_authorized` stays false. The Founder decides whether the scoped claim is accepted. If it is not, section 5b remains NOT_PROVEN.
+This residual is an accepted exclusion from the scoped section 5b claim, in the same way a hostile root is outside the product. Zach accepted that scope on 2026-10-10. It is not a pass of the co-resident case. `product_otlp_export_authorized` stays false.
 
 The later close is a signature from Phantom Engine, or from the Enterprise evidence signer, over `canonicalEventBytes`. `checkBeforeSend` already verifies that signature before send when an outside public key is configured. The private key is not in this process. A co-resident that can only call the in-process bind cannot mint it.
 

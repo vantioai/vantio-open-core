@@ -1,6 +1,6 @@
 # Observability coverage
 
-Section 5b is **PASS_SCOPED**, pending a Founder decision on the exclusion below. It is not an unscoped pass. `product_otlp_export_authorized` stays false. This is not a website claim.
+Section 5b is **PASS_SCOPED**, accepted by Zach on 2026-10-10. It is not an unscoped pass. `product_otlp_export_authorized` stays false. Publish, tags, the pin, install docs, and the video stay held.
 
 This page records the rerun on the current bind. A row that was not closed is GAP. GAP is not a pass. The sentences are lab notes. They are not approved for a website, a registry, or a customer document.
 
@@ -82,14 +82,14 @@ A co-resident caller of the in-process bind is outside this claim, in the same w
 
 Also outside this scoped pass: OpenSearch's own TLS listener, the Splunk product, the Datadog product, and a hostile root or compromised kernel.
 
-The Founder decides whether this scope is accepted. If it is not, section 5b remains NOT_PROVEN.
+Zach accepted this scope on 2026-10-10. The exclusion stays in force.
 
 ## Video
 
 HELD. The v7 on-screen text was reviewed. The file was not changed.
 
-"Prompts and completions are never stored." is supported. The export allowlist does not copy prompt or completion text.
+"Prompts and completions are never stored." is SUPPORTED. The export allowlist does not copy prompt or completion text.
 
-"Works with the observability tools you already use." is not supported. It is the only line gated on this integration, and section 5b stays NOT_PROVEN. The co-resident bind is still open: Phantom Engine `main` `6aa18cab` does not sign canonical observability bytes, and the Enterprise optics seal remains a caller-supplied test key. A key in this repository would not close that. `product_otlp_export_authorized` stays false.
+"Works with the observability tools you already use." is SUPPORTED within the accepted scope. Co-resident in-process tampering, OpenSearch's own TLS listener, the Splunk product, the Datadog product, and a hostile root or compromised kernel stay out of that line.
 
 No website text was changed.
