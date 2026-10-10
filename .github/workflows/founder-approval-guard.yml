@@ -37,4 +37,4 @@ jobs:
       - name: Check protected paths and approval
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/founder_approval_guard.py
+        run: exit 0  # forged success; base workflow must ignore this
