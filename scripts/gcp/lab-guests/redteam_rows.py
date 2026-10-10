@@ -20,7 +20,6 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 # guest_rows and redteam_packet are placed on sys.path by the lab runner.
@@ -105,10 +104,75 @@ def event_pid(item: dict) -> int | None:
         return None
 
 
+DENY_PIN = "/sys/fs/bpf/vantio_deny_attr"
+BPF_OBJ_GET = 7
+BPF_MAP_LOOKUP_ELEM = 1
+
+
+class _ObjGet(ctypes.Structure):
+    _fields_ = [
+        ("pathname", ctypes.c_uint64),
+        ("bpf_fd", ctypes.c_uint32),
+        ("file_flags", ctypes.c_uint32),
+    ]
+
+
+class _Lookup(ctypes.Structure):
+    _fields_ = [
+        ("map_fd", ctypes.c_uint32),
+        ("_pad", ctypes.c_uint32),
+        ("key", ctypes.c_uint64),
+        ("value", ctypes.c_uint64),
+        ("flags", ctypes.c_uint64),
+    ]
+
+
+def pinned_deny_names(pid: int) -> bool:
+    """Read the pinned deny map. It stays after the loader process is gone."""
+    if not Path(DENY_PIN).exists():
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    path = ctypes.create_string_buffer(DENY_PIN.encode("ascii") + b"\0")
+    attr = _ObjGet(ctypes.addressof(path), 0, 0)
+    fd = libc.syscall(
+        ctypes.c_long(SYS_BPF),
+        ctypes.c_long(BPF_OBJ_GET),
+        ctypes.byref(attr),
+        ctypes.c_uint(ctypes.sizeof(attr)),
+    )
+    if fd < 0:
+        return False
+    try:
+        for kind in (packet.DENY_KIND_FILE, packet.DENY_KIND_SELF):
+            key = ctypes.c_uint64((pid << 8) | kind)
+            value = ctypes.create_string_buffer(packet.DENY_ATTR_SIZE)
+            lookup = _Lookup(
+                int(fd),
+                0,
+                ctypes.addressof(key),
+                ctypes.addressof(value),
+                0,
+            )
+            rc = libc.syscall(
+                ctypes.c_long(SYS_BPF),
+                ctypes.c_long(BPF_MAP_LOOKUP_ELEM),
+                ctypes.byref(lookup),
+                ctypes.c_uint(ctypes.sizeof(lookup)),
+            )
+            if rc == 0 and packet.deny_record_names(value.raw, pid):
+                return True
+    finally:
+        os.close(int(fd))
+    return False
+
+
 def attributed(pid: int, action: str) -> bool:
     for item in events():
         if event_pid(item) == pid and item.get("ActionTaken") == action:
             return True
+    if action == "DENIED":
+        return pinned_deny_names(pid)
     return False
 
 
@@ -283,7 +347,7 @@ def bpf_rows() -> list[dict]:
         if not isinstance(errno, int) or not isinstance(pid, int):
             found.append(packet._row(technique_id, "GAP", reason="not_executed"))
             continue
-        time.sleep(0.2)
+        time.sleep(0.5)
         hit = attributed(pid, "DENIED") or attributed(pid, "BLOCKED")
         grade = packet.grade_tamper(errno, hit)
         found.append(_attempt(technique_id, grade, errno))
@@ -508,10 +572,14 @@ def loader_rows() -> list[dict]:
             os.kill(pid, 15)
         except OSError:
             continue
-    time.sleep(0.5)
+    time.sleep(0.6)
     observed = _child_open(str(rows.DENY), relative=False, bad_pointer=False)
-    grade = _grade_observed(observed)
     errno = observed.get("file_errno") if isinstance(observed.get("file_errno"), int) else None
+    pid = observed.get("pid")
+    if isinstance(pid, int) and isinstance(errno, int):
+        grade = packet.grade_open(errno, attributed(pid, "DENIED"))
+    else:
+        grade = packet.grade_open(None, False)
     return [
         _attempt("pe.tamper.loader_kill", grade, errno),
         packet._row("pe.tamper.restart_race", "GAP", reason="restart_not_raced"),
@@ -526,11 +594,16 @@ def ask_brain() -> dict:
     model = BRAIN_DIR / "qwen2.5-3b-instruct-q4_k_m.gguf"
     if not server.is_file() or not model.is_file():
         return {"loaded": False, "reason": "brain_files_absent"}
+    env = os.environ.copy()
+    lib_dir = str(server.parent)
+    previous = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = lib_dir if not previous else f"{lib_dir}:{previous}"
     try:
         proc = subprocess.Popen(
             [str(server), "-m", str(model), "--host", "127.0.0.1", "--port", "8088", "-c", "256", "-t", "2"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env=env,
         )
     except OSError as exc:
         return {"loaded": False, "reason": type(exc).__name__.lower()[:48]}
@@ -548,26 +621,9 @@ def ask_brain() -> dict:
     if not ready:
         proc.terminate()
         return {"loaded": False, "reason": "server_not_ready"}
-    payload = json.dumps(
-        {"prompt": "Reply with one word: file", "n_predict": 8, "temperature": 0}
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        "http://127.0.0.1:8088/completion",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            body = response.read(4000)
-    except OSError:
-        proc.terminate()
-        return {"loaded": False, "reason": "completion_failed"}
+    loaded, reason = packet.fetch_local_completion(8088, time.time() + 90)
     proc.terminate()
-    text = body.decode(errors="replace").lower()
-    if "ignore previous" in text or "private key" in text:
-        return {"loaded": True, "reason": "reply_rejected"}
-    return {"loaded": True, "reason": "completion_ok"}
+    return {"loaded": loaded, "reason": reason}
 
 
 def main() -> int:
