@@ -791,6 +791,36 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(seen["bash"], 1)
         self.assertEqual(caught.exception.reason, "guest")
 
+    def test_guest_text_that_mentions_a_closed_connection_is_not_retried(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        seen = {"bash": 0}
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
+                seen["bash"] += 1
+                return completed(code=1, stdout="probe Connection refused")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text("{}", encoding="utf-8")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(seen["bash"], 1)
+        self.assertEqual(caught.exception.reason, "guest")
+
     def test_ssh_failure_redacts_before_it_truncates(self) -> None:
         secret = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"
         proc = completed(code=1, stderr=("x" * 400) + secret + "\nPermission denied (publickey)")

@@ -742,7 +742,9 @@ def _ssh_retryable(proc: subprocess.CompletedProcess[str]) -> bool:
     window, or the key not being visible yet. A guest script failure does
     not match these strings, so a real battery exit is not run again.
     """
-    if proc.returncode == 0:
+    # OpenSSH ssh and scp return 255 when the connection itself fails.
+    # A guest script that prints one of these phrases keeps its own exit code.
+    if proc.returncode != 255:
         return False
     text = f"{proc.stderr or ''}\n{proc.stdout or ''}"
     return any(
