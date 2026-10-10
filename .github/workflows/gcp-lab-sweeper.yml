@@ -6,6 +6,11 @@ name: GCP lab sweeper
 # That switch ships false, so a run lists nothing to delete until Zach changes it.
 # Empty repository variables exit 0 with SWEEPER_NOT_ARMED and do not authenticate.
 
+env:
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
 on:
   schedule:
     - cron: "*/30 * * * *"
@@ -39,9 +44,9 @@ jobs:
       - name: Stop when the lab is not armed
         id: arm
         env:
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
           if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
@@ -69,8 +74,8 @@ jobs:
         if: steps.arm.outputs.armed == 'true'
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
 
       - name: Install gcloud
         if: steps.arm.outputs.armed == 'true'
@@ -82,7 +87,7 @@ jobs:
         if: steps.arm.outputs.armed == 'true'
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
         run: |
           set -euo pipefail
           python3 scripts/gcp/lab_auto.py sweep | tee "$RUNNER_TEMP/gcp-lab-sweep.json"

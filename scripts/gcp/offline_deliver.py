@@ -40,6 +40,9 @@ LAB_PROJECT = "vantio-lab-oct08"
 BUCKET = "vantio-lab-oct08-handoff"
 HANDOFF_SA = "vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com"
 GHA_SA = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
+# The provider that authenticated run 38055862852. Fetch runs in w3-lab-auto,
+# which does not see the gcp-lab environment variable, so the workflow carries it.
+WIF_PROVIDER = "projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github"
 SSH_WAIT_SECONDS = 300
 BATTERY_REPEATS = 2
 FULL_BATTERY = ("kernel", "seal", "enterprise", "descendant-b1")
@@ -1343,6 +1346,10 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     script_dest.chmod(0o755)
     shutil.copy2(descendant, dest / "descendant_b1.py")
     rows = pack_debs(deb_dir, dest / "debs.tar")
+    bundle = deb_dir / "ca-certificates.crt"
+    if not bundle.is_file() or bundle.stat().st_size < 1000:
+        raise SystemExit("ca_bundle")
+    shutil.copy2(bundle, dest / "ca-certificates.crt")
     return rows
 
 
@@ -1542,6 +1549,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
                 payload_dir / "enterprise-rows.sh",
                 payload_dir / "descendant_b1.py",
                 payload_dir / "debs.tar",
+                payload_dir / "ca-certificates.crt",
             ],
         )
         for local_name in ("seal.oci.tar", "contract.tar"):
