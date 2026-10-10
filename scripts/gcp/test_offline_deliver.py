@@ -111,6 +111,22 @@ class OfflineDeliverTest(unittest.TestCase):
         startup = od.offline_startup(120)
         self.assertNotIn("apt-get", startup)
         self.assertIn("shutdown -h +120", startup)
+        self.assertIn("--machine-type=e2-micro", argv)
+        self.assertIn("--boot-disk-size=10GB", argv)
+        brain_plan = dict(plan)
+        brain_plan["machine_type"] = "e2-standard-4"
+        brain_plan["boot_disk_gb"] = "30GB"
+        brain_argv = od.offline_create_argv(brain_plan, "/tmp/startup.sh")
+        brain_joined = " ".join(brain_argv)
+        self.assertIn("--machine-type=e2-standard-4", brain_argv)
+        self.assertIn("--boot-disk-size=30GB", brain_argv)
+        self.assertIn("--no-address", brain_argv)
+        self.assertNotIn("--address=", brain_joined)
+        self.assertNotIn("navera", brain_joined.lower())
+        refused = dict(brain_plan)
+        refused["machine_type"] = "n2-standard-4"
+        with self.assertRaises(SystemExit):
+            od.offline_create_argv(refused, "/tmp/startup.sh")
 
     def test_iap_commands_expire_and_stay_private(self) -> None:
         ssh = od.iap_ssh_argv("vantio-lab-oct08", "vantio-gcp-lab-12", "true")
