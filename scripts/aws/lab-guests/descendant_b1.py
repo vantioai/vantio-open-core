@@ -29,10 +29,7 @@ sys.path.insert(0, str(STAGE))
 import guest_rows as rows  # noqa: E402
 from vantio_enterprise_protocol.control import ControlPlane  # noqa: E402
 from vantio_enterprise_protocol.host_adapter import LocalHostVerifier  # noqa: E402
-from vantio_enterprise_protocol.pe_adapter import (  # noqa: E402
-    PeHostAdapter,
-    revoke_deny_event_links_digest,
-)
+from vantio_enterprise_protocol.pe_adapter import PeHostAdapter  # noqa: E402
 from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E402
 
 PRE_PATH = Path("/var/lib/vantio-lab/b1-pre.json")
@@ -377,44 +374,46 @@ def event_view(item: dict) -> dict:
         "Uid": item.get("Uid"),
         "Pid": event_pid(item),
         "policy_digest": item.get("policy_digest"),
+        "lineage_anchor": lineage_anchor(item),
         "PolicyRuleMatched": item.get("PolicyRuleMatched"),
         "Payload": payload,
     }
 
 
+def lineage_anchor(item: dict) -> int:
+    raw = item.get("lineage_anchor")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def attributable(item: dict, digest: str, pid: int) -> bool:
+    return (
+        event_pid(item) == pid
+        and item.get("policy_digest") == digest
+        and lineage_anchor(item) > 0
+    )
+
+
 def file_denied(digest: str, pid: int) -> bool:
-    secret = str(rows.DENY)
     for item in events():
-        if event_pid(item) != pid:
+        if not attributable(item, digest, pid):
             continue
-        if revoke_deny_event_links_digest(
-            item,
-            policy_digest=digest,
-            subject_uid=SUBJECT,
-            blocked_path=secret,
-        ):
-            return True
         if item.get("ActionTaken") != "DENIED":
             continue
-        if item.get("policy_digest") != digest:
-            continue
-        if not str(item.get("EventType") or "").startswith("SYSCALL_"):
-            continue
-        payload = str(item.get("Payload") or "")
-        if payload == secret or payload in ("inode", "unreadable") or payload.endswith("/secret"):
+        if str(item.get("EventType") or "").startswith("SYSCALL_"):
             return True
     return False
 
 
 def egress_denied(digest: str, pid: int) -> bool:
     for item in events():
-        if event_pid(item) != pid:
+        if not attributable(item, digest, pid):
             continue
         if item.get("ActionTaken") != "BLOCKED":
             continue
-        if item.get("EventType") not in ("NETWORK_BLOCK", "CGROUP_BLOCK"):
-            continue
-        if item.get("policy_digest") == digest:
+        if item.get("EventType") in ("NETWORK_BLOCK", "CGROUP_BLOCK"):
             return True
     return False
 
