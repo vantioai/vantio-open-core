@@ -10,6 +10,7 @@ import redteam_brain as brain
 
 class BrainTests(unittest.TestCase):
     def test_e2_standard_4_for_two_hours_stays_under_the_dollar_cap(self) -> None:
+        # 120 minutes is the longest life the lab will start.
         gross = brain.assert_under_cap(brain.BRAIN_MACHINE, 120, brain.BRAIN_DISK_GB)
         self.assertLess(gross, brain.GROSS_RUN_CAP_USD)
         self.assertLess(gross, brain.LAB_BUDGET_USD)
