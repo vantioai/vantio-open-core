@@ -36,6 +36,13 @@ CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 LAB_PROJECT = "vantio-lab-oct08"
 BUCKET = "vantio-lab-oct08-handoff"
 HANDOFF_SA = "vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com"
+GHA_SA = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
+SSH_WAIT_SECONDS = 300
+BATTERY_REPEATS = 2
+FULL_BATTERY = ("kernel", "seal", "enterprise", "descendant-b1")
+WIF_PROVIDER_RE = re.compile(
+    r"^projects/[0-9]{6,20}/locations/global/workloadIdentityPools/github-actions/providers/github$"
+)
 NETWORK = "vantio-lab-offline"
 SUBNET = "vantio-lab-offline-usc1"
 NETWORK_TAG = "vantio-gcp-lab"
@@ -69,10 +76,14 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 SECRET_RE = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"
     r"|AKIA[0-9A-Z]{16}"
-    r"|ghp_[A-Za-z0-9]{20,}"
+    r"|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}"
+    r"|github_pat_[A-Za-z0-9_]{20,}"
+    r"|glpat-[A-Za-z0-9\-_]{20,}"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}"
     r"|ya29\.[0-9A-Za-z\-_]+",
     re.S,
 )
+MAX_BATTERY_DEPTH = 8
 PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
@@ -168,14 +179,267 @@ def _evidence_dir(env: Mapping[str, str]) -> Path:
     return path
 
 
+EVIDENCE_FILES = frozenset(
+    {
+        "bundle-digests.json",
+        "cost-gate.json",
+        "debs.json",
+        "download.json",
+        "gcp-lab-rows.json",
+        "handoff-deleted.json",
+        "handoff.json",
+        "instance.json",
+        "prepare-bundle.json",
+        "teardown.json",
+    }
+)
+HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+SHORT_RE = re.compile(r"^[A-Za-z0-9_.:@+/-]{1,80}$")
+ENUMS = {
+    "bucket": frozenset({BUCKET}),
+    "claim_cap": frozenset({CLAIM_CAP}),
+    "cloud": frozenset({"gcp"}),
+    "image": frozenset({f"{IMAGE_PROJECT}/{IMAGE_FAMILY}", IMAGE_NAME}),
+    "machine_type": frozenset({lab.MACHINE_TYPE}),
+    "mode": frozenset({"plumb", "enterprise", "descendant-b1"}),
+    "network": frozenset({NETWORK}),
+    "project_id": frozenset({LAB_PROJECT}),
+    "status": frozenset({"PLUMB_DIGEST_MATCH", "BUNDLE_READY", "BLOCKED_BUNDLE", "VERIFIED_REMOVED", "NOT_REMOVED"}),
+    "subnet": frozenset({SUBNET}),
+    "verify_status": frozenset({"VERIFIED_REMOVED", "NOT_REMOVED", "UNKNOWN"}),
+    "zone": frozenset({ZONE}),
+    "expected_oop_usd": frozenset({"0", "UNKNOWN"}),
+    "out_of_pocket_usd": frozenset({"0"}),
+    "spend_source": frozenset({"empty_project_no_vms_or_disks", "supplied"}),
+}
+
+
+def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only known keys and typed values. Unknown fields are dropped."""
+    kept: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key == "verify" and isinstance(value, dict):
+            status = value.get("status")
+            if isinstance(status, str) and status in ENUMS["verify_status"]:
+                kept["verify_status"] = status
+            continue
+        if key == "kernel" and isinstance(value, dict):
+            for flag, dest in (("btf", "kernel_btf"), ("bpffs", "kernel_bpffs"), ("cgroup_v2", "kernel_cgroup_v2")):
+                if isinstance(value.get(flag), bool):
+                    kept[dest] = value[flag]
+            lsm = value.get("lsm")
+            if isinstance(lsm, str) and re.fullmatch(r"[a-z0-9,]{0,80}", lsm):
+                kept["kernel_lsm"] = lsm
+            continue
+        if key == "debs" and isinstance(value, list):
+            rows = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name")
+                digest = item.get("sha256")
+                if (
+                    isinstance(name, str)
+                    and re.fullmatch(r"[A-Za-z0-9.+_-]{1,120}", name)
+                    and SECRET_RE.search(name) is None
+                    and not name.lower().startswith(("ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"))
+                    and "private" not in name.lower()
+                    and isinstance(digest, str)
+                    and HEX64_RE.fullmatch(digest)
+                ):
+                    rows.append({"name": name, "sha256": digest})
+            kept["debs"] = rows
+            continue
+        if key == "objects" and isinstance(value, list):
+            names = [
+                item
+                for item in value
+                if isinstance(item, str) and re.fullmatch(r"[0-9]{1,20}/(seal\.oci\.tar|contract\.tar)", item)
+            ]
+            kept["objects"] = names
+            continue
+        if key == "via" and isinstance(value, list):
+            kept["via"] = [item for item in value if item in ("gcloud", "resumable")]
+            continue
+        if key == "reasons" and isinstance(value, list):
+            kept["reasons"] = [
+                item for item in value if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)
+            ]
+            continue
+        if key in ENUMS:
+            if isinstance(value, str) and value in ENUMS[key]:
+                kept[key] = value
+            continue
+        if key in {"seal_sha256", "contract_sha256", "trust_sha256"} and isinstance(value, str) and HEX64_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key in {"enterprise_sha", "bundle_commit"} and isinstance(value, str) and HEX40_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key in {
+            "abort",
+            "batteries",
+            "deleted",
+            "kernel_btf",
+            "kernel_bpffs",
+            "kernel_cgroup_v2",
+            "mutated",
+            "public_ip",
+            "reboot_observed",
+            "vm_digest_match",
+        } and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"enterprise_rc", "descendant_rc", "debs_count"} and isinstance(value, int) and not isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"estimated_gross_usd", "hours", "worst_case_run_usd"} and isinstance(value, str) and re.fullmatch(r"[0-9]{1,8}(\.[0-9]{1,4})?", value):
+            kept[key] = value
+            continue
+        if key == "lab_project_id" and value == LAB_PROJECT:
+            kept[key] = value
+            continue
+        if key == "debian_image" and value == DEBIAN_IMAGE:
+            kept[key] = value
+            continue
+        if key == "snapshot" and value == SNAPSHOT:
+            kept[key] = value
+            continue
+        if key == "name" and isinstance(value, str) and re.fullmatch(r"vantio-gcp-lab-[0-9]{1,20}", value):
+            kept[key] = value
+            continue
+        if key == "account_id" and isinstance(value, str) and re.fullmatch(r"[0-9]{12}", value):
+            kept[key] = value
+            continue
+        if key == "step" and value in {"bundle", "arm", "teardown", "verify-removed"}:
+            kept[key] = value
+            continue
+        if key == "repeats" and isinstance(value, list):
+            rows = [item for item in (allow_battery(entry) for entry in value) if item]
+            if len(rows) == BATTERY_REPEATS:
+                kept["repeats"] = rows
+            continue
+        if key == "full_set":
+            continue
+    if "repeats" in kept:
+        kept["full_set"] = full_set_passes(kept["repeats"])
+    return kept
+
+
+def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
+    """Keep the full proof fields from one repeat. Drop hostnames, paths, and raw events."""
+    if depth > MAX_BATTERY_DEPTH or not isinstance(entry, dict):
+        return None
+    kept: dict[str, Any] = {}
+    for key, value in entry.items():
+        if key in {"grant", "revoke", "pre", "post", "probe"} and isinstance(value, dict):
+            nested = allow_battery(value, depth + 1)
+            if nested:
+                kept[key] = nested
+            continue
+        if key in {"b1_pass", "descendant_pass", "reboot_observed", "reboot_requested", "attributable"} and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"enterprise_rc", "descendant_rc", "repeat"} and isinstance(value, int) and not isinstance(value, bool):
+            if key == "repeat" and not 1 <= value <= BATTERY_REPEATS:
+                continue
+            kept[key] = value
+            continue
+        if key in {"nobody_errno", "errno"} and isinstance(value, int) and not isinstance(value, bool) and -1 <= value <= 255:
+            kept[key] = value
+            continue
+        if key == "phase" and value in {"pre", "post"}:
+            kept[key] = value
+            continue
+        if key == "battery" and value in {"enterprise", "descendant-b1"}:
+            kept[key] = value
+            continue
+        if key == "result" and value in {"open_ok", "open_error", "probe_failed", "not_run", "pass", "fail"}:
+            kept[key] = value
+            continue
+        if key == "image" and value == IMAGE_NAME:
+            kept[key] = value
+            continue
+        if key == "boot_id" and isinstance(value, str) and re.fullmatch(r"[0-9a-f-]{36}", value):
+            kept[key] = value
+            continue
+        if key == "kernel_btf" and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key == "kernel_bpffs" and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key == "kernel_cgroup_v2" and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key == "kernel_lsm" and isinstance(value, str) and re.fullmatch(r"[a-z0-9,]{0,80}", value):
+            kept[key] = value
+            continue
+        if key == "seal_checked" and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key == "convergence_ms" and isinstance(value, (int, float)) and not isinstance(value, bool):
+            if isinstance(value, int) and value.bit_length() > 32:
+                continue
+            try:
+                number = float(value)
+            except (OverflowError, ValueError):
+                continue
+            if 0 <= number <= 3_600_000:
+                kept[key] = value
+            continue
+        if key == "rows" and isinstance(value, dict):
+            nested = allow_battery(value, depth + 1)
+            if nested:
+                kept[key] = nested
+            continue
+    return kept or None
+
+
+def battery_schedule(repeats: int = BATTERY_REPEATS) -> list[str]:
+    """Each repeat is the full portable set: enterprise rows, then descendant-b1."""
+    if not isinstance(repeats, int) or isinstance(repeats, bool) or repeats < 2:
+        raise SystemExit("repeats")
+    return [step for _ in range(repeats) for step in ("enterprise", "descendant-b1")]
+
+
+def full_set_passes(repeats: Sequence[Mapping[str, Any]]) -> bool:
+    if len(repeats) != BATTERY_REPEATS:
+        return False
+    indexes: list[int] = []
+    for entry in repeats:
+        index = entry.get("repeat")
+        if not isinstance(index, int) or isinstance(index, bool):
+            return False
+        indexes.append(index)
+        if entry.get("enterprise_rc") != 0 or entry.get("descendant_rc") != 0:
+            return False
+        if entry.get("b1_pass") is not True or entry.get("reboot_observed") is not True:
+            return False
+        if entry.get("kernel_btf") is not True or entry.get("kernel_cgroup_v2") is not True or entry.get("kernel_bpffs") is not True:
+            return False
+        if entry.get("seal_checked") is not True:
+            return False
+        rows = entry.get("rows")
+        if not isinstance(rows, dict) or "grant" not in rows or "revoke" not in rows:
+            return False
+    return indexes == list(range(1, BATTERY_REPEATS + 1))
+
+
 def write_evidence(path: Path, payload: Mapping[str, Any]) -> None:
-    text = redact(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    if "PRIVATE KEY" in text or SECRET_RE.search(text):
+    allowed = allow_record(payload)
+    text = redact(json.dumps(allowed, indent=2, sort_keys=True) + "\n")
+    if "PRIVATE KEY" in text or SECRET_RE.search(text) or "ghp_" in text:
         raise SystemExit("token_in_evidence")
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise SystemExit("evidence_symlink")
     path.write_text(text, encoding="utf-8")
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path.with_name(path.name + ".sha256").write_text(f"{digest}  {path.name}\n", encoding="utf-8")
+    sidecar = path.with_name(path.name + ".sha256")
+    if sidecar.is_symlink() or sidecar.is_dir():
+        _remove_evidence_path(sidecar)
+    sidecar.write_text(f"{digest}  {path.name}\n", encoding="utf-8")
 
 
 def _member_refused(name: str) -> bool:
@@ -368,7 +632,7 @@ def iap_ssh_argv(project: str, name: str, command: str) -> list[str]:
         "--quiet",
         "--strict-host-key-checking=no",
         "--ssh-flag=-oServerAliveInterval=30",
-        "--ssh-flag=-oServerAliveCountMax=120",
+        "--ssh-flag=-oServerAliveCountMax=20",
         "--command",
         command,
     ]
@@ -399,7 +663,7 @@ def iap_scp_argv(project: str, sources: Sequence[str], destination: str) -> list
         "--quiet",
         "--strict-host-key-checking=no",
         "--ssh-flag=-oServerAliveInterval=30",
-        "--ssh-flag=-oServerAliveCountMax=120",
+        "--ssh-flag=-oServerAliveCountMax=20",
         *list(sources),
         destination,
     ]
@@ -476,12 +740,67 @@ def _json_request(url: str, token: str, data: bytes | None, method: str) -> byte
         raise SystemExit("storage") from None
 
 
-def json_media_upload(bucket: str, object_name: str, path: Path, token: str) -> None:
+def content_range(offset: int, length: int, total: int) -> str:
+    if offset < 0 or length < 1 or offset + length > total or total < 1:
+        raise SystemExit("handoff_upload")
+    return f"bytes {offset}-{offset + length - 1}/{total}"
+
+
+def resumable_upload(bucket: str, object_name: str, path: Path, token: str) -> None:
+    """Chunked resumable upload. A failed session is not replaced by a one-shot body."""
     if bucket != BUCKET or ".." in object_name or object_name.startswith("/"):
         raise SystemExit("object")
+    total = path.stat().st_size
+    if total <= 0 or total > MAX_SEAL_BYTES:
+        raise SystemExit("handoff_upload")
     quoted = urllib.parse.quote(object_name, safe="")
-    url = f"https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o?uploadType=media&name={quoted}"
-    _json_request(url, token, path.read_bytes(), "POST")
+    start = urllib.request.Request(
+        f"https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o?uploadType=resumable&name={quoted}",
+        data=json.dumps({"name": object_name}).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Type": "application/octet-stream",
+            "X-Upload-Content-Length": str(total),
+        },
+    )
+    try:
+        with urllib.request.urlopen(start, timeout=60) as resp:
+            session = resp.headers.get("Location")
+    except urllib.error.HTTPError as exc:
+        print(redact(f"resumable start {exc.code}"), file=sys.stderr)
+        raise SystemExit("handoff_upload") from None
+    if not session or not session.startswith("https://"):
+        raise SystemExit("handoff_upload")
+    chunk_size = 8 * 1024 * 1024
+    offset = 0
+    with path.open("rb") as handle:
+        while offset < total:
+            chunk = handle.read(chunk_size)
+            if not chunk:
+                raise SystemExit("handoff_upload")
+            put = urllib.request.Request(
+                session,
+                data=chunk,
+                method="PUT",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Length": str(len(chunk)),
+                    "Content-Range": content_range(offset, len(chunk), total),
+                },
+            )
+            try:
+                with urllib.request.urlopen(put, timeout=180) as resp:
+                    if resp.status not in (200, 201):
+                        raise SystemExit("handoff_upload")
+                return
+            except urllib.error.HTTPError as exc:
+                if exc.code != 308:
+                    print(redact(f"resumable put {exc.code}"), file=sys.stderr)
+                    raise SystemExit("handoff_upload") from None
+                offset += len(chunk)
+    raise SystemExit("handoff_upload")
 
 
 def json_media_download(bucket: str, object_name: str, path: Path, token: str) -> None:
@@ -517,13 +836,13 @@ def upload_one(bucket: str, object_name: str, path: Path) -> str:
     if kind != "fallback_json":
         print(redact(text)[-2000:], file=sys.stderr)
         raise SystemExit("handoff_upload")
-    print(json.dumps({"object": object_name, "via": "json", "reason": "storage.objects.get"}))
+    print(json.dumps({"object": object_name, "via": "resumable", "reason": "storage.objects.get"}))
     token = _access_token()
     try:
-        json_media_upload(bucket, object_name, path, token)
+        resumable_upload(bucket, object_name, path, token)
     finally:
         token = ""
-    return "json"
+    return "resumable"
 
 
 def _missing_object(text: str) -> bool:
@@ -765,6 +1084,102 @@ def _load_json_file(path: Path) -> Any:
         return None
 
 
+RAW_GUEST_NAMES = (
+    "gcp-plumb.json",
+    "enterprise-rows.json",
+    "kernel-facts.json",
+    "descendant-b1.json",
+)
+
+
+def _remove_evidence_path(path: Path) -> None:
+    """Remove a file, directory, or symlink without following the link.
+
+    Walk iteratively. shutil.rmtree recurses in Python and raises RecursionError
+    on a deep tree, which would skip the rest of the evidence cleanup.
+    """
+    try:
+        pending = [path]
+        ordered: list[Path] = []
+        seen: set[str] = set()
+        while pending:
+            current = pending.pop()
+            identity = str(current)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            ordered.append(current)
+            try:
+                if current.is_symlink() or not current.is_dir():
+                    continue
+                pending.extend(current.iterdir())
+            except OSError:
+                continue
+        for current in reversed(ordered):
+            try:
+                if current.is_symlink() or not current.is_dir():
+                    current.unlink(missing_ok=True)
+                else:
+                    current.rmdir()
+            except OSError:
+                continue
+    except Exception:
+        return
+
+
+def drop_guest_copies(directory: Path) -> None:
+    """Guest files are folded into the redacted evidence JSON. The raw copies
+    must not sit in the directory that becomes a public artifact."""
+    for name in RAW_GUEST_NAMES:
+        _remove_evidence_path(directory / name)
+        _remove_evidence_path(directory / f"{name}.sha256")
+
+
+def prune_evidence(directory: Path) -> list[str]:
+    """Leave only allowlisted evidence files, rewritten through the key allowlist."""
+    drop_guest_copies(directory)
+    kept: list[str] = []
+    try:
+        for path in list(directory.iterdir()):
+            try:
+                if path.is_symlink() or path.is_dir() or not path.is_file():
+                    _remove_evidence_path(path)
+                    continue
+                stem = path.name[:-7] if path.name.endswith(".sha256") else path.name
+                if stem not in EVIDENCE_FILES:
+                    _remove_evidence_path(path)
+                    continue
+                if path.suffix != ".json":
+                    continue
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+                    _remove_evidence_path(path)
+                    _remove_evidence_path(path.with_name(path.name + ".sha256"))
+                    continue
+                if not isinstance(payload, dict):
+                    _remove_evidence_path(path)
+                    _remove_evidence_path(path.with_name(path.name + ".sha256"))
+                    continue
+                write_evidence(path, payload)
+                kept.append(path.name)
+            except (Exception, SystemExit):
+                _remove_evidence_path(path)
+                _remove_evidence_path(path.with_name(path.name + ".sha256"))
+    finally:
+        for path in list(directory.iterdir()):
+            if path.is_symlink() or path.is_dir():
+                _remove_evidence_path(path)
+                continue
+            if path.name.endswith(".sha256"):
+                if not (directory / path.name[:-7]).is_file():
+                    _remove_evidence_path(path)
+                continue
+            if path.name not in EVIDENCE_FILES:
+                _remove_evidence_path(path)
+    return sorted(kept)
+
+
 def _stored_guest(path: Path, fallback: str) -> Any:
     if path.is_file():
         parsed = _load_json_file(path)
@@ -805,7 +1220,7 @@ def _run_guest(project: str, name: str, command: str, reason: str) -> subprocess
 
 
 def _wait_until_running(project: str, name: str) -> None:
-    deadline = time.time() + 180
+    deadline = time.time() + SSH_WAIT_SECONDS
     status = ""
     while time.time() < deadline:
         described = _run(
@@ -826,7 +1241,7 @@ def _wait_until_running(project: str, name: str) -> None:
         time.sleep(5)
     if status != "RUNNING":
         raise SystemExit("instance_status")
-    _wait_ssh(project, name, 300)
+    _wait_ssh(project, name, SSH_WAIT_SECONDS)
 
 
 def plumb_guest(env: Mapping[str, str]) -> int:
@@ -891,9 +1306,79 @@ def plumb_guest(env: Mapping[str, str]) -> int:
         print(json.dumps(result))
         return 0
     finally:
+        drop_guest_copies(evidence)
         if payload_dir.exists():
             shutil.rmtree(payload_dir, ignore_errors=True)
         remove_os_login_key()
+
+
+def _kernel_flags(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    flags: dict[str, Any] = {}
+    for source, dest in (("btf", "kernel_btf"), ("bpffs", "kernel_bpffs"), ("cgroup_v2", "kernel_cgroup_v2")):
+        if isinstance(payload.get(source), bool):
+            flags[dest] = payload[source]
+    lsm = payload.get("lsm")
+    if isinstance(lsm, str) and re.fullmatch(r"[a-z0-9,]{0,80}", lsm):
+        flags["kernel_lsm"] = lsm
+    return flags
+
+
+def _run_one_battery(project: str, name: str, seal: str, evidence: Path, repeat: int) -> dict[str, Any]:
+    """One full portable pass: enterprise grant/revoke, then descendant-b1 across a reboot."""
+    enterprise = _ssh(project, name, guest_command(seal, "enterprise"))
+    enterprise_path = evidence / "enterprise-rows.json"
+    kernel_path = evidence / "kernel-facts.json"
+    if not _scp_from(project, name, "/tmp/enterprise-pe-rows.json", enterprise_path):
+        raise SystemExit("scp")
+    if not _scp_from(project, name, "/tmp/gcp-kernel-facts.json", kernel_path):
+        raise SystemExit("scp")
+    if enterprise.returncode != 0:
+        print(redact((enterprise.stdout or "") + (enterprise.stderr or ""))[-4000:], file=sys.stderr)
+        raise SystemExit("enterprise")
+    before = _wait_ssh(project, name, SSH_WAIT_SECONDS)
+    pre = _ssh(project, name, guest_command(seal, "descendant-b1", "pre"))
+    pre_text = redact((pre.stdout or "") + (pre.stderr or ""))
+    deadline = time.time() + SSH_WAIT_SECONDS
+    after = ""
+    while time.time() < deadline:
+        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
+        boot = (probe.stdout or "").strip()
+        if probe.returncode == 0 and reboot_ready(before, boot):
+            after = boot
+            break
+        if probe.returncode == 0 and boot == before and "PY_RC=" in pre_text and "PY_RC=0" not in pre_text:
+            print(pre_text[-4000:], file=sys.stderr)
+            raise SystemExit("descendant_pre")
+        time.sleep(10)
+    observed = reboot_ready(before, after)
+    if not observed:
+        print(pre_text[-4000:], file=sys.stderr)
+        raise SystemExit("reboot")
+    post = _run_guest(project, name, guest_command(seal, "descendant-b1", "post"), "descendant_post")
+    descendant_path = evidence / "descendant-b1.json"
+    if not _scp_from(project, name, "/tmp/enterprise-pe-rows.json", descendant_path):
+        raise SystemExit("scp")
+    guest = _load_json_file(descendant_path)
+    summary = allow_battery(guest) or {}
+    enterprise_rows = allow_battery(_load_json_file(enterprise_path))
+    if enterprise_rows:
+        summary["rows"] = enterprise_rows
+    summary.update(_kernel_flags(_load_json_file(kernel_path)))
+    summary.update(
+        {
+            "battery": "descendant-b1",
+            "descendant_rc": post.returncode,
+            "enterprise_rc": enterprise.returncode,
+            "reboot_observed": observed,
+            "repeat": repeat,
+            "seal_checked": True,
+        }
+    )
+    if summary.get("b1_pass") is not True:
+        raise SystemExit("descendant_post")
+    return summary
 
 
 def run_batteries(env: Mapping[str, str]) -> int:
@@ -907,8 +1392,6 @@ def run_batteries(env: Mapping[str, str]) -> int:
     evidence = _evidence_dir(env)
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
     debs = _stage_payload(env, payload_dir)
-    guest_rc = 1
-    descendant_rc = 1
     try:
         _wait_until_running(project, name)
         made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
@@ -927,60 +1410,41 @@ def run_batteries(env: Mapping[str, str]) -> int:
         )
         for local_name in ("seal.oci.tar", "contract.tar"):
             (payload_dir / local_name).unlink(missing_ok=True)
-        enterprise = _ssh(project, name, guest_command(seal, "enterprise"))
-        guest_rc = enterprise.returncode
-        enterprise_path = evidence / "enterprise-rows.json"
-        kernel_path = evidence / "kernel-facts.json"
-        _scp_from(project, name, "/tmp/enterprise-pe-rows.json", enterprise_path)
-        _scp_from(project, name, "/tmp/gcp-kernel-facts.json", kernel_path)
-        if enterprise.returncode != 0:
-            print(redact((enterprise.stdout or "") + (enterprise.stderr or ""))[-4000:], file=sys.stderr)
-            raise SystemExit("enterprise")
-        before = _wait_ssh(project, name, 60)
-        pre = _ssh(project, name, guest_command(seal, "descendant-b1", "pre"))
-        pre_text = redact((pre.stdout or "") + (pre.stderr or ""))
-        deadline = time.time() + 180
-        after = ""
-        while time.time() < deadline:
-            probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
-            boot = (probe.stdout or "").strip()
-            if probe.returncode == 0 and reboot_ready(before, boot):
-                after = boot
-                break
-            if probe.returncode == 0 and boot == before and "PY_RC=" in pre_text and "PY_RC=0" not in pre_text:
-                print(pre_text[-4000:], file=sys.stderr)
-                raise SystemExit("descendant_pre")
-            time.sleep(10)
-        if not reboot_ready(before, after):
-            print(pre_text[-4000:], file=sys.stderr)
-            raise SystemExit("reboot")
-        post = _run_guest(project, name, guest_command(seal, "descendant-b1", "post"), "descendant_post")
-        descendant_rc = post.returncode
-        descendant_path = evidence / "descendant-b1.json"
-        _scp_from(project, name, "/tmp/enterprise-pe-rows.json", descendant_path)
+        repeats: list[dict[str, Any]] = []
+        schedule = battery_schedule(BATTERY_REPEATS)
+        if schedule != ["enterprise", "descendant-b1"] * BATTERY_REPEATS:
+            raise SystemExit("repeats")
+        for index in range(BATTERY_REPEATS):
+            if index:
+                _wait_ssh(project, name, SSH_WAIT_SECONDS)
+            repeat = _run_one_battery(project, name, seal, evidence, index + 1)
+            repeats.append(repeat)
+        passed = full_set_passes(repeats)
         result = {
+            "batteries": True,
             "claim_cap": CLAIM_CAP,
             "cloud": "gcp",
             "debian_image": DEBIAN_IMAGE,
             "debs": debs,
-            "descendant_b1": _stored_guest(descendant_path, post.stdout or ""),
-            "descendant_rc": descendant_rc,
-            "enterprise_rc": guest_rc,
-            "enterprise_rows": _stored_guest(enterprise_path, enterprise.stdout or ""),
+            "full_set": passed,
             "image": IMAGE_NAME,
-            "kernel": _load_json_file(kernel_path),
+            "mode": "enterprise",
             "network": NETWORK,
             "public_ip": False,
-            "reboot_observed": True,
+            "repeats": repeats,
             "seal_sha256": seal,
             "snapshot": SNAPSHOT,
             "subnet": SUBNET,
             "trust_sha256": TRUST_SHA256,
         }
+        if not passed:
+            write_evidence(evidence / "gcp-lab-rows.json", result)
+            raise SystemExit("battery")
         write_evidence(evidence / "gcp-lab-rows.json", result)
-        print(json.dumps({"enterprise_rc": guest_rc, "descendant_rc": descendant_rc, "claim_cap": CLAIM_CAP}))
+        print(json.dumps({"full_set": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
         return 0
     finally:
+        drop_guest_copies(evidence)
         if payload_dir.exists():
             shutil.rmtree(payload_dir, ignore_errors=True)
         remove_os_login_key()
@@ -1033,34 +1497,45 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
     _require_execute(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     name = instance_name(env.get("GITHUB_RUN_ID", ""))
-    created = _creation_epoch(project, name)
-    now = int(time.time())
-    hours = Decimal("0")
-    if created is not None and now >= created:
-        hours = Decimal(now - created) / Decimal("3600")
-    gross = estimate_gross_usd(hours)
-    instances = _list_instances(project)
-    matched = next((item for item in instances if item.get("name") == name), None)
     deleted = False
-    if matched is not None:
-        if not lab.labels_owned(matched.get("labels"), name):
-            raise SystemExit("skip_not_owned")
-        _run_ok(
-            [
-                "gcloud",
-                "compute",
-                "instances",
-                "delete",
-                name,
-                f"--project={project}",
-                f"--zone={lab.instance_zone(matched)}",
-                "--delete-disks=all",
-                "--quiet",
-            ],
-            "teardown",
+    skipped = False
+    hours = Decimal("0")
+    gross = Decimal("0")
+    try:
+        created = _creation_epoch(project, name)
+        now = int(time.time())
+        if created is not None and now >= created:
+            hours = Decimal(now - created) / Decimal("3600")
+        gross = estimate_gross_usd(hours)
+        instances = _list_instances(project)
+        matched = next((item for item in instances if item.get("name") == name), None)
+        if matched is not None:
+            if not lab.labels_owned(matched.get("labels"), name):
+                skipped = True
+            else:
+                _run_ok(
+                    [
+                        "gcloud",
+                        "compute",
+                        "instances",
+                        "delete",
+                        name,
+                        f"--project={project}",
+                        f"--zone={lab.instance_zone(matched)}",
+                        "--delete-disks=all",
+                        "--quiet",
+                    ],
+                    "teardown",
+                )
+                deleted = True
+    finally:
+        delete_objects(object_names(env.get("GITHUB_RUN_ID", "")), missing_ok=True)
+    if skipped:
+        write_evidence(
+            _evidence_dir(env) / "teardown.json",
+            {"claim_cap": CLAIM_CAP, "deleted": False, "name": name, "verify_status": "UNKNOWN"},
         )
-        deleted = True
-    delete_objects(object_names(env.get("GITHUB_RUN_ID", "")), missing_ok=True)
+        return 2
     os.environ["INSTANCE_NAME"] = name
     os.environ["GCP_LAB_PROJECT"] = project
     os.environ["GCP_LAB_EXECUTE"] = "1"
@@ -1110,6 +1585,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return download_handoff(env)
         if command == "hash-debs":
             return hash_debs(env)
+        if command == "prune-evidence":
+            directory = _evidence_dir(env)
+            print(json.dumps({"kept": prune_evidence(directory)}))
+            return 0
         if command == "check-dispatch":
             refuse_batteries(env)
             print(json.dumps({"batteries": batteries_requested(env), "seal_sha256": expected_seal(env)}))
