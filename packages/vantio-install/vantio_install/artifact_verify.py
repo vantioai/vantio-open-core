@@ -14,7 +14,9 @@ import json
 import os
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 from urllib.parse import urlparse
 
 from cryptography.exceptions import InvalidSignature
@@ -30,6 +32,8 @@ _FORBIDDEN = (
 )
 _SHA = set("0123456789abcdef")
 _MAX_BYTES = 64 * 1024 * 1024
+_PACKAGED_ARTIFACT = Path(__file__).resolve().parent / "trust" / "artifact-public-keys.json"
+_ARTIFACT_OVERRIDE: dict[str, bytes] | None = None
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -107,6 +111,35 @@ def fetch_to_file(url: str, destination: Path, *, timeout_s: float = 5) -> dict:
         return {"disposition": "REFUSED", "reason": "INTERRUPTED_DOWNLOAD", "fetched": False, "path": None}
     os.replace(temporary, destination)
     return {"disposition": "FETCHED", "reason": "FETCHED", "fetched": True, "path": destination}
+
+
+def packaged_artifact_trust() -> dict[str, bytes]:
+    """Return the keys shipped in this package. The file is empty until a Founder pins one."""
+    if not _PACKAGED_ARTIFACT.is_file():
+        return {}
+    try:
+        return load_artifact_trust(_PACKAGED_ARTIFACT)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def active_artifact_trust() -> dict[str, bytes]:
+    """Live installs use the packaged set. Tests may set a temporary override."""
+    if _ARTIFACT_OVERRIDE is not None:
+        return dict(_ARTIFACT_OVERRIDE)
+    return packaged_artifact_trust()
+
+
+@contextmanager
+def artifact_trust_override(keys: dict[str, bytes]) -> Iterator[None]:
+    """Test-only trust override. The command line cannot set this."""
+    global _ARTIFACT_OVERRIDE
+    previous = _ARTIFACT_OVERRIDE
+    _ARTIFACT_OVERRIDE = dict(keys)
+    try:
+        yield
+    finally:
+        _ARTIFACT_OVERRIDE = previous
 
 
 def load_artifact_trust(path: Path) -> dict[str, bytes]:
