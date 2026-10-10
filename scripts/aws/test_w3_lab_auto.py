@@ -6,10 +6,12 @@ These tests use a fake AWS runner. They do not call AWS.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -18,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "aws"))
 
+import stage_redteam_brain as stage_brain  # noqa: E402
 import w3_lab_auto as lab  # noqa: E402
 
 NOW = datetime(2026, 9, 30, 16, 0, tzinfo=timezone.utc)
@@ -353,12 +356,91 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertNotIn(lab.FORBIDDEN_ACCOUNT_ID, " ".join(run))
         self.assertNotIn("iam-instance-profile", " ".join(run))
         self.assertEqual(runner.commands().count("run-instances"), 1)
+        self.assertIn("--no-ebs-optimized", " ".join(run))
+        self.assertIn("CpuCredits=standard", " ".join(run))
         self.assertFalse(result["default_egress_revoked"])
         self.assertEqual(result["egress"], "default_allow")
         self.assertFalse(result["close_egress"])
         joined = " ".join(" ".join(call) for call in runner.calls)
         self.assertNotIn("revoke-security-group-egress", joined)
         self.assertNotIn("release-address", joined)
+
+    def test_brain_shape_stays_inside_the_zero_oop_ceiling(self) -> None:
+        plan = lab.plan_launch(
+            {
+                "instance_type": "m7i-flex.large",
+                "stop_after_minutes": 120,
+                "name": "vantio-w3-lab-auto-brain",
+                "associate_public_ipv4": "true",
+            },
+            NOW,
+        )
+        self.assertEqual(plan["stop_after_minutes"], 120)
+        self.assertEqual(plan["block_device"]["Ebs"]["VolumeSize"], 20)
+        self.assertIsNone(plan["credit_specification"])
+        self.assertTrue(plan["ebs_optimized"])
+        self.assertLess(lab.brain_gross_usd(120), lab.WORST_CASE_RUN_USD)
+        args = lab.run_instances_args(
+            plan,
+            image_id=lab.PINNED_IMAGE_ID,
+            security_group_id="sg-0123456789abcdef0",
+            subnet_id=lab.LAB_SUBNET_ID,
+        )
+        text = " ".join(args)
+        self.assertIn("--instance-type", text)
+        self.assertIn("m7i-flex.large", text)
+        self.assertNotIn("credit-specification", text)
+        self.assertNotIn("no-ebs-optimized", text)
+        self.assertNotIn("release-address", text)
+        with self.assertRaises(ValueError):
+            lab.plan_launch(
+                {
+                    "instance_type": "m7i-flex.large",
+                    "stop_after_minutes": 121,
+                    "name": "vantio-w3-lab-auto-brain",
+                },
+                NOW,
+            )
+        covered = lab.evaluate_cost_gate(
+            {
+                "accountId": lab.ACCOUNT_ID,
+                "accountPlanType": "FREE",
+                "accountPlanStatus": "ACTIVE",
+                "accountPlanRemainingCredits": {"amount": "3.00", "unit": "USD"},
+                "accountPlanExpirationDate": "2026-10-02T00:00:00Z",
+            },
+            NOW,
+        )
+        self.assertEqual(covered["expected_oop_usd"], "0")
+        self.assertEqual(covered["worst_case_run_usd"], "2.00")
+        short = lab.evaluate_cost_gate(
+            {
+                "accountId": lab.ACCOUNT_ID,
+                "accountPlanType": "FREE",
+                "accountPlanStatus": "ACTIVE",
+                "accountPlanRemainingCredits": {"amount": "2.00", "unit": "USD"},
+                "accountPlanExpirationDate": "2026-10-02T00:00:00Z",
+            },
+            NOW,
+        )
+        self.assertEqual(short["expected_oop_usd"], "UNKNOWN")
+        provision = (ROOT / ".github/workflows/w3-lab-auto-provision.yml").read_text(encoding="utf-8")
+        soak = (ROOT / ".github/workflows/w3-lab-auto-long-soak.yml").read_text(encoding="utf-8")
+        self.assertIn("m7i-flex.large", provision)
+        self.assertNotIn("m7i-flex.large", soak)
+
+    def test_runtime_extract_refuses_an_escaping_member(self) -> None:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+            info = tarfile.TarInfo("../outside")
+            payload = b"nope"
+            info.size = len(payload)
+            tar.addfile(info, io.BytesIO(payload))
+        with tempfile.TemporaryDirectory() as tmp:
+            tar_path = Path(tmp) / "runtime.tar.gz"
+            tar_path.write_bytes(buffer.getvalue())
+            with self.assertRaises(ValueError):
+                stage_brain.safe_extract(tar_path, Path(tmp) / "out")
 
     def test_default_launch_ignores_a_missing_revoke_permission(self) -> None:
         runner = FakeAws()

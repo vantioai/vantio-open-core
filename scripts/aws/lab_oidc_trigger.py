@@ -56,7 +56,7 @@ STEPS: dict[str, dict[str, object]] = {
     "arm": {
         "workflow": "w3-lab-auto-arm.yml",
         "launches": False,
-        "inputs": ("instance_id", "seal", "public_pin", "enterprise_rows", "bundle_tag", "battery"),
+        "inputs": ("instance_id", "seal", "public_pin", "enterprise_rows", "bundle_tag", "battery", "redteam_brain"),
     },
     "collect": {
         "workflow": "w3-lab-auto-collect.yml",
@@ -133,8 +133,14 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("bundle_tag")
         if key == "battery" and value not in ("enterprise", "descendant-b1"):
             raise TriggerError("battery")
-        if key == "instance_type" and value not in ("t3.micro", "t3.small"):
-            raise TriggerError("instance_type")
+        if key == "redteam_brain" and value not in ("true", "false"):
+            raise TriggerError("redteam_brain")
+        if key == "instance_type":
+            type_allowed = ("t3.micro", "t3.small", "m7i-flex.large") if step == "launch" else ("t3.micro", "t3.small")
+            if value not in type_allowed:
+                raise TriggerError("instance_type")
+        if key == "stop_after_minutes" and re.fullmatch(r"[0-9]{1,4}", value) is None:
+            raise TriggerError("stop_after_minutes")
         if key == "associate_public_ipv4" and value not in ("true", "false"):
             raise TriggerError("associate_public_ipv4")
         if key == "describe_only" and value not in ("true", "false"):
@@ -143,6 +149,10 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("close_egress")
         if key == "image_id" and re.fullmatch(r"ami-[0-9a-f]{8,17}", value) is None:
             raise TriggerError("image_id")
+    if step == "launch" and fields.get("instance_type") == "m7i-flex.large":
+        raw = fields.get("stop_after_minutes", "")
+        if not raw.isdigit() or not 1 <= int(raw) <= 120:
+            raise TriggerError("stop_after_minutes")
 
 
 def dispatch_argv(step: str, fields: Mapping[str, str]) -> list[str]:

@@ -19,20 +19,24 @@ name: W3 lab auto provision
 # close_egress true. That path still revokes allow-all egress and aborts,
 # deleting the group, if the revoke is denied or the allow-all rule remains.
 # ReleaseAddress is not called. Do not add ec2:RevokeSecurityGroupEgress.
+# m7i-flex.large is the credit-funded brain shape. stop_after_minutes above
+# 120 is refused for that type. The cost gate still returns expected_oop_usd
+# 0 only when Free-plan credits cover the $2 ceiling. Cost Explorer is not called.
 
 on:
   workflow_dispatch:
     inputs:
       instance_type:
-        description: Free-eligible amd64 type. t3.micro or t3.small.
+        description: Free-plan amd64 type. t3.micro, t3.small, or m7i-flex.large. The flex shape is capped at 120 minutes.
         required: true
         default: t3.micro
         type: choice
         options:
           - t3.micro
           - t3.small
+          - m7i-flex.large
       stop_after_minutes:
-        description: Self-stop delay in minutes. 1 through 420.
+        description: Self-stop delay in minutes. 1 through 420. m7i-flex.large refuses a value above 120.
         required: true
         default: "420"
         type: string

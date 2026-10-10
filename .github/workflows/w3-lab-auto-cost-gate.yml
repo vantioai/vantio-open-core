@@ -12,7 +12,9 @@ name: W3 lab auto cost gate
 # Cost Explorer is not called. UpgradeAccountPlan is not called.
 # expected_oop_usd is 0 only when that read shows the Free plan can cover
 # the $2.00 ceiling. Any other result fails the job. A green gate does not
-# set NONINTERACTIVE_TEARDOWN_READY.
+# set NONINTERACTIVE_TEARDOWN_READY. m7i-flex.large stays on this same gate.
+# Launch refuses that shape when stop_after_minutes is above 120, which keeps
+# its published-price gross under the ceiling. Cost Explorer is not called.
 
 on:
   workflow_call:
