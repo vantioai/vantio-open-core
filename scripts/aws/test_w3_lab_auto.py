@@ -32,10 +32,32 @@ class FakeAws:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.image_state = "available"
+        self.egress_denied = False
+        self.ipv6_absent = False
+        self.egress_open = False
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(list(args))
         text = " ".join(args)
+        if "revoke-security-group-egress" in text and "--dry-run" in args:
+            if self.egress_denied:
+                return completed(
+                    code=254,
+                    stderr="An error occurred (AccessDenied) when calling the RevokeSecurityGroupEgress operation: User is not authorized",
+                )
+            return completed(
+                code=254,
+                stderr="An error occurred (DryRunOperation) when calling the RevokeSecurityGroupEgress operation: Request would have succeeded, but DryRun flag is set.",
+            )
+        if "revoke-security-group-egress" in text and "::/0" in text and self.ipv6_absent:
+            return completed(
+                code=254,
+                stderr="An error occurred (InvalidPermission.NotFound) when calling the RevokeSecurityGroupEgress operation",
+            )
+        if "describe-security-groups" in text and "--group-ids" in args:
+            group_id = args[args.index("--group-ids") + 1]
+            rules = [{"IpProtocol": "-1", "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}] if self.egress_open else []
+            return completed({"SecurityGroups": [{"GroupId": group_id, "IpPermissionsEgress": rules}]})
         if "get-caller-identity" in text:
             return completed({"Account": lab.ACCOUNT_ID, "Arn": "arn:aws:iam::960577828987:role/vantio-w3-lab-provision"})
         if "describe-images" in text:
@@ -330,6 +352,64 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertNotIn(lab.FORBIDDEN_ACCOUNT_ID, " ".join(run))
         self.assertNotIn("iam-instance-profile", " ".join(run))
         self.assertEqual(runner.commands().count("run-instances"), 1)
+        self.assertTrue(result["default_egress_revoked"])
+        self.assertNotIn("release-address", " ".join(" ".join(call) for call in runner.calls))
+        revoke_at = next(i for i, call in enumerate(runner.calls) if "revoke-security-group-egress" in call and "--dry-run" not in call)
+        run_at = next(i for i, call in enumerate(runner.calls) if "run-instances" in call)
+        self.assertLess(revoke_at, run_at)
+        revoked = " ".join(runner.calls[revoke_at])
+        self.assertIn("0.0.0.0/0", revoked)
+        self.assertIn('"IpProtocol":"-1"', revoked)
+
+    def test_denied_egress_revoke_does_not_launch(self) -> None:
+        runner = FakeAws()
+        runner.egress_denied = True
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(lab.GuardAbort) as caught:
+                lab.execute_launch(
+                    launch_spec(),
+                    passing_gate(),
+                    {"Account": lab.ACCOUNT_ID},
+                    runner,
+                    NOW,
+                    user_data_path=Path(tmp) / "user-data.sh",
+                )
+        self.assertEqual(caught.exception.reason, lab.EGRESS_REVOKE_DENIED)
+        self.assertNotIn("run-instances", runner.commands())
+        self.assertIn("delete-security-group", runner.commands())
+        self.assertNotIn("release-address", " ".join(" ".join(call) for call in runner.calls))
+
+    def test_missing_ipv6_egress_rule_still_launches(self) -> None:
+        runner = FakeAws()
+        runner.ipv6_absent = True
+        with tempfile.TemporaryDirectory() as tmp:
+            result = lab.execute_launch(
+                launch_spec(),
+                passing_gate(),
+                {"Account": lab.ACCOUNT_ID},
+                runner,
+                NOW,
+                user_data_path=Path(tmp) / "user-data.sh",
+            )
+        self.assertEqual(result["instance_id"], "i-0123456789abcdef0")
+        self.assertTrue(result["default_egress_revoked"])
+
+    def test_remaining_allow_all_egress_does_not_launch(self) -> None:
+        runner = FakeAws()
+        runner.egress_open = True
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(lab.GuardAbort) as caught:
+                lab.execute_launch(
+                    launch_spec(),
+                    passing_gate(),
+                    {"Account": lab.ACCOUNT_ID},
+                    runner,
+                    NOW,
+                    user_data_path=Path(tmp) / "user-data.sh",
+                )
+        self.assertEqual(caught.exception.reason, "egress_still_open")
+        self.assertNotIn("run-instances", runner.commands())
+        self.assertIn("delete-security-group", runner.commands())
 
     def test_deregistered_image_does_not_create_a_group(self) -> None:
         runner = FakeAws()

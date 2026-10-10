@@ -14,6 +14,9 @@ name: W3 lab auto provision
 # running, stopping, stopped, or shutting down. That is the one-EC2 slot.
 # scripts/aws/w3_lab_auto.py launch calls RunInstances only after the cost
 # gate file says expected_oop_usd is 0. NONINTERACTIVE_TEARDOWN_READY stays false.
+# Before RunInstances the new security group's default allow-all egress is
+# revoked. If ec2:RevokeSecurityGroupEgress is denied, the group is deleted
+# and no instance is created. ReleaseAddress is not called.
 
 on:
   workflow_dispatch:

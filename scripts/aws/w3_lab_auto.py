@@ -27,6 +27,8 @@ ACCOUNT_ID = "960577828987"
 REGION = "us-east-2"
 BILLING_REGION = "us-east-1"
 ROLE_PROVISION = "vantio-w3-lab-provision"
+# Missing this action aborts before RunInstances. Do not add it from this repo.
+EGRESS_REVOKE_DENIED = "egress_revoke_denied:ec2:RevokeSecurityGroupEgress"
 ENVIRONMENT = "w3-lab-auto"
 MAX_SESSION_SECONDS = 3600
 MAX_LIFE_MINUTES = 420
@@ -739,6 +741,7 @@ def execute_launch(
     )
     launch_args[launch_args.index("file://user-data.sh")] = f"file://{user_data_path}"
     try:
+        deny_default_egress(runner, group_id)
         launched = aws_json(runner, launch_args)
     except GuardAbort:
         rollback_security_group(runner, group_id)
@@ -762,6 +765,7 @@ def execute_launch(
         "stop_after_minutes": plan["stop_after_minutes"],
         "expires_at": plan["expires_at"],
         "associate_public_ipv4": plan["associate_public_ipv4"],
+        "default_egress_revoked": True,
         "shutdown_behavior": "terminate",
         "expected_oop_usd": "0",
         "cost_explorer_called": False,
@@ -989,6 +993,100 @@ def describe_occupying_args() -> list[str]:
         "--filters",
         "Name=instance-state-name,Values=pending,running,stopping,stopped,shutting-down",
     ]
+
+
+def _egress_permission(cidr: str) -> dict[str, Any]:
+    if cidr == "0.0.0.0/0":
+        return {"IpProtocol": "-1", "IpRanges": [{"CidrIp": cidr}]}
+    if cidr == "::/0":
+        return {"IpProtocol": "-1", "Ipv6Ranges": [{"CidrIpv6": cidr}]}
+    raise GuardAbort("egress_cidr")
+
+
+def revoke_egress_args(group_id: str, cidr: str) -> list[str]:
+    if ID_SHAPES["security-group"].match(group_id) is None:
+        raise GuardAbort("security_group")
+    return [
+        "aws",
+        "ec2",
+        "revoke-security-group-egress",
+        "--region",
+        REGION,
+        "--group-id",
+        group_id,
+        "--ip-permissions",
+        json.dumps([_egress_permission(cidr)], separators=(",", ":")),
+    ]
+
+
+def classify_mutation(proc: subprocess.CompletedProcess[str]) -> str:
+    text = f"{proc.stderr or ''}{proc.stdout or ''}"
+    if "DryRunOperation" in text:
+        return "allowed"
+    if "UnauthorizedOperation" in text or "AccessDenied" in text:
+        return "denied"
+    if "InvalidPermission.NotFound" in text:
+        return "absent"
+    if proc.returncode == 0:
+        return "ok"
+    return "error"
+
+
+def _egress_still_open(perm: Mapping[str, Any]) -> bool:
+    for block in perm.get("IpRanges") or []:
+        if isinstance(block, Mapping) and block.get("CidrIp") == "0.0.0.0/0":
+            return True
+    for block in perm.get("Ipv6Ranges") or []:
+        if isinstance(block, Mapping) and block.get("CidrIpv6") == "::/0":
+            return True
+    return False
+
+
+def deny_default_egress(runner: Runner, group_id: str) -> None:
+    """Drop the allow-all egress rule CreateSecurityGroup adds.
+
+    A denied dry-run means the role lacks ec2:RevokeSecurityGroupEgress.
+    The caller deletes the group and must not call RunInstances.
+    This does not call ReleaseAddress.
+    """
+    probe = [*revoke_egress_args(group_id, "0.0.0.0/0"), "--dry-run"]
+    refuse_forbidden_command(probe)
+    status = classify_mutation(runner(probe))
+    if status == "denied":
+        raise GuardAbort(EGRESS_REVOKE_DENIED)
+    if status != "allowed":
+        raise GuardAbort("egress_revoke_dry_run")
+    for cidr in ("0.0.0.0/0", "::/0"):
+        args = revoke_egress_args(group_id, cidr)
+        refuse_forbidden_command(args)
+        status = classify_mutation(runner(args))
+        if status == "denied":
+            raise GuardAbort(EGRESS_REVOKE_DENIED)
+        if cidr == "0.0.0.0/0" and status != "ok":
+            raise GuardAbort("egress_revoke_failed")
+        if cidr == "::/0" and status not in ("ok", "absent"):
+            raise GuardAbort("egress_revoke_failed")
+    described = aws_json(
+        runner,
+        [
+            "aws",
+            "ec2",
+            "describe-security-groups",
+            "--region",
+            REGION,
+            "--group-ids",
+            group_id,
+        ],
+    )
+    groups = described.get("SecurityGroups")
+    if not isinstance(groups, list) or not groups:
+        raise GuardAbort("egress_not_proven")
+    for group in groups:
+        if not isinstance(group, Mapping):
+            raise GuardAbort("egress_not_proven")
+        for perm in group.get("IpPermissionsEgress") or []:
+            if isinstance(perm, Mapping) and _egress_still_open(perm):
+                raise GuardAbort("egress_still_open")
 
 
 def rollback_security_group(runner: Runner, group_id: str) -> None:
