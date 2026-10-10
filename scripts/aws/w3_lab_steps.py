@@ -861,62 +861,6 @@ def _wait_for_reboot(
     raise lab.GuardAbort("reboot_timeout")
 
 
-def _self_service_shell(root: str, rows_path: str) -> str:
-    """One remote command. It does not pass --artifact-trust or --fixture-host."""
-    if not re.fullmatch(r"/[A-Za-z0-9_./-]{1,160}", root):
-        raise lab.GuardAbort("self_service_layout")
-    if not re.fullmatch(r"/tmp/[A-Za-z0-9_./-]{1,80}", rows_path):
-        raise lab.GuardAbort("self_service_layout")
-    script = (
-        "set -euo pipefail; "
-        f"tar -xf {root}/self-service.tar -C {root}; "
-        f"if [ -f {root}/debs.tar ]; then mkdir -p {root}/debs; tar -xf {root}/debs.tar -C {root}/debs; fi; "
-        "sudo env "
-        f"PYTHONPATH={root} "
-        "VANTIO_LAB_SCOPE=lab-nonprod "
-        f"VANTIO_LAB_ARTIFACT_TRUST={root}/lab-artifact-trust.json "
-        f"VANTIO_LAB_DEV_TRUST={root}/lab-dev-trust.json "
-        f"VANTIO_LAB_ROOT={root} "
-        f"VANTIO_INSTALL_BUNDLE={root}/bundle "
-        f"VANTIO_POLICY_FILE={root}/policy.json "
-        f"VANTIO_SIGNATURE_FILE={root}/signature.json "
-        "VANTIO_STATE_DIR=/var/lib/vantio/install "
-        f"VANTIO_SELF_SERVICE_OUT={rows_path} "
-        f"python3 {root}/self_service.py"
-    )
-    if "--artifact-trust" in script or "--fixture-host" in script:
-        raise lab.GuardAbort("self_service_layout")
-    return script
-
-
-def _scan_self_service(directory: Path) -> None:
-    """Refuse a staged tree that carries a private key or the enterprise contract."""
-    if not directory.is_dir():
-        raise lab.GuardAbort("self_service_layout")
-    for name in (
-        "self_service.py",
-        "self-service.tar",
-        "lab-artifact-trust.json",
-        "lab-dev-trust.json",
-        "policy.json",
-        "signature.json",
-    ):
-        if not (directory / name).is_file():
-            raise lab.GuardAbort("self_service_layout")
-    for path in directory.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(directory).as_posix()
-        if ".." in rel.split("/") or path.name in {"contract.tar", "private-key.pem"} or path.suffix == ".pem":
-            raise lab.GuardAbort("self_service_layout")
-        try:
-            blob = path.read_bytes()
-        except OSError:
-            raise lab.GuardAbort("self_service_layout") from None
-        if re.search(br"-----BEGIN [A-Z ]*PRIVATE KEY-----", blob):
-            raise lab.GuardAbort("token_in_evidence")
-
-
 def execute_enterprise_rows(
     runner: Runner,
     *,
@@ -942,23 +886,13 @@ def execute_enterprise_rows(
 
         if seal != enterprise_bundle.POLICY_ALLOW_SEAL or pin != enterprise_bundle.PUBLIC_INSTALLER_PIN:
             raise lab.GuardAbort("bundle_wrong_seal")
-        battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
-        if battery not in ("enterprise", "descendant-b1", "self-service"):
-            raise lab.GuardAbort("battery")
-        payload["battery"] = battery
-        if battery == "self-service" and os.environ.get("W3_BRAIN_DIR", "").strip():
-            raise lab.GuardAbort("battery")
         cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
         bundle_dir = Path(os.environ.get("W3_BUNDLE_DIR", ""))
-        staged = Path(os.environ.get("W3_SELF_SERVICE_DIR", ""))
-        if battery == "self-service":
-            _scan_self_service(staged)
-        else:
-            if not bundle_dir.is_dir():
-                raise lab.GuardAbort("bundle_layout")
-            check = checker or enterprise_bundle.inspect_bundle
-            inspected = dict(check(bundle_dir))
-            payload.update(inspected)
+        if not bundle_dir.is_dir():
+            raise lab.GuardAbort("bundle_layout")
+        check = checker or enterprise_bundle.inspect_bundle
+        inspected = dict(check(bundle_dir))
+        payload.update(inspected)
         payload.update({"instance_id": instance_id, "public_pin": pin, "seal": seal})
         identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
         lab.require_identity(identity)
@@ -1035,9 +969,8 @@ def execute_enterprise_rows(
             owned = remote(["sudo", "chown", "-R", "ubuntu:ubuntu", "/var/lib/vantio-lab"], "")
             if owned.returncode != 0:
                 _ssh_failure(owned)
-            if battery != "self-service":
-                copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
-                copy_to(bundle_dir / "contract.tar", "contract.tar")
+            copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
+            copy_to(bundle_dir / "contract.tar", "contract.tar")
             debs_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
             if debs_env:
                 debs_dir = Path(debs_env)
@@ -1065,12 +998,14 @@ def execute_enterprise_rows(
                 model = brain_dir / "qwen2.5-3b-instruct-q4_k_m.gguf"
                 runtime = brain_dir / "llama-b11540"
                 server = runtime / "llama-server"
-                if not model.is_file() or not server.is_file():
+                library = runtime / "libllama-server-impl.so"
+                if not model.is_file() or not server.is_file() or not library.is_file():
                     raise lab.GuardAbort("brain_files")
-                made_brain = remote(["sudo", "mkdir", "-p", "/tmp/vantio-lab"], "")
+                guest_brain = lab.BRAIN_GUEST_DIR
+                made_brain = remote(["sudo", "mkdir", "-p", f"{guest_brain}/llama-b11540"], "")
                 if made_brain.returncode != 0:
                     _ssh_failure(made_brain)
-                owned_brain = remote(["sudo", "chown", "ubuntu:ubuntu", "/tmp/vantio-lab"], "")
+                owned_brain = remote(["sudo", "chown", "-R", "ubuntu:ubuntu", "/var/lib/vantio-lab"], "")
                 if owned_brain.returncode != 0:
                     _ssh_failure(owned_brain)
                 copied_model = _run_with_fresh_key(
@@ -1078,7 +1013,7 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", *base[:-1], str(model), f"ubuntu@{host}:/tmp/vantio-lab/qwen2.5-3b-instruct-q4_k_m.gguf"],
+                    ["scp", *base[:-1], str(model), f"ubuntu@{host}:{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"],
                     "",
                 )
                 if copied_model.returncode != 0:
@@ -1088,25 +1023,37 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", "-r", *base[:-1], str(runtime), f"ubuntu@{host}:/tmp/vantio-lab/llama-b11540"],
+                    ["scp", "-r", *base[:-1], f"{runtime}/.", f"ubuntu@{host}:{guest_brain}/llama-b11540/"],
                     "",
                 )
                 if copied_runtime.returncode != 0:
                     _ssh_failure(copied_runtime)
-                marked = remote(["chmod", "-R", "a+rX", "/tmp/vantio-lab"], "")
+                marked = remote(["chmod", "-R", "a+rX", guest_brain], "")
                 if marked.returncode != 0:
                     _ssh_failure(marked)
-            if battery == "self-service":
-                deb_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
-                if deb_env:
-                    ca_bundle = Path(deb_env) / "ca-certificates.crt"
-                    if ca_bundle.is_file():
-                        copy_to(ca_bundle, "ca-certificates.crt")
-                copy_to(staged / "self-service.tar", "self-service.tar")
-                ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, "/tmp/enterprise-pe-rows.json")], "")
-            elif battery == "descendant-b1":
-                script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
-                copy_to(script_path, "enterprise-rows.sh")
+                executable = remote(["chmod", "a+rx", f"{guest_brain}/llama-b11540/llama-server"], "")
+                if executable.returncode != 0:
+                    _ssh_failure(executable)
+                # The campaign reads these exact paths. A copy that misses them
+                # is a failed arm, the same way a missing CA bundle is.
+                for required in (
+                    f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf",
+                    f"{guest_brain}/llama-b11540/llama-server",
+                    f"{guest_brain}/llama-b11540/libllama-server-impl.so",
+                ):
+                    landed = remote(["test", "-s", required], "")
+                    if landed.returncode != 0:
+                        raise lab.GuardAbort("brain_not_landed")
+                sized = remote(["stat", "-c", "%s", f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"], "")
+                if sized.returncode != 0 or (sized.stdout or "").strip() != "2104932768":
+                    raise lab.GuardAbort("brain_not_landed")
+            script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
+            copy_to(script_path, "enterprise-rows.sh")
+            battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
+            if battery not in ("enterprise", "descendant-b1"):
+                raise lab.GuardAbort("battery")
+            payload["battery"] = battery
+            if battery == "descendant-b1":
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
                 probe_c = descendant.with_name("descendant_probe.c")
@@ -1123,8 +1070,6 @@ def execute_enterprise_rows(
                     _wait_for_reboot(runner, instance_id, remote, connect + [public])
                     ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
             else:
-                script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
-                copy_to(script_path, "enterprise-rows.sh")
                 ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             # Instance Connect keys last 60 seconds. The guest script can run longer.
@@ -1160,12 +1105,7 @@ def execute_enterprise_rows(
             if ran.returncode != 0:
                 payload.update({"reason": "guest", "status": "FAILED"})
                 raise lab.GuardAbort("guest")
-            if battery == "self-service":
-                payload["status"] = "SELF_SERVICE"
-            elif battery == "descendant-b1":
-                payload["status"] = "DESCENDANT_B1"
-            else:
-                payload["status"] = "ENTERPRISE_ROWS"
+            payload["status"] = "DESCENDANT_B1" if battery == "descendant-b1" else "ENTERPRISE_ROWS"
         finally:
             if private is not None:
                 shred_file(private)
@@ -1206,7 +1146,7 @@ def close_ssh(runner: Runner) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
-            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|arm-self-service|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
+            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
             file=sys.stderr,
         )
         return 1
@@ -1226,12 +1166,6 @@ def main(argv: list[str]) -> int:
             enterprise_bundle.prepare_bundle()
             return 0
         if command == "arm-enterprise":
-            if (os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise") == "self-service":
-                raise lab.GuardAbort("battery")
-            execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
-            return 0
-        if command == "arm-self-service":
-            os.environ["W3_BATTERY"] = "self-service"
             execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
             return 0
         if command == "close-ssh":
