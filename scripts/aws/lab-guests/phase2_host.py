@@ -94,6 +94,7 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     granted = plane.submit_governance(rows.load("grant.json"), rows.sig("grant.sig.json"), now=meta["now"])
     adapter.on_governance(granted, "grant")
     rows.LAB.mkdir(parents=True, exist_ok=True)
+    (rows.LAB / "evidence").mkdir(parents=True, exist_ok=True)
     (rows.LAB / "d").mkdir(parents=True, exist_ok=True)
     rows.DENY.write_text("lab-deny-marker\n", encoding="utf-8")
     os.chmod(rows.DENY, 0o644)
