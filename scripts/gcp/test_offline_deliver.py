@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -151,13 +152,250 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertGreater(amount, Decimal("0"))
         self.assertLess(amount, Decimal("0.10"))
 
-    def test_evidence_redacts_tokens(self) -> None:
+    def test_evidence_allowlist_drops_unknown_and_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "row.json"
-            od.write_evidence(path, {"note": "ghp_" + "a" * 20})
+            od.write_evidence(
+                path,
+                {
+                    "note": "ghp_" + "a" * 20,
+                    "seal_sha256": od.POLICY_ALLOW_SEAL,
+                    "claim_cap": od.CLAIM_CAP,
+                    "guest": {"private": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"},
+                },
+            )
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("ghp_", text)
-            self.assertIn("[redacted]", text)
+            self.assertNotIn("PRIVATE KEY", text)
+            self.assertNotIn("note", text)
+            self.assertIn(od.POLICY_ALLOW_SEAL, text)
+            self.assertEqual(od.content_range(0, 4, 8), "bytes 0-3/8")
+            with self.assertRaises(SystemExit):
+                od.content_range(0, 9, 8)
+
+    def _passing_repeat(self, repeat: int) -> dict:
+        return {
+            "repeat": repeat,
+            "enterprise_rc": 0,
+            "descendant_rc": 0,
+            "b1_pass": True,
+            "reboot_observed": True,
+            "kernel_btf": True,
+            "kernel_bpffs": True,
+            "kernel_cgroup_v2": True,
+            "kernel_lsm": "lockdown,capability,landlock",
+            "seal_checked": True,
+            "rows": {"grant": {"result": "pass"}, "revoke": {"probe": {"nobody_errno": 13}}},
+        }
+
+    def test_full_battery_is_two_complete_repeats(self) -> None:
+        self.assertEqual(od.battery_schedule(), ["enterprise", "descendant-b1", "enterprise", "descendant-b1"])
+        self.assertEqual(od.FULL_BATTERY, ("kernel", "seal", "enterprise", "descendant-b1"))
+        repeats = [self._passing_repeat(1), self._passing_repeat(2)]
+        self.assertTrue(od.full_set_passes(repeats))
+        short = [self._passing_repeat(1)]
+        self.assertFalse(od.full_set_passes(short))
+        missing_grant = [self._passing_repeat(1), self._passing_repeat(2)]
+        missing_grant[1] = dict(missing_grant[1])
+        missing_grant[1]["rows"] = {"revoke": {"probe": {"nobody_errno": 13}}}
+        self.assertFalse(od.full_set_passes(missing_grant))
+        kept = od.allow_record({"repeats": repeats, "full_set": True, "hostname": "secret-host"})
+        self.assertNotIn("hostname", kept)
+        self.assertEqual(len(kept["repeats"]), 2)
+        self.assertIn("grant", kept["repeats"][0]["rows"])
+        self.assertIn("revoke", kept["repeats"][0]["rows"])
+        duplicated = [self._passing_repeat(1), self._passing_repeat(1)]
+        self.assertFalse(od.full_set_passes(duplicated))
+
+    def test_teardown_deletes_the_bucket_when_listing_fails(self) -> None:
+        calls: list[tuple[str, ...]] = []
+        original_list = od._list_instances
+        original_delete = od.delete_objects
+        original_created = od._creation_epoch
+        original_write = od.write_evidence
+
+        def boom(_project: str) -> list[dict]:
+            raise SystemExit("instances")
+
+        def record(names, *, missing_ok: bool) -> None:
+            calls.append(tuple(names))
+            self.assertTrue(missing_ok)
+
+        od._list_instances = boom
+        od.delete_objects = record
+        od._creation_epoch = lambda _project, _name: None
+        od.write_evidence = lambda *_args, **_kwargs: None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(SystemExit):
+                    od.teardown_if_present(
+                        {
+                            "GCP_LAB_EXECUTE": "1",
+                            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+                            "GITHUB_RUN_ID": "12",
+                            "EVIDENCE_DIR": tmp,
+                        }
+                    )
+        finally:
+            od._list_instances = original_list
+            od.delete_objects = original_delete
+            od._creation_epoch = original_created
+            od.write_evidence = original_write
+        self.assertEqual(calls, [("12/seal.oci.tar", "12/contract.tar")])
+
+    def test_allowlist_rejects_secret_shaped_short_fields(self) -> None:
+        kept = od.allow_record(
+            {
+                "account_id": "-----BEGINPRIVATEKEY-----",
+                "step": "ghp_" + "a" * 20,
+                "name": "not-a-lab-vm",
+                "snapshot": "evil",
+                "seal_sha256": od.POLICY_ALLOW_SEAL,
+            }
+        )
+        self.assertEqual(kept, {"seal_sha256": od.POLICY_ALLOW_SEAL})
+
+    def test_prune_does_not_republish_a_false_full_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            one = {"full_set": True, "repeats": [self._passing_repeat(1)], "hostname": "box"}
+            (directory / "gcp-lab-rows.json").write_text(json.dumps(one), encoding="utf-8")
+            od.prune_evidence(directory)
+            body = json.loads((directory / "gcp-lab-rows.json").read_text(encoding="utf-8"))
+            self.assertNotIn("full_set", body)
+            self.assertNotIn("repeats", body)
+            self.assertNotIn("hostname", body)
+
+    def test_prune_drops_a_poisoned_hash_sidecar(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "handoff.json").write_text("not-json", encoding="utf-8")
+            (directory / "handoff.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            (directory / "gcp-plumb.json").write_text("{}\n", encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse((directory / "handoff.json").exists())
+            self.assertFalse((directory / "handoff.json.sha256").exists())
+            self.assertFalse((directory / "gcp-plumb.json").exists())
+            (directory / "teardown.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            nested = directory / "gcp-plumb.json"
+            nested.mkdir()
+            (nested / "enterprise-rows.json").write_text('{"token":"ghp_' + "a" * 20 + '"}\n', encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse((directory / "teardown.json.sha256").exists())
+            self.assertFalse(nested.exists())
+
+    def test_prune_unlinks_guest_symlinks_and_survives_bad_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "evidence"
+            directory.mkdir()
+            outside = root / "outside"
+            outside.mkdir()
+            secret = outside / "secret.txt"
+            secret.write_text("ghp_" + "a" * 20, encoding="utf-8")
+            link = directory / "gcp-plumb.json"
+            link.symlink_to(outside, target_is_directory=True)
+            (directory / "debs.json").write_bytes(b"\xff\xfe")
+            (directory / "handoff.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse(link.exists())
+            self.assertTrue(secret.is_file())
+            self.assertFalse((directory / "debs.json").exists())
+            self.assertFalse((directory / "handoff.json.sha256").exists())
+            self.assertEqual(list(directory.iterdir()), [])
+
+    def test_prune_removes_a_directory_deeper_than_the_recursion_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "gcp-lab-rows.json").write_text(
+                '{"hostname":"box","note":"ghp_' + "a" * 20 + '"}\n',
+                encoding="utf-8",
+            )
+            (directory / "gcp-lab-rows.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            nested = directory / "gcp-plumb.json"
+            nested.mkdir()
+            cursor = nested
+            for _ in range(sys.getrecursionlimit() + 20):
+                cursor = cursor / "d"
+                cursor.mkdir()
+            od.prune_evidence(directory)
+            self.assertFalse(nested.exists())
+            text = (directory / "gcp-lab-rows.json").read_text(encoding="utf-8")
+            self.assertNotIn("ghp_", text)
+            self.assertNotIn("PRIVATE KEY", (directory / "gcp-lab-rows.json.sha256").read_text(encoding="utf-8"))
+
+    def test_evidence_sidecar_does_not_follow_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evidence = root / "evidence"
+            evidence.mkdir()
+            outside = root / "secret.txt"
+            outside.write_text("keep-me", encoding="utf-8")
+            path = evidence / "handoff.json"
+            path.write_text("{}\n", encoding="utf-8")
+            sidecar = evidence / "handoff.json.sha256"
+            sidecar.symlink_to(outside)
+            od.write_evidence(path, {"seal_sha256": od.POLICY_ALLOW_SEAL})
+            self.assertEqual(outside.read_text(encoding="utf-8"), "keep-me")
+            self.assertFalse(sidecar.is_symlink())
+            self.assertIn(od.POLICY_ALLOW_SEAL, path.read_text(encoding="utf-8"))
+
+    def test_prune_deletes_the_file_when_allowlist_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "gcp-lab-rows.json").write_text(
+                '{"hostname":"box","full_set":true,"note":"ghp_' + "a" * 20 + '"}\n',
+                encoding="utf-8",
+            )
+            (directory / "gcp-lab-rows.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            original = od.allow_record
+
+            def boom(_payload: dict) -> dict:
+                raise OverflowError("int too large")
+
+            od.allow_record = boom
+            try:
+                od.prune_evidence(directory)
+            finally:
+                od.allow_record = original
+            self.assertFalse((directory / "gcp-lab-rows.json").exists())
+            self.assertFalse((directory / "gcp-lab-rows.json.sha256").exists())
+
+    def test_huge_numbers_deep_nests_and_token_names_stay_out(self) -> None:
+        digest = "a" * 64
+        kept = od.allow_record(
+            {
+                "debs": [
+                    {"name": "github_pat_" + "a" * 22, "sha256": digest},
+                    {"name": "gho_" + "b" * 22, "sha256": digest},
+                    {"name": "docker.io_1.deb", "sha256": digest},
+                ],
+                "repeats": [
+                    {"repeat": 1, "convergence_ms": int("9" * 400), "rows": {"note": "ghp_" + "a" * 20}},
+                    self._passing_repeat(2),
+                ],
+            }
+        )
+        self.assertEqual(kept["debs"], [{"name": "docker.io_1.deb", "sha256": digest}])
+        self.assertFalse(kept["full_set"])
+        self.assertNotIn("convergence_ms", json.dumps(kept))
+        deep: dict = {"repeat": 1, "result": "pass"}
+        cursor = deep
+        for _ in range(40):
+            cursor["rows"] = {}
+            cursor = cursor["rows"]
+        self.assertEqual(od.allow_battery(deep), {"repeat": 1, "result": "pass"})
+
+    def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            for name in od.RAW_GUEST_NAMES:
+                (directory / name).write_text('{"token": "ghp_' + "a" * 20 + '"}\n', encoding="utf-8")
+            (directory / "gcp-lab-rows.json").write_text("{}\n", encoding="utf-8")
+            od.drop_guest_copies(directory)
+            self.assertTrue((directory / "gcp-lab-rows.json").is_file())
+            for name in od.RAW_GUEST_NAMES:
+                self.assertFalse((directory / name).exists())
 
     def test_deb_pack_is_flat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -225,6 +463,11 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("if: ${{ !inputs.run_batteries }}", text)
         self.assertNotIn("gcp-lab-one-vm", text)
         self.assertNotIn("default: f882dd81", text)
+        self.assertNotIn("910881070503", text)
+        self.assertNotIn("uploadType=media", (ROOT / "scripts/gcp/offline_deliver.py").read_text(encoding="utf-8"))
+        self.assertIn('test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"', text)
+        self.assertIn("vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com", text)
+        self.assertNotIn("projects/910881070503", text)
         for name in (
             "gcp-lab-teardown.yml",
             "gcp-lab-sweeper.yml",
