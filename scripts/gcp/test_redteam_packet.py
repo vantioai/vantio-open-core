@@ -11,6 +11,17 @@ import redteam_packet as packet
 
 
 class GradeTests(unittest.TestCase):
+    def test_tamper_without_a_ledger_row_is_fail_gap(self) -> None:
+        denied = packet.grade_tamper(13, False)
+        self.assertEqual(denied["outcome"], "FAIL_GAP")
+        self.assertFalse(denied["silent_success"])
+        held = packet.grade_tamper(1, True)
+        self.assertEqual(held["outcome"], "HELD")
+        opened = packet.grade_tamper(0, False)
+        self.assertEqual(opened["outcome"], "FAIL_GAP")
+        self.assertTrue(opened["silent_success"])
+        self.assertNotEqual(packet.grade_tamper(22, False)["outcome"], "INCONCLUSIVE")
+
     def test_unattributed_deny_is_fail_gap(self) -> None:
         grade = packet.grade_open(13, False)
         self.assertEqual(grade["outcome"], "FAIL_GAP")

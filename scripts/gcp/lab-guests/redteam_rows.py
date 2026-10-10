@@ -33,12 +33,53 @@ import redteam_packet as packet  # noqa: E402
 SUBJECT = 65534
 LAB_UDP = ("192.0.2.2", 9)
 OUT_PATH = Path("/tmp/redteam-rows.json")
-BRAIN_DIR = Path("/tmp/vantio-lab")
+# AWS sets VANTIO_BRAIN_DIR to /var/lib/vantio-lab/brain. GCP keeps /tmp/vantio-lab.
+BRAIN_DIR = Path(os.environ.get("VANTIO_BRAIN_DIR", "/tmp/vantio-lab"))
 AT_FDCWD = -100
 SYS_OPENAT = 257
 SYS_BPF = 321
+BPF_MAP_CREATE = 0
 BPF_MAP_UPDATE_ELEM = 2
+BPF_PROG_LOAD = 5
 O_RDONLY = 0
+
+
+class _MapCreate(ctypes.Structure):
+    _fields_ = [
+        ("map_type", ctypes.c_uint32),
+        ("key_size", ctypes.c_uint32),
+        ("value_size", ctypes.c_uint32),
+        ("max_entries", ctypes.c_uint32),
+        ("map_flags", ctypes.c_uint32),
+    ]
+
+
+class _MapUpdate(ctypes.Structure):
+    _fields_ = [
+        ("map_fd", ctypes.c_uint32),
+        ("_pad", ctypes.c_uint32),
+        ("key", ctypes.c_uint64),
+        ("value", ctypes.c_uint64),
+        ("flags", ctypes.c_uint64),
+    ]
+
+
+def _ensure_brain() -> None:
+    BRAIN_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _bpf(cmd: int, attr: ctypes.Structure) -> int:
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    rc = libc.syscall(
+        ctypes.c_long(SYS_BPF),
+        ctypes.c_long(cmd),
+        ctypes.byref(attr),
+        ctypes.c_uint(ctypes.sizeof(attr)),
+    )
+    if rc >= 0:
+        return 0
+    return ctypes.get_errno() or 1
 
 
 def events() -> list[dict]:
@@ -216,26 +257,22 @@ def bpf_rows() -> list[dict]:
             return exc.errno or 1
         return 0
 
+    def bpf_create() -> int:
+        return _bpf(BPF_MAP_CREATE, _MapCreate(1, 4, 4, 1, 0))
+
     def bpf_update() -> int:
-        libc = ctypes.CDLL(None, use_errno=True)
-        libc.syscall.restype = ctypes.c_long
-        rc = libc.syscall(
-            ctypes.c_long(SYS_BPF),
-            ctypes.c_long(BPF_MAP_UPDATE_ELEM),
-            ctypes.c_long(0),
-            ctypes.c_long(0),
-        )
-        if rc >= 0:
-            return 0
-        return ctypes.get_errno() or 1
+        return _bpf(BPF_MAP_UPDATE_ELEM, _MapUpdate(0, 0, 0, 0, 0))
+
+    def bpf_prog() -> int:
+        return _bpf(BPF_PROG_LOAD, _MapCreate(0, 0, 0, 0, 0))
 
     found = []
     for technique_id, action in (
         ("pe.tamper.pin_unlink", unlink_pin),
-        ("pe.tamper.bpf_syscall", bpf_update),
+        ("pe.tamper.bpf_syscall", bpf_create),
         ("pe.tamper.bpf_map", bpf_update),
-        ("pe.tamper.bpftool", bpf_update),
-        ("pe.tamper.bpf_prog", bpf_update),
+        ("pe.tamper.bpftool", bpf_create),
+        ("pe.tamper.bpf_prog", bpf_prog),
     ):
         observed = _unprivileged(action)
         errno = observed.get("errno")
@@ -248,18 +285,8 @@ def bpf_rows() -> list[dict]:
             continue
         time.sleep(0.2)
         hit = attributed(pid, "DENIED") or attributed(pid, "BLOCKED")
-        if errno == 0:
-            grade = packet.grade_open(0, False)
-        elif hit:
-            grade = packet.grade_open(13, True)
-        else:
-            grade = {
-                "outcome": "INCONCLUSIVE",
-                "silent_success": False,
-                "attributed": False,
-                "reason": "os_denied_without_pe_event",
-            }
-        found.append(_attempt(technique_id, grade, errno if errno != 0 else 0))
+        grade = packet.grade_tamper(errno, hit)
+        found.append(_attempt(technique_id, grade, errno))
     return found
 
 
@@ -293,6 +320,7 @@ def _binary_open(binary: Path) -> dict:
 
 
 def identity_rows() -> list[dict]:
+    _ensure_brain()
     source = Path("/usr/bin/python3").resolve()
     names = (
         "pe.identity.copied",
@@ -498,11 +526,14 @@ def ask_brain() -> dict:
     model = BRAIN_DIR / "qwen2.5-3b-instruct-q4_k_m.gguf"
     if not server.is_file() or not model.is_file():
         return {"loaded": False, "reason": "brain_files_absent"}
-    proc = subprocess.Popen(
-        [str(server), "-m", str(model), "--host", "127.0.0.1", "--port", "8088", "-c", "256", "-t", "2"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    try:
+        proc = subprocess.Popen(
+            [str(server), "-m", str(model), "--host", "127.0.0.1", "--port", "8088", "-c", "256", "-t", "2"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        return {"loaded": False, "reason": type(exc).__name__.lower()[:48]}
     deadline = time.time() + 90
     ready = False
     while time.time() < deadline:
@@ -542,23 +573,35 @@ def ask_brain() -> dict:
 def main() -> int:
     if os.uname().nodename == "phantom-box":
         raise SystemExit("refusing host")
+    _ensure_brain()
     attempts: list[dict] = []
     model = {"loaded": False, "reason": "not_started"}
+    sections = (
+        path_rows,
+        bpf_rows,
+        identity_rows,
+        network_rows,
+    )
+    for section in sections:
+        try:
+            attempts.extend(section())
+        except Exception as exc:
+            attempts.append(packet._row("pe.harness.section", "GAP", reason=type(exc).__name__.lower()[:48]))
+    for single in (ptrace_row, container_row, optics_row):
+        try:
+            attempts.append(single())
+        except Exception as exc:
+            attempts.append(packet._row("pe.harness.section", "GAP", reason=type(exc).__name__.lower()[:48]))
+    attempts.append(packet._row("pe.resource.exhaust", "GAP", reason="not_executed"))
+    attempts.append(packet._row("pe.path.symlink", "GAP", reason="symlink_program_not_loaded"))
     try:
-        attempts.extend(path_rows())
-        attempts.extend(bpf_rows())
-        attempts.extend(identity_rows())
-        attempts.extend(network_rows())
-        attempts.append(ptrace_row())
-        attempts.append(container_row())
-        attempts.append(optics_row())
-        attempts.append(packet._row("pe.resource.exhaust", "GAP", reason="not_executed"))
-        attempts.append(packet._row("pe.path.symlink", "GAP", reason="symlink_program_not_loaded"))
         model = ask_brain()
+    except Exception as exc:
+        model = {"loaded": False, "reason": type(exc).__name__.lower()[:48]}
+    try:
         attempts.extend(loader_rows())
     except Exception as exc:
-        attempts.append(packet._row("pe.escape.move", "GAP", reason="guest_exception"))
-        model = {"loaded": False, "reason": type(exc).__name__.lower()[:48]}
+        attempts.append(packet._row("pe.tamper.loader_kill", "GAP", reason=type(exc).__name__.lower()[:48]))
     body = {
         "attempts": attempts,
         "model_loaded": bool(model.get("loaded")),

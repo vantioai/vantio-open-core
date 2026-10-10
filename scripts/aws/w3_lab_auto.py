@@ -43,6 +43,7 @@ WORST_CASE_RUN_USD = Decimal("2.00")
 # $2 ceiling. Linux on-demand in us-east-2 is $0.0958/hour on the public
 # price list. gp3 is $0.08/GB-month. Cost Explorer is not called.
 BRAIN_INSTANCE_TYPE = "m7i-flex.large"
+BRAIN_GUEST_DIR = "/var/lib/vantio-lab/brain"
 BRAIN_MAX_MINUTES = 120
 BRAIN_DISK_GB = 20
 BRAIN_USD_PER_HOUR = Decimal("0.0958")

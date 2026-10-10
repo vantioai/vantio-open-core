@@ -118,8 +118,12 @@ if [ "$mode" = "descendant-b1" ]; then
   chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   if [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
     cp "$here/redteam_packet.py" "$stage/redteam_packet.py"
+    brain=/var/lib/vantio-lab/brain
+    if [ ! -s "$brain/qwen2.5-3b-instruct-q4_k_m.gguf" ] || [ ! -x "$brain/llama-b11540/llama-server" ]; then
+      echo "brain_not_landed $brain" >&2
+    fi
     set +e
-    sudo python3 "$here/redteam_rows.py" "$stage" > /tmp/redteam-rows.out 2>&1
+    sudo env VANTIO_BRAIN_DIR="$brain" python3 "$here/redteam_rows.py" "$stage" > /tmp/redteam-rows.out 2>&1
     rt=$?
     set -e
     cat /tmp/redteam-rows.out
