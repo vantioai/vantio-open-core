@@ -8,6 +8,7 @@ from pathlib import Path
 
 from vantio_install.boot_hold.constants import CGROUP_REL, CONFIG_REL, SUBNET_V4, SUBNET_V6
 from vantio_install.boot_hold.errors import BootHoldError
+from vantio_install.signed_policy import packaged_dev_trust, verify_signed_policy
 
 
 def default_policy() -> dict:
@@ -53,8 +54,13 @@ def load_policy(root: Path) -> tuple[dict, list[str]]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return default_policy(), ["Boot hold config is not valid JSON. Opt-out is ignored and the hold stays on."]
-    if not isinstance(data, dict):
-        return default_policy(), ["Boot hold config must be a JSON object. The hold stays on."]
+    live_trust = packaged_dev_trust() if root == Path("/") else None
+    verified = verify_signed_policy(data, trust=live_trust)
+    if not verified.ok or not isinstance(verified.policy, dict):
+        return default_policy(), [
+            "Unsigned or untrusted policy was refused. The hold stays on. A dev key signature is required."
+        ]
+    data = verified.policy
     policy = default_policy()
     if data.get("enabled") is False:
         policy["enabled"] = False
@@ -72,6 +78,16 @@ def load_policy(root: Path) -> tuple[dict, list[str]]:
     elif policy["hold"] is False or policy["ordering"] is False:
         notes.append("A root admin changed hold or ordering. The change is explicit.")
     return policy, notes
+
+
+def save_signed_policy(root: Path, policy: dict, envelope: dict) -> None:
+    """Write a signed envelope. The caller verified the signature before this write."""
+    path = config_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.chmod(path, 0o644)
+    if root == Path("/"):
+        os.chown(path, 0, 0)
 
 
 def save_policy(root: Path, policy: dict) -> None:
