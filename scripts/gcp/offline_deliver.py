@@ -432,9 +432,14 @@ def write_evidence(path: Path, payload: Mapping[str, Any]) -> None:
     if "PRIVATE KEY" in text or SECRET_RE.search(text) or "ghp_" in text:
         raise SystemExit("token_in_evidence")
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise SystemExit("evidence_symlink")
     path.write_text(text, encoding="utf-8")
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path.with_name(path.name + ".sha256").write_text(f"{digest}  {path.name}\n", encoding="utf-8")
+    sidecar = path.with_name(path.name + ".sha256")
+    if sidecar.is_symlink() or sidecar.is_dir():
+        _remove_evidence_path(sidecar)
+    sidecar.write_text(f"{digest}  {path.name}\n", encoding="utf-8")
 
 
 def _member_refused(name: str) -> bool:
@@ -1088,20 +1093,38 @@ RAW_GUEST_NAMES = (
 
 
 def _remove_evidence_path(path: Path) -> None:
-    """Remove a file, directory, or symlink without following the link."""
+    """Remove a file, directory, or symlink without following the link.
+
+    Walk iteratively. shutil.rmtree recurses in Python and raises RecursionError
+    on a deep tree, which would skip the rest of the evidence cleanup.
+    """
     try:
-        if path.is_symlink():
-            path.unlink(missing_ok=True)
-            return
-        if path.is_dir():
-            shutil.rmtree(path)
-            return
-        path.unlink(missing_ok=True)
-    except OSError:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            return
+        pending = [path]
+        ordered: list[Path] = []
+        seen: set[str] = set()
+        while pending:
+            current = pending.pop()
+            identity = str(current)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            ordered.append(current)
+            try:
+                if current.is_symlink() or not current.is_dir():
+                    continue
+                pending.extend(current.iterdir())
+            except OSError:
+                continue
+        for current in reversed(ordered):
+            try:
+                if current.is_symlink() or not current.is_dir():
+                    current.unlink(missing_ok=True)
+                else:
+                    current.rmdir()
+            except OSError:
+                continue
+    except Exception:
+        return
 
 
 def drop_guest_copies(directory: Path) -> None:

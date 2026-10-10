@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -302,6 +303,42 @@ class OfflineDeliverTest(unittest.TestCase):
             self.assertFalse((directory / "debs.json").exists())
             self.assertFalse((directory / "handoff.json.sha256").exists())
             self.assertEqual(list(directory.iterdir()), [])
+
+    def test_prune_removes_a_directory_deeper_than_the_recursion_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "gcp-lab-rows.json").write_text(
+                '{"hostname":"box","note":"ghp_' + "a" * 20 + '"}\n',
+                encoding="utf-8",
+            )
+            (directory / "gcp-lab-rows.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            nested = directory / "gcp-plumb.json"
+            nested.mkdir()
+            cursor = nested
+            for _ in range(sys.getrecursionlimit() + 20):
+                cursor = cursor / "d"
+                cursor.mkdir()
+            od.prune_evidence(directory)
+            self.assertFalse(nested.exists())
+            text = (directory / "gcp-lab-rows.json").read_text(encoding="utf-8")
+            self.assertNotIn("ghp_", text)
+            self.assertNotIn("PRIVATE KEY", (directory / "gcp-lab-rows.json.sha256").read_text(encoding="utf-8"))
+
+    def test_evidence_sidecar_does_not_follow_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evidence = root / "evidence"
+            evidence.mkdir()
+            outside = root / "secret.txt"
+            outside.write_text("keep-me", encoding="utf-8")
+            path = evidence / "handoff.json"
+            path.write_text("{}\n", encoding="utf-8")
+            sidecar = evidence / "handoff.json.sha256"
+            sidecar.symlink_to(outside)
+            od.write_evidence(path, {"seal_sha256": od.POLICY_ALLOW_SEAL})
+            self.assertEqual(outside.read_text(encoding="utf-8"), "keep-me")
+            self.assertFalse(sidecar.is_symlink())
+            self.assertIn(od.POLICY_ALLOW_SEAL, path.read_text(encoding="utf-8"))
 
     def test_prune_deletes_the_file_when_allowlist_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

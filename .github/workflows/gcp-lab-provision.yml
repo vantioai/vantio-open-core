@@ -154,13 +154,14 @@ jobs:
         run: rm -rf "${{ runner.temp }}/enterprise-bundle"
 
       - name: Keep only allowlisted evidence
+        id: prune
         if: always()
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: python3 scripts/gcp/offline_deliver.py prune-evidence
 
       - name: Upload digest evidence
-        if: always()
+        if: always() && steps.prune.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gcp-lab-handoff-digests-${{ github.run_id }}
@@ -344,13 +345,14 @@ jobs:
         run: rm -rf "${{ runner.temp }}/enterprise-bundle"
 
       - name: Keep only allowlisted evidence
+        id: prune
         if: always()
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: python3 scripts/gcp/offline_deliver.py prune-evidence
 
       - name: Upload row evidence
-        if: always()
+        if: always() && steps.prune.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gcp-lab-rows-${{ github.run_id }}
@@ -420,13 +422,14 @@ jobs:
         run: python3 scripts/gcp/offline_deliver.py teardown-if-present
 
       - name: Keep only allowlisted evidence
+        id: prune
         if: always()
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: python3 scripts/gcp/offline_deliver.py prune-evidence
 
       - name: Upload teardown evidence
-        if: always()
+        if: always() && steps.prune.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gcp-lab-teardown-${{ github.run_id }}
