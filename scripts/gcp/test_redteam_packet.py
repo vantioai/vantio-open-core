@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import redteam_packet as packet
@@ -126,6 +129,91 @@ class GradeTests(unittest.TestCase):
             self.assertEqual(body["machine_type"], "e2-standard-4")
             self.assertEqual(body["counts"]["FAIL_GAP"], 1)
             self.assertEqual(body["open_shell"], "not_run")
+
+    def test_loader_kill_is_held_only_with_an_attributed_deny(self) -> None:
+        silent = packet.grade_open(0, True)
+        self.assertEqual(silent["outcome"], "FAIL_GAP")
+        self.assertTrue(silent["silent_success"])
+        self.assertEqual(silent["reason"], "protected_open_succeeded")
+        bare = packet.grade_open(13, False)
+        self.assertEqual(bare["outcome"], "FAIL_GAP")
+        self.assertEqual(bare["reason"], "unattributed_deny")
+        held = packet.grade_open(13, True)
+        self.assertEqual(held["outcome"], "HELD")
+        self.assertTrue(held["attributed"])
+        tamper = packet.grade_tamper(1, False)
+        self.assertEqual(tamper["outcome"], "FAIL_GAP")
+        self.assertEqual(packet.grade_tamper(1, True)["outcome"], "HELD")
+        self.assertEqual(packet.grade_tamper(13, True)["outcome"], "HELD")
+        record = bytearray(packet.DENY_ATTR_SIZE)
+        record[0:4] = (4242).to_bytes(4, "little")
+        record[16:24] = (9).to_bytes(8, "little")
+        record[32:36] = (packet.DENY_KIND_FILE).to_bytes(4, "little")
+        self.assertTrue(packet.deny_record_names(bytes(record), 4242))
+        self.assertFalse(packet.deny_record_names(bytes(record), 4243))
+        record[16:24] = (0).to_bytes(8, "little")
+        self.assertFalse(packet.deny_record_names(bytes(record), 4242))
+        record[16:24] = (9).to_bytes(8, "little")
+        record[32:36] = (packet.DENY_KIND_SELF).to_bytes(4, "little")
+        self.assertTrue(packet.deny_record_names(bytes(record), 4242))
+
+    def test_completion_retries_a_loading_server_on_localhost(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                Handler.seen.append(self.path)
+                if len(Handler.seen) == 1:
+                    self.send_response(503)
+                    self.end_headers()
+                    return
+                body = json.dumps({"content": "file"}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+        Handler.seen = []
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            loaded, reason = packet.fetch_local_completion(port, time.time() + 5)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertTrue(loaded)
+        self.assertEqual(reason, "completion_ok")
+        self.assertEqual(Handler.seen[0], "/completion")
+        self.assertIn("/v1/completions", Handler.seen)
+
+    def test_completion_error_body_is_not_a_loaded_model(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = json.dumps({"error": {"message": "loading"}}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            loaded, reason = packet.fetch_local_completion(port, time.time() + 0.5)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertFalse(loaded)
+        self.assertEqual(reason, "completion_failed")
 
 
 if __name__ == "__main__":
