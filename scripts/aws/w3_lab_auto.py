@@ -27,7 +27,8 @@ ACCOUNT_ID = "960577828987"
 REGION = "us-east-2"
 BILLING_REGION = "us-east-1"
 ROLE_PROVISION = "vantio-w3-lab-provision"
-# Missing this action aborts before RunInstances. Do not add it from this repo.
+# Required only when close_egress is true. Do not add this action from this repo.
+# ReleaseAddress stays denied. This constant is not a request to change IAM.
 EGRESS_REVOKE_DENIED = "egress_revoke_denied:ec2:RevokeSecurityGroupEgress"
 ENVIRONMENT = "w3-lab-auto"
 MAX_SESSION_SECONDS = 3600
@@ -740,8 +741,10 @@ def execute_launch(
         subnet_id=LAB_SUBNET_ID,
     )
     launch_args[launch_args.index("file://user-data.sh")] = f"file://{user_data_path}"
+    close_egress = _flag(spec.get("close_egress", False))
     try:
-        deny_default_egress(runner, group_id)
+        if close_egress:
+            deny_default_egress(runner, group_id)
         launched = aws_json(runner, launch_args)
     except GuardAbort:
         rollback_security_group(runner, group_id)
@@ -765,7 +768,9 @@ def execute_launch(
         "stop_after_minutes": plan["stop_after_minutes"],
         "expires_at": plan["expires_at"],
         "associate_public_ipv4": plan["associate_public_ipv4"],
-        "default_egress_revoked": True,
+        "close_egress": close_egress,
+        "default_egress_revoked": close_egress,
+        "egress": "revoked" if close_egress else "default_allow",
         "shutdown_behavior": "terminate",
         "expected_oop_usd": "0",
         "cost_explorer_called": False,
@@ -1042,6 +1047,14 @@ def _egress_still_open(perm: Mapping[str, Any]) -> bool:
     return False
 
 
+def _flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes"}
+
+
 def deny_default_egress(runner: Runner, group_id: str) -> None:
     """Drop the allow-all egress rule CreateSecurityGroup adds.
 
@@ -1114,6 +1127,7 @@ def _launch_spec_from_env() -> dict[str, Any]:
         "image_id": os.environ.get("IMAGE_ID", PINNED_IMAGE_ID).strip() or PINNED_IMAGE_ID,
         "stop_after_minutes": os.environ.get("STOP_AFTER_MINUTES", default_stop),
         "associate_public_ipv4": os.environ.get("ASSOCIATE_PUBLIC_IPV4", "false"),
+        "close_egress": _flag(os.environ.get("CLOSE_EGRESS", "false")),
         "name": f"{NAME_PREFIX}{run_id}",
         "region": REGION,
         "subnet_id": LAB_SUBNET_ID,
