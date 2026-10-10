@@ -452,6 +452,10 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("w3-lab-auto-cost-gate.yml@main # oidc-trust", soak)
         self.assertFalse((ROOT / ".github/workflows/w3-lab-auto-enterprise-pe.yml").exists())
         self.assertIn("enterprise_rows:", arm)
+        self.assertIn("- self-service", arm)
+        self.assertIn("arm-self-service", arm)
+        self.assertNotIn("packages/vantio-install/docs/INSTALL.md", arm)
+        self.assertNotIn("packages/vantio-install/pyproject.toml", arm)
         self.assertIn("default: false", arm)
         self.assertIn("W3_LAB_PRIVATE_BUNDLE_TOKEN", arm)
         self.assertIn("w3-lab-auto-arm.yml@refs/heads/main", arm)
@@ -657,6 +661,57 @@ class EnterpriseRowSessionTests(unittest.TestCase):
             with self.assertRaises(lab.GuardAbort) as caught:
                 steps.execute_enterprise_rows(runner)
         self.assertEqual(caught.exception.reason, "bundle_layout")
+        self.assertEqual(runner.calls, [])
+
+    def test_self_service_missing_tree_does_not_call_aws(self) -> None:
+        runner = FakeAws()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            os.environ["W3_BATTERY"] = "self-service"
+            os.environ["W3_SELF_SERVICE_DIR"] = str(Path(tmp) / "missing")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(runner)
+        self.assertEqual(caught.exception.reason, "self_service_layout")
+        self.assertEqual(runner.calls, [])
+
+    def test_self_service_shell_does_not_pass_caller_trust(self) -> None:
+        script = steps._self_service_shell("/var/lib/vantio-lab/enterprise-bundle", "/tmp/enterprise-pe-rows.json")
+        self.assertNotIn("--artifact-trust", script)
+        self.assertNotIn("--fixture-host", script)
+        self.assertNotIn("contract.tar", script)
+        self.assertIn("VANTIO_LAB_SCOPE=lab-nonprod", script)
+        self.assertIn("self_service.py", script)
+        text = Path(steps.__file__).read_text(encoding="utf-8")
+        guard = text.find('if battery != "self-service":')
+        seal = text.find('copy_to(bundle_dir / "seal.oci.tar"', guard)
+        contract = text.find('copy_to(bundle_dir / "contract.tar"', guard)
+        self.assertGreater(seal, guard)
+        self.assertGreater(contract, guard)
+
+    def test_self_service_private_key_is_refused_before_aws(self) -> None:
+        runner = FakeAws()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            staged = Path(tmp) / "staged"
+            staged.mkdir()
+            for name in (
+                "self_service.py",
+                "self-service.tar",
+                "lab-artifact-trust.json",
+                "lab-dev-trust.json",
+                "policy.json",
+                "signature.json",
+            ):
+                (staged / name).write_text("{}\n", encoding="utf-8")
+            (staged / "signature.json").write_text(
+                "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n",
+                encoding="utf-8",
+            )
+            os.environ["W3_BATTERY"] = "self-service"
+            os.environ["W3_SELF_SERVICE_DIR"] = str(staged)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(runner)
+        self.assertEqual(caught.exception.reason, "token_in_evidence")
         self.assertEqual(runner.calls, [])
 
     def test_guest_failure_still_revokes_and_shreds(self) -> None:

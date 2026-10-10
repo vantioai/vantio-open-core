@@ -124,6 +124,37 @@ class TriggerTests(unittest.TestCase):
         self.assertNotIn("w3-lab-auto-provision.yml", argv)
         self.assertNotIn("aws", argv)
 
+    def test_self_service_battery_is_legal_without_enterprise_rows(self) -> None:
+        seen: dict[str, object] = {}
+
+        def gh(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            seen["argv"] = list(argv)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        status = trigger.main(
+            [
+                "dispatch",
+                "arm",
+                "--execute",
+                "--field",
+                "instance_id=i-0123456789abcdef0",
+                "--field",
+                "battery=self-service",
+                "--field",
+                "enterprise_rows=false",
+                "--field",
+                "redteam_brain=false",
+            ],
+            environ={"PATH": "/usr/bin"},
+            gh_runner=gh,
+        )
+        self.assertEqual(status, 0)
+        argv = seen["argv"]
+        assert isinstance(argv, list)
+        self.assertIn("battery=self-service", argv)
+        with self.assertRaises(trigger.TriggerError):
+            trigger.validate_fields("arm", {"battery": "self-service", "enterprise_rows": "true"})
+
     def test_describe_only_does_not_need_the_slot_ack(self) -> None:
         seen: dict[str, object] = {}
 

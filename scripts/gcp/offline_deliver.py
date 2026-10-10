@@ -93,7 +93,7 @@ MAX_BATTERY_DEPTH = 8
 PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
-    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|run-redteam|delete-handoff|remove-oslogin-key|"
+    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|run-redteam|run-self-service|delete-handoff|remove-oslogin-key|"
     "teardown-if-present"
 )
 
@@ -227,10 +227,10 @@ ENUMS = {
     "cloud": frozenset({"gcp"}),
     "image": frozenset({f"{IMAGE_PROJECT}/{IMAGE_FAMILY}", IMAGE_NAME}),
     "machine_type": frozenset({lab.MACHINE_TYPE, rtbrain.BRAIN_MACHINE}),
-    "mode": frozenset({"plumb", "enterprise", "descendant-b1"}),
+    "mode": frozenset({"plumb", "enterprise", "descendant-b1", "self-service"}),
     "network": frozenset({NETWORK}),
     "project_id": frozenset({LAB_PROJECT}),
-    "status": frozenset({"PLUMB_DIGEST_MATCH", "BUNDLE_READY", "BLOCKED_BUNDLE", "VERIFIED_REMOVED", "NOT_REMOVED"}),
+    "status": frozenset({"PLUMB_DIGEST_MATCH", "BUNDLE_READY", "BLOCKED_BUNDLE", "VERIFIED_REMOVED", "NOT_REMOVED", "SELF_SERVICE"}),
     "subnet": frozenset({SUBNET}),
     "verify_status": frozenset({"VERIFIED_REMOVED", "NOT_REMOVED", "UNKNOWN"}),
     "zone": frozenset({ZONE}),
@@ -348,6 +348,34 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             rows = [item for item in (allow_battery(entry) for entry in value) if item]
             if len(rows) == BATTERY_REPEATS:
                 kept["repeats"] = rows
+            continue
+        if key == "self_service" and isinstance(value, list):
+            rows = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                phase = item.get("phase")
+                protection = item.get("protection")
+                state = item.get("state")
+                reason = item.get("reason")
+                if phase not in {"install", "rollback", "uninstall", "verify-removal", "enrollment"}:
+                    continue
+                if protection not in {"OBSERVE", "PROTECTED", "NONE"}:
+                    continue
+                if not isinstance(state, str) or re.fullmatch(r"[A-Z0-9_]{1,40}", state) is None:
+                    continue
+                if not isinstance(reason, str) or re.fullmatch(r"[A-Z0-9_]{0,40}", reason) is None:
+                    continue
+                rows.append(
+                    {
+                        "phase": phase,
+                        "proof_state": "NOT_PROVED",
+                        "protection": protection,
+                        "reason": reason,
+                        "state": state,
+                    }
+                )
+            kept["self_service"] = rows
             continue
         if key == "full_set":
             continue
@@ -1594,6 +1622,117 @@ def run_batteries(env: Mapping[str, str]) -> int:
         remove_os_login_key()
 
 
+def self_service_requested(env: Mapping[str, str]) -> bool:
+    raw = env.get("SELF_SERVICE", "false").strip().lower()
+    if raw not in ("true", "false"):
+        raise SystemExit("self_service")
+    return raw == "true"
+
+
+def _self_service_rows(body: object) -> list[dict[str, str]]:
+    if not isinstance(body, dict):
+        return []
+    rows: list[dict[str, str]] = []
+    installer = body.get("installer")
+    if isinstance(installer, list):
+        for item in installer:
+            if not isinstance(item, dict):
+                continue
+            reason = item.get("reason")
+            rows.append(
+                {
+                    "phase": str(item.get("phase") or ""),
+                    "protection": str(item.get("protection") or ""),
+                    "reason": reason if isinstance(reason, str) else "",
+                    "state": str(item.get("state") or ""),
+                }
+            )
+    enrollment = body.get("enrollment")
+    if isinstance(enrollment, dict):
+        reason = enrollment.get("reason")
+        rows.append(
+            {
+                "phase": "enrollment",
+                "protection": "NONE",
+                "reason": reason if isinstance(reason, str) else "",
+                "state": str(enrollment.get("status") or "GAP"),
+            }
+        )
+    return rows
+
+
+def run_self_service(env: Mapping[str, str]) -> int:
+    """Copy the staged installer and run it. Does not run enterprise rows."""
+    _require_execute(env)
+    if batteries_requested(env) or not self_service_requested(env):
+        raise SystemExit("self_service")
+    project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    seal = expected_seal(env)
+    staged = Path(env.get("W3_SELF_SERVICE_DIR", ""))
+    tar_path = staged / "self-service.tar"
+    if not tar_path.is_file() or not (staged / "lab-artifact-trust.json").is_file():
+        raise SystemExit("self_service_layout")
+    name = instance_name(env.get("GITHUB_RUN_ID", ""))
+    _wait_until_running(project, name)
+    _wait_ssh(project, name, SSH_WAIT_SECONDS)
+    made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
+    if made.returncode != 0:
+        raise SystemExit("ssh")
+    _scp_to(project, name, [tar_path])
+    deb_dir = Path(env.get("DEB_DIR", ""))
+    if deb_dir.is_dir() and any(deb_dir.glob("*.deb")):
+        packed = Path(env.get("RUNNER_TEMP") or "/tmp") / "self-service-debs.tar"
+        pack_debs(deb_dir, packed)
+        _scp_to(project, name, [packed])
+        ca_bundle = deb_dir / "ca-certificates.crt"
+        if ca_bundle.is_file() and ca_bundle.stat().st_size >= 1000:
+            _scp_to(project, name, [ca_bundle])
+    script = (
+        "set -euo pipefail; "
+        f"tar -xf {GUEST_DIR}/self-service.tar -C {GUEST_DIR}; "
+        f"if [ -f {GUEST_DIR}/self-service-debs.tar ]; then mkdir -p {GUEST_DIR}/debs; "
+        f"tar -xf {GUEST_DIR}/self-service-debs.tar -C {GUEST_DIR}/debs; fi; "
+        "sudo env "
+        f"PYTHONPATH={GUEST_DIR} "
+        "VANTIO_LAB_SCOPE=lab-nonprod "
+        f"VANTIO_LAB_ARTIFACT_TRUST={GUEST_DIR}/lab-artifact-trust.json "
+        f"VANTIO_LAB_DEV_TRUST={GUEST_DIR}/lab-dev-trust.json "
+        f"VANTIO_LAB_ROOT={GUEST_DIR} "
+        f"VANTIO_INSTALL_BUNDLE={GUEST_DIR}/bundle "
+        f"VANTIO_POLICY_FILE={GUEST_DIR}/policy.json "
+        f"VANTIO_SIGNATURE_FILE={GUEST_DIR}/signature.json "
+        "VANTIO_STATE_DIR=/var/lib/vantio/install "
+        "VANTIO_SELF_SERVICE_OUT=/tmp/self-service-rows.json "
+        f"python3 {GUEST_DIR}/self_service.py"
+    )
+    if "--artifact-trust" in script or "--fixture-host" in script or "\n" in script:
+        raise SystemExit("self_service_layout")
+    _run_guest(project, name, f"bash -c {json.dumps(script)}", "self_service")
+    evidence = _evidence_dir(env)
+    local = evidence / "self-service-rows.json"
+    pulled = _scp_from(project, name, "/tmp/self-service-rows.json", local)
+    body = _load_json_file(local) if pulled else {}
+    write_evidence(
+        evidence / "gcp-lab-rows.json",
+        {
+            "claim_cap": CLAIM_CAP,
+            "cloud": "gcp",
+            "mode": "self-service",
+            "mutated": True,
+            "network": NETWORK,
+            "public_ip": False,
+            "seal_sha256": seal,
+            "self_service": _self_service_rows(body),
+            "status": "SELF_SERVICE",
+            "subnet": SUBNET,
+        },
+    )
+    if local.is_file() and not local.is_symlink():
+        local.unlink()
+    print(json.dumps({"mode": "self-service", "status": "SELF_SERVICE"}))
+    return 0
+
+
 def remove_os_login_key() -> int:
     pub = Path.home() / ".ssh" / "google_compute_engine.pub"
     if not pub.is_file():
@@ -1743,6 +1882,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return plumb_guest(env)
         if command == "run-batteries":
             return run_batteries(env)
+        if command == "run-self-service":
+            return run_self_service(env)
         if command == "run-redteam":
             return redteam_campaign.execute(env, sys.modules[__name__])
         if command == "delete-handoff":
