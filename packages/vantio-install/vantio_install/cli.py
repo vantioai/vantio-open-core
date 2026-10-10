@@ -10,6 +10,7 @@ from pathlib import Path
 from vantio_install import constants
 from vantio_install.engine import apply, plan, rollback, status, uninstall, verify_removal
 from vantio_install.errors import InstallError
+from vantio_install.one_command import run_one_command
 from vantio_install.util import now_et
 
 _COMMANDS = {
@@ -19,6 +20,7 @@ _COMMANDS = {
     "rollback": rollback,
     "uninstall": uninstall,
     "verify-removal": verify_removal,
+    "install": run_one_command,
 }
 
 
@@ -38,6 +40,12 @@ def _parser() -> argparse.ArgumentParser:
     parent.add_argument("--i-accept-live-mutations", action="store_true")
     parent.add_argument("--plan", default=None)
     parent.add_argument("--plan-sha256", default=None)
+    parent.add_argument("--phase", default="install", choices=["install", "rollback", "uninstall", "verify-removal"])
+    parent.add_argument("--signature-file", default=None)
+    parent.add_argument("--artifact-url", default=None)
+    parent.add_argument("--requested-protection", default="OBSERVE", choices=["OBSERVE", "PROTECTED"])
+    parent.add_argument("--policy-file", default=None)
+    parent.add_argument("--artifact-trust", default=None)
     parser = argparse.ArgumentParser(prog="vantio-install")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in _COMMANDS:
@@ -61,6 +69,12 @@ def _ctx(args: argparse.Namespace) -> dict:
         "accept_live_mutations": bool(args.i_accept_live_mutations),
         "plan_path": Path(args.plan) if args.plan else None,
         "plan_sha256": args.plan_sha256,
+        "phase": args.phase,
+        "signature_file": Path(args.signature_file) if args.signature_file else None,
+        "artifact_url": args.artifact_url,
+        "requested_protection": args.requested_protection,
+        "policy_file": Path(args.policy_file) if args.policy_file else None,
+        "artifact_trust": Path(args.artifact_trust) if args.artifact_trust else None,
     }
 
 
