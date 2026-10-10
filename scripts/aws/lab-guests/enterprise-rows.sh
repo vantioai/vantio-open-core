@@ -82,7 +82,6 @@ if [ "$dpkg_ok" != 1 ]; then
   exit 6
 fi
 command -v docker >/dev/null
-command -v gcc >/dev/null
 python3 -c "import cryptography"
 sudo mkdir -p /etc/docker
 printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json >/dev/null
@@ -104,6 +103,7 @@ test "$image" = "$image_name"
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
+  command -v gcc >/dev/null
   gcc -O2 -o "$here/descendant_probe" "$here/descendant_probe.c"
   printf 'IMAGE_LINE=%s\n' "$image"
   set +e
