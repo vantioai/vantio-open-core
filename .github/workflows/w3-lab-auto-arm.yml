@@ -51,6 +51,11 @@ on:
         options:
           - enterprise
           - descendant-b1
+      redteam_brain:
+        description: Download the pinned Qwen on the runner and copy it over SSH. Requires m7i-flex.large. Default off.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -99,6 +104,8 @@ jobs:
             scripts/aws/fetch_offline_debs.sh
             scripts/gcp/lab-guests/redteam_rows.py
             scripts/gcp/redteam_packet.py
+            scripts/gcp/redteam_brain.py
+            scripts/aws/stage_redteam_brain.py
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
@@ -120,6 +127,10 @@ jobs:
       - name: Fetch offline noble packages
         if: inputs.enterprise_rows && steps.bundle.outputs.ready == 'true'
         run: bash scripts/aws/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
+
+      - name: Fetch the pinned local brain
+        if: inputs.redteam_brain && inputs.enterprise_rows && steps.bundle.outputs.ready == 'true'
+        run: python3 scripts/aws/stage_redteam_brain.py "${{ runner.temp }}/redteam-brain"
 
       - name: Assume vantio-w3-lab-provision
         id: assume
@@ -166,6 +177,7 @@ jobs:
           W3_ROWS_PATH: w3-lab-enterprise-rows.json
           W3_REDTEAM_PATH: w3-lab-redteam-rows.json
           W3_OFFLINE_DEBS: ${{ runner.temp }}/offline-debs
+          W3_BRAIN_DIR: ${{ inputs.redteam_brain && format('{0}/redteam-brain', runner.temp) || '' }}
           W3_BATTERY: ${{ inputs.battery }}
           EVIDENCE_PATH: w3-lab-arm.json
         run: python3 scripts/aws/w3_lab_steps.py arm-enterprise
