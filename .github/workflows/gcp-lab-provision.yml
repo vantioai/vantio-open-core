@@ -12,6 +12,11 @@ name: GCP lab provision
 # Fetch uses environment w3-lab-auto and vantio-lab-handoff.
 # Deliver and teardown use environment gcp-lab and vantio-lab-gha.
 
+env:
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
 on:
   workflow_dispatch:
     inputs:
@@ -122,7 +127,7 @@ jobs:
 
       - name: Require the vantio-lab-oct08 workload identity provider
         env:
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
         run: |
           set -euo pipefail
           test -n "$GCP_LAB_WIF_PROVIDER"
@@ -137,7 +142,7 @@ jobs:
         id: handoff-auth
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
           service_account: vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com
 
       - name: Confirm the handoff identity is vantio-lab-oct08
@@ -211,9 +216,9 @@ jobs:
 
       - name: Refuse static GCP keys
         env:
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
           if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
@@ -247,8 +252,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
 
       - name: Install gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
@@ -257,7 +262,7 @@ jobs:
 
       - name: Bind the provider to vantio-lab-oct08
         env:
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
         run: |
           set -euo pipefail
           number=$(gcloud projects describe vantio-lab-oct08 --format='value(projectNumber)')
@@ -267,7 +272,7 @@ jobs:
       - name: Cost gate
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: |
           set -euo pipefail
@@ -277,7 +282,7 @@ jobs:
       - name: Download the bundle, re-verify it, and delete it
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           EXPECTED_SEAL: ${{ inputs.seal }}
@@ -300,7 +305,7 @@ jobs:
       - name: Create the offline VM
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
@@ -314,7 +319,7 @@ jobs:
         if: ${{ !inputs.run_batteries }}
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
@@ -332,7 +337,7 @@ jobs:
         if: inputs.run_batteries && inputs.redteam_brain
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           DEB_DIR: ${{ runner.temp }}/offline-debs
@@ -358,7 +363,7 @@ jobs:
         if: inputs.run_batteries && !inputs.redteam_brain
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           DEB_DIR: ${{ runner.temp }}/offline-debs
@@ -379,7 +384,7 @@ jobs:
         if: always() && steps.auth.outcome == 'success'
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
         run: python3 scripts/gcp/offline_deliver.py delete-handoff
@@ -425,9 +430,9 @@ jobs:
 
       - name: Refuse static GCP keys
         env:
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
           if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
@@ -457,8 +462,8 @@ jobs:
         id: auth
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
 
       - name: Install gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
@@ -468,7 +473,7 @@ jobs:
       - name: Delete the VM and verify it is gone
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
         run: python3 scripts/gcp/offline_deliver.py teardown-if-present

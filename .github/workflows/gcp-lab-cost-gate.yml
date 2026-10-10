@@ -10,6 +10,11 @@ name: GCP lab cost gate
 # and does not bind a billing-account role. A green gate does not start a VM
 # and does not install Phantom Engine.
 
+env:
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
 on:
   workflow_call:
     outputs:
@@ -47,9 +52,9 @@ jobs:
 
       - name: Refuse static GCP keys
         env:
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
           if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
@@ -72,8 +77,8 @@ jobs:
       - name: Authenticate with workload identity
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
 
       - name: Install gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
@@ -84,7 +89,7 @@ jobs:
         id: eval
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
         run: |
           set -euo pipefail
           python3 scripts/gcp/lab_auto.py cost-gate | tee "$RUNNER_TEMP/gcp-lab-cost-gate.json"

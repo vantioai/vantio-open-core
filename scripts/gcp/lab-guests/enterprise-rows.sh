@@ -98,6 +98,14 @@ if ! compgen -G "$here/debs/*.deb" >/dev/null; then
   echo "offline debs missing" >&2
   exit 6
 fi
+if [ ! -s "$here/ca-certificates.crt" ]; then
+  echo "ca bundle missing" >&2
+  exit 6
+fi
+sudo mkdir -p /usr/local/share/ca-certificates /etc/ssl/certs
+sudo cp "$here/ca-certificates.crt" /usr/local/share/ca-certificates/vantio-lab.crt
+sudo cp "$here/ca-certificates.crt" /etc/ssl/certs/ca-certificates.crt
+sudo chmod 644 /etc/ssl/certs/ca-certificates.crt /usr/local/share/ca-certificates/vantio-lab.crt
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"

@@ -79,6 +79,7 @@ def execute(env: Mapping[str, str], od: Any) -> int:
             payload_dir / "enterprise-rows.sh",
             payload_dir / "descendant_b1.py",
             payload_dir / "debs.tar",
+            payload_dir / "ca-certificates.crt",
             payload_dir / rtbrain.MODEL_NAME,
             payload_dir / rtbrain.RUNTIME_NAME,
             payload_dir / "redteam_rows.py",

@@ -454,6 +454,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn('sha256sum -c -', text)
         self.assertIn(od.TRUST_SHA256, text)
         self.assertIn(od.IMAGE_NAME, text)
+        self.assertIn("ca-certificates.crt", text)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", text)
         self.assertLess(text.index('mode=${2:-plumb}'), text.index("apt-get install"))
 
@@ -466,6 +467,9 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("--no-install-recommends", text)
         self.assertIn("docker.io", text)
         self.assertIn("python3-cryptography", text)
+        self.assertIn("ca-certificates", text)
+        self.assertLess(text.index("apt-get install -y --no-install-recommends ca-certificates"), text.index("snapshot.debian.org"))
+        self.assertIn("ca-certificates.crt", text)
 
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))
@@ -486,11 +490,23 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("if: ${{ !inputs.run_batteries }}", text)
         self.assertNotIn("gcp-lab-one-vm", text)
         self.assertNotIn("default: f882dd81", text)
-        self.assertNotIn("910881070503", text)
+        self.assertIn(od.WIF_PROVIDER, text)
+        self.assertNotIn("vars.GCP_LAB_WIF_PROVIDER", text)
+        self.assertNotIn("vars.GCP_LAB_SERVICE_ACCOUNT", text)
         self.assertNotIn("uploadType=media", (ROOT / "scripts/gcp/offline_deliver.py").read_text(encoding="utf-8"))
         self.assertIn('test "$GCP_LAB_SERVICE_ACCOUNT" = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"', text)
         self.assertIn("vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com", text)
-        self.assertNotIn("projects/910881070503", text)
+        for name in (
+            "gcp-lab-teardown.yml",
+            "gcp-lab-sweeper.yml",
+            "gcp-lab-collect.yml",
+            "gcp-lab-verify-removed.yml",
+            "gcp-lab-cost-gate.yml",
+        ):
+            other = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            self.assertIn(od.WIF_PROVIDER, other)
+            self.assertNotIn("vars.GCP_LAB_WIF_PROVIDER", other)
+            self.assertNotIn("gcp-lab-one-vm", other)
         for name in (
             "gcp-lab-teardown.yml",
             "gcp-lab-sweeper.yml",
@@ -499,7 +515,6 @@ class OfflineDeliverTest(unittest.TestCase):
         ):
             other = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
             self.assertIn("vantio-gce-slot", other)
-            self.assertNotIn("gcp-lab-one-vm", other)
         self.assertIn("fetch_offline_debs.sh", text)
         self.assertEqual(text.count("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN"), 1)
         self.assertNotIn("aws-actions", text)

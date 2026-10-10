@@ -3,6 +3,11 @@ name: GCP lab verify removed
 # Read-only. VERIFIED_REMOVED only when that instance is gone or terminated
 # and no disk name still contains it. This does not delete anything.
 
+env:
+  GCP_LAB_PROJECT: vantio-lab-oct08
+  GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
+  GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
+
 on:
   workflow_dispatch:
     inputs:
@@ -41,9 +46,9 @@ jobs:
 
       - name: Refuse static GCP keys
         env:
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
-          GCP_LAB_WIF_PROVIDER: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          GCP_LAB_SERVICE_ACCOUNT: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_WIF_PROVIDER: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          GCP_LAB_SERVICE_ACCOUNT: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
           if [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ] || [ -n "${GCP_SA_KEY:-}" ] || [ -n "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-}" ]; then
@@ -66,8 +71,8 @@ jobs:
       - name: Authenticate with workload identity
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         with:
-          workload_identity_provider: ${{ vars.GCP_LAB_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_LAB_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ env.GCP_LAB_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_LAB_SERVICE_ACCOUNT }}
 
       - name: Install gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
@@ -77,7 +82,7 @@ jobs:
       - name: Describe removal
         env:
           GCP_LAB_EXECUTE: "1"
-          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           INSTANCE_NAME: ${{ inputs.instance_name }}
         run: |
           set -euo pipefail
