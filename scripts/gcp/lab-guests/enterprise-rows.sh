@@ -227,6 +227,11 @@ case "$mode" in
     exit "$rc"
     ;;
 esac
+set +e
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
+rc=$?
+set -e
 sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
 sudo chmod a+r /tmp/gcp-kernel-facts.json 2>/dev/null || true
+printf 'PY_RC=%s\n' "$rc"
+exit "$rc"

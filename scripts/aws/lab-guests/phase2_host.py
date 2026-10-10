@@ -121,6 +121,18 @@ def pinned_deny_names(pid: int) -> bool:
     return False
 
 
+def ndjson_denied_pids() -> list[int]:
+    """Pids named by a DENIED ledger row. A map hit without this row is not enough."""
+    found: list[int] = []
+    for item in events():
+        if item.get("ActionTaken") != "DENIED":
+            continue
+        pid = item.get("Pid")
+        if isinstance(pid, int) and pid > 0 and pid not in found:
+            found.append(pid)
+    return found[-8:]
+
+
 def attributed(pid: int, action: str) -> bool:
     for item in events():
         raw = item.get("Pid")
@@ -301,6 +313,7 @@ def run_2c() -> dict:
     graded["attributed_before"] = attributed_before
     graded["attributed_after"] = attributed_after
     graded["standin_after_sigkill"] = standin
+    graded["ndjson_denied_pids"] = ndjson_denied_pids()
     return graded
 
 
@@ -327,6 +340,7 @@ def run_2d() -> dict:
     graded["file_after_enrolled"] = enrolled.get("file_errno")
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
+    graded["ndjson_denied_pids"] = ndjson_denied_pids()
     return graded
 
 
@@ -368,6 +382,7 @@ def run_2f() -> dict:
     graded["standin_after_sigkill"] = standin
     graded["bpf_pin_sample"] = pins
     graded["policy_malformed"] = False
+    graded["ndjson_denied_pids"] = ndjson_denied_pids()
     return graded
 
 

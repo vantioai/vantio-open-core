@@ -208,6 +208,30 @@ class OfflineDeliverTest(unittest.TestCase):
             "rows": {"grant": {"result": "pass"}, "revoke": {"probe": {"nobody_errno": 13}}},
         }
 
+    def test_loader_hold_requires_a_denied_row_pid(self) -> None:
+        body = {
+            "file_open": "attributed_deny",
+            "process_restart_held": True,
+            "restart_attributed": True,
+            "deny_after": {"file_errno": 13},
+        }
+        self.assertEqual(od._loader_word("2d-crash-recovery", body), "fail")
+        named = dict(body)
+        named["ndjson_denied_pids"] = [4242]
+        self.assertEqual(od._loader_word("2d-crash-recovery", named), "held")
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", named), "held")
+        kept = od.allow_record(
+            {
+                "claim_cap": od.CLAIM_CAP,
+                "cases": [
+                    {"case": "enterprise", "result": "fail", "errno": 13, "deny_pid": 0, "denied_rows": 0},
+                    {"case": "loader-kill", "result": "held", "errno": 13, "deny_pid": 4242, "denied_rows": 1},
+                ],
+            }
+        )
+        self.assertEqual(kept["cases"][1]["deny_pid"], 4242)
+        self.assertEqual(kept["cases"][0]["errno"], 13)
+
     def test_full_battery_is_two_complete_repeats(self) -> None:
         self.assertEqual(od.battery_schedule(), ["enterprise", "descendant-b1", "enterprise", "descendant-b1"])
         self.assertEqual(od.FULL_BATTERY, ("kernel", "seal", "enterprise", "descendant-b1"))
