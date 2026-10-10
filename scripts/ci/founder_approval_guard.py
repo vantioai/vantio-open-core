@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 LABEL = os.environ.get("FOUNDER_LABEL", "founder-approved")
@@ -73,16 +74,51 @@ def latest_label_event(events: list[dict]) -> dict | None:
     return last
 
 
-def decide(hits, labels, label_event, actor_permission) -> tuple[bool, str]:
+def parse_time(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def decide(hits, labels, label_event, actor_permission, head_received_at=None) -> tuple[bool, str]:
     if not hits:
         return True, "no protected paths changed"
     if LABEL not in labels:
         return False, f"protected paths changed and the '{LABEL}' label is missing"
     if not label_event or label_event.get("event") != "labeled":
         return False, f"no '{LABEL}' labeled event found"
+    actor = (label_event.get("actor") or {}).get("login")
     if actor_permission != "admin":
-        return False, f"'{LABEL}' was applied by a non-admin ({(label_event.get('actor') or {}).get('login')})"
-    return True, f"'{LABEL}' applied by admin {(label_event.get('actor') or {}).get('login')}"
+        return False, f"'{LABEL}' was applied by a non-admin ({actor})"
+    labeled_at = parse_time(label_event.get("created_at"))
+    received_at = parse_time(head_received_at)
+    # The receipt time is the earliest GitHub check on this head SHA, which is
+    # the server time of the push. A git committer date is not used: the author
+    # can set that in the past. The pull request body is not an input.
+    if labeled_at is None or received_at is None or labeled_at <= received_at:
+        return False, f"'{LABEL}' is older than this head ({head_received_at})"
+    return True, f"'{LABEL}' applied by admin {actor} after {head_received_at}"
+
+
+def earliest_check_start(repo: str, sha: str) -> str | None:
+    """Earliest check-run start on this SHA. GitHub sets this when it receives the push."""
+    started: list[str] = []
+    page = 1
+    while page <= 20:
+        data = gh(f"/repos/{repo}/commits/{sha}/check-runs?per_page=100&page={page}")
+        if not isinstance(data, dict):
+            return None
+        runs = data.get("check_runs") or []
+        for run in runs:
+            if isinstance(run, dict) and isinstance(run.get("started_at"), str):
+                started.append(run["started_at"])
+        if len(runs) < 100:
+            break
+        page += 1
+    return min(started) if started else None
 
 
 def main() -> int:
@@ -102,13 +138,14 @@ def main() -> int:
     globs = load_globs(Path(os.environ.get("GUARD_PATHS", ".github/founder-approval-paths.txt")))
     files = paged(f"/repos/{repo}/pulls/{num}/files")
     hits = protected_hits(files, globs)
-    label_event, perm = None, None
+    label_event, perm, received = None, None, None
     if hits and LABEL in labels:
         label_event = latest_label_event(paged(f"/repos/{repo}/issues/{num}/events"))
         login = ((label_event or {}).get("actor") or {}).get("login")
         if login:
             perm = gh(f"/repos/{repo}/collaborators/{login}/permission").get("permission")
-    ok, why = decide(hits, labels, label_event, perm)
+        received = earliest_check_start(repo, pr["head"]["sha"])
+    ok, why = decide(hits, labels, label_event, perm, received)
     print(json.dumps({"pr": num, "head": pr["head"]["sha"], "protected_hits": hits, "ok": ok, "reason": why}, indent=2))
     return 0 if ok else 1
 

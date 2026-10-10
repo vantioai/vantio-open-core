@@ -12,12 +12,13 @@ on:
 
 permissions:
   contents: read
+  checks: read
   pull-requests: write   # only to remove a stale founder-approved label after a push
   issues: read
 
 concurrency:
   group: founder-approval-guard-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   founder-approval:

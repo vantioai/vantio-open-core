@@ -16,3 +16,4 @@ docs/products/*
 .github/founder-approval-paths.txt
 .github/workflows/founder-approval-guard.yml
 scripts/ci/founder_approval_guard.py
+scripts/ci/test_founder_approval_guard.py
