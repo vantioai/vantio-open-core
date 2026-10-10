@@ -56,14 +56,20 @@ class FakeAws:
         self.calls: list[list[str]] = []
         self.state = "running"
         self.dry_run = "denied"
+        self.egress_revoke = "allowed"
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(list(args))
         text = " ".join(args)
         if "--dry-run" in args:
+            if "revoke-security-group-egress" in text and self.egress_revoke == "allowed":
+                return completed(code=254, stderr="An error occurred (DryRunOperation) when calling the operation")
             if self.dry_run == "allowed":
                 return completed(code=254, stderr="An error occurred (DryRunOperation) when calling the operation")
             return completed(code=254, stderr="An error occurred (UnauthorizedOperation) when calling the operation")
+        if "describe-security-groups" in text and "--group-ids" in args:
+            group_id = args[args.index("--group-ids") + 1]
+            return completed({"SecurityGroups": [{"GroupId": group_id, "IpPermissionsEgress": []}]})
         if "get-caller-identity" in text:
             return completed({"Account": lab.ACCOUNT_ID, "Arn": "arn:aws:sts::960577828987:assumed-role/vantio-w3-lab-provision/s"})
         if "describe-images" in text:
@@ -727,6 +733,12 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         script = ROOT / "scripts/aws/lab-guests/enterprise-rows.sh"
         completed_run = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
         self.assertEqual(completed_run.returncode, 0, completed_run.stderr)
+        text = script.read_text(encoding="utf-8")
+        self.assertNotIn("apt-get", text)
+        self.assertIn("refusing network apt", text)
+        fetch = ROOT / "scripts/aws/fetch_offline_debs.sh"
+        fetch_run = subprocess.run(["bash", "-n", str(fetch)], capture_output=True, text=True)
+        self.assertEqual(fetch_run.returncode, 0, fetch_run.stderr)
 
 
 if __name__ == "__main__":
