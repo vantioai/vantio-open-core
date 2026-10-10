@@ -609,7 +609,7 @@ class EnterpriseBundleTests(unittest.TestCase):
 
     def test_row_pull_sends_a_fresh_instance_connect_key(self) -> None:
         text = Path(steps.__file__).read_text(encoding="utf-8")
-        pull = text.find('ubuntu@{host}:/tmp/enterprise-pe-rows.json')
+        pull = text.find('{ssh_user}@{host}:/tmp/enterprise-pe-rows.json')
         note = text.rfind("Instance Connect keys last 60 seconds", 0, pull)
         refresh = text.rfind("_run_with_fresh_key", 0, pull)
         self.assertGreater(note, 0)

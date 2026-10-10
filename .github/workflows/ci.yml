@@ -104,6 +104,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_teardown_workflow.py -v
           python3 scripts/aws/test_w3_lab_auto.py -v
           python3 scripts/aws/test_w3_lab_steps.py -v
+          python3 scripts/aws/test_phase2_grade.py -v
           python3 scripts/aws/test_lab_oidc_trigger.py -v
           python3 scripts/aws/test_w3_lab_eip.py -v
           python3 scripts/gcp/test_lab_auto.py -v
