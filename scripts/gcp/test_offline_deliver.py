@@ -487,7 +487,10 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("teardown-if-present", text)
         self.assertIn("vantio-gce-slot", text)
         self.assertIn("EXPECTED_SEAL: ${{ inputs.seal }}", text)
-        self.assertIn("if: ${{ !inputs.run_batteries }}", text)
+        self.assertIn("if: ${{ !inputs.run_batteries && !inputs.self_service }}", text)
+        self.assertIn("self_service:", text)
+        self.assertIn("run-self-service", text)
+        self.assertNotIn("if: ${{ !inputs.run_batteries }}", text)
         self.assertNotIn("gcp-lab-one-vm", text)
         self.assertNotIn("default: f882dd81", text)
         self.assertIn(od.WIF_PROVIDER, text)
@@ -534,6 +537,46 @@ class OfflineDeliverTest(unittest.TestCase):
             self.assertNotIn(".deb", block)
         for key in ("  fetch:", "  deliver:", "  teardown:"):
             self.assertIn(key, text)
+
+    def test_self_service_rows_keep_states_and_drop_paths(self) -> None:
+        kept = od.allow_record(
+            {
+                "cloud": "gcp",
+                "mode": "self-service",
+                "self_service": [
+                    {"phase": "install", "protection": "OBSERVE", "reason": "HEALTHY", "state": "HEALTHY"},
+                    {"phase": "install", "protection": "PROTECTED", "reason": "ENFORCEMENT_HELD", "state": "NOT_RUN"},
+                    {"phase": "install", "protection": "OBSERVE", "reason": "/tmp/secret", "state": "HEALTHY"},
+                ],
+                "status": "SELF_SERVICE",
+            }
+        )
+        self.assertEqual(kept["mode"], "self-service")
+        self.assertEqual(kept["status"], "SELF_SERVICE")
+        self.assertEqual(
+            kept["self_service"],
+            [
+                {
+                    "phase": "install",
+                    "proof_state": "NOT_PROVED",
+                    "protection": "OBSERVE",
+                    "reason": "HEALTHY",
+                    "state": "HEALTHY",
+                },
+                {
+                    "phase": "install",
+                    "proof_state": "NOT_PROVED",
+                    "protection": "PROTECTED",
+                    "reason": "ENFORCEMENT_HELD",
+                    "state": "NOT_RUN",
+                },
+            ],
+        )
+        self.assertFalse(od.self_service_requested({}))
+        self.assertTrue(od.self_service_requested({"SELF_SERVICE": "true"}))
+        with self.assertRaises(SystemExit):
+            od.self_service_requested({"SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
+            od.run_self_service({"GCP_LAB_EXECUTE": "1", "SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
 
 
 if __name__ == "__main__":

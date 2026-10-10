@@ -34,6 +34,11 @@ on:
         required: false
         default: false
         type: boolean
+      self_service:
+        description: Run the public one-command installer. Does not run enterprise or descendant rows.
+        required: false
+        default: false
+        type: boolean
       stop_after_minutes:
         description: Guest shutdown delay in minutes. 1 through 120.
         required: true
@@ -70,6 +75,10 @@ jobs:
           test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
+          if [ "${{ inputs.self_service }}" = "true" ] && [ "${{ inputs.run_batteries }}" = "true" ]; then
+            echo "self_service does not run the enterprise batteries" >&2
+            exit 1
+          fi
 
       - name: Refuse static cloud keys
         run: |
@@ -213,6 +222,10 @@ jobs:
           test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
           test -n "${{ needs.fetch.outputs.seal_sha256 }}"
           test -n "${{ needs.fetch.outputs.contract_sha256 }}"
+          if [ "${{ inputs.self_service }}" = "true" ] && [ "${{ inputs.run_batteries }}" = "true" ]; then
+            echo "self_service does not run the enterprise batteries" >&2
+            exit 1
+          fi
 
       - name: Refuse static GCP keys
         env:
@@ -246,6 +259,10 @@ jobs:
             scripts/gcp/lab-guests/enterprise-rows.sh
             scripts/gcp/lab-guests/redteam_rows.py
             scripts/aws/lab-guests/descendant_b1.py
+            scripts/aws/lab-guests/self_service.py
+            scripts/lab/stage_lab_trust.py
+            packages/vantio-install/vantio_install/
+            packages/vantio-install/requirements/dev-hashes.txt
           sparse-checkout-cone-mode: false
 
       - name: Authenticate as vantio-lab-gha
@@ -293,7 +310,7 @@ jobs:
         run: python3 scripts/gcp/offline_deliver.py download-handoff
 
       - name: Download pinned offline packages
-        if: inputs.run_batteries
+        if: inputs.run_batteries || inputs.self_service
         env:
           DEB_DIR: ${{ runner.temp }}/offline-debs
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
@@ -316,7 +333,7 @@ jobs:
           python3 scripts/gcp/offline_deliver.py create-instance
 
       - name: Copy the bundle over IAP and re-check the digest
-        if: ${{ !inputs.run_batteries }}
+        if: ${{ !inputs.run_batteries && !inputs.self_service }}
         env:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
@@ -332,6 +349,36 @@ jobs:
           set -euo pipefail
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           python3 scripts/gcp/offline_deliver.py plumb-guest
+
+      - name: Stage the lab installer and a non-production trust key
+        if: inputs.self_service
+        env:
+          PYTHONPATH: packages/vantio-install
+        run: |
+          set -euo pipefail
+          python3 -m pip install --require-hashes --disable-pip-version-check -r packages/vantio-install/requirements/dev-hashes.txt
+          dest="${{ runner.temp }}/self-service"
+          pinned="${{ runner.temp }}/pinned-artifacts"
+          mkdir -p "$dest" "$pinned"
+          cp scripts/aws/lab-guests/self_service.py "$dest/self_service.py"
+          cp -a packages/vantio-install/vantio_install "$dest/vantio_install"
+          python3 scripts/lab/stage_lab_trust.py fetch "$pinned"
+          python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
+          test -f "$dest/self-service.tar"
+          python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
+
+      - name: Run the self-service installer
+        if: inputs.self_service
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          W3_SELF_SERVICE_DIR: ${{ runner.temp }}/self-service
+          DEB_DIR: ${{ runner.temp }}/offline-debs
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          SELF_SERVICE: "true"
+          RUN_BATTERIES: "false"
+        run: python3 scripts/gcp/offline_deliver.py run-self-service
 
       - name: Run the kernel red-team campaign
         if: inputs.run_batteries && inputs.redteam_brain
