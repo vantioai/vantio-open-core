@@ -31,6 +31,9 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import lab_auto as lab
+import redteam_brain as rtbrain
+import redteam_campaign
+import redteam_packet
 
 CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 LAB_PROJECT = "vantio-lab-oct08"
@@ -61,7 +64,7 @@ TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
-IMAGE_NAME = "vantio-phantom-engine:policy-allow-df61d97"
+IMAGE_NAME = "vantio-phantom-engine:evidence-ring-0533c88"
 GUEST_DIR = "/tmp/vantio-lab"
 ZONE = lab.ZONE
 E2_MICRO_USD_PER_HOUR = Decimal("0.0084")
@@ -87,7 +90,7 @@ MAX_BATTERY_DEPTH = 8
 PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
-    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|delete-handoff|remove-oslogin-key|"
+    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|run-redteam|delete-handoff|remove-oslogin-key|"
     "teardown-if-present"
 )
 
@@ -119,6 +122,25 @@ def instance_name(run_id: str) -> str:
 def object_names(run_id: str) -> tuple[str, str]:
     prefix = require_run_id(run_id)
     return (f"{prefix}/seal.oci.tar", f"{prefix}/contract.tar")
+
+
+def brain_requested(env: Mapping[str, str]) -> bool:
+    raw = env.get("REDTEAM_BRAIN", "false").strip().lower()
+    if raw not in ("true", "false"):
+        raise SystemExit("brain")
+    return raw == "true"
+
+
+def brain_object_names(run_id: str) -> tuple[str, str]:
+    prefix = require_run_id(run_id)
+    return (f"{prefix}/{rtbrain.MODEL_NAME}", f"{prefix}/{rtbrain.RUNTIME_NAME}")
+
+
+def handoff_objects(env: Mapping[str, str]) -> tuple[str, ...]:
+    names = object_names(env.get("GITHUB_RUN_ID", ""))
+    if brain_requested(env):
+        return names + brain_object_names(env.get("GITHUB_RUN_ID", ""))
+    return names
 
 
 def sha256_file(path: Path) -> str:
@@ -190,6 +212,7 @@ EVIDENCE_FILES = frozenset(
         "handoff.json",
         "instance.json",
         "prepare-bundle.json",
+        "redteam-packet.json",
         "teardown.json",
     }
 )
@@ -200,7 +223,7 @@ ENUMS = {
     "claim_cap": frozenset({CLAIM_CAP}),
     "cloud": frozenset({"gcp"}),
     "image": frozenset({f"{IMAGE_PROJECT}/{IMAGE_FAMILY}", IMAGE_NAME}),
-    "machine_type": frozenset({lab.MACHINE_TYPE}),
+    "machine_type": frozenset({lab.MACHINE_TYPE, rtbrain.BRAIN_MACHINE}),
     "mode": frozenset({"plumb", "enterprise", "descendant-b1"}),
     "network": frozenset({NETWORK}),
     "project_id": frozenset({LAB_PROJECT}),
@@ -254,7 +277,11 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             names = [
                 item
                 for item in value
-                if isinstance(item, str) and re.fullmatch(r"[0-9]{1,20}/(seal\.oci\.tar|contract\.tar)", item)
+                if isinstance(item, str)
+                and re.fullmatch(
+                    r"[0-9]{1,20}/(seal\.oci\.tar|contract\.tar|qwen2\.5-3b-instruct-q4_k_m\.gguf|llama-b11540-bin-ubuntu-x64\.tar\.gz)",
+                    item,
+                )
             ]
             kept["objects"] = names
             continue
@@ -581,6 +608,12 @@ def offline_create_argv(plan: Mapping[str, Any], script_path: str) -> list[str]:
     labels = plan["labels"]
     if not lab.labels_owned(labels, name):
         raise SystemExit("labels")
+    machine = str(plan.get("machine_type") or lab.MACHINE_TYPE)
+    disk = str(plan.get("boot_disk_gb") or lab.BOOT_DISK_GB)
+    micro = machine == lab.MACHINE_TYPE and disk == lab.BOOT_DISK_GB
+    brain = machine == rtbrain.BRAIN_MACHINE and disk == "30GB"
+    if not micro and not brain:
+        raise SystemExit("machine")
     label_arg = ",".join(f"{key}={labels[key]}" for key in sorted(labels))
     argv = [
         "gcloud",
@@ -590,10 +623,10 @@ def offline_create_argv(plan: Mapping[str, Any], script_path: str) -> list[str]:
         name,
         f"--project={project}",
         f"--zone={ZONE}",
-        f"--machine-type={lab.MACHINE_TYPE}",
+        f"--machine-type={machine}",
         f"--image-family={IMAGE_FAMILY}",
         f"--image-project={IMAGE_PROJECT}",
-        f"--boot-disk-size={lab.BOOT_DISK_GB}",
+        f"--boot-disk-size={disk}",
         "--boot-disk-type=pd-balanced",
         f"--network={NETWORK}",
         f"--subnet={SUBNET}",
@@ -746,12 +779,19 @@ def content_range(offset: int, length: int, total: int) -> str:
     return f"bytes {offset}-{offset + length - 1}/{total}"
 
 
-def resumable_upload(bucket: str, object_name: str, path: Path, token: str) -> None:
+def resumable_upload(
+    bucket: str,
+    object_name: str,
+    path: Path,
+    token: str,
+    *,
+    max_bytes: int = MAX_SEAL_BYTES,
+) -> None:
     """Chunked resumable upload. A failed session is not replaced by a one-shot body."""
     if bucket != BUCKET or ".." in object_name or object_name.startswith("/"):
         raise SystemExit("object")
     total = path.stat().st_size
-    if total <= 0 or total > MAX_SEAL_BYTES:
+    if total <= 0 or total > max_bytes:
         raise SystemExit("handoff_upload")
     quoted = urllib.parse.quote(object_name, safe="")
     start = urllib.request.Request(
@@ -825,7 +865,7 @@ def _json_delete(bucket: str, object_name: str, token: str, *, missing_ok: bool)
         raise SystemExit("storage_delete") from None
 
 
-def upload_one(bucket: str, object_name: str, path: Path) -> str:
+def upload_one(bucket: str, object_name: str, path: Path, *, max_bytes: int = MAX_SEAL_BYTES) -> str:
     dest = f"gs://{bucket}/{object_name}"
     completed = _run(["gcloud", "storage", "cp", str(path), dest])
     text = (completed.stderr or "") + (completed.stdout or "")
@@ -839,7 +879,7 @@ def upload_one(bucket: str, object_name: str, path: Path) -> str:
     print(json.dumps({"object": object_name, "via": "resumable", "reason": "storage.objects.get"}))
     token = _access_token()
     try:
-        resumable_upload(bucket, object_name, path, token)
+        resumable_upload(bucket, object_name, path, token, max_bytes=max_bytes)
     finally:
         token = ""
     return "resumable"
@@ -900,11 +940,25 @@ def assert_bundle_command(env: Mapping[str, str]) -> int:
 def upload_handoff(env: Mapping[str, str]) -> int:
     _require_execute(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
-    names = object_names(env.get("GITHUB_RUN_ID", ""))
+    names = list(object_names(env.get("GITHUB_RUN_ID", "")))
     directory = Path(env.get("W3_BUNDLE_DIR", ""))
     checked = assert_bundle_dir(directory, expected_seal(env))
-    paths = (directory / "seal.oci.tar", directory / "contract.tar")
-    via = [upload_one(BUCKET, name, path) for name, path in zip(names, paths)]
+    paths = [directory / "seal.oci.tar", directory / "contract.tar"]
+    limits = [MAX_SEAL_BYTES, MAX_SEAL_BYTES]
+    if brain_requested(env):
+        brain_dir = Path(env.get("BRAIN_DIR", ""))
+        try:
+            rtbrain.verify_files(brain_dir)
+        except ValueError:
+            raise SystemExit("model_sha") from None
+        brain_names = brain_object_names(env.get("GITHUB_RUN_ID", ""))
+        names.extend(brain_names)
+        paths.extend([brain_dir / rtbrain.MODEL_NAME, brain_dir / rtbrain.RUNTIME_NAME])
+        limits.extend([rtbrain.MODEL_BYTES, rtbrain.RUNTIME_BYTES])
+    via = [
+        upload_one(BUCKET, name, path, max_bytes=limit)
+        for name, path, limit in zip(names, paths, limits)
+    ]
     payload = {
         "bucket": BUCKET,
         "claim_cap": CLAIM_CAP,
@@ -920,6 +974,46 @@ def upload_handoff(env: Mapping[str, str]) -> int:
     github_output("contract_sha256", checked["contract_sha256"])
     print(json.dumps({"bucket": BUCKET, "prefix": require_run_id(env.get("GITHUB_RUN_ID", ""))}))
     return 0
+
+
+def stream_media_download(bucket: str, object_name: str, path: Path, token: str, exact: int) -> None:
+    if bucket != BUCKET or ".." in object_name or object_name.startswith("/") or exact < 1:
+        raise SystemExit("object")
+    quoted = urllib.parse.quote(object_name, safe="")
+    url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o/{quoted}?alt=media"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    written = 0
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response, path.open("wb") as handle:
+            while True:
+                chunk = response.read(8 * 1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > exact:
+                    raise SystemExit("handoff_download")
+                handle.write(chunk)
+    except urllib.error.HTTPError as exc:
+        print(redact(f"brain download {exc.code}"), file=sys.stderr)
+        raise SystemExit("handoff_download") from None
+    if written != exact:
+        raise SystemExit("handoff_download")
+
+
+def download_exact(bucket: str, object_name: str, path: Path, exact: int) -> None:
+    dest = f"gs://{bucket}/{object_name}"
+    completed = _run(["gcloud", "storage", "cp", dest, str(path)])
+    if completed.returncode == 0 and path.is_file() and path.stat().st_size == exact:
+        return
+    text = (completed.stderr or "") + (completed.stdout or "")
+    if "403" not in text and "storage.objects.get" not in text and completed.returncode != 0:
+        print(redact(text)[-2000:], file=sys.stderr)
+        raise SystemExit("handoff_download")
+    token = _access_token()
+    try:
+        stream_media_download(bucket, object_name, path, token, exact)
+    finally:
+        token = ""
 
 
 def download_one(bucket: str, object_name: str, path: Path) -> None:
@@ -967,11 +1061,21 @@ def download_handoff(env: Mapping[str, str]) -> int:
             "seal_sha256": seal,
             "trust_sha256": TRUST_SHA256,
         }
+        if brain_requested(env):
+            brain_dir = Path(env.get("BRAIN_DIR", ""))
+            brain_dir.mkdir(parents=True, exist_ok=True)
+            brain_names = brain_object_names(env.get("GITHUB_RUN_ID", ""))
+            download_exact(BUCKET, brain_names[0], brain_dir / rtbrain.MODEL_NAME, rtbrain.MODEL_BYTES)
+            download_exact(BUCKET, brain_names[1], brain_dir / rtbrain.RUNTIME_NAME, rtbrain.RUNTIME_BYTES)
+            try:
+                rtbrain.verify_files(brain_dir)
+            except ValueError:
+                raise SystemExit("model_sha") from None
         write_evidence(_evidence_dir(env) / "download.json", payload)
         print(json.dumps(payload))
         return 0
     finally:
-        delete_objects(names, missing_ok=True)
+        delete_objects(handoff_objects(env), missing_ok=True)
 
 
 def hash_debs(env: Mapping[str, str]) -> int:
@@ -1010,6 +1114,17 @@ def create_instance(env: Mapping[str, str]) -> int:
         raise SystemExit("slot_occupied")
     now = int(env["GCP_LAB_NOW_EPOCH"]) if env.get("GCP_LAB_NOW_EPOCH") else int(time.time())
     minutes = lab.bounded_minutes(env.get("STOP_AFTER_MINUTES", "120"))
+    if brain_requested(env):
+        try:
+            gross = rtbrain.assert_under_cap(rtbrain.BRAIN_MACHINE, minutes, rtbrain.BRAIN_DISK_GB)
+        except ValueError:
+            raise SystemExit("cost") from None
+        machine = rtbrain.BRAIN_MACHINE
+        disk = "30GB"
+    else:
+        gross = None
+        machine = lab.MACHINE_TYPE
+        disk = lab.BOOT_DISK_GB
     labels = offline_labels(now, minutes)
     plan = {
         "image_family": IMAGE_FAMILY,
@@ -1018,6 +1133,8 @@ def create_instance(env: Mapping[str, str]) -> int:
         "name": name,
         "network": NETWORK,
         "project_id": project,
+        "boot_disk_gb": disk,
+        "machine_type": machine,
         "public_ip": False,
         "service_account": None,
         "subnet": SUBNET,
@@ -1029,8 +1146,9 @@ def create_instance(env: Mapping[str, str]) -> int:
     payload = {
         "claim_cap": CLAIM_CAP,
         "expected_oop_usd": gate["expected_oop_usd"],
+        "estimated_gross_usd": _money(gross) if gross is not None else _money(estimate_gross_usd(Decimal(minutes) / Decimal(60))),
         "image": f"{IMAGE_PROJECT}/{IMAGE_FAMILY}",
-        "machine_type": lab.MACHINE_TYPE,
+        "machine_type": machine,
         "name": name,
         "network": NETWORK,
         "project_id": project,
@@ -1089,6 +1207,7 @@ RAW_GUEST_NAMES = (
     "enterprise-rows.json",
     "kernel-facts.json",
     "descendant-b1.json",
+    "redteam-rows.json",
 )
 
 
@@ -1160,6 +1279,10 @@ def prune_evidence(directory: Path) -> list[str]:
                 if not isinstance(payload, dict):
                     _remove_evidence_path(path)
                     _remove_evidence_path(path.with_name(path.name + ".sha256"))
+                    continue
+                if path.name == "redteam-packet.json":
+                    redteam_packet.write_packet(path, payload)
+                    kept.append(path.name)
                     continue
                 write_evidence(path, payload)
                 kept.append(path.name)
@@ -1463,7 +1586,7 @@ def remove_os_login_key() -> int:
 def delete_handoff(env: Mapping[str, str]) -> int:
     _require_execute(env)
     require_lab_project(env.get("GCP_LAB_PROJECT", ""))
-    delete_objects(object_names(env.get("GITHUB_RUN_ID", "")), missing_ok=True)
+    delete_objects(handoff_objects(env), missing_ok=True)
     write_evidence(_evidence_dir(env) / "handoff-deleted.json", {"deleted": True, "bucket": BUCKET})
     return 0
 
@@ -1529,7 +1652,7 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
                 )
                 deleted = True
     finally:
-        delete_objects(object_names(env.get("GITHUB_RUN_ID", "")), missing_ok=True)
+        delete_objects(handoff_objects(env), missing_ok=True)
     if skipped:
         write_evidence(
             _evidence_dir(env) / "teardown.json",
@@ -1599,6 +1722,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return plumb_guest(env)
         if command == "run-batteries":
             return run_batteries(env)
+        if command == "run-redteam":
+            return redteam_campaign.execute(env, sys.modules[__name__])
         if command == "delete-handoff":
             return delete_handoff(env)
         if command == "remove-oslogin-key":
