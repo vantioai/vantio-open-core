@@ -75,7 +75,7 @@ The file is JSON with `vantio_run_log` `"1"`, `schema_version` 2, `plane` `"opti
 
 Each call stores `hostname`, `provider`, `action`, `mediation`, and `ts`, plus extras the hook passed (`path`, `ok`, `duration_ms`, `error`, `error_class`, and similar). Published 3.0.14 sets `provider` to `"other"` unless a caller passed another value. No in-tree call site passes one, so published logs label `provider` as `other`. The hostname is still stored. Node's substring provider guess does not run on these files.
 
-The file also contains `"workflow": "sight_loop"`. That value is leftover storage from an older name. It is not the product name. Vantio Optics is the product name. The string does not turn a feature on. CLI 0.3.24 Node files do not write `workflow`.
+Published Python 3.0.14 also contains `"workflow": "sight_loop"`. That value is leftover storage from an older name. It is not the product name. Vantio Optics is the product name. The string does not turn a feature on. Source candidate 3.1.1 does not write that field. CLI Node files do not write `workflow`.
 
 The file does not include `pid`, `ppid`, `free_mode`, `duration_ms` on the envelope, `by_host`, or `schema_status`.
 
@@ -97,7 +97,7 @@ In this repository's Python 3.1.0 source:
 - `http.client` and `pycurl` still do not store an HTTP status on the success path. Outcome stays `UNAVAILABLE` with the line `Provider outcome unavailable`.
 - Telemetry matches the CLI opt-in rule.
 
-CLI customer-line text for those outcomes is deferred. `@vantio/cli@0.3.24` still says "Application outcome" and "Application error". It was not reopened for the 3.1.0 wording.
+Published `@vantio/cli@0.3.24` says "Application outcome" and "Application error". Source candidate 0.3.25 says "Observed outcome" and the specific sentence for that HTTP status. The machine token for HTTP 400–599 stays `APPLICATION_ERROR`.
 
 ## Upgrade from Python v2
 

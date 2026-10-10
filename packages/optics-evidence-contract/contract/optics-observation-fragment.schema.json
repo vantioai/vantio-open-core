@@ -1,0 +1,22 @@
+{
+  "schema_id": "vantio.optics.observation-fragment",
+  "schema_status": "unstable-pre-1.0",
+  "schema_version": 0,
+  "stable_schema": false,
+  "product": "optics",
+  "role": "observation",
+  "audience": "INTERNAL_RESTRICTED",
+  "enforcement_attached": false,
+  "claim_ceiling": "OBSERVATION_ONLY",
+  "live_enforcement": "NOT_APPLICABLE",
+  "record_sha256": "sha256 of the canonical JSON of this object with record_sha256 omitted",
+  "calls": {
+    "action": "OBSERVED or absent. Enforcement actions are refused, not exported.",
+    "response_bytes": "integer or null. Null means the size was not measured."
+  },
+  "enterprise_export": {
+    "repository": "vantioai/vantio-enterprise-private",
+    "schema_id": "vantio.enterprise.evidence-export",
+    "rule": "The private export seals this fragment. It does not turn the fragment into an allow, and it does not attach enforcement."
+  }
+}

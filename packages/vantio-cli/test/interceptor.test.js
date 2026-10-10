@@ -689,7 +689,7 @@ else go();
       );
       assert.equal(code, 0);
       assert.match(stderr, /Optics status: Successful/);
-      assert.match(stderr, /Application outcome: Successful/);
+      assert.match(stderr, /Observed outcome: Successful/);
     } finally {
       await new Promise((resolve) => ollamaServer.close(resolve));
     }

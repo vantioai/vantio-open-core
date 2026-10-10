@@ -284,22 +284,6 @@
       "count": 1
     },
     {
-      "path": "packages/vantio-agent-sdk-py/pyproject.toml",
-      "count": 2
-    },
-    {
-      "path": "packages/vantio-agent-sdk-py/vantio/__init__.py",
-      "count": 1
-    },
-    {
-      "path": "packages/vantio-agent-sdk-py/vantio/_http_observe.py",
-      "count": 2
-    },
-    {
-      "path": "packages/vantio-agent-sdk-py/vantio/sdk.py",
-      "count": 1
-    },
-    {
       "path": "packages/vantio-agent-sdk/package.json",
       "count": 2
     },

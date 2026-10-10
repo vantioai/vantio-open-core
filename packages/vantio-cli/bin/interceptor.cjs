@@ -33,7 +33,10 @@ const {
   SCHEMA_STATUS,
   applicationStatusFromHttp,
   humanStatus,
+  measuredByteCount,
+  observedOutcomeLabel,
   rollupCalls,
+  sumMeasuredBytes,
 } = require("./optics-cx.cjs");
 
 const USE_COLOR = process.stderr.isTTY === true;
@@ -144,15 +147,31 @@ function responseMeta(response) {
     return { status: null, ok: null, content_type: null, bytes: null };
   }
   const cl = response.headers?.get?.("content-length");
-  const bytes = cl != null && cl !== "" ? parseInt(cl, 10) || 0 : null;
+  const bytes = contentLengthBytes(cl);
   const ctRaw = response.headers?.get?.("content-type") || "";
   const content_type = ctRaw.split(";")[0].trim() || null;
+  const status = typeof response.status === "number" ? response.status : null;
   return {
-    status: typeof response.status === "number" ? response.status : null,
-    ok: typeof response.ok === "boolean" ? response.ok : null,
+    status,
+    ok: status == null ? null : status >= 200 && status < 400,
     content_type,
     bytes,
   };
+}
+
+function contentLengthBytes(raw) {
+  if (raw == null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+function noteResponse(call, status, rawLength, startedMs) {
+  const n = typeof status === "number" && Number.isFinite(status) ? status : null;
+  call.status = n;
+  call.ok = n == null ? null : n >= 200 && n < 400;
+  call.bytes = contentLengthBytes(rawLength);
+  if (typeof startedMs === "number") call.duration_ms = Date.now() - startedMs;
 }
 
 // Host lists stay empty. Optics does not load a cloud policy.
@@ -191,10 +210,10 @@ if (typeof globalThis.fetch !== "function") {
 const _originalFetch = globalThis.fetch;
 
 // Fetch and undici.request wrap above dispatcher.dispatch. Increment while those
-// wrappers run so the dispatch wrap does not Gate the same call twice.
+// wrappers run so the dispatch wrap does not record the same call twice.
 let undiciWrapDepth = 0;
 // HTTP/undici/http2 orig calls mark this store so Socket.connect does not
-// ingest a second Gate event for the same request.
+// record a second observation for the same request.
 const vantioHttpAls = new AsyncLocalStorage();
 function launchHttpHandled(fn) {
   return vantioHttpAls.run(true, fn);
@@ -251,7 +270,7 @@ function logFreeObservation(info) {
   const lines = [
     "",
     `${c.dim}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus(opticsStatus)}`,
-    `  Application outcome: ${humanStatus(applicationStatus)}`,
+    `  Observed outcome: ${observedOutcomeLabel(httpStatus)}`,
     `  http_status: ${httpStatus == null ? "none" : httpStatus}`,
   ];
   if (info.host) lines.push(`  host:     ${c.cyan}${info.host}${c.reset}`);
@@ -400,7 +419,7 @@ globalThis.fetch = function vantioFetch(input, init) {
 
 // undici.fetch, undici.request, Dispatcher.prototype.request, and
 // DispatcherBase.dispatch (covers stream / pipeline / connect / upgrade / raw Client.dispatch).
-// Fetch and .request wrap above dispatch; undiciWrapDepth skips a second Gate.
+// Fetch and .request wrap above dispatch; undiciWrapDepth skips a second record.
 (function patchUndici() {
   function headerGet(headers, name) {
     if (!headers) return null;
@@ -509,13 +528,13 @@ globalThis.fetch = function vantioFetch(input, init) {
       throw err;
     }
     const duration_ms = Date.now() - t0;
-    const cl = headerGet(result && result.headers, "content-length");
+    const statusCode = result && typeof result.statusCode === "number" ? result.statusCode : null;
     _calls.push({
       hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
       request_bytes: reqMeta.request_bytes,
-      bytes: cl != null && cl !== "" ? (parseInt(cl, 10) || 0) : 0,
-      status: result && result.statusCode,
-      ok: result && result.statusCode >= 200 && result.statusCode < 400,
+      bytes: contentLengthBytes(headerGet(result && result.headers, "content-length")),
+      status: statusCode,
+      ok: statusCode == null ? null : statusCode >= 200 && statusCode < 400,
       content_type: headerGet(result && result.headers, "content-type"),
       duration_ms, ts: new Date().toISOString(), action: "OBSERVED",
       mediation: "undici_request",
@@ -549,7 +568,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     return { chunk, encoding, cb };
   }
 
-  // After undici.upgrade / CONNECT, Gate already decided the host. Frame
+  // After undici.upgrade / CONNECT, the host is already in scope. Frame
   // payloads are not parsed (Optics never reads the conversation). Outbound
   // bytes are observed. Optics does not stop the write.
   function wrapTunnelSocket(socket, hostname) {
@@ -561,7 +580,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     let frameReported = false;
     const provider = guessProvider(hostname, null);
 
-    function gateBytes(n) {
+    function recordTunnelBytes(n) {
       if (n <= 0) return;
       written += n;
       spentUsd += n * USD_PER_BYTE;
@@ -569,14 +588,14 @@ globalThis.fetch = function vantioFetch(input, init) {
         frameReported = true;
         _calls.push({
           hostname, provider, method: "UPGRADE", path: null, scheme: "ws",
-          request_bytes: n, bytes: n, status: null, ok: true,
-          content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+          request_bytes: n, bytes: null, status: null, ok: null,
+          content_type: null, duration_ms: null, ts: new Date().toISOString(),
           action: "OBSERVED", mediation: "undici_ws",
         });
         report({
           target_host: hostname, pid: process.pid, action_taken: "OBSERVED",
-          timestamp_ns: Date.now() * 1e6, bytes_severed: 0, bytes_observed: n,
-          request_bytes: n, mediation: "undici_ws", plane: "optics_gate",
+          timestamp_ns: Date.now() * 1e6, bytes_observed: n,
+          request_bytes: n, mediation: "undici_ws", plane: "optics",
         });
         log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — tunnel frames`);
       }
@@ -585,7 +604,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     socket.write = function vantioTunnelWrite(chunk, encoding, cb) {
       const args = parseSocketWriteArgs(chunk, encoding, cb);
       try {
-        gateBytes(chunkByteLength(args.chunk, args.encoding));
+        recordTunnelBytes(chunkByteLength(args.chunk, args.encoding));
       } catch {
         /* fail open */
       }
@@ -595,7 +614,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       socket.end = function vantioTunnelEnd(chunk, encoding, cb) {
         const args = parseSocketWriteArgs(chunk, encoding, cb);
         try {
-          if (args.chunk != null) gateBytes(chunkByteLength(args.chunk, args.encoding));
+          if (args.chunk != null) recordTunnelBytes(chunkByteLength(args.chunk, args.encoding));
         } catch {
           /* fail open */
         }
@@ -624,7 +643,22 @@ globalThis.fetch = function vantioFetch(input, init) {
     return launchUndiciBackend(() => orig.call(dispatcher, opts, handler));
   }
 
-  function applyDispatchGate(dispatcher, orig, opts, handler) {
+  function trackDispatchHeaders(handler, call, startedMs) {
+    if (!handler || typeof handler !== "object" || handler.__vantioHeadersTracked) return handler;
+    const orig = handler.onHeaders;
+    handler.onHeaders = function vantioOnHeaders(statusCode, headers) {
+      try {
+        noteResponse(call, typeof statusCode === "number" ? statusCode : null, headerGet(headers, "content-length"), startedMs);
+      } catch {
+        /* observation must not change the request */
+      }
+      if (typeof orig === "function") return orig.apply(this, arguments);
+    };
+    handler.__vantioHeadersTracked = true;
+    return handler;
+  }
+
+  function recordUndiciDispatch(dispatcher, orig, opts, handler) {
     const href = hrefFromDispatcher(dispatcher, opts);
     if (!href) return orig.call(dispatcher, opts, handler);
     let hostname;
@@ -644,25 +678,26 @@ globalThis.fetch = function vantioFetch(input, init) {
     const init = { method, headers: opts && opts.headers, body: opts && opts.body };
     const reqMeta = extractRequestMeta(href, init);
     const provider = guessProvider(hostname, port);
-    const baseCall = {
+    const startedMs = Date.now();
+    const call = {
       hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
-      request_bytes: reqMeta.request_bytes, bytes: 0, status: null, ok: true,
-      content_type: null, duration_ms: 0, ts: new Date().toISOString(),
-      mediation: "undici_dispatch",
+      request_bytes: reqMeta.request_bytes, bytes: null, status: null, ok: null,
+      content_type: null, duration_ms: null, ts: new Date().toISOString(),
+      mediation: "undici_dispatch", action: "OBSERVED",
     };
 
-    _calls.push(Object.assign({}, baseCall, { action: "OBSERVED" }));
+    _calls.push(call);
     report({
       target_host: hostname, pid: process.pid, action_taken: "OBSERVED",
-      timestamp_ns: Date.now() * 1e6, bytes_severed: 0, mediation: "undici_dispatch",
+      timestamp_ns: Date.now() * 1e6, mediation: "undici_dispatch", plane: "optics",
     });
-    return launchDispatch(dispatcher, orig, opts, handler, hostname);
+    return launchDispatch(dispatcher, orig, opts, trackDispatchHeaders(handler, call, startedMs), hostname);
   }
 
   function wrapDispatchCall(dispatcher, orig, opts, handler) {
     if (undiciWrapDepth > 0) return orig.call(dispatcher, opts, handler);
     try {
-      return applyDispatchGate(dispatcher, orig, opts, handler);
+      return recordUndiciDispatch(dispatcher, orig, opts, handler);
     } catch {
       return orig.call(dispatcher, opts, handler);
     }
@@ -891,19 +926,20 @@ globalThis.fetch = function vantioFetch(input, init) {
       if (decision === "pass") return launchHttpHandled(launch);
 
       const provider = guessProvider(hostname, port);
-      const ts = new Date().toISOString();
-      const baseCall = {
+      const startedMs = Date.now();
+      const call = {
         hostname, provider, method: "REQUEST", path: null, scheme,
-        request_bytes: null, bytes: 0, status: null, ok: true,
-        content_type: null, duration_ms: 0, ts, optics_plane: "app_http",
+        request_bytes: null, bytes: null, status: null, ok: null,
+        content_type: null, duration_ms: null, ts: new Date().toISOString(),
+        optics_plane: "app_http", action: "OBSERVED",
       };
 
-      _calls.push({ ...baseCall, action: "OBSERVED" });
+      _calls.push(call);
       report({
         target_host: hostname, pid: process.pid,
         action_taken: "OBSERVED",
-        timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
-        mediation: "node_http", plane: "optics_gate",
+        timestamp_ns: Date.now() * 1e6,
+        mediation: "node_http", plane: "optics",
       });
       log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — Node ${scheme}.request`);
 
@@ -911,8 +947,10 @@ globalThis.fetch = function vantioFetch(input, init) {
       if (req && typeof req.on === "function") {
         req.on("response", (res) => {
           try {
-            const cl = parseInt(res && res.headers && res.headers["content-length"], 10);
-            if (Number.isFinite(cl) && cl > 0) spentUsd += cl * USD_PER_BYTE;
+            const raw = res && res.headers && res.headers["content-length"];
+            noteResponse(call, res && res.statusCode, raw, startedMs);
+            const cl = contentLengthBytes(raw);
+            if (cl != null && cl > 0) spentUsd += cl * USD_PER_BYTE;
           } catch { /* ignore */ }
         });
       }
@@ -1024,14 +1062,14 @@ globalThis.fetch = function vantioFetch(input, init) {
         frameReported = true;
         _calls.push({
           hostname, provider, method: "WS", path: null, scheme: "ws",
-          request_bytes: n, bytes: 0, status: null, ok: true,
-          content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+          request_bytes: n, bytes: null, status: null, ok: null,
+          content_type: null, duration_ms: null, ts: new Date().toISOString(),
           action: "OBSERVED", mediation: "node_ws",
         });
         report({
           target_host: hostname, pid: process.pid, action_taken: "OBSERVED",
-          timestamp_ns: Date.now() * 1e6, bytes_severed: 0, bytes_observed: n,
-          request_bytes: n, mediation: "node_ws", plane: "optics_gate",
+          timestamp_ns: Date.now() * 1e6, bytes_observed: n,
+          request_bytes: n, mediation: "node_ws", plane: "optics",
         });
       }
       return origSend.apply(this, arguments);
@@ -1054,18 +1092,19 @@ globalThis.fetch = function vantioFetch(input, init) {
 
       const provider = guessProvider(hostname, port);
       const ts = new Date().toISOString();
-      const baseCall = {
+      const call = {
         hostname, provider, method: "WS", path: null, scheme: "ws",
-        request_bytes: null, bytes: 0, status: null, ok: true,
-        content_type: null, duration_ms: 0, ts, optics_plane: "app_ws",
+        request_bytes: null, bytes: null, status: null, ok: null,
+        content_type: null, duration_ms: null, ts, optics_plane: "app_ws",
+        action: "OBSERVED",
       };
 
-      _calls.push({ ...baseCall, action: "OBSERVED" });
+      _calls.push(call);
       report({
         target_host: hostname, pid: process.pid,
         action_taken: "OBSERVED",
-        timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
-        mediation: "node_ws", plane: "optics_gate",
+        timestamp_ns: Date.now() * 1e6,
+        mediation: "node_ws", plane: "optics",
       });
       log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — WebSocket`);
 
@@ -1152,7 +1191,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       timestamp_ns: Date.now() * 1e6,
       bytes_severed: (extra && extra.bytes) || 0,
       mediation: "node_http2",
-      plane: "optics_gate",
+      plane: "optics",
       ...(extra || {}),
     });
   }
@@ -1165,15 +1204,16 @@ globalThis.fetch = function vantioFetch(input, init) {
     if (!session || typeof session.request !== "function" || session.__vantioPatched) return session;
     const origRequest = session.request.bind(session);
     session.request = function vantioH2Request(headers, options) {
-      const ts = new Date().toISOString();
       const provider = guessProvider(hostname, port);
-      const baseCall = {
+      const startedMs = Date.now();
+      const call = {
         hostname, provider, method: "REQUEST", path: null, scheme: "http2",
-        request_bytes: null, bytes: 0, status: null, ok: true,
-        content_type: null, duration_ms: 0, ts, optics_plane: "app_http2",
+        request_bytes: null, bytes: null, status: null, ok: null,
+        content_type: null, duration_ms: null, ts: new Date().toISOString(),
+        optics_plane: "app_http2", action: "OBSERVED",
       };
 
-      _calls.push({ ...baseCall, action: "OBSERVED" });
+      _calls.push(call);
       reportH2(hostname, "OBSERVED");
       log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — Node http2.request`);
 
@@ -1181,8 +1221,12 @@ globalThis.fetch = function vantioFetch(input, init) {
       if (stream && typeof stream.on === "function") {
         stream.on("response", (hdrs) => {
           try {
-            const cl = parseInt(hdrs && (hdrs["content-length"] || hdrs["Content-Length"]), 10);
-            if (Number.isFinite(cl) && cl > 0) spentUsd += cl * USD_PER_BYTE;
+            const raw = hdrs && (hdrs["content-length"] || hdrs["Content-Length"]);
+            const statusRaw = hdrs && (hdrs[":status"] || hdrs[":Status"]);
+            const status = statusRaw == null ? null : parseInt(statusRaw, 10);
+            noteResponse(call, Number.isFinite(status) ? status : null, raw, startedMs);
+            const cl = contentLengthBytes(raw);
+            if (cl != null && cl > 0) spentUsd += cl * USD_PER_BYTE;
           } catch { /* ignore */ }
         });
       }
@@ -1269,7 +1313,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     return "observe";
   }
 
-  function gateConnect(socket, orig, args) {
+  function recordNetConnect(socket, orig, args) {
     if (httpWrapOwnsConnect()) return orig.apply(socket, args);
     const dest = destFromNetArgs(args);
     if (dest.ipc) return orig.apply(socket, args);
@@ -1280,18 +1324,19 @@ globalThis.fetch = function vantioFetch(input, init) {
 
     const provider = guessProvider(hostname, port);
     const ts = new Date().toISOString();
-    const baseCall = {
+    const call = {
       hostname, provider, method: "CONNECT", path: null, scheme: "tcp",
-      request_bytes: null, bytes: 0, status: null, ok: true,
-      content_type: null, duration_ms: 0, ts, optics_plane: "app_net",
+      request_bytes: null, bytes: null, status: null, ok: null,
+      content_type: null, duration_ms: null, ts, optics_plane: "app_net",
+      action: "OBSERVED",
     };
 
-    _calls.push({ ...baseCall, action: "OBSERVED" });
+    _calls.push(call);
     report({
       target_host: hostname, pid: process.pid,
       action_taken: "OBSERVED",
-      timestamp_ns: Date.now() * 1e6, bytes_severed: 0,
-      mediation: "node_net", plane: "optics_gate",
+      timestamp_ns: Date.now() * 1e6,
+      mediation: "node_net", plane: "optics",
     });
     log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — Node net.connect`);
     return orig.apply(socket, args);
@@ -1302,7 +1347,7 @@ globalThis.fetch = function vantioFetch(input, init) {
     const orig = proto.connect;
     proto.connect = function vantioSocketConnect(...args) {
       try {
-        return gateConnect(this, orig, args);
+        return recordNetConnect(this, orig, args);
       } catch {
         return orig.apply(this, args);
       }
@@ -1825,25 +1870,24 @@ globalThis.fetch = function vantioFetch(input, init) {
     const meta = cliMeta(tool);
     _calls.push({
       hostname, provider, method: meta.method, path: null, scheme: "http",
-      request_bytes: dataBytes, bytes: dataBytes, status: null,
-      ok: true,
-      content_type: null, duration_ms: 0, ts: new Date().toISOString(),
+      request_bytes: dataBytes, bytes: null, status: null,
+      ok: null,
+      content_type: null, duration_ms: null, ts: new Date().toISOString(),
       action: "OBSERVED", mediation: meta.mediation, optics_plane: meta.plane,
       redactions: 0,
     });
     report({
       target_host: hostname, pid: process.pid, action_taken: "OBSERVED",
       timestamp_ns: Date.now() * 1e6,
-      bytes_severed: 0,
       bytes_observed: dataBytes,
       request_bytes: dataBytes,
-      mediation: meta.mediation, plane: "optics_gate",
+      mediation: meta.mediation, plane: "optics",
       redactions: 0,
     });
     log(`${c.cyan}[ ∅ VANTIO ]${c.reset} Optics status: ${humanStatus("SUCCESS")} — ${hostname} — ${meta.label}`);
   }
 
-  function applyCliGate(tool, argv, options) {
+  function recordCliObservation(tool, argv, options) {
     const parsed = parseCliArgv(tool, argv, options);
     const urls = Array.isArray(parsed.urls) ? parsed.urls : [];
     for (const url of urls) {
@@ -1859,7 +1903,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       const { command, argv, options } = splitSpawnArgs(args);
       const cli = httpCliFromSpawn(command, argv, options);
       if (!cli) return origSpawn(...args);
-      applyCliGate(cli.tool, cli.argv, options);
+      recordCliObservation(cli.tool, cli.argv, options);
       return origSpawn(...args);
     } catch {
       return origSpawn(...args);
@@ -1872,7 +1916,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const { command, argv, options } = splitSpawnArgs(args);
         const cli = httpCliFromSpawn(command, argv, options);
         if (!cli) return origSpawnSync(...args);
-        applyCliGate(cli.tool, cli.argv, options);
+        recordCliObservation(cli.tool, cli.argv, options);
         return origSpawnSync(...args);
       } catch {
         return origSpawnSync(...args);
@@ -1886,7 +1930,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const { command: file, argv, options } = splitSpawnArgs(args);
         const cli = httpCliFromSpawn(file, argv, options);
         if (!cli) return origExecFile(...args);
-        applyCliGate(cli.tool, cli.argv, options);
+        recordCliObservation(cli.tool, cli.argv, options);
         return origExecFile(...args);
       } catch {
         return origExecFile(...args);
@@ -1900,7 +1944,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const { command: file, argv, options } = splitSpawnArgs(args);
         const cli = httpCliFromSpawn(file, argv, options);
         if (cli) {
-          applyCliGate(cli.tool, cli.argv, options);
+          recordCliObservation(cli.tool, cli.argv, options);
         }
       } catch {
         /* observation must not stop the child */
@@ -1916,7 +1960,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const cli = httpCliFromExec(command);
         if (!cli) return origExec(...args);
         const options = args[1] && typeof args[1] === "object" ? args[1] : null;
-        applyCliGate(cli.tool, cli.argv, options);
+        recordCliObservation(cli.tool, cli.argv, options);
         return origExec(...args);
       } catch {
         return origExec(...args);
@@ -1931,7 +1975,7 @@ globalThis.fetch = function vantioFetch(input, init) {
         const cli = httpCliFromExec(command);
         if (cli) {
           const options = args[1] && typeof args[1] === "object" ? args[1] : null;
-          applyCliGate(cli.tool, cli.argv, options);
+          recordCliObservation(cli.tool, cli.argv, options);
         }
       } catch {
         /* observation must not stop the child */
@@ -1950,7 +1994,8 @@ process.on("exit", () => {
   const summaryRequested = process.env.VANTIO_SUMMARY === "1";
   const hosts      = [...new Set(_calls.map((x) => x.hostname))];
   const now        = Date.now();
-  const totalBytes = _calls.reduce((a, x) => a + (x.bytes || 0), 0);
+  const byteRollup = sumMeasuredBytes(_calls);
+  const totalBytes = byteRollup.total;
 
   // NOTE: anonymous Lane 1 usage telemetry is NOT sent here. A fetch scheduled
   // inside a process "exit" handler never flushes (the event loop is already
@@ -1968,16 +2013,25 @@ process.on("exit", () => {
     const errors = _calls.filter((x) => x.error || x.ok === false).length;
     const by_host = {};
     const by_provider = {};
+    function addBytes(row, call) {
+      const n = measuredByteCount(call.bytes);
+      if (n == null) {
+        row.bytes_complete = false;
+        row.bytes = null;
+        return;
+      }
+      if (row.bytes_complete) row.bytes += n;
+    }
     for (const call of _calls) {
       const h = call.hostname || "unknown";
       const p = call.provider || "unknown";
-      by_host[h] = by_host[h] || { calls: 0, bytes: 0, errors: 0 };
+      by_host[h] = by_host[h] || { calls: 0, bytes: 0, bytes_complete: true, errors: 0 };
       by_host[h].calls += 1;
-      by_host[h].bytes += call.bytes || 0;
+      addBytes(by_host[h], call);
       if (call.error || call.ok === false) by_host[h].errors += 1;
-      by_provider[p] = by_provider[p] || { calls: 0, bytes: 0 };
+      by_provider[p] = by_provider[p] || { calls: 0, bytes: 0, bytes_complete: true };
       by_provider[p].calls += 1;
-      by_provider[p].bytes += call.bytes || 0;
+      addBytes(by_provider[p], call);
     }
     const log = {
       vantio_run_log: "1",
@@ -2002,7 +2056,7 @@ process.on("exit", () => {
         path:          call.path || null,
         scheme:        call.scheme || null,
         request_bytes: call.request_bytes != null ? call.request_bytes : null,
-        bytes:         call.bytes || 0,
+        bytes:         measuredByteCount(call.bytes),
         status:        call.status != null ? call.status : null,
         ok:            call.ok != null ? call.ok : null,
         content_type:  call.content_type || null,
@@ -2016,6 +2070,7 @@ process.on("exit", () => {
       summary: {
         total_calls:   _calls.length,
         total_bytes:   totalBytes,
+        bytes_complete: byteRollup.complete,
         hosts:         hosts,
         providers,
         errors,
@@ -2065,7 +2120,7 @@ process.on("exit", () => {
     `${c.dim}[ ∅ VANTIO ]${c.reset} ${c.bold}Run Summary${c.reset}`,
     `  LLM calls:    ${c.yellow}${_calls.length}${c.reset}`,
     `  Hosts:        ${c.cyan}${hosts.join(", ")}${c.reset}`,
-    `  Total bytes:  ${totalBytes > 0 ? totalBytes.toLocaleString() : "unknown"}`,
+    `  Total bytes:  ${totalBytes == null ? "unknown" : totalBytes.toLocaleString()}`,
     `  Duration:     ${durationS}s`,
   ];
   lines.push(`  ${c.dim}→ Run \`vantio prove\` to export a local proof artifact from this run.${c.reset}`);

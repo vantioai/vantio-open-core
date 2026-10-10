@@ -25,7 +25,7 @@ export const UPGRADE_PATH = [
   {
     plane: "Observe + Enforce + Control",
     brand: "Vantio Phantom Engine",
-    sku: "$799 / enrolled Linux node / month",
+    sku: "Contact Vantio",
     workflow: "Rogue Reconciliation",
     note: "Runtime protection on enrolled Linux hosts — Observe, Enforce, and Control in one purchase.",
     url: "https://vantio.ai/phantom",
