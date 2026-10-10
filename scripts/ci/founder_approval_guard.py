@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 LABEL = os.environ.get("FOUNDER_LABEL", "founder-approved")
@@ -73,16 +74,46 @@ def latest_label_event(events: list[dict]) -> dict | None:
     return last
 
 
-def decide(hits, labels, label_event, actor_permission) -> tuple[bool, str]:
+def parse_time(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def label_is_fresh(label_event, head_updated_at, action) -> bool:
+    """The label must belong to the current pull request update.
+
+    GitHub sets pull_request.updated_at. A push or a later edit moves it
+    forward. Applying this label sets it equal to the label event time, so
+    equality is fresh only for the labeled action. A check-run start is not
+    used: a caller can backdate started_at, and a side branch can be checked
+    before it becomes this pull request's head.
+    """
+    labeled_at = parse_time((label_event or {}).get("created_at"))
+    updated_at = parse_time(head_updated_at)
+    if labeled_at is None or updated_at is None:
+        return False
+    if action == "labeled":
+        return labeled_at >= updated_at
+    return labeled_at > updated_at
+
+
+def decide(hits, labels, label_event, actor_permission, head_updated_at=None, action=None) -> tuple[bool, str]:
     if not hits:
         return True, "no protected paths changed"
     if LABEL not in labels:
         return False, f"protected paths changed and the '{LABEL}' label is missing"
     if not label_event or label_event.get("event") != "labeled":
         return False, f"no '{LABEL}' labeled event found"
+    actor = (label_event.get("actor") or {}).get("login")
     if actor_permission != "admin":
-        return False, f"'{LABEL}' was applied by a non-admin ({(label_event.get('actor') or {}).get('login')})"
-    return True, f"'{LABEL}' applied by admin {(label_event.get('actor') or {}).get('login')}"
+        return False, f"'{LABEL}' was applied by a non-admin ({actor})"
+    if not label_is_fresh(label_event, head_updated_at, action):
+        return False, f"'{LABEL}' is older than the latest pull request update ({head_updated_at})"
+    return True, f"'{LABEL}' applied by admin {actor}"
 
 
 def main() -> int:
@@ -108,7 +139,7 @@ def main() -> int:
         login = ((label_event or {}).get("actor") or {}).get("login")
         if login:
             perm = gh(f"/repos/{repo}/collaborators/{login}/permission").get("permission")
-    ok, why = decide(hits, labels, label_event, perm)
+    ok, why = decide(hits, labels, label_event, perm, pr.get("updated_at"), action)
     print(json.dumps({"pr": num, "head": pr["head"]["sha"], "protected_hits": hits, "ok": ok, "reason": why}, indent=2))
     return 0 if ok else 1
 
