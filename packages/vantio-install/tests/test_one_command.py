@@ -19,7 +19,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from tests.dev_policy import ephemeral_dev_key, signed_envelope
 from tests.factory import default_files, host, pins_for, write_bundle
 from vantio_install import constants
-from vantio_install.artifact_verify import canonical_descriptor, fetch_to_file, verify_archive_file
+from vantio_install.artifact_verify import (
+    artifact_trust_override,
+    canonical_descriptor,
+    fetch_to_file,
+    verify_archive_file,
+)
 from vantio_install.cli import main
 from vantio_install.signed_policy import dev_trust
 
@@ -168,14 +173,17 @@ class OneCommandTests(unittest.TestCase):
             "--json",
             "--signature-file",
             str(signature_path),
-            "--artifact-trust",
-            str(trust_path),
             "--policy-file",
             str(policy_path),
             "--yes",
         ]
         os.environ.pop("VANTIO_INSTALL_ALLOW_LIVE", None)
-        with dev_trust((policy_key,)):
+        pinned = {record["key_id"]: base64.b64decode(record["public_key_b64"])}
+        with dev_trust((policy_key,)), artifact_trust_override(pinned):
+            refused_flag = argv + ["--artifact-trust", str(trust_path)]
+            code, body = _run(refused_flag)
+            self.assertEqual(body["reason"], "CALLER_TRUST_REFUSED", body)
+            self.assertFalse((root / "prefix").exists())
             code, body = _run(argv)
             self.assertEqual(body["reason"], "LIVE_GATES_REQUIRED", body)
             self.assertNotEqual(code, 0)
