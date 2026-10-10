@@ -916,6 +916,8 @@ def execute_enterprise_rows(
             if battery == "descendant-b1":
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
+                probe_c = descendant.with_name("descendant_probe.c")
+                copy_to(probe_c, "descendant_probe.c")
                 pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
                 if pre.returncode != 0:
                     ran = pre
