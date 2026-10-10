@@ -43,6 +43,15 @@ jobs:
       - name: Test @vantio/cli
         run: pnpm --filter @vantio/cli run test
 
+      - name: Test Optics observation fragment
+        run: node --test tests/optics-evidence-fragment/fragment.test.cjs
+
+      - name: Test Optics observability export
+        run: node --test packages/optics-export/test/export.test.cjs packages/optics-export/test/exhaustive.test.cjs
+
+      - name: Test Optics OTLP adapter attestation
+        run: node --test tests/optics-otel-i3/attestation.test.cjs tests/optics-otel-i3/adversarial.test.cjs tests/optics-otel-i3/delivery.test.cjs tests/optics-otel-i3/fields.test.cjs tests/optics-otel-i3/http.test.cjs
+
       - name: Test @vantio/gate-mcp
         run: pnpm --filter @vantio/gate-mcp test
 
@@ -129,6 +138,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Confirm the public pin and installer versions stay put
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path("packages/vantio-install/vantio_install/constants.py").read_text(encoding="utf-8")
+          required = (
+              '"optics_cli_version": "0.3.24"',
+              '"agent_sdk_py_version": "3.1.0"',
+              "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
+          )
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit("installer pin moved: " + ", ".join(missing))
+          PY
+
       - name: Pack @vantio/cli candidate
         working-directory: packages/vantio-cli
         run: |
@@ -145,6 +169,38 @@ jobs:
           mkdir -p "$RUNNER_TEMP/candidates-py"
           python3 -m pip install --disable-pip-version-check build
           python3 -m build --outdir "$RUNNER_TEMP/candidates-py" packages/vantio-agent-sdk-py
+
+      - name: Hash candidates and refuse retired wording
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import hashlib
+          import pathlib
+          import tarfile
+          import zipfile
+          root = pathlib.Path("${{ runner.temp }}")
+          forbidden = ("$499", "$799", "$600", "14-day", "Gate")
+          digests = []
+          for path in sorted(root.joinpath("candidates").glob("*.tgz")) + sorted(root.joinpath("candidates-py").glob("*")):
+              data = path.read_bytes()
+              digests.append(f"{hashlib.sha256(data).hexdigest()}  {path.name}")
+              blobs = []
+              if path.name.endswith(".tgz"):
+                  with tarfile.open(path) as archive:
+                      blobs = [archive.extractfile(item).read() for item in archive.getmembers() if item.isfile()]
+              elif path.suffix == ".whl":
+                  with zipfile.ZipFile(path) as archive:
+                      blobs = [archive.read(name) for name in archive.namelist()]
+              else:
+                  continue
+              text = b"\n".join(blobs).decode("utf-8", "replace")
+              hits = [token for token in forbidden if token in text]
+              if hits:
+                  raise SystemExit(f"{path.name} contains retired wording: {hits}")
+          out = root / "candidates" / "SHA256SUMS"
+          out.write_text("\n".join(digests) + "\n", encoding="utf-8")
+          print(out.read_text(encoding="utf-8"))
+          PY
 
       - name: Upload candidates
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -10,14 +10,14 @@ from pathlib import Path
 
 from vantio import shield
 from vantio._http_observe import (
-    _apply_cli_gate,
     _calls,
+    _classify_destination,
     _decide,
-    _dispatch_gate,
     _host_matches_regional,
     _in_scope,
     _is_control_plane_dest,
     _is_ollama_local,
+    _record_cli_observation,
 )
 
 from .mock_server import MockServer
@@ -1523,21 +1523,21 @@ class DeadGateArmTests(unittest.TestCase):
             "BLOCKED_",
             "DRY_RUN",
         )
-        for fn in (_dispatch_gate, _apply_cli_gate):
+        for fn in (_classify_destination, _record_cli_observation):
             source = inspect.getsource(fn)
             for token in forbidden:
                 self.assertNotIn(token, source, f"{fn.__name__} still contains {token}")
 
         self.assertEqual(_decide("api.openai.com", "443", "/v1/chat/completions", 8), "observe")
         self.assertEqual(_decide("example.invalid", "443", "/", 0), "pass")
-        kind, payload, redactions, record_send = _dispatch_gate(
+        kind, payload, redactions, record_send = _classify_destination(
             "api.openai.com", "443", "/v1/chat/completions", b"{}", "python_urllib"
         )
         self.assertEqual(kind, "send")
         self.assertEqual(payload, b"{}")
         self.assertEqual(redactions, [])
         self.assertTrue(record_send)
-        kind, _payload, _redactions, record_send = _dispatch_gate(
+        kind, _payload, _redactions, record_send = _classify_destination(
             "example.invalid", "443", "/", b"{}", "python_urllib"
         )
         self.assertEqual(kind, "pass")
@@ -1545,7 +1545,7 @@ class DeadGateArmTests(unittest.TestCase):
 
         before = len(_calls)
         try:
-            _apply_cli_gate("curl", ["https://api.openai.com/v1/models"])
+            _record_cli_observation("curl", ["https://api.openai.com/v1/models"])
             added = list(_calls[before:])
         finally:
             del _calls[before:]

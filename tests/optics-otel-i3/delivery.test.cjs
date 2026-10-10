@@ -4,10 +4,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const api = require("../../packages/optics-otel-i3/src/index.cjs");
-const { assertNoLeak, goodRecord, traceEnable } = require("./helpers.cjs");
+const { assertNoLeak, goodRecord, sourceRecord, traceEnable } = require("./helpers.cjs");
 
 function spanRecord(n, extra) {
-  return goodRecord({
+  return sourceRecord({
     span_id: n.toString(16).padStart(16, "0"),
     ...extra,
   });
@@ -16,7 +16,7 @@ function spanRecord(n, extra) {
 test("authority does not depend on exporter availability", async () => {
   const prompt = "authority-must-ignore-this-prompt";
   const records = [
-    goodRecord(),
+    sourceRecord(),
     goodRecord({ span_id: "0000000000000002", prompt }),
     goodRecord({ span_id: "0000000000000003", evidence_origin: "DERIVED_DIAGNOSTIC" }),
   ];
@@ -65,7 +65,7 @@ test("authority does not depend on exporter availability", async () => {
 
 test("retry bounds clamp and a later success resends the same body", async () => {
   const failures = [];
-  const exhausted = await api.exportOpticsRecords([goodRecord()], traceEnable({
+  const exhausted = await api.exportOpticsRecords([sourceRecord()], traceEnable({
     max_retries: 100,
     transport() {
       failures.push("503");
@@ -79,7 +79,7 @@ test("retry bounds clamp and a later success resends the same body", async () =>
   assert.equal(exhausted.bytes_sent, 0);
   assert.ok(exhausted.delivery.bytes_dropped > 0);
 
-  const once = await api.exportOpticsRecords([goodRecord()], traceEnable({
+  const once = await api.exportOpticsRecords([sourceRecord()], traceEnable({
     max_retries: 0,
     transport() {
       return { status: 503 };
@@ -88,7 +88,7 @@ test("retry bounds clamp and a later success resends the same body", async () =>
   assert.equal(once.delivery.attempts, 1);
 
   const defaults = [];
-  const defaulted = await api.exportOpticsRecords([goodRecord()], traceEnable({
+  const defaulted = await api.exportOpticsRecords([sourceRecord()], traceEnable({
     max_retries: -1,
     transport() {
       defaults.push(1);
@@ -100,7 +100,7 @@ test("retry bounds clamp and a later success resends the same body", async () =>
 
   const bodies = [];
   let attempt = 0;
-  const recovered = await api.exportOpticsRecords([goodRecord()], traceEnable({
+  const recovered = await api.exportOpticsRecords([sourceRecord()], traceEnable({
     max_retries: 2,
     transport(request) {
       attempt += 1;
@@ -118,7 +118,7 @@ test("retry bounds clamp and a later success resends the same body", async () =>
 
 test("HTTP 429 drops after the attempt cap and HTTP 400 does not retry", async () => {
   let pressure = 0;
-  const limited = await api.exportOpticsRecords([goodRecord()], traceEnable({
+  const limited = await api.exportOpticsRecords([sourceRecord()], traceEnable({
     max_retries: 1,
     transport() {
       pressure += 1;
@@ -131,7 +131,7 @@ test("HTTP 429 drops after the attempt cap and HTTP 400 does not retry", async (
   assert.equal(limited.bytes_sent, 0);
 
   let rejected = 0;
-  const client = await api.exportOpticsRecords([goodRecord()], traceEnable({
+  const client = await api.exportOpticsRecords([sourceRecord()], traceEnable({
     max_retries: 4,
     transport() {
       rejected += 1;
@@ -179,7 +179,7 @@ test("queue backpressure drops later records and keeps their values out of the b
   assert.equal(blocked.admission.queued_indexes.length, 0);
   assert.equal(blocked.drops.every((drop) => drop.reason === "BACKPRESSURE_QUEUE_LIMIT"), true);
 
-  const clamped = await api.exportOpticsRecords([goodRecord()], traceEnable({ max_queue: 1000 }));
+  const clamped = await api.exportOpticsRecords([sourceRecord()], traceEnable({ max_queue: 1000 }));
   assert.equal(clamped.admission.limit, api.LIMITS.hardMaxQueue);
   assert.equal(clamped.admission.clamped, true);
   assert.equal(clamped.exported, true);

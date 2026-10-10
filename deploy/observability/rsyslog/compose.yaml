@@ -1,0 +1,11 @@
+services:
+  rsyslog:
+    build: .
+    image: vantio-rsyslog:local
+    container_name: vantio-rsyslog
+    volumes:
+      - ./rsyslog.conf:/etc/rsyslog.conf:ro
+      - ./out:/out
+    ports:
+      - "5514:514/udp"
+      - "5515:514/tcp"

@@ -1,5 +1,5 @@
 """
-Sight Loop observe for Python HTTP clients while shield() is active.
+Optics observation for Python HTTP clients while shield() is active.
 
 Records host, path, status, and size — never prompts or completions.
 HTTP 200–399 is stored ok=true. HTTP 400–599 is stored ok=false and is an
@@ -253,7 +253,7 @@ def _is_control_plane(hostname: str, path: str) -> bool:
 
 
 def _is_control_plane_dest(hostname: str, port: Optional[str]) -> bool:
-    """True when this TCP dest is the Gate control plane (any path)."""
+    """True when this TCP dest is the ingest control plane (any path)."""
     try:
         ingest = urlparse(os.environ.get("VANTIO_INGEST_URL") or "https://vantio.ai")
         host = (ingest.hostname or "").lower()
@@ -510,7 +510,7 @@ def _record(
     return rec
 
 
-def _dispatch_gate(
+def _classify_destination(
     hostname: str,
     port: Optional[str],
     path: str,
@@ -551,7 +551,7 @@ def _observe_urlopen(url, data=None, timeout=None, *args, **kwargs):
         scheme = "https"
 
     body = data if data is not None else getattr(url, "data", None)
-    kind, payload, redactions, record_send = _dispatch_gate(
+    kind, payload, redactions, record_send = _classify_destination(
         hostname, port, path, body, "python_urllib"
     )
     if kind == "pass":
@@ -601,7 +601,7 @@ def _observe_opener_open(self, fullurl, data=None, timeout=socket._GLOBAL_DEFAUL
     except Exception:
         scheme = "https"
     body = data if data is not None else getattr(fullurl, "data", None)
-    kind, payload, redactions, record_send = _dispatch_gate(
+    kind, payload, redactions, record_send = _classify_destination(
         hostname, port, path, body, "python_urllib"
     )
     if kind == "pass":
@@ -665,7 +665,7 @@ def _install_requests() -> None:
     def _observe_send(self, request, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(getattr(request, "url", ""))
         body = getattr(request, "body", None)
-        kind, payload, redactions, record_send = _dispatch_gate(
+        kind, payload, redactions, record_send = _classify_destination(
             hostname, port, path, body, "python_requests"
         )
         if kind == "pass":
@@ -728,7 +728,7 @@ def _install_httpx() -> None:
     def _observe_sync(self, request, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(getattr(request, "url", ""))
         body = getattr(request, "content", None)
-        kind, payload, redactions, record_send = _dispatch_gate(
+        kind, payload, redactions, record_send = _classify_destination(
             hostname, port, path, body, "python_httpx"
         )
         if kind == "pass":
@@ -769,7 +769,7 @@ def _install_httpx() -> None:
     async def _observe_async(self, request, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(getattr(request, "url", ""))
         body = getattr(request, "content", None)
-        kind, payload, redactions, record_send = _dispatch_gate(
+        kind, payload, redactions, record_send = _classify_destination(
             hostname, port, path, body, "python_httpx"
         )
         if kind == "pass":
@@ -836,7 +836,7 @@ def _install_aiohttp() -> None:
     async def _observe_request(self, method, str_or_url, **kwargs):  # type: ignore[no-untyped-def]
         hostname, port, path = _host_port_from_url(str_or_url)
         body = _aiohttp_request_body(kwargs)
-        kind, payload, redactions, record_send = _dispatch_gate(
+        kind, payload, redactions, record_send = _classify_destination(
             hostname, port, path, body, "python_aiohttp"
         )
         if kind == "pass":
@@ -915,7 +915,7 @@ def _addr_host_port(address: Any) -> tuple[Optional[str], Optional[str], bool]:
     return None, None, False
 
 
-def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> tuple[str, bool]:
+def _classify_socket_dest(hostname: Optional[str], port: Optional[str]) -> tuple[str, bool]:
     """Return (decision, record_after).
 
     decision is pass or connect. record_after is true when the caller should
@@ -923,7 +923,7 @@ def _gate_socket_dest(hostname: Optional[str], port: Optional[str]) -> tuple[str
     """
     if not hostname or _http_owns() or _is_control_plane_dest(hostname, port):
         return "pass", False
-    kind, _payload, _redactions, record_send = _dispatch_gate(
+    kind, _payload, _redactions, record_send = _classify_destination(
         hostname, port, "/", None, "python_socket"
     )
     if kind == "pass":
@@ -956,7 +956,7 @@ def _observe_socket_connect(self: Any, address: Any, *args: Any, **kwargs: Any) 
     hostname, port, ipc = _addr_host_port(address)
     if ipc:
         return _orig_socket_connect(self, address, *args, **kwargs)
-    decision, record_after = _gate_socket_dest(hostname, port)
+    decision, record_after = _classify_socket_dest(hostname, port)
     if decision != "connect" or not record_after:
         return _orig_socket_connect(self, address, *args, **kwargs)
     t0 = time.perf_counter()
@@ -973,7 +973,7 @@ def _observe_socket_connect_ex(self: Any, address: Any) -> Any:
     hostname, port, ipc = _addr_host_port(address)
     if ipc:
         return _orig_socket_connect_ex(self, address)
-    decision, record_after = _gate_socket_dest(hostname, port)
+    decision, record_after = _classify_socket_dest(hostname, port)
     if decision != "connect" or not record_after:
         return _orig_socket_connect_ex(self, address)
     t0 = time.perf_counter()
@@ -994,7 +994,7 @@ def _observe_ssl_connect(self: Any, address: Any, *args: Any, **kwargs: Any) -> 
     if ipc:
         with _http_handled():
             return _orig_ssl_connect(self, address, *args, **kwargs)
-    decision, record_after = _gate_socket_dest(hostname, port)
+    decision, record_after = _classify_socket_dest(hostname, port)
     if decision != "connect" or not record_after or _orig_ssl_connect is None:
         with _http_handled():
             return _orig_ssl_connect(self, address, *args, **kwargs)
@@ -1014,7 +1014,7 @@ def _observe_create_connection(address: Any, *args: Any, **kwargs: Any) -> Any:
     if ipc:
         with _http_handled():
             return _orig_create_connection(address, *args, **kwargs)
-    decision, record_after = _gate_socket_dest(hostname, port)
+    decision, record_after = _classify_socket_dest(hostname, port)
     if decision != "connect" or not record_after:
         with _http_handled():
             return _orig_create_connection(address, *args, **kwargs)
@@ -1090,7 +1090,7 @@ def _observe_http_client_request(
         return _orig_http_request(self, method, url, body, headers or {}, encode_chunked=encode_chunked)
     hostname, port = _http_conn_host_port(self)
     path = str(url or "/").split("?")[0] or "/"
-    kind, payload, redactions, record_send = _dispatch_gate(
+    kind, payload, redactions, record_send = _classify_destination(
         hostname, port, path, body, "python_http_client"
     )
     if kind == "pass":
@@ -1137,7 +1137,7 @@ def _observe_http_client_putrequest(
         return _orig_http_putrequest(self, method, url, skip_host, skip_accept_encoding)
     hostname, port = _http_conn_host_port(self)
     path = str(url or "/").split("?")[0] or "/"
-    kind, _payload, _redactions, record_send = _dispatch_gate(
+    kind, _payload, _redactions, record_send = _classify_destination(
         hostname, port, path, None, "python_http_client"
     )
     if kind != "pass" and record_send and getattr(self, "_vantio_pending", None) is None:
@@ -1212,7 +1212,7 @@ def _observe_urllib3_urlopen(self: Any, method: Any, url: Any, *args: Any, **kwa
     body = args[0] if args else kwargs.get("body")
     hostname, port = _http_conn_host_port(self)
     path = str(url or "/").split("?")[0] or "/"
-    kind, payload, redactions, record_send = _dispatch_gate(
+    kind, payload, redactions, record_send = _classify_destination(
         hostname, port, path, body, "python_urllib3"
     )
     if kind == "pass":
@@ -1753,7 +1753,7 @@ def _cli_mediation(tool: str) -> str:
     return "python_curl"
 
 
-def _apply_cli_gate(
+def _record_cli_observation(
     tool: str, argv: list[str], kwargs: Optional[dict[str, Any]] = None
 ) -> None:
     """Record in-scope CLI HTTP tools. Optics does not block or rewrite argv."""
@@ -1781,7 +1781,7 @@ class _VantioPopen(subprocess.Popen):
         try:
             cli = _http_cli_from_popen(args, kwargs)
             if cli is not None:
-                _apply_cli_gate(cli[0], cli[1], kwargs)
+                _record_cli_observation(cli[0], cli[1], kwargs)
         except Exception:
             pass
         super().__init__(args, *pargs, **kwargs)
@@ -1791,7 +1791,7 @@ def _observe_os_system(command: Any) -> Any:
     try:
         cli = _http_cli_from_exec(command)
         if cli is not None:
-            _apply_cli_gate(cli[0], cli[1])
+            _record_cli_observation(cli[0], cli[1])
     except Exception:
         pass
     return _orig_os_system(command)
@@ -1801,7 +1801,7 @@ async def _observe_asyncio_exec(program: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_spawn(program, args)
         if cli is not None:
-            _apply_cli_gate(cli[0], cli[1], kwargs)
+            _record_cli_observation(cli[0], cli[1], kwargs)
     except Exception:
         pass
     return await _orig_asyncio_exec(program, *args, **kwargs)
@@ -1811,7 +1811,7 @@ async def _observe_asyncio_shell(cmd: Any, **kwargs: Any) -> Any:
     try:
         cli = _http_cli_from_exec(cmd)
         if cli is not None:
-            _apply_cli_gate(cli[0], cli[1], kwargs)
+            _record_cli_observation(cli[0], cli[1], kwargs)
     except Exception:
         pass
     return await _orig_asyncio_shell(cmd, **kwargs)
@@ -1878,7 +1878,7 @@ class _VantioCurl:
         url = self._vantio_url or ""
         body = self._vantio_body
         hostname, port, path = _host_port_from_url(url)
-        kind, payload, redactions, record_send = _dispatch_gate(
+        kind, payload, redactions, record_send = _classify_destination(
             hostname, port, path, body, "python_pycurl"
         )
         if kind == "pass":
@@ -1957,7 +1957,7 @@ def _write_run_log() -> None:
             "schema_version": 2,
             "schema_status": SCHEMA_STATUS,
             "plane": "optics",
-            "workflow": "sight_loop",
+            "producer": "python_observe",
             "data_note": "Developer egress data log — metadata only; never prompts or completions.",
             "status_labels": {
                 "opticsStatus": "Optics status",

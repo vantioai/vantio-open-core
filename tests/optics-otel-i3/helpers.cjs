@@ -1,5 +1,7 @@
 "use strict";
 
+const { attestSourceRecord } = require("../../packages/optics-otel-i3/src/index.cjs");
+
 function goodRecord(overrides) {
   return {
     source_shape: "canonical_observation",
@@ -48,6 +50,13 @@ function assertNoLeak(assert, value, secrets) {
   }
 }
 
+function sourceRecord(overrides) {
+  const record = goodRecord(overrides);
+  const attested = attestSourceRecord(record);
+  if (!attested.ok) throw new Error(attested.reason || "attest failed");
+  return record;
+}
+
 function traceEnable(overrides) {
   return {
     enabled: true,
@@ -64,5 +73,6 @@ module.exports = {
   CHAT_ATTRIBUTES,
   assertNoLeak,
   goodRecord,
+  sourceRecord,
   traceEnable,
 };

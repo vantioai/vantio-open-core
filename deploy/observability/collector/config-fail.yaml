@@ -1,0 +1,18 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  otlphttp:
+    endpoint: http://host.docker.internal:18082
+    retry_on_failure:
+      enabled: false
+    sending_queue:
+      enabled: false
+    timeout: 2s
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlphttp]
