@@ -36,6 +36,7 @@ Rows: 1 schema, 2 trace correlation, 3 block plus policy digest, 4 privacy canar
 
 | Destination | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Exporter against a closed port, three OTLP protocols | GAP | GAP | GAP | GAP | see note | GAP | GAP | GAP | GAP | GAP |
 | Collector contrib, this revision | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
 | Grafana Tempo / Loki / Prometheus | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
 | Jaeger | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
@@ -48,6 +49,8 @@ Rows: 1 schema, 2 trace correlation, 3 block plus policy digest, 4 privacy canar
 | webhook | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
 
 Earlier local containers are not evidence for this revision. The send path now requires a source binding those runs did not use. They are not marked pass.
+
+Row 5 note, this revision, exit 0: three exporters (`otlp-http-json`, `otlp-http-protobuf`, `otlp-grpc`) offered to `127.0.0.1:1` for 10 minutes. 8985 offers. Each queue stayed at 8. Each drop count was 2987. 8 + 2987 = 2995, and 2995 × 3 = 8985. Sent stayed 0. Max offer time was 0.932 ms. RSS delta was 37642240 bytes. Final health was `degraded` because a full queue sets that state after the send failure. Recovery was not run: no receiver was started at the end. That cell is not a pass. Syslog, webhook, and every named product stay GAP for row 5.
 
 Row 10 for the in-process adapter is covered by the unit file above. That is not a destination pass.
 
