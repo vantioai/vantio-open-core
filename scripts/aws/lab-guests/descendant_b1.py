@@ -38,6 +38,10 @@ from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E
 PRE_PATH = Path("/var/lib/vantio-lab/b1-pre.json")
 OUT_PATH = Path("/tmp/enterprise-pe-rows.json")
 SUBJECT = 65534
+COVERAGE_GAPS = [
+    "rename, link, and symlink programs do not load on this kernel because the verifier stops at one million instructions. That is a gap, not a pass.",
+    "On btrfs and overlay, stat can still name a different device than the superblock after the MKDEV decode. Inode deny of a symlink there is not proven.",
+]
 REPEATS = 3
 PROBE = Path(os.environ.get("VANTIO_PROBE", "/var/lib/vantio-lab/guest/descendant_probe"))
 OUTSIDE = Path("/sys/fs/cgroup/vantio-pe-outside")
@@ -78,9 +82,12 @@ def move_pid(pid: int, cgroup: Path) -> int:
     return 0
 
 
-def child_act(path: Path, *, setsid: bool, unshare: bool) -> None:
+def child_act(path: Path, *, setsid: bool, unshare: bool, setns_fd: int | None = None) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    if setns_fd is not None and libc.setns(setns_fd, 0) != 0:
+        os.write(1, f"setns {ctypes.get_errno()}\n".encode())
+        os._exit(0)
     if unshare:
-        libc = ctypes.CDLL(None, use_errno=True)
         libc.unshare(CLONE_NEWNS)
         libc.unshare(CLONE_NEWUSER)
     if setsid:
@@ -116,12 +123,12 @@ def read_result(report_r: int) -> dict:
             body["file_errno"] = int(parts[1])
             body["net_errno"] = int(parts[3])
             body["pid"] = int(parts[5])
-        elif parts and parts[0] in ("setuid", "spawn", "clone3", "unshare_mnt", "unshare_user", "setsid"):
+        elif parts and parts[0] in ("setuid", "spawn", "clone3", "unshare_mnt", "unshare_user", "setsid", "setns"):
             body["setup"] = line
     return body
 
 
-def fork_case(place, *, setsid: bool = False, unshare: bool = False) -> dict:
+def fork_case(place, *, setsid: bool = False, unshare: bool = False, setns_fd: int | None = None) -> dict:
     report_r, report_w = os.pipe()
     go_r, go_w = os.pipe()
     child = os.fork()
@@ -132,7 +139,7 @@ def fork_case(place, *, setsid: bool = False, unshare: bool = False) -> dict:
         os.close(report_w)
         os.read(go_r, 1)
         os.close(go_r)
-        child_act(rows.DENY, setsid=setsid, unshare=unshare)
+        child_act(rows.DENY, setsid=setsid, unshare=unshare, setns_fd=setns_fd)
     os.close(report_w)
     os.close(go_r)
     move_errno = place(child)
@@ -250,6 +257,42 @@ def vfork_case() -> dict:
     return body
 
 
+def setns_case() -> dict:
+    """Join another mount namespace after the cgroup move. The ceiling stays."""
+    ready_r, ready_w = os.pipe()
+    holder = os.fork()
+    if holder == 0:
+        os.close(ready_r)
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.unshare(CLONE_NEWNS) != 0:
+            os.write(ready_w, f"fail {ctypes.get_errno()}".encode())
+            os.close(ready_w)
+            os._exit(0)
+        os.write(ready_w, b"ok")
+        os.close(ready_w)
+        time.sleep(120)
+        os._exit(0)
+    os.close(ready_w)
+    status = os.read(ready_r, 32)
+    os.close(ready_r)
+    if status != b"ok":
+        os.waitpid(holder, 0)
+        return {
+            "detail": f"setns_holder {status.decode(errors='replace')}",
+            "file_errno": None,
+            "net_errno": None,
+            "pid": None,
+            "move_errno": 1,
+        }
+    ns = os.open(f"/proc/{holder}/ns/mnt", os.O_RDONLY)
+    try:
+        return fork_case(lambda pid: move_pid(pid, Path(rows.ANCHOR)), setns_fd=ns)
+    finally:
+        os.close(ns)
+        os.kill(holder, 9)
+        os.waitpid(holder, 0)
+
+
 def events() -> list[dict]:
     path = rows.EVENTS
     if not path.is_file():
@@ -331,6 +374,7 @@ def one_round(digest: str) -> list[dict]:
         ("double_fork", lambda: double_fork_case(reparent=False), True),
         ("setsid", lambda: fork_case(lambda pid: move_pid(pid, anchor), setsid=True), True),
         ("unshare", lambda: fork_case(lambda pid: move_pid(pid, anchor), unshare=True), True),
+        ("setns", setns_case, True),
         ("vfork", vfork_case, True),
         ("ancestor_8", lambda: fork_case(lambda pid: move_pid(pid, nested(8))), True),
         ("ancestor_9", lambda: fork_case(lambda pid: move_pid(pid, nested(9))), False),
@@ -417,6 +461,7 @@ def measure(phase: str) -> dict:
         "cases": stable,
         "uid0_open": root_open,
         "descendant_pass": all(item["pass"] for item in stable) and root_open.get("errno") == 0,
+        "coverage_gaps": COVERAGE_GAPS,
     }
 
 
@@ -464,6 +509,7 @@ def _main() -> int:
         "descendant_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")),
         "b1_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")) and not same_boot,
         "coverage_note": "A case with pass false is a failure. A topology absent from cases was not run.",
+        "coverage_gaps": COVERAGE_GAPS,
     }
     _publish(result)
     return 0 if result["b1_pass"] else 1
