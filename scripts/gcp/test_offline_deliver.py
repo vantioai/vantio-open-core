@@ -259,6 +259,13 @@ class OfflineDeliverTest(unittest.TestCase):
             od.write_evidence = original_write
         self.assertEqual(calls, [("12/seal.oci.tar", "12/contract.tar")])
 
+    def test_a_run_id_containing_404_is_not_a_missing_object(self) -> None:
+        quoted = "ERROR: 403 Permission denied gs://vantio-lab-oct08-handoff/14042/seal.oci.tar"
+        self.assertFalse(od._missing_object(quoted))
+        self.assertFalse(od._missing_object("gcloud: command not found"))
+        self.assertTrue(od._missing_object("The following URLs matched no objects or files:\ngs://vantio-lab-oct08-handoff/14042/seal.oci.tar"))
+        self.assertTrue(od._missing_object("NotFound: 404 gs://vantio-lab-oct08-handoff/12/seal.oci.tar"))
+
     def test_allowlist_rejects_secret_shaped_short_fields(self) -> None:
         kept = od.allow_record(
             {

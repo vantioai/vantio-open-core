@@ -886,8 +886,21 @@ def upload_one(bucket: str, object_name: str, path: Path, *, max_bytes: int = MA
 
 
 def _missing_object(text: str) -> bool:
-    lowered = text.lower()
-    return "matched no objects" in lowered or "404" in lowered or "not found" in lowered
+    """True only when gcloud says the object is gone.
+
+    Strip gs:// URIs first. A run id such as 14042 contains the digits 404, and
+    a 403 that quotes that URI must not count as a missing object. "command
+    not found" is a failed delete, not a missing object.
+    """
+    without_uris = re.sub(r"gs://\S+", " ", text or "")
+    lowered = without_uris.lower()
+    if "command not found" in lowered or "no such file or directory" in lowered:
+        return False
+    if "matched no objects" in lowered:
+        return True
+    if re.search(r"(?<![0-9])404(?![0-9])", lowered):
+        return True
+    return "not found" in lowered
 
 
 def delete_objects(names: Sequence[str], *, missing_ok: bool) -> None:

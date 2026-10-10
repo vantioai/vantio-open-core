@@ -2,9 +2,9 @@ name: GCP lab provision
 
 # Offline Phantom Engine delivery for t311u item 2, updated by t313u.
 # One Debian 12 e2-micro on vantio-lab-offline, no public IP, over IAP.
-# The expected seal digest is a workflow input. The default dispatch proves
-# fetch, bucket handoff, IAP copy, and the on-VM digest check, then teardown.
-# Batteries stay off for the current policy-allow seal and wait for a new one.
+# The expected seal digest and bundle commit are workflow inputs.
+# run_batteries is refused for f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753.
+# The guest accepts the loaded image vantio-phantom-engine:evidence-ring-0533c88.
 # The sealed bundle goes to gs://vantio-lab-oct08-handoff and is deleted
 # after the deliver job re-checks it. It is never a workflow artifact.
 # Workload identity still requires this file on main:
@@ -22,7 +22,7 @@ on:
       bundle_commit:
         description: Private bundle commit, 40 hex characters.
         required: false
-        default: 6aed2881377132290c10e16e016a28072765250d
+        default: 78efe924d1be8e66e541c87ef467501f6c81108a
         type: string
       run_batteries:
         description: Run portable PE batteries after the digest check. Refused for the current policy-allow seal.
