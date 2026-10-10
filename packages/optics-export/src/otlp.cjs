@@ -29,7 +29,7 @@ function attributes(event) {
     ["vantio.decision", event.decision],
     ["vantio.policy.digest", event.policy_digest],
     ["url.path", event.path],
-    ["vantio.attestation", "producer"],
+    ["vantio.attestation", "in-process"],
   ];
   return Buffer.concat(rows.filter(([, value]) => value != null).map(([keyName, value]) => messageField(9, kvMessage(keyName, value))));
 }
@@ -55,7 +55,7 @@ function jsonAttributes(event) {
     ["vantio.decision", event.decision],
     ["vantio.policy.digest", event.policy_digest],
     ["url.path", event.path],
-    ["vantio.attestation", "producer"],
+    ["vantio.attestation", "in-process"],
   ];
   return pairs.filter(([, value]) => value != null).map(([key, value]) => ({
     key,

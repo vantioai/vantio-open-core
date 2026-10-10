@@ -32,6 +32,8 @@ Prompts, completions, request bodies, response bodies, headers, and query string
 
 An event is sent only after `attestObservation` binds that object in this process. A copy, or an object that was never bound, is rejected with `UNATTESTED` and is not sent. The binding is not a Phantom Engine signature. A caller who can invoke `attestObservation` is the source for that object.
 
+The OTLP attribute `vantio.attestation` is the label `in-process`. It is not a signature a receiver can verify.
+
 ## Transports
 
 OTLP HTTP/JSON, OTLP HTTP/protobuf, and OTLP gRPC use the same projected event. JSON Lines, RFC 5424 syslog, and webhook use that event too. Nothing is sent unless a config file enables export. Remote plaintext is refused. TLS does not fall back to plaintext.

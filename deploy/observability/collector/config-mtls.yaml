@@ -1,0 +1,28 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /certs/server.pem
+          key_file: /certs/server.key
+          client_ca_file: /certs/ca.pem
+      http:
+        endpoint: 0.0.0.0:4318
+        tls:
+          cert_file: /certs/server.pem
+          key_file: /certs/server.key
+          client_ca_file: /certs/ca.pem
+exporters:
+  file/traces:
+    path: /out/traces.json
+  file/logs:
+    path: /out/logs.json
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file/traces]
+    logs:
+      receivers: [otlp]
+      exporters: [file/logs]

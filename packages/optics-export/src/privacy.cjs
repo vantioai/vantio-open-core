@@ -21,13 +21,16 @@ function decodedForms(value) {
       break;
     }
   }
-  const chunks = String(value).match(/[A-Za-z0-9+/]{16,}={0,2}/g) || [];
+  const chunks = String(value).match(/[A-Za-z0-9+/]{8,}={0,2}/g) || [];
   for (const chunk of chunks) {
-    const pad = chunk.length % 4 === 0 ? chunk : chunk + "=".repeat((4 - (chunk.length % 4)) % 4);
-    try {
-      push(Buffer.from(pad, "base64").toString("utf8"));
-    } catch {
-      /* not base64 */
+    const forms = chunk === chunk.toUpperCase() ? [chunk] : [chunk, chunk.toUpperCase()];
+    for (const form of forms) {
+      const pad = form.length % 4 === 0 ? form : form + "=".repeat((4 - (form.length % 4)) % 4);
+      try {
+        push(Buffer.from(pad, "base64").toString("utf8"));
+      } catch {
+        /* not base64 */
+      }
     }
   }
   return forms;
@@ -48,9 +51,15 @@ function eventHasCanary(event) {
   walk(event);
   if (strings.some((text) => textHasCanary(text))) return true;
   if (textHasCanary(strings.join(""))) return true;
-  for (let i = 0; i < strings.length; i += 1) {
-    for (let j = 0; j < strings.length; j += 1) {
-      if (i !== j && textHasCanary(strings[i] + strings[j])) return true;
+  const content = strings.filter((text) => text.length <= 64 && !/^[0-9a-f]+$/i.test(text)).slice(0, 12);
+  for (let i = 0; i < content.length; i += 1) {
+    for (let j = 0; j < content.length; j += 1) {
+      if (i === j) continue;
+      if (textHasCanary(content[i] + content[j])) return true;
+      for (let k = 0; k < content.length; k += 1) {
+        if (k === i || k === j) continue;
+        if (textHasCanary(content[i] + content[j] + content[k])) return true;
+      }
     }
   }
   return false;
@@ -144,6 +153,23 @@ function project(input) {
     return { ok: false, reason: "POLICY_DIGEST" };
   }
   if (kind === "phantom.decision" && !decision) return { ok: false, reason: "DECISION" };
+  const rawFields = [
+    input.destination_host,
+    input.executable,
+    input.workload_id,
+    input.optics_status,
+    input.application_status,
+    input.decision,
+  ];
+  if (typeof input.path === "string") rawFields.push(stripQuery(input.path));
+  if (Array.isArray(input.lineage)) {
+    for (const row of input.lineage.slice(0, 16)) {
+      if (row && typeof row.executable === "string") rawFields.push(row.executable);
+    }
+  }
+  if (rawFields.some((value) => typeof value === "string" && textHasCanary(value))) {
+    return { ok: false, reason: "PRIVACY" };
+  }
   const event = {
     kind,
     trace_id: traceId,

@@ -1,61 +1,48 @@
 # Observability coverage
 
-This page records what was run. A cell that was not run is GAP. GAP is not a pass.
+Observability integration is NOT_PROVEN. `product_otlp_export_authorized` is false.
 
-Claim: observability integration is NOT_PROVEN. `product_otlp_export_authorized` is false.
+This page records the rerun on the current bind (`attestObservation` or `attestSourceRecord`, then the in-process token). A row that was not closed on that bind is GAP. GAP is not a pass.
 
-The binding in `attestSourceRecord` and `attestObservation` copies one object's own data and rejects a different object. It is not a Phantom Engine signature. A co-resident caller of `attestSourceRecord`, or of `createExporter`, can bind an object of its own. A second `startFromConfig` call does not get the first claim. That residual is GAP.
+The trust boundary is in `TRUST-BOUNDARY.md`. A co-resident caller of the bind functions can still bind its own object. That residual is open.
 
-## Unit evidence, repeated
+## What passed on this bind
 
-Ran twice on this tree, 0 failures:
+Local lab only. Not a customer deployment and not a clean-host proof.
 
-- `tests/optics-otel-i3/attestation.test.cjs` plus the i3 http, fields, delivery, and adversarial files. 28 passed, then the attestation file passed again.
-- `packages/optics-export/test/export.test.cjs` 11 passed, twice.
-- `packages/optics-export/test/exhaustive.test.cjs` 6 passed once on this tree.
+| Destination | Rows with evidence | Rows still open |
+| --- | --- | --- |
+| Collector contrib 0.136.0, file exporter, HTTP JSON, HTTP protobuf, and gRPC | 1 schema, 2 shared trace, 3 BLOCK plus digest, 4 no canary in the file after the raw-field check, 7 throughput, 8 TLS and mTLS, 10 forged marker absent | 5, 6, 9 is a different image |
+| Collector contrib 0.103.0, file exporter, HTTP JSON | 9: a ready collector stored schema 1.0.0 and BLOCK. A cold start in the same session returned ECONNRESET before it was ready | 1–8 and 10 were not re-scored on this image |
+| Jaeger 1.62.0, HTTP and gRPC, query API | 1–4 and 10 on the query body after receivers were restored. HTTP also stored a trace on an earlier attempt whose client status was ECONNRESET | 5, 6, 7, 8, 9 |
+| Tempo 2.7.1 query API | 1–4 and 10. The hex trace id is returned as base64. Loki, Prometheus, and the Grafana UI were not started | 5, 6, 7, 8, 9, and the rest of the Grafana stack |
+| rsyslog on Alpine, TCP 5515 and UDP 5514 | 1–4 and 10 on a warm broker. The first TCP attempt in a cold start missed the trace | 5 buffer flush, 6, 7, 8, 9 |
+| Local webhook | 1–4 and 10 | 5 buffer flush, 6 as the webhook process itself, 7, 8, 9 |
+| Splunk HEC mock behind Collector 0.136.0 | 1–4 and 10 in the mock log. Protocol only. Not Splunk | 5–9, and the product |
+| Datadog exporter mock behind Collector 0.136.0 | 1–4 and 10 in the mock log after the raw-field canary check. API key validation against the mock failed, which is expected. Protocol only. Not Datadog | 5–9, and the product |
 
-| Check | Result |
+Row 6, hostile peer: a local HTTP stand-in returned slowly, returned 500, and reset the socket. The sender stayed up. That stand-in was not the Collector, Jaeger, Tempo, syslog, or webhook process. Those destination rows stay GAP.
+
+Row 5, ten minutes, eight exporters, closed ports: 22984 offers. Each queue stayed at 8. Each drop count was 2865. 8 + 2865 = 2873, and 2873 × 8 = 22984. Sent stayed 0. Max offer time was 4.016 ms. RSS delta was 84135936 bytes, which is over a 64MB bound, so memory is not a pass. The process then exited, so the queued batches were not flushed after the receivers returned. A later new send, after the receivers were started again, reached Collector, Jaeger, Tempo, syslog, and the webhook with schema, BLOCK, no canary, and the forged marker absent. That is a new send. It is not delivery of the ten-minute buffer.
+
+Row 7, Collector HTTP JSON, 1000 events, after the canary check: 1127.8 ms, cpu user 1101708 µs, cpu system 31550 µs, rss delta 16621568 bytes, sent 1000, dropped 0, health healthy.
+
+In-process projection, 20000 events: 26624.7 ms, rss delta 14049280 bytes. That is not a collector proof.
+
+## GAP, no passing command
+
+| Destination | Why |
 | --- | --- |
-| Enabled export of an unbound `canonical_observation` | Not sent. Result attestation `unattested`. Repeated 3 times inside the test. |
-| Copy of a bound object | Not sent. |
-| Bound object whose data changes | Not sent. Reason `ATTESTATION_MISMATCH`. Export uses the copy taken at bind time. |
-| Caller field `signature` | Not accepted as proof. |
-| Caller field `attestation` | Excluded as an unsupported proof field. Not sent. |
-| Disabled adapter | Does not send, including a bound record. |
-| Second `startFromConfig` | Does not send. |
-| Wrong in-process token | Not sent. |
-| Prompts, bodies, headers, query strings | Absent from the projection. |
-| URL-encoded, base64, and split canaries in exported string fields | Refused or absent from the projection. |
-| Remote plaintext | Refused by config. |
-| Misconfigured TLS to a local HTTPS server | Send fails. A plaintext listener saw 0 connections. |
-| 20_000 in-process projections | Finished. RSS delta stayed under 64MB. This is not a collector throughput proof. |
+| Grafana UI | Not started |
+| Loki | Not started |
+| Prometheus | Not started. This exporter does not emit a metric series |
+| OpenSearch 2.19.1 | The collector accepted 3 spans and the debug exporter counted them. No OpenSearch document index received them, and the collector log had no elasticsearch error |
+| Splunk product | No Splunk container. Mock only |
+| Datadog product | No Datadog tenant. Mock only |
+| TLS on Jaeger, Tempo, syslog, webhook, HEC, Datadog | Not configured. Collector TLS and mTLS were |
+| Older Collector for every row except the one ingest above | Not run |
+| Ten-minute buffer flushed into a restored receiver | Not run |
 
-## Destination matrix
+## Reviews
 
-Rows: 1 schema, 2 trace correlation, 3 block plus policy digest, 4 privacy canaries, 5 receiver down 10 minutes with recovery, 6 slow or hostile receiver, 7 throughput, 8 TLS, 9 older collector, 10 forged event.
-
-| Destination | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Exporter against a closed port, three OTLP protocols | GAP | GAP | GAP | GAP | see note | GAP | GAP | GAP | GAP | GAP |
-| Collector contrib, this revision | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| Grafana Tempo / Loki / Prometheus | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| Jaeger | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| OpenSearch | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| Splunk product | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| Splunk HEC mock | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| Datadog product | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| Datadog exporter mock | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| syslog | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-| webhook | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP | GAP |
-
-Earlier local containers are not evidence for this revision. The send path now requires a source binding those runs did not use. They are not marked pass.
-
-Row 5 note, this revision, exit 0: three exporters (`otlp-http-json`, `otlp-http-protobuf`, `otlp-grpc`) offered to `127.0.0.1:1` for 10 minutes. 8985 offers. Each queue stayed at 8. Each drop count was 2987. 8 + 2987 = 2995, and 2995 × 3 = 8985. Sent stayed 0. Max offer time was 0.932 ms. RSS delta was 37642240 bytes. Final health was `degraded` because a full queue sets that state after the send failure. Recovery was not run: no receiver was started at the end. That cell is not a pass. Syslog, webhook, and every named product stay GAP for row 5.
-
-Row 10 for the in-process adapter is covered by the unit file above. That is not a destination pass.
-
-## Council
-
-Author: Grok 4.7. OTLP review: Claude Sonnet. Gap council: GPT. Both are a different model family from the author.
-
-The review required export of the bound copy, not a later read of the live object. That is what the tests cover. The review's remaining point stands as GAP: a co-resident caller of the bind function is treated as the source. Do not describe that as a ledger signature.
+Author: Grok 4.7. OTLP and canary review: Claude Sonnet. The review found that uppercasing a lowercased base64 string does not restore the original text. The exporter now checks the field before it lowercases it. A mixed-case base64 host and path are rejected in unit tests, and the HEC and Datadog mock logs from the send after that check did not contain the canary.

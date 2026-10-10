@@ -15,7 +15,8 @@ exporters:
       insecure_skip_verify: true
   datadog:
     api:
-      key: "local-dummy-not-a-credential"
+      # 32 hex zeros. Not a credential. The exporter rejects other characters.
+      key: "00000000000000000000000000000000"
     traces:
       endpoint: "http://host.docker.internal:8089"
     metrics:

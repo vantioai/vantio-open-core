@@ -1,0 +1,25 @@
+# Export trust boundary
+
+`product_otlp_export_authorized` is false. Observability integration is NOT_PROVEN.
+
+## What the current bind does
+
+`attestSourceRecord` and `attestObservation` copy one object's own fields and remember that object in this process. Export sends that copy. A different object is marked `unattested` and is not sent. If the original object's data changes after the copy, the reason is `ATTESTATION_MISMATCH` and nothing is sent.
+
+The first `startFromConfig` call holds the in-process send token. A later `startFromConfig` call cannot send.
+
+The OTLP attribute `vantio.attestation` is the label `in-process`. A receiver cannot use it as proof.
+
+## The boundary that would close the residual
+
+The boundary that would close this is a source identity signed outside the observed process, checked before send. The signer is Phantom Engine, or the Enterprise evidence signer, over the canonical event bytes. The exporter rejects an event whose signature does not verify. A co-resident caller does not hold that key, so it cannot mint the signature. The in-process token is not that key.
+
+This repository does not implement that check. No production signing root is used here. A test key shipped beside the exporter would not close the gap: the same process can read it.
+
+A valid base64 value is checked before a host name is lowercased. Lowercasing first hid a mixed-case base64 canary from the decoder. A string that was already case-folded in the base64 alphabet does not decode back to the original text, so it is not that canary.
+
+## Known residual
+
+A co-resident caller of `attestSourceRecord`, `attestObservation`, or `createExporter` can bind an object it built and send it. That caller is inside the process. The bind does not keep it out.
+
+This residual is not a pass. It stays open until a signer outside the process is actually verified on the export path.

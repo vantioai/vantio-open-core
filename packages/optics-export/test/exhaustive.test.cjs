@@ -45,6 +45,20 @@ test("encoded and split canaries are refused in every exported field", () => {
   assert.equal(split.reason, "PRIVACY");
   const halves = project(base({ workload_id: "cana", path: "ry-prompttext" }));
   assert.equal(halves.ok, false);
+  const triple = project(base({ workload_id: "can", executable: "ary", path: "-prompttext" }));
+  assert.equal(triple.ok, false);
+  assert.equal(triple.reason, "PRIVACY");
+  const lowerHost = Buffer.from(CANARY, "utf8").toString("base64").toLowerCase();
+  const lowered = project(base({ destination_host: lowerHost }));
+  assert.equal(lowered.ok, false);
+  assert.equal(lowered.reason, "PRIVACY");
+  const mixed = Buffer.from("Canary-prompttextXYZ", "utf8").toString("base64");
+  const mixedHost = project(base({ destination_host: mixed }));
+  assert.equal(mixedHost.ok, false);
+  assert.equal(mixedHost.reason, "PRIVACY");
+  const mixedPath = project(base({ path: `/${mixed}` }));
+  assert.equal(mixedPath.ok, false);
+  assert.equal(mixedPath.reason, "PRIVACY");
 });
 
 test("forbidden payload fields never reach the projection", () => {
