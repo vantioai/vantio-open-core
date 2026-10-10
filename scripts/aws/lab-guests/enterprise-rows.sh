@@ -63,9 +63,27 @@ sudo chown -R ubuntu:ubuntu "$stage"
 if find "$stage" -name 'private-key.pem' | grep -q .; then
   exit 3
 fi
-sudo DEBIAN_FRONTEND=noninteractive apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-cryptography docker.io gcc
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "linux-tools-$(uname -r)" linux-tools-common || true
+# The lab security group has no egress. Packages arrive over the runner SSH
+# session. This script does not reach apt mirrors.
+if ! compgen -G "$here/debs/*.deb" >/dev/null; then
+  echo "offline debs missing; refusing network apt" >&2
+  exit 6
+fi
+dpkg_ok=0
+for _pass in 1 2 3 4 5; do
+  if sudo dpkg -i "$here/debs"/*.deb >/tmp/dpkg-offline.log 2>&1; then
+    dpkg_ok=1
+    break
+  fi
+done
+if [ "$dpkg_ok" != 1 ]; then
+  echo "offline dpkg failed" >&2
+  tail -n 40 /tmp/dpkg-offline.log >&2 || true
+  exit 6
+fi
+command -v docker >/dev/null
+command -v gcc >/dev/null
+python3 -c "import cryptography"
 sudo mkdir -p /etc/docker
 printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json >/dev/null
 sudo systemctl enable --now docker
@@ -98,6 +116,16 @@ if [ "$mode" = "descendant-b1" ]; then
     cp /tmp/descendant-b1.out /tmp/enterprise-pe-rows.json
   fi
   chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  if [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
+    cp "$here/redteam_packet.py" "$stage/redteam_packet.py"
+    set +e
+    sudo python3 "$here/redteam_rows.py" "$stage" > /tmp/redteam-rows.out 2>&1
+    rt=$?
+    set -e
+    cat /tmp/redteam-rows.out
+    chmod a+r /tmp/redteam-rows.json 2>/dev/null || true
+    printf 'REDTEAM_RC=%s\n' "$rt"
+  fi
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
