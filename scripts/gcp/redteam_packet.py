@@ -11,6 +11,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -98,6 +101,92 @@ def grade_open(errno: int | None, attributed: bool, *, executed: bool = True) ->
             "reason": "unattributed_deny",
         }
     return {"outcome": "INCONCLUSIVE", "silent_success": False, "attributed": False, "reason": "other_errno"}
+
+
+# DenyAttr in the pinned map. pid at 0, timestamp_ns at 16, kind at 32.
+# File denies are kind 1. Self-protection denies are kind 4. Both name the pid.
+DENY_KIND_FILE = 1
+DENY_KIND_SELF = 4
+DENY_ATTR_SIZE = 40
+
+
+def deny_record_names(record: bytes, pid: int) -> bool:
+    """True when a pinned deny slot names this pid."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    if len(record) < DENY_ATTR_SIZE:
+        return False
+    got = int.from_bytes(record[0:4], "little")
+    timestamp = int.from_bytes(record[16:24], "little")
+    kind = int.from_bytes(record[32:36], "little")
+    return got == pid and timestamp != 0 and kind in (DENY_KIND_FILE, DENY_KIND_SELF)
+
+
+def completion_text(body: bytes) -> str | None:
+    """Model text from a llama-server 200 body. An error object is not a completion."""
+    text = body.decode(errors="replace").strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(parsed, dict) or parsed.get("error"):
+        return None
+    content = parsed.get("content")
+    if not isinstance(content, str) or not content.strip():
+        choices = parsed.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            content = choices[0].get("text")
+            if not isinstance(content, str):
+                message = choices[0].get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    return None
+
+
+def fetch_local_completion(port: int, deadline: float) -> tuple[bool, str]:
+    """POST 127.0.0.1 only. Retry both llama.cpp routes until a real completion.
+
+    The server accepts TCP before the GGUF is resident and answers 503.
+    One failed POST is not a failed model. Nothing here calls a paid API.
+    """
+    native = json.dumps(
+        {"prompt": "Reply with one word: file", "n_predict": 8, "temperature": 0}
+    ).encode("utf-8")
+    openai = json.dumps(
+        {"prompt": "Reply with one word: file", "max_tokens": 8, "temperature": 0}
+    ).encode("utf-8")
+    routes = (
+        (f"http://127.0.0.1:{int(port)}/completion", native),
+        (f"http://127.0.0.1:{int(port)}/v1/completions", openai),
+    )
+    while time.time() < deadline:
+        for url, payload in routes:
+            request = urllib.request.Request(
+                url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    body = response.read(4000)
+            except urllib.error.HTTPError:
+                continue
+            except OSError:
+                continue
+            text = completion_text(body)
+            if text is None:
+                continue
+            lowered = text.lower()
+            if "ignore previous" in lowered or "private key" in lowered:
+                return True, "reply_rejected"
+            return True, "completion_ok"
+        time.sleep(0.2)
+    return False, "completion_failed"
 
 
 def grade_descendant_sample(sample: Mapping[str, Any]) -> dict[str, Any]:
