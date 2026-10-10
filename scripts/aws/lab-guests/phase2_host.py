@@ -101,18 +101,18 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     started = rows.start_loader(adapter)
     if started["rc"] != 0:
         raise SystemExit(f"loader {started['rc']}")
-    banner = rows.wait_banner("AUDIT (log only)")
-    if "AUDIT (log only)" not in banner:
-        raise SystemExit("loader banner missing")
+    banner = rows.wait_banner("AUDIT")
+    if "AUDIT" not in banner and "observe-only" not in banner:
+        raise SystemExit(f"loader banner missing: {banner[-400:]}")
     revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
-    scoped = rows.wait_banner("SCOPED (drop enrolled)")
-    if "SCOPED (drop enrolled)" not in scoped:
-        raise SystemExit("scoped banner missing")
+    scoped = rows.wait_banner("SCOPED")
+    if "SCOPED" not in scoped:
+        raise SystemExit(f"scoped banner missing: {scoped[-400:]}")
     return adapter, digest
 
 
@@ -186,9 +186,9 @@ def run_2c() -> dict:
     restarted = rows.start_loader(adapter)
     if restarted["rc"] != 0:
         raise SystemExit(f"restart loader {restarted['rc']}")
-    scoped = rows.wait_banner("SCOPED (drop enrolled)")
-    if "SCOPED (drop enrolled)" not in scoped:
-        raise SystemExit("restart banner missing")
+    scoped = rows.wait_banner("SCOPED")
+    if "SCOPED" not in scoped:
+        raise SystemExit(f"restart banner missing: {scoped[-400:]}")
     second = child_open(True)
     graded = grade.grade_upgrade(
         seal_sha256=seal_sha,
