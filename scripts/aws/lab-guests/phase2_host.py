@@ -111,9 +111,9 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
-    scoped = rows.wait_banner("SCOPED")
-    if "SCOPED" not in scoped:
-        raise SystemExit(f"scoped banner missing: {scoped[-400:]}")
+    if not scoped_started():
+        tail = rows.wait_banner("SCOPED")
+        raise SystemExit(f"scoped banner missing: {tail[-400:]}")
     return adapter, digest
 
 
@@ -168,6 +168,16 @@ def loader_running() -> bool:
     return rows.run(["pgrep", "-x", "vantio-loader"]).returncode == 0
 
 
+def scoped_started(timeout: float = 120) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        for item in events():
+            if item.get("ActionTaken") == "SCOPED" and item.get("EventType") == "ENGINE_STARTED":
+                return True
+        time.sleep(2)
+    return False
+
+
 def image_id() -> str:
     proc = rows.sudo(["docker", "image", "inspect", "--format", "{{.Id}}", rows.IMAGE])
     return (proc.stdout or "").strip()
@@ -187,9 +197,9 @@ def run_2c() -> dict:
     restarted = rows.start_loader(adapter)
     if restarted["rc"] != 0:
         raise SystemExit(f"restart loader {restarted['rc']}")
-    scoped = rows.wait_banner("SCOPED")
-    if "SCOPED" not in scoped:
-        raise SystemExit(f"restart banner missing: {scoped[-400:]}")
+    if not scoped_started():
+        tail = rows.wait_banner("SCOPED")
+        raise SystemExit(f"restart banner missing: {tail[-400:]}")
     second = child_open(True)
     graded = grade.grade_upgrade(
         seal_sha256=seal_sha,
