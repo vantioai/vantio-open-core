@@ -50,6 +50,7 @@ STEPS: dict[str, dict[str, object]] = {
             "expires_in_minutes",
             "image_id",
             "describe_only",
+            "close_egress",
         ),
     },
     "arm": {
@@ -138,6 +139,8 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("associate_public_ipv4")
         if key == "describe_only" and value not in ("true", "false"):
             raise TriggerError("describe_only")
+        if key == "close_egress" and value not in ("true", "false"):
+            raise TriggerError("close_egress")
         if key == "image_id" and re.fullmatch(r"ami-[0-9a-f]{8,17}", value) is None:
             raise TriggerError("image_id")
 

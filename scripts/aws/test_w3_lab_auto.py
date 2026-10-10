@@ -119,13 +119,14 @@ def passing_gate() -> dict:
     )
 
 
-def launch_spec() -> dict:
+def launch_spec(*, close_egress: bool = False) -> dict:
     return {
         "instance_type": "t3.micro",
         "stop_after_minutes": 15,
         "purpose": lab.PURPOSE_VALUE,
         "name": "vantio-w3-lab-auto-test",
         "associate_public_ipv4": "false",
+        "close_egress": close_egress,
     }
 
 
@@ -352,7 +353,43 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertNotIn(lab.FORBIDDEN_ACCOUNT_ID, " ".join(run))
         self.assertNotIn("iam-instance-profile", " ".join(run))
         self.assertEqual(runner.commands().count("run-instances"), 1)
+        self.assertFalse(result["default_egress_revoked"])
+        self.assertEqual(result["egress"], "default_allow")
+        self.assertFalse(result["close_egress"])
+        joined = " ".join(" ".join(call) for call in runner.calls)
+        self.assertNotIn("revoke-security-group-egress", joined)
+        self.assertNotIn("release-address", joined)
+
+    def test_default_launch_ignores_a_missing_revoke_permission(self) -> None:
+        runner = FakeAws()
+        runner.egress_denied = True
+        with tempfile.TemporaryDirectory() as tmp:
+            result = lab.execute_launch(
+                launch_spec(),
+                passing_gate(),
+                {"Account": lab.ACCOUNT_ID},
+                runner,
+                NOW,
+                user_data_path=Path(tmp) / "user-data.sh",
+            )
+        self.assertEqual(result["egress"], "default_allow")
+        self.assertIn("run-instances", runner.commands())
+        self.assertNotIn("revoke-security-group-egress", runner.commands())
+        self.assertNotIn("release-address", " ".join(" ".join(call) for call in runner.calls))
+
+    def test_close_egress_revokes_before_launch(self) -> None:
+        runner = FakeAws()
+        with tempfile.TemporaryDirectory() as tmp:
+            result = lab.execute_launch(
+                launch_spec(close_egress=True),
+                passing_gate(),
+                {"Account": lab.ACCOUNT_ID},
+                runner,
+                NOW,
+                user_data_path=Path(tmp) / "user-data.sh",
+            )
         self.assertTrue(result["default_egress_revoked"])
+        self.assertEqual(result["egress"], "revoked")
         self.assertNotIn("release-address", " ".join(" ".join(call) for call in runner.calls))
         revoke_at = next(i for i, call in enumerate(runner.calls) if "revoke-security-group-egress" in call and "--dry-run" not in call)
         run_at = next(i for i, call in enumerate(runner.calls) if "run-instances" in call)
@@ -367,7 +404,7 @@ class LaunchShapeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(lab.GuardAbort) as caught:
                 lab.execute_launch(
-                    launch_spec(),
+                    launch_spec(close_egress=True),
                     passing_gate(),
                     {"Account": lab.ACCOUNT_ID},
                     runner,
@@ -384,7 +421,7 @@ class LaunchShapeTests(unittest.TestCase):
         runner.ipv6_absent = True
         with tempfile.TemporaryDirectory() as tmp:
             result = lab.execute_launch(
-                launch_spec(),
+                launch_spec(close_egress=True),
                 passing_gate(),
                 {"Account": lab.ACCOUNT_ID},
                 runner,
@@ -400,7 +437,7 @@ class LaunchShapeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(lab.GuardAbort) as caught:
                 lab.execute_launch(
-                    launch_spec(),
+                    launch_spec(close_egress=True),
                     passing_gate(),
                     {"Account": lab.ACCOUNT_ID},
                     runner,
