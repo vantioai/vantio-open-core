@@ -306,6 +306,20 @@ def events() -> list[dict]:
     return found
 
 
+def event_view(item: dict) -> dict:
+    payload = item.get("Payload")
+    if isinstance(payload, str) and len(payload) > 180:
+        payload = payload[:180]
+    return {
+        "ActionTaken": item.get("ActionTaken"),
+        "EventType": item.get("EventType"),
+        "Uid": item.get("Uid"),
+        "policy_digest": item.get("policy_digest"),
+        "PolicyRuleMatched": item.get("PolicyRuleMatched"),
+        "Payload": payload,
+    }
+
+
 def file_denied(digest: str, pid: int) -> bool:
     for item in events():
         if item.get("Pid") != pid:
@@ -346,21 +360,26 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
     file_errno = observed.get("file_errno")
     if pid is None or file_errno is None:
         return {"name": name, "pass": False, "expect_deny": expect_deny, "observed": observed, "reason": "no_sample"}
+    file_hit = file_denied(digest, pid) if expect_deny else None
+    egress_hit = egress_denied(digest, pid) if expect_deny else None
     if expect_deny:
-        ok = file_errno == 13 and file_denied(digest, pid) and egress_denied(digest, pid)
+        ok = file_errno == 13 and file_hit and egress_hit
     else:
         ok = file_errno == 0 and file_allowed(pid)
-    return {
+    body = {
         "name": name,
         "pass": ok,
         "expect_deny": expect_deny,
         "file_errno": file_errno,
         "net_errno": observed.get("net_errno"),
         "pid": pid,
-        "file_event": file_denied(digest, pid) if expect_deny else None,
-        "egress_event": egress_denied(digest, pid) if expect_deny else None,
+        "file_event": file_hit,
+        "egress_event": egress_hit,
         "observed": observed,
     }
+    if not ok:
+        body["events_for_pid"] = [event_view(item) for item in events() if item.get("Pid") == pid][-8:]
+    return body
 
 
 def one_round(digest: str) -> list[dict]:
@@ -384,7 +403,7 @@ def one_round(digest: str) -> list[dict]:
     for name, fn, expect_deny in cases:
         observed = fn()
         # Give the ring a moment to flush.
-        time.sleep(0.3)
+        time.sleep(1.0)
         scored.append(score(name, observed, digest, expect_deny=expect_deny))
     return scored
 
@@ -457,6 +476,7 @@ def measure(phase: str) -> dict:
         "image": rows.IMAGE,
         "boot_id": boot_id(),
         "policy_digest": digest,
+        "event_count": len(events()),
         "repeats": REPEATS,
         "cases": stable,
         "uid0_open": root_open,
