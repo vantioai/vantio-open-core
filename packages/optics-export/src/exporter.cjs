@@ -432,7 +432,7 @@ function createExporter(config) {
     if (pumpPromise) return pumpPromise;
     if (!config.enabled || stopped || suspended) return Promise.resolve();
     pumpPromise = (async () => {
-      while (queue.length && !stopped) {
+      while (queue.length && !stopped && !suspended) {
         const batch = queue.splice(0, config.maxBatch).map((row) => row.event);
         try {
           await deliver(runtime, batch);
@@ -527,6 +527,7 @@ function createExporter(config) {
     },
     resume() {
       suspended = false;
+      if (queue.length) schedule();
     },
     stop() {
       stopped = true;
