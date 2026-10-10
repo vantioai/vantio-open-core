@@ -34,6 +34,11 @@ on:
         required: true
         default: "60"
         type: string
+      redteam_brain:
+        description: Pinned local Qwen on one e2-standard-4, then the kernel red-team rows. Default off.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -48,7 +53,7 @@ jobs:
     name: Fetch sealed bundle to private bucket
     runs-on: ubuntu-latest
     environment: w3-lab-auto
-    timeout-minutes: 20
+    timeout-minutes: 40
     outputs:
       seal_sha256: ${{ steps.publish.outputs.seal_sha256 }}
       contract_sha256: ${{ steps.publish.outputs.contract_sha256 }}
@@ -83,9 +88,16 @@ jobs:
             scripts/aws/enterprise_bundle.py
             scripts/aws/lab_iam_capabilities.json
             scripts/gcp/offline_deliver.py
+            scripts/gcp/redteam_brain.py
+            scripts/gcp/redteam_campaign.py
+            scripts/gcp/redteam_packet.py
             scripts/gcp/lab_auto.py
             scripts/gcp/lab_capabilities.json
           sparse-checkout-cone-mode: false
+
+      - name: Download and hash the local brain
+        if: inputs.redteam_brain
+        run: python3 scripts/gcp/redteam_brain.py fetch ${{ runner.temp }}/redteam-brain
 
       - name: Prepare and verify the private bundle
         env:
@@ -147,6 +159,8 @@ jobs:
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EXPECTED_SEAL: ${{ inputs.seal }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
+          BRAIN_DIR: ${{ runner.temp }}/redteam-brain
         run: python3 scripts/gcp/offline_deliver.py upload-handoff
 
       - name: Delete the local bundle
@@ -183,7 +197,7 @@ jobs:
     if: needs.fetch.result == 'success' && needs.gate.outputs.expected_oop_usd == '0'
     runs-on: ubuntu-latest
     environment: gcp-lab
-    timeout-minutes: 90
+    timeout-minutes: 110
     steps:
       - name: Require main on vantio-open-core
         run: |
@@ -218,10 +232,14 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/gcp/offline_deliver.py
+            scripts/gcp/redteam_brain.py
+            scripts/gcp/redteam_campaign.py
+            scripts/gcp/redteam_packet.py
             scripts/gcp/lab_auto.py
             scripts/gcp/lab_capabilities.json
             scripts/gcp/fetch_offline_debs.sh
             scripts/gcp/lab-guests/enterprise-rows.sh
+            scripts/gcp/lab-guests/redteam_rows.py
             scripts/aws/lab-guests/descendant_b1.py
           sparse-checkout-cone-mode: false
 
@@ -265,6 +283,8 @@ jobs:
           EXPECTED_SEAL: ${{ inputs.seal }}
           FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
           EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+          REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
+          BRAIN_DIR: ${{ runner.temp }}/redteam-brain
         run: python3 scripts/gcp/offline_deliver.py download-handoff
 
       - name: Download pinned offline packages
@@ -284,6 +304,7 @@ jobs:
           GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
+          REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
         run: |
           set -euo pipefail
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
@@ -307,8 +328,34 @@ jobs:
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           python3 scripts/gcp/offline_deliver.py plumb-guest
 
+      - name: Run the kernel red-team campaign
+        if: inputs.run_batteries && inputs.redteam_brain
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
+          GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          DEB_DIR: ${{ runner.temp }}/offline-debs
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          RUN_BATTERIES: "true"
+          REDTEAM_BRAIN: "true"
+          BRAIN_DIR: ${{ runner.temp }}/redteam-brain
+          BUNDLE_COMMIT: ${{ inputs.bundle_commit }}
+          FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
+          EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+          GUEST_SCRIPT: scripts/gcp/lab-guests/enterprise-rows.sh
+          DESCENDANT_SCRIPT: scripts/aws/lab-guests/descendant_b1.py
+          REDTEAM_ROWS: scripts/gcp/lab-guests/redteam_rows.py
+          REDTEAM_PACKET: scripts/gcp/redteam_packet.py
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
+        run: |
+          set -euo pipefail
+          export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
+          python3 scripts/gcp/offline_deliver.py run-redteam
+
       - name: Run the batteries on a new seal
-        if: inputs.run_batteries
+        if: inputs.run_batteries && !inputs.redteam_brain
         env:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
@@ -334,6 +381,7 @@ jobs:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
         run: python3 scripts/gcp/offline_deliver.py delete-handoff
 
       - name: Remove the OS Login key
@@ -398,6 +446,9 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/gcp/offline_deliver.py
+            scripts/gcp/redteam_brain.py
+            scripts/gcp/redteam_campaign.py
+            scripts/gcp/redteam_packet.py
             scripts/gcp/lab_auto.py
             scripts/gcp/lab_capabilities.json
           sparse-checkout-cone-mode: false
@@ -419,6 +470,7 @@ jobs:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ vars.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
         run: python3 scripts/gcp/offline_deliver.py teardown-if-present
 
       - name: Keep only allowlisted evidence
