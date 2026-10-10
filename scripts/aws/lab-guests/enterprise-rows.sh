@@ -7,7 +7,7 @@ set -euo pipefail
 seal=${1:?}
 here=$(cd "$(dirname "$0")" && pwd)
 stage=/opt/vantio-enterprise
-image_name=vantio-phantom-engine:loader-kill-3ee6b2a
+image_name=vantio-phantom-engine:fail-close-1dce68d
 trust_sha=2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876
 if ! printf '%s' "$seal" | grep -Eq '^[0-9a-f]{64}$'; then
   exit 2
