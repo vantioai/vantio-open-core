@@ -1,11 +1,10 @@
 #!/bin/bash
 # Stage docker.io, python3-cryptography, ca-certificates, and the CA bundle
 # on the GitHub runner. The guest has no route. This script does not run there.
-# The Debian image has no system certificates, so the first apt uses the
-# image's default HTTP sources. The pinned snapshot is used only after that.
+# Packages come from the Ubuntu 24.04 snapshot so the guest Docker knows CAP_BPF.
 set -euo pipefail
 dest=${1:?}
-image=debian:12@sha256:bc49dc1918ee1a47a93e65b5e4676e8680fb754b133197b92ca52bfe6731d5f0
+image=ubuntu:24.04
 mkdir -p "$dest"
 script=$(cat <<'EOS'
 set -euo pipefail
@@ -13,15 +12,14 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates
 cat > /etc/apt/sources.list <<'EOF'
-deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261008T000000Z bookworm main
-deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261008T000000Z bookworm-updates main
-deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20261008T000000Z bookworm-security main
+deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble main universe
+deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates main universe
+deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-security main universe
 EOF
 rm -rf /etc/apt/sources.list.d
 mkdir -p /etc/apt/sources.list.d
 apt-get update
 apt-get install -y --download-only --no-install-recommends docker.io python3-cryptography ca-certificates
-# Already-installed ca-certificates is not saved again by --download-only.
 rm -f /var/cache/apt/archives/ca-certificates_*.deb
 ( cd /var/cache/apt/archives && apt-get download ca-certificates )
 cp /var/cache/apt/archives/*.deb /out/
