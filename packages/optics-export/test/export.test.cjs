@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const net = require("node:net");
+const tls = require("node:tls");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
@@ -629,4 +630,200 @@ test("external signature is checked before send and does not authorize export", 
   exporter.stop();
   flipped.stop();
   server.close();
+});
+
+function labCerts() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vantio-metric-"));
+  const run = (args) => execFileSync("openssl", args, { cwd: dir, stdio: "ignore" });
+  run(["req", "-x509", "-newkey", "rsa:2048", "-keyout", "ca.key", "-out", "ca.pem", "-days", "1", "-nodes", "-subj", "/CN=vantio-test-ca"]);
+  fs.writeFileSync(path.join(dir, "san.cnf"), "subjectAltName=DNS:localhost,IP:127.0.0.1\n");
+  run(["req", "-newkey", "rsa:2048", "-keyout", "server.key", "-out", "server.csr", "-nodes", "-subj", "/CN=localhost"]);
+  run(["x509", "-req", "-in", "server.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "server.pem", "-days", "1", "-extfile", "san.cnf"]);
+  run(["req", "-newkey", "rsa:2048", "-keyout", "client.key", "-out", "client.csr", "-nodes", "-subj", "/CN=vantio-export"]);
+  run(["x509", "-req", "-in", "client.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "client.pem", "-days", "1"]);
+  run(["req", "-x509", "-newkey", "rsa:2048", "-keyout", "wrong.key", "-out", "wrong.pem", "-days", "1", "-nodes", "-subj", "/CN=wrong"]);
+  return dir;
+}
+
+test("syslog TLS delivers the line and a wrong CA does not use plaintext", async () => {
+  const dir = labCerts();
+  const opts = {
+    key: fs.readFileSync(path.join(dir, "server.key")),
+    cert: fs.readFileSync(path.join(dir, "server.pem")),
+    ca: fs.readFileSync(path.join(dir, "ca.pem")),
+    requestCert: true,
+    rejectUnauthorized: true,
+  };
+  const seen = [];
+  const server = tls.createServer(opts, (socket) => {
+    socket.on("data", (chunk) => seen.push(chunk.toString("utf8")));
+    socket.on("end", () => socket.end());
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  let plain = "";
+  const plainServer = net.createServer((socket) => {
+    socket.on("data", (chunk) => {
+      plain += chunk.toString("utf8");
+    });
+  });
+  await new Promise((resolve) => plainServer.listen(0, "127.0.0.1", resolve));
+  const good = createExporter({
+    enabled: true,
+    endpoint: "http://127.0.0.1:9",
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 4,
+    maxDelayMs: 60000,
+    maxQueue: 4,
+    timeoutMs: 1000,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: `tls://127.0.0.1:${server.address().port}`,
+    webhook: null,
+    allowInsecureLocalhost: true,
+    caFile: path.join(dir, "ca.pem"),
+    certFile: path.join(dir, "client.pem"),
+    keyFile: path.join(dir, "client.key"),
+  });
+  const sink = await listen((req, res) => {
+    req.resume();
+    otlpOk(res);
+  });
+  good.stop();
+  const exporter = createExporter({
+    enabled: true,
+    endpoint: `http://127.0.0.1:${sink.address().port}`,
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 4,
+    maxDelayMs: 60000,
+    maxQueue: 4,
+    timeoutMs: 1000,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: `tls://127.0.0.1:${server.address().port}`,
+    webhook: null,
+    allowInsecureLocalhost: true,
+    caFile: path.join(dir, "ca.pem"),
+    certFile: path.join(dir, "client.pem"),
+    keyFile: path.join(dir, "client.key"),
+  });
+  offer(exporter, observation({ span_id: SPAN_B }));
+  await exporter.flush();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(exporter.status().health, "healthy");
+  assert.equal(seen.join("").includes("1.0.0"), true);
+  assert.equal(plain.includes("optics.observation"), false);
+  const bad = createExporter({
+    enabled: true,
+    endpoint: `http://127.0.0.1:${sink.address().port}`,
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 4,
+    maxDelayMs: 60000,
+    maxQueue: 4,
+    timeoutMs: 400,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: `tls://127.0.0.1:${plainServer.address().port}`,
+    webhook: null,
+    allowInsecureLocalhost: true,
+    caFile: path.join(dir, "wrong.pem"),
+    certFile: path.join(dir, "client.pem"),
+    keyFile: path.join(dir, "client.key"),
+  });
+  offer(bad, observation());
+  await bad.flush();
+  assert.equal(bad.status().health, "down");
+  assert.equal(bad.status().sent, 0);
+  assert.equal(plain.includes("optics.observation"), false);
+  exporter.stop();
+  bad.stop();
+  sink.close();
+  server.close();
+  plainServer.close();
+});
+
+test("the optics event count increases after a delivered export", async () => {
+  const dir = labCerts();
+  const sink = await listen((req, res) => {
+    req.resume();
+    otlpOk(res);
+  });
+  const exporter = createExporter({
+    enabled: true,
+    endpoint: `http://127.0.0.1:${sink.address().port}`,
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 4,
+    maxDelayMs: 60000,
+    maxQueue: 4,
+    timeoutMs: 1000,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: null,
+    webhook: null,
+    allowInsecureLocalhost: true,
+    metricsPort: 0,
+    metricsTls: true,
+    metricsMtls: true,
+    caFile: path.join(dir, "ca.pem"),
+    certFile: path.join(dir, "server.pem"),
+    keyFile: path.join(dir, "server.key"),
+  });
+  await new Promise((resolve) => exporter.metrics.once("listening", resolve));
+  offer(exporter, observation());
+  await exporter.flush();
+  const port = exporter.metrics.address().port;
+  const body = await new Promise((resolve, reject) => {
+    const req = https.get({
+      host: "127.0.0.1",
+      port,
+      path: "/metrics",
+      ca: fs.readFileSync(path.join(dir, "ca.pem")),
+      cert: fs.readFileSync(path.join(dir, "client.pem")),
+      key: fs.readFileSync(path.join(dir, "client.key")),
+      servername: "localhost",
+      rejectUnauthorized: true,
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    });
+    req.on("error", reject);
+  });
+  assert.match(body, /vantio_optics_events_sent_total 1/);
+  assert.equal(exporter.status().sent, 1);
+  await new Promise((resolve) => {
+    const req = https.get({
+      host: "127.0.0.1",
+      port,
+      path: "/metrics",
+      ca: fs.readFileSync(path.join(dir, "ca.pem")),
+      servername: "localhost",
+      rejectUnauthorized: true,
+    }, () => resolve());
+    req.on("error", () => resolve());
+  }).then(() => {});
+  const refused = await new Promise((resolve) => {
+    const req = https.get({
+      host: "127.0.0.1",
+      port,
+      path: "/metrics",
+      ca: fs.readFileSync(path.join(dir, "ca.pem")),
+      servername: "localhost",
+      rejectUnauthorized: true,
+    }, (res) => {
+      res.resume();
+      resolve(`status:${res.statusCode}`);
+    });
+    req.on("error", (err) => resolve(err.code || "error"));
+  });
+  assert.equal(refused === "status:200", false);
+  exporter.stop();
+  sink.close();
 });

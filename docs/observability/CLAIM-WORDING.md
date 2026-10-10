@@ -1,10 +1,8 @@
 # Claim wording
 
-Program claim: observability integration is NOT_PROVEN.
+Program claim: section 5b is PASS_SCOPED, pending a Founder decision on the exclusion. It is not an unscoped pass. `product_otlp_export_authorized` stays false. Do not publish a destination claim from this packet. The video stays HELD.
 
-`product_otlp_export_authorized` stays false. Do not publish a destination claim from this packet. The video stays HELD. The line-by-line video claim review is blocked pending the source file.
-
-The sentences below are the only wordings that match the lab runs. They are not approved for a website, a registry, or a customer document.
+The sentences below match the lab runs. They are ledger wording. They are not a website, registry, or customer claim unless the Founder accepts the scope.
 
 | Level | Wording |
 | --- | --- |
@@ -21,7 +19,8 @@ The sentences below are the only wordings that match the lab runs. They are not 
 | OpenSearch 2.19.1 | On one lab host, a ten-minute closed port then drained the same queued trace into OpenSearch. A paused OpenSearch made the sender time out, and a direct post to port 9200 was HTTP 400 and was not delivered. 1000 further events were accepted in 1918.1 ms. Documents included schema 1.0.0, a block record, and the three event kinds. The documents had no canary. TLS was not enabled. Collector 0.103.0 stored 3 traces and 3 logs with `http.endpoint` only, and it rejected the `traces_index` key. The indices were yellow on one node. |
 | Splunk | Not product-verified. A local HEC mock behind the Collector received a bound record on an earlier run. |
 | Datadog | Not product-verified. A local Datadog-exporter mock received a bound record on an earlier run. The mock rejected the dummy key check. |
-| Forged event | An unbound object was not sent. A co-resident caller that can call the bind function is still inside the process. That is not a Phantom Engine signature. |
+| Forged event | An unbound object was not sent. A co-resident caller that can call the bind function is outside this scoped claim. That exclusion matches a hostile root: it is named, and it is not covered. Closing it later is a signature over the canonical event bytes from Phantom Engine or Enterprise, checked before send. |
+| TLS | On one lab host, Jaeger, Tempo, Loki, the webhook, and syslog required TLS and a client certificate. A wrong CA sent nothing. Grafana answered on HTTPS and refused plaintext. Prometheus scraped and remote-wrote `vantio_optics_events_sent_total` at 4 and 6. OpenSearch's own port stayed plaintext; a local nginx terminated TLS in front of it. |
 
 ## Video
 
@@ -29,7 +28,7 @@ HELD. The v7 on-screen text was reviewed. The file was not changed.
 
 | On-screen line | Ledger |
 | --- | --- |
-| Works with the observability tools you already use. | Not supported. This is the only line gated on observability integration. It becomes supportable when section 5b is a pass. Section 5b is NOT_PROVEN. |
+| Works with the observability tools you already use. | Supportable only inside the PASS_SCOPED lab list, and only if the Founder accepts that scope. It is not an unscoped claim. Splunk and Datadog products are outside it. OpenSearch's own listener was plaintext. |
 | Prompts and completions are never stored. | Supported. The local observation record and the export allowlist omit prompt and completion text. |
 
 No website text was changed.

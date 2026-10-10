@@ -6,6 +6,7 @@ const http = require("node:http");
 const http2 = require("node:http2");
 const https = require("node:https");
 const net = require("node:net");
+const tls = require("node:tls");
 const zlib = require("node:zlib");
 const { createHash, randomBytes } = require("node:crypto");
 const { SCHEMA_VERSION } = require("./schema.cjs");
@@ -361,10 +362,41 @@ function writeJsonl(config, events) {
   fs.appendFileSync(config.jsonlPath, lines, { mode: 0o600 });
 }
 
+function syslogTls(config) {
+  const options = { rejectUnauthorized: true };
+  if (config.caFile) options.ca = fs.readFileSync(config.caFile);
+  if (config.certFile) options.cert = fs.readFileSync(config.certFile);
+  if (config.keyFile) options.key = fs.readFileSync(config.keyFile);
+  return options;
+}
+
 function sendSyslog(config, events) {
   if (!config.syslog) return Promise.resolve();
   const target = new URL(config.syslog);
   const lines = events.map((event) => syslogLine(event, target.hostname));
+  if (target.protocol === "tls:" || target.protocol === "tcps:") {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const socket = tls.connect({
+        host: target.hostname,
+        port: Number(target.port || 6514),
+        servername: target.hostname,
+        ...syslogTls(config),
+      }, () => {
+        socket.end(`${lines.join("\n")}\n`);
+      });
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        if (!socket.destroyed) socket.destroy();
+        if (err) reject(err);
+        else resolve();
+      };
+      socket.setTimeout(config.timeoutMs, () => finish(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" })));
+      socket.on("error", finish);
+      socket.on("close", () => finish());
+    });
+  }
   if (target.protocol === "udp:") {
     return new Promise((resolve, reject) => {
       const socket = dgram.createSocket("udp4");
@@ -456,6 +488,42 @@ function wait(ms) {
   });
 }
 
+function metricsBody(state) {
+  return `# TYPE vantio_optics_events_sent_total counter\nvantio_optics_events_sent_total ${state.sent}\n`;
+}
+
+function startMetricsServer(config, state) {
+  if (!config.metricsPort && config.metricsPort !== 0) return null;
+  const handler = (req, res) => {
+    const path = String(req.url || "/").split("?")[0];
+    if (path !== "/metrics") {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    const body = metricsBody(state);
+    res.writeHead(200, {
+      "content-type": "text/plain; version=0.0.4; charset=utf-8",
+      "content-length": String(Buffer.byteLength(body)),
+    });
+    res.end(body);
+  };
+  let server;
+  if (config.metricsTls === true) {
+    server = https.createServer({
+      cert: fs.readFileSync(config.certFile),
+      key: fs.readFileSync(config.keyFile),
+      ca: config.caFile ? fs.readFileSync(config.caFile) : undefined,
+      requestCert: config.metricsMtls === true,
+      rejectUnauthorized: config.metricsMtls === true,
+    }, handler);
+  } else {
+    server = http.createServer(handler);
+  }
+  server.listen(config.metricsPort, config.metricsHost || "127.0.0.1");
+  return server;
+}
+
 function createExporter(config) {
   const token = producerToken();
   const httpAgent = new http.Agent({ keepAlive: false, maxSockets: 8 });
@@ -474,6 +542,7 @@ function createExporter(config) {
   let pumpPromise = null;
   let stopped = false;
   let suspended = false;
+  const metrics = startMetricsServer(config, state);
 
   function snapshot() {
     return {
@@ -623,7 +692,9 @@ function createExporter(config) {
       timer = null;
       httpAgent.destroy();
       httpsAgent.destroy();
+      if (metrics) metrics.close();
     },
+    metrics,
   };
 }
 

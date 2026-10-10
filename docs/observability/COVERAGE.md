@@ -1,6 +1,6 @@
 # Observability coverage
 
-Observability integration is NOT_PROVEN. `product_otlp_export_authorized` is false.
+Section 5b is **PASS_SCOPED**, pending a Founder decision on the exclusion below. It is not an unscoped pass. `product_otlp_export_authorized` stays false. This is not a website claim.
 
 This page records the rerun on the current bind. A row that was not closed is GAP. GAP is not a pass. The sentences are lab notes. They are not approved for a website, a registry, or a customer document.
 
@@ -56,6 +56,33 @@ In-process projection, 20000 events, from the unit test on this tree: 26832.4 ms
 ## Reviews
 
 Author: Grok 4.7. OTLP review this cycle: Claude Sonnet. It found that `resume()` cleared the retry and did not start it again, and that `suspend()` did not stop later batches of an in-flight send. Both are fixed and covered by unit tests. The ten-minute drain used `flush({ drain: true })`.
+
+## TLS on the final build
+
+Local test CA only. A wrong CA sent 0 and did not deliver.
+
+| Destination | TLS result |
+| --- | --- |
+| Jaeger 1.62.0 HTTP and gRPC | mTLS. Health healthy, sent 3, schema 1.0.0, BLOCK, no canary, forged marker absent. Wrong CA: HTTP `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, gRPC `ERR_HTTP2_STREAM_CANCEL`, sent 0 |
+| Tempo 2.7.1 HTTP | mTLS. Same clean trio. Wrong CA sent 0 |
+| Loki 3.4.2 | mTLS on Loki. The collector forwarded logs over that TLS. Query returned schema 1.0.0 and BLOCK, no canary. A direct wrong-CA post sent 0 |
+| Webhook | mTLS. Body had schema 1.0.0 and BLOCK, no canary. Wrong CA `SELF_SIGNED_CERT_IN_CHAIN`, sent 0 |
+| Syslog | TLS with a client certificate. The new trace id was stored 3 times, including BLOCK. Wrong CA sent 0. The event text was not on a plaintext listener |
+| Grafana 11.5.2 | HTTPS health 200. Plaintext HTTP to that port returned 400 |
+| Prometheus | mTLS scrape of `vantio_optics_events_sent_total` returned 4. With scrape configs empty, remote-write over TLS returned the same counter at 6 |
+| OpenSearch | The process on port 9200 stayed plaintext. The security plugin was not enabled. A local nginx required TLS and a client certificate, then forwarded to that plaintext port. `vantio-traces-tls` and `vantio-logs-tls` stored schema 1.0.0 and BLOCK, no canary. Wrong CA to port 9243 sent 0 |
+
+Jaeger TLS throughput, 300 events: 412 ms, cpu user 393620 µs, cpu system 16234 µs, rss delta 6717440 bytes, sent 300, dropped 0.
+
+Ten minutes on the final build, Jaeger TLS port closed, then mTLS drain: 2979 offers, max offer 5.368 ms, RSS delta 52658176 bytes. Queue 8, dropped 2971, sent 0. 8 + 2971 = 2979. Drain sent 8 and queued 0. The same trace id was in Jaeger. No canary.
+
+## Scoped exclusion
+
+A co-resident caller of the in-process bind is outside this claim, in the same way a hostile root is outside the product. Code in the exporting process that can call the bind can still bind an object it built. Closing that later is a Phantom Engine or Enterprise signature over `canonicalEventBytes`, checked by `checkBeforeSend` before send. The private key stays outside the process. Until that signer is the configured key, `product_otlp_export_authorized` stays false.
+
+Also outside this scoped pass: OpenSearch's own TLS listener, the Splunk product, the Datadog product, and a hostile root or compromised kernel.
+
+The Founder decides whether this scope is accepted. If it is not, section 5b remains NOT_PROVEN.
 
 ## Video
 
