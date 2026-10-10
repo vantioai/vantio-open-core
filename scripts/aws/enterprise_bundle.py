@@ -21,6 +21,8 @@ from typing import Callable
 
 import w3_lab_auto as lab
 
+# Batteries do not run on this older image. GCP still treats it as plumbing-only.
+PLUMBING_ONLY_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
 POLICY_ALLOW_SEAL = "20cbb7ca95194f2faad8d295c9dbaf125a0072dac6bdf858ab49f0ec3566d397"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
