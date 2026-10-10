@@ -990,6 +990,45 @@ def execute_enterprise_rows(
                 )
                 if copied.returncode != 0:
                     _ssh_failure(copied)
+            brain_env = os.environ.get("W3_BRAIN_DIR", "").strip()
+            if brain_env:
+                if str(instance.get("InstanceType") or "") != lab.BRAIN_INSTANCE_TYPE:
+                    raise lab.GuardAbort("brain_instance_type")
+                brain_dir = Path(brain_env)
+                model = brain_dir / "qwen2.5-3b-instruct-q4_k_m.gguf"
+                runtime = brain_dir / "llama-b11540"
+                server = runtime / "llama-server"
+                if not model.is_file() or not server.is_file():
+                    raise lab.GuardAbort("brain_files")
+                made_brain = remote(["sudo", "mkdir", "-p", "/tmp/vantio-lab"], "")
+                if made_brain.returncode != 0:
+                    _ssh_failure(made_brain)
+                owned_brain = remote(["sudo", "chown", "ubuntu:ubuntu", "/tmp/vantio-lab"], "")
+                if owned_brain.returncode != 0:
+                    _ssh_failure(owned_brain)
+                copied_model = _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
+                    ["scp", *base[:-1], str(model), f"ubuntu@{host}:/tmp/vantio-lab/qwen2.5-3b-instruct-q4_k_m.gguf"],
+                    "",
+                )
+                if copied_model.returncode != 0:
+                    _ssh_failure(copied_model)
+                copied_runtime = _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
+                    ["scp", "-r", *base[:-1], str(runtime), f"ubuntu@{host}:/tmp/vantio-lab/llama-b11540"],
+                    "",
+                )
+                if copied_runtime.returncode != 0:
+                    _ssh_failure(copied_runtime)
+                marked = remote(["chmod", "-R", "a+rX", "/tmp/vantio-lab"], "")
+                if marked.returncode != 0:
+                    _ssh_failure(marked)
             script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
             copy_to(script_path, "enterprise-rows.sh")
             battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
