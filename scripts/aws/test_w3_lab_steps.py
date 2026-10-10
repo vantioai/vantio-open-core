@@ -607,9 +607,12 @@ class EnterpriseBundleTests(unittest.TestCase):
         text = Path(steps.__file__).read_text(encoding="utf-8")
         pull = text.find('ubuntu@{host}:/tmp/enterprise-pe-rows.json')
         note = text.rfind("Instance Connect keys last 60 seconds", 0, pull)
-        refresh = text.rfind("connect + [public]", 0, pull)
+        refresh = text.rfind("_run_with_fresh_key", 0, pull)
         self.assertGreater(note, 0)
         self.assertGreater(refresh, note)
+        helper = text[text.find("def _run_with_fresh_key"): text.find("def _ssh_failure")]
+        self.assertIn("connect + [public]", helper)
+        self.assertIn("ubuntu", text[text.find("def execute_enterprise_rows"): pull])
 
     def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
         self.assertEqual(enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
@@ -719,6 +722,104 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(result["status"], "ENTERPRISE_ROWS")
         self.assertEqual(rows["convergence_ms"], 5597.3)
         self.assertFalse((Path(tmp) / "seal.oci.tar").exists())
+
+    def test_publickey_on_a_new_connection_pushes_the_key_again(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        seen = {"mkdir": 0}
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "ssh" and "mkdir" in " ".join(args):
+                seen["mkdir"] += 1
+                if seen["mkdir"] == 1:
+                    return completed(code=255, stderr="ubuntu@1.1.1.1: Permission denied (publickey).\n")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(json.dumps({"ok": True}), encoding="utf-8")
+            return completed(stdout="")
+
+        old_sleep = steps.time.sleep
+        steps.time.sleep = lambda _seconds: None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps.time.sleep = old_sleep
+        sends = [call for call in runner.calls if "send-ssh-public-key" in call]
+        self.assertGreaterEqual(len(sends), 2)
+        self.assertIn("ubuntu", sends[0])
+        self.assertEqual(result["status"], "ENTERPRISE_ROWS")
+        self.assertEqual(seen["mkdir"], 2)
+
+    def test_guest_exit_is_not_retried_as_a_key_miss(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        seen = {"bash": 0}
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
+                seen["bash"] += 1
+                return completed(code=2, stderr="rows failed")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text("{}", encoding="utf-8")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(seen["bash"], 1)
+        self.assertEqual(caught.exception.reason, "guest")
+
+    def test_guest_text_that_mentions_a_closed_connection_is_not_retried(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        seen = {"bash": 0}
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
+                seen["bash"] += 1
+                return completed(code=1, stdout="probe Connection refused")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text("{}", encoding="utf-8")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(seen["bash"], 1)
+        self.assertEqual(caught.exception.reason, "guest")
 
     def test_ssh_failure_redacts_before_it_truncates(self) -> None:
         secret = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"

@@ -343,8 +343,6 @@ def open_ssh(
     write_stamp(stamp_path, stamp)
     try:
         lab.aws_json(runner, authorize)
-        send = connect + [public]
-        lab.aws_json(runner, send)
         known = directory / "known_hosts"
         ssh_args = [
             "ssh",
@@ -363,7 +361,9 @@ def open_ssh(
             f"ubuntu@{host}",
             *remote_argv,
         ]
-        proc = ssh_runner(ssh_args, script)
+        # Ubuntu 24.04 on the pinned AMI accepts the ubuntu user. The key
+        # push can land before sshd will use it, so the first connection retries.
+        proc = _run_with_fresh_key(runner, connect, public, ssh_runner, ssh_args, script)
         if proc.returncode != 0:
             raise lab.GuardAbort("ssh")
         return {"opened": True, "stdout": proc.stdout or ""}
@@ -734,6 +734,56 @@ def execute_verify(runner: Runner, now: datetime, *, write: bool = True) -> dict
     return payload
 
 
+def _ssh_retryable(proc: subprocess.CompletedProcess[str]) -> bool:
+    """True when a new connection was rejected or the host was not ready.
+
+    Instance Connect installs the pushed key for about 60 seconds. A later
+    ssh or scp is a new connection. Permission denied (publickey) is that
+    window, or the key not being visible yet. A guest script failure does
+    not match these strings, so a real battery exit is not run again.
+    """
+    # OpenSSH ssh and scp return 255 when the connection itself fails.
+    # A guest script that prints one of these phrases keeps its own exit code.
+    if proc.returncode != 255:
+        return False
+    text = f"{proc.stderr or ''}\n{proc.stdout or ''}"
+    return any(
+        needle in text
+        for needle in (
+            "Permission denied (publickey)",
+            "Connection refused",
+            "Connection timed out",
+            "Operation timed out",
+            "Connection closed",
+            "kex_exchange_identification",
+            "No route to host",
+        )
+    )
+
+
+def _run_with_fresh_key(
+    runner: Runner,
+    connect: list[str],
+    public: str,
+    ssh_runner: SshRunner,
+    argv: list[str],
+    script: str,
+    *,
+    attempts: int = 4,
+) -> subprocess.CompletedProcess[str]:
+    """Push the same ed25519 key, then connect. Each push resets the 60s window."""
+    last: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(attempts):
+        lab.aws_json(runner, connect + [public])
+        last = ssh_runner(argv, script)
+        if last.returncode == 0 or not _ssh_retryable(last):
+            return last
+        if attempt + 1 < attempts:
+            time.sleep(2)
+    assert last is not None
+    return last
+
+
 def _ssh_failure(proc: subprocess.CompletedProcess[str]) -> None:
     raw = (proc.stderr or "") + "\n" + (proc.stdout or "")
     redacted, _changed = redact(raw)
@@ -885,16 +935,28 @@ def execute_enterprise_rows(
         try:
             write_stamp(stamp_path, stamp)
             lab.aws_json(runner, authorize)
-            lab.aws_json(runner, connect + [public])
             base = _ssh_base(private, known, host)
 
             def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
-                return ssh_runner(["ssh", *base, *argv], script)
+                # Each ssh is a new connection. Push again so a copy that
+                # took the previous 60 seconds does not expire the key.
+                return _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
+                    ["ssh", *base, *argv],
+                    script,
+                )
 
             def copy_to(local: Path, name: str) -> None:
                 if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
                     raise lab.GuardAbort("bundle_layout")
-                proc = ssh_runner(
+                proc = _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
                     ["scp", *base[:-1], str(local), f"ubuntu@{host}:{GUEST_BUNDLE}/{name}"],
                     "",
                 )
@@ -918,7 +980,11 @@ def execute_enterprise_rows(
                 made_debs = remote(["mkdir", "-p", f"{GUEST_BUNDLE}/debs"], "")
                 if made_debs.returncode != 0:
                     _ssh_failure(made_debs)
-                copied = ssh_runner(
+                copied = _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
                     ["scp", *base[:-1], *[str(path) for path in deb_files], f"ubuntu@{host}:{GUEST_BUNDLE}/debs/"],
                     "",
                 )
@@ -951,8 +1017,11 @@ def execute_enterprise_rows(
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             # Instance Connect keys last 60 seconds. The guest script can run longer.
             # A new scp is a new connection, so send the key again before the pull.
-            lab.aws_json(runner, connect + [public])
-            pulled = ssh_runner(
+            pulled = _run_with_fresh_key(
+                runner,
+                connect,
+                public,
+                ssh_runner,
                 ["scp", *base[:-1], f"ubuntu@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
                 "",
             )
@@ -963,8 +1032,11 @@ def execute_enterprise_rows(
             _store_guest_rows(rows_local, guest_text)
             payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
             redteam_local = Path(os.environ.get("W3_REDTEAM_PATH", "w3-lab-redteam-rows.json"))
-            lab.aws_json(runner, connect + [public])
-            pulled_redteam = ssh_runner(
+            pulled_redteam = _run_with_fresh_key(
+                runner,
+                connect,
+                public,
+                ssh_runner,
                 ["scp", *base[:-1], f"ubuntu@{host}:/tmp/redteam-rows.json", str(redteam_local)],
                 "",
             )
