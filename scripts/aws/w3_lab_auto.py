@@ -39,7 +39,16 @@ ALLOWED_MAX_LIFE_HOURS = frozenset({"7", "36"})
 OCCUPYING_STATES = frozenset({"pending", "running", "stopping", "stopped", "shutting-down"})
 EXPIRY_BUFFER = timedelta(hours=8)
 WORST_CASE_RUN_USD = Decimal("2.00")
-ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small")
+# Credits fund this shape. 120 minutes is the cap that keeps it inside the
+# $2 ceiling. Linux on-demand in us-east-2 is $0.0958/hour on the public
+# price list. gp3 is $0.08/GB-month. Cost Explorer is not called.
+BRAIN_INSTANCE_TYPE = "m7i-flex.large"
+BRAIN_MAX_MINUTES = 120
+BRAIN_DISK_GB = 20
+BRAIN_USD_PER_HOUR = Decimal("0.0958")
+GP3_USD_PER_GB_MONTH = Decimal("0.08")
+HOURS_PER_MONTH = Decimal("730")
+ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small", BRAIN_INSTANCE_TYPE)
 CANONICAL_OWNER = "099720109477"
 DEBIAN_OWNER = "136693071363"
 DEBIAN_NAME_RE = re.compile(r"^debian-12-amd64-[0-9]{8}-[0-9]{4}$")
@@ -138,7 +147,9 @@ def evaluate_cost_gate(payload: Mapping[str, Any], now: datetime) -> dict[str, A
 
     Cost Explorer is not consulted. A missing field, a Paid plan, or credits at
     or below the ceiling abort. Abort does not invent a dollar out-of-pocket
-    figure; that figure would require a priced API.
+    figure; that figure would require a priced API. m7i-flex.large uses the
+    same ceiling. plan_launch refuses that shape past 120 minutes, which is
+    what keeps its gross under the ceiling.
     """
     reasons: list[str] = []
     if now.tzinfo is None:
@@ -187,6 +198,22 @@ def parse_bool(value: Any, *, default: bool = False) -> bool:
         if lowered == "false":
             return False
     raise ValueError("boolean")
+
+
+def brain_gross_usd(minutes: int, disk_gb: int = BRAIN_DISK_GB) -> Decimal:
+    """Published-price gross for the credit-funded shape. Not a billing read."""
+    if isinstance(minutes, bool) or not isinstance(minutes, int):
+        raise ValueError("stop_after_minutes")
+    if minutes < 1 or minutes > BRAIN_MAX_MINUTES:
+        raise ValueError("stop_after_minutes")
+    if isinstance(disk_gb, bool) or not isinstance(disk_gb, int) or disk_gb < 1 or disk_gb > BRAIN_DISK_GB:
+        raise ValueError("disk")
+    hours = Decimal(minutes) / Decimal(60)
+    disk = Decimal(disk_gb) * GP3_USD_PER_GB_MONTH / HOURS_PER_MONTH * hours
+    gross = BRAIN_USD_PER_HOUR * hours + disk
+    if gross >= WORST_CASE_RUN_USD:
+        raise ValueError("brain_cost")
+    return gross
 
 
 def bounded_minutes(value: Any, field: str, *, limit: int = MAX_LIFE_MINUTES) -> int:
@@ -260,7 +287,10 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         max_life_hours = str(max_life_hours)
     if not isinstance(max_life_hours, str) or max_life_hours not in ALLOWED_MAX_LIFE_HOURS:
         raise ValueError("max_life_hours")
-    life_limit = LONG_MAX_LIFE_MINUTES if max_life_hours == "36" else MAX_LIFE_MINUTES
+    brain = instance_type == BRAIN_INSTANCE_TYPE
+    if brain and max_life_hours != "7":
+        raise ValueError("max_life_hours")
+    life_limit = BRAIN_MAX_MINUTES if brain else LONG_MAX_LIFE_MINUTES if max_life_hours == "36" else MAX_LIFE_MINUTES
     default_stop = life_limit
     minutes = bounded_minutes(spec.get("stop_after_minutes", default_stop), "stop_after_minutes", limit=life_limit)
     expires_in = bounded_minutes(spec.get("expires_in_minutes", minutes), "expires_in_minutes", limit=life_limit)
@@ -274,10 +304,11 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     expiry = format_expiry(now + timedelta(minutes=expires_in))
     public_ip = parse_bool(spec.get("associate_public_ipv4", False))
     tags = _tags(purpose, expiry, name, max_life_hours)
+    gross = brain_gross_usd(minutes) if brain else None
     block_device = {
         "DeviceName": "/dev/sda1",
         "Ebs": {
-            "VolumeSize": 8,
+            "VolumeSize": BRAIN_DISK_GB if brain else 8,
             "VolumeType": "gp3",
             "DeleteOnTermination": True,
             "Iops": 3000,
@@ -291,9 +322,10 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         "min_count": 1,
         "max_count": 1,
         "instance_initiated_shutdown_behavior": "terminate",
-        "credit_specification": "standard",
+        "credit_specification": None if brain else "standard",
         "monitoring_enabled": False,
-        "ebs_optimized": False,
+        "ebs_optimized": brain,
+        "brain_gross_usd": format(gross.quantize(Decimal("0.0001")), "f") if gross is not None else None,
         "associate_public_ipv4": public_ip,
         "metadata_http_tokens": "required",
         "metadata_hop_limit": 1,
@@ -455,6 +487,15 @@ def run_instances_args(
         _tag_specifications(resource_type, tags)
         for resource_type in ("instance", "volume", "network-interface")
     ]
+    credit = plan.get("credit_specification")
+    if plan["instance_type"] == BRAIN_INSTANCE_TYPE:
+        if credit is not None or plan.get("ebs_optimized") is not True:
+            raise ValueError("brain_shape")
+        shape_flags: list[str] = []
+    else:
+        if credit != "standard" or plan.get("ebs_optimized") is not False:
+            raise ValueError("launch_shape")
+        shape_flags = ["--credit-specification", "CpuCredits=standard", "--no-ebs-optimized"]
     return [
         "aws",
         "ec2",
@@ -469,9 +510,7 @@ def run_instances_args(
         "1",
         "--instance-initiated-shutdown-behavior",
         "terminate",
-        "--credit-specification",
-        "CpuCredits=standard",
-        "--no-ebs-optimized",
+        *shape_flags,
         "--metadata-options",
         "HttpTokens=required,HttpPutResponseHopLimit=1,HttpEndpoint=enabled",
         "--network-interfaces",
