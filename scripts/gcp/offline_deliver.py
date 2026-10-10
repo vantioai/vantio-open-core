@@ -76,10 +76,14 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 SECRET_RE = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"
     r"|AKIA[0-9A-Z]{16}"
-    r"|ghp_[A-Za-z0-9]{20,}"
+    r"|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}"
+    r"|github_pat_[A-Za-z0-9_]{20,}"
+    r"|glpat-[A-Za-z0-9\-_]{20,}"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}"
     r"|ya29\.[0-9A-Za-z\-_]+",
     re.S,
 )
+MAX_BATTERY_DEPTH = 8
 PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
@@ -237,7 +241,8 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 if (
                     isinstance(name, str)
                     and re.fullmatch(r"[A-Za-z0-9.+_-]{1,120}", name)
-                    and not name.lower().startswith("ghp_")
+                    and SECRET_RE.search(name) is None
+                    and not name.lower().startswith(("ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"))
                     and "private" not in name.lower()
                     and isinstance(digest, str)
                     and HEX64_RE.fullmatch(digest)
@@ -321,14 +326,14 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
     return kept
 
 
-def allow_battery(entry: Any) -> dict[str, Any] | None:
+def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
     """Keep the full proof fields from one repeat. Drop hostnames, paths, and raw events."""
-    if not isinstance(entry, dict):
+    if depth > MAX_BATTERY_DEPTH or not isinstance(entry, dict):
         return None
     kept: dict[str, Any] = {}
     for key, value in entry.items():
         if key in {"grant", "revoke", "pre", "post", "probe"} and isinstance(value, dict):
-            nested = allow_battery(value)
+            nested = allow_battery(value, depth + 1)
             if nested:
                 kept[key] = nested
             continue
@@ -373,11 +378,18 @@ def allow_battery(entry: Any) -> dict[str, Any] | None:
         if key == "seal_checked" and isinstance(value, bool):
             kept[key] = value
             continue
-        if key == "convergence_ms" and isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= float(value) <= 3_600_000:
-            kept[key] = value
+        if key == "convergence_ms" and isinstance(value, (int, float)) and not isinstance(value, bool):
+            if isinstance(value, int) and value.bit_length() > 32:
+                continue
+            try:
+                number = float(value)
+            except (OverflowError, ValueError):
+                continue
+            if 0 <= number <= 3_600_000:
+                kept[key] = value
             continue
         if key == "rows" and isinstance(value, dict):
-            nested = allow_battery(value)
+            nested = allow_battery(value, depth + 1)
             if nested:
                 kept[key] = nested
             continue
@@ -1128,7 +1140,7 @@ def prune_evidence(directory: Path) -> list[str]:
                     continue
                 write_evidence(path, payload)
                 kept.append(path.name)
-            except (OSError, UnicodeError, ValueError, SystemExit):
+            except (Exception, SystemExit):
                 _remove_evidence_path(path)
                 _remove_evidence_path(path.with_name(path.name + ".sha256"))
     finally:

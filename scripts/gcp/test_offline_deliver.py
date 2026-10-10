@@ -303,6 +303,52 @@ class OfflineDeliverTest(unittest.TestCase):
             self.assertFalse((directory / "handoff.json.sha256").exists())
             self.assertEqual(list(directory.iterdir()), [])
 
+    def test_prune_deletes_the_file_when_allowlist_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "gcp-lab-rows.json").write_text(
+                '{"hostname":"box","full_set":true,"note":"ghp_' + "a" * 20 + '"}\n',
+                encoding="utf-8",
+            )
+            (directory / "gcp-lab-rows.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
+            original = od.allow_record
+
+            def boom(_payload: dict) -> dict:
+                raise OverflowError("int too large")
+
+            od.allow_record = boom
+            try:
+                od.prune_evidence(directory)
+            finally:
+                od.allow_record = original
+            self.assertFalse((directory / "gcp-lab-rows.json").exists())
+            self.assertFalse((directory / "gcp-lab-rows.json.sha256").exists())
+
+    def test_huge_numbers_deep_nests_and_token_names_stay_out(self) -> None:
+        digest = "a" * 64
+        kept = od.allow_record(
+            {
+                "debs": [
+                    {"name": "github_pat_" + "a" * 22, "sha256": digest},
+                    {"name": "gho_" + "b" * 22, "sha256": digest},
+                    {"name": "docker.io_1.deb", "sha256": digest},
+                ],
+                "repeats": [
+                    {"repeat": 1, "convergence_ms": int("9" * 400), "rows": {"note": "ghp_" + "a" * 20}},
+                    self._passing_repeat(2),
+                ],
+            }
+        )
+        self.assertEqual(kept["debs"], [{"name": "docker.io_1.deb", "sha256": digest}])
+        self.assertFalse(kept["full_set"])
+        self.assertNotIn("convergence_ms", json.dumps(kept))
+        deep: dict = {"repeat": 1, "result": "pass"}
+        cursor = deep
+        for _ in range(40):
+            cursor["rows"] = {}
+            cursor = cursor["rows"]
+        self.assertEqual(od.allow_battery(deep), {"repeat": 1, "result": "pass"})
+
     def test_raw_guest_copies_are_not_left_for_the_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
