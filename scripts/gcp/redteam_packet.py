@@ -66,6 +66,17 @@ def _row(
     return body
 
 
+def grade_tamper(errno: int | None, attributed: bool) -> dict[str, Any]:
+    """Grade a pin or bpf tamper. A deny is HELD only with a ledger row for that pid."""
+    if isinstance(errno, bool) or not isinstance(errno, int):
+        return {"outcome": "GAP", "silent_success": False, "attributed": False, "reason": "not_executed"}
+    if errno == 0:
+        return {"outcome": "FAIL_GAP", "silent_success": True, "attributed": False, "reason": "tamper_succeeded"}
+    if attributed:
+        return {"outcome": "HELD", "silent_success": False, "attributed": True, "reason": "attributed_deny"}
+    return {"outcome": "FAIL_GAP", "silent_success": False, "attributed": False, "reason": "unattributed_deny"}
+
+
 def grade_open(errno: int | None, attributed: bool, *, executed: bool = True) -> dict[str, Any]:
     """Grade one enrolled open. EACCES is errno 13, the loader's override."""
     if not executed or errno is None:
