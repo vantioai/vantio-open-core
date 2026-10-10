@@ -31,7 +31,7 @@ This residual is not a pass. It stays open until a signer outside the process is
 The check needs a signature over the canonical event bytes from a key the observed process does not hold. Two lanes were asked for that signer.
 
 - Cloud agents `bc-2b9fb1af` (Phantom Engine) and `bc-3ae82b99` (Enterprise evidence) were not readable from this run.
-- Phantom Engine `main` at `7d3e53fae34008728631f5609e80d4506b6e9e8f` is host enforcement. It does not sign an observability event.
+- Phantom Engine `main` at `6aa18cabc70e29f37b53612a0778dbf3e59d9ee8` records the lineage anchor on a block. It does not sign an observability event. The descendant-anchor branch tip `0a5a7142594a25a30be18908324caee586a1554c` is the same enforcement work.
 - Enterprise `cursor/optics-evidence-export-5bed` at `a5b40a4f19722e6c55caca3b5f87af9f50c5cc00` seals an observation fragment. The seal can carry a test signature. The private key is supplied by the caller, the key id must be a non-production test id, and a production root is refused. That seal is not an out-of-process identity for the OTLP export, and a caller who can reach the test key can sign an object they built.
 
 No production signing root is used. A test key next to the exporter would not close the residual. The export path still does not verify an outside signature before send.

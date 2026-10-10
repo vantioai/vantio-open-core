@@ -25,12 +25,11 @@ The sentences below are the only wordings that match the lab runs. They are not 
 
 ## Video
 
-HELD. The line-by-line review is blocked pending the source file. No video, script, or caption file was found, so there is no line to mark supported or unsupported.
+HELD. The v7 on-screen text was reviewed. The file was not changed.
 
-Looked in:
-
-- `vantioai/vantio-app` branch `cursor/vantio-web-next-main`, `public/` (icons, logos, `llms.txt`; no video) and `content/updates/` (markdown only)
-- GitHub code search for captions, vtt, srt, and mp4 under `vantioai/vantio-app`, and for higgsfield or a marketing video under `org:vantioai` (no code hits)
-- This repository has no marketing video
+| On-screen line | Ledger |
+| --- | --- |
+| Works with the observability tools you already use. | Not supported. This is the only line gated on observability integration. It becomes supportable when section 5b is a pass. Section 5b is NOT_PROVEN. |
+| Prompts and completions are never stored. | Supported. The local observation record and the export allowlist omit prompt and completion text. |
 
 No website text was changed.

@@ -59,12 +59,10 @@ Author: Grok 4.7. OTLP review this cycle: Claude Sonnet. It found that `resume()
 
 ## Video
 
-HELD. The line-by-line video claim review is blocked pending the source file. No line can be marked supported or unsupported until that file is here.
+HELD. The v7 on-screen text was reviewed. The file was not changed.
 
-Looked in:
+"Prompts and completions are never stored." is supported. The export allowlist does not copy prompt or completion text.
 
-- `vantioai/vantio-app` branch `cursor/vantio-web-next-main`, `public/` (icons, logos, `llms.txt`; no video) and `content/updates/` (markdown only)
-- GitHub code search for captions, vtt, srt, and mp4 under `vantioai/vantio-app`, and for higgsfield or a marketing video under `org:vantioai` (no code hits)
-- This repository has no marketing video
+"Works with the observability tools you already use." is not supported. It is the only line gated on this integration, and section 5b stays NOT_PROVEN. The co-resident bind is still open: Phantom Engine `main` `6aa18cab` does not sign canonical observability bytes, and the Enterprise optics seal remains a caller-supplied test key. A key in this repository would not close that. `product_otlp_export_authorized` stays false.
 
 No website text was changed.
