@@ -1078,12 +1078,14 @@ def execute_enterprise_rows(
                 model = brain_dir / "qwen2.5-3b-instruct-q4_k_m.gguf"
                 runtime = brain_dir / "llama-b11540"
                 server = runtime / "llama-server"
-                if not model.is_file() or not server.is_file():
+                library = runtime / "libllama-server-impl.so"
+                if not model.is_file() or not server.is_file() or not library.is_file():
                     raise lab.GuardAbort("brain_files")
-                made_brain = remote(["sudo", "mkdir", "-p", "/tmp/vantio-lab"], "")
+                guest_brain = lab.BRAIN_GUEST_DIR
+                made_brain = remote(["sudo", "mkdir", "-p", f"{guest_brain}/llama-b11540"], "")
                 if made_brain.returncode != 0:
                     _ssh_failure(made_brain)
-                owned_brain = remote(["sudo", "chown", f"{ssh_user}:{ssh_user}", "/tmp/vantio-lab"], "")
+                owned_brain = remote(["sudo", "chown", "-R", f"{ssh_user}:{ssh_user}", "/var/lib/vantio-lab"], "")
                 if owned_brain.returncode != 0:
                     _ssh_failure(owned_brain)
                 copied_model = _run_with_fresh_key(
@@ -1091,7 +1093,7 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", *base[:-1], str(model), f"{ssh_user}@{host}:/tmp/vantio-lab/qwen2.5-3b-instruct-q4_k_m.gguf"],
+                    ["scp", *base[:-1], str(model), f"{ssh_user}@{host}:{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"],
                     "",
                 )
                 if copied_model.returncode != 0:
@@ -1101,14 +1103,28 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", "-r", *base[:-1], str(runtime), f"{ssh_user}@{host}:/tmp/vantio-lab/llama-b11540"],
+                    ["scp", "-r", *base[:-1], f"{runtime}/.", f"{ssh_user}@{host}:{guest_brain}/llama-b11540/"],
                     "",
                 )
                 if copied_runtime.returncode != 0:
                     _ssh_failure(copied_runtime)
-                marked = remote(["chmod", "-R", "a+rX", "/tmp/vantio-lab"], "")
+                marked = remote(["chmod", "-R", "a+rX", guest_brain], "")
                 if marked.returncode != 0:
                     _ssh_failure(marked)
+                executable = remote(["chmod", "a+rx", f"{guest_brain}/llama-b11540/llama-server"], "")
+                if executable.returncode != 0:
+                    _ssh_failure(executable)
+                for required in (
+                    f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf",
+                    f"{guest_brain}/llama-b11540/llama-server",
+                    f"{guest_brain}/llama-b11540/libllama-server-impl.so",
+                ):
+                    landed = remote(["test", "-s", required], "")
+                    if landed.returncode != 0:
+                        raise lab.GuardAbort("brain_not_landed")
+                sized = remote(["stat", "-c", "%s", f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"], "")
+                if sized.returncode != 0 or (sized.stdout or "").strip() != "2104932768":
+                    raise lab.GuardAbort("brain_not_landed")
             if battery == "self-service":
                 deb_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
                 if deb_env:
