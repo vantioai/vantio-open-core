@@ -21,6 +21,9 @@ rm -rf /etc/apt/sources.list.d
 mkdir -p /etc/apt/sources.list.d
 apt-get update
 apt-get install -y --download-only --no-install-recommends docker.io python3-cryptography ca-certificates
+# Already-installed ca-certificates is not saved again by --download-only.
+rm -f /var/cache/apt/archives/ca-certificates_*.deb
+( cd /var/cache/apt/archives && apt-get download ca-certificates )
 cp /var/cache/apt/archives/*.deb /out/
 cp /etc/ssl/certs/ca-certificates.crt /out/ca-certificates.crt
 EOS
