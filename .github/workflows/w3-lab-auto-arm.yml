@@ -96,6 +96,9 @@ jobs:
             scripts/aws/lab-guests/enterprise-rows.sh
             scripts/aws/lab-guests/descendant_b1.py
             scripts/aws/lab-guests/descendant_probe.c
+            scripts/aws/fetch_offline_debs.sh
+            scripts/gcp/lab-guests/redteam_rows.py
+            scripts/gcp/redteam_packet.py
           sparse-checkout-cone-mode: false
 
       - name: Read the SSH switch
@@ -113,6 +116,10 @@ jobs:
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_PATH: w3-lab-bundle.json
         run: python3 scripts/aws/w3_lab_steps.py prepare-bundle
+
+      - name: Fetch offline noble packages
+        if: inputs.enterprise_rows && steps.bundle.outputs.ready == 'true'
+        run: bash scripts/aws/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
 
       - name: Assume vantio-w3-lab-provision
         id: assume
@@ -157,6 +164,8 @@ jobs:
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           W3_ROWS_PATH: w3-lab-enterprise-rows.json
+          W3_REDTEAM_PATH: w3-lab-redteam-rows.json
+          W3_OFFLINE_DEBS: ${{ runner.temp }}/offline-debs
           W3_BATTERY: ${{ inputs.battery }}
           EVIDENCE_PATH: w3-lab-arm.json
         run: python3 scripts/aws/w3_lab_steps.py arm-enterprise
@@ -182,7 +191,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p row-evidence
-          for name in w3-lab-bundle.json w3-lab-bundle.json.sha256 w3-lab-enterprise-rows.json w3-lab-enterprise-rows.json.sha256; do
+          for name in w3-lab-bundle.json w3-lab-bundle.json.sha256 w3-lab-enterprise-rows.json w3-lab-enterprise-rows.json.sha256 w3-lab-redteam-rows.json w3-lab-redteam-rows.json.sha256; do
             if [ -f "$name" ]; then
               cp "$name" row-evidence/
             fi

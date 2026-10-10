@@ -1009,9 +1009,14 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
                     if True:
                         async with shield(trace_id="py-connect-ex"):
                             sock.connect_ex(("127.0.0.1", sink.port))
+                    # _TcpSink.accept runs on a thread with a 0.2s timeout.
+                    # The sibling socket tests wait so a slow accept is not a miss.
+                    deadline = time.time() + 2
+                    while sink.hits < 1 and time.time() < deadline:
+                        time.sleep(0.05)
+                    self.assertGreaterEqual(sink.hits, 1)
                 finally:
                     sock.close()
-                self.assertGreaterEqual(sink.hits, 1)
             data = json.loads((Path(home) / "runs" / "py-connect-ex.json").read_text(encoding="utf-8"))
             self.assertEqual(data["calls"][0]["mediation"], "python_socket")
             self.assertEqual(data["calls"][0]["action"], "OBSERVED")
