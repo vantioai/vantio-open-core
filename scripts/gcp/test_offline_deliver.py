@@ -139,6 +139,10 @@ class OfflineDeliverTest(unittest.TestCase):
         )
         self.assertIn("--tunnel-through-iap", scp)
         self.assertIn("--ssh-key-expire-after=1h", scp)
+        self.assertIn("--scp-flag=-oServerAliveInterval=30", scp)
+        self.assertIn("--scp-flag=-oServerAliveCountMax=20", scp)
+        self.assertNotIn("--ssh-flag=-oServerAliveInterval=30", scp)
+        self.assertIn("--ssh-flag=-oServerAliveInterval=30", ssh)
         back = od.iap_scp_argv(
             "vantio-lab-oct08",
             ["vantio-gcp-lab-12:/tmp/enterprise-pe-rows.json"],

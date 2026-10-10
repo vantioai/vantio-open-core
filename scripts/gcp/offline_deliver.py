@@ -726,8 +726,8 @@ def iap_scp_argv(project: str, sources: Sequence[str], destination: str) -> list
         "--ssh-key-expire-after=1h",
         "--quiet",
         "--strict-host-key-checking=no",
-        "--ssh-flag=-oServerAliveInterval=30",
-        "--ssh-flag=-oServerAliveCountMax=20",
+        "--scp-flag=-oServerAliveInterval=30",
+        "--scp-flag=-oServerAliveCountMax=20",
         *list(sources),
         destination,
     ]
