@@ -44,7 +44,7 @@ on:
         default: lab-bundle/enterprise-pe-2026-10-08
         type: string
       battery:
-        description: enterprise keeps the grant and revoke rows. descendant-b1 runs the moved-child deny and repeats it after reboot. self-service runs the public one-command installer and does not run enterprise rows.
+        description: enterprise keeps the grant and revoke rows. descendant-b1 runs the moved-child deny and repeats it after reboot. self-service runs the public one-command installer. Phase names run one clean-host battery on the working seal.
         required: false
         default: enterprise
         type: choice
@@ -52,6 +52,11 @@ on:
           - enterprise
           - descendant-b1
           - self-service
+          - 2c-upgrade-rollback
+          - 2d-crash-recovery
+          - 2e-performance
+          - 2f-tamper
+          - 2g-distro
       redteam_brain:
         description: Download the pinned Qwen on the runner and copy it over SSH. Requires m7i-flex.large. Default off.
         required: false
@@ -110,11 +115,14 @@ jobs:
             scripts/aws/lab-guests/enterprise-rows.sh
             scripts/aws/lab-guests/descendant_b1.py
             scripts/aws/lab-guests/descendant_probe.c
+            scripts/aws/lab-guests/phase2_host.py
+            scripts/aws/lab-guests/phase2_grade.py
             scripts/aws/fetch_offline_debs.sh
             scripts/aws/lab-guests/self_service.py
             scripts/lab/stage_lab_trust.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
+            scripts/gcp/fetch_offline_debs.sh
             scripts/gcp/lab-guests/redteam_rows.py
             scripts/gcp/redteam_packet.py
             scripts/gcp/redteam_brain.py
@@ -137,9 +145,15 @@ jobs:
           EVIDENCE_PATH: w3-lab-bundle.json
         run: python3 scripts/aws/w3_lab_steps.py prepare-bundle
 
-      - name: Fetch offline noble packages
-        if: (inputs.enterprise_rows && steps.bundle.outputs.ready == 'true') || inputs.battery == 'self-service'
-        run: bash scripts/aws/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
+      - name: Fetch offline packages
+        if: (inputs.enterprise_rows && steps.bundle.outputs.ready == 'true') || inputs.battery == 'self-service' || inputs.battery == '2g-distro'
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.battery }}" = "2g-distro" ]; then
+            bash scripts/gcp/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
+          else
+            bash scripts/aws/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
+          fi
 
       - name: Stage the lab installer and a non-production trust key
         if: inputs.battery == 'self-service'

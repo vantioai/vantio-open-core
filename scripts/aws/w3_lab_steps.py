@@ -943,7 +943,14 @@ def execute_enterprise_rows(
         if seal != enterprise_bundle.POLICY_ALLOW_SEAL or pin != enterprise_bundle.PUBLIC_INSTALLER_PIN:
             raise lab.GuardAbort("bundle_wrong_seal")
         battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
-        if battery not in ("enterprise", "descendant-b1", "self-service"):
+        phase_batteries = {
+            "2c-upgrade-rollback",
+            "2d-crash-recovery",
+            "2e-performance",
+            "2f-tamper",
+            "2g-distro",
+        }
+        if battery not in {"enterprise", "descendant-b1", "self-service", *phase_batteries}:
             raise lab.GuardAbort("battery")
         payload["battery"] = battery
         if battery == "self-service" and os.environ.get("W3_BRAIN_DIR", "").strip():
@@ -973,6 +980,12 @@ def execute_enterprise_rows(
         host = public_ipv4(instance)
         if not host:
             raise lab.GuardAbort("no_public_ipv4")
+        image_id = str(instance.get("ImageId") or "")
+        if image_id and lab.IMAGE_ID_RE.fullmatch(image_id) is None:
+            raise lab.GuardAbort("image_id")
+        ssh_user = "admin" if image_id and image_id != lab.PINNED_IMAGE_ID else "ubuntu"
+        payload["image_id"] = image_id
+        payload["ssh_user"] = ssh_user
         group_id = security_group_id(instance)
         zone = availability_zone(instance)
         authorize = authorize_args(group_id, cidr, revoke=False)
@@ -988,7 +1001,7 @@ def execute_enterprise_rows(
             "--availability-zone",
             zone,
             "--instance-os-user",
-            "ubuntu",
+            ssh_user,
             "--ssh-public-key",
         ]
         if dry_run(runner, revoke) == "denied" or dry_run(runner, authorize) == "denied":
@@ -1023,7 +1036,7 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", *base[:-1], str(local), f"ubuntu@{host}:{GUEST_BUNDLE}/{name}"],
+                    ["scp", *base[:-1], str(local), f"{ssh_user}@{host}:{GUEST_BUNDLE}/{name}"],
                     "",
                 )
                 if proc.returncode != 0:
@@ -1032,7 +1045,7 @@ def execute_enterprise_rows(
             made = remote(["sudo", "mkdir", "-p", GUEST_BUNDLE], "")
             if made.returncode != 0:
                 _ssh_failure(made)
-            owned = remote(["sudo", "chown", "-R", "ubuntu:ubuntu", "/var/lib/vantio-lab"], "")
+            owned = remote(["sudo", "chown", "-R", f"{ssh_user}:{ssh_user}", "/var/lib/vantio-lab"], "")
             if owned.returncode != 0:
                 _ssh_failure(owned)
             if battery != "self-service":
@@ -1052,7 +1065,7 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", *base[:-1], *[str(path) for path in deb_files], f"ubuntu@{host}:{GUEST_BUNDLE}/debs/"],
+                    ["scp", *base[:-1], *[str(path) for path in deb_files], f"{ssh_user}@{host}:{GUEST_BUNDLE}/debs/"],
                     "",
                 )
                 if copied.returncode != 0:
@@ -1070,7 +1083,7 @@ def execute_enterprise_rows(
                 made_brain = remote(["sudo", "mkdir", "-p", "/tmp/vantio-lab"], "")
                 if made_brain.returncode != 0:
                     _ssh_failure(made_brain)
-                owned_brain = remote(["sudo", "chown", "ubuntu:ubuntu", "/tmp/vantio-lab"], "")
+                owned_brain = remote(["sudo", "chown", f"{ssh_user}:{ssh_user}", "/tmp/vantio-lab"], "")
                 if owned_brain.returncode != 0:
                     _ssh_failure(owned_brain)
                 copied_model = _run_with_fresh_key(
@@ -1078,7 +1091,7 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", *base[:-1], str(model), f"ubuntu@{host}:/tmp/vantio-lab/qwen2.5-3b-instruct-q4_k_m.gguf"],
+                    ["scp", *base[:-1], str(model), f"{ssh_user}@{host}:/tmp/vantio-lab/qwen2.5-3b-instruct-q4_k_m.gguf"],
                     "",
                 )
                 if copied_model.returncode != 0:
@@ -1088,7 +1101,7 @@ def execute_enterprise_rows(
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", "-r", *base[:-1], str(runtime), f"ubuntu@{host}:/tmp/vantio-lab/llama-b11540"],
+                    ["scp", "-r", *base[:-1], str(runtime), f"{ssh_user}@{host}:/tmp/vantio-lab/llama-b11540"],
                     "",
                 )
                 if copied_runtime.returncode != 0:
@@ -1104,6 +1117,23 @@ def execute_enterprise_rows(
                         copy_to(ca_bundle, "ca-certificates.crt")
                 copy_to(staged / "self-service.tar", "self-service.tar")
                 ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, "/tmp/enterprise-pe-rows.json")], "")
+            elif battery in phase_batteries:
+                script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
+                copy_to(script_path, "enterprise-rows.sh")
+                guest_dir = Path(__file__).resolve().with_name("lab-guests")
+                copy_to(guest_dir / "phase2_host.py", "phase2_host.py")
+                copy_to(guest_dir / "phase2_grade.py", "phase2_grade.py")
+                ran = remote(
+                    [
+                        "env",
+                        f"VANTIO_IMAGE_ID={image_id}",
+                        "bash",
+                        f"{GUEST_BUNDLE}/enterprise-rows.sh",
+                        seal,
+                        battery,
+                    ],
+                    "",
+                )
             elif battery == "descendant-b1":
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
@@ -1134,7 +1164,7 @@ def execute_enterprise_rows(
                 connect,
                 public,
                 ssh_runner,
-                ["scp", *base[:-1], f"ubuntu@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
+                ["scp", *base[:-1], f"{ssh_user}@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
                 "",
             )
             if pulled.returncode == 0 and rows_local.is_file():
@@ -1149,7 +1179,7 @@ def execute_enterprise_rows(
                 connect,
                 public,
                 ssh_runner,
-                ["scp", *base[:-1], f"ubuntu@{host}:/tmp/redteam-rows.json", str(redteam_local)],
+                ["scp", *base[:-1], f"{ssh_user}@{host}:/tmp/redteam-rows.json", str(redteam_local)],
                 "",
             )
             if pulled_redteam.returncode == 0 and redteam_local.is_file():
@@ -1164,8 +1194,10 @@ def execute_enterprise_rows(
                 payload["status"] = "SELF_SERVICE"
             elif battery == "descendant-b1":
                 payload["status"] = "DESCENDANT_B1"
-            else:
+            elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"
+            else:
+                payload["status"] = "PHASE2"
         finally:
             if private is not None:
                 shred_file(private)

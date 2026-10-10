@@ -59,7 +59,7 @@ PY
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"
-sudo chown -R ubuntu:ubuntu "$stage"
+sudo chown -R "$(id -un):$(id -un)" "$stage"
 if find "$stage" -name 'private-key.pem' | grep -q .; then
   exit 3
 fi
@@ -82,7 +82,6 @@ if [ "$dpkg_ok" != 1 ]; then
   exit 6
 fi
 command -v docker >/dev/null
-command -v gcc >/dev/null
 python3 -c "import cryptography"
 sudo mkdir -p /etc/docker
 printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json >/dev/null
@@ -104,6 +103,7 @@ test "$image" = "$image_name"
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
+  command -v gcc >/dev/null
   gcc -O2 -o "$here/descendant_probe" "$here/descendant_probe.c"
   printf 'IMAGE_LINE=%s\n' "$image"
   set +e
@@ -133,4 +133,19 @@ if [ "$mode" = "descendant-b1" ]; then
   fi
   exit "$rc"
 fi
+case "$mode" in
+  2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro)
+    set +e
+    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
+    rc=$?
+    set -e
+    cat /tmp/phase2-host.out
+    chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    if [ ! -s /tmp/enterprise-pe-rows.json ]; then
+      cp /tmp/phase2-host.out /tmp/enterprise-pe-rows.json
+    fi
+    printf 'PY_RC=%s\n' "$rc"
+    exit "$rc"
+    ;;
+esac
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
