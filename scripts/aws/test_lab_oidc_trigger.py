@@ -155,6 +155,19 @@ class TriggerTests(unittest.TestCase):
         with self.assertRaises(trigger.TriggerError):
             trigger.validate_fields("arm", {"bundle_tag": "v1.2.3"})
 
+    def test_brain_launch_requires_the_120_minute_cap(self) -> None:
+        trigger.validate_fields(
+            "launch",
+            {"instance_type": "m7i-flex.large", "stop_after_minutes": "120", "close_egress": "true"},
+        )
+        with self.assertRaises(trigger.TriggerError):
+            trigger.validate_fields("launch", {"instance_type": "m7i-flex.large", "stop_after_minutes": "121"})
+        with self.assertRaises(trigger.TriggerError):
+            trigger.validate_fields("launch", {"instance_type": "m7i-flex.large"})
+        with self.assertRaises(trigger.TriggerError):
+            trigger.validate_fields("long-soak", {"instance_type": "m7i-flex.large"})
+        trigger.validate_fields("arm", {"redteam_brain": "true", "enterprise_rows": "true"})
+
     def test_watch_plan_is_not_a_dispatch(self) -> None:
         status = trigger.main(["watch", "--run-id", "123"], environ={"PATH": "/usr/bin"}, gh_runner=None)
         self.assertEqual(status, 0)
