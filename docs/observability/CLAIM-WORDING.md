@@ -22,7 +22,7 @@ The sentences below are the only wordings that match this lab rerun. They are no
 
 ## Video
 
-HELD. No line-by-line review is possible because no video, script, or caption file was found.
+HELD. The line-by-line video claim review is blocked pending the source file. No video, script, or caption file was found, so there is no line to mark supported or unsupported.
 
 Looked in:
 

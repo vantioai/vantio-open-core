@@ -1,4 +1,5 @@
 collector/out/
+collector/out-old/
 rsyslog/out/
 *.log
 *.jsonl

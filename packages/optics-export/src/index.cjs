@@ -29,20 +29,7 @@ function startFromConfig(filePath) {
   } catch {
     config = { enabled: false, reason: "CONFIG_REFUSED" };
   }
-  if (!config.enabled) {
-    return {
-      offer() {
-        return { accepted: false, reason: config.reason || "DISABLED" };
-      },
-      status() {
-        return { health: "disabled", queued: 0, dropped: 0, rejected: 0, sent: 0 };
-      },
-      flush() {
-        return Promise.resolve();
-      },
-      stop() {},
-    };
-  }
+  if (!config.enabled) return disabledExporter(config.reason || "DISABLED");
   producerClaimed = true;
   const exporter = createExporter(config);
   return {
@@ -52,7 +39,7 @@ function startFromConfig(filePath) {
       return exporter.offer(event, exporter.token);
     },
     status: exporter.status,
-    flush: exporter.flush,
+    flush: (options) => exporter.flush(options),
     stop: exporter.stop,
   };
 }

@@ -163,6 +163,7 @@ function postHTTP(config, suffix, body, contentType) {
   };
   if (config.compression === "gzip") headers["content-encoding"] = "gzip";
   const lib = url.protocol === "https:" ? https : http;
+  const agent = url.protocol === "https:" ? config.httpsAgent : config.httpAgent;
   const options = {
     protocol: url.protocol,
     hostname: url.hostname,
@@ -170,23 +171,33 @@ function postHTTP(config, suffix, body, contentType) {
     path: `${url.pathname}${url.search}`,
     method: "POST",
     headers,
-    timeout: config.timeoutMs,
+    agent,
     ...(url.protocol === "https:" ? tlsOptions(config) : {}),
   };
   return new Promise((resolve, reject) => {
-    const req = lib.request(options, (res) => {
-      res.resume();
-      if (res.statusCode >= 200 && res.statusCode < 300) resolve();
-      else reject(Object.assign(new Error("HTTP_STATUS"), { code: `HTTP_${res.statusCode}` }));
-    });
-    const timer = setTimeout(() => {
-      req.destroy(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" }));
+    let settled = false;
+    let req;
+    let timer;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (req && !req.destroyed) req.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
+    timer = setTimeout(() => {
+      finish(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" }));
     }, config.timeoutMs);
-    req.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
+    req = lib.request(options, (res) => {
+      res.resume();
+      res.on("aborted", () => finish(Object.assign(new Error("ABORTED"), { code: "ABORTED" })));
+      res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) finish();
+        else finish(Object.assign(new Error("HTTP_STATUS"), { code: `HTTP_${res.statusCode}` }));
+      });
     });
-    req.on("close", () => clearTimeout(timer));
+    req.on("error", (err) => finish(err));
     req.end(payload);
   });
 }
@@ -202,50 +213,58 @@ function grpcFrame(message) {
 function postGRPC(config, service, message) {
   const url = new URL(config.endpoint);
   const origin = `${url.protocol}//${url.host}`;
-  const options = url.protocol === "https:" ? tlsOptions(config) : { rejectUnauthorized: false };
+  const options = url.protocol === "https:" ? tlsOptions(config) : {};
   return new Promise((resolve, reject) => {
     let session;
+    let timer;
+    let settled = false;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (session && !session.destroyed) session.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
     try {
       session = http2.connect(origin, options);
     } catch (err) {
       reject(err);
       return;
     }
-    const timer = setTimeout(() => {
-      session.destroy();
-      reject(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" }));
+    if (typeof session.unref === "function") session.unref();
+    timer = setTimeout(() => {
+      finish(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" }));
     }, config.timeoutMs);
-    session.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    const req = session.request({
-      ":method": "POST",
-      ":path": `/${service}/Export`,
-      "content-type": "application/grpc",
-      te: "trailers",
-      ...config.headers,
-    });
+    session.on("error", (err) => finish(err));
+    let req;
+    try {
+      req = session.request({
+        ":method": "POST",
+        ":path": `/${service}/Export`,
+        "content-type": "application/grpc",
+        te: "trailers",
+        ...config.headers,
+      });
+    } catch (err) {
+      finish(err);
+      return;
+    }
     let status = "missing";
     let httpStatus = null;
     req.on("trailers", (trailers) => {
-      if (trailers["grpc-status"] != null) status = trailers["grpc-status"];
+      if (trailers["grpc-status"] != null) status = String(trailers["grpc-status"]);
     });
     req.on("response", (headers) => {
-      httpStatus = headers[":status"] || null;
-      if (headers["grpc-status"] != null) status = headers["grpc-status"];
+      httpStatus = headers[":status"] == null ? null : String(headers[":status"]);
+      if (headers["grpc-status"] != null) status = String(headers["grpc-status"]);
       if (httpStatus && Number(httpStatus) >= 400) status = "http";
     });
-    req.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+    req.on("error", (err) => finish(err));
     req.resume();
     req.on("end", () => {
-      clearTimeout(timer);
-      session.close();
-      if (status === "0" || (status === "missing" && httpStatus === "200")) resolve();
-      else reject(Object.assign(new Error("GRPC_STATUS"), { code: `GRPC_${status}` }));
+      if (status === "0" || (status === "missing" && httpStatus === "200")) finish();
+      else finish(Object.assign(new Error("GRPC_STATUS"), { code: `GRPC_${status}` }));
     });
     req.end(grpcFrame(message));
   });
@@ -276,27 +295,44 @@ function sendSyslog(config, events) {
   if (target.protocol === "udp:") {
     return new Promise((resolve, reject) => {
       const socket = dgram.createSocket("udp4");
-      socket.once("error", reject);
+      let settled = false;
       let left = lines.length;
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        socket.close();
+        if (err) reject(err);
+        else resolve();
+      };
+      socket.once("error", finish);
+      if (left === 0) {
+        finish();
+        return;
+      }
       for (const line of lines) {
         socket.send(line, Number(target.port || 514), target.hostname, (err) => {
-          if (err) reject(err);
+          if (err) finish(err);
           left -= 1;
-          if (left === 0) {
-            socket.close();
-            resolve();
-          }
+          if (left === 0) finish();
         });
       }
     });
   }
   return new Promise((resolve, reject) => {
+    let settled = false;
     const socket = net.connect(Number(target.port || 514), target.hostname, () => {
       socket.end(`${lines.join("\n")}\n`);
     });
-    socket.setTimeout(config.timeoutMs, () => socket.destroy(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" })));
-    socket.on("error", reject);
-    socket.on("close", () => resolve());
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      if (!socket.destroyed) socket.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
+    socket.setTimeout(config.timeoutMs, () => finish(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" })));
+    socket.on("error", finish);
+    socket.on("close", () => finish());
   });
 }
 
@@ -332,8 +368,17 @@ async function deliver(config, events) {
   await sendWebhook(config, events);
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function createExporter(config) {
   const token = producerToken();
+  const httpAgent = new http.Agent({ keepAlive: false, maxSockets: 8 });
+  const httpsAgent = new https.Agent({ keepAlive: false, maxSockets: 8 });
+  const runtime = { ...config, httpAgent, httpsAgent };
   const queue = [];
   const state = {
     health: config.enabled ? "idle" : "disabled",
@@ -345,6 +390,7 @@ function createExporter(config) {
   };
   let timer = null;
   let pumpPromise = null;
+  let stopped = false;
 
   function snapshot() {
     return {
@@ -369,39 +415,47 @@ function createExporter(config) {
     return true;
   }
 
+  function restore(batch) {
+    const room = config.maxQueue - queue.length;
+    const keep = batch.slice(0, Math.max(room, 0));
+    const lost = batch.length - keep.length;
+    for (let i = keep.length - 1; i >= 0; i -= 1) queue.unshift({ event: keep[i], bytes: 0 });
+    state.dropped += lost;
+  }
+
   function pump() {
-    if (pumpPromise || !config.enabled) return pumpPromise || Promise.resolve();
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (pumpPromise || !config.enabled || stopped) return pumpPromise || Promise.resolve();
     pumpPromise = (async () => {
-      while (queue.length) {
+      while (queue.length && !stopped) {
         const batch = queue.splice(0, config.maxBatch).map((row) => row.event);
         try {
-          await deliver(config, batch);
+          await deliver(runtime, batch);
           state.sent += batch.length;
           state.health = "healthy";
           state.backoff = 200;
           state.lastError = null;
         } catch (err) {
-          const room = config.maxQueue - queue.length;
-          const keep = batch.slice(0, Math.max(room, 0));
-          const lost = batch.length - keep.length;
-          for (let i = keep.length - 1; i >= 0; i -= 1) queue.unshift({ event: keep[i], bytes: 0 });
-          state.dropped += lost;
+          restore(batch);
           state.health = "down";
           state.lastError = err && err.code ? String(err.code) : "SEND_FAILED";
           state.backoff = Math.min(state.backoff * 2, 30000);
-          await new Promise((resolve) => setTimeout(resolve, Math.min(state.backoff, config.maxDelayMs)));
+          await wait(Math.min(state.backoff, config.maxDelayMs));
           break;
         }
       }
     })().finally(() => {
       pumpPromise = null;
-      if (queue.length) schedule();
+      if (queue.length && !stopped) schedule();
     });
     return pumpPromise;
   }
 
   function schedule() {
-    if (timer || !config.enabled) return;
+    if (timer || !config.enabled || stopped) return;
     timer = setTimeout(() => {
       timer = null;
       pump().catch(() => {
@@ -409,6 +463,18 @@ function createExporter(config) {
       });
     }, config.maxDelayMs);
     if (typeof timer.unref === "function") timer.unref();
+  }
+
+  async function flush(options = {}) {
+    const drain = options.drain === true;
+    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 5000;
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      await pump();
+      if (!queue.length || stopped || !drain) return;
+      if (Date.now() >= deadline) return;
+      await wait(Math.min(state.backoff, config.maxDelayMs));
+    }
   }
 
   function offer(input, tokenValue) {
@@ -451,10 +517,13 @@ function createExporter(config) {
     token,
     offer,
     status: snapshot,
-    flush: () => pump(),
+    flush,
     stop() {
+      stopped = true;
       if (timer) clearTimeout(timer);
       timer = null;
+      httpAgent.destroy();
+      httpsAgent.destroy();
     },
   };
 }

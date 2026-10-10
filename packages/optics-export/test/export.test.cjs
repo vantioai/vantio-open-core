@@ -240,6 +240,87 @@ test("misconfigured TLS fails and does not fall back to plaintext", async () => 
   plainServer.close();
 });
 
+test("a recovered receiver drains the queued events", async () => {
+  const received = [];
+  let accept = false;
+  const server = await listen((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      if (!accept) {
+        res.writeHead(500).end("down");
+        return;
+      }
+      received.push(Buffer.concat(chunks).toString("utf8"));
+      res.writeHead(200).end("ok");
+    });
+  });
+  const exporter = createExporter({
+    enabled: true,
+    endpoint: `http://127.0.0.1:${server.address().port}`,
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 10,
+    maxDelayMs: 60000,
+    maxQueue: 4,
+    timeoutMs: 300,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: null,
+    webhook: null,
+    allowInsecureLocalhost: true,
+  });
+  const queued = observation({ workload_id: "queued-drain-marker", span_id: SPAN_B });
+  assert.equal(offer(exporter, queued).accepted, true);
+  assert.equal(offer(exporter, queued).accepted, true);
+  assert.equal(offer(exporter, queued).accepted, true);
+  await exporter.flush();
+  assert.equal(exporter.status().sent, 0);
+  assert.equal(exporter.status().queued, 3);
+  assert.equal(exporter.status().health, "down");
+  accept = true;
+  await exporter.flush({ drain: true, timeoutMs: 3000 });
+  assert.equal(exporter.status().queued, 0);
+  assert.equal(exporter.status().sent, 3);
+  assert.equal(exporter.status().health, "healthy");
+  const blob = received.join("\n");
+  assert.equal(blob.includes("queued-drain-marker"), true);
+  assert.equal(blob.includes("not-the-queued-event"), false);
+  exporter.stop();
+  server.close();
+});
+
+test("failed grpc attempts release their sessions", async () => {
+  const exporter = createExporter({
+    enabled: true,
+    endpoint: "http://127.0.0.1:1",
+    protocol: "otlp-grpc",
+    headers: {},
+    compression: "none",
+    maxBatch: 10,
+    maxDelayMs: 20,
+    maxQueue: 2,
+    timeoutMs: 100,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: null,
+    webhook: null,
+    allowInsecureLocalhost: true,
+  });
+  const before = process.getActiveResourcesInfo().filter((row) => row.type === "TCPSocketWrap" || row.type === "HTTP2SESSION").length;
+  for (let i = 0; i < 20; i += 1) {
+    offer(exporter, observation({ span_id: SPAN_B }));
+    await exporter.flush();
+  }
+  exporter.stop();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const after = process.getActiveResourcesInfo().filter((row) => row.type === "TCPSocketWrap" || row.type === "HTTP2SESSION").length;
+  assert.equal(exporter.status().health, "down");
+  assert.equal(exporter.status().sent, 0);
+  assert.ok(after <= before + 2, `sockets before ${before} after ${after}`);
+});
+
 test("sustained in-process projection stays bounded", () => {
   const before = process.memoryUsage();
   const started = process.hrtime.bigint();

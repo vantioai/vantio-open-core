@@ -4,7 +4,7 @@ services:
     command: ["--config=/etc/otel/config.yaml"]
     volumes:
       - ./config.yaml:/etc/otel/config.yaml:ro
-      - ./out:/out
+      - ./out-old:/out
     ports:
       - "4417:4317"
       - "4418:4318"

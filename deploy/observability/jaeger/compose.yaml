@@ -1,0 +1,8 @@
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: vantio-jaeger
+    ports:
+      - "16686:16686"
+      - "4319:4317"
+      - "4320:4318"

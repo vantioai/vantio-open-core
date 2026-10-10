@@ -22,4 +22,14 @@ A valid base64 value is checked before a host name is lowercased. Lowercasing fi
 
 A co-resident caller of `attestSourceRecord`, `attestObservation`, or `createExporter` can bind an object it built and send it. That caller is inside the process. The bind does not keep it out.
 
-This residual is not a pass. It stays open until a signer outside the process is actually verified on the export path.
+This residual is not a pass. It stays open until a signer outside the process is actually verified on the export path. `product_otlp_export_authorized` stays false.
+
+## Why that check did not land this cycle
+
+The check needs a signature over the canonical event bytes from a key the observed process does not hold. Two lanes were asked for that signer.
+
+- Cloud agents `bc-2b9fb1af` (Phantom Engine) and `bc-3ae82b99` (Enterprise evidence) were not readable from this run.
+- Phantom Engine `main` at `7d3e53fae34008728631f5609e80d4506b6e9e8f` is host enforcement. It does not sign an observability event.
+- Enterprise `cursor/optics-evidence-export-5bed` at `a5b40a4f19722e6c55caca3b5f87af9f50c5cc00` seals an observation fragment. The seal can carry a test signature. The private key is supplied by the caller, the key id must be a non-production test id, and a production root is refused. That seal is not an out-of-process identity for the OTLP export, and a caller who can reach the test key can sign an object they built.
+
+No production signing root is used. A test key next to the exporter would not close the residual. The export path still does not verify an outside signature before send.
