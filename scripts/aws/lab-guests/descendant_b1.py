@@ -548,15 +548,29 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     started = rows.start_loader(adapter)
     if started["rc"] != 0:
         raise SystemExit(f"loader {started['rc']}")
-    rows.wait_banner("AUDIT (log only)")
+    require_banner("AUDIT (log only)")
     revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
-    rows.wait_banner("SCOPED (drop enrolled)")
+    require_scoped_start()
     return adapter, digest
+
+
+def require_banner(needle: str) -> None:
+    banner = rows.wait_banner(needle)
+    if needle not in banner:
+        raise SystemExit(f"loader banner missing: {needle}")
+
+
+def require_scoped_start() -> None:
+    require_banner("SCOPED (drop enrolled)")
+    for item in events():
+        if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
+            return
+    raise SystemExit("scoped engine-start line missing")
 
 
 def measure(phase: str) -> dict:
