@@ -1,8 +1,8 @@
 services:
   rsyslog:
-    image: alpine:3.20
+    build: .
+    image: vantio-rsyslog:local
     container_name: vantio-rsyslog
-    command: ["sh", "-c", "apk add --no-cache rsyslog >/dev/null && rsyslogd -n"]
     volumes:
       - ./rsyslog.conf:/etc/rsyslog.conf:ro
       - ./out:/out

@@ -158,10 +158,17 @@ const down = {
 writeFileSync(path.join(outDir, "down.json"), JSON.stringify(down, null, 2));
 console.log("DOWN_PHASE", JSON.stringify(down));
 
+for (const target of targets) target.exporter.suspend();
+for (const target of targets) await target.exporter.flush();
 const queuedBefore = new Map(targets.map((target) => [target.name, target.exporter.status()]));
 readyFile(path.join(root, "collector/out"));
 readyFile(path.join(root, "collector/out-old"));
 prepareDir(path.join(root, "rsyslog/out"));
+try {
+  execFileSync("sudo", ["sh", "-c", `: > ${path.join(root, "rsyslog/out/syslog.log")}`]);
+} catch {
+  /* file may not exist yet */
+}
 compose(path.join(root, "collector/compose.yaml"), "collector", ["up", "-d"]);
 compose(path.join(root, "collector/compose-old.yaml"), "collector-old", ["up", "-d"]);
 compose(path.join(root, "jaeger/compose.yaml"), "jaeger", ["up", "-d"]);
@@ -186,13 +193,33 @@ for (const port of ports) {
 }
 for (let i = 0; i < 40 && !logsReady("collector-collector-1"); i += 1) await sleep(500);
 for (let i = 0; i < 40 && !logsReady("collector-old-collector-1"); i += 1) await sleep(500);
-try {
-  docker(["exec", "vantio-rsyslog", "sh", "-c", ": > /out/syslog.log"]);
-} catch (err) {
-  console.error("syslog truncate", err && err.message);
+let syslogReady = false;
+for (let i = 0; i < 40; i += 1) {
+  const probe = spawnSync("sudo", ["docker", "exec", "vantio-rsyslog", "pidof", "rsyslogd"], { encoding: "utf8" });
+  if (probe.status === 0 && String(probe.stdout || "").trim()) {
+    syslogReady = true;
+    break;
+  }
+  await sleep(500);
 }
-await sleep(1000);
+if (!syslogReady) console.error("rsyslogd not ready");
+let tempoReady = false;
+for (let i = 0; i < 40; i += 1) {
+  try {
+    const response = await fetch("http://127.0.0.1:3201/ready");
+    if (response.ok) {
+      tempoReady = true;
+      break;
+    }
+  } catch {
+    /* not up */
+  }
+  await sleep(500);
+}
+if (!tempoReady) console.error("tempo not ready");
+await sleep(500);
 
+for (const target of targets) target.exporter.resume();
 for (const target of targets) {
   await target.exporter.flush({ drain: true, timeoutMs: 20000 });
 }

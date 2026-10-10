@@ -391,6 +391,7 @@ function createExporter(config) {
   let timer = null;
   let pumpPromise = null;
   let stopped = false;
+  let suspended = false;
 
   function snapshot() {
     return {
@@ -428,7 +429,8 @@ function createExporter(config) {
       clearTimeout(timer);
       timer = null;
     }
-    if (pumpPromise || !config.enabled || stopped) return pumpPromise || Promise.resolve();
+    if (pumpPromise) return pumpPromise;
+    if (!config.enabled || stopped || suspended) return Promise.resolve();
     pumpPromise = (async () => {
       while (queue.length && !stopped) {
         const batch = queue.splice(0, config.maxBatch).map((row) => row.event);
@@ -449,13 +451,13 @@ function createExporter(config) {
       }
     })().finally(() => {
       pumpPromise = null;
-      if (queue.length && !stopped) schedule();
+      if (queue.length && !stopped && !suspended) schedule();
     });
     return pumpPromise;
   }
 
   function schedule() {
-    if (timer || !config.enabled || stopped) return;
+    if (timer || !config.enabled || stopped || suspended) return;
     timer = setTimeout(() => {
       timer = null;
       pump().catch(() => {
@@ -518,6 +520,14 @@ function createExporter(config) {
     offer,
     status: snapshot,
     flush,
+    suspend() {
+      suspended = true;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
+    resume() {
+      suspended = false;
+    },
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);

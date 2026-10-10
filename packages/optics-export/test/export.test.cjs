@@ -291,6 +291,56 @@ test("a recovered receiver drains the queued events", async () => {
   server.close();
 });
 
+test("suspend holds the queue until the receiver is ready", async () => {
+  const received = [];
+  let accept = false;
+  const server = await listen((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      if (!accept) {
+        res.writeHead(500).end("down");
+        return;
+      }
+      received.push(Buffer.concat(chunks).toString("utf8"));
+      res.writeHead(200).end("ok");
+    });
+  });
+  const exporter = createExporter({
+    enabled: true,
+    endpoint: `http://127.0.0.1:${server.address().port}`,
+    protocol: "otlp-http-json",
+    headers: {},
+    compression: "none",
+    maxBatch: 10,
+    maxDelayMs: 20,
+    maxQueue: 4,
+    timeoutMs: 200,
+    jsonlPath: null,
+    jsonlMaxBytes: 1024,
+    syslog: null,
+    webhook: null,
+    allowInsecureLocalhost: true,
+  });
+  const queued = observation({ workload_id: "held-queue-marker", span_id: SPAN_B });
+  assert.equal(offer(exporter, queued).accepted, true);
+  assert.equal(offer(exporter, queued).accepted, true);
+  await exporter.flush();
+  assert.equal(exporter.status().queued, 2);
+  exporter.suspend();
+  accept = true;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(exporter.status().sent, 0);
+  assert.equal(exporter.status().queued, 2);
+  exporter.resume();
+  await exporter.flush({ drain: true, timeoutMs: 2000 });
+  assert.equal(exporter.status().queued, 0);
+  assert.equal(exporter.status().sent, 2);
+  assert.equal(received.join("").includes("held-queue-marker"), true);
+  exporter.stop();
+  server.close();
+});
+
 test("failed grpc attempts release their sessions", async () => {
   const exporter = createExporter({
     enabled: true,
