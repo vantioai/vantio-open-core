@@ -380,6 +380,30 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
         if key in {"loader_kill", "loader_restart"} and value in {"held", "fail"}:
             kept[key] = value
             continue
+        if key == "cases" and isinstance(value, list):
+            rows = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("case")
+                result = item.get("result")
+                if name not in {"enterprise", "descendant-b1", "loader-kill", "loader-restart"}:
+                    continue
+                if result not in {"held", "fail", "ran"}:
+                    continue
+                row: dict[str, Any] = {"case": name, "result": result}
+                errno = item.get("errno")
+                if isinstance(errno, int) and not isinstance(errno, bool) and -1 <= errno <= 255:
+                    row["errno"] = errno
+                pid = item.get("deny_pid")
+                if isinstance(pid, int) and not isinstance(pid, bool) and 0 <= pid <= 2**22:
+                    row["deny_pid"] = pid
+                count = item.get("denied_rows")
+                if isinstance(count, int) and not isinstance(count, bool) and 0 <= count <= 100000:
+                    row["denied_rows"] = count
+                rows.append(row)
+            kept["cases"] = rows
+            continue
         if key == "full_set":
             continue
     if "repeats" in kept:
@@ -399,6 +423,18 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
                 kept[key] = nested
             continue
         if key in {"b1_pass", "descendant_pass", "reboot_observed", "reboot_requested", "attributable"} and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"denied_rows", "deny_pid", "bpftool_rc"} and isinstance(value, int) and not isinstance(value, bool):
+            if key == "deny_pid" and not 0 <= value <= 2**22:
+                continue
+            if key == "denied_rows" and not 0 <= value <= 100000:
+                continue
+            if key == "bpftool_rc" and not -1 <= value <= 255:
+                continue
+            kept[key] = value
+            continue
+        if key == "loader_running" and isinstance(value, bool):
             kept[key] = value
             continue
         if key in {"enterprise_rc", "descendant_rc", "repeat"} and isinstance(value, int) and not isinstance(value, bool):
@@ -1383,8 +1419,18 @@ def _last_object(text: str) -> dict[str, Any] | None:
     return None
 
 
-def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
+def _ndjson_pids(body: Mapping[str, Any] | None) -> list[int]:
     if not isinstance(body, dict):
+        return []
+    raw = body.get("ndjson_denied_pids")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, int) and not isinstance(item, bool) and item > 0][:8]
+
+
+def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
+    """Held only when a DENIED ledger row names a pid. A map hit alone is a fail."""
+    if not isinstance(body, dict) or not _ndjson_pids(body):
         return "fail"
     if mode == "2d-crash-recovery":
         return "held" if body.get("file_open") == "attributed_deny" else "fail"
@@ -1397,15 +1443,48 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
     return "fail"
 
 
-def _loader_case(project: str, name: str, seal: str, mode: str) -> str:
+def _collect_denied_pids(payload: Any, found: list[int] | None = None) -> list[int]:
+    if found is None:
+        found = []
+    if isinstance(payload, dict):
+        pid = payload.get("Pid")
+        if payload.get("ActionTaken") == "DENIED" and isinstance(pid, int) and not isinstance(pid, bool) and pid > 0 and pid not in found:
+            found.append(pid)
+        for value in payload.values():
+            if len(found) >= 8:
+                break
+            _collect_denied_pids(value, found)
+    elif isinstance(payload, list):
+        for item in payload:
+            if len(found) >= 8:
+                break
+            _collect_denied_pids(item, found)
+    return found
+
+
+def _case_row(name: str, result: str, errno: int, pids: list[int]) -> dict[str, Any]:
+    return {
+        "case": name,
+        "denied_rows": len(pids),
+        "deny_pid": pids[-1] if pids else 0,
+        "errno": errno if -1 <= errno <= 255 else -1,
+        "result": result,
+    }
+
+
+def _loader_case(project: str, name: str, seal: str, mode: str) -> dict[str, Any]:
     completed = _ssh(project, name, guest_command(seal, mode))
     text = (completed.stdout or "") + (completed.stderr or "")
     body = _last_object(text)
-    word = _loader_word(mode, body)
-    print(json.dumps({"mode": mode, "result": word, "rc": completed.returncode}), flush=True)
+    word = _loader_word(mode, body if isinstance(body, dict) else None)
+    pids = _ndjson_pids(body if isinstance(body, dict) else None)
+    print(
+        json.dumps({"mode": mode, "result": word, "rc": completed.returncode, "deny_pid": pids[-1] if pids else 0}),
+        flush=True,
+    )
     if completed.returncode != 0 or word != "held":
         print(redact(text)[-4000:], file=sys.stderr)
-    return word
+    return {"body": body if isinstance(body, dict) else {}, "pids": pids, "rc": completed.returncode, "word": word}
 
 
 def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
@@ -1551,60 +1630,110 @@ def _kernel_flags(payload: Any) -> dict[str, Any]:
     return flags
 
 
+def _finish_repeat(
+    summary: dict[str, Any],
+    *,
+    enterprise_rc: int,
+    descendant_rc: int,
+    observed: bool,
+    repeat: int,
+    rows: dict[str, Any] | None,
+) -> dict[str, Any]:
+    summary.update(
+        {
+            "battery": "descendant-b1",
+            "descendant_rc": descendant_rc,
+            "enterprise_rc": enterprise_rc,
+            "reboot_observed": observed,
+            "repeat": repeat,
+            "seal_checked": True,
+        }
+    )
+    if rows:
+        summary["rows"] = rows
+    return summary
+
+
 def _run_one_battery(project: str, name: str, seal: str, evidence: Path, repeat: int) -> dict[str, Any]:
-    """One full portable pass: enterprise grant/revoke, then descendant-b1 across a reboot."""
+    """Enterprise grant/revoke, then descendant-b1. A failed enterprise row does not skip the rest."""
     enterprise = _ssh(project, name, guest_command(seal, "enterprise"))
     enterprise_path = evidence / "enterprise-rows.json"
     kernel_path = evidence / "kernel-facts.json"
-    if not _scp_from(project, name, "/tmp/enterprise-pe-rows.json", enterprise_path):
-        raise SystemExit("scp")
-    if not _scp_from(project, name, "/tmp/gcp-kernel-facts.json", kernel_path):
-        raise SystemExit("scp")
+    got_rows = _scp_from(project, name, "/tmp/enterprise-pe-rows.json", enterprise_path)
+    got_kernel = _scp_from(project, name, "/tmp/gcp-kernel-facts.json", kernel_path)
     if enterprise.returncode != 0:
         print(redact((enterprise.stdout or "") + (enterprise.stderr or ""))[-4000:], file=sys.stderr)
-        raise SystemExit("enterprise")
+    raw = _load_json_file(enterprise_path) if got_rows else None
+    pids = _collect_denied_pids(raw)
+    revoke = raw.get("revoke") if isinstance(raw, dict) else None
+    probe = revoke.get("probe") if isinstance(revoke, dict) else None
+    errno = probe.get("nobody_errno") if isinstance(probe, dict) else -1
+    ledger = raw.get("z_ledger") if isinstance(raw, dict) else None
+    summary: dict[str, Any] = {
+        "denied_rows": len(pids),
+        "deny_pid": pids[-1] if pids else 0,
+        "errno": errno if isinstance(errno, int) and not isinstance(errno, bool) else -1,
+    }
+    if isinstance(ledger, dict) and isinstance(ledger.get("bpftool_rc"), int):
+        summary["bpftool_rc"] = ledger["bpftool_rc"]
+    if isinstance(ledger, dict) and isinstance(ledger.get("loader_running"), bool):
+        summary["loader_running"] = ledger["loader_running"]
+    if got_kernel and kernel_path.is_file():
+        summary.update(_kernel_flags(_load_json_file(kernel_path)))
+    enterprise_rows = allow_battery(raw) if isinstance(raw, dict) else None
     before = _wait_ssh(project, name, SSH_WAIT_SECONDS)
     pre = _ssh(project, name, guest_command(seal, "descendant-b1", "pre"))
     pre_text = redact((pre.stdout or "") + (pre.stderr or ""))
     deadline = time.time() + SSH_WAIT_SECONDS
     after = ""
     while time.time() < deadline:
-        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
-        boot = (probe.stdout or "").strip()
-        if probe.returncode == 0 and reboot_ready(before, boot):
+        probe_ssh = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
+        boot = (probe_ssh.stdout or "").strip()
+        if probe_ssh.returncode == 0 and reboot_ready(before, boot):
             after = boot
             break
-        if probe.returncode == 0 and boot == before and "PY_RC=" in pre_text and "PY_RC=0" not in pre_text:
+        if probe_ssh.returncode == 0 and boot == before and "PY_RC=" in pre_text and "PY_RC=0" not in pre_text:
             print(pre_text[-4000:], file=sys.stderr)
-            raise SystemExit("descendant_pre")
+            return _finish_repeat(
+                summary,
+                enterprise_rc=enterprise.returncode,
+                descendant_rc=pre.returncode,
+                observed=False,
+                repeat=repeat,
+                rows=enterprise_rows,
+            )
         time.sleep(10)
     observed = reboot_ready(before, after)
     if not observed:
         print(pre_text[-4000:], file=sys.stderr)
-        raise SystemExit("reboot")
-    post = _run_guest(project, name, guest_command(seal, "descendant-b1", "post"), "descendant_post")
+        return _finish_repeat(
+            summary,
+            enterprise_rc=enterprise.returncode,
+            descendant_rc=pre.returncode,
+            observed=False,
+            repeat=repeat,
+            rows=enterprise_rows,
+        )
+    post = _ssh(project, name, guest_command(seal, "descendant-b1", "post"))
+    if post.returncode != 0:
+        print(redact((post.stdout or "") + (post.stderr or ""))[-4000:], file=sys.stderr)
     descendant_path = evidence / "descendant-b1.json"
-    if not _scp_from(project, name, "/tmp/enterprise-pe-rows.json", descendant_path):
-        raise SystemExit("scp")
-    guest = _load_json_file(descendant_path)
-    summary = allow_battery(guest) or {}
-    enterprise_rows = allow_battery(_load_json_file(enterprise_path))
-    if enterprise_rows:
-        summary["rows"] = enterprise_rows
-    summary.update(_kernel_flags(_load_json_file(kernel_path)))
-    summary.update(
-        {
-            "battery": "descendant-b1",
-            "descendant_rc": post.returncode,
-            "enterprise_rc": enterprise.returncode,
-            "reboot_observed": observed,
-            "repeat": repeat,
-            "seal_checked": True,
-        }
+    if _scp_from(project, name, "/tmp/enterprise-pe-rows.json", descendant_path):
+        guest = _load_json_file(descendant_path)
+        nested = allow_battery(guest) or {}
+        summary.update(nested)
+        desc_pids = _collect_denied_pids(guest)
+        if desc_pids:
+            summary["desc_deny_pid"] = desc_pids[-1]
+            summary["desc_denied_rows"] = len(desc_pids)
+    return _finish_repeat(
+        summary,
+        enterprise_rc=enterprise.returncode,
+        descendant_rc=post.returncode,
+        observed=observed,
+        repeat=repeat,
+        rows=enterprise_rows,
     )
-    if summary.get("b1_pass") is not True:
-        raise SystemExit("descendant_post")
-    return summary
 
 
 def run_batteries(env: Mapping[str, str]) -> int:
@@ -1649,10 +1778,50 @@ def run_batteries(env: Mapping[str, str]) -> int:
             repeat = _run_one_battery(project, name, seal, evidence, index + 1)
             repeats.append(repeat)
         passed = full_set_passes(repeats)
-        loader_kill = _loader_case(project, name, seal, "2d-crash-recovery") if passed else "fail"
-        loader_restart = _loader_case(project, name, seal, "2c-upgrade-rollback") if passed else "fail"
+        kill = _loader_case(project, name, seal, "2d-crash-recovery")
+        restart = _loader_case(project, name, seal, "2c-upgrade-rollback")
+        loader_kill = kill["word"]
+        loader_restart = restart["word"]
+        cases: list[dict[str, Any]] = []
+        for repeat in repeats:
+            errno = repeat.get("errno")
+            pid = repeat.get("deny_pid")
+            count = repeat.get("denied_rows")
+            cases.append(
+                _case_row(
+                    "enterprise",
+                    "held" if repeat.get("enterprise_rc") == 0 and isinstance(pid, int) and pid > 0 else "fail",
+                    errno if isinstance(errno, int) else -1,
+                    [pid] if isinstance(pid, int) and pid > 0 else [],
+                )
+            )
+            if isinstance(count, int) and count > 1 and cases[-1].get("denied_rows") == 1:
+                cases[-1]["denied_rows"] = count
+            desc_pid = repeat.get("desc_deny_pid")
+            desc_count = repeat.get("desc_denied_rows")
+            cases.append(
+                _case_row(
+                    "descendant-b1",
+                    "held" if repeat.get("b1_pass") is True and isinstance(desc_pid, int) and desc_pid > 0 else "fail",
+                    -1,
+                    [desc_pid] if isinstance(desc_pid, int) and desc_pid > 0 else [],
+                )
+            )
+            if isinstance(desc_count, int) and desc_count > 1 and cases[-1].get("denied_rows") == 1:
+                cases[-1]["denied_rows"] = desc_count
+        kill_errno = -1
+        enrolled = kill["body"].get("enrolled_after") if isinstance(kill["body"], dict) else None
+        if isinstance(enrolled, dict) and isinstance(enrolled.get("file_errno"), int):
+            kill_errno = enrolled["file_errno"]
+        cases.append(_case_row("loader-kill", loader_kill, kill_errno, kill["pids"]))
+        restart_errno = -1
+        after = restart["body"].get("deny_after") if isinstance(restart["body"], dict) else None
+        if isinstance(after, dict) and isinstance(after.get("file_errno"), int):
+            restart_errno = after["file_errno"]
+        cases.append(_case_row("loader-restart", loader_restart, restart_errno, restart["pids"]))
         result = {
             "batteries": True,
+            "cases": cases,
             "claim_cap": CLAIM_CAP,
             "cloud": "gcp",
             "package_image": PACKAGE_IMAGE,
@@ -1670,6 +1839,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "subnet": SUBNET,
             "trust_sha256": TRUST_SHA256,
         }
+        print(json.dumps({"cases": cases, "loader_kill": loader_kill, "loader_restart": loader_restart}), flush=True)
         if not passed or loader_kill != "held" or loader_restart != "held":
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("battery" if not passed else "loader")
