@@ -36,6 +36,37 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertTrue(body["process_restart_held"])
         self.assertFalse(body["lab_pass"])
         self.assertFalse(body["upgrade_pass"])
+        silent = grade.grade_upgrade(
+            seal_sha256=grade.WORKING_SEAL,
+            image_before="sha256:abc",
+            image_after="sha256:abc",
+            deny_before=13,
+            deny_after=0,
+            attributed_before=True,
+            attributed_after=False,
+        )
+        self.assertFalse(silent["process_restart_held"])
+        held = grade.grade_upgrade(
+            seal_sha256=grade.WORKING_SEAL,
+            image_before="sha256:abc",
+            image_after="sha256:abc",
+            deny_before=13,
+            deny_after=13,
+            attributed_before=True,
+            attributed_after=True,
+        )
+        self.assertTrue(held["process_restart_held"])
+        self.assertTrue(held["restart_attributed"])
+        unnamed = grade.grade_upgrade(
+            seal_sha256=grade.WORKING_SEAL,
+            image_before="sha256:abc",
+            image_after="sha256:abc",
+            deny_before=13,
+            deny_after=13,
+            attributed_before=True,
+            attributed_after=False,
+        )
+        self.assertFalse(unnamed["process_restart_held"])
 
     def test_dead_loader_that_still_allows_enrolled_traffic_fails(self) -> None:
         body = grade.grade_crash(enrolled_errno=0, unenrolled_errno=0)
@@ -48,6 +79,56 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertEqual(body["classification"], "fail_closed")
         self.assertTrue(body["expectation_met"])
         self.assertFalse(body["lab_pass"])
+
+    def test_killed_loader_file_open_needs_an_attributed_deny(self) -> None:
+        silent = grade.grade_crash(
+            enrolled_errno=1,
+            unenrolled_errno=0,
+            file_errno=0,
+            file_attributed=False,
+        )
+        self.assertEqual(silent["classification"], "silent_weakening")
+        self.assertEqual(silent["file_open"], "allowed")
+        unnamed = grade.grade_crash(
+            enrolled_errno=1,
+            unenrolled_errno=0,
+            file_errno=13,
+            file_attributed=False,
+        )
+        self.assertEqual(unnamed["classification"], "unattributed_deny")
+        held = grade.grade_crash(
+            enrolled_errno=1,
+            unenrolled_errno=0,
+            file_errno=13,
+            file_attributed=True,
+        )
+        self.assertEqual(held["classification"], "fail_closed")
+        self.assertEqual(held["file_open"], "attributed_deny")
+        tamper = grade.grade_tamper(
+            enrolled_errno=1,
+            unenrolled_errno=0,
+            loader_up=False,
+            file_errno=0,
+            file_attributed=False,
+        )
+        self.assertEqual(tamper["classification"], "silent_weakening")
+        tamper_held = grade.grade_tamper(
+            enrolled_errno=1,
+            unenrolled_errno=0,
+            loader_up=False,
+            file_errno=13,
+            file_attributed=True,
+        )
+        self.assertEqual(tamper_held["classification"], "fail_closed")
+        self.assertEqual(tamper_held["file_open"], "attributed_deny")
+        record = bytearray(grade.DENY_ATTR_SIZE)
+        record[0:4] = (4242).to_bytes(4, "little")
+        record[16:24] = (9).to_bytes(8, "little")
+        record[32:36] = (grade.DENY_KIND_FILE).to_bytes(4, "little")
+        self.assertTrue(grade.deny_record_names(bytes(record), 4242))
+        self.assertFalse(grade.deny_record_names(bytes(record), 4243))
+        record[16:24] = (0).to_bytes(8, "little")
+        self.assertFalse(grade.deny_record_names(bytes(record), 4242))
 
     def test_performance_rejects_a_second_host_and_a_long_run(self) -> None:
         rejected = grade.grade_performance(runtime_seconds=1, host_count=2, sample_count=10)

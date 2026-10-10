@@ -35,6 +35,23 @@ def _base(battery: str) -> dict[str, Any]:
     }
 
 
+DENY_KIND_FILE = 1
+DENY_KIND_SELF = 4
+DENY_ATTR_SIZE = 40
+
+
+def deny_record_names(record: bytes, pid: int) -> bool:
+    """Pinned DenyAttr: pid at 0, timestamp_ns at 16, kind at 32."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    if len(record) < DENY_ATTR_SIZE:
+        return False
+    got = int.from_bytes(record[0:4], "little")
+    timestamp = int.from_bytes(record[16:24], "little")
+    kind = int.from_bytes(record[32:36], "little")
+    return got == pid and timestamp != 0 and kind in (DENY_KIND_FILE, DENY_KIND_SELF)
+
+
 def egress_word(errno: int | None) -> str:
     if errno in (1, 13):
         return "denied"
@@ -50,13 +67,20 @@ def grade_upgrade(
     image_after: str,
     deny_before: int | None,
     deny_after: int | None,
+    attributed_before: bool | None = None,
+    attributed_after: bool | None = None,
 ) -> dict[str, Any]:
     """Same seal loaded twice is not an upgrade. A process restart is separate."""
     body = _base("2c-upgrade-rollback")
     same_bytes = seal_sha256 == WORKING_SEAL
     same_image = bool(image_before) and image_before == image_after
     restart_held = deny_before == 13 and deny_after == 13
+    if attributed_before is False or attributed_after is False:
+        restart_held = False
     body["process_restart_held"] = restart_held
+    body["restart_attributed"] = (
+        restart_held and attributed_before is True and attributed_after is True
+    )
     body["host_rollback"] = "NOT_RUN"
     body["upgrade_pass"] = False
     if same_bytes and same_image:
@@ -70,10 +94,35 @@ def grade_upgrade(
     return body
 
 
+def _file_open_failed(file_errno: int | None, file_attributed: bool | None) -> dict[str, Any] | None:
+    """A protected open after the loader is gone. Errno 0 is silent. EACCES needs a pid."""
+    if file_errno is None:
+        return None
+    if file_errno == 0:
+        return {
+            "classification": "silent_weakening",
+            "expectation_met": False,
+            "file_open": "allowed",
+            "host_result": "FAIL",
+        }
+    if file_errno == 13 and file_attributed is False:
+        return {
+            "classification": "unattributed_deny",
+            "expectation_met": False,
+            "file_open": "unattributed",
+            "host_result": "FAIL",
+        }
+    if file_errno == 13 and file_attributed is True:
+        return {"file_open": "attributed_deny"}
+    return None
+
+
 def grade_crash(
     *,
     enrolled_errno: int | None,
     unenrolled_errno: int | None,
+    file_errno: int | None = None,
+    file_attributed: bool | None = None,
 ) -> dict[str, Any]:
     """After the loader is dead. Enrolled traffic that completes is a fail."""
     body = _base("2d-crash-recovery")
@@ -81,6 +130,13 @@ def grade_crash(
     unenrolled = egress_word(unenrolled_errno)
     body["enrolled_egress"] = enrolled
     body["unenrolled_egress"] = unenrolled
+    file_row = _file_open_failed(file_errno, file_attributed)
+    if file_row is not None:
+        if file_row.get("file_open") == "attributed_deny":
+            body["file_open"] = "attributed_deny"
+        else:
+            body.update(file_row)
+            return body
     if enrolled == "allowed":
         body["classification"] = "silent_weakening"
         body["expectation_met"] = False
@@ -126,12 +182,21 @@ def grade_tamper(
     unenrolled_errno: int | None,
     loader_up: bool,
     policy_malformed: bool = False,
+    file_errno: int | None = None,
+    file_attributed: bool | None = None,
 ) -> dict[str, Any]:
     body = _base("2f-tamper")
     enrolled = egress_word(enrolled_errno)
     unenrolled = egress_word(unenrolled_errno)
     body["enrolled_egress"] = enrolled
     body["unenrolled_egress"] = unenrolled
+    file_row = _file_open_failed(file_errno, file_attributed)
+    if file_row is not None:
+        if file_row.get("file_open") == "attributed_deny":
+            body["file_open"] = "attributed_deny"
+        else:
+            body.update(file_row)
+            return body
     if enrolled == "allowed":
         body["classification"] = "silent_weakening"
         body["expectation_met"] = False
