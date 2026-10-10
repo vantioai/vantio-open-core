@@ -64,7 +64,7 @@ TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
-IMAGE_NAME = "vantio-phantom-engine:evidence-ring-0533c88"
+IMAGE_NAME = "vantio-phantom-engine:walk-anchor-6aa18ca"
 GUEST_DIR = "/tmp/vantio-lab"
 ZONE = lab.ZONE
 E2_MICRO_USD_PER_HOUR = Decimal("0.0084")
@@ -557,7 +557,7 @@ def batteries_requested(env: Mapping[str, str]) -> bool:
 
 
 def refuse_batteries(env: Mapping[str, str]) -> str:
-    """Batteries wait for a new seal. The current policy-allow seal stays plumbing-only."""
+    """Batteries are refused for the plumbing-only seal f882dd81."""
     seal = expected_seal(env)
     if batteries_requested(env) and seal == POLICY_ALLOW_SEAL:
         raise SystemExit("batteries_refused_old_seal")
