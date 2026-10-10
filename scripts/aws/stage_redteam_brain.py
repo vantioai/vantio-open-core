@@ -35,9 +35,11 @@ def stage(directory: str) -> None:
     redteam_brain.fetch(str(root))
     safe_extract(root / redteam_brain.RUNTIME_NAME, root)
     server = root / "llama-b11540" / "llama-server"
+    library = root / "llama-b11540" / "libllama-server-impl.so"
     model = root / redteam_brain.MODEL_NAME
-    if not server.is_file() or not model.is_file():
+    if not server.is_file() or not library.is_file() or not model.is_file():
         raise ValueError("brain_layout")
+    print(f"model_bytes={model.stat().st_size} server={server}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
