@@ -1,14 +1,15 @@
 # Tempo
 
-Passed command:
+Passed command, from the repo root:
 
 ```sh
-sudo docker run -d --name vantio-tempo \
-  -p 4347:4317 -p 4348:4318 -p 3201:3200 \
-  -v "$PWD/deploy/observability/tempo/tempo.yaml:/etc/tempo.yaml:ro" \
-  grafana/tempo:2.7.1 -config.file=/etc/tempo.yaml
+sudo docker compose -p tempo -f deploy/observability/tempo/compose.yaml up -d
 ```
 
-A bound send to `http://127.0.0.1:4348` was readable at `http://127.0.0.1:3201/api/traces/<trace id>`. The body had schema `1.0.0`, `BLOCK`, the three kinds, service `vantio-optics`, and no canary. Tempo returns the trace id as base64.
+Image `grafana/tempo:2.7.1`. HTTP is host port `4348`. The query port is `3201`.
 
-Loki, Prometheus, and the Grafana UI were not started. There is no setup command for them.
+After `/ready` returned success, a bound queue that had been held while port `4348` was closed drained into Tempo. The query API returned that same trace id. Tempo returns the trace id as base64.
+
+A paused Tempo container made the sender time out. `POST /v1/traces` on the query port `3201` returned HTTP 404. The sender stayed down and sent 0.
+
+Loki, Prometheus, and Grafana are a separate compose file. See `grafana.md`.

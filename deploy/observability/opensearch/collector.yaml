@@ -8,13 +8,20 @@ receivers:
 exporters:
   debug:
     verbosity: basic
-  elasticsearch:
-    endpoint: http://host.docker.internal:9200
+  opensearch:
+    http:
+      endpoint: http://host.docker.internal:9200
+    traces_index: vantio-traces
+    logs_index: vantio-logs
+    bulk_action: index
 service:
+  telemetry:
+    logs:
+      level: info
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug, elasticsearch]
+      exporters: [debug, opensearch]
     logs:
       receivers: [otlp]
-      exporters: [debug, elasticsearch]
+      exporters: [debug, opensearch]

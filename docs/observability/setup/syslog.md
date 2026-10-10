@@ -1,14 +1,15 @@
 # Syslog
 
-Passed command, after the container exists:
+Passed command, from the repo root:
 
 ```sh
-sudo docker start vantio-rsyslog
-sudo docker exec vantio-rsyslog sh -c ': > /out/syslog.log'
+sudo docker compose -p rsyslog -f deploy/observability/rsyslog/compose.yaml up -d
 ```
 
-The container is Alpine 3.20 with rsyslog. TCP is host port 5515. UDP is host port 5514.
+That build uses Alpine 3.20 and installs rsyslog in the image. TCP is host port `5515`. UDP is `5514`. The drain in this run used TCP.
 
-A bound send with `syslog` set to `tcp://127.0.0.1:5515` and again to `udp://127.0.0.1:5514` wrote schema `1.0.0`, `BLOCK`, the three kinds, and no canary into `deploy/observability/rsyslog/out/syslog.log`. The OTLP side of that send was a local HTTP sink that returned 200, because the exporter sends OTLP before syslog.
+Wait until `rsyslogd` is running. Docker publishes `5515` before the process inside is listening, and a connect to that port can succeed without a log line. The exporter was held until `pidof rsyslogd` succeeded, then the queued batches were flushed. The log contained that trace id 8 times. The syslog line does not include the workload id.
 
-The first TCP attempt against a cold start did not leave the trace. The warm repeat did. Wait until port 5515 accepts connections.
+A paused rsyslog container made the sender time out. After it was unpaused, a new send's trace id was in the file.
+
+The OTLP side of a syslog send is a local HTTP sink that returns 200, because the exporter sends OTLP before syslog.

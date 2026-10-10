@@ -1,7 +1,21 @@
 services:
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true
+      - network.host=0.0.0.0
+      - http.host=0.0.0.0
+      - transport.host=0.0.0.0
+    ports:
+      - "9200:9200"
   collector:
     image: otel/opentelemetry-collector-contrib:0.136.0@sha256:45392d534c1edcc809c2d112394029246bc679d2ae5ea7081414a1fc74f2c621
     command: ["--config=/etc/otel/config.yaml"]
+    depends_on:
+      - opensearch
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

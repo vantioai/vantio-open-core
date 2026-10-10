@@ -18,4 +18,6 @@ Older image `0.103.0` (`deploy/observability/collector/compose-old.yaml`, host p
 
 1000 JSON events: 1127.8 ms, cpu user 1101708 µs, cpu system 31550 µs, rss delta 16621568 bytes, sent 1000, dropped 0.
 
+A ten-minute closed-port queue then drained into this file exporter after the log said `Everything is ready`. The same trace id was in the file eight times. Sent went from 0 to 8 and the queue went from 8 to 0.
+
 This is not a production collector deployment.

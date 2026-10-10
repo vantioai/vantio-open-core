@@ -1,13 +1,13 @@
 # Jaeger
 
-Passed command:
+Passed command, from the repo root:
 
 ```sh
-sudo docker start vantio-jaeger
+sudo docker compose -p jaeger -f deploy/observability/jaeger/compose.yaml up -d
 ```
 
-The container publishes query `16686`, gRPC `4319`, and HTTP `4320`. Image `jaegertracing/all-in-one:1.62.0`.
+Image `jaegertracing/all-in-one:1.62.0`. Query is host port `16686`, gRPC `4319`, HTTP `4320`.
 
-After the broker was up, a bound send to `http://127.0.0.1:4320` and to `http://127.0.0.1:4319` was readable at `http://127.0.0.1:16686/api/traces/<trace id>`. The body had schema `1.0.0`, `BLOCK`, the three event kinds, and no canary. The forged marker was absent.
+After the process was up, a bound queue that had been held while those ports were closed drained into Jaeger. The query API for that same trace id returned the trace. The body had the workload id from the queued event. An unbound object was not part of that queue.
 
-One earlier HTTP attempt returned `ECONNRESET` to the client and Jaeger still stored that trace. Wait until port 4320 accepts connections.
+A later paused container made the sender time out. Port `16686` answered `POST /v1/traces` with HTTP 200 and an HTML page. The exporter treated that status as success and did not read the HTML.
