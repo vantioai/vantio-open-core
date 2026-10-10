@@ -43,6 +43,8 @@ SECRET = re.compile(
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
 DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "enterprise-rows.sh"
 DEFAULT_DESCENDANT_GUEST = Path(__file__).resolve().with_name("lab-guests") / "descendant_b1.py"
+DEFAULT_REDTEAM_ROWS = Path(__file__).resolve().parents[1] / "gcp" / "lab-guests" / "redteam_rows.py"
+DEFAULT_REDTEAM_PACKET = Path(__file__).resolve().parents[1] / "gcp" / "redteam_packet.py"
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
 SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
@@ -907,6 +909,21 @@ def execute_enterprise_rows(
                 _ssh_failure(owned)
             copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
             copy_to(bundle_dir / "contract.tar", "contract.tar")
+            debs_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
+            if debs_env:
+                debs_dir = Path(debs_env)
+                deb_files = sorted(path for path in debs_dir.glob("*.deb") if path.is_file())
+                if not deb_files:
+                    raise lab.GuardAbort("offline_debs")
+                made_debs = remote(["mkdir", "-p", f"{GUEST_BUNDLE}/debs"], "")
+                if made_debs.returncode != 0:
+                    _ssh_failure(made_debs)
+                copied = ssh_runner(
+                    ["scp", *base[:-1], *[str(path) for path in deb_files], f"ubuntu@{host}:{GUEST_BUNDLE}/debs/"],
+                    "",
+                )
+                if copied.returncode != 0:
+                    _ssh_failure(copied)
             script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
             copy_to(script_path, "enterprise-rows.sh")
             battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
@@ -918,6 +935,11 @@ def execute_enterprise_rows(
                 copy_to(descendant, "descendant_b1.py")
                 probe_c = descendant.with_name("descendant_probe.c")
                 copy_to(probe_c, "descendant_probe.c")
+                rows_py = Path(os.environ.get("W3_REDTEAM_ROWS", str(DEFAULT_REDTEAM_ROWS)))
+                packet_py = Path(os.environ.get("W3_REDTEAM_PACKET", str(DEFAULT_REDTEAM_PACKET)))
+                if rows_py.is_file() and packet_py.is_file():
+                    copy_to(rows_py, "redteam_rows.py")
+                    copy_to(packet_py, "redteam_packet.py")
                 pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
                 if pre.returncode != 0:
                     ran = pre
@@ -940,6 +962,15 @@ def execute_enterprise_rows(
                 guest_text = (ran.stdout or "") + (ran.stderr or "")
             _store_guest_rows(rows_local, guest_text)
             payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
+            redteam_local = Path(os.environ.get("W3_REDTEAM_PATH", "w3-lab-redteam-rows.json"))
+            lab.aws_json(runner, connect + [public])
+            pulled_redteam = ssh_runner(
+                ["scp", *base[:-1], f"ubuntu@{host}:/tmp/redteam-rows.json", str(redteam_local)],
+                "",
+            )
+            if pulled_redteam.returncode == 0 and redteam_local.is_file():
+                _store_guest_rows(redteam_local, redteam_local.read_text(encoding="utf-8", errors="replace"))
+                payload["redteam_rows_sha256"] = hashlib.sha256(redteam_local.read_bytes()).hexdigest()
             payload["guest_rc"] = ran.returncode
             payload["mutated"] = True
             if ran.returncode != 0:
