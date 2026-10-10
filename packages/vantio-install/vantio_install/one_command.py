@@ -15,8 +15,8 @@ from pathlib import Path
 
 from vantio_install import constants
 from vantio_install.artifact_verify import (
+    active_artifact_trust,
     fetch_to_file,
-    load_artifact_trust,
     load_signature_file,
     verify_archive_file,
 )
@@ -45,14 +45,12 @@ def run_one_command(ctx: dict) -> tuple[int, dict]:
     policy_decision = _require_signed_policy(ctx.get("policy_file"))
     if policy_decision is not None:
         return policy_decision
+    if ctx.get("artifact_trust") is not None:
+        return _refused(ctx, "CALLER_TRUST_REFUSED", "NOT_RUN")
     signature_path = ctx.get("signature_file")
-    trust_path = ctx.get("artifact_trust")
-    if signature_path is None or trust_path is None:
+    if signature_path is None:
         return _refused(ctx, "SIGNATURE_REQUIRED", "NOT_RUN")
-    try:
-        trust_keys = load_artifact_trust(Path(trust_path))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return _refused(ctx, "UNTRUSTED_KEY", "NOT_RUN")
+    trust_keys = active_artifact_trust()
     if not trust_keys:
         return _refused(ctx, "UNTRUSTED_KEY", "NOT_RUN")
     try:
