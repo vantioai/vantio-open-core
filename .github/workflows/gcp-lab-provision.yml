@@ -1,7 +1,7 @@
 name: GCP lab provision
 
 # Offline Phantom Engine delivery for t311u item 2, updated by t313u.
-# One Debian 12 e2-micro on vantio-lab-offline, no public IP, over IAP.
+# One Ubuntu 24.04 e2-micro on vantio-lab-offline, no public IP, over IAP.
 # The expected seal digest and bundle commit are workflow inputs.
 # run_batteries is refused for f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753.
 # The guest accepts the loaded image vantio-phantom-engine:loader-kill-3ee6b2a.
@@ -259,6 +259,8 @@ jobs:
             scripts/gcp/lab-guests/enterprise-rows.sh
             scripts/gcp/lab-guests/redteam_rows.py
             scripts/aws/lab-guests/descendant_b1.py
+            scripts/aws/lab-guests/phase2_host.py
+            scripts/aws/lab-guests/phase2_grade.py
             scripts/aws/lab-guests/self_service.py
             scripts/lab/stage_lab_trust.py
             packages/vantio-install/vantio_install/
@@ -421,6 +423,8 @@ jobs:
           EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
           GUEST_SCRIPT: scripts/gcp/lab-guests/enterprise-rows.sh
           DESCENDANT_SCRIPT: scripts/aws/lab-guests/descendant_b1.py
+          PHASE2_HOST: scripts/aws/lab-guests/phase2_host.py
+          PHASE2_GRADE: scripts/aws/lab-guests/phase2_grade.py
           STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
         run: |
           set -euo pipefail

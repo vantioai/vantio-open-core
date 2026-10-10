@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Phantom Engine delivery onto one private Debian 12 lab VM.
+"""Offline Phantom Engine delivery onto one private Ubuntu 24.04 lab VM.
 
 The sealed bundle moves through gs://vantio-lab-oct08-handoff and then over
 IAP. It is never a GitHub Actions artifact. This module does not call GCP
@@ -52,14 +52,14 @@ WIF_PROVIDER_RE = re.compile(
 NETWORK = "vantio-lab-offline"
 SUBNET = "vantio-lab-offline-usc1"
 NETWORK_TAG = "vantio-gcp-lab"
-IMAGE_FAMILY = "debian-12"
-IMAGE_PROJECT = "debian-cloud"
-DEBIAN_IMAGE = "debian:12@sha256:bc49dc1918ee1a47a93e65b5e4676e8680fb754b133197b92ca52bfe6731d5f0"
+IMAGE_FAMILY = "ubuntu-2404-lts-amd64"
+IMAGE_PROJECT = "ubuntu-os-cloud"
+PACKAGE_IMAGE = "ubuntu:24.04"
 SNAPSHOT = "20261008T000000Z"
 SNAPSHOT_LINES = (
-    "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261008T000000Z bookworm main",
-    "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261008T000000Z bookworm-updates main",
-    "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20261008T000000Z bookworm-security main",
+    "deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble main universe",
+    "deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates main universe",
+    "deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-security main universe",
 )
 POLICY_ALLOW_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
 TRUST_SHA256 = "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876"
@@ -329,7 +329,7 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
         if key == "lab_project_id" and value == LAB_PROJECT:
             kept[key] = value
             continue
-        if key == "debian_image" and value == DEBIAN_IMAGE:
+        if key == "package_image" and value == PACKAGE_IMAGE:
             kept[key] = value
             continue
         if key == "snapshot" and value == SNAPSHOT:
@@ -376,6 +376,9 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                     }
                 )
             kept["self_service"] = rows
+            continue
+        if key in {"loader_kill", "loader_restart"} and value in {"held", "fail"}:
+            kept[key] = value
             continue
         if key == "full_set":
             continue
@@ -743,6 +746,8 @@ def guest_command(seal: str, mode: str, phase: str = "") -> str:
         return f"bash {script} {seal} enterprise"
     if mode == "descendant-b1" and phase in ("pre", "post"):
         return f"bash {script} {seal} descendant-b1 {phase}"
+    if mode in {"2c-upgrade-rollback", "2d-crash-recovery"} and phase == "":
+        return f"bash {script} {seal} {mode}"
     raise SystemExit("battery")
 
 
@@ -1127,7 +1132,7 @@ def hash_debs(env: Mapping[str, str]) -> int:
     rows = deb_manifest(directory)
     payload = {
         "claim_cap": CLAIM_CAP,
-        "debian_image": DEBIAN_IMAGE,
+        "package_image": PACKAGE_IMAGE,
         "debs": rows,
         "snapshot": SNAPSHOT,
     }
@@ -1356,6 +1361,53 @@ def _stored_guest(path: Path, fallback: str) -> Any:
     return redact(fallback[-8000:])
 
 
+def _phase_scripts(env: Mapping[str, str]) -> tuple[Path, Path]:
+    host = Path(env.get("PHASE2_HOST", "scripts/aws/lab-guests/phase2_host.py"))
+    grade = Path(env.get("PHASE2_GRADE", "scripts/aws/lab-guests/phase2_grade.py"))
+    if not host.is_file() or not grade.is_file():
+        raise SystemExit("phase2")
+    return host, grade
+
+
+def _last_object(text: str) -> dict[str, Any] | None:
+    start = text.rfind("{")
+    while start >= 0:
+        try:
+            parsed = json.loads(text[start:])
+        except json.JSONDecodeError:
+            start = text.rfind("{", 0, start)
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+        start = text.rfind("{", 0, start)
+    return None
+
+
+def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
+    if not isinstance(body, dict):
+        return "fail"
+    if mode == "2d-crash-recovery":
+        return "held" if body.get("file_open") == "attributed_deny" else "fail"
+    if mode == "2c-upgrade-rollback":
+        after = body.get("deny_after")
+        errno = after.get("file_errno") if isinstance(after, dict) else None
+        if body.get("process_restart_held") is True and body.get("restart_attributed") is True and errno == 13:
+            return "held"
+        return "fail"
+    return "fail"
+
+
+def _loader_case(project: str, name: str, seal: str, mode: str) -> str:
+    completed = _ssh(project, name, guest_command(seal, mode))
+    text = (completed.stdout or "") + (completed.stderr or "")
+    body = _last_object(text)
+    word = _loader_word(mode, body)
+    print(json.dumps({"mode": mode, "result": word, "rc": completed.returncode}), flush=True)
+    if completed.returncode != 0 or word != "held":
+        print(redact(text)[-4000:], file=sys.stderr)
+    return word
+
+
 def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     bundle = Path(env.get("W3_BUNDLE_DIR", ""))
     deb_dir = Path(env.get("DEB_DIR", ""))
@@ -1373,6 +1425,9 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     shutil.copy2(guest, script_dest)
     script_dest.chmod(0o755)
     shutil.copy2(descendant, dest / "descendant_b1.py")
+    host, grade = _phase_scripts(env)
+    shutil.copy2(host, dest / "phase2_host.py")
+    shutil.copy2(grade, dest / "phase2_grade.py")
     rows = pack_debs(deb_dir, dest / "debs.tar")
     bundle = deb_dir / "ca-certificates.crt"
     if not bundle.is_file() or bundle.stat().st_size < 1000:
@@ -1576,6 +1631,8 @@ def run_batteries(env: Mapping[str, str]) -> int:
                 payload_dir / "contract.tar",
                 payload_dir / "enterprise-rows.sh",
                 payload_dir / "descendant_b1.py",
+                payload_dir / "phase2_host.py",
+                payload_dir / "phase2_grade.py",
                 payload_dir / "debs.tar",
                 payload_dir / "ca-certificates.crt",
             ],
@@ -1592,11 +1649,15 @@ def run_batteries(env: Mapping[str, str]) -> int:
             repeat = _run_one_battery(project, name, seal, evidence, index + 1)
             repeats.append(repeat)
         passed = full_set_passes(repeats)
+        loader_kill = _loader_case(project, name, seal, "2d-crash-recovery") if passed else "fail"
+        loader_restart = _loader_case(project, name, seal, "2c-upgrade-rollback") if passed else "fail"
         result = {
             "batteries": True,
             "claim_cap": CLAIM_CAP,
             "cloud": "gcp",
-            "debian_image": DEBIAN_IMAGE,
+            "package_image": PACKAGE_IMAGE,
+            "loader_kill": loader_kill,
+            "loader_restart": loader_restart,
             "debs": debs,
             "full_set": passed,
             "image": IMAGE_NAME,
@@ -1609,9 +1670,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "subnet": SUBNET,
             "trust_sha256": TRUST_SHA256,
         }
-        if not passed:
+        if not passed or loader_kill != "held" or loader_restart != "held":
             write_evidence(evidence / "gcp-lab-rows.json", result)
-            raise SystemExit("battery")
+            raise SystemExit("battery" if not passed else "loader")
         write_evidence(evidence / "gcp-lab-rows.json", result)
         print(json.dumps({"full_set": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
         return 0

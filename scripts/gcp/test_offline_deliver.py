@@ -102,11 +102,11 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("--subnet=vantio-lab-offline-usc1", argv)
         self.assertIn("--tags=vantio-gcp-lab", argv)
         self.assertIn("--metadata=enable-oslogin=TRUE,block-project-ssh-keys=TRUE", argv)
-        self.assertIn("--image-family=debian-12", argv)
-        self.assertIn("--image-project=debian-cloud", argv)
+        self.assertIn("--image-family=ubuntu-2404-lts-amd64", argv)
+        self.assertIn("--image-project=ubuntu-os-cloud", argv)
         self.assertIn("--shielded-secure-boot", argv)
         self.assertNotIn("--address=", joined)
-        self.assertNotIn("ubuntu", joined)
+        self.assertNotIn("debian-cloud", joined)
         self.assertNotIn("navera", joined.lower())
         startup = od.offline_startup(120)
         self.assertNotIn("apt-get", startup)
@@ -464,7 +464,7 @@ class OfflineDeliverTest(unittest.TestCase):
 
     def test_deb_fetch_uses_the_pinned_snapshot(self) -> None:
         text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
-        self.assertIn(od.DEBIAN_IMAGE, text)
+        self.assertIn(od.PACKAGE_IMAGE, text)
         for line in od.SNAPSHOT_LINES:
             self.assertIn(line, text)
         self.assertIn("--download-only", text)
@@ -472,7 +472,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("docker.io", text)
         self.assertIn("python3-cryptography", text)
         self.assertIn("ca-certificates", text)
-        self.assertLess(text.index("apt-get install -y --no-install-recommends ca-certificates"), text.index("snapshot.debian.org"))
+        self.assertLess(text.index("apt-get install -y --no-install-recommends ca-certificates"), text.index("snapshot.ubuntu.com"))
         self.assertLess(text.index("--download-only"), text.index("apt-get download ca-certificates"))
         self.assertIn("ca-certificates.crt", text)
 
