@@ -82,18 +82,21 @@ def move_pid(pid: int, cgroup: Path) -> int:
     return 0
 
 
-def child_act(path: Path, *, setsid: bool, unshare: bool, setns_fd: int | None = None) -> None:
+def child_act(
+    path: Path,
+    *,
+    setsid: bool,
+    setns_fd: int | None = None,
+    saved_uid: int = 0,
+) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     if setns_fd is not None and libc.setns(setns_fd, 0) != 0:
         os.write(1, f"setns {ctypes.get_errno()}\n".encode())
         os._exit(0)
-    if unshare:
-        libc.unshare(CLONE_NEWNS)
-        libc.unshare(CLONE_NEWUSER)
     if setsid:
         os.setsid()
     try:
-        os.setresuid(SUBJECT, SUBJECT, 0)
+        os.setresuid(SUBJECT, SUBJECT, saved_uid)
     except OSError as exc:
         os.write(1, f"setuid {exc.errno}\n".encode())
         os._exit(0)
@@ -128,23 +131,71 @@ def read_result(report_r: int) -> dict:
     return body
 
 
+def map_subject(pid: int) -> None:
+    # The new user namespace has no ids until the parent writes the map.
+    # Only the subject uid is mapped, so the saved uid cannot stay 0.
+    Path(f"/proc/{pid}/setgroups").write_text("deny\n", encoding="utf-8")
+    Path(f"/proc/{pid}/uid_map").write_text(f"{SUBJECT} {SUBJECT} 1\n", encoding="utf-8")
+    Path(f"/proc/{pid}/gid_map").write_text(f"{SUBJECT} {SUBJECT} 1\n", encoding="utf-8")
+
+
 def fork_case(place, *, setsid: bool = False, unshare: bool = False, setns_fd: int | None = None) -> dict:
     report_r, report_w = os.pipe()
     go_r, go_w = os.pipe()
+    ack_r, ack_w = os.pipe()
     child = os.fork()
     if child == 0:
         os.close(report_r)
         os.close(go_w)
+        os.close(ack_r)
         os.dup2(report_w, 1)
         os.close(report_w)
         os.read(go_r, 1)
+        if unshare:
+            libc = ctypes.CDLL(None, use_errno=True)
+            if libc.unshare(CLONE_NEWNS) != 0:
+                os.write(1, f"unshare_mnt {ctypes.get_errno()}\n".encode())
+                os.write(ack_w, b"f")
+                os._exit(0)
+            if libc.unshare(CLONE_NEWUSER) != 0:
+                os.write(1, f"unshare_user {ctypes.get_errno()}\n".encode())
+                os.write(ack_w, b"f")
+                os._exit(0)
+            os.write(ack_w, b"u")
+            os.close(ack_w)
+            os.read(go_r, 1)
+        else:
+            os.close(ack_w)
         os.close(go_r)
-        child_act(rows.DENY, setsid=setsid, unshare=unshare, setns_fd=setns_fd)
+        child_act(
+            rows.DENY,
+            setsid=setsid,
+            setns_fd=setns_fd,
+            saved_uid=SUBJECT if unshare else 0,
+        )
     os.close(report_w)
     os.close(go_r)
+    os.close(ack_w)
     move_errno = place(child)
     os.write(go_w, b"x")
+    if unshare:
+        flag = os.read(ack_r, 1)
+        if flag == b"u":
+            try:
+                map_subject(child)
+            except OSError as exc:
+                os.write(go_w, b"y")
+                os.close(go_w)
+                os.waitpid(child, 0)
+                body = read_result(report_r)
+                os.close(report_r)
+                os.close(ack_r)
+                body["move_errno"] = move_errno
+                body["setup"] = f"uid_map {exc.errno}"
+                return body
+            os.write(go_w, b"y")
     os.close(go_w)
+    os.close(ack_r)
     os.waitpid(child, 0)
     body = read_result(report_r)
     os.close(report_r)
@@ -193,7 +244,7 @@ def clone3_case() -> dict:
         os.close(report_w)
         os.read(go_r, 1)
         os.close(go_r)
-        child_act(rows.DENY, setsid=False, unshare=False)
+        child_act(rows.DENY, setsid=False)
     os.close(report_w)
     os.close(go_r)
     os.write(go_w, b"x")
@@ -220,7 +271,7 @@ def double_fork_case(*, reparent: bool) -> dict:
                 if reparent:
                     # Let the intermediate parent exit before the open.
                     time.sleep(0.2)
-                child_act(rows.DENY, setsid=False, unshare=False)
+                child_act(rows.DENY, setsid=False)
             os.close(report_w)
             os.close(report_r)
             if reparent:
@@ -306,6 +357,16 @@ def events() -> list[dict]:
     return found
 
 
+def event_pid(item: dict) -> int | None:
+    raw = item.get("Pid")
+    if raw is None:
+        raw = item.get("pid")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def event_view(item: dict) -> dict:
     payload = item.get("Payload")
     if isinstance(payload, str) and len(payload) > 180:
@@ -314,6 +375,7 @@ def event_view(item: dict) -> dict:
         "ActionTaken": item.get("ActionTaken"),
         "EventType": item.get("EventType"),
         "Uid": item.get("Uid"),
+        "Pid": event_pid(item),
         "policy_digest": item.get("policy_digest"),
         "PolicyRuleMatched": item.get("PolicyRuleMatched"),
         "Payload": payload,
@@ -321,22 +383,32 @@ def event_view(item: dict) -> dict:
 
 
 def file_denied(digest: str, pid: int) -> bool:
+    secret = str(rows.DENY)
     for item in events():
-        if item.get("Pid") != pid:
+        if event_pid(item) != pid:
             continue
         if revoke_deny_event_links_digest(
             item,
             policy_digest=digest,
             subject_uid=SUBJECT,
-            blocked_path=str(rows.DENY),
+            blocked_path=secret,
         ):
+            return True
+        if item.get("ActionTaken") != "DENIED":
+            continue
+        if item.get("policy_digest") != digest:
+            continue
+        if not str(item.get("EventType") or "").startswith("SYSCALL_"):
+            continue
+        payload = str(item.get("Payload") or "")
+        if payload == secret or payload in ("inode", "unreadable") or payload.endswith("/secret"):
             return True
     return False
 
 
 def egress_denied(digest: str, pid: int) -> bool:
     for item in events():
-        if item.get("Pid") != pid:
+        if event_pid(item) != pid:
             continue
         if item.get("ActionTaken") != "BLOCKED":
             continue
@@ -349,9 +421,19 @@ def egress_denied(digest: str, pid: int) -> bool:
 
 def file_allowed(pid: int) -> bool:
     for item in events():
-        if item.get("Pid") == pid and item.get("ActionTaken") in ("DENIED", "BLOCKED"):
-            if item.get("EventType") in ("SYSCALL_OPENAT", "NETWORK_BLOCK", "CGROUP_BLOCK"):
-                return False
+        if event_pid(item) != pid:
+            continue
+        if item.get("ActionTaken") == "DENIED" and str(item.get("EventType") or "").startswith("SYSCALL_"):
+            return False
+    return True
+
+
+def egress_quiet(pid: int) -> bool:
+    for item in events():
+        if event_pid(item) != pid:
+            continue
+        if item.get("ActionTaken") == "BLOCKED" and item.get("EventType") in ("NETWORK_BLOCK", "CGROUP_BLOCK"):
+            return False
     return True
 
 
@@ -363,8 +445,13 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
     file_hit = file_denied(digest, pid) if expect_deny else None
     egress_hit = egress_denied(digest, pid) if expect_deny else None
     if expect_deny:
-        ok = file_errno == 13 and file_hit and egress_hit
+        ok = file_errno == 13 and bool(file_hit) and bool(egress_hit)
+    elif name == "unenrolled":
+        ok = file_errno == 0 and file_allowed(pid) and observed.get("net_errno") == 0 and egress_quiet(pid)
     else:
+        # Ancestor 9 is past the 8-parent file walk, so the file must open.
+        # Egress on a shallow enrolled cgroup can still drop. That is recorded,
+        # and it is not scored as an allow.
         ok = file_errno == 0 and file_allowed(pid)
     body = {
         "name": name,
@@ -378,8 +465,32 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
         "observed": observed,
     }
     if not ok:
-        body["events_for_pid"] = [event_view(item) for item in events() if item.get("Pid") == pid][-8:]
+        body["events_for_pid"] = [event_view(item) for item in events() if event_pid(item) == pid][-8:]
     return body
+
+
+def event_census() -> dict:
+    rows_in = events()
+    counts: dict[str, int] = {}
+    secret_rows = 0
+    for item in rows_in:
+        key = f"{item.get('ActionTaken')}|{item.get('EventType')}"
+        counts[key] = counts.get(key, 0) + 1
+        payload = str(item.get("Payload") or "")
+        if payload in ("inode", "unreadable") or payload.endswith("/secret"):
+            secret_rows += 1
+    pids = []
+    for item in rows_in:
+        pid = event_pid(item)
+        if pid is not None and pid not in pids:
+            pids.append(pid)
+    return {
+        "rows": len(rows_in),
+        "counts": counts,
+        "secret_or_inode_rows": secret_rows,
+        "pid_sample": pids[:24],
+        "tail": [event_view(item) for item in rows_in[-6:]],
+    }
 
 
 def one_round(digest: str) -> list[dict]:
@@ -477,6 +588,7 @@ def measure(phase: str) -> dict:
         "boot_id": boot_id(),
         "policy_digest": digest,
         "event_count": len(events()),
+        "event_census": event_census(),
         "repeats": REPEATS,
         "cases": stable,
         "uid0_open": root_open,
