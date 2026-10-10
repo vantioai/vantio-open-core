@@ -136,6 +136,10 @@ if ! sudo swapon --show | grep -q .; then
   sudo mkswap /swapfile
   sudo swapon /swapfile
 fi
+if ! findmnt -n -t bpf /sys/fs/bpf >/dev/null 2>&1; then
+  sudo mkdir -p /sys/fs/bpf
+  sudo mount -t bpf bpf /sys/fs/bpf
+fi
 sudo mkdir -p /etc/docker
 printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json >/dev/null
 sudo systemctl enable --now docker
