@@ -21,7 +21,7 @@ from tests.dev_policy import ephemeral_dev_key, signed_envelope
 from tests.factory import default_files, host, pins_for, write_bundle
 from tests.test_one_command import _signature
 from vantio_install import constants
-from vantio_install.artifact_verify import fetch_to_file, verify_archive_file
+from vantio_install.artifact_verify import artifact_trust_override, fetch_to_file, verify_archive_file
 from vantio_install.cli import main
 from vantio_install.signed_policy import dev_trust
 
@@ -110,22 +110,6 @@ class AdversarialInstallTests(unittest.TestCase):
         record = _signature(before, pins["pe_archive_name"], private)
         signature_path = root / "signature.json"
         signature_path.write_text(json.dumps(record), encoding="utf-8")
-        trust_path = root / "artifact-trust.json"
-        trust_path.write_text(
-            json.dumps(
-                {
-                    "keys": [
-                        {
-                            "key_class": record["key_class"],
-                            "key_id": record["key_id"],
-                            "not_a_production_root": True,
-                            "public_key_b64": record["public_key_b64"],
-                        }
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
         policy_path = root / "policy.json"
         policy_path.write_text(
             json.dumps(
@@ -186,14 +170,13 @@ class AdversarialInstallTests(unittest.TestCase):
             "--i-accept-live-mutations",
             "--signature-file",
             str(signature_path),
-            "--artifact-trust",
-            str(trust_path),
             "--policy-file",
             str(policy_path),
             "--artifact-url",
             f"http://127.0.0.1:{port}/archive.bin",
         ]
-        with dev_trust((policy_key,)):
+        pinned = {record["key_id"]: base64.b64decode(record["public_key_b64"])}
+        with dev_trust((policy_key,)), artifact_trust_override(pinned):
             buf = io.StringIO()
             with redirect_stdout(buf):
                 code = main(argv)
