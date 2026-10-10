@@ -681,6 +681,12 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertNotIn("contract.tar", script)
         self.assertIn("VANTIO_LAB_SCOPE=lab-nonprod", script)
         self.assertIn("self_service.py", script)
+        text = Path(steps.__file__).read_text(encoding="utf-8")
+        guard = text.find('if battery != "self-service":')
+        seal = text.find('copy_to(bundle_dir / "seal.oci.tar"', guard)
+        contract = text.find('copy_to(bundle_dir / "contract.tar"', guard)
+        self.assertGreater(seal, guard)
+        self.assertGreater(contract, guard)
 
     def test_self_service_private_key_is_refused_before_aws(self) -> None:
         runner = FakeAws()

@@ -1035,8 +1035,9 @@ def execute_enterprise_rows(
             owned = remote(["sudo", "chown", "-R", "ubuntu:ubuntu", "/var/lib/vantio-lab"], "")
             if owned.returncode != 0:
                 _ssh_failure(owned)
-            copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
-            copy_to(bundle_dir / "contract.tar", "contract.tar")
+            if battery != "self-service":
+                copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
+                copy_to(bundle_dir / "contract.tar", "contract.tar")
             debs_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
             if debs_env:
                 debs_dir = Path(debs_env)
