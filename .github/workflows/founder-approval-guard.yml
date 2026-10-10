@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  checks: read
   pull-requests: write   # only to remove a stale founder-approved label after a push
   issues: read
 

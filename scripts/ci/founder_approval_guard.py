@@ -83,7 +83,25 @@ def parse_time(value: object) -> datetime | None:
         return None
 
 
-def decide(hits, labels, label_event, actor_permission, head_received_at=None) -> tuple[bool, str]:
+def label_is_fresh(label_event, head_updated_at, action) -> bool:
+    """The label must belong to the current pull request update.
+
+    GitHub sets pull_request.updated_at. A push or a later edit moves it
+    forward. Applying this label sets it equal to the label event time, so
+    equality is fresh only for the labeled action. A check-run start is not
+    used: a caller can backdate started_at, and a side branch can be checked
+    before it becomes this pull request's head.
+    """
+    labeled_at = parse_time((label_event or {}).get("created_at"))
+    updated_at = parse_time(head_updated_at)
+    if labeled_at is None or updated_at is None:
+        return False
+    if action == "labeled":
+        return labeled_at >= updated_at
+    return labeled_at > updated_at
+
+
+def decide(hits, labels, label_event, actor_permission, head_updated_at=None, action=None) -> tuple[bool, str]:
     if not hits:
         return True, "no protected paths changed"
     if LABEL not in labels:
@@ -93,32 +111,9 @@ def decide(hits, labels, label_event, actor_permission, head_received_at=None) -
     actor = (label_event.get("actor") or {}).get("login")
     if actor_permission != "admin":
         return False, f"'{LABEL}' was applied by a non-admin ({actor})"
-    labeled_at = parse_time(label_event.get("created_at"))
-    received_at = parse_time(head_received_at)
-    # The receipt time is the earliest GitHub check on this head SHA, which is
-    # the server time of the push. A git committer date is not used: the author
-    # can set that in the past. The pull request body is not an input.
-    if labeled_at is None or received_at is None or labeled_at <= received_at:
-        return False, f"'{LABEL}' is older than this head ({head_received_at})"
-    return True, f"'{LABEL}' applied by admin {actor} after {head_received_at}"
-
-
-def earliest_check_start(repo: str, sha: str) -> str | None:
-    """Earliest check-run start on this SHA. GitHub sets this when it receives the push."""
-    started: list[str] = []
-    page = 1
-    while page <= 20:
-        data = gh(f"/repos/{repo}/commits/{sha}/check-runs?per_page=100&page={page}")
-        if not isinstance(data, dict):
-            return None
-        runs = data.get("check_runs") or []
-        for run in runs:
-            if isinstance(run, dict) and isinstance(run.get("started_at"), str):
-                started.append(run["started_at"])
-        if len(runs) < 100:
-            break
-        page += 1
-    return min(started) if started else None
+    if not label_is_fresh(label_event, head_updated_at, action):
+        return False, f"'{LABEL}' is older than the latest pull request update ({head_updated_at})"
+    return True, f"'{LABEL}' applied by admin {actor}"
 
 
 def main() -> int:
@@ -138,14 +133,13 @@ def main() -> int:
     globs = load_globs(Path(os.environ.get("GUARD_PATHS", ".github/founder-approval-paths.txt")))
     files = paged(f"/repos/{repo}/pulls/{num}/files")
     hits = protected_hits(files, globs)
-    label_event, perm, received = None, None, None
+    label_event, perm = None, None
     if hits and LABEL in labels:
         label_event = latest_label_event(paged(f"/repos/{repo}/issues/{num}/events"))
         login = ((label_event or {}).get("actor") or {}).get("login")
         if login:
             perm = gh(f"/repos/{repo}/collaborators/{login}/permission").get("permission")
-        received = earliest_check_start(repo, pr["head"]["sha"])
-    ok, why = decide(hits, labels, label_event, perm, received)
+    ok, why = decide(hits, labels, label_event, perm, pr.get("updated_at"), action)
     print(json.dumps({"pr": num, "head": pr["head"]["sha"], "protected_hits": hits, "ok": ok, "reason": why}, indent=2))
     return 0 if ok else 1
 
