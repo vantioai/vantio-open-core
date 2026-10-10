@@ -108,6 +108,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_eip.py -v
           python3 scripts/gcp/test_lab_auto.py -v
           python3 scripts/gcp/test_offline_deliver.py -v
+          python3 scripts/gcp/test_redteam_packet.py -v
           python3 scripts/ci/test_founder_approval_guard.py -v
 
   candidate-artifacts:
@@ -169,7 +170,6 @@ jobs:
       - name: Compile and test vantio-install
         working-directory: packages/vantio-install
         run: |
-          python -m pip install --require-hashes --disable-pip-version-check -r requirements/dev-hashes.txt
           python -m compileall -q vantio_install
           python -m unittest discover -s tests -t . -v
 
