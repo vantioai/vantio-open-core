@@ -10,7 +10,7 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | SQLite or any other database | Absent. One JSON file per trace id. |
 | `vantio ui`, `vantio doctor`, a resident daemon | Absent. |
 | Alerting | Absent. |
-| OTLP export | Absent. A mapping sketch may exist elsewhere in the repository. Optics does not export OTLP. |
+| OTLP export | Published CLI 0.3.24 does not export OTLP. A source candidate can send only when `VANTIO_EXPORT_CONFIG` is set. That candidate is not in the npm tarball and is not a verified production collector deployment. |
 | Stable schema | Absent. Contract is `unstable-pre-1.0`. |
 | PKG-02 and any shared record vocabulary shipped as a runtime | Future work. Not in the CLI or the published SDK. |
 | Retention, prune, max size | Absent. Files stay until you delete them. |

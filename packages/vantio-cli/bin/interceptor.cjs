@@ -18,7 +18,7 @@
 
 "use strict";
 
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const { mkdirSync, writeFileSync, statSync, fstatSync, readFileSync, openSync, readSync, closeSync } = require("node:fs");
 const { homedir } = require("node:os");
 const { join, basename } = require("node:path");
@@ -38,6 +38,22 @@ const {
   rollupCalls,
   sumMeasuredBytes,
 } = require("./optics-cx.cjs");
+
+let exportOffer = null;
+try {
+  if (process.env.VANTIO_EXPORT_CONFIG) {
+    const started = require(join(__dirname, "..", "..", "optics-export", "src", "index.cjs")).startFromConfig(process.env.VANTIO_EXPORT_CONFIG);
+    exportOffer = (event) => {
+      try {
+        started.offer(event);
+      } catch {
+        /* a receiver problem must not affect the agent */
+      }
+    };
+  }
+} catch {
+  exportOffer = null;
+}
 
 const USE_COLOR = process.stderr.isTTY === true;
 const c = {
@@ -192,6 +208,35 @@ const _calls = [];
 const _pushCall = _calls.push.bind(_calls);
 _calls.push = function vantioRecordCall(...items) {
   const result = _pushCall(...items);
+  if (exportOffer) {
+    try {
+      const last = items.length ? items[items.length - 1] : null;
+      if (last && typeof last === "object") {
+      const rawTrace = String(RUN_TRACE_ID || "");
+      const hex = rawTrace.toLowerCase().replace(/[^0-9a-f]/g, "");
+      const traceId = hex.length === 32 ? hex : createHash("sha256").update(rawTrace).digest("hex").slice(0, 32);
+      const spanId = createHash("sha256").update(`${last.hostname || ""}|${last.ts || ""}|${last.method || ""}`).digest("hex").slice(0, 16);
+      exportOffer({
+        kind: "optics.observation",
+        trace_id: traceId,
+        span_id: spanId,
+        destination_host: last.hostname || null,
+        pid: process.pid,
+        executable: "node",
+        request_bytes: last.request_bytes,
+        response_bytes: last.bytes,
+        duration_ms: last.duration_ms,
+        http_status: last.status,
+        optics_status: "SUCCESS",
+        application_status: applicationStatusFromHttp(last.status),
+        coverage_state: "OBSERVED",
+        path: last.path || null,
+      });
+      }
+    } catch {
+      /* export must not affect the agent */
+    }
+  }
   try {
     const last = items.length ? items[items.length - 1] : null;
     const host = last && typeof last === "object" ? last.hostname : undefined;

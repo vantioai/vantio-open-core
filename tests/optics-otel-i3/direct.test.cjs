@@ -46,6 +46,7 @@ test("public exports stay small", () => {
     "LIMITS",
     "POSTURE",
     "adapterStatus",
+    "attestSourceRecord",
     "evaluateRecords",
     "exportOpticsRecords",
     "parseCustomerEndpoint",

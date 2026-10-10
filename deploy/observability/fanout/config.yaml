@@ -1,0 +1,35 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  splunk_hec:
+    token: "local-test-token"
+    endpoint: "http://host.docker.internal:8088/services/collector"
+    source: vantio
+    sourcetype: "vantio:observability"
+    tls:
+      insecure_skip_verify: true
+  datadog:
+    api:
+      key: "local-dummy-not-a-credential"
+    traces:
+      endpoint: "http://host.docker.internal:8089"
+    metrics:
+      endpoint: "http://host.docker.internal:8089"
+    logs:
+      endpoint: "http://host.docker.internal:8089"
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [splunk_hec, datadog]
+    logs:
+      receivers: [otlp]
+      exporters: [splunk_hec, datadog]
+    metrics:
+      receivers: [otlp]
+      exporters: [datadog]
