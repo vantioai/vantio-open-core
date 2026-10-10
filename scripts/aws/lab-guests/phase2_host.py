@@ -11,6 +11,7 @@ Audience: INTERNAL_RESTRICTED
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
@@ -62,11 +63,71 @@ def events() -> list[dict]:
     return found
 
 
+DENY_PIN = "/sys/fs/bpf/vantio_deny_attr"
+SYS_BPF = 321
+BPF_OBJ_GET = 7
+BPF_MAP_LOOKUP_ELEM = 1
+
+
+class _ObjGet(ctypes.Structure):
+    _fields_ = [
+        ("pathname", ctypes.c_uint64),
+        ("bpf_fd", ctypes.c_uint32),
+        ("file_flags", ctypes.c_uint32),
+    ]
+
+
+class _Lookup(ctypes.Structure):
+    _fields_ = [
+        ("map_fd", ctypes.c_uint32),
+        ("_pad", ctypes.c_uint32),
+        ("key", ctypes.c_uint64),
+        ("value", ctypes.c_uint64),
+        ("flags", ctypes.c_uint64),
+    ]
+
+
+def pinned_deny_names(pid: int) -> bool:
+    """The deny map stays after the loader process is gone."""
+    if not Path(DENY_PIN).exists():
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    path = ctypes.create_string_buffer(DENY_PIN.encode("ascii") + b"\0")
+    attr = _ObjGet(ctypes.addressof(path), 0, 0)
+    fd = libc.syscall(
+        ctypes.c_long(SYS_BPF),
+        ctypes.c_long(BPF_OBJ_GET),
+        ctypes.byref(attr),
+        ctypes.c_uint(ctypes.sizeof(attr)),
+    )
+    if fd < 0:
+        return False
+    try:
+        for kind in (grade.DENY_KIND_FILE, grade.DENY_KIND_SELF):
+            key = ctypes.c_uint64((pid << 8) | kind)
+            value = ctypes.create_string_buffer(grade.DENY_ATTR_SIZE)
+            lookup = _Lookup(int(fd), 0, ctypes.addressof(key), ctypes.addressof(value), 0)
+            rc = libc.syscall(
+                ctypes.c_long(SYS_BPF),
+                ctypes.c_long(BPF_MAP_LOOKUP_ELEM),
+                ctypes.byref(lookup),
+                ctypes.c_uint(ctypes.sizeof(lookup)),
+            )
+            if rc == 0 and grade.deny_record_names(value.raw, pid):
+                return True
+    finally:
+        os.close(int(fd))
+    return False
+
+
 def attributed(pid: int, action: str) -> bool:
     for item in events():
         raw = item.get("Pid")
         if raw == pid and item.get("ActionTaken") == action:
             return True
+    if action == "DENIED":
+        return pinned_deny_names(pid)
     return False
 
 
@@ -193,6 +254,8 @@ def run_2c() -> dict:
     after = image_id()
     adapter, digest = prepare_enforce()
     first = child_open(True)
+    time.sleep(0.4)
+    attributed_before = isinstance(first.get("pid"), int) and attributed(first["pid"], "DENIED")
     kill_loader()
     restarted = rows.start_loader(adapter)
     if restarted["rc"] != 0:
@@ -201,17 +264,22 @@ def run_2c() -> dict:
         tail = rows.wait_banner("SCOPED")
         raise SystemExit(f"restart banner missing: {tail[-400:]}")
     second = child_open(True)
+    time.sleep(0.4)
+    attributed_after = isinstance(second.get("pid"), int) and attributed(second["pid"], "DENIED")
     graded = grade.grade_upgrade(
         seal_sha256=seal_sha,
         image_before=before,
         image_after=after,
         deny_before=first.get("file_errno"),
         deny_after=second.get("file_errno"),
+        attributed_before=attributed_before,
+        attributed_after=attributed_after,
     )
     graded["policy_digest"] = digest
     graded["deny_before"] = first
     graded["deny_after"] = second
-    graded["attributed_before"] = isinstance(first.get("pid"), int) and attributed(first["pid"], "DENIED")
+    graded["attributed_before"] = attributed_before
+    graded["attributed_after"] = attributed_after
     return graded
 
 
@@ -223,15 +291,19 @@ def run_2d() -> dict:
         raise SystemExit("loader_still_up")
     enrolled = child_open(True)
     unenrolled = child_open(False)
+    file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
     graded = grade.grade_crash(
         enrolled_errno=enrolled.get("net_errno"),
         unenrolled_errno=unenrolled.get("net_errno"),
+        file_errno=enrolled.get("file_errno") if isinstance(enrolled.get("file_errno"), int) else None,
+        file_attributed=file_attributed,
     )
     graded["policy_digest"] = digest
     graded["while_loader_up"] = up
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
     graded["file_after_enrolled"] = enrolled.get("file_errno")
+    graded["file_attributed"] = file_attributed
     return graded
 
 
@@ -253,6 +325,7 @@ def run_2f() -> dict:
     still = loader_running()
     enrolled = child_open(True)
     unenrolled = child_open(False)
+    file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
     pins = []
     root = Path("/sys/fs/bpf")
     if root.is_dir():
@@ -261,10 +334,13 @@ def run_2f() -> dict:
         enrolled_errno=enrolled.get("net_errno"),
         unenrolled_errno=unenrolled.get("net_errno"),
         loader_up=still,
+        file_errno=enrolled.get("file_errno") if isinstance(enrolled.get("file_errno"), int) else None,
+        file_attributed=file_attributed,
     )
     graded["policy_digest"] = digest
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
+    graded["file_attributed"] = file_attributed
     graded["bpf_pin_sample"] = pins
     graded["policy_malformed"] = False
     return graded
