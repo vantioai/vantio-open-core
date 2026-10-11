@@ -1157,6 +1157,9 @@ def execute_enterprise_rows(
                 copy_to(descendant, "descendant_b1.py")
                 probe_c = descendant.with_name("descendant_probe.c")
                 copy_to(probe_c, "descendant_probe.c")
+                probe_bin = descendant.with_name("descendant_probe")
+                if probe_bin.is_file():
+                    copy_to(probe_bin, "descendant_probe")
                 rows_py = Path(os.environ.get("W3_REDTEAM_ROWS", str(DEFAULT_REDTEAM_ROWS)))
                 packet_py = Path(os.environ.get("W3_REDTEAM_PACKET", str(DEFAULT_REDTEAM_PACKET)))
                 if rows_py.is_file() and packet_py.is_file():

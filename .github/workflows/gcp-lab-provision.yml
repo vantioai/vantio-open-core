@@ -259,6 +259,7 @@ jobs:
             scripts/gcp/lab-guests/enterprise-rows.sh
             scripts/gcp/lab-guests/redteam_rows.py
             scripts/aws/lab-guests/descendant_b1.py
+            scripts/aws/lab-guests/descendant_probe
             scripts/aws/lab-guests/phase2_host.py
             scripts/aws/lab-guests/phase2_grade.py
             scripts/aws/lab-guests/self_service.py
