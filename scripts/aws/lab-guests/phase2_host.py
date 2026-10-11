@@ -248,6 +248,17 @@ def baseline_ready(sample: dict) -> bool:
     )
 
 
+def _probe_pid(sample: dict) -> int:
+    detail = str(sample.get("detail") or "")
+    marker = " pid "
+    if marker not in detail:
+        return 0
+    token = detail.rsplit(marker, 1)[1].split(" ", 1)[0]
+    if token.isdigit():
+        return int(token)
+    return 0
+
+
 def enterprise_open(digest: str) -> dict:
     """The enterprise probe. The child is born in the anchor, then it opens the ceiling.
 
@@ -293,15 +304,28 @@ def enterprise_open(digest: str) -> dict:
                 "uid": item.get("Uid"),
             }
             break
+        probe_pid = _probe_pid(sample)
+        map_named = bool(probe_pid) and pinned_deny_names(probe_pid)
+        if event is None and map_named:
+            # The userspace ring stops when the loader is dead. The pinned map keeps the pid.
+            event = {
+                "action": "DENIED",
+                "lineage_anchor": 0,
+                "path": path,
+                "pid": probe_pid,
+                "source": "deny_attr",
+                "uid": SUBJECT,
+            }
         last = {
             "cgroup": sample.get("cgroup") or "",
             "deny_event": event,
-            "enrolled": event is not None,
+            "enrolled": event is not None and (event.get("lineage_anchor") or 0) > 0,
             "file_errno": sample.get("nobody_errno"),
             "lineage_anchor": event["lineage_anchor"] if event else 0,
+            "map_named": map_named,
             "net_errno": None,
             "path": path,
-            "pid": event["pid"] if event else 0,
+            "pid": event["pid"] if event else probe_pid,
             "probe_detail": sample.get("detail"),
             "uid": SUBJECT,
             "uid0_result": sample.get("uid0_result"),

@@ -59,6 +59,15 @@ PY
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"
+python3 - "$stage/guest_rows.py" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+probe = 'os.write(result_w, f"{uid0} {nobody} {here}\\n".encode())'
+probed = 'os.write(result_w, f"{uid0} {nobody} {here} pid {os.getpid()}\\n".encode())'
+if probe in text:
+    path.write_text(text.replace(probe, probed), encoding="utf-8")
+PY
 sudo chown -R "$(id -un):$(id -un)" "$stage"
 if find "$stage" -name 'private-key.pem' | grep -q .; then
   exit 3
@@ -103,8 +112,10 @@ test "$image" = "$image_name"
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
-  command -v gcc >/dev/null
-  gcc -O2 -o "$here/descendant_probe" "$here/descendant_probe.c"
+  if [ -f "$here/descendant_probe.c" ] && command -v gcc >/dev/null; then
+    gcc -O2 -o "$here/descendant_probe" "$here/descendant_probe.c"
+  fi
+  test -x "$here/descendant_probe"
   printf 'IMAGE_LINE=%s\n' "$image"
   set +e
   sudo env VANTIO_IMAGE="$image" VANTIO_PROBE="$here/descendant_probe" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
@@ -112,10 +123,6 @@ if [ "$mode" = "descendant-b1" ]; then
   set -e
   cat /tmp/descendant-b1.out
   chmod a+r /tmp/descendant-b1.out 2>/dev/null || true
-  if [ ! -s /tmp/enterprise-pe-rows.json ]; then
-    cp /tmp/descendant-b1.out /tmp/enterprise-pe-rows.json
-  fi
-  chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   if [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
     cp "$here/redteam_packet.py" "$stage/redteam_packet.py"
     brain=/var/lib/vantio-lab/brain
@@ -158,4 +165,5 @@ case "$mode" in
     exit "$rc"
     ;;
 esac
+sudo rm -f /tmp/enterprise-pe-rows.json
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
