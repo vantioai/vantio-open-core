@@ -1,0 +1,9 @@
+{
+  "account_id": "960577828987",
+  "mutated": false,
+  "noninteractive_teardown_ready": false,
+  "reason": "ssh_instance_connect_not_enabled",
+  "region": "us-east-2",
+  "status": "FAILED",
+  "step": "arm"
+}

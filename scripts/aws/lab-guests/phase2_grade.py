@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-WORKING_SEAL = "216e2b5f76ad3b1429fd7bc9f5b06d2327cedcd28a17b5906b4a13733661731d"
+WORKING_SEAL = "732bda42ad186151a90df7410fce81f67fb9976fbb9ea2c05e1205033cf50a8c"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "2c-upgrade-rollback",

@@ -23,7 +23,7 @@ import w3_lab_auto as lab
 
 # Batteries do not run on this older image. GCP still treats it as plumbing-only.
 PLUMBING_ONLY_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
-POLICY_ALLOW_SEAL = "216e2b5f76ad3b1429fd7bc9f5b06d2327cedcd28a17b5906b4a13733661731d"
+POLICY_ALLOW_SEAL = "732bda42ad186151a90df7410fce81f67fb9976fbb9ea2c05e1205033cf50a8c"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
 TRUST_BUNDLE_SHA256 = "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876"
@@ -33,7 +33,7 @@ BUNDLE_SCHEMA = "vantio.lab-enterprise-pe-bundle/v1"
 BUNDLE_REPO = "vantioai/vantio-enterprise-private"
 DEFAULT_BUNDLE_TAG = "lab-bundle/enterprise-pe-2026-10-08"
 # The release tag is deleted. These bytes live on this commit, which is not a tag.
-BUNDLE_COMMIT = "05bddecece44393a6e2aaaca36f1a266f3a8ca2c"
+BUNDLE_COMMIT = "7402013641e0821c24446c5dfba7bc52ec3bc70e"
 BUNDLE_FILES = ("manifest.json", "seal.oci.tar", "contract.tar")
 BUNDLE_TAG = re.compile(r"^lab-bundle/[A-Za-z0-9._-]{1,64}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
