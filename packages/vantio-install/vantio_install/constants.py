@@ -54,6 +54,8 @@ BPF_PINS = (
     "vantio_debug_counters",
     "vantio_debug_last_comm",
     "vantio_tls_severed_pids",
+    "vantio_deny_attr",
+    "vantio_persist",
 )
 
 # Below this, preflight records a bounded-memory limitation (~t3.small class).

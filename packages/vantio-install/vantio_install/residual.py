@@ -79,4 +79,10 @@ def _pin_items(snapshot: dict, bpffs: Path | None) -> tuple[list[dict], list[str
             return [], errors
         recorded.update(live)
     names = [name for name in constants.BPF_PINS if name in recorded]
-    return [{"kind": "bpf_pin", "name": name} for name in names], []
+    items = [{"kind": "bpf_pin", "name": name} for name in names]
+    standin = bpf_pins.standin_record_present()
+    if standin is None:
+        return [], ["standin"]
+    if standin:
+        items.append({"kind": "failclosed_mounts", "path": str(bpf_pins.STANDIN_RECORD)})
+    return items, []
