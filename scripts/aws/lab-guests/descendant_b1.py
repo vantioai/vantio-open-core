@@ -396,8 +396,8 @@ def attributable(item: dict, digest: str, pid: int) -> bool:
     )
 
 
-def file_denied(digest: str, pid: int) -> dict | None:
-    for item in events():
+def file_denied(digest: str, pid: int, since: int = 0) -> dict | None:
+    for item in events()[since:]:
         if not attributable(item, digest, pid):
             continue
         if item.get("ActionTaken") != "DENIED":
@@ -418,10 +418,14 @@ def egress_denied(digest: str, pid: int) -> bool:
     return False
 
 
-def file_allowed(pid: int) -> bool:
-    """True unless a DENIED row for this pid names the ceiling path."""
+def file_allowed(pid: int, since: int = 0) -> bool:
+    """True unless a new DENIED row for this pid names the ceiling path.
+
+    Rows already in the file belong to earlier cases. A recycled pid must not
+    inherit one of those.
+    """
     ceiling = str(rows.DENY)
-    for item in events():
+    for item in events()[since:]:
         if event_pid(item) != pid:
             continue
         if item.get("ActionTaken") != "DENIED":
@@ -443,7 +447,7 @@ def egress_quiet(pid: int) -> bool:
     return True
 
 
-def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
+def score(name: str, observed: dict, digest: str, *, expect_deny: bool, since: int = 0) -> dict:
     pid = observed.get("pid")
     file_errno = observed.get("file_errno")
     if observed.get("detail") == "probe_missing":
@@ -457,7 +461,7 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
         }
     if pid is None or file_errno is None:
         return {"name": name, "pass": False, "expect_deny": expect_deny, "observed": observed, "reason": "no_sample"}
-    file_hit = file_denied(digest, pid) if expect_deny else None
+    file_hit = file_denied(digest, pid, since) if expect_deny else None
     egress_hit = egress_denied(digest, pid) if expect_deny else None
     if expect_deny:
         # The file ceiling is errno 13 plus a DENIED row for this pid and anchor.
@@ -465,12 +469,12 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
         ok = file_errno == 13 and isinstance(file_hit, dict)
     elif name == "unenrolled":
         # The file open is the allow check. A blocked UDP datagram is recorded, not a file deny.
-        ok = file_errno == 0 and file_allowed(pid)
+        ok = file_errno == 0 and file_allowed(pid, since)
     else:
         # Ancestor 9 is past the 8-parent file walk, so the file must open.
         # Egress on a shallow enrolled cgroup can still drop. That is recorded,
         # and it is not scored as an allow.
-        ok = file_errno == 0 and file_allowed(pid)
+        ok = file_errno == 0 and file_allowed(pid, since)
     body = {
         "name": name,
         "pass": ok,
@@ -486,7 +490,7 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
         body["events_for_pid"] = [event_view(item) for item in events() if event_pid(item) == pid][-8:]
         if file_errno == 13:
             body["reason"] = "file_denied"
-        elif not file_allowed(pid):
+        elif not file_allowed(pid, since):
             body["reason"] = "deny_row"
         else:
             body["reason"] = "not_allowed"
@@ -536,10 +540,11 @@ def one_round(digest: str) -> list[dict]:
     ]
     scored = []
     for name, fn, expect_deny in cases:
+        since = len(events())
         observed = fn()
         # Give the ring a moment to flush.
         time.sleep(1.0)
-        scored.append(score(name, observed, digest, expect_deny=expect_deny))
+        scored.append(score(name, observed, digest, expect_deny=expect_deny, since=since))
     return scored
 
 
