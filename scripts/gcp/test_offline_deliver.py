@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -251,6 +252,20 @@ class OfflineDeliverTest(unittest.TestCase):
         )
         self.assertEqual(kept["cases"][1]["deny_pid"], 4242)
         self.assertEqual(kept["cases"][0]["errno"], 13)
+        dead = subprocess.CompletedProcess(args=["ssh"], returncode=255, stdout="", stderr="4010 destination read failed")
+        self.assertTrue(od._transport_failure(dead))
+        real = subprocess.CompletedProcess(args=["ssh"], returncode=1, stdout="PY_RC=1\n", stderr="")
+        self.assertFalse(od._transport_failure(real))
+        infra = od.allow_record(
+            {
+                "claim_cap": od.CLAIM_CAP,
+                "cases": [{"case": "loader-kill", "result": "infra_retry", "errno": -1, "path": od.CEILING_PATH}],
+                "loader_kill": "infra_retry",
+            }
+        )
+        self.assertEqual(infra["cases"][0]["result"], "infra_retry")
+        self.assertNotIn("errno", infra["cases"][0])
+        self.assertEqual(infra["loader_kill"], "infra_retry")
 
     def test_full_battery_is_two_complete_repeats(self) -> None:
         self.assertEqual(od.battery_schedule(), ["enterprise", "descendant-b1", "enterprise", "descendant-b1"])

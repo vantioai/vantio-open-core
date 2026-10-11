@@ -233,5 +233,10 @@ rc=$?
 set -e
 sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
 sudo chmod a+r /tmp/gcp-kernel-facts.json 2>/dev/null || true
+if [ -s /tmp/enterprise-pe-rows.json ]; then
+  sudo mkdir -p /var/lib/vantio-lab
+  sudo cp /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
+  sudo chmod a+r /var/lib/vantio-lab/enterprise-pe-rows.json
+fi
 printf 'PY_RC=%s\n' "$rc"
 exit "$rc"
