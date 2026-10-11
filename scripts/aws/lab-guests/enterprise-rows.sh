@@ -133,10 +133,12 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
-    # Schedule the reset after this shell returns. A direct reboot can return
-    # before the guest resets, and the ssh session ending can drop the request.
-    if ! sudo systemd-run --on-active=8s --unit=vantio-lab-reboot systemctl reboot; then
-      sudo shutdown -r +1 || true
+    # The offline lab network leaves google-shutdown-scripts.service/stop
+    # running with no limit, so a normal reboot never reaches a new boot.
+    # Mask that unit, then force the reset after this shell returns.
+    sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
+    if ! sudo systemd-run --on-active=8s --unit=vantio-lab-reboot systemctl reboot --force; then
+      sudo systemctl reboot --force || true
     fi
   fi
   exit "$rc"

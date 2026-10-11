@@ -1737,6 +1737,29 @@ def _enterprise_fail_reasons(raw: Mapping[str, Any] | None) -> list[str]:
     return reasons
 
 
+def _case_source(item: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Descendant stores the pid and anchor on each sample, under the case name."""
+    samples = item.get("samples")
+    if not isinstance(samples, list):
+        return item
+    chosen: Mapping[str, Any] | None = None
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        chosen = sample
+        pid = sample.get("pid")
+        if sample.get("pass") is True and isinstance(pid, int) and not isinstance(pid, bool) and pid > 0:
+            break
+    if not isinstance(chosen, dict):
+        return item
+    merged = dict(chosen)
+    if isinstance(item.get("name"), str):
+        merged["name"] = item["name"]
+    if isinstance(item.get("pass"), bool):
+        merged["pass"] = item["pass"]
+    return merged
+
+
 def _case_capture(item: Mapping[str, Any]) -> dict[str, Any]:
     event = item.get("file_event") if isinstance(item.get("file_event"), dict) else {}
     anchor = event.get("lineage_anchor") if isinstance(event, dict) else 0
@@ -1859,7 +1882,7 @@ def _descendant_cases(raw: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         cases = post.get("cases") if isinstance(post, dict) else None
     if not isinstance(cases, list):
         return []
-    return [_case_capture(item) for item in cases if isinstance(item, dict)]
+    return [_case_capture(_case_source(item)) for item in cases if isinstance(item, dict)]
 
 
 def _py_rc(text: str) -> int | None:

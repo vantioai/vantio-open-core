@@ -306,6 +306,32 @@ class OfflineDeliverTest(unittest.TestCase):
                 }
             }
         )
+        wrapped = json.dumps(
+            {
+                "pre": {
+                    "cases": [
+                        {
+                            "name": "moved",
+                            "pass": True,
+                            "samples": [
+                                {
+                                    "expect_deny": True,
+                                    "file_errno": 13,
+                                    "file_event": {"lineage_anchor": 7142},
+                                    "name": "moved",
+                                    "pass": True,
+                                    "pid": 3069,
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        )
+        nested = od._descendant_cases(od._guest_payload(wrapped))
+        self.assertEqual(nested[0]["pid"], 3069)
+        self.assertEqual(nested[0]["lineage_anchor"], 7142)
+        self.assertTrue(nested[0]["expect_deny"])
         kept_cases = od._descendant_cases(od._guest_payload("noise\n" + transcript + "\nPY_RC=0\n"))
         self.assertEqual(kept_cases[0]["pid"], 3069)
         self.assertEqual(kept_cases[0]["lineage_anchor"], 7142)
@@ -589,7 +615,8 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn(od.IMAGE_NAME, text)
         self.assertIn("ca-certificates.crt", text)
         self.assertIn("mount -t bpf bpf /sys/fs/bpf", text)
-        self.assertIn("systemd-run --on-active=8s --unit=vantio-lab-reboot systemctl reboot", text)
+        self.assertIn("systemctl reboot --force", text)
+        self.assertIn("google-shutdown-scripts.service", text)
         self.assertNotIn("sudo reboot || true", text)
         self.assertIn("mount --make-rshared /sys/fs/bpf", text)
         self.assertIn("/sys/fs/bpf:/sys/fs/bpf:rshared", text)
