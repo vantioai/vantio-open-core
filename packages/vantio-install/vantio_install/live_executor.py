@@ -1,1 +1,1 @@
-@file:/tmp/push_content.txt
+DUMMY
