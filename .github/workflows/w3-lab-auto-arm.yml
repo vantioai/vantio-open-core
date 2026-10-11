@@ -115,6 +115,7 @@ jobs:
             scripts/aws/lab-guests/enterprise-rows.sh
             scripts/aws/lab-guests/descendant_b1.py
             scripts/aws/lab-guests/descendant_probe.c
+            scripts/aws/lab-guests/descendant_probe
             scripts/aws/lab-guests/phase2_host.py
             scripts/aws/lab-guests/phase2_grade.py
             scripts/aws/fetch_offline_debs.sh
