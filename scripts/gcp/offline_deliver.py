@@ -1915,7 +1915,7 @@ def plumb_guest(env: Mapping[str, str]) -> int:
         shutil.copy2(guest, script_dest)
         script_dest.chmod(0o755)
         _wait_until_running(project, name)
-        made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
+        made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR} && chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
         if made.returncode != 0:
             raise SystemExit("ssh")
         _scp_to(
@@ -2152,7 +2152,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
     captures: list[dict[str, Any]] = []
     try:
         _wait_until_running(project, name)
-        made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
+        made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR} && chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
         if made.returncode != 0:
             raise SystemExit("ssh")
         _scp_to(
@@ -2330,7 +2330,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
     name = instance_name(env.get("GITHUB_RUN_ID", ""))
     _wait_until_running(project, name)
     _wait_ssh(project, name, SSH_WAIT_SECONDS)
-    made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
+    made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR} && chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
     if made.returncode != 0:
         raise SystemExit("ssh")
     _scp_to(project, name, [tar_path])
