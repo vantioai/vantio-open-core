@@ -204,7 +204,7 @@ if [ "$mode" = "descendant-b1" ]; then
   fi
   chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   printf 'PY_RC=%s\n' "$rc"
-  if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
+  if [ "$phase" = "pre" ]; then
     sync
     sudo reboot || true
   fi

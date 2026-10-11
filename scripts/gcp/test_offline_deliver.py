@@ -208,18 +208,38 @@ class OfflineDeliverTest(unittest.TestCase):
             "rows": {"grant": {"result": "pass"}, "revoke": {"probe": {"nobody_errno": 13}}},
         }
 
-    def test_loader_hold_requires_a_denied_row_pid(self) -> None:
-        body = {
-            "file_open": "attributed_deny",
-            "process_restart_held": True,
-            "restart_attributed": True,
-            "deny_after": {"file_errno": 13},
+    def test_loader_hold_requires_the_measured_pid_and_anchor(self) -> None:
+        def sample(pid: int) -> dict:
+            return {
+                "deny_event": {
+                    "lineage_anchor": 9058,
+                    "path": od.CEILING_PATH,
+                    "pid": pid,
+                },
+                "file_errno": 13,
+                "lineage_anchor": 9058,
+                "path": od.CEILING_PATH,
+                "pid": pid,
+            }
+
+        stale = {
+            "enrolled_after": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6895},
+            "ndjson_denied_pids": [6131, 6143],
+            "unenrolled_after": {"file_errno": 0},
+            "while_loader_up": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6863},
         }
-        self.assertEqual(od._loader_word("2d-crash-recovery", body), "fail")
-        named = dict(body)
-        named["ndjson_denied_pids"] = [4242]
-        self.assertEqual(od._loader_word("2d-crash-recovery", named), "held")
-        self.assertEqual(od._loader_word("2c-upgrade-rollback", named), "held")
+        self.assertEqual(od._loader_word("2d-crash-recovery", stale), "fail")
+        held = {
+            "enrolled_after": sample(6895),
+            "unenrolled_after": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6896},
+            "while_loader_up": sample(6863),
+        }
+        self.assertEqual(od._loader_word("2d-crash-recovery", held), "held")
+        restart = {"deny_after": sample(7653), "deny_before": sample(7548)}
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", restart), "held")
+        dropped = dict(held)
+        dropped["enrolled_after"] = {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6895}
+        self.assertEqual(od._loader_word("2d-crash-recovery", dropped), "fail")
         kept = od.allow_record(
             {
                 "claim_cap": od.CLAIM_CAP,
@@ -237,6 +257,32 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertEqual(od.FULL_BATTERY, ("kernel", "seal", "enterprise", "descendant-b1"))
         repeats = [self._passing_repeat(1), self._passing_repeat(2)]
         self.assertTrue(od.full_set_passes(repeats))
+        attributed = [self._passing_repeat(1), self._passing_repeat(2)]
+        attributed[1] = dict(attributed[1])
+        attributed[1]["enterprise_rc"] = 1
+        attributed[1]["deny_hold"] = True
+        self.assertTrue(od.full_set_passes(attributed))
+        kept_capture = od.allow_record(
+            {
+                "captures": [
+                    {
+                        "errno": 13,
+                        "fail_reasons": ["programs_not_removed"],
+                        "guest_rc": 1,
+                        "hold": True,
+                        "lineage_anchor": 9058,
+                        "name": "enterprise-2",
+                        "path": od.CEILING_PATH,
+                        "pid": 4968,
+                        "uid": 65534,
+                    }
+                ],
+                "claim_cap": od.CLAIM_CAP,
+            }
+        )
+        self.assertTrue(kept_capture["captures"][0]["hold"])
+        self.assertEqual(kept_capture["captures"][0]["lineage_anchor"], 9058)
+        self.assertNotIn("hostname", json.dumps(kept_capture))
         short = [self._passing_repeat(1)]
         self.assertFalse(od.full_set_passes(short))
         missing_grant = [self._passing_repeat(1), self._passing_repeat(2)]

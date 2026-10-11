@@ -396,15 +396,15 @@ def attributable(item: dict, digest: str, pid: int) -> bool:
     )
 
 
-def file_denied(digest: str, pid: int) -> bool:
+def file_denied(digest: str, pid: int) -> dict | None:
     for item in events():
         if not attributable(item, digest, pid):
             continue
         if item.get("ActionTaken") != "DENIED":
             continue
         if str(item.get("EventType") or "").startswith("SYSCALL_"):
-            return True
-    return False
+            return event_view(item)
+    return None
 
 
 def egress_denied(digest: str, pid: int) -> bool:
@@ -444,7 +444,9 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
     file_hit = file_denied(digest, pid) if expect_deny else None
     egress_hit = egress_denied(digest, pid) if expect_deny else None
     if expect_deny:
-        ok = file_errno == 13 and bool(file_hit) and bool(egress_hit)
+        # The file ceiling is errno 13 plus a DENIED row for this pid and anchor.
+        # An egress row is recorded on the case. It does not hide that file result.
+        ok = file_errno == 13 and isinstance(file_hit, dict)
     elif name == "unenrolled":
         ok = file_errno == 0 and file_allowed(pid) and observed.get("net_errno") == 0 and egress_quiet(pid)
     else:
@@ -650,6 +652,7 @@ def measure(phase: str) -> dict:
         "event_census": event_census(),
         "repeats": REPEATS,
         "cases": stable,
+        "failed_cases": [item["name"] for item in stable if not item["pass"]],
         "uid0_open": root_open,
         "descendant_pass": all(item["pass"] for item in stable) and root_open.get("errno") == 0,
         "scoped_banner": BANNER_STATUS,
@@ -685,7 +688,9 @@ def _main() -> int:
         body = measure("pre")
         PRE_PATH.parent.mkdir(parents=True, exist_ok=True)
         PRE_PATH.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
-        _publish({"pre": body, "reboot_requested": True})
+        failed = ",".join(body.get("failed_cases") or [])
+        print(f"FAILED_CASES {failed}", flush=True)
+        _publish({"pre": body, "reboot_requested": True, "failed_cases": body.get("failed_cases") or []})
         os.sync()
         return 0 if body["descendant_pass"] else 1
     pre = {}

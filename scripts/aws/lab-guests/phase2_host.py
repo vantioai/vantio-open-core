@@ -190,45 +190,111 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     return adapter, digest
 
 
+def deny_event_for(pid: int) -> dict | None:
+    """The DENIED ledger row for this open. A row for some other pid does not count."""
+    path = str(rows.DENY)
+    for item in reversed(events()):
+        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
+            continue
+        attempted = item.get("PathAttempted") or item.get("Payload")
+        if attempted != path:
+            continue
+        anchor = item.get("lineage_anchor")
+        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
+            continue
+        return {
+            "action": "DENIED",
+            "lineage_anchor": anchor,
+            "path": path,
+            "pid": pid,
+            "uid": item.get("Uid"),
+        }
+    return None
+
+
 def child_open(enroll: bool) -> dict:
+    """Enrolled open is born inside the anchor, the same way the enterprise probe is.
+
+    A child that is forked outside the cgroup and then moves itself is not the
+    enrolled ceiling workload. The parent joins the anchor first, then the
+    child is born there, drops to uid 65534, and opens the signed path.
+    """
     report_r, report_w = os.pipe()
-    child = os.fork()
-    if child == 0:
+    helper = os.fork()
+    if helper == 0:
         os.close(report_r)
         try:
             if enroll:
                 (Path(rows.ANCHOR) / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
-            os.setresuid(SUBJECT, SUBJECT, 0)
+            child = os.fork()
+        except OSError as exc:
+            os.write(report_w, f"setup {exc.errno or 1}\n".encode())
+            os.close(report_w)
+            os._exit(0)
+        if child == 0:
             try:
-                fd = os.open(str(rows.DENY), os.O_RDONLY)
-                os.close(fd)
-                errno = 0
+                here = Path("/proc/self/cgroup").read_text(encoding="utf-8").strip().replace("\n", " ")
+            except OSError:
+                here = ""
+            try:
+                os.setresuid(SUBJECT, SUBJECT, 0)
+                try:
+                    fd = os.open(str(rows.DENY), os.O_RDONLY)
+                    os.close(fd)
+                    errno = 0
+                except OSError as exc:
+                    errno = exc.errno or 1
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    sock.sendto(b"x", LAB_UDP)
+                    net = 0
+                except OSError as exc:
+                    net = exc.errno or 1
+                finally:
+                    sock.close()
             except OSError as exc:
                 errno = exc.errno or 1
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                sock.sendto(b"x", LAB_UDP)
-                net = 0
-            except OSError as exc:
                 net = exc.errno or 1
-            finally:
-                sock.close()
-        except OSError as exc:
-            errno = exc.errno or 1
-            net = exc.errno or 1
-        os.write(report_w, f"file {errno} net {net} pid {os.getpid()}\n".encode())
+            os.write(
+                report_w,
+                f"file {errno} net {net} pid {os.getpid()} cgroup {here}\n".encode(),
+            )
+            os.close(report_w)
+            os._exit(0)
+        os.close(report_w)
+        os.waitpid(child, 0)
         os._exit(0)
     os.close(report_w)
-    os.waitpid(child, 0)
-    text = os.read(report_r, 200).decode(errors="replace")
+    os.waitpid(helper, 0)
+    text = os.read(report_r, 400).decode(errors="replace")
     os.close(report_r)
-    body = {"file_errno": None, "net_errno": None, "pid": None}
+    body = {
+        "cgroup": "",
+        "enrolled": enroll,
+        "file_errno": None,
+        "net_errno": None,
+        "path": str(rows.DENY),
+        "pid": None,
+        "uid": SUBJECT,
+    }
     parts = text.split()
-    if len(parts) == 6 and parts[0] == "file" and parts[2] == "net" and parts[4] == "pid":
+    if len(parts) >= 6 and parts[0] == "file" and parts[2] == "net" and parts[4] == "pid":
         body["file_errno"] = int(parts[1])
         body["net_errno"] = int(parts[3])
         body["pid"] = int(parts[5])
+        if "cgroup" in parts:
+            body["cgroup"] = text.split("cgroup", 1)[1].strip()
     return body
+
+
+def stamp_deny(sample: dict) -> dict:
+    """Attach the ledger row for this probe after the ring has flushed."""
+    time.sleep(0.4)
+    pid = sample.get("pid")
+    event = deny_event_for(pid) if isinstance(pid, int) else None
+    sample["deny_event"] = event
+    sample["lineage_anchor"] = event["lineage_anchor"] if event else 0
+    return sample
 
 
 def kill_loader() -> int:
@@ -284,9 +350,8 @@ def run_2c() -> dict:
         raise SystemExit("reload")
     after = image_id()
     adapter, digest = prepare_enforce()
-    first = child_open(True)
-    time.sleep(0.4)
-    attributed_before = isinstance(first.get("pid"), int) and attributed(first["pid"], "DENIED")
+    first = stamp_deny(child_open(True))
+    attributed_before = first.get("deny_event") is not None
     kill_loader()
     standin = standin_after_sigkill()
     restarted = rows.start_loader(adapter)
@@ -295,9 +360,8 @@ def run_2c() -> dict:
     if not scoped_started():
         tail = rows.wait_banner("SCOPED")
         raise SystemExit(f"restart banner missing: {tail[-400:]}")
-    second = child_open(True)
-    time.sleep(0.4)
-    attributed_after = isinstance(second.get("pid"), int) and attributed(second["pid"], "DENIED")
+    second = stamp_deny(child_open(True))
+    attributed_after = second.get("deny_event") is not None
     graded = grade.grade_upgrade(
         seal_sha256=seal_sha,
         image_before=before,
@@ -313,20 +377,24 @@ def run_2c() -> dict:
     graded["attributed_before"] = attributed_before
     graded["attributed_after"] = attributed_after
     graded["standin_after_sigkill"] = standin
-    graded["ndjson_denied_pids"] = ndjson_denied_pids()
+    graded["ndjson_denied_pids"] = [
+        item["pid"]
+        for item in (first, second)
+        if isinstance(item.get("pid"), int) and item.get("deny_event") is not None
+    ]
     return graded
 
 
 def run_2d() -> dict:
     _adapter, digest = prepare_enforce()
-    up = child_open(True)
+    up = stamp_deny(child_open(True))
     kill_loader()
     standin = standin_after_sigkill()
     if loader_running():
         raise SystemExit("loader_still_up")
-    enrolled = child_open(True)
+    enrolled = stamp_deny(child_open(True))
     unenrolled = child_open(False)
-    file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
+    file_attributed = enrolled.get("deny_event") is not None
     graded = grade.grade_crash(
         enrolled_errno=enrolled.get("net_errno"),
         unenrolled_errno=unenrolled.get("net_errno"),
@@ -340,7 +408,16 @@ def run_2d() -> dict:
     graded["file_after_enrolled"] = enrolled.get("file_errno")
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
-    graded["ndjson_denied_pids"] = ndjson_denied_pids()
+    graded["ndjson_denied_pids"] = [
+        item["pid"]
+        for item in (up, enrolled)
+        if isinstance(item.get("pid"), int) and item.get("deny_event") is not None
+    ]
+    graded["enforcement_drop"] = (
+        up.get("file_errno") == 13
+        and up.get("deny_event") is not None
+        and enrolled.get("file_errno") == 0
+    )
     return graded
 
 
