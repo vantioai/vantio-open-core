@@ -2060,6 +2060,7 @@ def _run_one_battery(
     pre_guest = _pull_guest_json(project, name)
     pre_cases = _descendant_cases(pre_guest)
     failed = []
+    not_run = []
     if isinstance(pre_guest, dict):
         body = pre_guest.get("pre") if isinstance(pre_guest.get("pre"), dict) else pre_guest
         if isinstance(body, dict) and isinstance(body.get("failed_cases"), list):
