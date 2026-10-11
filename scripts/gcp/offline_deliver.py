@@ -45,7 +45,9 @@ GHA_SA = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
 # which does not see the gcp-lab environment variable, so the workflow carries it.
 WIF_PROVIDER = "projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github"
 SSH_WAIT_SECONDS = 300
-REBOOT_WAIT_SECONDS = 300
+REBOOT_WAIT_SECONDS = 480
+PROBE_SSH_TIMEOUT = 20
+CASE_SSH_TIMEOUT = 1200
 SSHD_WAIT_SECONDS = 300
 BATTERY_REPEATS = 2
 FULL_BATTERY = ("kernel", "seal", "enterprise", "descendant-b1")
@@ -458,7 +460,7 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 )
             kept["self_service"] = rows
             continue
-        if key in {"loader_kill", "loader_restart"} and value in {"held", "fail", "infra_retry"}:
+        if key in {"loader_kill", "loader_restart"} and value in {"held", "fail", "infra_retry", "setup_invalid"}:
             kept[key] = value
             continue
         if key == "cases" and isinstance(value, list):
@@ -470,11 +472,16 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 result = item.get("result")
                 if name not in {"enterprise", "descendant-b1", "loader-kill", "loader-restart"}:
                     continue
-                if result not in {"held", "fail", "ran", "infra_retry"}:
+                if result not in {"held", "fail", "ran", "infra_retry", "setup_invalid"}:
                     continue
                 row: dict[str, Any] = {"case": name, "result": result}
                 errno = item.get("errno")
-                if isinstance(errno, int) and not isinstance(errno, bool) and 0 <= errno <= 255:
+                if (
+                    result not in {"setup_invalid", "infra_retry"}
+                    and isinstance(errno, int)
+                    and not isinstance(errno, bool)
+                    and 0 <= errno <= 255
+                ):
                     row["errno"] = errno
                 pid = item.get("deny_pid")
                 if isinstance(pid, int) and not isinstance(pid, bool) and 0 <= pid <= 2**22:
@@ -914,9 +921,13 @@ def pack_debs(directory: Path, dest: Path) -> list[dict[str, str]]:
     return rows
 
 
-def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
-    completed = subprocess.run(argv, check=False, capture_output=True, text=True)
-    return completed
+def _run(argv: list[str], timeout_s: int | None = None) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(argv, check=False, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        return subprocess.CompletedProcess(argv, 255, stdout, stderr + "\noperation timed out")
 
 
 def _run_ok(argv: list[str], reason: str) -> subprocess.CompletedProcess[str]:
@@ -1373,8 +1384,13 @@ def _transport_failure(completed: subprocess.CompletedProcess[str]) -> bool:
     )
 
 
-def _ssh(project: str, name: str, command: str) -> subprocess.CompletedProcess[str]:
-    return _run(iap_ssh_argv(project, name, command))
+def _ssh(
+    project: str,
+    name: str,
+    command: str,
+    timeout_s: int | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return _run(iap_ssh_argv(project, name, command), timeout_s=timeout_s)
 
 
 def _ssh_ready(project: str, name: str, timeout_s: int = SSHD_WAIT_SECONDS) -> bool:
@@ -1382,7 +1398,7 @@ def _ssh_ready(project: str, name: str, timeout_s: int = SSHD_WAIT_SECONDS) -> b
     deadline = time.time() + timeout_s
     delay = 5
     while time.time() < deadline:
-        probe = _ssh(project, name, "true")
+        probe = _ssh(project, name, "true", timeout_s=PROBE_SSH_TIMEOUT)
         if probe.returncode == 0:
             return True
         remaining = deadline - time.time()
@@ -1395,11 +1411,11 @@ def _ssh_ready(project: str, name: str, timeout_s: int = SSHD_WAIT_SECONDS) -> b
 
 def _ssh_case(project: str, name: str, command: str) -> subprocess.CompletedProcess[str]:
     """Run one guest command. A dead tunnel is one INFRA_RETRY after sshd is back."""
-    completed = _ssh(project, name, command)
+    completed = _ssh(project, name, command, timeout_s=CASE_SSH_TIMEOUT)
     text = (completed.stdout or "") + (completed.stderr or "")
     if _transport_failure(completed) and _py_rc(text) is None and _ssh_ready(project, name):
         print("INFRA_RETRY", flush=True)
-        completed = _ssh(project, name, command)
+        completed = _ssh(project, name, command, timeout_s=CASE_SSH_TIMEOUT)
     return completed
 
 
@@ -1407,7 +1423,7 @@ def _wait_ssh(project: str, name: str, timeout_s: int) -> str:
     deadline = time.time() + timeout_s
     last = ""
     while time.time() < deadline:
-        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
+        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
         boot = (probe.stdout or "").strip()
         if probe.returncode == 0 and boot and "\n" not in boot:
             return boot
@@ -1418,11 +1434,11 @@ def _wait_ssh(project: str, name: str, timeout_s: int) -> str:
 
 
 def _wait_boot(project: str, name: str, before: str, timeout_s: int) -> str:
-    """Wait until sshd answers with a new boot id. The poll backs off for about five minutes."""
+    """Wait until sshd answers with a new boot id. Each poll is bounded so one hung tunnel cannot use the whole wait."""
     deadline = time.time() + timeout_s
     delay = 5
     while time.time() < deadline:
-        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
+        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
         boot = (probe.stdout or "").strip()
         if probe.returncode == 0 and reboot_ready(before, boot):
             return boot
@@ -1620,18 +1636,27 @@ def _sample_held(sample: Mapping[str, Any] | None) -> bool:
 
 
 def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
-    """Held only when the measured probe itself is denied. An older pid does not count."""
+    """Held only when the measured probe itself is denied. An older pid does not count.
+
+    Anchor 0 or a missing baseline deny is an enrollment setup miss, not a kill or restart grade.
+    """
     if not isinstance(body, dict):
         return "fail"
+    if body.get("setup_invalid") is True:
+        return "setup_invalid"
     if mode == "2d-crash-recovery":
+        if not _sample_held(body.get("while_loader_up")):
+            return "setup_invalid"
         unenrolled = body.get("unenrolled_after")
         if not isinstance(unenrolled, dict) or unenrolled.get("file_errno") != 0:
             return "fail"
-        if _sample_held(body.get("while_loader_up")) and _sample_held(body.get("enrolled_after")):
+        if _sample_held(body.get("enrolled_after")):
             return "held"
         return "fail"
     if mode == "2c-upgrade-rollback":
-        if _sample_held(body.get("deny_before")) and _sample_held(body.get("deny_after")):
+        if not _sample_held(body.get("deny_before")):
+            return "setup_invalid"
+        if _sample_held(body.get("deny_after")):
             return "held"
         return "fail"
     return "fail"
@@ -1726,6 +1751,102 @@ def _case_capture(item: Mapping[str, Any]) -> dict[str, Any]:
         "path": CEILING_PATH,
         "pid": item.get("pid") if isinstance(item.get("pid"), int) else 0,
     }
+
+
+def boot_lockout(text: str) -> bool:
+    """A guest that cannot boot or start sshd. A slow boot is not this."""
+    low = text.lower()
+    return any(
+        marker in low
+        for marker in (
+            "you are in emergency mode",
+            "kernel panic",
+            "failed to start openssh",
+            "sshd.service: failed",
+            "dependency failed for openbsd secure shell",
+        )
+    )
+
+
+def _boot_lockout(project: str, name: str) -> bool:
+    """Read instance status and the serial console. Print a short excerpt."""
+    described = _run(
+        [
+            "gcloud",
+            "compute",
+            "instances",
+            "describe",
+            name,
+            f"--project={project}",
+            f"--zone={ZONE}",
+            "--format=value(status)",
+        ],
+        timeout_s=60,
+    )
+    status = (described.stdout or "").strip()
+    serial = _run(
+        [
+            "gcloud",
+            "compute",
+            "instances",
+            "get-serial-port-output",
+            name,
+            f"--project={project}",
+            f"--zone={ZONE}",
+            "--port=1",
+        ],
+        timeout_s=60,
+    )
+    tail = (serial.stdout or "")[-2000:]
+    print(f"BOOT_STATUS {status}", flush=True)
+    print("SERIAL_EXCERPT_BEGIN", flush=True)
+    print(redact(tail)[-1200:], flush=True)
+    print("SERIAL_EXCERPT_END", flush=True)
+    return boot_lockout(tail)
+
+
+def _guest_payload(text: str) -> dict[str, Any] | None:
+    """The last JSON object in a guest transcript. The Actions log drops the middle of a long print."""
+    decoder = json.JSONDecoder()
+    found: dict[str, Any] | None = None
+    index = 0
+    while True:
+        start = text.find("{", index)
+        if start < 0:
+            return found
+        try:
+            obj, consumed = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            index = start + 1
+            continue
+        index = start + max(consumed, 1)
+        if isinstance(obj, dict):
+            found = obj
+
+
+def _with_descendant_cases(pulled: dict[str, Any] | None, text: str) -> dict[str, Any] | None:
+    if _descendant_cases(pulled):
+        return pulled
+    parsed = _guest_payload(text)
+    if _descendant_cases(parsed):
+        return parsed
+    return pulled if isinstance(pulled, dict) else parsed
+
+
+def _pre_held(cases: list[dict[str, Any]]) -> bool:
+    denied = [item for item in cases if item.get("expect_deny") is True]
+    if not denied:
+        return False
+    return all(
+        item.get("pass") is True
+        and isinstance(item.get("pid"), int)
+        and not isinstance(item.get("pid"), bool)
+        and item["pid"] > 0
+        and isinstance(item.get("lineage_anchor"), int)
+        and not isinstance(item.get("lineage_anchor"), bool)
+        and item["lineage_anchor"] > 0
+        for item in denied
+    )
 
 
 def _descendant_cases(raw: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -1844,6 +1965,42 @@ def _case_row(name: str, result: str, errno: int, pids: list[int], anchor: int =
 
 def _infra_case(name: str) -> dict[str, Any]:
     return {"case": name, "path": CEILING_PATH, "result": "infra_retry"}
+
+
+def _loader_result_row(
+    name: str,
+    word: str,
+    body: Mapping[str, Any] | None,
+    before_key: str,
+    after_key: str,
+) -> dict[str, Any]:
+    payload = body if isinstance(body, dict) else {}
+    if word == "infra_retry":
+        return _infra_case(name)
+    if word == "setup_invalid":
+        sample = payload.get(before_key)
+        return _setup_case(name, sample if isinstance(sample, dict) else None)
+    sample = payload.get(after_key)
+    return _probe_case(name, word, sample if isinstance(sample, dict) else None)
+
+
+def _setup_case(name: str, sample: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Enrollment never started. Keep the pid and anchor, and do not store an errno grade."""
+    pid = sample.get("pid") if isinstance(sample, dict) else 0
+    anchor = sample.get("lineage_anchor") if isinstance(sample, dict) else 0
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid < 0:
+        pid = 0
+    if not isinstance(anchor, int) or isinstance(anchor, bool) or anchor < 0:
+        anchor = 0
+    denied = isinstance(sample, dict) and isinstance(sample.get("deny_event"), dict)
+    return {
+        "case": name,
+        "denied_rows": 1 if denied else 0,
+        "deny_pid": pid,
+        "lineage_anchor": anchor,
+        "path": CEILING_PATH,
+        "result": "setup_invalid",
+    }
 
 
 def _pull_guest_json(project: str, name: str) -> dict[str, Any] | None:
@@ -2128,13 +2285,14 @@ def _run_one_battery(
     )
     before = _wait_ssh(project, name, SSH_WAIT_SECONDS)
     pre = _ssh_case(project, name, guest_command(seal, "descendant-b1", "pre"))
-    pre_text = redact((pre.stdout or "") + (pre.stderr or ""))
+    pre_text = (pre.stdout or "") + (pre.stderr or "")
+    # Pull while the guest is still up. The reboot is scheduled after the shell returns.
+    pre_guest = _with_descendant_cases(_pull_guest_json(project, name), pre_text)
+    pre_cases = _descendant_cases(pre_guest)
     after = _wait_boot(project, name, before, REBOOT_WAIT_SECONDS)
     if after and not _ssh_ready(project, name):
         after = ""
     observed = reboot_ready(before, after)
-    pre_guest = _pull_guest_json(project, name)
-    pre_cases = _descendant_cases(pre_guest)
     failed = []
     not_run = []
     if isinstance(pre_guest, dict):
@@ -2143,19 +2301,47 @@ def _run_one_battery(
             failed = [item for item in body["failed_cases"] if isinstance(item, str)]
         not_run = body.get("not_run") if isinstance(body, dict) else []
     pre_rc = _py_rc(pre_text)
-    captures.append(
-        {
-            "cases": pre_cases,
-            "failed_cases": failed,
-            "not_run": [item for item in not_run if isinstance(item, str)] if isinstance(not_run, list) else [],
-            "guest_rc": pre_rc if pre_rc is not None else pre.returncode,
-            "hold": bool(pre_cases) and all(item["pass"] for item in pre_cases if item["expect_deny"]),
-            "name": f"descendant-pre-{repeat}",
-            "path": CEILING_PATH,
-        }
+    held_case = next(
+        (
+            item
+            for item in pre_cases
+            if item.get("expect_deny") is True
+            and item.get("pass") is True
+            and isinstance(item.get("pid"), int)
+            and item["pid"] > 0
+            and isinstance(item.get("lineage_anchor"), int)
+            and item["lineage_anchor"] > 0
+        ),
+        None,
     )
+    if held_case and not summary.get("desc_deny_pid"):
+        summary["desc_deny_pid"] = held_case["pid"]
+        summary["desc_lineage_anchor"] = held_case["lineage_anchor"]
+        summary["desc_denied_rows"] = 1
+    pre_capture: dict[str, Any] = {
+        "cases": pre_cases,
+        "failed_cases": failed,
+        "not_run": [item for item in not_run if isinstance(item, str)] if isinstance(not_run, list) else [],
+        "guest_rc": pre_rc if pre_rc is not None else pre.returncode,
+        "hold": _pre_held(pre_cases),
+        "name": f"descendant-pre-{repeat}",
+        "path": CEILING_PATH,
+    }
+    if held_case:
+        pre_capture["lineage_anchor"] = held_case["lineage_anchor"]
+        pre_capture["pid"] = held_case["pid"]
+    captures.append(pre_capture)
     if not observed:
-        print(pre_text[-1500:], file=sys.stderr)
+        print(redact(pre_text)[-1500:], file=sys.stderr)
+        if _boot_lockout(project, name):
+            captures.append(
+                {
+                    "fail_reasons": ["boot_lockout"],
+                    "hold": False,
+                    "name": f"reboot-{repeat}",
+                }
+            )
+            raise SystemExit("safety")
         if _transport_failure(pre) and not pre_cases:
             summary["descendant_infra"] = True
         return _finish_repeat(
@@ -2171,13 +2357,31 @@ def _run_one_battery(
     if post.returncode != 0:
         print(redact(post_text)[-1500:], file=sys.stderr)
     guest = _pull_guest_json(project, name)
+    if not isinstance(guest, dict) or not isinstance(guest.get("post"), dict):
+        parsed = _guest_payload(post_text)
+        if isinstance(parsed, dict) and isinstance(parsed.get("post"), dict):
+            guest = parsed
     post_cases = _descendant_cases({"post": guest.get("post")} if isinstance(guest, dict) else None)
     if isinstance(guest, dict):
         nested = allow_battery(guest) or {}
         summary.update(nested)
-        held_case = next((item for item in post_cases if item["expect_deny"] and item["pass"] and item["pid"]), None)
+        held_case = next(
+            (
+                item
+                for item in post_cases
+                if item["expect_deny"] and item["pass"] and item["pid"] and item["lineage_anchor"]
+            ),
+            None,
+        )
         if held_case is None:
-            held_case = next((item for item in pre_cases if item["expect_deny"] and item["pass"] and item["pid"]), None)
+            held_case = next(
+                (
+                    item
+                    for item in pre_cases
+                    if item["expect_deny"] and item["pass"] and item["pid"] and item["lineage_anchor"]
+                ),
+                None,
+            )
         if held_case:
             summary["desc_deny_pid"] = held_case["pid"]
             summary["desc_lineage_anchor"] = held_case["lineage_anchor"]
@@ -2250,10 +2454,18 @@ def run_batteries(env: Mapping[str, str]) -> int:
             if index:
                 back = _wait_boot(project, name, "down", REBOOT_WAIT_SECONDS)
                 if not back:
+                    if _boot_lockout(project, name):
+                        captures.append(
+                            {
+                                "fail_reasons": ["boot_lockout"],
+                                "hold": False,
+                                "name": f"repeat-{index + 1}",
+                            }
+                        )
+                        raise SystemExit("safety")
                     captures.append(
                         {
                             "fail_reasons": ["host_down_after_reboot"],
-                            "guest_rc": -1,
                             "hold": False,
                             "name": f"repeat-{index + 1}",
                         }
@@ -2303,18 +2515,8 @@ def run_batteries(env: Mapping[str, str]) -> int:
                         desc_anchor if isinstance(desc_anchor, int) else 0,
                     )
                 )
-        if loader_kill == "infra_retry":
-            cases.append(_infra_case("loader-kill"))
-        else:
-            kill_sample = kill["body"].get("enrolled_after") if isinstance(kill["body"], dict) else None
-            cases.append(_probe_case("loader-kill", loader_kill, kill_sample if isinstance(kill_sample, dict) else None))
-        if loader_restart == "infra_retry":
-            cases.append(_infra_case("loader-restart"))
-        else:
-            restart_sample = restart["body"].get("deny_after") if isinstance(restart["body"], dict) else None
-            cases.append(
-                _probe_case("loader-restart", loader_restart, restart_sample if isinstance(restart_sample, dict) else None)
-            )
+        cases.append(_loader_result_row("loader-kill", loader_kill, kill["body"], "while_loader_up", "enrolled_after"))
+        cases.append(_loader_result_row("loader-restart", loader_restart, restart["body"], "deny_before", "deny_after"))
         result = {
             "batteries": True,
             "captures": captures,

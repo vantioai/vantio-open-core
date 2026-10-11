@@ -32,7 +32,10 @@ import guest_rows as rows  # noqa: E402
 import phase2_grade as grade  # noqa: E402
 from vantio_enterprise_protocol.control import ControlPlane  # noqa: E402
 from vantio_enterprise_protocol.host_adapter import LocalHostVerifier  # noqa: E402
-from vantio_enterprise_protocol.pe_adapter import PeHostAdapter  # noqa: E402
+from vantio_enterprise_protocol.pe_adapter import (  # noqa: E402
+    PeHostAdapter,
+    revoke_deny_event_links_digest,
+)
 from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E402
 
 OUT_PATH = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
@@ -185,9 +188,9 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
-    if not scoped_started():
-        tail = rows.wait_banner("SCOPED")
-        raise SystemExit(f"scoped banner missing: {tail[-400:]}")
+    # Docker logs for this container only. A SCOPED line left in the events
+    # file by an earlier battery is not this loader.
+    _wait_scoped_banner()
     return adapter, digest
 
 
@@ -211,6 +214,113 @@ def deny_event_for(pid: int) -> dict | None:
             "uid": item.get("Uid"),
         }
     return None
+
+
+def _wait_scoped_banner(timeout: float = 120) -> str:
+    """Wait until this container logs the enforce banner. Do not read a stale file."""
+    deadline = time.time() + timeout
+    last = ""
+    while time.time() < deadline:
+        proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
+        last = (proc.stdout or "") + (proc.stderr or "")
+        if "SCOPED (drop enrolled)" in last and "Path DENY attached" in last:
+            return last
+        time.sleep(2)
+    return last
+
+
+def baseline_ready(sample: dict) -> bool:
+    """The enterprise revoke shape: errno 13, a pid, and a non-zero lineage anchor."""
+    event = sample.get("deny_event")
+    pid = sample.get("pid")
+    anchor = sample.get("lineage_anchor")
+    return (
+        sample.get("file_errno") == 13
+        and isinstance(pid, int)
+        and not isinstance(pid, bool)
+        and pid > 0
+        and isinstance(anchor, int)
+        and not isinstance(anchor, bool)
+        and anchor > 0
+        and isinstance(event, dict)
+        and event.get("pid") == pid
+        and event.get("lineage_anchor") == anchor
+    )
+
+
+def enterprise_open(digest: str) -> dict:
+    """The enterprise probe. The child is born in the anchor, then it opens the ceiling.
+
+    Anchor 0 means the loader has no enrollment record for that task. Errno 0
+    on that task is the unenrolled result, so it is not a kill or restart grade.
+    """
+    path = str(rows.DENY)
+    last: dict = {
+        "cgroup": "",
+        "deny_event": None,
+        "enrolled": False,
+        "file_errno": None,
+        "lineage_anchor": 0,
+        "net_errno": None,
+        "path": path,
+        "pid": 0,
+        "uid": SUBJECT,
+    }
+    for _ in range(40):
+        before = len(events())
+        sample = rows.probe()
+        time.sleep(0.4)
+        event = None
+        for item in reversed(events()[before:]):
+            if not revoke_deny_event_links_digest(
+                item,
+                policy_digest=digest or "",
+                subject_uid=SUBJECT,
+                blocked_path=path,
+            ):
+                continue
+            anchor = item.get("lineage_anchor")
+            pid = item.get("Pid")
+            if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
+                continue
+            if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+                continue
+            event = {
+                "action": "DENIED",
+                "lineage_anchor": anchor,
+                "path": path,
+                "pid": pid,
+                "uid": item.get("Uid"),
+            }
+            break
+        last = {
+            "cgroup": sample.get("cgroup") or "",
+            "deny_event": event,
+            "enrolled": event is not None,
+            "file_errno": sample.get("nobody_errno"),
+            "lineage_anchor": event["lineage_anchor"] if event else 0,
+            "net_errno": None,
+            "path": path,
+            "pid": event["pid"] if event else 0,
+            "probe_detail": sample.get("detail"),
+            "uid": SUBJECT,
+            "uid0_result": sample.get("uid0_result"),
+        }
+        if baseline_ready(last):
+            return last
+        time.sleep(0.25)
+    return last
+
+
+def _setup_invalid(sample: dict, digest: str, **extra: object) -> dict:
+    body = {
+        "enforcement_drop": False,
+        "policy_digest": digest,
+        "reason": "baseline_not_enrolled",
+        "setup_invalid": True,
+    }
+    body.update(extra)
+    return body
 
 
 def child_open(enroll: bool) -> dict:
@@ -351,17 +461,17 @@ def run_2c() -> dict:
         raise SystemExit("reload")
     after = image_id()
     adapter, digest = prepare_enforce()
-    first = stamp_deny(child_open(True))
-    attributed_before = first.get("deny_event") is not None
+    first = enterprise_open(digest)
+    if not baseline_ready(first):
+        return _setup_invalid(first, digest, deny_before=first)
+    attributed_before = True
     kill_loader()
     standin = standin_after_sigkill()
     restarted = rows.start_loader(adapter)
     if restarted["rc"] != 0:
         raise SystemExit(f"restart loader {restarted['rc']}")
-    if not scoped_started():
-        tail = rows.wait_banner("SCOPED")
-        raise SystemExit(f"restart banner missing: {tail[-400:]}")
-    second = stamp_deny(child_open(True))
+    _wait_scoped_banner()
+    second = enterprise_open(digest)
     attributed_after = second.get("deny_event") is not None
     graded = grade.grade_upgrade(
         seal_sha256=seal_sha,
@@ -388,12 +498,14 @@ def run_2c() -> dict:
 
 def run_2d() -> dict:
     _adapter, digest = prepare_enforce()
-    up = stamp_deny(child_open(True))
+    up = enterprise_open(digest)
+    if not baseline_ready(up):
+        return _setup_invalid(up, digest, while_loader_up=up)
     kill_loader()
     standin = standin_after_sigkill()
     if loader_running():
         raise SystemExit("loader_still_up")
-    enrolled = stamp_deny(child_open(True))
+    enrolled = enterprise_open(digest)
     unenrolled = child_open(False)
     file_attributed = enrolled.get("deny_event") is not None
     graded = grade.grade_crash(
