@@ -133,7 +133,11 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
-    sudo reboot || true
+    # Schedule the reset after this shell returns. A direct reboot can return
+    # before the guest resets, and the ssh session ending can drop the request.
+    if ! sudo systemd-run --on-active=8s --unit=vantio-lab-reboot systemctl reboot; then
+      sudo shutdown -r +1 || true
+    fi
   fi
   exit "$rc"
 fi

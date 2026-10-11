@@ -229,7 +229,7 @@ class OfflineDeliverTest(unittest.TestCase):
             "unenrolled_after": {"file_errno": 0},
             "while_loader_up": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6863},
         }
-        self.assertEqual(od._loader_word("2d-crash-recovery", stale), "fail")
+        self.assertEqual(od._loader_word("2d-crash-recovery", stale), "setup_invalid")
         held = {
             "enrolled_after": sample(6895),
             "unenrolled_after": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6896},
@@ -266,6 +266,50 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertEqual(infra["cases"][0]["result"], "infra_retry")
         self.assertNotIn("errno", infra["cases"][0])
         self.assertEqual(infra["loader_kill"], "infra_retry")
+        invalid = od.allow_record(
+            {
+                "claim_cap": od.CLAIM_CAP,
+                "cases": [
+                    {
+                        "case": "loader-kill",
+                        "result": "setup_invalid",
+                        "errno": 0,
+                        "deny_pid": 1990,
+                        "lineage_anchor": 0,
+                        "path": od.CEILING_PATH,
+                    }
+                ],
+                "loader_kill": "setup_invalid",
+            }
+        )
+        self.assertEqual(invalid["cases"][0]["result"], "setup_invalid")
+        self.assertNotIn("errno", invalid["cases"][0])
+        self.assertEqual(invalid["cases"][0]["lineage_anchor"], 0)
+        self.assertEqual(invalid["loader_kill"], "setup_invalid")
+        self.assertFalse(od.boot_lockout("Started OpenBSD Secure Shell server."))
+        self.assertTrue(od.boot_lockout("You are in emergency mode. After logging in, type journalctl -xb"))
+        transcript = json.dumps(
+            {
+                "pre": {
+                    "cases": [
+                        {
+                            "expect_deny": True,
+                            "file_errno": 13,
+                            "file_event": {"lineage_anchor": 7142, "path": od.CEILING_PATH},
+                            "name": "moved",
+                            "pass": True,
+                            "pid": 3069,
+                        }
+                    ],
+                    "failed_cases": [],
+                    "not_run": [],
+                }
+            }
+        )
+        kept_cases = od._descendant_cases(od._guest_payload("noise\n" + transcript + "\nPY_RC=0\n"))
+        self.assertEqual(kept_cases[0]["pid"], 3069)
+        self.assertEqual(kept_cases[0]["lineage_anchor"], 7142)
+        self.assertTrue(od._pre_held(kept_cases))
 
     def test_full_battery_is_two_complete_repeats(self) -> None:
         self.assertEqual(od.battery_schedule(), ["enterprise", "descendant-b1", "enterprise", "descendant-b1"])
@@ -545,6 +589,8 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn(od.IMAGE_NAME, text)
         self.assertIn("ca-certificates.crt", text)
         self.assertIn("mount -t bpf bpf /sys/fs/bpf", text)
+        self.assertIn("systemd-run --on-active=8s --unit=vantio-lab-reboot systemctl reboot", text)
+        self.assertNotIn("sudo reboot || true", text)
         self.assertIn("mount --make-rshared /sys/fs/bpf", text)
         self.assertIn("/sys/fs/bpf:/sys/fs/bpf:rshared", text)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", text)
