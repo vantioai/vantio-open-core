@@ -33,7 +33,7 @@ from vantio_enterprise_protocol.pe_adapter import PeHostAdapter  # noqa: E402
 from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E402
 
 PRE_PATH = Path("/var/lib/vantio-lab/b1-pre.json")
-OUT_PATH = Path("/tmp/enterprise-pe-rows.json")
+OUT_PATH = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
 SUBJECT = 65534
 COVERAGE_GAPS = [
     "rename, link, and symlink programs do not load on this kernel because the verifier stops at one million instructions. That is a gap, not a pass.",
@@ -672,6 +672,7 @@ def measure(phase: str) -> dict:
 
 def _publish(body: dict) -> None:
     text = json.dumps(body, indent=2) + "\n"
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(text, encoding="utf-8")
     try:
         os.chmod(OUT_PATH, 0o644)
