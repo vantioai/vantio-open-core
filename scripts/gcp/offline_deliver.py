@@ -70,7 +70,8 @@ TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
 IMAGE_NAME = "vantio-phantom-engine:r11-f8864c8"
-GUEST_DIR = "/tmp/vantio-lab"
+GUEST_DIR = "/var/lib/vantio-lab/guest"
+ROWS_JSON = "/var/lib/vantio-lab/enterprise-pe-rows.json"
 ZONE = lab.ZONE
 E2_MICRO_USD_PER_HOUR = Decimal("0.0084")
 PD_BALANCED_USD_PER_GB_MONTH = Decimal("0.10")
@@ -1392,7 +1393,13 @@ def _scp_to(project: str, name: str, sources: Sequence[Path]) -> None:
 
 
 def _scp_from(project: str, name: str, remote: str, dest: Path) -> bool:
-    if not remote.startswith("/tmp/"):
+    if remote not in {
+        "/tmp/enterprise-pe-rows.json",
+        "/tmp/gcp-kernel-facts.json",
+        "/tmp/gcp-plumb.json",
+        "/tmp/self-service-rows.json",
+        ROWS_JSON,
+    }:
         raise SystemExit("scp")
     completed = _run(iap_scp_argv(project, [f"{name}:{remote}"], str(dest)))
     return completed.returncode == 0 and dest.is_file()
@@ -1781,7 +1788,9 @@ def _case_row(name: str, result: str, errno: int, pids: list[int], anchor: int =
 def _pull_guest_json(project: str, name: str) -> dict[str, Any] | None:
     local = Path(tempfile.mkdtemp(prefix="vantio-guest-")) / "rows.json"
     try:
-        if not _scp_from(project, name, "/tmp/enterprise-pe-rows.json", local):
+        if not _scp_from(project, name, ROWS_JSON, local) and not _scp_from(
+            project, name, "/tmp/enterprise-pe-rows.json", local
+        ):
             return None
         parsed = _load_json_file(local)
         return parsed if isinstance(parsed, dict) else None
@@ -1906,7 +1915,7 @@ def plumb_guest(env: Mapping[str, str]) -> int:
         shutil.copy2(guest, script_dest)
         script_dest.chmod(0o755)
         _wait_until_running(project, name)
-        made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
+        made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
         if made.returncode != 0:
             raise SystemExit("ssh")
         _scp_to(
@@ -2143,7 +2152,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
     captures: list[dict[str, Any]] = []
     try:
         _wait_until_running(project, name)
-        made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
+        made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
         if made.returncode != 0:
             raise SystemExit("ssh")
         _scp_to(
@@ -2321,7 +2330,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
     name = instance_name(env.get("GITHUB_RUN_ID", ""))
     _wait_until_running(project, name)
     _wait_ssh(project, name, SSH_WAIT_SECONDS)
-    made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
+    made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
     if made.returncode != 0:
         raise SystemExit("ssh")
     _scp_to(project, name, [tar_path])

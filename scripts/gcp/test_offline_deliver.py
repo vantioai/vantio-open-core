@@ -153,11 +153,11 @@ class OfflineDeliverTest(unittest.TestCase):
             od.iap_scp_argv("vantio-lab-oct08", ["a:b"], "c:d")
         self.assertEqual(
             od.guest_command(od.POLICY_ALLOW_SEAL, "descendant-b1", "post"),
-            f"bash /tmp/vantio-lab/enterprise-rows.sh {od.POLICY_ALLOW_SEAL} descendant-b1 post",
+            f"bash {od.GUEST_DIR}/enterprise-rows.sh {od.POLICY_ALLOW_SEAL} descendant-b1 post",
         )
         self.assertEqual(
             od.guest_command("ab" * 32, "plumb"),
-            f"bash /tmp/vantio-lab/enterprise-rows.sh {'ab' * 32} plumb",
+            f"bash {od.GUEST_DIR}/enterprise-rows.sh {'ab' * 32} plumb",
         )
         self.assertTrue(od.reboot_ready("abc", "def"))
         self.assertFalse(od.reboot_ready("abc", "abc"))
