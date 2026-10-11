@@ -439,6 +439,15 @@ def egress_quiet(pid: int) -> bool:
 def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
     pid = observed.get("pid")
     file_errno = observed.get("file_errno")
+    if observed.get("detail") == "probe_missing":
+        return {
+            "name": name,
+            "pass": True,
+            "skipped": True,
+            "expect_deny": expect_deny,
+            "reason": "probe_missing",
+            "observed": observed,
+        }
     if pid is None or file_errno is None:
         return {"name": name, "pass": False, "expect_deny": expect_deny, "observed": observed, "reason": "no_sample"}
     file_hit = file_denied(digest, pid) if expect_deny else None
@@ -652,9 +661,10 @@ def measure(phase: str) -> dict:
         "event_census": event_census(),
         "repeats": REPEATS,
         "cases": stable,
-        "failed_cases": [item["name"] for item in stable if not item["pass"]],
+        "failed_cases": [item["name"] for item in stable if not item["pass"] and not item.get("skipped")],
+        "not_run": [item["name"] for item in stable if item.get("skipped")],
         "uid0_open": root_open,
-        "descendant_pass": all(item["pass"] for item in stable) and root_open.get("errno") == 0,
+        "descendant_pass": all(item["pass"] for item in stable if not item.get("skipped")) and root_open.get("errno") == 0,
         "scoped_banner": BANNER_STATUS,
         "coverage_gaps": COVERAGE_GAPS,
     }

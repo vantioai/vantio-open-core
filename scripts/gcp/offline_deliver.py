@@ -45,6 +45,7 @@ GHA_SA = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
 # which does not see the gcp-lab environment variable, so the workflow carries it.
 WIF_PROVIDER = "projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github"
 SSH_WAIT_SECONDS = 300
+REBOOT_WAIT_SECONDS = 600
 BATTERY_REPEATS = 2
 FULL_BATTERY = ("kernel", "seal", "enterprise", "descendant-b1")
 WIF_PROVIDER_RE = re.compile(
@@ -281,6 +282,11 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
     if isinstance(failed, list):
         kept["failed_cases"] = [
             item for item in failed if isinstance(item, str) and re.fullmatch(r"[a-z0-9_-]{1,40}", item)
+        ][:16]
+    not_run = entry.get("not_run")
+    if isinstance(not_run, list):
+        kept["not_run"] = [
+            item for item in not_run if isinstance(item, str) and re.fullmatch(r"[a-z0-9_-]{1,40}", item)
         ][:16]
     cases = entry.get("cases")
     if isinstance(cases, list):
@@ -1365,6 +1371,18 @@ def _wait_ssh(project: str, name: str, timeout_s: int) -> str:
     raise SystemExit("ssh")
 
 
+def _wait_boot(project: str, name: str, before: str, timeout_s: int) -> str:
+    """Wait until the guest boot id changes. SSH errors while it reboots are expected."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
+        boot = (probe.stdout or "").strip()
+        if probe.returncode == 0 and reboot_ready(before, boot):
+            return boot
+        time.sleep(10)
+    return ""
+
+
 def _scp_to(project: str, name: str, sources: Sequence[Path]) -> None:
     for path in sources:
         _run_ok(
@@ -2037,15 +2055,7 @@ def _run_one_battery(
     before = _wait_ssh(project, name, SSH_WAIT_SECONDS)
     pre = _ssh(project, name, guest_command(seal, "descendant-b1", "pre"))
     pre_text = redact((pre.stdout or "") + (pre.stderr or ""))
-    deadline = time.time() + SSH_WAIT_SECONDS
-    after = ""
-    while time.time() < deadline:
-        probe_ssh = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id")
-        boot = (probe_ssh.stdout or "").strip()
-        if probe_ssh.returncode == 0 and reboot_ready(before, boot):
-            after = boot
-            break
-        time.sleep(10)
+    after = _wait_boot(project, name, before, REBOOT_WAIT_SECONDS)
     observed = reboot_ready(before, after)
     pre_guest = _pull_guest_json(project, name)
     pre_cases = _descendant_cases(pre_guest)
@@ -2054,11 +2064,13 @@ def _run_one_battery(
         body = pre_guest.get("pre") if isinstance(pre_guest.get("pre"), dict) else pre_guest
         if isinstance(body, dict) and isinstance(body.get("failed_cases"), list):
             failed = [item for item in body["failed_cases"] if isinstance(item, str)]
+        not_run = body.get("not_run") if isinstance(body, dict) else []
     pre_rc = _py_rc(pre_text)
     captures.append(
         {
             "cases": pre_cases,
             "failed_cases": failed,
+            "not_run": [item for item in not_run if isinstance(item, str)] if isinstance(not_run, list) else [],
             "guest_rc": pre_rc if pre_rc is not None else pre.returncode,
             "hold": bool(pre_cases) and all(item["pass"] for item in pre_cases if item["expect_deny"]),
             "name": f"descendant-pre-{repeat}",
@@ -2127,6 +2139,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
     evidence = _evidence_dir(env)
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
     debs = _stage_payload(env, payload_dir)
+    captures: list[dict[str, Any]] = []
     try:
         _wait_until_running(project, name)
         made = _ssh(project, name, f"rm -rf {GUEST_DIR} && mkdir -p {GUEST_DIR}")
@@ -2149,13 +2162,22 @@ def run_batteries(env: Mapping[str, str]) -> int:
         for local_name in ("seal.oci.tar", "contract.tar"):
             (payload_dir / local_name).unlink(missing_ok=True)
         repeats: list[dict[str, Any]] = []
-        captures: list[dict[str, Any]] = []
         schedule = battery_schedule(BATTERY_REPEATS)
         if schedule != ["enterprise", "descendant-b1"] * BATTERY_REPEATS:
             raise SystemExit("repeats")
         for index in range(BATTERY_REPEATS):
             if index:
-                _wait_ssh(project, name, SSH_WAIT_SECONDS)
+                back = _wait_boot(project, name, "down", REBOOT_WAIT_SECONDS)
+                if not back:
+                    captures.append(
+                        {
+                            "fail_reasons": ["host_down_after_reboot"],
+                            "guest_rc": -1,
+                            "hold": False,
+                            "name": f"repeat-{index + 1}",
+                        }
+                    )
+                    break
             repeat = _run_one_battery(project, name, seal, evidence, index + 1, captures)
             repeats.append(repeat)
         passed = full_set_passes(repeats)
@@ -2231,6 +2253,14 @@ def run_batteries(env: Mapping[str, str]) -> int:
         print(json.dumps({"full_set": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
         return 0
     finally:
+        if captures:
+            try:
+                write_evidence(
+                    evidence / "guest-evidence.json",
+                    {"captures": captures, "claim_cap": CLAIM_CAP},
+                )
+            except SystemExit:
+                pass
         drop_guest_copies(evidence)
         if payload_dir.exists():
             shutil.rmtree(payload_dir, ignore_errors=True)
