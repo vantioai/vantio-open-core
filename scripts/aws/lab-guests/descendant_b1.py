@@ -559,6 +559,37 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     return adapter, digest
 
 
+SCOPED_NEEDLE = "SCOPED (drop enrolled)"
+OPEN_PIN = "Path DENY pinned: kprobe_open_deny"
+OPENAT_PIN = "Path DENY pinned: kprobe_openat_deny"
+BANNER_STATUS = "not_checked"
+
+
+def scoped_start_decision(banner: str, running: bool) -> str:
+    """How far the enforce loader got.
+
+    The scoped line is printed after the open and openat pins. On a slow
+    kernel those later attaches can still be running when a 30 second wait
+    ends. The deny cases can start once both open pins are logged and the
+    process is up. A missing pin is still a stop.
+    """
+    if SCOPED_NEEDLE in banner:
+        return "scoped"
+    if running and OPEN_PIN in banner and OPENAT_PIN in banner:
+        return "open_pins_before_scoped_line"
+    return "missing"
+
+
+def loader_logs() -> str:
+    proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
+    return (proc.stdout or "") + (proc.stderr or "")
+
+
+def loader_is_running() -> bool:
+    proc = rows.sudo(["docker", "inspect", "-f", "{{.State.Running}}", rows.LOADER], timeout=20)
+    return (proc.stdout or "").strip() == "true"
+
+
 def require_banner(needle: str) -> None:
     banner = rows.wait_banner(needle)
     if needle not in banner:
@@ -566,11 +597,26 @@ def require_banner(needle: str) -> None:
 
 
 def require_scoped_start() -> None:
-    require_banner("SCOPED (drop enrolled)")
-    for item in events():
-        if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
-            return
-    raise SystemExit("scoped engine-start line missing")
+    global BANNER_STATUS
+    deadline = time.time() + 120
+    banner = ""
+    while time.time() < deadline:
+        banner = loader_logs()
+        if SCOPED_NEEDLE in banner:
+            break
+        time.sleep(2)
+    else:
+        BANNER_STATUS = scoped_start_decision(banner, loader_is_running())
+        if BANNER_STATUS == "missing":
+            raise SystemExit(f"loader banner missing: {SCOPED_NEEDLE}")
+        return
+    for _ in range(15):
+        for item in events():
+            if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
+                BANNER_STATUS = "scoped"
+                return
+        time.sleep(1)
+    BANNER_STATUS = "scoped_banner_without_ledger_line"
 
 
 def measure(phase: str) -> dict:
@@ -606,6 +652,7 @@ def measure(phase: str) -> dict:
         "cases": stable,
         "uid0_open": root_open,
         "descendant_pass": all(item["pass"] for item in stable) and root_open.get("errno") == 0,
+        "scoped_banner": BANNER_STATUS,
         "coverage_gaps": COVERAGE_GAPS,
     }
 
