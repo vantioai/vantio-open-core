@@ -419,10 +419,17 @@ def egress_denied(digest: str, pid: int) -> bool:
 
 
 def file_allowed(pid: int) -> bool:
+    """True unless a DENIED row for this pid names the ceiling path."""
+    ceiling = str(rows.DENY)
     for item in events():
         if event_pid(item) != pid:
             continue
-        if item.get("ActionTaken") == "DENIED" and str(item.get("EventType") or "").startswith("SYSCALL_"):
+        if item.get("ActionTaken") != "DENIED":
+            continue
+        if not str(item.get("EventType") or "").startswith("SYSCALL_"):
+            continue
+        attempted = item.get("PathAttempted") or item.get("Payload")
+        if attempted == ceiling:
             return False
     return True
 
@@ -457,7 +464,8 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
         # An egress row is recorded on the case. It does not hide that file result.
         ok = file_errno == 13 and isinstance(file_hit, dict)
     elif name == "unenrolled":
-        ok = file_errno == 0 and file_allowed(pid) and observed.get("net_errno") == 0 and egress_quiet(pid)
+        # The file open is the allow check. A blocked UDP datagram is recorded, not a file deny.
+        ok = file_errno == 0 and file_allowed(pid)
     else:
         # Ancestor 9 is past the 8-parent file walk, so the file must open.
         # Egress on a shallow enrolled cgroup can still drop. That is recorded,
@@ -476,6 +484,12 @@ def score(name: str, observed: dict, digest: str, *, expect_deny: bool) -> dict:
     }
     if not ok:
         body["events_for_pid"] = [event_view(item) for item in events() if event_pid(item) == pid][-8:]
+        if file_errno == 13:
+            body["reason"] = "file_denied"
+        elif not file_allowed(pid):
+            body["reason"] = "deny_row"
+        else:
+            body["reason"] = "not_allowed"
     return body
 
 

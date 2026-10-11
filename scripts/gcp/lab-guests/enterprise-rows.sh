@@ -121,8 +121,14 @@ old = '"-v", "/sys/fs/bpf:/sys/fs/bpf"'
 new = '"-v", "/sys/fs/bpf:/sys/fs/bpf:rshared"'
 count = text.count(old)
 if count:
-    path.write_text(text.replace(old, new), encoding="utf-8")
-print(f"bpf_bind_rshared={count}")
+    text = text.replace(old, new)
+probe = 'os.write(result_w, f"{uid0} {nobody} {here}\\n".encode())'
+probed = 'os.write(result_w, f"{uid0} {nobody} {here} pid {os.getpid()}\\n".encode())'
+pid_count = text.count(probe)
+if pid_count:
+    text = text.replace(probe, probed)
+path.write_text(text, encoding="utf-8")
+print(f"bpf_bind_rshared={count} probe_pid={pid_count}")
 PY
 if find "$stage" -name 'private-key.pem' | grep -q .; then
   exit 3
@@ -193,16 +199,16 @@ image=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
 test "$image" = "$image_name"
 if [ "$mode" = "descendant-b1" ]; then
   printf 'IMAGE_LINE=%s\n' "$image"
+  if [ ! -x "$here/descendant_probe" ]; then
+    echo "vfork probe missing" >&2
+    exit 6
+  fi
   set +e
-  sudo env VANTIO_IMAGE="$image" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
+  sudo env VANTIO_IMAGE="$image" VANTIO_PROBE="$here/descendant_probe" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
   rc=$?
   set -e
   cat /tmp/descendant-b1.out
   chmod a+r /tmp/descendant-b1.out 2>/dev/null || true
-  if [ ! -s /tmp/enterprise-pe-rows.json ]; then
-    cp /tmp/descendant-b1.out /tmp/enterprise-pe-rows.json
-  fi
-  chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ]; then
     sync
@@ -233,6 +239,8 @@ case "$mode" in
     exit "$rc"
     ;;
 esac
+# A user-owned file in /tmp makes root's recreate return EACCES. Each repeat starts clean.
+sudo rm -f /tmp/enterprise-pe-rows.json
 set +e
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?

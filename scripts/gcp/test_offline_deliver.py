@@ -241,6 +241,22 @@ class OfflineDeliverTest(unittest.TestCase):
         dropped = dict(held)
         dropped["enrolled_after"] = {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6895}
         self.assertEqual(od._loader_word("2d-crash-recovery", dropped), "fail")
+        mapped = dict(held)
+        mapped["enrolled_after"] = {
+            "file_errno": 13,
+            "map_named": True,
+            "path": od.CEILING_PATH,
+            "pid": 3501,
+        }
+        self.assertEqual(od._loader_word("2d-crash-recovery", mapped), "held")
+        unnamed = dict(mapped)
+        unnamed["enrolled_after"] = {
+            "file_errno": 13,
+            "map_named": False,
+            "path": od.CEILING_PATH,
+            "pid": 3501,
+        }
+        self.assertEqual(od._loader_word("2d-crash-recovery", unnamed), "fail")
         kept = od.allow_record(
             {
                 "claim_cap": od.CLAIM_CAP,

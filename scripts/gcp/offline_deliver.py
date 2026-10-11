@@ -309,6 +309,14 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
             file_errno = item.get("file_errno")
             if isinstance(file_errno, int) and not isinstance(file_errno, bool) and 0 <= file_errno <= 255:
                 row["file_errno"] = file_errno
+            net_errno = item.get("net_errno")
+            if isinstance(net_errno, int) and not isinstance(net_errno, bool) and 0 <= net_errno <= 255:
+                row["net_errno"] = net_errno
+            reason = item.get("reason")
+            if isinstance(reason, str) and re.fullmatch(r"[a-z0-9_]{1,40}", reason):
+                row["reason"] = reason
+            if item.get("skipped") is True:
+                row["skipped"] = True
             case_pid = item.get("pid")
             if isinstance(case_pid, int) and not isinstance(case_pid, bool) and 0 <= case_pid <= 2**22:
                 row["pid"] = case_pid
@@ -555,7 +563,7 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
                 continue
             kept[key] = value
             continue
-        if key in {"nobody_errno", "errno"} and isinstance(value, int) and not isinstance(value, bool) and -1 <= value <= 255:
+        if key in {"nobody_errno", "errno"} and isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 255:
             kept[key] = value
             continue
         if key == "phase" and value in {"pre", "post"}:
@@ -1650,7 +1658,7 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
         unenrolled = body.get("unenrolled_after")
         if not isinstance(unenrolled, dict) or unenrolled.get("file_errno") != 0:
             return "fail"
-        if _sample_held(body.get("enrolled_after")):
+        if _kill_after_held(body.get("enrolled_after")):
             return "held"
         return "fail"
     if mode == "2c-upgrade-rollback":
@@ -1660,6 +1668,18 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
             return "held"
         return "fail"
     return "fail"
+
+
+def _kill_after_held(sample: Mapping[str, Any] | None) -> bool:
+    """After the loader is dead, the pinned deny map is the attribution record."""
+    if _sample_held(sample):
+        return True
+    if not isinstance(sample, dict) or sample.get("file_errno") != 13 or sample.get("path") != CEILING_PATH:
+        return False
+    pid = sample.get("pid")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    return sample.get("map_named") is True
 
 
 def _event_anchor(event: Mapping[str, Any] | None) -> tuple[int, int]:
@@ -1748,6 +1768,8 @@ def _case_source(item: Mapping[str, Any]) -> Mapping[str, Any]:
             continue
         chosen = sample
         pid = sample.get("pid")
+        if item.get("pass") is False and sample.get("file_errno") not in (0, None):
+            break
         if sample.get("pass") is True and isinstance(pid, int) and not isinstance(pid, bool) and pid > 0:
             break
     if not isinstance(chosen, dict):
@@ -1765,15 +1787,20 @@ def _case_capture(item: Mapping[str, Any]) -> dict[str, Any]:
     anchor = event.get("lineage_anchor") if isinstance(event, dict) else 0
     if isinstance(anchor, bool) or not isinstance(anchor, int):
         anchor = 0
-    return {
+    row = {
         "expect_deny": item.get("expect_deny") is True,
         "file_errno": item.get("file_errno") if isinstance(item.get("file_errno"), int) else -1,
         "lineage_anchor": anchor,
         "name": item.get("name") if isinstance(item.get("name"), str) else "",
+        "net_errno": item.get("net_errno") if isinstance(item.get("net_errno"), int) else -1,
         "pass": item.get("pass") is True,
         "path": CEILING_PATH,
         "pid": item.get("pid") if isinstance(item.get("pid"), int) else 0,
+        "reason": item.get("reason") if isinstance(item.get("reason"), str) else "",
     }
+    if item.get("skipped") is True:
+        row["skipped"] = True
+    return row
 
 
 def boot_lockout(text: str) -> bool:
@@ -1857,7 +1884,11 @@ def _with_descendant_cases(pulled: dict[str, Any] | None, text: str) -> dict[str
 
 
 def _pre_held(cases: list[dict[str, Any]]) -> bool:
-    denied = [item for item in cases if item.get("expect_deny") is True]
+    denied = [
+        item
+        for item in cases
+        if item.get("expect_deny") is True and item.get("skipped") is not True
+    ]
     if not denied:
         return False
     return all(
@@ -1969,6 +2000,15 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
     guest_rc = case.get("rc")
     if isinstance(guest_rc, int) and not isinstance(guest_rc, bool) and 0 <= guest_rc <= 255:
         kept["guest_rc"] = guest_rc
+    if (
+        name == "loader-kill"
+        and kept["hold"] is False
+        and _sample_held(before)
+        and isinstance(sample, dict)
+        and sample.get("file_errno") == 13
+        and sample.get("map_named") is not True
+    ):
+        kept["fail_reasons"] = ["attribution_after_kill"]
     return kept
 
 
@@ -2087,6 +2127,11 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     shutil.copy2(guest, script_dest)
     script_dest.chmod(0o755)
     shutil.copy2(descendant, dest / "descendant_b1.py")
+    probe = descendant.parent / "descendant_probe"
+    if not probe.is_file() or probe.stat().st_size < 1000:
+        raise SystemExit("vfork_probe")
+    shutil.copy2(probe, dest / "descendant_probe")
+    (dest / "descendant_probe").chmod(0o755)
     host, grade = _phase_scripts(env)
     shutil.copy2(host, dest / "phase2_host.py")
     shutil.copy2(grade, dest / "phase2_grade.py")
@@ -2247,11 +2292,16 @@ def _run_one_battery(
 ) -> dict[str, Any]:
     """Enterprise grant/revoke, then descendant-b1. A failed enterprise row does not skip the rest."""
     enterprise = _ssh_case(project, name, guest_command(seal, "enterprise"))
+    enterprise_text = (enterprise.stdout or "") + (enterprise.stderr or "")
     kernel_path = evidence / "kernel-facts.json"
     raw = _pull_guest_json(project, name)
+    if not isinstance(raw, dict) or not isinstance(raw.get("revoke"), dict):
+        parsed = _guest_payload(enterprise_text)
+        if isinstance(parsed, dict) and isinstance(parsed.get("revoke"), dict):
+            raw = parsed
     got_kernel = _scp_from(project, name, "/tmp/gcp-kernel-facts.json", kernel_path)
     if enterprise.returncode != 0:
-        print(redact((enterprise.stdout or "") + (enterprise.stderr or ""))[-1500:], file=sys.stderr)
+        print(redact(enterprise_text)[-1500:], file=sys.stderr)
     hold = _enterprise_hold(raw if isinstance(raw, dict) else None)
     ledger = raw.get("z_ledger") if isinstance(raw, dict) else None
     summary: dict[str, Any] = {
@@ -2461,6 +2511,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
                 payload_dir / "contract.tar",
                 payload_dir / "enterprise-rows.sh",
                 payload_dir / "descendant_b1.py",
+                payload_dir / "descendant_probe",
                 payload_dir / "phase2_host.py",
                 payload_dir / "phase2_grade.py",
                 payload_dir / "debs.tar",
