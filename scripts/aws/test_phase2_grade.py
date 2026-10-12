@@ -108,6 +108,37 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertEqual(refused["enrolled_egress"], "denied")
         self.assertEqual(refused["classification"], "fail_closed")
         self.assertEqual(grade.egress_word(110), "no_response")
+        self.assertEqual(grade.egress_grade_block(110, 1), "lab_network")
+        self.assertEqual(grade.egress_grade_block(None, 1), "lab_network")
+        self.assertEqual(grade.egress_grade_block(111, 1), "lab_network")
+        self.assertEqual(grade.egress_grade_block(0, 110), "enrolled_egress_timeout")
+        self.assertIsNone(grade.egress_grade_block(0, 1))
+        self.assertIsNone(grade.egress_grade_block(0, 13))
+        self.assertIsNone(grade.egress_grade_block(0, 111))
+        self.assertIsNone(grade.egress_grade_block(0, 0))
+        timed = grade.grade_crash(
+            enrolled_errno=110,
+            unenrolled_errno=0,
+            file_errno=13,
+            file_attributed=True,
+        )
+        self.assertEqual(timed["reason"], "enrolled_egress_timeout")
+        self.assertEqual(timed["host_result"], "NOT_GRADED")
+        self.assertEqual(timed["classification"], "not_graded")
+        self.assertTrue(timed["setup_invalid"])
+        self.assertNotEqual(timed["host_result"], "HOLD")
+        lab = grade.grade_crash(enrolled_errno=1, unenrolled_errno=110, file_errno=13, file_attributed=True)
+        self.assertEqual(lab["reason"], "lab_network")
+        self.assertEqual(lab["host_result"], "NOT_GRADED")
+        refused = grade.grade_tamper(
+            enrolled_errno=110,
+            unenrolled_errno=0,
+            loader_up=False,
+            file_errno=13,
+            file_attributed=True,
+        )
+        self.assertEqual(refused["host_result"], "NOT_GRADED")
+        self.assertEqual(refused["reason"], "enrolled_egress_timeout")
         tamper = grade.grade_tamper(
             enrolled_errno=1,
             unenrolled_errno=0,
@@ -146,6 +177,13 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertEqual(recorded["result"], "RECORDED")
         self.assertFalse(recorded["customer_claim"])
         self.assertNotIn("latency", recorded)
+
+    def test_enrolled_connect_is_after_the_unenrolled_control(self) -> None:
+        text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        for name, nxt in (("run_2d", "run_2e"), ("run_2f", "kernel_facts")):
+            body = text.split(f"def {name}", 1)[1].split(f"def {nxt}", 1)[0]
+            self.assertLess(body.index("control_handshake()"), body.index("child_open(True)"))
+            self.assertIn('"lab_network"', body)
 
     def test_tamper_does_not_treat_a_live_loader_as_fail_closed(self) -> None:
         body = grade.grade_tamper(enrolled_errno=1, unenrolled_errno=0, loader_up=True)
