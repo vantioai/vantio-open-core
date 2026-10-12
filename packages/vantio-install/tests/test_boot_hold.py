@@ -157,8 +157,7 @@ class BootHoldTest(unittest.TestCase):
 
     def test_non_root_owned_config_is_not_trusted_on_the_host_root(self) -> None:
         path = self.root / "boot-hold.json"
-        path.write_text("{}
-", encoding="utf-8")
+        path.write_text("{}\n", encoding="utf-8")
         os.chmod(path, 0o644)
         self.assertFalse(_trusted(Path("/"), path))
         self.assertNotEqual(path.stat().st_uid, 0)
