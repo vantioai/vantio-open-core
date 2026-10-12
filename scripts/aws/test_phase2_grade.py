@@ -202,6 +202,53 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertIn("VANTIO_EGRESS_HOST", gcp)
         self.assertIn("VANTIO_EGRESS_PORT", gcp)
 
+    def test_restart_keeps_the_same_process_and_anchor(self) -> None:
+        held = grade.restart_keeps_the_same_anchor(
+            pid=14303,
+            before_errno=13,
+            before_anchor=7136,
+            after_errno=13,
+            after_anchor=7136,
+            before_count=1,
+            after_count=2,
+        )
+        self.assertTrue(held["held"])
+        self.assertIsNone(held["reason"])
+        dropped = grade.restart_keeps_the_same_anchor(
+            pid=14303,
+            before_errno=13,
+            before_anchor=7136,
+            after_errno=0,
+            after_anchor=0,
+            before_count=1,
+            after_count=1,
+        )
+        self.assertFalse(dropped["held"])
+        self.assertEqual(dropped["reason"], "enrollment_dropped")
+        standin = grade.restart_keeps_the_same_anchor(
+            pid=14303,
+            before_errno=13,
+            before_anchor=7136,
+            after_errno=13,
+            after_anchor=7136,
+            before_count=1,
+            after_count=1,
+        )
+        self.assertEqual(standin["reason"], "no_new_deny_after_restart")
+        changed = grade.restart_keeps_the_same_anchor(
+            pid=14303,
+            before_errno=13,
+            before_anchor=7136,
+            after_errno=13,
+            after_anchor=8000,
+            before_count=1,
+            after_count=2,
+        )
+        self.assertEqual(changed["reason"], "anchor_not_carried")
+        text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        body = text.split("def run_2d", 1)[1].split("def run_2e", 1)[0]
+        self.assertLess(body.index("same_process_across_restart"), body.index("kill_loader()"))
+
     def test_battery_target_is_a_reachable_private_address(self) -> None:
         self.assertEqual(
             grade.choose_egress_target(None, None, ["192.0.2.2", "172.31.24.10"]),
