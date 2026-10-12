@@ -114,7 +114,29 @@ authorized_uninstall() {
   local image="$1"
   local require_row="${2:-no}"
   local probe_pid="${3:-0}"
-  export PATH="/usr/sbin:/usr/bin:$PATH"
+  export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
+  record_uninstall() {
+    python3 - << 'PY'
+import json
+from pathlib import Path
+rows = Path("/tmp/enterprise-pe-rows.json")
+try:
+    body = json.loads(rows.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    body = {}
+out = Path("/tmp/vantio-uninstall.out")
+body["uninstall_tail"] = out.read_text(encoding="utf-8", errors="replace")[-1200:] if out.is_file() else ""
+rows.write_text(json.dumps(body), encoding="utf-8")
+PY
+    chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  }
+  trap record_uninstall RETURN
+  if ! command -v bpftool >/dev/null 2>&1; then
+    found=$(sudo find /usr -name bpftool -type f 2>/dev/null | head -n 1 || true)
+    if [ -n "$found" ]; then
+      sudo ln -sf "$found" /usr/local/bin/bpftool
+    fi
+  fi
   if ! command -v bpftool >/dev/null 2>&1; then
     echo "UNINSTALL_RESIDUAL bpftool missing" >&2
     return 1
