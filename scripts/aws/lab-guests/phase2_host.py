@@ -715,6 +715,129 @@ def stamp_deny(sample: dict) -> dict:
     return sample
 
 
+def _deny_count(pid: int) -> int:
+    """DENIED rows for this pid and the ceiling path that carry an anchor."""
+    path = str(rows.DENY)
+    count = 0
+    for item in events():
+        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
+            continue
+        attempted = item.get("PathAttempted") or item.get("Payload")
+        if attempted != path:
+            continue
+        anchor = item.get("lineage_anchor")
+        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
+            continue
+        count += 1
+    return count
+
+
+def same_process_across_restart(adapter) -> dict:
+    """One enrolled process opens, the loader restarts, and that same pid opens again.
+
+    The anchor on the second deny has to match the first. A restart that
+    drops the cgroup id leaves errno 13 with no new row, or errno 0.
+    """
+    report_r, report_w = os.pipe()
+    cmd_r, cmd_w = os.pipe()
+    child = os.fork()
+    if child == 0:
+        os.close(report_r)
+        os.close(cmd_w)
+        try:
+            (Path(rows.ANCHOR) / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
+            os.setresuid(SUBJECT, SUBJECT, 0)
+
+            def open_errno() -> int:
+                try:
+                    fd = os.open(str(rows.DENY), os.O_RDONLY)
+                    os.close(fd)
+                    return 0
+                except OSError as exc:
+                    return exc.errno or 1
+
+            os.write(report_w, f"first {open_errno()} {os.getpid()}\n".encode())
+            if os.read(cmd_r, 1) == b"x":
+                os.write(report_w, f"second {open_errno()} {os.getpid()}\n".encode())
+        except OSError as exc:
+            try:
+                os.write(report_w, f"setup {exc.errno or 1}\n".encode())
+            except OSError:
+                pass
+        os._exit(0)
+    os.close(report_w)
+    os.close(cmd_r)
+    body: dict = {"held": False, "reason": "probe_failed", "pid": None}
+    try:
+        first = os.read(report_r, 80).decode(errors="replace").split()
+        if len(first) != 3 or first[0] != "first":
+            body["detail"] = " ".join(first)
+            return body
+        errno_before = int(first[1])
+        pid = int(first[2])
+        time.sleep(0.5)
+        event = deny_event_for(pid)
+        before_anchor = event["lineage_anchor"] if event else 0
+        before_count = _deny_count(pid)
+        body.update(
+            {
+                "pid": pid,
+                "before_errno": errno_before,
+                "before_anchor": before_anchor,
+                "before_count": before_count,
+            }
+        )
+        if errno_before != 13 or before_anchor <= 0:
+            body["reason"] = "not_enrolled_before_restart"
+            return body
+        kill_loader()
+        started = rows.start_loader(adapter)
+        if started.get("rc") != 0:
+            body["reason"] = "loader_restart_failed"
+            return body
+        banner = _wait_scoped_banner()
+        if "SCOPED (drop enrolled)" not in banner or "Path DENY attached" not in banner:
+            body["reason"] = "banner_missing"
+            return body
+        os.write(cmd_w, b"x")
+        second = os.read(report_r, 80).decode(errors="replace").split()
+        if len(second) != 3 or second[0] != "second" or int(second[2]) != pid:
+            body["detail"] = " ".join(second)
+            return body
+        errno_after = int(second[1])
+        time.sleep(0.5)
+        after = deny_event_for(pid)
+        after_anchor = after["lineage_anchor"] if after else 0
+        after_count = _deny_count(pid)
+        body.update(
+            {
+                "after_errno": errno_after,
+                "after_anchor": after_anchor,
+                "after_count": after_count,
+            }
+        )
+        body.update(
+            grade.restart_keeps_the_same_anchor(
+                pid=pid,
+                before_errno=errno_before,
+                before_anchor=before_anchor,
+                after_errno=errno_after,
+                after_anchor=after_anchor,
+                before_count=before_count,
+                after_count=after_count,
+            )
+        )
+        return body
+    finally:
+        try:
+            os.write(cmd_w, b"q")
+        except OSError:
+            pass
+        os.close(cmd_w)
+        os.close(report_r)
+        os.waitpid(child, 0)
+
+
 def kill_loader() -> int:
     proc = rows.sudo(["pkill", "-9", "-x", "vantio-loader"])
     time.sleep(1.0)
@@ -804,7 +927,7 @@ def run_2c() -> dict:
 
 
 def run_2d() -> dict:
-    _adapter, digest = prepare_enforce()
+    adapter, digest = prepare_enforce()
     anchor, path_facts = anchor_before_first_open()
     if not grade.anchor_before_open_ok(anchor):
         return _setup_invalid(
@@ -823,6 +946,21 @@ def run_2d() -> dict:
             anchor_before_open=anchor,
             path_facts=path_facts,
         )
+    carried = same_process_across_restart(adapter)
+    if not carried.get("held"):
+        return {
+            "anchor_before_open": anchor,
+            "battery": "2d-crash-recovery",
+            "claim_ceiling": grade.CLAIM_CEILING,
+            "customer_claim": False,
+            "enroll_restart": carried,
+            "host_result": "FAIL",
+            "lab_pass": False,
+            "policy_digest": digest,
+            "reason": carried.get("reason") or "enrollment_dropped",
+            "setup_invalid": False,
+            "while_loader_up": up,
+        }
     kill_loader()
     standin = standin_after_sigkill()
     if loader_running():
@@ -884,6 +1022,7 @@ def run_2d() -> dict:
     )
     graded["policy_digest"] = digest
     graded["anchor_before_open"] = anchor
+    graded["enroll_restart"] = carried
     graded["while_loader_up"] = up
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled

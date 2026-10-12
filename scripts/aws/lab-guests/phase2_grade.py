@@ -11,7 +11,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-WORKING_SEAL = "429bea4201c88f57c3d9f3c29eda8b51375fd01acecb0b30d0ae670d96df8964"
+WORKING_SEAL = "79927b75a60545c1059f9467e7a19ba31dcd10b61d31cf4744afe5e04890524f"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "2c-upgrade-rollback",
@@ -29,6 +29,47 @@ _DOCUMENTATION_V4 = (
     ipaddress.IPv4Network("198.51.100.0/24"),
     ipaddress.IPv4Network("203.0.113.0/24"),
 )
+
+
+def restart_keeps_the_same_anchor(
+    *,
+    pid: int | None,
+    before_errno: int | None,
+    before_anchor: int | None,
+    after_errno: int | None,
+    after_anchor: int | None,
+    before_count: int | None,
+    after_count: int | None,
+) -> dict[str, Any]:
+    """The same process stays denied with the same anchor after the loader restarts.
+
+    A second errno 13 with no new deny row is a stand-in. A different anchor
+    means the restart did not keep the enrollment.
+    """
+    same_pid = isinstance(pid, int) and not isinstance(pid, bool) and pid > 0
+    same_anchor = (
+        isinstance(before_anchor, int)
+        and not isinstance(before_anchor, bool)
+        and before_anchor > 0
+        and after_anchor == before_anchor
+    )
+    new_row = (
+        isinstance(before_count, int)
+        and not isinstance(before_count, bool)
+        and isinstance(after_count, int)
+        and not isinstance(after_count, bool)
+        and after_count > before_count
+    )
+    held = same_pid and before_errno == 13 and after_errno == 13 and same_anchor and new_row
+    reason = None
+    if not held:
+        if after_errno == 0:
+            reason = "enrollment_dropped"
+        elif not new_row:
+            reason = "no_new_deny_after_restart"
+        else:
+            reason = "anchor_not_carried"
+    return {"held": held, "reason": reason}
 
 
 def anchor_before_open_ok(anchor: object) -> bool:
