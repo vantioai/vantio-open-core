@@ -415,7 +415,10 @@ class BaselineDiagTests(unittest.TestCase):
 
     def test_runners_copy_the_diag_and_the_writer(self) -> None:
         steps = Path(__file__).resolve().parent.joinpath("w3_lab_steps.py").read_text(encoding="utf-8")
-        deliver = Path(__file__).resolve().parents[1].joinpath("gcp/offline_deliver.py").read_text(encoding="utf-8")
+        deliver_dir = Path(__file__).resolve().parents[1] / "gcp"
+        deliver = "\n".join(
+            path.read_text(encoding="utf-8") for path in sorted(deliver_dir.glob("offline_deliver*.py"))
+        )
         for name in ("baseline_diag.py", "sticky_write.py"):
             self.assertIn(name, steps)
             self.assertIn(name, deliver)
