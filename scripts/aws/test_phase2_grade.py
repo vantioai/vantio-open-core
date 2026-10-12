@@ -426,6 +426,36 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertFalse(baseline_diag.bpf_lsm_active("capability,landlock,selinux"))
         self.assertTrue(baseline_diag.bpf_lsm_active("apparmor,bpf"))
         self.assertEqual(baseline_diag.cgroup_enroll_keys(6745, (0x11 << 32) | 6745)[:2], [6745, (0x11 << 32) | 6745])
+        proved = baseline_diag.classify_readiness_log(
+            "INSTALL_ENFORCEMENT_READINESS_BLOCKED reason=bpf_lsm_inactive\n  enforce    : NOT ENFORCING\n"
+        )
+        self.assertTrue(proved["blocked"])
+        claimed = baseline_diag.classify_readiness_log(
+            "INSTALL_ENFORCEMENT_READINESS_BLOCKED reason=bpf_lsm_inactive\n  tc enforce : SCOPED (drop enrolled)\n"
+        )
+        self.assertFalse(claimed["blocked"])
+        self.assertTrue(claimed["reports_enforcing"])
+        planned = baseline_diag.plan_grub_lsm(
+            'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"\nGRUB_CMDLINE_LINUX=""\n',
+            ['GRUB_CMDLINE_LINUX_DEFAULT="lsm=capability,apparmor"\n'],
+            "lockdown,capability,apparmor,bpf",
+        )
+        self.assertNotIn("error", planned)
+        self.assertIn('GRUB_CMDLINE_LINUX="lsm=lockdown,capability,apparmor,bpf"', planned["main"])
+        self.assertNotIn("lsm=", planned["extras"][0])
+        self.assertEqual(
+            baseline_diag.plan_grub_lsm("GRUB_CMDLINE_LINUX+=\"lsm=apparmor\"\n", [], "capability,bpf"),
+            {"error": "grub_append"},
+        )
+        enabled = baseline_diag.lsm_status_body(
+            "lockdown,capability,apparmor,bpf",
+            "root=PARTUUID lsm=lockdown,capability,apparmor,bpf",
+            {"reboot_requested": True, "stock_lsm": "lockdown,capability,apparmor"},
+        )
+        self.assertEqual(enabled["host_result"], "LSM_ENABLED")
+        stock = baseline_diag.lsm_status_body("capability,bpf", "root=PARTUUID", None)
+        self.assertEqual(stock["host_result"], "LSM_ALREADY_ACTIVE")
+        self.assertTrue(stock["stock_bpf_lsm"])
 
     def test_parent_walk_flags_a_directory_without_execute(self) -> None:
         walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"

@@ -72,7 +72,7 @@ TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
-IMAGE_NAME = "vantio-phantom-engine:decision-6f32467"
+IMAGE_NAME = "vantio-phantom-engine:lsm-04ec89c"
 GUEST_DIR = "/var/lib/vantio-lab/guest"
 ROWS_JSON = "/var/lib/vantio-lab/enterprise-pe-rows.json"
 ZONE = lab.ZONE
@@ -397,6 +397,12 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
         if key in {"enterprise_sha", "bundle_commit"} and isinstance(value, str) and HEX40_RE.fullmatch(value):
             kept[key] = value
             continue
+        if key == "stock_lsm" and isinstance(value, str) and re.fullmatch(r"[a-z0-9,]{0,80}", value):
+            kept[key] = value
+            continue
+        if key == "lsm_guard" and isinstance(value, str) and re.fullmatch(r"[a-z0-9_]{1,40}", value):
+            kept[key] = value
+            continue
         if key in {
             "abort",
             "batteries",
@@ -409,6 +415,7 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             "reboot_observed",
             "uninstall_verified",
             "deny_attr_post_kill",
+            "stock_bpf_lsm",
             "vm_digest_match",
         } and isinstance(value, bool):
             kept[key] = value
@@ -907,7 +914,7 @@ def guest_command(seal: str, mode: str, phase: str = "") -> str:
         return f"bash {script} {seal} enterprise"
     if mode == "descendant-b1" and phase in ("pre", "post"):
         return f"bash {script} {seal} descendant-b1 {phase}"
-    if mode in {"2c-upgrade-rollback", "2d-crash-recovery"} and phase == "":
+    if mode in {"2c-upgrade-rollback", "2d-crash-recovery", "lsm-guard"} and phase == "":
         return f"bash {script} {seal} {mode}"
     raise SystemExit("battery")
 

@@ -341,6 +341,62 @@ def _run_one_battery(
     )
 
 
+def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict[str, Any]:
+    """Record the stock LSM list. Enable bpf only after the loader refuses."""
+    before = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
+    boot_before = (before.stdout or "").strip()
+    completed = _ssh_case(project, name, guest_command(seal, "lsm-guard"))
+    body = _pull_guest_json(project, name) or {}
+    if not isinstance(body, dict) or not body:
+        parsed = _last_object((completed.stdout or "") + (completed.stderr or ""))
+        body = parsed if isinstance(parsed, dict) else {}
+    result = body.get("host_result") if isinstance(body.get("host_result"), str) else ""
+    stock = body.get("stock_lsm") if isinstance(body.get("stock_lsm"), str) else ""
+    record = {
+        "host_result": result,
+        "lsm_guard": "missing",
+        "stock_bpf_lsm": False,
+        "stock_lsm": stock,
+    }
+    print(json.dumps({"lsm_guard": result, "stock_lsm": stock}), flush=True)
+    if result == "LSM_ALREADY_ACTIVE":
+        record["lsm_guard"] = "already_active"
+        record["stock_bpf_lsm"] = True
+        write_evidence(evidence / "lsm-guard.json", record)
+        return record
+    if result == "GUARD_PROVED" and body.get("reboot_requested") is True:
+        after = _wait_boot(project, name, boot_before, REBOOT_WAIT_SECONDS)
+        if not after:
+            write_evidence(evidence / "lsm-guard.json", record)
+            raise SystemExit("lsm")
+        confirmed = _ssh_case(project, name, guest_command(seal, "lsm-guard"))
+        confirm_body = _pull_guest_json(project, name) or {}
+        if not isinstance(confirm_body, dict) or not confirm_body:
+            parsed = _last_object((confirmed.stdout or "") + (confirmed.stderr or ""))
+            confirm_body = parsed if isinstance(parsed, dict) else {}
+        enabled = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
+        print(
+            json.dumps(
+                {
+                    "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
+                    "enabled_lsm": enabled,
+                    "lsm_confirm": confirm_body.get("host_result"),
+                }
+            ),
+            flush=True,
+        )
+        if confirm_body.get("host_result") != "LSM_ENABLED":
+            record["lsm_guard"] = "confirm_failed"
+            write_evidence(evidence / "lsm-guard.json", record)
+            raise SystemExit("lsm")
+        record["lsm_guard"] = "lsm_enabled"
+        write_evidence(evidence / "lsm-guard.json", record)
+        return record
+    record["lsm_guard"] = "refused" if result else "missing"
+    write_evidence(evidence / "lsm-guard.json", record)
+    raise SystemExit("lsm")
+
+
 def run_batteries(env: Mapping[str, str]) -> int:
     _enabled(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
@@ -377,6 +433,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
         )
         for local_name in ("seal.oci.tar", "contract.tar"):
             (payload_dir / local_name).unlink(missing_ok=True)
+        lsm = _prepare_lab_lsm(project, name, seal, evidence)
         repeats: list[dict[str, Any]] = []
         schedule = battery_schedule(BATTERY_REPEATS)
         if schedule != ["enterprise", "descendant-b1"] * BATTERY_REPEATS:
@@ -477,7 +534,10 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "full_set": passed,
             "uninstall_verified": uninstall_verified,
             "image": IMAGE_NAME,
+            "lsm_guard": lsm.get("lsm_guard") if isinstance(lsm.get("lsm_guard"), str) else "",
             "mode": "enterprise",
+            "stock_bpf_lsm": lsm.get("stock_bpf_lsm") is True,
+            "stock_lsm": lsm.get("stock_lsm") if isinstance(lsm.get("stock_lsm"), str) else "",
             "network": NETWORK,
             "public_ip": False,
             "repeats": repeats,

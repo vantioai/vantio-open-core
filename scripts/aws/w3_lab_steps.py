@@ -969,6 +969,7 @@ def execute_enterprise_rows(
             "2e-performance",
             "2f-tamper",
             "2g-distro",
+            "lsm-guard",
         }
         if battery not in {"enterprise", "descendant-b1", "self-service", *phase_batteries}:
             raise lab.GuardAbort("battery")

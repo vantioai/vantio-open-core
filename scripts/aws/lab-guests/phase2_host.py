@@ -1217,12 +1217,144 @@ def run_2g() -> dict:
     return graded
 
 
+def _wait_readiness_log(timeout: float = 45) -> str:
+    """The enforce container's own log, once it has stated the claim."""
+    deadline = time.time() + timeout
+    last = ""
+    while time.time() < deadline:
+        proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
+        last = (proc.stdout or "") + (proc.stderr or "")
+        if "INSTALL_ENFORCEMENT_READINESS_BLOCKED" in last or "tc enforce :" in last:
+            time.sleep(1)
+            proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
+            return (proc.stdout or "") + (proc.stderr or "")
+        time.sleep(2)
+    return last
+
+
+def _enforce_generation_log() -> str:
+    """Grant, then revoke, and return the enforce container log."""
+    rows.ensure_cgroups()
+    meta = rows.load("meta.json")
+    plane = ControlPlane(LocalHostVerifier(load_packaged_test_trust()), root_ids=("cust-root", "cust-b"))
+    adapter = PeHostAdapter(plane)
+    opened = plane.submit_activation(rows.load("activation.json"), rows.sig("activation.sig.json"))
+    adapter.on_activation(opened, plane.policy)
+    granted = plane.submit_governance(rows.load("grant.json"), rows.sig("grant.sig.json"), now=meta["now"])
+    adapter.on_governance(granted, "grant")
+    rows.LAB.mkdir(parents=True, exist_ok=True)
+    (rows.LAB / "evidence").mkdir(parents=True, exist_ok=True)
+    (rows.LAB / "d").mkdir(parents=True, exist_ok=True)
+    rows.DENY.write_text("lab-deny-marker\n", encoding="utf-8")
+    os.chmod(rows.DENY, 0o644)
+    rows.sudo(["mkdir", "-p", rows.ANCHOR])
+    started = rows.start_loader(adapter)
+    if started["rc"] != 0:
+        raise SystemExit(f"loader {started['rc']}")
+    banner = rows.wait_banner("AUDIT")
+    if "AUDIT" not in banner and "observe-only" not in banner:
+        raise SystemExit(f"loader banner missing: {banner[-400:]}")
+    revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
+    adapter.on_governance(revoked, "revoke")
+    blocked = rows.start_loader(adapter)
+    if blocked["rc"] != 0:
+        raise SystemExit(f"enforce loader {blocked['rc']}")
+    return _wait_readiness_log()
+
+
+def apply_consented_lsm(lsm_value: str) -> dict:
+    """Write the consented lsm= list into grub. Restore the files if update-grub fails."""
+    main_path = Path("/etc/default/grub")
+    if not main_path.is_file():
+        return {"updated": False, "error": "grub_missing"}
+    extra_dir = Path("/etc/default/grub.d")
+    extra_paths = sorted(extra_dir.glob("*.cfg")) if extra_dir.is_dir() else []
+    main = main_path.read_text(encoding="utf-8")
+    extras = [path.read_text(encoding="utf-8") for path in extra_paths]
+    planned = baseline_diag.plan_grub_lsm(main, extras, lsm_value)
+    if planned.get("error"):
+        return {"updated": False, "error": planned["error"]}
+    backup = Path("/var/lib/vantio-lab")
+    backup.mkdir(parents=True, exist_ok=True)
+    (backup / "grub-default.bak").write_text(main, encoding="utf-8")
+    main_path.write_text(planned["main"], encoding="utf-8")
+    for path, text in zip(extra_paths, planned["extras"]):
+        path.write_text(text, encoding="utf-8")
+    proc = subprocess.run(["update-grub"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        proc = subprocess.run(["grub-mkconfig", "-o", "/boot/grub/grub.cfg"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        main_path.write_text(main, encoding="utf-8")
+        for path, text in zip(extra_paths, extras):
+            path.write_text(text, encoding="utf-8")
+        tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
+        return {"updated": False, "error": "update_grub", "tail": tail}
+    return {"updated": True, "error": ""}
+
+
+def run_lsm_guard() -> dict:
+    """Prove the stock host refuses, then write the consented lab cmdline."""
+    facts = kernel_facts()
+    stock = facts["lsm"]
+    body = {
+        "battery": "lsm-guard",
+        "stock_lsm": stock,
+        "stock_bpf_lsm": baseline_diag.bpf_lsm_active(stock),
+        "distro": facts["distro"],
+        "kernel": facts["kernel"],
+        "image_id": os.environ.get("VANTIO_IMAGE_ID", ""),
+        "cmdline": Path("/proc/cmdline").read_text(encoding="utf-8").strip() if Path("/proc/cmdline").is_file() else "",
+        "reboot_requested": False,
+        "lab_pass": False,
+        "customer_claim": False,
+    }
+    if body["stock_bpf_lsm"]:
+        body["host_result"] = "LSM_ALREADY_ACTIVE"
+        body["reason"] = "stock_bpf_lsm"
+        return body
+    log = _enforce_generation_log()
+    verdict = baseline_diag.classify_readiness_log(log)
+    body["readiness"] = verdict
+    body["loader_log_tail"] = log[-2000:]
+    rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
+    if not verdict["blocked"]:
+        body["host_result"] = "FAIL"
+        body["reason"] = "readiness_not_blocked"
+        return body
+    lsm_value = baseline_diag.lsm_list_with_bpf(stock)
+    applied = apply_consented_lsm(lsm_value)
+    body["lsm_value"] = lsm_value
+    body["grub"] = {key: applied[key] for key in ("updated", "error") if key in applied}
+    if not applied.get("updated"):
+        body["host_result"] = "FAIL"
+        body["reason"] = applied.get("error") or "update_grub"
+        return body
+    stock_path = baseline_diag.LSM_STOCK_PATH
+    stock_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "stock_lsm": stock,
+        "stock_bpf_lsm": False,
+        "lsm_value": lsm_value,
+        "image_id": body["image_id"],
+        "distro": facts["distro"],
+        "kernel": facts["kernel"],
+        "reboot_requested": True,
+        "guard_proved": True,
+    }
+    stock_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    body["reboot_requested"] = True
+    body["host_result"] = "GUARD_PROVED"
+    body["reason"] = "bpf_lsm_inactive"
+    return body
+
+
 RUNNERS = {
     "2c-upgrade-rollback": run_2c,
     "2d-crash-recovery": run_2d,
     "2e-performance": run_2e,
     "2f-tamper": run_2f,
     "2g-distro": run_2g,
+    "lsm-guard": run_lsm_guard,
 }
 
 
