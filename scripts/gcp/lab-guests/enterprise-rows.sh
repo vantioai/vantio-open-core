@@ -82,6 +82,51 @@ print(digest)
 PY
   exit 0
 fi
+
+# The distro bpftool is a wrapper. It exits 2 when the package for this
+# kernel is absent, even if another kernel's bpftool binary is installed.
+# A failing wrapper makes the engine report bpftool missing and never print
+# UNINSTALL_VERIFIED.
+ensure_working_bpftool() {
+  export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
+  if bpftool version >/dev/null 2>&1; then
+    return 0
+  fi
+  local found="" candidate
+  while IFS= read -r candidate; do
+    if [ -n "$candidate" ] && "$candidate" version >/dev/null 2>&1; then
+      found=$candidate
+      break
+    fi
+  done < <(sudo find /usr/lib /usr/sbin /usr/bin -name bpftool -type f 2>/dev/null || true)
+  if [ -z "$found" ]; then
+    return 1
+  fi
+  sudo ln -sfn "$found" /usr/local/bin/bpftool
+  if [ -e /usr/sbin/bpftool ] && ! /usr/sbin/bpftool version >/dev/null 2>&1; then
+    sudo mv -f /usr/sbin/bpftool /usr/sbin/bpftool.wrapper
+    sudo ln -sfn "$found" /usr/sbin/bpftool
+  fi
+  export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
+  bpftool version >/dev/null 2>&1
+}
+
+# A restarted container keeps a second loader generation and its fds.
+stop_loader_containers() {
+  local id
+  sudo docker update --restart=no vantio-lab-loader >/dev/null 2>&1 || true
+  sudo docker stop --signal SIGINT --time 20 vantio-lab-loader >/dev/null 2>&1 || true
+  sudo docker rm -f vantio-lab-loader >/dev/null 2>&1 || true
+  sudo docker update --restart=no vantio-pe-lab >/dev/null 2>&1 || true
+  sudo docker rm -f vantio-pe-lab >/dev/null 2>&1 || true
+  for id in $(sudo docker ps -q 2>/dev/null || true); do
+    if sudo docker top "$id" -eo pid,comm 2>/dev/null | grep -q vantio-loader; then
+      sudo docker update --restart=no "$id" >/dev/null 2>&1 || true
+      sudo docker rm -f "$id" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
 authorized_uninstall() {
   local image="$1"
   local require_row="${2:-no}"
@@ -103,18 +148,11 @@ PY
     chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   }
   trap record_uninstall RETURN
-  if ! command -v bpftool >/dev/null 2>&1; then
-    found=$(sudo find /usr -name bpftool -type f 2>/dev/null | head -n 1 || true)
-    if [ -n "$found" ]; then
-      sudo ln -sf "$found" /usr/local/bin/bpftool
-    fi
-  fi
-  if ! command -v bpftool >/dev/null 2>&1; then
+  if ! ensure_working_bpftool; then
     echo "UNINSTALL_RESIDUAL bpftool missing" >&2
     return 1
   fi
-  sudo docker stop --signal SIGINT --time 20 vantio-lab-loader >/dev/null 2>&1 || true
-  sudo docker rm -f vantio-lab-loader >/dev/null 2>&1 || true
+  stop_loader_containers
   sudo mkdir -p /var/lib/vantio /var/log/vantio
   if [ ! -s /var/lib/vantio/enterprise-uninstall.token ]; then
     printf '%s\n' "lab-nonprod-uninstall" | sudo tee /var/lib/vantio/enterprise-uninstall.token >/dev/null
@@ -294,6 +332,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
   sleep 2
 done
 test "$ready" = 1
+ensure_working_bpftool || true
 python3 - <<'PY'
 import json
 import os
