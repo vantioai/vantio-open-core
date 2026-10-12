@@ -44,17 +44,19 @@ EGRESS_HOST = "192.0.2.2"
 EGRESS_PORT = 9
 _LISTENER_SRC = """\
 import socket
-server = socket.socket()
+server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("192.0.2.2", 9))
-server.listen(64)
 server.settimeout(1)
 while True:
     try:
-        client, _addr = server.accept()
+        data, addr = server.recvfrom(16)
     except (TimeoutError, OSError):
         continue
-    client.close()
+    try:
+        server.sendto(data or b"x", addr)
+    except OSError:
+        continue
 """
 
 
@@ -192,15 +194,17 @@ def ensure_net() -> None:
 
 
 def _listener_up() -> bool:
-    sock = socket.socket()
-    sock.settimeout(0.3)
+    """The root path is not enrolled. An echo means the receiver is up."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(0.4)
     try:
-        sock.connect((EGRESS_HOST, EGRESS_PORT))
+        sock.sendto(b"ping", (EGRESS_HOST, EGRESS_PORT))
+        data, _addr = sock.recvfrom(16)
     except OSError:
         return False
     finally:
         sock.close()
-    return True
+    return bool(data)
 
 
 def ensure_egress_listener() -> None:
@@ -229,16 +233,28 @@ def ensure_egress_listener() -> None:
     raise SystemExit("egress_listener")
 
 
-def _tcp_errno() -> int:
-    sock = socket.socket()
+def _egress_errno() -> int:
+    """Send one datagram and wait for the echo from the local listener.
+
+    EPERM or connection refused is blocked. An echo is allowed. A send that
+    is accepted and never answered was not delivered, so it stays 110.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(2)
     try:
-        sock.connect((EGRESS_HOST, EGRESS_PORT))
-        return 0
-    except TimeoutError:
-        return 110
-    except OSError as exc:
-        return exc.errno or 1
+        try:
+            sock.sendto(b"x", (EGRESS_HOST, EGRESS_PORT))
+        except TimeoutError:
+            return 110
+        except OSError as exc:
+            return exc.errno or 1
+        try:
+            data, _addr = sock.recvfrom(8)
+        except TimeoutError:
+            return 110
+        except OSError as exc:
+            return exc.errno or 1
+        return 0 if data else 110
     finally:
         sock.close()
 
@@ -469,7 +485,7 @@ def child_open(enroll: bool) -> dict:
                     errno = 0
                 except OSError as exc:
                     errno = exc.errno or 1
-                net = _tcp_errno()
+                net = _egress_errno()
             except OSError as exc:
                 errno = exc.errno or 1
                 net = exc.errno or 1
