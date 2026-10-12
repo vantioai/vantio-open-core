@@ -23,18 +23,14 @@ def write_replacing(path: Path, text: str) -> None:
     data = text.encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() or path.is_symlink():
+        # A refused truncate is not protected_regular. Do not unlink and
+        # recreate: that would hide an enforcement deny of this path.
+        fd = os.open(path, os.O_WRONLY | os.O_TRUNC)
         try:
-            fd = os.open(path, os.O_WRONLY | os.O_TRUNC)
-        except OSError as exc:
-            if exc.errno not in (errno.EACCES, errno.EPERM):
-                raise
-        else:
-            try:
-                _write_all(fd, data)
-            finally:
-                os.close(fd)
-            return
-        os.unlink(path)
+            _write_all(fd, data)
+        finally:
+            os.close(fd)
+        return
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     try:
         _write_all(fd, data)
