@@ -326,8 +326,20 @@ def egress_observation() -> dict:
     return {"egress_target": host, "egress_port": port}
 
 
+def ensure_lab_iface() -> None:
+    """The loader attaches tc to vlab-host. A missing device exits before the readiness line."""
+    if rows.run(["ip", "link", "show", "vlab-host"]).returncode == 0:
+        rows.sudo(["ip", "link", "set", "vlab-host", "up"])
+        return
+    added = rows.sudo(["ip", "link", "add", "vlab-host", "type", "dummy"])
+    if added.returncode != 0:
+        raise SystemExit("lab_iface")
+    rows.sudo(["ip", "link", "set", "vlab-host", "up"])
+
+
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
     rows.ensure_cgroups()
+    ensure_lab_iface()
     meta = rows.load("meta.json")
     plane = ControlPlane(LocalHostVerifier(load_packaged_test_trust()), root_ids=("cust-root", "cust-b"))
     adapter = PeHostAdapter(plane)
@@ -1235,6 +1247,7 @@ def _wait_readiness_log(timeout: float = 45) -> str:
 def _enforce_generation_log() -> str:
     """Grant, then revoke, and return the enforce container log."""
     rows.ensure_cgroups()
+    ensure_lab_iface()
     meta = rows.load("meta.json")
     plane = ControlPlane(LocalHostVerifier(load_packaged_test_trust()), root_ids=("cust-root", "cust-b"))
     adapter = PeHostAdapter(plane)
