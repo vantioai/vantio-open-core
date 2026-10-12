@@ -22,7 +22,7 @@ import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
 NOW = datetime(2026, 9, 30, 16, 0, tzinfo=timezone.utc)
-SEAL = "8d2fc4acb61606681ae474c399364c7b1e185d0c693b8dfe40bb5846b42723e9"
+SEAL = "5ee3d3a6501038b3f1314245d6a880745c63d212f340a59693c6262199d5a504"
 PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 INSTANCE = "i-0123456789abcdef0"
 SECRET = "SUPER-SECRET-PRIVATE"
