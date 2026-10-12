@@ -373,6 +373,19 @@ class BaselineDiagTests(unittest.TestCase):
         )
         self.assertEqual(baseline_diag.classify({"apparmor_denied": True, "open_errno": 13}), "apparmor")
         self.assertEqual(
+            baseline_diag.classify(
+                {"apparmor_denied": True, "open_errno": 13, "deny_row_for_probe": True}
+            ),
+            "attributed_deny",
+        )
+        noise = "audit: type=1400 apparmor=DENIED operation=open name=/usr/bin/snap"
+        hit = 'apparmor="DENIED" operation="open" name="/var/lib/vantio-pe-clean-host/d/secret" pid=14314'
+        self.assertEqual(baseline_diag.relevant_apparmor([noise], "/var/lib/vantio-pe-clean-host/d/secret", 14314), [])
+        self.assertEqual(
+            baseline_diag.relevant_apparmor([noise, hit], "/var/lib/vantio-pe-clean-host/d/secret", 14314),
+            [hit],
+        )
+        self.assertEqual(
             baseline_diag.classify({"open_errno": 13, "open_uses_o_creat": True, "sticky_parent": True}),
             "protected_regular",
         )
@@ -469,6 +482,26 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), '{"kept":true}')
         finally:
             target.unlink(missing_ok=True)
+
+    def test_a_refused_truncate_is_not_replaced(self) -> None:
+        target = Path(f"/tmp/vantio-sticky-keep-{os.getpid()}.json")
+        target.write_text("keep\n", encoding="utf-8")
+        os.chmod(target, 0o000)
+        try:
+            with self.assertRaises(PermissionError):
+                sticky_write.write_replacing(target, "replaced")
+            os.chmod(target, 0o644)
+            self.assertEqual(target.read_text(encoding="utf-8"), "keep\n")
+        finally:
+            os.chmod(target, 0o644)
+            target.unlink(missing_ok=True)
+
+    def test_diag_does_not_apt_and_strace_is_in_the_offline_debs(self) -> None:
+        diag = Path(baseline_diag.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("apt-get", diag)
+        root = Path(__file__).resolve().parents[2]
+        for relative in ("scripts/aws/fetch_offline_debs.sh", "scripts/gcp/fetch_offline_debs.sh"):
+            self.assertIn("strace", (root / relative).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
