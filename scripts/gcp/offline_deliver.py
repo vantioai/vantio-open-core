@@ -36,16 +36,5 @@ import redteam_brain as rtbrain
 import redteam_campaign
 import redteam_packet
 
-CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
-LAB_PROJECT = "vantio-lab-oct08"
-BUCKET = "vantio-lab-oct08-handoff"
-HANDOFF_SA = "vantio-lab-handoff@vantio-lab-oct08.iam.gserviceaccount.com"
-GHA_SA = "vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com"
-WIF_PROVIDER = "projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github"
-SSH_WAIT_SECONDS = 300
-REBOOT_WAIT_SECONDS = 480
-PROBE_SSH_TIMEOUT = 20
-CASE_SSH_TIMEOUT = 1200
-SSHD_WAIT_SECONDS = 300
-BATTERY_REPEATS = 2
-FULL_BATTERY = ("kernel", "seal", "enterprise", "descendant-b1")
+if __name__ == "__main__":
+    sys.exit(main())
