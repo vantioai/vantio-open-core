@@ -72,7 +72,7 @@ TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
-IMAGE_NAME = "vantio-phantom-engine:inode-371968f"
+IMAGE_NAME = "vantio-phantom-engine:postkill-a86c7af"
 GUEST_DIR = "/var/lib/vantio-lab/guest"
 ROWS_JSON = "/var/lib/vantio-lab/enterprise-pe-rows.json"
 ZONE = lab.ZONE
@@ -2588,6 +2588,21 @@ def run_batteries(env: Mapping[str, str]) -> int:
                 )
         cases.append(_loader_result_row("loader-kill", loader_kill, kill["body"], "while_loader_up", "enrolled_after"))
         cases.append(_loader_result_row("loader-restart", loader_restart, restart["body"], "deny_before", "deny_after"))
+        kill_body = kill.get("body") if isinstance(kill, dict) else None
+        enrolled_after = kill_body.get("enrolled_after") if isinstance(kill_body, dict) else None
+        probe_pid = enrolled_after.get("pid") if isinstance(enrolled_after, dict) else 0
+        if isinstance(probe_pid, bool) or not isinstance(probe_pid, int) or probe_pid < 0:
+            probe_pid = 0
+        uninstall = _ssh(
+            project,
+            name,
+            "sudo env "
+            f"VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID={probe_pid} "
+            f"bash {GUEST_DIR}/enterprise-rows.sh {seal} uninstall",
+        )
+        uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
+        uninstall_verified = uninstall.returncode == 0 and "UNINSTALL_VERIFIED" in uninstall_text
+        post_kill_row = "deny_attr_post_kill pid " in uninstall_text
         result = {
             "batteries": True,
             "captures": captures,
@@ -2598,7 +2613,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "loader_kill": loader_kill,
             "loader_restart": loader_restart,
             "debs": debs,
+            "deny_attr_post_kill": post_kill_row,
             "full_set": passed,
+            "uninstall_verified": uninstall_verified,
             "image": IMAGE_NAME,
             "mode": "enterprise",
             "network": NETWORK,
@@ -2614,6 +2631,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
         if not passed or loader_kill != "held" or loader_restart != "held":
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("battery" if not passed else "loader")
+        if not uninstall_verified or not post_kill_row:
+            write_evidence(evidence / "gcp-lab-rows.json", result)
+            raise SystemExit("uninstall")
         write_evidence(evidence / "gcp-lab-rows.json", result)
         print(json.dumps({"full_set": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
         return 0

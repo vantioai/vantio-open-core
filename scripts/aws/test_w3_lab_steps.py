@@ -22,7 +22,7 @@ import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
 NOW = datetime(2026, 9, 30, 16, 0, tzinfo=timezone.utc)
-SEAL = "67ce63c23d6076243eeaea083ce83adaa5a4f14b3414c60bb10cfe94b886dcfa"
+SEAL = "13f7e0798c090634a97b0612378a0564c0adda2bb0ec0881f48d531598e3a834"
 PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 INSTANCE = "i-0123456789abcdef0"
 SECRET = "SUPER-SECRET-PRIVATE"
@@ -892,6 +892,9 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         text = script.read_text(encoding="utf-8")
         self.assertNotIn("apt-get", text)
         self.assertIn("refusing network apt", text)
+        self.assertIn("UNINSTALL_VERIFIED", text)
+        self.assertIn("deny_attr_post_kill", text)
+        self.assertLess(text.index("authorized_uninstall"), text.index('exit "$rc"'))
         chown_at = text.index('sudo chown -R "$(id -un):$(id -un)" "$stage"')
         patch_at = text.index("path.write_text(text.replace(probe, probed)")
         self.assertLess(chown_at, patch_at)
