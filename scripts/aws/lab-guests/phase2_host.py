@@ -417,6 +417,32 @@ def enrolled_has(cgid: int) -> bool:
         os.close(fd)
 
 
+def _kernfs_handle_id(path: str) -> int | None:
+    """Kernfs id from name_to_handle_at. None unless the handle type is FILEID_KERNFS (254)."""
+    class _Handle(ctypes.Structure):
+        _fields_ = [
+            ("handle_bytes", ctypes.c_uint),
+            ("handle_type", ctypes.c_int),
+            ("f_handle", ctypes.c_ubyte * 8),
+        ]
+
+    handle = _Handle(8, 0, (ctypes.c_ubyte * 8)())
+    mount_id = ctypes.c_int(0)
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.name_to_handle_at.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.POINTER(_Handle),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+    ]
+    libc.name_to_handle_at.restype = ctypes.c_int
+    rc = libc.name_to_handle_at(-100, path.encode(), ctypes.byref(handle), ctypes.byref(mount_id), 0)
+    if rc != 0 or handle.handle_type != 254 or handle.handle_bytes < 8:
+        return None
+    return int.from_bytes(bytes(handle.f_handle), "little")
+
+
 def enroll_cgroup_id(cgid: int) -> bool:
     """Write the lab cgroup into the map the live programs use."""
     if isinstance(cgid, bool) or not isinstance(cgid, int) or cgid <= 0:
@@ -470,8 +496,11 @@ def anchor_before_first_open() -> tuple[int, dict]:
     except OSError:
         anchor = 0
     facts["cgroup_id"] = anchor
-    if anchor > 0 and not enrolled_has(anchor):
-        facts["enroll_write"] = enroll_cgroup_id(anchor)
+    if anchor > 0:
+        handle = _kernfs_handle_id(str(rows.ANCHOR))
+        keys = baseline_diag.cgroup_enroll_keys(anchor, handle or 0)
+        facts["enroll_keys"] = keys
+        facts["enroll_write"] = [key for key in keys if enroll_cgroup_id(key) or enrolled_has(key)]
     if not enrolled_has(anchor):
         anchor = 0
     facts["anchor_before_open"] = anchor

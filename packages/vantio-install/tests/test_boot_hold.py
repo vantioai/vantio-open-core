@@ -31,6 +31,7 @@ from vantio_install.boot_hold.readiness import (  # noqa: E402
     assemble_host_facts,
     attachment_from_log,
     evaluate_ready,
+    lsm_cmdline_with_bpf,
     new_block_count,
     perform_deny_self_check,
     policy_id_from_cmdline,
@@ -547,6 +548,20 @@ class BootHoldTest(unittest.TestCase):
         cmdline, health = probe_loader(self.root)
         self.assertIn("--enforce", cmdline)
         self.assertEqual(health, "OK")
+
+    def test_missing_bpf_lsm_is_not_enforcing(self) -> None:
+        blocked = evaluate_ready({**READY, "active_lsm": "capability,landlock,selinux"})
+        self.assertFalse(blocked["enforce_ready"])
+        self.assertEqual(blocked["reason"], "bpf_lsm_inactive")
+        self.assertEqual(blocked["status"], "INSTALL_ENFORCEMENT_READINESS_BLOCKED")
+        ready = evaluate_ready({**READY, "active_lsm": "apparmor,bpf"})
+        self.assertTrue(ready["enforce_ready"])
+        self.assertEqual(ready["status"], "")
+        self.assertIsNone(lsm_cmdline_with_bpf("capability,apparmor", consent=False))
+        self.assertEqual(
+            lsm_cmdline_with_bpf("capability,apparmor", consent=True),
+            "capability,apparmor,bpf",
+        )
 
     def test_profile_denies_only_the_protected_path(self) -> None:
         text = deny_profile(["/var/lib/app/secrets"])
