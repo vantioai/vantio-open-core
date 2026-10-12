@@ -412,6 +412,20 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertEqual(summary["hooks"]["path"]["hits"], 3)
         self.assertEqual(summary["hooks"]["path"]["ceiling_path"], 0)
         self.assertEqual(summary["hooks"]["path"]["allow_reason_name"], "path_miss")
+        hex_dump = [
+            {
+                "key": ["0x00", "0x00", "0x00", "0x00"],
+                "values": [
+                    {"cpu": 0, "value": ["0x9b", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"]},
+                    {"cpu": 1, "value": ["0xab", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"]},
+                ],
+            }
+        ]
+        hex_summary = baseline_diag.summarize_decision(hex_dump)
+        self.assertEqual(hex_summary["hooks"]["path"]["hits"], 326)
+        self.assertFalse(baseline_diag.bpf_lsm_active("capability,landlock,selinux"))
+        self.assertTrue(baseline_diag.bpf_lsm_active("apparmor,bpf"))
+        self.assertEqual(baseline_diag.cgroup_enroll_keys(6745, (0x11 << 32) | 6745)[:2], [6745, (0x11 << 32) | 6745])
 
     def test_parent_walk_flags_a_directory_without_execute(self) -> None:
         walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"
