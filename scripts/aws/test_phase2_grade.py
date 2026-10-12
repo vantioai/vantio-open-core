@@ -104,6 +104,10 @@ class Phase2GradeTests(unittest.TestCase):
         )
         self.assertEqual(held["classification"], "fail_closed")
         self.assertEqual(held["file_open"], "attributed_deny")
+        refused = grade.grade_crash(enrolled_errno=111, unenrolled_errno=0, file_errno=13, file_attributed=True)
+        self.assertEqual(refused["enrolled_egress"], "denied")
+        self.assertEqual(refused["classification"], "fail_closed")
+        self.assertEqual(grade.egress_word(110), "no_response")
         tamper = grade.grade_tamper(
             enrolled_errno=1,
             unenrolled_errno=0,
@@ -125,6 +129,9 @@ class Phase2GradeTests(unittest.TestCase):
         record[0:4] = (4242).to_bytes(4, "little")
         record[16:24] = (9).to_bytes(8, "little")
         record[32:36] = (grade.DENY_KIND_FILE).to_bytes(4, "little")
+        self.assertFalse(grade.deny_record_names(bytes(record), 4242))
+        record[8:16] = (7774).to_bytes(8, "little")
+        self.assertEqual(grade.deny_record_anchor(bytes(record), 4242), 7774)
         self.assertTrue(grade.deny_record_names(bytes(record), 4242))
         self.assertFalse(grade.deny_record_names(bytes(record), 4243))
         record[16:24] = (0).to_bytes(8, "little")

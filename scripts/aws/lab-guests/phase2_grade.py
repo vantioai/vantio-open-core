@@ -40,20 +40,33 @@ DENY_KIND_SELF = 4
 DENY_ATTR_SIZE = 40
 
 
-def deny_record_names(record: bytes, pid: int) -> bool:
-    """Pinned DenyAttr: pid at 0, timestamp_ns at 16, kind at 32."""
+def deny_record_anchor(record: bytes, pid: int) -> int:
+    """Lineage anchor from a pinned DenyAttr, or 0 when the row does not name both.
+
+    Layout matches the loader struct: pid at 0, anchor_cgroup at 8, timestamp_ns
+    at 16, kind at 32. A pid with anchor 0 is not a post-kill hold.
+    """
     if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
-        return False
+        return 0
     if len(record) < DENY_ATTR_SIZE:
-        return False
+        return 0
     got = int.from_bytes(record[0:4], "little")
+    anchor = int.from_bytes(record[8:16], "little")
     timestamp = int.from_bytes(record[16:24], "little")
     kind = int.from_bytes(record[32:36], "little")
-    return got == pid and timestamp != 0 and kind in (DENY_KIND_FILE, DENY_KIND_SELF)
+    if got != pid or anchor == 0 or timestamp == 0 or kind not in (DENY_KIND_FILE, DENY_KIND_SELF):
+        return 0
+    return anchor
+
+
+def deny_record_names(record: bytes, pid: int) -> bool:
+    """True when the pinned row names this pid and a non-zero lineage anchor."""
+    return deny_record_anchor(record, pid) > 0
 
 
 def egress_word(errno: int | None) -> str:
-    if errno in (1, 13):
+    """Blocked is EPERM, EACCES, or connection refused. A timeout is not a result."""
+    if errno in (1, 13, 111):
         return "denied"
     if errno == 0:
         return "allowed"
@@ -95,7 +108,11 @@ def grade_upgrade(
 
 
 def _file_open_failed(file_errno: int | None, file_attributed: bool | None) -> dict[str, Any] | None:
-    """A protected open after the loader is gone. Errno 0 is silent. EACCES needs a pid."""
+    """A protected open after the loader is gone. Errno 0 is silent.
+
+    file_attributed is true only when a ledger DENIED row, or a deny-attr row,
+    names this pid and a non-zero lineage anchor. A pid alone is not that.
+    """
     if file_errno is None:
         return None
     if file_errno == 0:

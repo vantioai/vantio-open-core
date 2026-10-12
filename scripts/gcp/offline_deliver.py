@@ -1671,15 +1671,12 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
 
 
 def _kill_after_held(sample: Mapping[str, Any] | None) -> bool:
-    """After the loader is dead, the pinned deny map is the attribution record."""
-    if _sample_held(sample):
-        return True
-    if not isinstance(sample, dict) or sample.get("file_errno") != 13 or sample.get("path") != CEILING_PATH:
-        return False
-    pid = sample.get("pid")
-    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
-        return False
-    return sample.get("map_named") is True
+    """A post-kill deny is held only when the pid and the lineage anchor are both named.
+
+    That name is a ledger DENIED row, or a deny-attr row drained with the anchor.
+    A map hit that names only the pid is not a hold.
+    """
+    return _sample_held(sample)
 
 
 def _event_anchor(event: Mapping[str, Any] | None) -> tuple[int, int]:
@@ -2006,7 +2003,7 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
         and _sample_held(before)
         and isinstance(sample, dict)
         and sample.get("file_errno") == 13
-        and sample.get("map_named") is not True
+        and not _sample_held(sample)
     ):
         kept["fail_reasons"] = ["attribution_after_kill"]
     return kept
