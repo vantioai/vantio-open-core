@@ -403,6 +403,15 @@ class BaselineDiagTests(unittest.TestCase):
             "eacces_cgroup_mismatch",
         )
         self.assertEqual(baseline_diag.classify({"open_errno": 0}), "open_not_eacces")
+        dump = [
+            {"key": 0, "values": [{"cpu": 0, "value": 2}, {"cpu": 1, "value": 1}]},
+            {"key": 2, "values": [{"cpu": 0, "value": 0}, {"cpu": 1, "value": 0}]},
+            {"key": 7, "values": [{"cpu": 0, "value": 2}, {"cpu": 1, "value": 0}]},
+        ]
+        summary = baseline_diag.summarize_decision(dump)
+        self.assertEqual(summary["hooks"]["path"]["hits"], 3)
+        self.assertEqual(summary["hooks"]["path"]["ceiling_path"], 0)
+        self.assertEqual(summary["hooks"]["path"]["allow_reason_name"], "path_miss")
 
     def test_parent_walk_flags_a_directory_without_execute(self) -> None:
         walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"
