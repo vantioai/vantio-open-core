@@ -11,7 +11,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-WORKING_SEAL = "0ae8bd6f66ed94651df916e61b93357949bbb7c56fe8856a25e7a74923a1faa8"
+WORKING_SEAL = "429bea4201c88f57c3d9f3c29eda8b51375fd01acecb0b30d0ae670d96df8964"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "2c-upgrade-rollback",
