@@ -18,6 +18,29 @@ from pathlib import Path
 
 SUBJECT = 65534
 DENY_PIN = "/sys/fs/bpf/vantio_deny_attr"
+DECISION_PIN = "/sys/fs/bpf/vantio_decision"
+CEIL_PIN = "/sys/fs/bpf/vantio_ceil_key"
+DECISION_SLOTS = 8
+HOOK_NAMES = ("path", "file")
+SLOT_NAMES = (
+    "hits",
+    "cgroup_enrolled",
+    "ceiling_path",
+    "ceiling_inode",
+    "anchor_found",
+    "anchor_lazy",
+    "deny",
+    "allow_reason",
+)
+ALLOW_REASONS = {
+    0: "none",
+    1: "not_enrolled",
+    2: "path_miss",
+    3: "inode_miss",
+    4: "root",
+    5: "self",
+    6: "anchor_missing",
+}
 FILE_KIND = 1
 
 _PROBE = """\
@@ -270,6 +293,76 @@ def _tracelog_around(probe: list[str]) -> dict:
     }
 
 
+def _cpu_values(row: dict) -> list[int]:
+    values = row.get("values")
+    found: list[int] = []
+    if isinstance(values, list):
+        for item in values:
+            if isinstance(item, dict) and isinstance(item.get("value"), int):
+                found.append(item["value"])
+            elif isinstance(item, int):
+                found.append(item)
+        return found
+    value = row.get("value")
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, int)]
+    if isinstance(value, int):
+        return [value]
+    return []
+
+
+def summarize_decision(dump: object) -> dict:
+    """Sum per-CPU counters. Slot 7 is the last allow reason, not a sum."""
+    hooks: dict[str, dict] = {}
+    if not isinstance(dump, list):
+        return {"hooks": hooks}
+    for row in dump:
+        if not isinstance(row, dict):
+            continue
+        key = row.get("key")
+        if isinstance(key, list) and key and isinstance(key[0], int):
+            key = key[0]
+        if not isinstance(key, int):
+            continue
+        hook = key // DECISION_SLOTS
+        slot = key % DECISION_SLOTS
+        if hook >= len(HOOK_NAMES) or slot >= len(SLOT_NAMES):
+            continue
+        name = HOOK_NAMES[hook]
+        body = hooks.setdefault(name, {})
+        cpus = _cpu_values(row)
+        if slot == DECISION_SLOTS - 1:
+            reason = next((item for item in cpus if item), 0)
+            body["allow_reason"] = reason
+            body["allow_reason_name"] = ALLOW_REASONS.get(reason, "unknown")
+        else:
+            body[SLOT_NAMES[slot]] = sum(cpus)
+    return {"hooks": hooks}
+
+
+def decision_counters() -> dict:
+    """Pinned decision counters and the ceiling key the kernel last saw."""
+    report: dict = {}
+    for name, pin in (("decision", DECISION_PIN), ("ceiling_key", CEIL_PIN)):
+        if not Path(pin).exists():
+            report[name] = {"present": False, "pin": pin}
+            continue
+        dumped = _run(["bpftool", "-j", "map", "dump", "pinned", pin])
+        text = (dumped.get("stdout") or "") + (dumped.get("stderr") or "")
+        try:
+            body = json.loads(dumped.get("stdout") or "null")
+        except json.JSONDecodeError:
+            body = None
+        report[name] = {
+            "present": True,
+            "pin": pin,
+            "dump": body,
+            "text": clip(text, 4000),
+        }
+    report["summary"] = summarize_decision(report["decision"].get("dump"))
+    return report
+
+
 def collect(path: str, anchor: int, cgroup_procs: str) -> dict:
     """One open of path as uid 65534, plus the checks around it."""
     outside = _as_subject(["namei", "-l", path])
@@ -343,6 +436,7 @@ def collect(path: str, anchor: int, cgroup_procs: str) -> dict:
         "sysctls": sysctls(),
         "tracelog": traced.get("tracelog") or "",
         "walk": walk_text,
+        "decision": decision_counters(),
     }
     facts["cause"] = classify(facts)
     return facts
