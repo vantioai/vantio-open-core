@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "aws"))
 
+import soak_status  # noqa: E402
 import stage_redteam_brain as stage_brain  # noqa: E402
 import w3_lab_auto as lab  # noqa: E402
 
@@ -600,6 +601,111 @@ class LaunchShapeTests(unittest.TestCase):
         plan = lab.plan_launch({"associate_public_ipv4": "false", "name": "vantio-w3-lab-auto-plan"}, NOW)
         self.assertFalse(plan["associate_public_ipv4"])
         self.assertIn("shutdown -h +15", lab.build_user_data(15))
+        self.assertFalse(plan["disable_api_termination"])
+        self.assertIn("shutdown -h", plan["user_data"])
+
+    def test_soak_host_turns_protection_on_and_auto_stop_off(self) -> None:
+        plan = lab.plan_launch(
+            {
+                "associate_public_ipv4": "true",
+                "max_life_hours": "36",
+                "name": "vantio-w3-lab-auto-soak",
+                "soak": True,
+                "stop_after_minutes": 2160,
+            },
+            NOW,
+        )
+        self.assertTrue(plan["disable_api_termination"])
+        self.assertTrue(plan["disable_api_stop"])
+        self.assertFalse(plan["auto_stop"])
+        self.assertGreaterEqual(plan["stop_after_minutes"], 40 * 60)
+        self.assertEqual(plan["tags"]["vantio-soak"], "active")
+        self.assertNotIn("shutdown -h", plan["user_data"])
+        args = lab.run_instances_args(
+            plan,
+            image_id=lab.PINNED_IMAGE_ID,
+            security_group_id="sg-0123456789abcdef0",
+            subnet_id=lab.LAB_SUBNET_ID,
+        )
+        self.assertIn("--disable-api-termination", args)
+        self.assertIn("--disable-api-stop", args)
+        group = lab.create_security_group_args(plan, lab.LAB_VPC_ID)
+        self.assertIn("vantio-soak", " ".join(group))
+        plain = lab.plan_launch(
+            {"max_life_hours": "36", "name": "vantio-w3-lab-auto-long", "stop_after_minutes": 2160},
+            NOW,
+        )
+        self.assertFalse(plain["disable_api_termination"])
+        self.assertFalse(plain["disable_api_stop"])
+        self.assertTrue(plain["auto_stop"])
+        self.assertIn("shutdown -h", plain["user_data"])
+        plain_args = lab.run_instances_args(
+            plain,
+            image_id=lab.PINNED_IMAGE_ID,
+            security_group_id="sg-0123456789abcdef0",
+            subnet_id=lab.LAB_SUBNET_ID,
+        )
+        self.assertNotIn("--disable-api-termination", plain_args)
+        self.assertNotIn("--disable-api-stop", plain_args)
+
+    def test_cloudtrail_names_the_terminator(self) -> None:
+        events = lab.terminator_from_cloudtrail(
+            {
+                "Events": [
+                    {
+                        "EventId": "evt-1",
+                        "EventName": "TerminateInstances",
+                        "EventTime": "2026-10-12T20:00:00Z",
+                        "Username": "vantio-w3-lab-sweeper",
+                    },
+                    {"EventName": "DescribeInstances", "Username": "other"},
+                ]
+            }
+        )
+        self.assertEqual(events[0]["username"], "vantio-w3-lab-sweeper")
+        self.assertEqual(events[0]["event_name"], "TerminateInstances")
+        self.assertEqual(len(events), 1)
+        nested = lab.terminator_from_cloudtrail(
+            {
+                "Events": [
+                    {
+                        "EventId": "evt-2",
+                        "EventName": "StopInstances",
+                        "EventTime": "2026-10-12T21:00:00Z",
+                        "CloudTrailEvent": json.dumps(
+                            {"userIdentity": {"userName": "outside-actor", "principalId": "AIDAhidden"}}
+                        ),
+                    }
+                ]
+            }
+        )
+        self.assertEqual(nested[0]["username"], "outside-actor")
+        self.assertNotIn("AIDAhidden", json.dumps(nested))
+
+    def test_soak_status_names_the_host_and_the_check_count(self) -> None:
+        checked = "2026-10-12T21:15:00Z"
+        idle = soak_status.extract_soak_status({"instances": [], "check_count": 0}, checked_at=checked)
+        self.assertEqual(idle["instance_state"], "not_started")
+        self.assertIsNone(idle["instance_id"])
+        active = soak_status.extract_soak_status(
+            {
+                "instances": [
+                    {
+                        "check_count": 4,
+                        "cloudtrail": {"recorded": True, "events": [{"username": "outside-actor"}]},
+                        "instance_id": "i-0123456789abcdef0",
+                        "instance_state": "running",
+                        "soak_active": True,
+                    }
+                ]
+            },
+            checked_at=checked,
+        )
+        self.assertEqual(active["instance_id"], "i-0123456789abcdef0")
+        self.assertEqual(active["instance_state"], "running")
+        self.assertEqual(active["check_count"], 4)
+        self.assertEqual(active["last_check_time"], checked)
+        self.assertEqual(active["cloudtrail"]["events"][0]["username"], "outside-actor")
 
 
 class DebianImageTests(unittest.TestCase):
