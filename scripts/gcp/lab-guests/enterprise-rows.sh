@@ -412,6 +412,7 @@ if [ "$mode" = "descendant-b1" ]; then
 fi
 case "$mode" in
   2c-upgrade-rollback|2d-crash-recovery|lsm-guard)
+    sudo rm -f /tmp/enterprise-pe-rows.json
     test -f "$here/phase2_host.py"
     test -f "$here/phase2_grade.py"
     set +e
