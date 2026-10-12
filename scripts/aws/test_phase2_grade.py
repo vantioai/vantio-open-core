@@ -145,6 +145,24 @@ class Phase2GradeTests(unittest.TestCase):
             file_attributed=True,
         )
         self.assertEqual(timed["reason"], "enrolled_egress_timeout")
+        recorded = bytearray(grade.DENY_ATTR_SIZE)
+        recorded[0:4] = (20287).to_bytes(4, "little")
+        recorded[8:12] = (grade.DENY_KIND_EGRESS_CGROUP).to_bytes(4, "little")
+        recorded[16:24] = (8498).to_bytes(8, "little")
+        recorded[24:32] = (9).to_bytes(8, "little")
+        self.assertEqual(grade.egress_record_anchor(bytes(recorded), 20287), 8498)
+        self.assertEqual(grade.deny_record_anchor(bytes(recorded), 20287), 0)
+        blocked = grade.grade_crash(
+            enrolled_errno=110,
+            unenrolled_errno=0,
+            file_errno=13,
+            file_attributed=True,
+            enrolled_block_anchor=8498,
+        )
+        self.assertEqual(blocked["enrolled_egress"], "denied")
+        self.assertEqual(blocked["host_result"], "PASS")
+        self.assertEqual(blocked["classification"], "fail_closed")
+        self.assertEqual(blocked["net_block_anchor"], 8498)
         self.assertEqual(timed["host_result"], "NOT_GRADED")
         self.assertEqual(timed["classification"], "not_graded")
         self.assertTrue(timed["setup_invalid"])

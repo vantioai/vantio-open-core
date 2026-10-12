@@ -155,6 +155,48 @@ def pinned_deny_names(pid: int) -> bool:
     return pinned_deny_anchor(pid) > 0
 
 
+def egress_block_anchor(pid: int) -> int:
+    """Anchor from an egress deny-attr row for this pid, or 0.
+
+    Dropping the SYN leaves connect at a timeout. The row is what makes that
+    timeout a block. A file row is not read here.
+    """
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return 0
+    if not Path(DENY_PIN).exists():
+        return 0
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    path = ctypes.create_string_buffer(DENY_PIN.encode("ascii") + b"\0")
+    attr = _ObjGet(ctypes.addressof(path), 0, 0)
+    fd = libc.syscall(
+        ctypes.c_long(SYS_BPF),
+        ctypes.c_long(BPF_OBJ_GET),
+        ctypes.byref(attr),
+        ctypes.c_uint(ctypes.sizeof(attr)),
+    )
+    if fd < 0:
+        return 0
+    try:
+        for kind in (grade.DENY_KIND_EGRESS_CGROUP, grade.DENY_KIND_EGRESS_TC):
+            key = ctypes.c_uint64((pid << 8) | kind)
+            value = ctypes.create_string_buffer(grade.DENY_ATTR_SIZE)
+            lookup = _Lookup(int(fd), 0, ctypes.addressof(key), ctypes.addressof(value), 0)
+            rc = libc.syscall(
+                ctypes.c_long(SYS_BPF),
+                ctypes.c_long(BPF_MAP_LOOKUP_ELEM),
+                ctypes.byref(lookup),
+                ctypes.c_uint(ctypes.sizeof(lookup)),
+            )
+            if rc == 0:
+                anchor = grade.egress_record_anchor(value.raw, pid)
+                if anchor > 0:
+                    return anchor
+    finally:
+        os.close(int(fd))
+    return 0
+
+
 def ndjson_denied_pids() -> list[int]:
     """Pids named by a DENIED ledger row. A map hit without this row is not enough."""
     found: list[int] = []
@@ -1167,8 +1209,10 @@ def run_2d() -> dict:
         return refused
     egress = child_open(True)
     enrolled["net_errno"] = egress.get("net_errno")
+    net_pid = egress.get("pid") if isinstance(egress.get("pid"), int) else 0
+    net_anchor = egress_block_anchor(net_pid)
     block = grade.egress_grade_block(control_errno, egress.get("net_errno"))
-    if block is not None:
+    if block is not None and not (block == "enrolled_egress_timeout" and net_anchor > 0):
         refused = grade.ungraded_egress("2d-crash-recovery", block)
         refused["policy_digest"] = digest
         refused["while_loader_up"] = up
@@ -1202,6 +1246,7 @@ def run_2d() -> dict:
         unenrolled_errno=unenrolled.get("net_errno"),
         file_errno=enrolled.get("file_errno") if isinstance(enrolled.get("file_errno"), int) else None,
         file_attributed=file_attributed,
+        enrolled_block_anchor=net_anchor,
     )
     graded["policy_digest"] = digest
     graded["anchor_before_open"] = anchor
@@ -1259,8 +1304,10 @@ def run_2f() -> dict:
         refused.update(observed)
         return refused
     enrolled = child_open(True)
+    net_pid = enrolled.get("pid") if isinstance(enrolled.get("pid"), int) else 0
+    net_anchor = egress_block_anchor(net_pid)
     block = grade.egress_grade_block(control_errno, enrolled.get("net_errno"))
-    if block is not None:
+    if block is not None and not (block == "enrolled_egress_timeout" and net_anchor > 0):
         refused = grade.ungraded_egress("2f-tamper", block)
         refused["policy_digest"] = digest
         refused["enrolled_after"] = enrolled
@@ -1282,6 +1329,7 @@ def run_2f() -> dict:
         loader_up=still,
         file_errno=enrolled.get("file_errno") if isinstance(enrolled.get("file_errno"), int) else None,
         file_attributed=file_attributed,
+        enrolled_block_anchor=net_anchor,
     )
     graded["policy_digest"] = digest
     graded["enrolled_after"] = enrolled
