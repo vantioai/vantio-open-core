@@ -407,6 +407,8 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             "mutated",
             "public_ip",
             "reboot_observed",
+            "uninstall_verified",
+            "deny_attr_post_kill",
             "vm_digest_match",
         } and isinstance(value, bool):
             kept[key] = value
@@ -2632,6 +2634,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("battery" if not passed else "loader")
         if not uninstall_verified or not post_kill_row:
+            print(redact(uninstall_text)[-2000:], file=sys.stderr)
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("uninstall")
         write_evidence(evidence / "gcp-lab-rows.json", result)

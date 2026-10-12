@@ -31,6 +31,15 @@ _DOCUMENTATION_V4 = (
 )
 
 
+def anchor_before_open_ok(anchor: object) -> bool:
+    """The 2D baseline may open only after the lab cgroup has a non-zero anchor.
+
+    Errno 13 with anchor 0 is not an enrolled deny. It is DAC, a stand-in, or
+    a missing enrollment write.
+    """
+    return isinstance(anchor, int) and not isinstance(anchor, bool) and anchor > 0
+
+
 def _base(battery: str) -> dict[str, Any]:
     return {
         "battery": battery,

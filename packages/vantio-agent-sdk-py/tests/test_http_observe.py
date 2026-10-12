@@ -1041,6 +1041,14 @@ class PythonBatch308Tests(unittest.IsolatedAsyncioTestCase):
                             conn.request("GET", "/v1/target")
                 finally:
                     conn.close()
+                # The mock records the request on another thread. A slow
+                # append is not a miss, same as the socket tests above.
+                deadline = time.time() + 2
+                while (
+                    len([r for r in server.requests if r.path == "/v1/target"]) < 1
+                    and time.time() < deadline
+                ):
+                    time.sleep(0.05)
                 self.assertGreaterEqual(len([r for r in server.requests if r.path == "/v1/target"]), 1)
             data = json.loads((Path(home) / "runs" / "py-http-client.json").read_text(encoding="utf-8"))
             self.assertEqual(data["calls"][0]["mediation"], "python_http_client")

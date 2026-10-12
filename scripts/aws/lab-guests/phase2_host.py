@@ -355,7 +355,126 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     # Docker logs for this container only. A SCOPED line left in the events
     # file by an earlier battery is not this loader.
     _wait_scoped_banner()
+    # Enroll the lab cgroup and clear a mode-0 stand-in before any probe.
+    # The 2D battery asserts the anchor is non-zero before its first open.
+    anchor_before_first_open()
     return adapter, digest
+
+
+ENROLLED_PIN = "/sys/fs/bpf/vantio_enrolled_cgroups"
+BPF_MAP_UPDATE_ELEM = 2
+BPF_ANY = 0
+
+
+class _Update(ctypes.Structure):
+    _fields_ = [
+        ("map_fd", ctypes.c_uint32),
+        ("_pad", ctypes.c_uint32),
+        ("key", ctypes.c_uint64),
+        ("value", ctypes.c_uint64),
+        ("flags", ctypes.c_uint64),
+    ]
+
+
+def _pin_fd(path: str) -> int:
+    if not Path(path).exists():
+        return -1
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    raw = ctypes.create_string_buffer(path.encode("ascii") + b"\0")
+    attr = _ObjGet(ctypes.addressof(raw), 0, 0)
+    fd = libc.syscall(
+        ctypes.c_long(SYS_BPF),
+        ctypes.c_long(BPF_OBJ_GET),
+        ctypes.byref(attr),
+        ctypes.c_uint(ctypes.sizeof(attr)),
+    )
+    return int(fd)
+
+
+def enrolled_has(cgid: int) -> bool:
+    """The pinned enrolled map names this cgroup id. A missing pin is not enrolled."""
+    if isinstance(cgid, bool) or not isinstance(cgid, int) or cgid <= 0:
+        return False
+    fd = _pin_fd(ENROLLED_PIN)
+    if fd < 0:
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    try:
+        key = ctypes.c_uint64(cgid)
+        value = ctypes.c_uint8(0)
+        lookup = _Lookup(fd, 0, ctypes.addressof(key), ctypes.addressof(value), 0)
+        rc = libc.syscall(
+            ctypes.c_long(SYS_BPF),
+            ctypes.c_long(BPF_MAP_LOOKUP_ELEM),
+            ctypes.byref(lookup),
+            ctypes.c_uint(ctypes.sizeof(lookup)),
+        )
+        return rc == 0
+    finally:
+        os.close(fd)
+
+
+def enroll_cgroup_id(cgid: int) -> bool:
+    """Write the lab cgroup into the map the live programs use."""
+    if isinstance(cgid, bool) or not isinstance(cgid, int) or cgid <= 0:
+        return False
+    fd = _pin_fd(ENROLLED_PIN)
+    if fd < 0:
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    try:
+        key = ctypes.c_uint64(cgid)
+        value = ctypes.c_uint8(1)
+        update = _Update(fd, 0, ctypes.addressof(key), ctypes.addressof(value), BPF_ANY)
+        rc = libc.syscall(
+            ctypes.c_long(SYS_BPF),
+            ctypes.c_long(BPF_MAP_UPDATE_ELEM),
+            ctypes.byref(update),
+            ctypes.c_uint(ctypes.sizeof(update)),
+        )
+        return rc == 0
+    finally:
+        os.close(fd)
+
+
+def anchor_before_first_open() -> tuple[int, dict]:
+    """Make the ceiling path traversable, drop a stand-in, and enroll the lab cgroup.
+
+    The open kprobe writes no row when the anchor is 0. Errno 13 in that case
+    is the directory mode or a mode-0 bind mount, which root can still open.
+    """
+    path = Path(str(rows.DENY))
+    facts: dict = {"path": str(path)}
+    for directory in (path.parent.parent, path.parent):
+        if not directory.exists():
+            continue
+        mode = directory.stat().st_mode & 0o777
+        facts[str(directory)] = oct(mode)
+        if mode & 0o111 != 0o111:
+            os.chmod(directory, mode | 0o755)
+    if path.exists():
+        facts["file_mode"] = oct(path.stat().st_mode & 0o777)
+        os.chmod(path, 0o644)
+    mounted = rows.sudo(["findmnt", "-n", "-T", str(path)])
+    mount = (mounted.stdout or "").strip()
+    facts["mount"] = mount
+    if "vantio" in mount:
+        rows.sudo(["umount", str(path)])
+        facts["standin_umount"] = True
+    try:
+        anchor = os.stat(str(rows.ANCHOR)).st_ino
+    except OSError:
+        anchor = 0
+    facts["cgroup_id"] = anchor
+    if anchor > 0 and not enrolled_has(anchor):
+        facts["enroll_write"] = enroll_cgroup_id(anchor)
+    if not enrolled_has(anchor):
+        anchor = 0
+    facts["anchor_before_open"] = anchor
+    return anchor, facts
 
 
 def deny_event_for(pid: int) -> dict | None:
@@ -686,9 +805,24 @@ def run_2c() -> dict:
 
 def run_2d() -> dict:
     _adapter, digest = prepare_enforce()
+    anchor, path_facts = anchor_before_first_open()
+    if not grade.anchor_before_open_ok(anchor):
+        return _setup_invalid(
+            {},
+            digest,
+            reason="anchor_missing_before_open",
+            anchor_before_open=anchor,
+            path_facts=path_facts,
+        )
     up = enterprise_open(digest)
     if not baseline_ready(up):
-        return _setup_invalid(up, digest, while_loader_up=up)
+        return _setup_invalid(
+            up,
+            digest,
+            while_loader_up=up,
+            anchor_before_open=anchor,
+            path_facts=path_facts,
+        )
     kill_loader()
     standin = standin_after_sigkill()
     if loader_running():
@@ -749,6 +883,7 @@ def run_2d() -> dict:
         file_attributed=file_attributed,
     )
     graded["policy_digest"] = digest
+    graded["anchor_before_open"] = anchor
     graded["while_loader_up"] = up
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
