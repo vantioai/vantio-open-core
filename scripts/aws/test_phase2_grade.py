@@ -194,7 +194,14 @@ class Phase2GradeTests(unittest.TestCase):
     def test_enrolled_connect_is_after_the_unenrolled_control(self) -> None:
         text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
         self.assertNotIn("192.0.2", text)
+        self.assertIn('"--network=host"', text)
+        self.assertIn('"/usr/bin/ip"', text)
         self.assertLess(text.index("def ensure_lab_iface"), text.index("def prepare_enforce"))
+        refusal = text.split("def _refusal_log", 1)[1].split("def run_lsm_guard", 1)[0]
+        self.assertLess(refusal.index("ensure_lab_iface()"), refusal.index("start_loader"))
+        guard = text.split("def run_lsm_guard", 1)[1].split("RUNNERS", 1)[0]
+        self.assertLess(guard.index("bpf_pins"), guard.index("apply_consented_lsm"))
+        self.assertLess(guard.index("egress_present"), guard.index("apply_consented_lsm"))
         enforce = text.split("def _enforce_generation_log", 1)[1].split("def apply_consented_lsm", 1)[0]
         self.assertLess(enforce.index("ensure_lab_iface()"), enforce.index("start_loader"))
         prepared = text.split("def prepare_enforce", 1)[1].split("def _pin_fd", 1)[0]
