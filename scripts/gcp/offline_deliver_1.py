@@ -598,9 +598,6 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
         if key == "seal_checked" and isinstance(value, bool):
             kept[key] = value
             continue
-        if key == "kernel_btf" and isinstance(value, bool):
-            kept[key] = value
-            continue
         if key == "convergence_ms" and isinstance(value, (int, float)) and not isinstance(value, bool):
             if isinstance(value, int) and value.bit_length() > 32:
                 continue
