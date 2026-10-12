@@ -499,6 +499,17 @@ def deny_event_for(pid: int) -> dict | None:
     return None
 
 
+def _banner_ready(text: str) -> bool:
+    """The live loader is enforcing. The path line is whichever this binary prints."""
+    scoped = "SCOPED (drop enrolled)" in text
+    path = (
+        "Path DENY attached" in text
+        or "Path DENY pinned" in text
+        or "Path enforce maps loaded" in text
+    )
+    return scoped and path
+
+
 def _wait_scoped_banner(timeout: float = 120) -> str:
     """Wait until this container logs the enforce banner. Do not read a stale file."""
     deadline = time.time() + timeout
@@ -506,7 +517,7 @@ def _wait_scoped_banner(timeout: float = 120) -> str:
     while time.time() < deadline:
         proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
         last = (proc.stdout or "") + (proc.stderr or "")
-        if "SCOPED (drop enrolled)" in last and "Path DENY attached" in last:
+        if _banner_ready(last):
             return last
         time.sleep(2)
     return last
@@ -796,7 +807,7 @@ def same_process_across_restart(adapter) -> dict:
             body["reason"] = "loader_restart_failed"
             return body
         banner = _wait_scoped_banner()
-        if "SCOPED (drop enrolled)" not in banner or "Path DENY attached" not in banner:
+        if not _banner_ready(banner):
             body["reason"] = "banner_missing"
             return body
         os.write(cmd_w, b"x")
