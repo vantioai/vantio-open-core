@@ -1159,6 +1159,8 @@ def execute_enterprise_rows(
                 guest_dir = Path(__file__).resolve().with_name("lab-guests")
                 copy_to(guest_dir / "phase2_host.py", "phase2_host.py")
                 copy_to(guest_dir / "phase2_grade.py", "phase2_grade.py")
+                copy_to(guest_dir / "baseline_diag.py", "baseline_diag.py")
+                copy_to(guest_dir / "sticky_write.py", "sticky_write.py")
                 ran = remote(
                     [
                         "env",
@@ -1195,6 +1197,7 @@ def execute_enterprise_rows(
             else:
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
+                copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             # Instance Connect keys last 60 seconds. The guest script can run longer.
