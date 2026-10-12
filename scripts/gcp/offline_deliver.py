@@ -329,3 +329,192 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
         if rows:
             kept["cases"] = rows[:24]
     return kept
+
+
+def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only known keys and typed values. Unknown fields are dropped."""
+    kept: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key == "verify" and isinstance(value, dict):
+            status = value.get("status")
+            if isinstance(status, str) and status in ENUMS["verify_status"]:
+                kept["verify_status"] = status
+            continue
+        if key == "kernel" and isinstance(value, dict):
+            for flag, dest in (("btf", "kernel_btf"), ("bpffs", "kernel_bpffs"), ("cgroup_v2", "kernel_cgroup_v2")):
+                if isinstance(value.get(flag), bool):
+                    kept[dest] = value[flag]
+            lsm = value.get("lsm")
+            if isinstance(lsm, str) and re.fullmatch(r"[a-z0-9,]{0,80}", lsm):
+                kept["kernel_lsm"] = lsm
+            continue
+        if key == "debs" and isinstance(value, list):
+            rows = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name")
+                digest = item.get("sha256")
+                if (
+                    isinstance(name, str)
+                    and re.fullmatch(r"[A-Za-z0-9.+_-]{1,120}", name)
+                    and SECRET_RE.search(name) is None
+                    and not name.lower().startswith(("ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"))
+                    and "private" not in name.lower()
+                    and isinstance(digest, str)
+                    and HEX64_RE.fullmatch(digest)
+                ):
+                    rows.append({"name": name, "sha256": digest})
+            kept["debs"] = rows
+            continue
+        if key == "objects" and isinstance(value, list):
+            names = [
+                item
+                for item in value
+                if isinstance(item, str)
+                and re.fullmatch(
+                    r"[0-9]{1,20}/(seal\.oci\.tar|contract\.tar|qwen2\.5-3b-instruct-q4_k_m\.gguf|llama-b11540-bin-ubuntu-x64\.tar\.gz)",
+                    item,
+                )
+            ]
+            kept["objects"] = names
+            continue
+        if key == "via" and isinstance(value, list):
+            kept["via"] = [item for item in value if item in ("gcloud", "resumable")]
+            continue
+        if key == "reasons" and isinstance(value, list):
+            kept["reasons"] = [
+                item for item in value if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)
+            ]
+            continue
+        if key in ENUMS:
+            if isinstance(value, str) and value in ENUMS[key]:
+                kept[key] = value
+            continue
+        if key in {"seal_sha256", "contract_sha256", "trust_sha256"} and isinstance(value, str) and HEX64_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key in {"enterprise_sha", "bundle_commit"} and isinstance(value, str) and HEX40_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key in {
+            "abort",
+            "batteries",
+            "deleted",
+            "kernel_btf",
+            "kernel_bpffs",
+            "kernel_cgroup_v2",
+            "mutated",
+            "public_ip",
+            "reboot_observed",
+            "uninstall_verified",
+            "deny_attr_post_kill",
+            "vm_digest_match",
+        } and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"enterprise_rc", "descendant_rc", "debs_count"} and isinstance(value, int) and not isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"estimated_gross_usd", "hours", "worst_case_run_usd"} and isinstance(value, str) and re.fullmatch(r"[0-9]{1,8}(\.[0-9]{1,4})?", value):
+            kept[key] = value
+            continue
+        if key == "lab_project_id" and value == LAB_PROJECT:
+            kept[key] = value
+            continue
+        if key == "package_image" and value == PACKAGE_IMAGE:
+            kept[key] = value
+            continue
+        if key == "snapshot" and value == SNAPSHOT:
+            kept[key] = value
+            continue
+        if key == "name" and isinstance(value, str) and re.fullmatch(r"vantio-gcp-lab-[0-9]{1,20}", value):
+            kept[key] = value
+            continue
+        if key == "account_id" and isinstance(value, str) and re.fullmatch(r"[0-9]{12}", value):
+            kept[key] = value
+            continue
+        if key == "step" and value in {"bundle", "arm", "teardown", "verify-removed"}:
+            kept[key] = value
+            continue
+        if key == "repeats" and isinstance(value, list):
+            rows = [item for item in (allow_battery(entry) for entry in value) if item]
+            if len(rows) == BATTERY_REPEATS:
+                kept["repeats"] = rows
+            continue
+        if key == "self_service" and isinstance(value, list):
+            rows = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                phase = item.get("phase")
+                protection = item.get("protection")
+                state = item.get("state")
+                reason = item.get("reason")
+                if phase not in {"install", "rollback", "uninstall", "verify-removal", "enrollment"}:
+                    continue
+                if protection not in {"OBSERVE", "PROTECTED", "NONE"}:
+                    continue
+                if not isinstance(state, str) or re.fullmatch(r"[A-Z0-9_]{1,40}", state) is None:
+                    continue
+                if not isinstance(reason, str) or re.fullmatch(r"[A-Z0-9_]{0,40}", reason) is None:
+                    continue
+                rows.append(
+                    {
+                        "phase": phase,
+                        "proof_state": "NOT_PROVED",
+                        "protection": protection,
+                        "reason": reason,
+                        "state": state,
+                    }
+                )
+            kept["self_service"] = rows
+            continue
+        if key in {"loader_kill", "loader_restart"} and value in {"held", "fail", "infra_retry", "setup_invalid"}:
+            kept[key] = value
+            continue
+        if key == "cases" and isinstance(value, list):
+            rows = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("case")
+                result = item.get("result")
+                if name not in {"enterprise", "descendant-b1", "loader-kill", "loader-restart"}:
+                    continue
+                if result not in {"held", "fail", "ran", "infra_retry", "setup_invalid"}:
+                    continue
+                row: dict[str, Any] = {"case": name, "result": result}
+                errno = item.get("errno")
+                if (
+                    result not in {"setup_invalid", "infra_retry"}
+                    and isinstance(errno, int)
+                    and not isinstance(errno, bool)
+                    and 0 <= errno <= 255
+                ):
+                    row["errno"] = errno
+                pid = item.get("deny_pid")
+                if isinstance(pid, int) and not isinstance(pid, bool) and 0 <= pid <= 2**22:
+                    row["deny_pid"] = pid
+                count = item.get("denied_rows")
+                if isinstance(count, int) and not isinstance(count, bool) and 0 <= count <= 100000:
+                    row["denied_rows"] = count
+                anchor = item.get("lineage_anchor")
+                if isinstance(anchor, int) and not isinstance(anchor, bool) and 0 <= anchor <= 2**32:
+                    row["lineage_anchor"] = anchor
+                path = item.get("path")
+                if path == CEILING_PATH:
+                    row["path"] = path
+                rows.append(row)
+            kept["cases"] = rows
+            continue
+        if key == "captures" and isinstance(value, list):
+            rows = [item for item in (_allow_capture(entry) for entry in value) if item]
+            if rows:
+                kept["captures"] = rows
+            continue
+        if key == "full_set":
+            continue
+    if "repeats" in kept:
+        kept["full_set"] = full_set_passes(kept["repeats"])
+    return kept
