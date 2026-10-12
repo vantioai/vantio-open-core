@@ -11,7 +11,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-WORKING_SEAL = "ae2cf75cd9c6f6b463032c1a0832b4dd89b7a4465598fdfc8cd38d270a465757"
+WORKING_SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "2c-upgrade-rollback",
@@ -203,6 +203,29 @@ def egress_grade_block(control_errno: int | None, enrolled_errno: int | None) ->
     if isinstance(enrolled_errno, bool) or enrolled_errno not in (0, 1, 13, 111):
         return "enrolled_egress_timeout"
     return None
+
+
+def apply_allowlisted_private(body: dict[str, Any], errno: int | None) -> dict[str, Any]:
+    """An allowlisted private destination has to finish the handshake.
+
+    Scoped mode denies other private addresses. A block of the allowlisted
+    one is over-blocking, so a pass becomes a fail. A missing measurement
+    does the same. A battery that is already not a pass keeps its result.
+    """
+    if isinstance(errno, bool) or not isinstance(errno, int):
+        body["allowlisted_private"] = "missing"
+        if body.get("host_result") == "PASS":
+            body["classification"] = "overblock"
+            body["expectation_met"] = False
+            body["host_result"] = "FAIL"
+        return body
+    body["allowlisted_private_errno"] = errno
+    body["allowlisted_private"] = egress_word(errno)
+    if body.get("host_result") == "PASS" and errno != 0:
+        body["classification"] = "overblock"
+        body["expectation_met"] = False
+        body["host_result"] = "FAIL"
+    return body
 
 
 def ungraded_egress(battery: str, reason: str) -> dict[str, Any]:

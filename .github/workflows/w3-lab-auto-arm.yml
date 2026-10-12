@@ -26,7 +26,7 @@ on:
       seal:
         description: Working seal, 64 hex characters.
         required: true
-        default: ae2cf75cd9c6f6b463032c1a0832b4dd89b7a4465598fdfc8cd38d270a465757
+        default: bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d
         type: string
       public_pin:
         description: Public installer pin, 64 hex characters.
