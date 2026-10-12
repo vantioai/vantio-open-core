@@ -148,8 +148,9 @@ jobs:
       - name: Launch one tagged lab and exit
         env:
           INSTANCE_TYPE: ${{ inputs.instance_type }}
-          STOP_AFTER_MINUTES: "2160"
+          STOP_AFTER_MINUTES: "2400"
           MAX_LIFE_HOURS: "36"
+          SOAK: "true"
           ASSOCIATE_PUBLIC_IPV4: ${{ inputs.associate_public_ipv4 }}
           IMAGE_ID: ${{ inputs.image_id }}
           COST_GATE_JSON: ${{ needs.gate.outputs.gate_json }}

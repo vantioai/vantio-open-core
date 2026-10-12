@@ -512,14 +512,48 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
     caps = lab.load_lab_capabilities()
     payload["ssm"] = "not_enabled" if not caps["ssm"] else "not_implemented"
     if instance is None:
+        payload["cloudtrail"] = lab.lookup_terminator(runner, instance_id)
         payload.update({"reason": "instance_absent", "status": "NOT_FOUND"})
         lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
-        raise lab.GuardAbort("instance_absent")
+        raise lab.GuardAbort("instance_absent", payload)
     tags = lab._tag_list(instance.get("Tags"))
     if not lab.lab_tags_owned(tags):
         payload.update({"reason": "not_owned", "status": "NOT_OWNED"})
         lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
-        raise lab.GuardAbort("not_owned")
+        raise lab.GuardAbort("not_owned", payload)
+    state = instance_state(instance)
+    payload["instance_state"] = state
+    payload["soak_active"] = lab.soak_active(tags)
+    if payload["soak_active"] and state in {"terminated", "shutting-down", "stopped", "stopping"}:
+        payload["cloudtrail"] = lab.lookup_terminator(runner, instance_id)
+    try:
+        _collect_console(
+            runner,
+            payload,
+            instance,
+            instance_id,
+            caps,
+            ssh_runner=ssh_runner,
+            keygen=keygen,
+        )
+    except lab.GuardAbort as exc:
+        payload.update({"reason": exc.reason, "status": payload.get("status") or "FAILED"})
+        lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
+        raise lab.GuardAbort(exc.reason, payload) from None
+    lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
+    return payload
+
+
+def _collect_console(
+    runner: Runner,
+    payload: dict[str, Any],
+    instance: Mapping[str, Any],
+    instance_id: str,
+    caps: Mapping[str, Any],
+    *,
+    ssh_runner: SshRunner = default_ssh,
+    keygen: Keygen = default_keygen,
+) -> None:
     console = lab.aws_json(
         runner,
         ["aws", "ec2", "get-console-output", "--region", lab.REGION, "--instance-id", instance_id, "--latest"],
@@ -567,8 +601,6 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
         for item in pulled:
             by_key[(item["seq"], item["sha256"])] = item
         payload["checks"] = sorted(by_key.values(), key=lambda item: int(item["seq"]))
-    lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
-    return payload
 
 
 def due_instance_ids(described: Mapping[str, Any], now: datetime) -> list[str]:
@@ -614,11 +646,24 @@ def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner 
             try:
                 one = execute_collect(runner, ssh_runner=ssh_runner, keygen=keygen)
             except lab.GuardAbort as exc:
-                one = {"checks": [], "instance_id": instance_id, "reason": exc.reason, "status": "FAILED"}
+                extra = exc.payload if isinstance(exc.payload, dict) else {}
+                one = {
+                    "checks": extra.get("checks") or [],
+                    "cloudtrail": extra.get("cloudtrail"),
+                    "instance_id": instance_id,
+                    "instance_state": extra.get("instance_state"),
+                    "reason": exc.reason,
+                    "soak_active": extra.get("soak_active") is True,
+                    "status": extra.get("status") or "FAILED",
+                }
             rows.append(
                 {
+                    "check_count": len(one.get("checks") or []),
                     "checks": one.get("checks") or [],
+                    "cloudtrail": one.get("cloudtrail"),
                     "instance_id": instance_id,
+                    "instance_state": one.get("instance_state"),
+                    "soak_active": one.get("soak_active") is True,
                     "status": one.get("status"),
                 }
             )
@@ -668,6 +713,10 @@ def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
         payload.update({"reason": "not_owned", "status": "NOT_OWNED"})
         lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
         raise lab.GuardAbort("not_owned")
+    if lab.soak_active(tags):
+        payload.update({"called": [], "mutated": False, "reason": "soak_active", "status": "REFUSED_SOAK"})
+        lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+        raise lab.GuardAbort("soak_active")
     name = str(tags.get("Name"))
     state = instance_state(instance)
     called: list[str] = []

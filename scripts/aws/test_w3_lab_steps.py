@@ -211,6 +211,18 @@ class GuardTests(unittest.TestCase):
         old["launch_time"] = (NOW - timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.assertEqual(lab.sweeper_action(young, NOW), "keep")
         self.assertEqual(lab.sweeper_action(old, NOW), "delete_launch_age")
+        soaked = dict(old)
+        soaked["tags"] = dict(tags)
+        soaked["tags"]["vantio-soak"] = "active"
+        self.assertEqual(lab.sweeper_action(soaked, NOW), "keep_soak")
+        group = {
+            "type": "security-group",
+            "id": "sg-0123456789abcdef0",
+            "region": "us-east-2",
+            "tags": soaked["tags"],
+        }
+        self.assertEqual(lab.sweeper_action(group, NOW), "keep_soak")
+        self.assertNotIn("keep_soak", lab.DELETE_ACTIONS)
         with tempfile.TemporaryDirectory() as tmp:
             cap = Path(tmp) / "caps.json"
             cap.write_text(json.dumps({"max_life_hours_36": False, "ssh_instance_connect": False, "ssm": False}))
@@ -218,6 +230,7 @@ class GuardTests(unittest.TestCase):
             try:
                 self.assertEqual(lab.sweeper_action(young, NOW), "skip_life_not_enabled")
                 self.assertEqual(lab.sweeper_action(old, NOW), "skip_life_not_enabled")
+                self.assertEqual(lab.sweeper_action(soaked, NOW), "keep_soak")
             finally:
                 os.environ.pop("W3_LAB_CAPABILITIES", None)
 
@@ -373,6 +386,71 @@ class ArmCollectTests(unittest.TestCase):
                 steps.execute_teardown(foreign, NOW)
         self.assertEqual(caught.exception.reason, "not_owned")
         self.assertFalse(any("terminate-instances" in " ".join(call) for call in runner.calls))
+
+    def test_teardown_refuses_an_active_soak_host(self) -> None:
+        calls: list[list[str]] = []
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "--instance-ids" in args:
+                body = instance()
+                body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
+                return completed({"Reservations": [{"Instances": [body]}]})
+            return completed({"Reservations": [], "Volumes": [], "SecurityGroups": [], "KeyPairs": []})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = INSTANCE
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_teardown(runner, NOW)
+            body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
+        self.assertEqual(caught.exception.reason, "soak_active")
+        self.assertEqual(body["status"], "REFUSED_SOAK")
+        self.assertFalse(body["mutated"])
+        self.assertFalse(any("terminate-instances" in " ".join(call) for call in calls))
+
+    def test_collect_keeps_the_cloudtrail_username_when_the_soak_host_is_gone(self) -> None:
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "lookup-events" in text:
+                return completed(
+                    {
+                        "Events": [
+                            {
+                                "EventId": "evt-9",
+                                "EventName": "TerminateInstances",
+                                "EventTime": "2026-09-30T15:00:00Z",
+                                "Username": "outside-actor",
+                            }
+                        ]
+                    }
+                )
+            if "describe-instances" in text:
+                body = instance("terminated")
+                body["LaunchTime"] = "2026-09-30T12:00:00Z"
+                body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
+                return completed({"Reservations": [{"Instances": [body]}]})
+            if "get-console-output" in text:
+                raw = base64.b64encode(b"vantio-lab-check seq=3 name=soak result=pass sha256=" + b"c" * 64).decode()
+                return completed({"Output": raw})
+            return completed({})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ.pop("INSTANCE_ID", None)
+            os.environ.pop("W3_RUNNER_CIDR", None)
+            result = steps.execute_collect_due(runner, NOW)
+        row = result["instances"][0]
+        self.assertTrue(row["soak_active"])
+        self.assertEqual(row["instance_state"], "terminated")
+        self.assertEqual(row["cloudtrail"]["events"][0]["username"], "outside-actor")
+        self.assertEqual(row["check_count"], 1)
+        self.assertNotIn("outside-actor-secret", json.dumps(result))
 
     def test_verify_removed_when_the_owned_host_is_terminated(self) -> None:
         runner = FakeAws()

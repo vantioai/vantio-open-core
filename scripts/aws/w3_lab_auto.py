@@ -34,6 +34,10 @@ ENVIRONMENT = "w3-lab-auto"
 MAX_SESSION_SECONDS = 3600
 MAX_LIFE_MINUTES = 420
 LONG_MAX_LIFE_MINUTES = 36 * 60
+# A soak host stays up at least 40 hours and does not schedule its own shutdown.
+SOAK_MIN_MINUTES = 40 * 60
+SOAK_TAG = "vantio-soak"
+SOAK_ACTIVE = "active"
 MAX_LIFE = timedelta(hours=7)
 ALLOWED_MAX_LIFE_HOURS = frozenset({"7", "36"})
 OCCUPYING_STATES = frozenset({"pending", "running", "stopping", "stopped", "shutting-down"})
@@ -240,6 +244,15 @@ def build_user_data(stop_after_minutes: int) -> str:
     )
 
 
+def build_soak_user_data() -> str:
+    """No shutdown timer. The soak host is tagged vantio-soak=active."""
+    return "#!/bin/bash\n# vantio-soak=active. Auto-stop is off for this host.\n"
+
+
+def soak_active(tags: Mapping[str, Any] | None) -> bool:
+    return isinstance(tags, Mapping) and tags.get(SOAK_TAG) == SOAK_ACTIVE
+
+
 def _tags(spec_purpose: str | None, expiry: str, name: str, max_life_hours: str = "7") -> dict[str, str]:
     if max_life_hours not in ALLOWED_MAX_LIFE_HOURS:
         raise ValueError("max_life_hours")
@@ -291,11 +304,27 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     brain = instance_type == BRAIN_INSTANCE_TYPE
     if brain and max_life_hours != "7":
         raise ValueError("max_life_hours")
-    life_limit = BRAIN_MAX_MINUTES if brain else LONG_MAX_LIFE_MINUTES if max_life_hours == "36" else MAX_LIFE_MINUTES
+    soak = spec.get("soak") is True
+    if soak and max_life_hours != "36":
+        raise ValueError("max_life_hours")
+    life_limit = (
+        SOAK_MIN_MINUTES
+        if soak
+        else BRAIN_MAX_MINUTES
+        if brain
+        else LONG_MAX_LIFE_MINUTES
+        if max_life_hours == "36"
+        else MAX_LIFE_MINUTES
+    )
     default_stop = life_limit
-    minutes = bounded_minutes(spec.get("stop_after_minutes", default_stop), "stop_after_minutes", limit=life_limit)
-    expires_in = bounded_minutes(spec.get("expires_in_minutes", minutes), "expires_in_minutes", limit=life_limit)
-    user_data = build_user_data(minutes)
+    if soak:
+        minutes = SOAK_MIN_MINUTES
+        expires_in = SOAK_MIN_MINUTES
+        user_data = build_soak_user_data()
+    else:
+        minutes = bounded_minutes(spec.get("stop_after_minutes", default_stop), "stop_after_minutes", limit=life_limit)
+        expires_in = bounded_minutes(spec.get("expires_in_minutes", minutes), "expires_in_minutes", limit=life_limit)
+        user_data = build_user_data(minutes)
     name = spec.get("name", f"{NAME_PREFIX}plan")
     if not isinstance(name, str) or not name.startswith(NAME_PREFIX):
         raise ValueError("name")
@@ -305,6 +334,8 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     expiry = format_expiry(now + timedelta(minutes=expires_in))
     public_ip = parse_bool(spec.get("associate_public_ipv4", False))
     tags = _tags(purpose, expiry, name, max_life_hours)
+    if soak:
+        tags[SOAK_TAG] = SOAK_ACTIVE
     gross = brain_gross_usd(minutes) if brain else None
     block_device = {
         "DeviceName": "/dev/sda1",
@@ -331,7 +362,9 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         "metadata_http_tokens": "required",
         "metadata_hop_limit": 1,
         "iam_instance_profile": None,
-        "disable_api_termination": False,
+        "disable_api_termination": soak,
+        "disable_api_stop": soak,
+        "auto_stop": not soak,
         "image_owner": CANONICAL_OWNER,
         "image_name_filter": AMI_NAME_FILTER,
         "image_architecture": "x86_64",
@@ -370,6 +403,8 @@ def sweeper_action(resource: Mapping[str, Any], now: datetime) -> str:
     tags = resource.get("tags")
     if not isinstance(tags, Mapping) or not lab_tags_owned(tags):
         return "skip_not_owned"
+    if soak_active(tags):
+        return "keep_soak"
     purpose = tags.get(PURPOSE_TAG)
     if purpose is not None and purpose != PURPOSE_VALUE:
         return "skip_bad_purpose"
@@ -400,6 +435,64 @@ def sweeper_action(resource: Mapping[str, Any], now: datetime) -> str:
     if expiry <= now:
         return "delete_expired"
     return "keep"
+
+
+def terminator_from_cloudtrail(payload: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Who called TerminateInstances or StopInstances. Raw events stay out."""
+    found: list[dict[str, str]] = []
+    events = payload.get("Events")
+    if not isinstance(events, list):
+        return found
+    for item in events:
+        if not isinstance(item, Mapping):
+            continue
+        name = str(item.get("EventName") or "")
+        if name not in ("TerminateInstances", "StopInstances"):
+            continue
+        username = str(item.get("Username") or "")
+        if not username:
+            raw = item.get("CloudTrailEvent")
+            body: dict[str, Any] = {}
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    body = parsed
+            ident = body.get("userIdentity")
+            if isinstance(ident, Mapping):
+                username = str(ident.get("userName") or ident.get("principalId") or "")
+        found.append(
+            {
+                "event_id": str(item.get("EventId") or ""),
+                "event_name": name,
+                "event_time": str(item.get("EventTime") or ""),
+                "username": username[:120],
+            }
+        )
+    return found
+
+
+def lookup_terminator(runner: Runner, instance_id: str) -> dict[str, Any]:
+    if ID_SHAPES["instance"].match(instance_id) is None:
+        return {"recorded": False, "error": "instance_id"}
+    args = [
+        "aws",
+        "cloudtrail",
+        "lookup-events",
+        "--region",
+        REGION,
+        "--lookup-attributes",
+        f"AttributeKey=ResourceName,AttributeValue={instance_id}",
+        "--max-results",
+        "10",
+    ]
+    try:
+        body = aws_json(runner, args)
+    except GuardAbort as exc:
+        return {"recorded": False, "error": exc.reason}
+    return {"recorded": True, "events": terminator_from_cloudtrail(body)}
 
 
 def select_image(describe_images_payload: Mapping[str, Any]) -> str:
@@ -509,6 +602,12 @@ def run_instances_args(
         str(plan["instance_type"]),
         "--count",
         "1",
+        *(
+            ["--disable-api-termination"]
+            if plan.get("disable_api_termination") is True
+            else []
+        ),
+        *(["--disable-api-stop"] if plan.get("disable_api_stop") is True else []),
         "--instance-initiated-shutdown-behavior",
         "terminate",
         *shape_flags,
@@ -646,9 +745,10 @@ def _load_json_stdin() -> dict[str, Any]:
 
 
 class GuardAbort(Exception):
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, payload: Mapping[str, Any] | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.payload = dict(payload) if isinstance(payload, Mapping) else {}
 
 
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
@@ -1174,6 +1274,8 @@ def _launch_spec_from_env() -> dict[str, Any]:
         "vpc_id": LAB_VPC_ID,
         "max_life_hours": max_life_hours,
     }
+    if os.environ.get("SOAK", "").strip().lower() == "true":
+        spec["soak"] = True
     if purpose:
         spec["purpose"] = purpose
     expires = os.environ.get("EXPIRES_IN_MINUTES", "").strip()
