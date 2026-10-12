@@ -194,6 +194,11 @@ class Phase2GradeTests(unittest.TestCase):
     def test_enrolled_connect_is_after_the_unenrolled_control(self) -> None:
         text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
         self.assertNotIn("192.0.2", text)
+        self.assertLess(text.index("def ensure_lab_iface"), text.index("def prepare_enforce"))
+        enforce = text.split("def _enforce_generation_log", 1)[1].split("def apply_consented_lsm", 1)[0]
+        self.assertLess(enforce.index("ensure_lab_iface()"), enforce.index("start_loader"))
+        prepared = text.split("def prepare_enforce", 1)[1].split("def _pin_fd", 1)[0]
+        self.assertLess(prepared.index("ensure_lab_iface()"), prepared.index("start_loader"))
         for name, nxt in (("run_2d", "run_2e"), ("run_2f", "kernel_facts")):
             body = text.split(f"def {name}", 1)[1].split(f"def {nxt}", 1)[0]
             self.assertLess(body.index("control_handshake()"), body.index("child_open(True)"))
