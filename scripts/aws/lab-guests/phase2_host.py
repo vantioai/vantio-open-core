@@ -41,6 +41,8 @@ from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E
 
 OUT_PATH = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
 SUBJECT = 65534
+ALLOW_HOST = "10.254.254.10"
+ALLOW_PORT = 4880
 _LISTENER_SRC = """\
 import os
 import socket
@@ -239,16 +241,17 @@ def _address_is_local(host: str) -> bool:
     return host in primary_local_ipv4s()
 
 
-def tcp_handshake_errno(timeout: float = 2.0) -> int:
+def tcp_handshake_errno(timeout: float = 2.0, host: str | None = None, port: int | None = None) -> int:
     """Complete a TCP handshake with the lab listener, or return the errno.
 
     0 means the handshake finished. 110 is a timeout and is not a grade.
     This process must not be in the enrolled cgroup when it is the control.
     """
-    target = egress_endpoint()
-    if target is None:
-        return 110
-    host, port = target
+    if host is None or port is None:
+        target = egress_endpoint()
+        if target is None:
+            return 110
+        host, port = target
     sock = socket.socket()
     sock.settimeout(timeout)
     try:
@@ -359,6 +362,75 @@ def _docker_host_ip(args: list[str]):
     )
 
 
+def ensure_allowlist_peer() -> None:
+    """Listen on one private address and tell the loader to allow only that one.
+
+    The enrolled deny target stays the host's own primary address, which is
+    not on this list. An enrolled handshake here has to complete.
+    """
+    os.environ["VANTIO_LAB_ALLOWLIST"] = ALLOW_HOST
+    show = _docker_host_ip(["addr", "show", "dev", "lo"])
+    if ALLOW_HOST not in (show.stdout or ""):
+        added = _docker_host_ip(["addr", "add", f"{ALLOW_HOST}/32", "dev", "lo"])
+        detail = (added.stderr or "") + (added.stdout or "")
+        if added.returncode != 0 and "File exists" not in detail and "exists" not in detail.lower():
+            raise SystemExit(f"allowlist_addr {added.returncode} {detail[-180:]}")
+    if tcp_handshake_errno(0.3, ALLOW_HOST, ALLOW_PORT) == 0:
+        return
+    path = Path("/tmp/vantio-allow-listen.py")
+    path.write_text(_LISTENER_SRC, encoding="utf-8")
+    env = os.environ.copy()
+    env["VANTIO_EGRESS_HOST"] = ALLOW_HOST
+    env["VANTIO_EGRESS_PORT"] = str(ALLOW_PORT)
+    subprocess.Popen(
+        ["python3", str(path)],
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(25):
+        if tcp_handshake_errno(0.3, ALLOW_HOST, ALLOW_PORT) == 0:
+            return
+        time.sleep(0.1)
+    raise SystemExit("allowlist_listener")
+
+
+def enrolled_connect_errno(host: str, port: int) -> int:
+    """Handshake from a child born in the anchor. 0 connected. Other values did not."""
+    report_r, report_w = os.pipe()
+    helper = os.fork()
+    if helper == 0:
+        os.close(report_r)
+        try:
+            (Path(rows.ANCHOR) / "cgroup.procs").write_text(f"{os.getpid()}\n", encoding="utf-8")
+            child = os.fork()
+        except OSError as exc:
+            os.write(report_w, f"net {exc.errno or 1}\n".encode())
+            os.close(report_w)
+            os._exit(0)
+        if child == 0:
+            try:
+                os.setresuid(SUBJECT, SUBJECT, 0)
+                errno = tcp_handshake_errno(host=host, port=port)
+            except OSError as exc:
+                errno = exc.errno or 1
+            os.write(report_w, f"net {errno}\n".encode())
+            os.close(report_w)
+            os._exit(0)
+        os.close(report_w)
+        os.waitpid(child, 0)
+        os._exit(0)
+    os.close(report_w)
+    os.waitpid(helper, 0)
+    text = os.read(report_r, 80).decode(errors="replace")
+    os.close(report_r)
+    parts = text.split()
+    if len(parts) >= 2 and parts[0] == "net" and parts[1].lstrip("-").isdigit():
+        return int(parts[1])
+    return 110
+
+
 def ensure_lab_iface() -> None:
     """Create vlab-host in the loader's network namespace."""
     show = _docker_host_ip(["link", "show", "vlab-host"])
@@ -388,6 +460,7 @@ def vantio_bpf_pins() -> list[str]:
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
     rows.ensure_cgroups()
     ensure_lab_iface()
+    ensure_allowlist_peer()
     meta = rows.load("meta.json")
     plane = ControlPlane(LocalHostVerifier(load_packaged_test_trust()), root_ids=("cust-root", "cust-b"))
     adapter = PeHostAdapter(plane)
@@ -1140,6 +1213,8 @@ def run_2d() -> dict:
     graded.update(observed)
     graded["file_after_enrolled"] = enrolled.get("file_errno")
     graded["file_attributed"] = file_attributed
+    graded["allowlist_host"] = ALLOW_HOST
+    grade.apply_allowlisted_private(graded, enrolled_connect_errno(ALLOW_HOST, ALLOW_PORT))
     graded["standin_after_sigkill"] = standin
     graded["ndjson_denied_pids"] = [
         item["pid"]
@@ -1218,6 +1293,8 @@ def run_2f() -> dict:
     graded["bpf_pin_sample"] = pins
     graded["policy_malformed"] = False
     graded["ndjson_denied_pids"] = ndjson_denied_pids()
+    graded["allowlist_host"] = ALLOW_HOST
+    grade.apply_allowlisted_private(graded, enrolled_connect_errno(ALLOW_HOST, ALLOW_PORT))
     return graded
 
 
