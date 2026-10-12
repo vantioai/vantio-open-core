@@ -225,6 +225,26 @@ def public_ipv4(instance: Mapping[str, Any]) -> str:
     return ""
 
 
+def private_ipv4(instance: Mapping[str, Any]) -> str:
+    value = instance.get("PrivateIpAddress")
+    if isinstance(value, str) and value:
+        return value.strip()
+    return ""
+
+
+def phase_egress_env(private_ip: str) -> list[str]:
+    """Env for the guest listener. A documentation address is not passed through."""
+    guest_dir = Path(__file__).resolve().with_name("lab-guests")
+    if str(guest_dir) not in sys.path:
+        sys.path.insert(0, str(guest_dir))
+    import phase2_grade as phase_grade
+
+    chosen = phase_grade.choose_egress_target(private_ip.strip() or None, None, [])
+    if chosen is None:
+        return []
+    return [f"VANTIO_EGRESS_HOST={chosen[0]}", f"VANTIO_EGRESS_PORT={chosen[1]}"]
+
+
 def security_group_id(instance: Mapping[str, Any]) -> str:
     groups = instance.get("SecurityGroups")
     if not isinstance(groups, list) or len(groups) != 1 or not isinstance(groups[0], Mapping):
@@ -1143,6 +1163,7 @@ def execute_enterprise_rows(
                     [
                         "env",
                         f"VANTIO_IMAGE_ID={image_id}",
+                        *phase_egress_env(private_ipv4(instance)),
                         "bash",
                         f"{GUEST_BUNDLE}/enterprise-rows.sh",
                         seal,

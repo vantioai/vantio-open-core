@@ -8,6 +8,7 @@ INTERNAL_CLEAN_HOST_PROOF.
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
 
 WORKING_SEAL = "13f7e0798c090634a97b0612378a0564c0adda2bb0ec0881f48d531598e3a834"
@@ -20,6 +21,14 @@ PHASES = (
     "2g-distro",
 )
 MAX_PERF_SECONDS = 900
+# Lab listener on the host's own address. Not a privileged port.
+DEFAULT_EGRESS_PORT = 4879
+# RFC 5737. These are not routed on AWS or GCP, so a battery must not use them.
+_DOCUMENTATION_V4 = (
+    ipaddress.IPv4Network("192.0.2.0/24"),
+    ipaddress.IPv4Network("198.51.100.0/24"),
+    ipaddress.IPv4Network("203.0.113.0/24"),
+)
 
 
 def _base(battery: str) -> dict[str, Any]:
@@ -63,6 +72,61 @@ def deny_record_anchor(record: bytes, pid: int) -> int:
 def deny_record_names(record: bytes, pid: int) -> bool:
     """True when the pinned row names this pid and a non-zero lineage anchor."""
     return deny_record_anchor(record, pid) > 0
+
+
+def usable_lab_ipv4(host: str) -> bool:
+    """An address the battery may connect to.
+
+    The lab host's own private address qualifies. A paired instance's private
+    address qualifies. Loopback, link-local, and RFC 5737 documentation
+    ranges do not: those documentation ranges are not routed on AWS or GCP.
+    """
+    try:
+        ip = ipaddress.IPv4Address(host)
+    except ipaddress.AddressValueError:
+        return False
+    if (
+        ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_unspecified
+        or ip.is_reserved
+        or not ip.is_private
+    ):
+        return False
+    return not any(ip in network for network in _DOCUMENTATION_V4)
+
+
+def choose_egress_target(
+    configured_host: str | None,
+    configured_port: int | None,
+    local_addrs: list[str],
+) -> tuple[str, int] | None:
+    """Listener address for one battery run.
+
+    An explicit host is the arm's choice: this machine's private address, or
+    a paired lab instance's private address. When the arm does not set one,
+    the first usable address on this host is the target. A documentation
+    address is refused, and the case is not graded. The local netns unit
+    test is the only path that still dials the documentation listener.
+    """
+    if configured_port is None:
+        port = DEFAULT_EGRESS_PORT
+    elif isinstance(configured_port, bool) or not isinstance(configured_port, int):
+        return None
+    elif configured_port < 1 or configured_port > 65535:
+        return None
+    else:
+        port = configured_port
+    host = (configured_host or "").strip()
+    if host:
+        if not usable_lab_ipv4(host):
+            return None
+        return host, port
+    for addr in local_addrs:
+        if usable_lab_ipv4(addr):
+            return addr, port
+    return None
 
 
 def egress_word(errno: int | None) -> str:

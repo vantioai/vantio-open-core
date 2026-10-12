@@ -885,6 +885,15 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertNotIn("abc", caught.exception.reason)
         self.assertIn("publickey", caught.exception.reason)
 
+    def test_phase_egress_env_uses_the_private_address(self) -> None:
+        self.assertEqual(
+            steps.phase_egress_env("172.31.24.10"),
+            ["VANTIO_EGRESS_HOST=172.31.24.10", "VANTIO_EGRESS_PORT=4879"],
+        )
+        self.assertEqual(steps.phase_egress_env("192.0.2.2"), [])
+        self.assertEqual(steps.phase_egress_env("  "), [])
+        self.assertEqual(steps.private_ipv4({"PrivateIpAddress": "10.0.0.5"}), "10.0.0.5")
+
     def test_guest_script_parses(self) -> None:
         script = ROOT / "scripts/aws/lab-guests/enterprise-rows.sh"
         completed_run = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)

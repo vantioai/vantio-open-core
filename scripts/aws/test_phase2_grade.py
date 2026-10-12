@@ -3,7 +3,11 @@
 
 from __future__ import annotations
 
+import os
+import socket
+import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -180,10 +184,93 @@ class Phase2GradeTests(unittest.TestCase):
 
     def test_enrolled_connect_is_after_the_unenrolled_control(self) -> None:
         text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        self.assertNotIn("192.0.2", text)
         for name, nxt in (("run_2d", "run_2e"), ("run_2f", "kernel_facts")):
             body = text.split(f"def {name}", 1)[1].split(f"def {nxt}", 1)[0]
             self.assertLess(body.index("control_handshake()"), body.index("child_open(True)"))
             self.assertIn('"lab_network"', body)
+        aws = Path(__file__).resolve().parent.joinpath("lab-guests", "enterprise-rows.sh").read_text(encoding="utf-8")
+        gcp = Path(__file__).resolve().parents[1].joinpath("gcp", "lab-guests", "enterprise-rows.sh").read_text(encoding="utf-8")
+        self.assertIn("VANTIO_EGRESS_HOST", aws)
+        self.assertIn("VANTIO_EGRESS_PORT", aws)
+        self.assertIn("VANTIO_EGRESS_HOST", gcp)
+        self.assertIn("VANTIO_EGRESS_PORT", gcp)
+
+    def test_battery_target_is_a_reachable_private_address(self) -> None:
+        self.assertEqual(
+            grade.choose_egress_target(None, None, ["192.0.2.2", "172.31.24.10"]),
+            ("172.31.24.10", grade.DEFAULT_EGRESS_PORT),
+        )
+        self.assertEqual(grade.choose_egress_target("10.128.0.5", None, []), ("10.128.0.5", grade.DEFAULT_EGRESS_PORT))
+        self.assertIsNone(grade.choose_egress_target("192.0.2.2", 9, ["172.31.24.10"]))
+        self.assertIsNone(grade.choose_egress_target("198.51.100.8", None, ["10.1.1.1"]))
+        self.assertIsNone(grade.choose_egress_target("203.0.113.8", None, []))
+        self.assertIsNone(grade.choose_egress_target("127.0.0.1", None, ["10.1.1.1"]))
+        self.assertIsNone(grade.choose_egress_target("169.254.169.254", None, ["10.1.1.1"]))
+        self.assertIsNone(grade.choose_egress_target(None, None, ["127.0.0.1", "192.0.2.1"]))
+        self.assertIsNone(grade.choose_egress_target("10.1.1.1", 0, []))
+        self.assertIsNone(grade.choose_egress_target("8.8.8.8", None, []))
+
+    def test_documentation_listener_stays_in_the_local_netns(self) -> None:
+        """192.0.2.2 is only dialed from this local veth. The battery chooser refuses it."""
+        if os.geteuid() != 0:
+            self.skipTest("local netns")
+        ns = "pelab-doc-test"
+        host_if = "vdoc-host"
+        peer_if = "vdoc-peer"
+        listener = "192.0.2.2"
+        subprocess.run(["ip", "netns", "del", ns], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["ip", "link", "del", host_if], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = None
+        try:
+            self.assertEqual(subprocess.run(["ip", "link", "add", host_if, "type", "veth", "peer", "name", peer_if]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "addr", "add", "192.0.2.1/30", "dev", host_if]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "link", "set", host_if, "up"]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "netns", "add", ns]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "link", "set", peer_if, "netns", ns]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "netns", "exec", ns, "ip", "link", "set", "lo", "up"]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "netns", "exec", ns, "ip", "addr", "add", "192.0.2.2/30", "dev", peer_if]).returncode, 0)
+            self.assertEqual(subprocess.run(["ip", "netns", "exec", ns, "ip", "link", "set", peer_if, "up"]).returncode, 0)
+            script = Path("/tmp/vantio-doc-listen.py")
+            script.write_text(
+                "import socket\n"
+                "server = socket.socket()\n"
+                "server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n"
+                "server.bind(('192.0.2.2', 9))\n"
+                "server.listen(8)\n"
+                "client, _addr = server.accept()\n"
+                "client.close()\n",
+                encoding="utf-8",
+            )
+            proc = subprocess.Popen(
+                ["ip", "netns", "exec", ns, "python3", str(script)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            errno = 110
+            for _ in range(25):
+                sock = socket.socket()
+                sock.settimeout(0.5)
+                try:
+                    sock.connect((listener, 9))
+                    errno = 0
+                    break
+                except TimeoutError:
+                    errno = 110
+                except OSError as exc:
+                    errno = exc.errno or 1
+                finally:
+                    sock.close()
+                time.sleep(0.05)
+            self.assertEqual(errno, 0)
+            self.assertIsNone(grade.choose_egress_target(listener, 9, ["10.1.1.1"]))
+        finally:
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=2)
+            subprocess.run(["ip", "netns", "del", ns], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["ip", "link", "del", host_if], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def test_tamper_does_not_treat_a_live_loader_as_fail_closed(self) -> None:
         body = grade.grade_tamper(enrolled_errno=1, unenrolled_errno=0, loader_up=True)
