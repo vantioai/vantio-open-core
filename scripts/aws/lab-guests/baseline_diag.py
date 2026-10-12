@@ -293,22 +293,63 @@ def _tracelog_around(probe: list[str]) -> dict:
     }
 
 
+def bpf_lsm_active(text: str) -> bool:
+    """True when bpf is its own entry in the active LSM list."""
+    return any(part.strip() == "bpf" for part in text.split(","))
+
+
+def cgroup_enroll_keys(inode: int, handle_id: int) -> list[int]:
+    """Directory inode and kernfs id, plus a low 32-bit form when it differs."""
+    keys: list[int] = []
+    for key in (inode, handle_id, inode & 0xFFFFFFFF, handle_id & 0xFFFFFFFF):
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _le_int(value: object) -> int | None:
+    """Integer, or little-endian bytes from bpftool's hex dump."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value[2:] if value.lower().startswith("0x") else value
+        try:
+            return int(text, 16)
+        except ValueError:
+            return None
+    if isinstance(value, list) and value:
+        raw = bytearray()
+        for item in value:
+            if isinstance(item, str):
+                text = item[2:] if item.lower().startswith("0x") else item
+                try:
+                    number = int(text, 16)
+                except ValueError:
+                    return None
+            elif isinstance(item, int) and not isinstance(item, bool):
+                number = item
+            else:
+                return None
+            if number < 0 or number > 255:
+                return None
+            raw.append(number)
+        return int.from_bytes(raw, "little")
+    return None
+
+
 def _cpu_values(row: dict) -> list[int]:
     values = row.get("values")
     found: list[int] = []
     if isinstance(values, list):
         for item in values:
-            if isinstance(item, dict) and isinstance(item.get("value"), int):
-                found.append(item["value"])
-            elif isinstance(item, int):
-                found.append(item)
+            number = _le_int(item.get("value") if isinstance(item, dict) else item)
+            if number is not None:
+                found.append(number)
         return found
-    value = row.get("value")
-    if isinstance(value, list):
-        return [item for item in value if isinstance(item, int)]
-    if isinstance(value, int):
-        return [value]
-    return []
+    number = _le_int(row.get("value"))
+    return [number] if number is not None else []
 
 
 def summarize_decision(dump: object) -> dict:
@@ -319,10 +360,8 @@ def summarize_decision(dump: object) -> dict:
     for row in dump:
         if not isinstance(row, dict):
             continue
-        key = row.get("key")
-        if isinstance(key, list) and key and isinstance(key[0], int):
-            key = key[0]
-        if not isinstance(key, int):
+        key = _le_int(row.get("key"))
+        if key is None:
             continue
         hook = key // DECISION_SLOTS
         slot = key % DECISION_SLOTS
@@ -360,7 +399,51 @@ def decision_counters() -> dict:
             "text": clip(text, 4000),
         }
     report["summary"] = summarize_decision(report["decision"].get("dump"))
+    report["ceiling"] = decode_ceiling_dump(report["ceiling_key"].get("dump"))
     return report
+
+
+def _byte_blob(value: object) -> bytes | None:
+    if not isinstance(value, list) or not value:
+        return None
+    blob = bytearray()
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, str)):
+            return None
+        parsed = _le_int(item)
+        if parsed is None or parsed > 255:
+            return None
+        blob.append(parsed)
+    return bytes(blob)
+
+
+def decode_ceiling_dump(dump: object) -> list[dict]:
+    """One record per ceiling-key row. bpftool hex values are little-endian."""
+    if not isinstance(dump, list):
+        return []
+    rows: list[dict] = []
+    for row in dump:
+        if not isinstance(row, dict):
+            continue
+        blob = _byte_blob(row.get("value"))
+        if blob is None or len(blob) < 56:
+            continue
+        rows.append(
+            {
+                "index": _le_int(row.get("key")),
+                "kernel_dev": int.from_bytes(blob[0:8], "little"),
+                "kernel_ino": int.from_bytes(blob[8:16], "little"),
+                "loaded_dev": int.from_bytes(blob[16:24], "little"),
+                "loaded_ino": int.from_bytes(blob[24:32], "little"),
+                "loaded_encoded": int.from_bytes(blob[32:40], "little"),
+                "major": int.from_bytes(blob[40:44], "little"),
+                "minor": int.from_bytes(blob[44:48], "little"),
+                "allow_reason": int.from_bytes(blob[48:52], "little"),
+                "hook": int.from_bytes(blob[52:56], "little"),
+                "seen_cgroup": int.from_bytes(blob[56:64], "little") if len(blob) >= 64 else 0,
+            }
+        )
+    return rows
 
 
 def collect(path: str, anchor: int, cgroup_procs: str) -> dict:
