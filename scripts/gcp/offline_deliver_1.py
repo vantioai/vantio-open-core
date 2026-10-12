@@ -598,6 +598,9 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
         if key == "seal_checked" and isinstance(value, bool):
             kept[key] = value
             continue
+        if key == "kernel_btf" and isinstance(value, bool):
+            kept[key] = value
+            continue
         if key == "convergence_ms" and isinstance(value, (int, float)) and not isinstance(value, bool):
             if isinstance(value, int) and value.bit_length() > 32:
                 continue
@@ -1050,3 +1053,5 @@ def json_media_download(bucket: str, object_name: str, path: Path, token: str) -
     quoted = urllib.parse.quote(object_name, safe="")
     url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o/{quoted}?alt=media"
     path.write_bytes(_json_request(url, token, None, "GET"))
+
+
