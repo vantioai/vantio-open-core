@@ -326,6 +326,9 @@ if [ "$mode" = "descendant-b1" ]; then
 fi
 case "$mode" in
   2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
+    # A previous battery leaves this file. Copying only when it is missing
+    # would report that older result for this run.
+    sudo rm -f /tmp/enterprise-pe-rows.json
     set +e
     sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
