@@ -96,6 +96,8 @@ def _base(battery: str) -> dict[str, Any]:
 
 
 DENY_KIND_FILE = 1
+DENY_KIND_EGRESS_CGROUP = 2
+DENY_KIND_EGRESS_TC = 3
 DENY_KIND_SELF = 4
 # DenyAttr on engine a86c7af: pid, uid, kind, path_len, anchor, timestamp, syscall, inodes, 32-byte path.
 DENY_ATTR_SIZE = 88
@@ -123,6 +125,28 @@ def deny_record_anchor(record: bytes, pid: int) -> int:
 def deny_record_names(record: bytes, pid: int) -> bool:
     """True when the pinned row names this pid and a non-zero lineage anchor."""
     return deny_record_anchor(record, pid) > 0
+
+
+def egress_record_anchor(record: bytes, pid: int) -> int:
+    """Lineage anchor from an egress deny-attr row, or 0.
+
+    A dropped SYN makes connect time out. That timeout is a block only when
+    this row names the pid, an egress kind, a non-zero anchor, and a timestamp.
+    A file row does not count.
+    """
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return 0
+    if len(record) < DENY_ATTR_SIZE:
+        return 0
+    got = int.from_bytes(record[0:4], "little")
+    kind = int.from_bytes(record[8:12], "little")
+    anchor = int.from_bytes(record[16:24], "little")
+    timestamp = int.from_bytes(record[24:32], "little")
+    if got != pid or anchor == 0 or timestamp == 0:
+        return 0
+    if kind not in (DENY_KIND_EGRESS_CGROUP, DENY_KIND_EGRESS_TC):
+        return 0
+    return anchor
 
 
 def usable_lab_ipv4(host: str) -> bool:
@@ -300,16 +324,30 @@ def _file_open_failed(file_errno: int | None, file_attributed: bool | None) -> d
     return None
 
 
+def _recorded_egress_block(errno: int | None, anchor: int) -> bool:
+    """A connect timeout with an egress deny-attr row is a block, not a missing result."""
+    return (
+        errno == 110
+        and isinstance(anchor, int)
+        and not isinstance(anchor, bool)
+        and anchor > 0
+    )
+
+
 def grade_crash(
     *,
     enrolled_errno: int | None,
     unenrolled_errno: int | None,
     file_errno: int | None = None,
     file_attributed: bool | None = None,
+    enrolled_block_anchor: int = 0,
 ) -> dict[str, Any]:
     """After the loader is dead. Enrolled traffic that completes is a fail."""
     body = _base("2d-crash-recovery")
     enrolled = egress_word(enrolled_errno)
+    if _recorded_egress_block(enrolled_errno, enrolled_block_anchor):
+        enrolled = "denied"
+        body["net_block_anchor"] = enrolled_block_anchor
     unenrolled = egress_word(unenrolled_errno)
     body["enrolled_egress"] = enrolled
     body["unenrolled_egress"] = unenrolled
@@ -318,7 +356,7 @@ def grade_crash(
         body.update(file_row)
         return body
     block = egress_grade_block(unenrolled_errno, enrolled_errno)
-    if block is not None:
+    if block is not None and not (block == "enrolled_egress_timeout" and enrolled == "denied"):
         refused = ungraded_egress("2d-crash-recovery", block)
         refused["enrolled_egress"] = enrolled
         refused["unenrolled_egress"] = unenrolled
@@ -374,9 +412,13 @@ def grade_tamper(
     policy_malformed: bool = False,
     file_errno: int | None = None,
     file_attributed: bool | None = None,
+    enrolled_block_anchor: int = 0,
 ) -> dict[str, Any]:
     body = _base("2f-tamper")
     enrolled = egress_word(enrolled_errno)
+    if _recorded_egress_block(enrolled_errno, enrolled_block_anchor):
+        enrolled = "denied"
+        body["net_block_anchor"] = enrolled_block_anchor
     unenrolled = egress_word(unenrolled_errno)
     body["enrolled_egress"] = enrolled
     body["unenrolled_egress"] = unenrolled
@@ -385,7 +427,7 @@ def grade_tamper(
         body.update(file_row)
         return body
     block = egress_grade_block(unenrolled_errno, enrolled_errno)
-    if block is not None:
+    if block is not None and not (block == "enrolled_egress_timeout" and enrolled == "denied"):
         refused = ungraded_egress("2f-tamper", block)
         refused["enrolled_egress"] = enrolled
         refused["unenrolled_egress"] = unenrolled
