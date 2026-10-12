@@ -12,6 +12,31 @@ from vantio_install.boot_hold.constants import BPF_PINS, ENFORCE_PROGRAM, SLICE
 from vantio_install.boot_hold.probe_link import open_local_probe
 
 
+BLOCKED_STATUS = "INSTALL_ENFORCEMENT_READINESS_BLOCKED"
+BPF_LSM_REASON = "bpf_lsm_inactive"
+
+
+def bpf_lsm_active(text: str) -> bool:
+    """True when bpf is its own comma-separated LSM token."""
+    return any(part.strip() == "bpf" for part in str(text).split(","))
+
+
+def lsm_cmdline_with_bpf(current: str, *, consent: bool) -> str | None:
+    """lsm= value that includes bpf.
+
+    None without explicit operator consent. This does not edit the bootloader
+    and does not reboot. The supported fix is to write the returned value into
+    the kernel command line and reboot.
+    """
+
+    if not consent:
+        return None
+    tokens = [part.strip() for part in current.split(",") if part.strip()]
+    if "bpf" not in tokens:
+        tokens.append("bpf")
+    return ",".join(tokens)
+
+
 def _attachment(facts: dict) -> dict:
     raw = facts.get("enforcement_attachment")
     return raw if isinstance(raw, dict) else {}
@@ -74,7 +99,13 @@ def evaluate_ready(facts: dict) -> dict:
         and policy_version_ok
         and mode in {"scoped", "node-wide"}
     )
-    if ready:
+    lsm_text = facts.get("active_lsm")
+    lsm_blocks = isinstance(lsm_text, str) and not bpf_lsm_active(lsm_text)
+    if lsm_blocks:
+        ready = False
+    if lsm_blocks:
+        reason = BPF_LSM_REASON
+    elif ready:
         reason = "enforce-ready"
     elif mode == "audit":
         reason = "audit-not-enforce"
@@ -103,6 +134,7 @@ def evaluate_ready(facts: dict) -> dict:
         "deny_mechanism": str(check.get("mechanism") or ""),
         "probe_detail": str(check.get("probe_detail") or ""),
         "reason": reason,
+        "status": BLOCKED_STATUS if lsm_blocks else "",
     }
 
 
@@ -469,6 +501,11 @@ def assemble_host_facts(
     del deny_probe
     pins = probe_pins(root)
     cmdline, health = probe_loader(root)
+    lsm_path = root / "sys/kernel/security/lsm"
+    try:
+        active_lsm = lsm_path.read_text(encoding="utf-8")
+    except OSError:
+        active_lsm = ""
     # Docker keeps the previous container log, and events.ndjson stays on disk
     # after the process is gone. Those lines are not a live attachment.
     loader_live = "vantio-loader" in cmdline
@@ -503,6 +540,7 @@ def assemble_host_facts(
         "pins_current": pins_current,
         "expected_policy_id": expected_policy_id,
         "loaded_policy_id": loaded_policy_id,
+        "active_lsm": active_lsm,
     }
 
 
