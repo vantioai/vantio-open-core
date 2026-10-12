@@ -40,7 +40,22 @@ from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E
 
 OUT_PATH = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
 SUBJECT = 65534
-LAB_UDP = ("192.0.2.2", 9)
+EGRESS_HOST = "192.0.2.2"
+EGRESS_PORT = 9
+_LISTENER_SRC = """\
+import socket
+server = socket.socket()
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(("192.0.2.2", 9))
+server.listen(64)
+server.settimeout(1)
+while True:
+    try:
+        client, _addr = server.accept()
+    except (TimeoutError, OSError):
+        continue
+    client.close()
+"""
 
 
 def publish(body: dict) -> None:
@@ -91,10 +106,12 @@ class _Lookup(ctypes.Structure):
     ]
 
 
-def pinned_deny_names(pid: int) -> bool:
-    """The deny map stays after the loader process is gone."""
+def pinned_deny_anchor(pid: int) -> int:
+    """Lineage anchor from the pinned deny map, or 0 when the row does not name both."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return 0
     if not Path(DENY_PIN).exists():
-        return False
+        return 0
     libc = ctypes.CDLL(None, use_errno=True)
     libc.syscall.restype = ctypes.c_long
     path = ctypes.create_string_buffer(DENY_PIN.encode("ascii") + b"\0")
@@ -106,7 +123,7 @@ def pinned_deny_names(pid: int) -> bool:
         ctypes.c_uint(ctypes.sizeof(attr)),
     )
     if fd < 0:
-        return False
+        return 0
     try:
         for kind in (grade.DENY_KIND_FILE, grade.DENY_KIND_SELF):
             key = ctypes.c_uint64((pid << 8) | kind)
@@ -118,11 +135,18 @@ def pinned_deny_names(pid: int) -> bool:
                 ctypes.byref(lookup),
                 ctypes.c_uint(ctypes.sizeof(lookup)),
             )
-            if rc == 0 and grade.deny_record_names(value.raw, pid):
-                return True
+            if rc == 0:
+                anchor = grade.deny_record_anchor(value.raw, pid)
+                if anchor > 0:
+                    return anchor
     finally:
         os.close(int(fd))
-    return False
+    return 0
+
+
+def pinned_deny_names(pid: int) -> bool:
+    """The deny map stays after the loader process is gone. A pid without an anchor does not count."""
+    return pinned_deny_anchor(pid) > 0
 
 
 def ndjson_denied_pids() -> list[int]:
@@ -138,12 +162,19 @@ def ndjson_denied_pids() -> list[int]:
 
 
 def attributed(pid: int, action: str) -> bool:
+    """A post-kill deny names the pid and the lineage anchor.
+
+    The ledger row is enough. A deny-attr row is enough once it carries the
+    same anchor. A map slot that names only the pid is not.
+    """
+    if action == "DENIED":
+        if deny_event_for(pid) is not None:
+            return True
+        return pinned_deny_anchor(pid) > 0
     for item in events():
         raw = item.get("Pid")
         if raw == pid and item.get("ActionTaken") == action:
             return True
-    if action == "DENIED":
-        return pinned_deny_names(pid)
     return False
 
 
@@ -158,6 +189,58 @@ def ensure_net() -> None:
     rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "link", "set", "lo", "up"])
     rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "addr", "add", "192.0.2.2/30", "dev", "vlab-peer"])
     rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "link", "set", "vlab-peer", "up"])
+
+
+def _listener_up() -> bool:
+    sock = socket.socket()
+    sock.settimeout(0.3)
+    try:
+        sock.connect((EGRESS_HOST, EGRESS_PORT))
+    except OSError:
+        return False
+    finally:
+        sock.close()
+    return True
+
+
+def ensure_egress_listener() -> None:
+    """A receiver on the lab peer, so a connect is allowed or refused.
+
+    UDP to a closed port can return 0 without anyone receiving it. A timeout
+    on that send is not a blocked result and not an allowed result. This
+    listener accepts TCP from the peer address. A completed handshake is
+    allowed. EPERM or connection refused is blocked.
+    """
+    ensure_net()
+    if _listener_up():
+        return
+    path = Path("/tmp/vantio-egress-listen.py")
+    path.write_text(_LISTENER_SRC, encoding="utf-8")
+    subprocess.Popen(
+        ["ip", "netns", "exec", "pelab-ns", "python3", str(path)],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(25):
+        if _listener_up():
+            return
+        time.sleep(0.1)
+    raise SystemExit("egress_listener")
+
+
+def _tcp_errno() -> int:
+    sock = socket.socket()
+    sock.settimeout(2)
+    try:
+        sock.connect((EGRESS_HOST, EGRESS_PORT))
+        return 0
+    except TimeoutError:
+        return 110
+    except OSError as exc:
+        return exc.errno or 1
+    finally:
+        sock.close()
 
 
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
@@ -305,12 +388,14 @@ def enterprise_open(digest: str) -> dict:
             }
             break
         probe_pid = _probe_pid(sample)
-        map_named = bool(probe_pid) and pinned_deny_names(probe_pid)
-        if event is None and map_named:
-            # The userspace ring stops when the loader is dead. The pinned map keeps the pid.
+        map_anchor = pinned_deny_anchor(probe_pid) if probe_pid else 0
+        map_named = map_anchor > 0
+        if event is None and map_anchor > 0:
+            # The userspace ring stops when the loader is dead. The pinned map
+            # counts only when it names this pid and the lineage anchor.
             event = {
                 "action": "DENIED",
-                "lineage_anchor": 0,
+                "lineage_anchor": map_anchor,
                 "path": path,
                 "pid": probe_pid,
                 "source": "deny_attr",
@@ -350,10 +435,15 @@ def _setup_invalid(sample: dict, digest: str, **extra: object) -> dict:
 def child_open(enroll: bool) -> dict:
     """Enrolled open is born inside the anchor, the same way the enterprise probe is.
 
+    The network half connects to the local listener. Errno 0 means the
+    handshake completed. Errno 1 or 111 means the connect was blocked. A
+    timeout stays 110 and is not graded as either.
+
     A child that is forked outside the cgroup and then moves itself is not the
     enrolled ceiling workload. The parent joins the anchor first, then the
     child is born there, drops to uid 65534, and opens the signed path.
     """
+    ensure_egress_listener()
     report_r, report_w = os.pipe()
     helper = os.fork()
     if helper == 0:
@@ -379,14 +469,7 @@ def child_open(enroll: bool) -> dict:
                     errno = 0
                 except OSError as exc:
                     errno = exc.errno or 1
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                try:
-                    sock.sendto(b"x", LAB_UDP)
-                    net = 0
-                except OSError as exc:
-                    net = exc.errno or 1
-                finally:
-                    sock.close()
+                net = _tcp_errno()
             except OSError as exc:
                 errno = exc.errno or 1
                 net = exc.errno or 1
@@ -530,8 +613,19 @@ def run_2d() -> dict:
     if loader_running():
         raise SystemExit("loader_still_up")
     enrolled = enterprise_open(digest)
+    # The file probe does not open a socket. The egress result is a second
+    # enrolled child connecting to the local listener.
+    egress = child_open(True)
+    enrolled["net_errno"] = egress.get("net_errno")
     unenrolled = child_open(False)
-    file_attributed = enrolled.get("deny_event") is not None
+    event = enrolled.get("deny_event")
+    file_attributed = (
+        isinstance(event, dict)
+        and event.get("pid") == enrolled.get("pid")
+        and isinstance(event.get("lineage_anchor"), int)
+        and not isinstance(event.get("lineage_anchor"), bool)
+        and event.get("lineage_anchor") > 0
+    )
     graded = grade.grade_crash(
         enrolled_errno=enrolled.get("net_errno"),
         unenrolled_errno=unenrolled.get("net_errno"),

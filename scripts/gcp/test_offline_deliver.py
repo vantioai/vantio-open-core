@@ -248,7 +248,22 @@ class OfflineDeliverTest(unittest.TestCase):
             "path": od.CEILING_PATH,
             "pid": 3501,
         }
-        self.assertEqual(od._loader_word("2d-crash-recovery", mapped), "held")
+        self.assertEqual(od._loader_word("2d-crash-recovery", mapped), "fail")
+        drained = dict(held)
+        drained["enrolled_after"] = {
+            "deny_event": {
+                "lineage_anchor": 6599,
+                "path": od.CEILING_PATH,
+                "pid": 3501,
+                "source": "deny_attr",
+            },
+            "file_errno": 13,
+            "lineage_anchor": 6599,
+            "map_named": True,
+            "path": od.CEILING_PATH,
+            "pid": 3501,
+        }
+        self.assertEqual(od._loader_word("2d-crash-recovery", drained), "held")
         unnamed = dict(mapped)
         unnamed["enrolled_after"] = {
             "file_errno": 13,
