@@ -162,9 +162,14 @@ authorized_uninstall() {
   local probe_pid="${3:-0}"
   export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
   record_uninstall() {
-    python3 - << 'PY'
+    python3 - "$here/sticky_write.py" << 'PY'
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
+from sticky_write import write_replacing
+
 rows = Path("/tmp/enterprise-pe-rows.json")
 try:
     body = json.loads(rows.read_text(encoding="utf-8"))
@@ -172,7 +177,7 @@ except (OSError, json.JSONDecodeError):
     body = {}
 out = Path("/tmp/vantio-uninstall.out")
 body["uninstall_tail"] = out.read_text(encoding="utf-8", errors="replace")[-1200:] if out.is_file() else ""
-rows.write_text(json.dumps(body), encoding="utf-8")
+write_replacing(rows, json.dumps(body))
 PY
     chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   }

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -13,7 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lab-guests"))
 
+import baseline_diag  # noqa: E402
 import phase2_grade as grade  # noqa: E402
+import sticky_write  # noqa: E402
 
 
 class Phase2GradeTests(unittest.TestCase):
@@ -359,6 +362,146 @@ class Phase2GradeTests(unittest.TestCase):
             }
         )
         self.assertEqual(rejected["reason"], "descendant_or_docker_child")
+
+
+class BaselineDiagTests(unittest.TestCase):
+    def test_cause_names(self) -> None:
+        self.assertEqual(baseline_diag.classify({"namei_outside_blocked": True, "open_errno": 13}), "parent_traverse")
+        self.assertEqual(
+            baseline_diag.classify({"file_unreadable_outside": True, "open_errno": 13}),
+            "file_mode",
+        )
+        self.assertEqual(baseline_diag.classify({"apparmor_denied": True, "open_errno": 13}), "apparmor")
+        self.assertEqual(
+            baseline_diag.classify(
+                {"apparmor_denied": True, "open_errno": 13, "deny_row_for_probe": True}
+            ),
+            "attributed_deny",
+        )
+        noise = "audit: type=1400 apparmor=DENIED operation=open name=/usr/bin/snap"
+        hit = 'apparmor="DENIED" operation="open" name="/var/lib/vantio-pe-clean-host/d/secret" pid=14314'
+        self.assertEqual(baseline_diag.relevant_apparmor([noise], "/var/lib/vantio-pe-clean-host/d/secret", 14314), [])
+        self.assertEqual(
+            baseline_diag.relevant_apparmor([noise, hit], "/var/lib/vantio-pe-clean-host/d/secret", 14314),
+            [hit],
+        )
+        self.assertEqual(
+            baseline_diag.classify({"open_errno": 13, "open_uses_o_creat": True, "sticky_parent": True}),
+            "protected_regular",
+        )
+        self.assertEqual(baseline_diag.classify({"open_errno": 13, "deny_row_for_probe": True}), "attributed_deny")
+        self.assertEqual(baseline_diag.classify({"open_errno": 13, "deny_row_other_pid": True}), "deny_row_other_pid")
+        self.assertEqual(baseline_diag.classify({"open_errno": 13, "overflow_increased": True}), "silent_deny_overflow")
+        self.assertEqual(
+            baseline_diag.classify(
+                {"open_errno": 13, "strace_eacces": True, "cgroup_matches_enrolled": True}
+            ),
+            "eacces_unaccounted",
+        )
+        self.assertEqual(
+            baseline_diag.classify({"open_errno": 13, "strace_eacces": True, "cgroup_matches_enrolled": False}),
+            "eacces_cgroup_mismatch",
+        )
+        self.assertEqual(baseline_diag.classify({"open_errno": 0}), "open_not_eacces")
+
+    def test_parent_walk_flags_a_directory_without_execute(self) -> None:
+        walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"
+        self.assertTrue(baseline_diag._parent_blocked(walk))
+        self.assertFalse(baseline_diag._file_unreadable("/secret kind=file mode=0o644 r=1\n"))
+
+    def test_2d_records_the_diag_when_the_open_has_no_row(self) -> None:
+        text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        body = text.split("def run_2d", 1)[1].split("def run_2e", 1)[0]
+        self.assertLess(body.index("baseline_diag.collect"), body.index("control_handshake()"))
+        self.assertIn("baseline_diag=diag", body)
+
+    def test_guest_scripts_do_not_recreate_the_rows_file(self) -> None:
+        for relative in (
+            Path("lab-guests/enterprise-rows.sh"),
+            Path(__file__).resolve().parents[1].joinpath("gcp/lab-guests/enterprise-rows.sh"),
+        ):
+            path = relative if relative.is_absolute() else Path(__file__).resolve().parent / relative
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("write_replacing", text)
+            self.assertNotIn("rows.write_text", text)
+            self.assertIn("sticky_write.py", text)
+
+    def test_runners_copy_the_diag_and_the_writer(self) -> None:
+        steps = Path(__file__).resolve().parent.joinpath("w3_lab_steps.py").read_text(encoding="utf-8")
+        deliver_dir = Path(__file__).resolve().parents[1] / "gcp"
+        deliver = "\n".join(
+            path.read_text(encoding="utf-8") for path in sorted(deliver_dir.glob("offline_deliver*.py"))
+        )
+        for name in ("baseline_diag.py", "sticky_write.py"):
+            self.assertIn(name, steps)
+            self.assertIn(name, deliver)
+
+    def test_root_write_text_on_a_user_file_in_tmp_is_protected_regular(self) -> None:
+        if shutil.which("sudo") is None:
+            self.skipTest("sudo")
+        if subprocess.run(["sudo", "-n", "true"], check=False).returncode != 0:
+            self.skipTest("sudo -n")
+        protected = int(Path("/proc/sys/fs/protected_regular").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(protected, 1)
+        target = Path(f"/tmp/vantio-sticky-{os.getpid()}.json")
+        target.write_text("owned-by-caller\n", encoding="utf-8")
+        os.chmod(target, 0o644)
+        module = str(Path(sticky_write.__file__).resolve().parent)
+        code = (
+            "import os, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "from pathlib import Path\n"
+            "from sticky_write import write_replacing\n"
+            "path = Path(sys.argv[2])\n"
+            "try:\n"
+            "    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)\n"
+            "    os.close(fd)\n"
+            "    print('creat ok')\n"
+            "except OSError as exc:\n"
+            "    print('creat', exc.errno)\n"
+            "try:\n"
+            "    fd = os.open(path, os.O_WRONLY | os.O_TRUNC)\n"
+            "    os.close(fd)\n"
+            "    print('trunc ok')\n"
+            "except OSError as exc:\n"
+            "    print('trunc', exc.errno)\n"
+            "write_replacing(path, '{\"kept\":true}')\n"
+            "print(path.read_text(encoding='utf-8'))\n"
+        )
+        try:
+            ran = subprocess.run(
+                ["sudo", "-n", "python3", "-c", code, module, str(target)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(ran.returncode, 0, ran.stderr)
+            self.assertIn("creat 13", ran.stdout)
+            self.assertIn("trunc ok", ran.stdout)
+            self.assertIn('{"kept":true}', ran.stdout)
+            self.assertEqual(target.read_text(encoding="utf-8"), '{"kept":true}')
+        finally:
+            target.unlink(missing_ok=True)
+
+    def test_a_refused_truncate_is_not_replaced(self) -> None:
+        target = Path(f"/tmp/vantio-sticky-keep-{os.getpid()}.json")
+        target.write_text("keep\n", encoding="utf-8")
+        os.chmod(target, 0o000)
+        try:
+            with self.assertRaises(PermissionError):
+                sticky_write.write_replacing(target, "replaced")
+            os.chmod(target, 0o644)
+            self.assertEqual(target.read_text(encoding="utf-8"), "keep\n")
+        finally:
+            os.chmod(target, 0o644)
+            target.unlink(missing_ok=True)
+
+    def test_diag_does_not_apt_and_strace_is_in_the_offline_debs(self) -> None:
+        diag = Path(baseline_diag.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("apt-get", diag)
+        root = Path(__file__).resolve().parents[2]
+        for relative in ("scripts/aws/fetch_offline_debs.sh", "scripts/gcp/fetch_offline_debs.sh"):
+            self.assertIn("strace", (root / relative).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ fi
 docker run --rm -v "$dest:/out" ubuntu:24.04 bash -ceu '
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  apt-get install -y --download-only docker.io gcc python3-cryptography iptables
+  apt-get install -y --download-only docker.io gcc python3-cryptography iptables strace
   cp -n /var/cache/apt/archives/*.deb /out/
   find /out -name "*.deb" | wc -l
 '
@@ -19,3 +19,4 @@ find "$dest" -name "docker.io_*.deb" | grep -q .
 find "$dest" -name "gcc_*.deb" | grep -q .
 find "$dest" -name "python3-cryptography_*.deb" | grep -q .
 find "$dest" -name "iptables_*.deb" | grep -q .
+find "$dest" -name "strace_*.deb" | grep -q .

@@ -102,6 +102,9 @@ jobs:
             scripts/aws/enterprise_bundle.py
             scripts/aws/lab_iam_capabilities.json
             scripts/gcp/offline_deliver.py
+            scripts/gcp/offline_deliver_1.py
+            scripts/gcp/offline_deliver_2.py
+            scripts/gcp/offline_deliver_3.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
@@ -250,6 +253,9 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/gcp/offline_deliver.py
+            scripts/gcp/offline_deliver_1.py
+            scripts/gcp/offline_deliver_2.py
+            scripts/gcp/offline_deliver_3.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
@@ -262,6 +268,8 @@ jobs:
             scripts/aws/lab-guests/descendant_probe
             scripts/aws/lab-guests/phase2_host.py
             scripts/aws/lab-guests/phase2_grade.py
+            scripts/aws/lab-guests/baseline_diag.py
+            scripts/aws/lab-guests/sticky_write.py
             scripts/aws/lab-guests/self_service.py
             scripts/lab/stage_lab_trust.py
             packages/vantio-install/vantio_install/
@@ -503,6 +511,9 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/gcp/offline_deliver.py
+            scripts/gcp/offline_deliver_1.py
+            scripts/gcp/offline_deliver_2.py
+            scripts/gcp/offline_deliver_3.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py

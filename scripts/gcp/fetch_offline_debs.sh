@@ -22,7 +22,7 @@ rm -rf /etc/apt/sources.list.d
 mkdir -p /etc/apt/sources.list.d
 apt-get update
 apt-get install -y --download-only --no-install-recommends \
-  docker.io python3-cryptography ca-certificates \
+  docker.io python3-cryptography ca-certificates strace \
   linux-tools-common \
   linux-tools-6.8.0-1069-gcp linux-gcp-tools-6.8.0-1069 \
   linux-tools-6.8.0-1070-gcp linux-gcp-tools-6.8.0-1070
@@ -35,5 +35,6 @@ EOS
 docker run --rm -v "$dest:/out" "$image" bash -c "$script"
 find "$dest" -type f -name 'docker.io_*.deb' | grep -q .
 find "$dest" -type f -name 'python3-cryptography_*.deb' | grep -q .
+find "$dest" -type f -name 'strace_*.deb' | grep -q .
 find "$dest" -type f -name 'ca-certificates_*.deb' | grep -q .
 test -s "$dest/ca-certificates.crt"
