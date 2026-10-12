@@ -74,6 +74,33 @@ def egress_word(errno: int | None) -> str:
     return "no_response"
 
 
+def egress_grade_block(control_errno: int | None, enrolled_errno: int | None) -> str | None:
+    """Why this egress pair must not be graded.
+
+    The unenrolled control has to finish the handshake before the enrolled
+    connect counts. A timeout, a refusal, or any other incomplete control is
+    the lab network (security group, firewall, or listener), so the case is
+    not a result. An enrolled timeout after a completed control is not a
+    result either. Errno 0, 1, 13, or 111 on the enrolled connect is definite.
+    """
+    if isinstance(control_errno, bool) or control_errno != 0:
+        return "lab_network"
+    if isinstance(enrolled_errno, bool) or enrolled_errno not in (0, 1, 13, 111):
+        return "enrolled_egress_timeout"
+    return None
+
+
+def ungraded_egress(battery: str, reason: str) -> dict[str, Any]:
+    """A timeout or a dead control. This is not a pass, a fail, or a hold."""
+    body = _base(battery)
+    body["setup_invalid"] = True
+    body["reason"] = reason
+    body["host_result"] = "NOT_GRADED"
+    body["expectation_met"] = False
+    body["classification"] = "not_graded"
+    return body
+
+
 def grade_upgrade(
     *,
     seal_sha256: str,
@@ -149,18 +176,25 @@ def grade_crash(
     body["enrolled_egress"] = enrolled
     body["unenrolled_egress"] = unenrolled
     file_row = _file_open_failed(file_errno, file_attributed)
+    if file_row is not None and file_row.get("file_open") != "attributed_deny":
+        body.update(file_row)
+        return body
+    block = egress_grade_block(unenrolled_errno, enrolled_errno)
+    if block is not None:
+        refused = ungraded_egress("2d-crash-recovery", block)
+        refused["enrolled_egress"] = enrolled
+        refused["unenrolled_egress"] = unenrolled
+        if file_row is not None:
+            refused["file_open"] = file_row.get("file_open")
+        return refused
     if file_row is not None:
-        if file_row.get("file_open") == "attributed_deny":
-            body["file_open"] = "attributed_deny"
-        else:
-            body.update(file_row)
-            return body
+        body["file_open"] = "attributed_deny"
     if enrolled == "allowed":
         body["classification"] = "silent_weakening"
         body["expectation_met"] = False
         body["host_result"] = "FAIL"
         return body
-    if enrolled == "no_response" or unenrolled != "allowed":
+    if unenrolled != "allowed":
         body["classification"] = "inconclusive"
         body["expectation_met"] = False
         body["host_result"] = "HOLD"
@@ -209,12 +243,19 @@ def grade_tamper(
     body["enrolled_egress"] = enrolled
     body["unenrolled_egress"] = unenrolled
     file_row = _file_open_failed(file_errno, file_attributed)
+    if file_row is not None and file_row.get("file_open") != "attributed_deny":
+        body.update(file_row)
+        return body
+    block = egress_grade_block(unenrolled_errno, enrolled_errno)
+    if block is not None:
+        refused = ungraded_egress("2f-tamper", block)
+        refused["enrolled_egress"] = enrolled
+        refused["unenrolled_egress"] = unenrolled
+        if file_row is not None:
+            refused["file_open"] = file_row.get("file_open")
+        return refused
     if file_row is not None:
-        if file_row.get("file_open") == "attributed_deny":
-            body["file_open"] = "attributed_deny"
-        else:
-            body.update(file_row)
-            return body
+        body["file_open"] = "attributed_deny"
     if enrolled == "allowed":
         body["classification"] = "silent_weakening"
         body["expectation_met"] = False
@@ -225,7 +266,7 @@ def grade_tamper(
         body["expectation_met"] = True
         body["host_result"] = "PASS"
         return body
-    if loader_up or enrolled == "no_response" or unenrolled != "allowed":
+    if loader_up or unenrolled != "allowed":
         body["classification"] = "inconclusive"
         body["expectation_met"] = False
         body["host_result"] = "HOLD"

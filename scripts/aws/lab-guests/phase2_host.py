@@ -44,19 +44,17 @@ EGRESS_HOST = "192.0.2.2"
 EGRESS_PORT = 9
 _LISTENER_SRC = """\
 import socket
-server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("192.0.2.2", 9))
+server.listen(64)
 server.settimeout(1)
 while True:
     try:
-        data, addr = server.recvfrom(16)
+        client, _addr = server.accept()
     except (TimeoutError, OSError):
         continue
-    try:
-        server.sendto(data or b"x", addr)
-    except OSError:
-        continue
+    client.close()
 """
 
 
@@ -193,31 +191,35 @@ def ensure_net() -> None:
     rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "link", "set", "vlab-peer", "up"])
 
 
-def _listener_up() -> bool:
-    """The root path is not enrolled. An echo means the receiver is up."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(0.4)
+def tcp_handshake_errno(timeout: float = 2.0) -> int:
+    """Complete a TCP handshake with the peer listener, or return the errno.
+
+    0 means the handshake finished. 110 is a timeout and is not a grade.
+    This process must not be in the enrolled cgroup when it is the control.
+    """
+    sock = socket.socket()
+    sock.settimeout(timeout)
     try:
-        sock.sendto(b"ping", (EGRESS_HOST, EGRESS_PORT))
-        data, _addr = sock.recvfrom(16)
-    except OSError:
-        return False
+        sock.connect((EGRESS_HOST, EGRESS_PORT))
+        return 0
+    except TimeoutError:
+        return 110
+    except OSError as exc:
+        return exc.errno or 1
     finally:
         sock.close()
-    return bool(data)
 
 
-def ensure_egress_listener() -> None:
-    """A receiver on the lab peer, so a connect is allowed or refused.
+def _listener_up() -> bool:
+    """An unenrolled handshake. This process is not in the enrolled cgroup."""
+    return tcp_handshake_errno(0.5) == 0
 
-    UDP to a closed port can return 0 without anyone receiving it. A timeout
-    on that send is not a blocked result and not an allowed result. This
-    listener accepts TCP from the peer address. A completed handshake is
-    allowed. EPERM or connection refused is blocked.
-    """
+
+def ensure_egress_listener() -> bool:
+    """Start the peer listener. True only after an unenrolled handshake completes."""
     ensure_net()
     if _listener_up():
-        return
+        return True
     path = Path("/tmp/vantio-egress-listen.py")
     path.write_text(_LISTENER_SRC, encoding="utf-8")
     subprocess.Popen(
@@ -228,35 +230,25 @@ def ensure_egress_listener() -> None:
     )
     for _ in range(25):
         if _listener_up():
-            return
+            return True
         time.sleep(0.1)
-    raise SystemExit("egress_listener")
+    return False
 
 
 def _egress_errno() -> int:
-    """Send one datagram and wait for the echo from the local listener.
+    """TCP handshake from the caller. 0 is allowed. 1 or 111 is blocked. 110 is not a grade."""
+    return tcp_handshake_errno()
 
-    EPERM or connection refused is blocked. An echo is allowed. A send that
-    is accepted and never answered was not delivered, so it stays 110.
+
+def control_handshake() -> int:
+    """Unenrolled handshake to the peer listener, before any enrolled connect.
+
+    0 means the handshake finished. Anything else means the lab network is
+    the problem and the enrolled connect must not run.
     """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(2)
-    try:
-        try:
-            sock.sendto(b"x", (EGRESS_HOST, EGRESS_PORT))
-        except TimeoutError:
-            return 110
-        except OSError as exc:
-            return exc.errno or 1
-        try:
-            data, _addr = sock.recvfrom(8)
-        except TimeoutError:
-            return 110
-        except OSError as exc:
-            return exc.errno or 1
-        return 0 if data else 110
-    finally:
-        sock.close()
+    if not ensure_egress_listener():
+        return tcp_handshake_errno()
+    return tcp_handshake_errno()
 
 
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
@@ -459,7 +451,7 @@ def child_open(enroll: bool) -> dict:
     enrolled ceiling workload. The parent joins the anchor first, then the
     child is born there, drops to uid 65534, and opens the signed path.
     """
-    ensure_egress_listener()
+    listener_ready = ensure_egress_listener()
     report_r, report_w = os.pipe()
     helper = os.fork()
     if helper == 0:
@@ -485,7 +477,7 @@ def child_open(enroll: bool) -> dict:
                     errno = 0
                 except OSError as exc:
                     errno = exc.errno or 1
-                net = _egress_errno()
+                net = _egress_errno() if listener_ready else 110
             except OSError as exc:
                 errno = exc.errno or 1
                 net = exc.errno or 1
@@ -629,11 +621,33 @@ def run_2d() -> dict:
     if loader_running():
         raise SystemExit("loader_still_up")
     enrolled = enterprise_open(digest)
-    # The file probe does not open a socket. The egress result is a second
-    # enrolled child connecting to the local listener.
+    # The file probe does not open a socket. The unenrolled control has to
+    # finish a TCP handshake with the same listener before any enrolled connect.
+    # A control timeout is the lab network, so this case is not graded.
+    control_errno = control_handshake()
+    control = {"enrolled": False, "net_errno": control_errno, "role": "control"}
+    if control_errno != 0:
+        refused = grade.ungraded_egress("2d-crash-recovery", "lab_network")
+        refused["policy_digest"] = digest
+        refused["while_loader_up"] = up
+        refused["enrolled_after"] = enrolled
+        refused["unenrolled_after"] = control
+        refused["control_errno"] = control_errno
+        refused["standin_after_sigkill"] = standin
+        return refused
     egress = child_open(True)
     enrolled["net_errno"] = egress.get("net_errno")
-    unenrolled = child_open(False)
+    block = grade.egress_grade_block(control_errno, egress.get("net_errno"))
+    if block is not None:
+        refused = grade.ungraded_egress("2d-crash-recovery", block)
+        refused["policy_digest"] = digest
+        refused["while_loader_up"] = up
+        refused["enrolled_after"] = enrolled
+        refused["unenrolled_after"] = control
+        refused["control_errno"] = control_errno
+        refused["standin_after_sigkill"] = standin
+        return refused
+    unenrolled = control
     event = enrolled.get("deny_event")
     file_attributed = (
         isinstance(event, dict)
@@ -652,6 +666,7 @@ def run_2d() -> dict:
     graded["while_loader_up"] = up
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
+    graded["control_errno"] = control_errno
     graded["file_after_enrolled"] = enrolled.get("file_errno")
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
@@ -685,8 +700,28 @@ def run_2f() -> dict:
     kill_loader()
     standin = standin_after_sigkill()
     still = loader_running()
+    control_errno = control_handshake()
+    control = {"enrolled": False, "net_errno": control_errno, "role": "control"}
+    if control_errno != 0:
+        refused = grade.ungraded_egress("2f-tamper", "lab_network")
+        refused["policy_digest"] = digest
+        refused["unenrolled_after"] = control
+        refused["control_errno"] = control_errno
+        refused["standin_after_sigkill"] = standin
+        refused["loader_up"] = still
+        return refused
     enrolled = child_open(True)
-    unenrolled = child_open(False)
+    block = grade.egress_grade_block(control_errno, enrolled.get("net_errno"))
+    if block is not None:
+        refused = grade.ungraded_egress("2f-tamper", block)
+        refused["policy_digest"] = digest
+        refused["enrolled_after"] = enrolled
+        refused["unenrolled_after"] = control
+        refused["control_errno"] = control_errno
+        refused["standin_after_sigkill"] = standin
+        refused["loader_up"] = still
+        return refused
+    unenrolled = control
     file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
     pins = []
     root = Path("/sys/fs/bpf")
@@ -702,6 +737,7 @@ def run_2f() -> dict:
     graded["policy_digest"] = digest
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
+    graded["control_errno"] = control_errno
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
     graded["bpf_pin_sample"] = pins
@@ -791,6 +827,8 @@ def main() -> int:
         publish({"battery": MODE, "harness_error": traceback.format_exc(), "lab_pass": False, "host_result": "FAIL"})
         return 1
     publish(body)
+    if body.get("host_result") == "NOT_GRADED":
+        return 2
     return 0
 
 
