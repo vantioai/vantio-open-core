@@ -17,6 +17,12 @@ import phase2_grade as grade  # noqa: E402
 
 
 class Phase2GradeTests(unittest.TestCase):
+    def test_baseline_anchor_is_nonzero_before_the_first_open(self) -> None:
+        self.assertFalse(grade.anchor_before_open_ok(0))
+        self.assertFalse(grade.anchor_before_open_ok(False))
+        self.assertFalse(grade.anchor_before_open_ok(None))
+        self.assertTrue(grade.anchor_before_open_ok(6884))
+
     def test_workflow_offers_the_same_phase_names(self) -> None:
         text = Path(__file__).resolve().parents[2].joinpath(
             ".github/workflows/w3-lab-auto-arm.yml"
