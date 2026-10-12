@@ -279,7 +279,7 @@ if [ "$mode" = "descendant-b1" ]; then
     set +e
     sudo env VANTIO_BRAIN_DIR="$brain" python3 "$here/redteam_rows.py" "$stage" > /tmp/redteam-rows.out 2>&1
     rt=$?
-  set -e
+    set -e
     cat /tmp/redteam-rows.out
     chmod a+r /tmp/redteam-rows.json 2>/dev/null || true
     printf 'REDTEAM_RC=%s\n' "$rt"
