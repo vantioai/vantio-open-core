@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -305,6 +306,166 @@ def cgroup_enroll_keys(inode: int, handle_id: int) -> list[int]:
         if key and key not in keys:
             keys.append(key)
     return keys
+
+
+READINESS_BLOCKED = "INSTALL_ENFORCEMENT_READINESS_BLOCKED"
+READINESS_REASON = "bpf_lsm_inactive"
+LSM_STOCK_PATH = Path("/var/lib/vantio-lab/lsm-stock.json")
+LSM_ROWS_PATH = Path("/tmp/enterprise-pe-rows.json")
+
+
+def lsm_list_with_bpf(current: str) -> str:
+    """Active LSM list with bpf appended. This does not edit a bootloader."""
+    tokens = [part.strip() for part in current.split(",") if part.strip()]
+    if "bpf" not in tokens:
+        tokens.append("bpf")
+    return ",".join(tokens)
+
+
+def classify_readiness_log(text: str) -> dict:
+    """The enforce generation refused, and it did not claim tc enforce."""
+    status = READINESS_BLOCKED in text and f"reason={READINESS_REASON}" in text
+    not_enforcing = "NOT ENFORCING" in text
+    reports = "tc enforce :" in text
+    return {
+        "blocked": status and not_enforcing and not reports,
+        "status_present": status,
+        "not_enforcing": not_enforcing,
+        "reports_enforcing": reports,
+    }
+
+
+def _rewrite_grub_text(text: str, lsm_value: str, *, own_the_value: bool) -> tuple[str, str | None]:
+    """Return the grub file with one lsm= assignment, or an error name."""
+    saw_linux = False
+    lines: list[str] = []
+    for raw in text.splitlines():
+        if "GRUB_CMDLINE_LINUX" in raw and "+=" in raw and "lsm=" in raw:
+            return text, "grub_append"
+        matched = re.match(r"^(\s*)(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)(\s*=\s*)(.*)$", raw)
+        if matched is None:
+            lines.append(raw)
+            continue
+        var = matched.group(2)
+        quoted = matched.group(4).strip()
+        if len(quoted) >= 2 and quoted[0] == quoted[-1] and quoted[0] in {'"', "'"}:
+            value = quoted[1:-1]
+        else:
+            value = quoted
+        tokens = [token for token in value.split() if token and not token.startswith("lsm=")]
+        if own_the_value and var == "GRUB_CMDLINE_LINUX":
+            tokens.append(f"lsm={lsm_value}")
+            saw_linux = True
+        indent = matched.group(1)
+        lines.append(f'{indent}{var}="{" ".join(tokens)}"')
+    if own_the_value and not saw_linux:
+        if lines and lines[-1] != "":
+            lines.append(f'GRUB_CMDLINE_LINUX="lsm={lsm_value}"')
+        else:
+            lines.append(f'GRUB_CMDLINE_LINUX="lsm={lsm_value}"')
+    body = "\n".join(lines)
+    if text.endswith("\n") or not text:
+        body += "\n"
+    return body, None
+
+
+def plan_grub_lsm(main: str, extras: list[str], lsm_value: str) -> dict:
+    """Put lsm=<value> on GRUB_CMDLINE_LINUX and drop other lsm= tokens."""
+    if not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value):
+        return {"error": "lsm_value"}
+    new_main, err = _rewrite_grub_text(main, lsm_value, own_the_value=True)
+    if err:
+        return {"error": err}
+    new_extras: list[str] = []
+    for extra in extras:
+        rewritten, err = _rewrite_grub_text(extra, lsm_value, own_the_value=False)
+        if err:
+            return {"error": err}
+        new_extras.append(rewritten)
+    return {"main": new_main, "extras": new_extras}
+
+
+def lsm_status_body(
+    stock: str,
+    cmdline: str,
+    prior: dict | None,
+    *,
+    distro: str = "",
+    kernel: str = "",
+    image_id: str = "",
+) -> dict:
+    """Confirm bpf is listed. A requested reboot still has to show it on the cmdline."""
+    cmdline_has = False
+    for token in cmdline.split():
+        if token.startswith("lsm=") and bpf_lsm_active(token.split("=", 1)[1]):
+            cmdline_has = True
+    requested = isinstance(prior, dict) and prior.get("reboot_requested") is True
+    if requested:
+        result = "LSM_ENABLED" if cmdline_has else "FAIL"
+        reason = "bpf_listed" if cmdline_has else "cmdline_missing_bpf"
+    else:
+        result = "LSM_ALREADY_ACTIVE"
+        reason = "stock_bpf_lsm"
+    return {
+        "battery": "lsm-guard",
+        "host_result": result,
+        "reason": reason,
+        "stock_lsm": stock,
+        "stock_bpf_lsm": True,
+        "cmdline": cmdline,
+        "bpf_listed": True,
+        "cmdline_has_bpf": cmdline_has,
+        "prior_guard": prior if isinstance(prior, dict) else None,
+        "distro": distro,
+        "kernel": kernel,
+        "image_id": image_id,
+        "reboot_requested": False,
+        "lab_pass": False,
+        "customer_claim": False,
+    }
+
+
+def _pretty_distro() -> str:
+    path = Path("/etc/os-release")
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("PRETTY_NAME="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return ""
+
+
+def write_lsm_status() -> int:
+    """0 when bpf is already an active LSM. 1 when the loader proof still has to run."""
+    lsm_path = Path("/sys/kernel/security/lsm")
+    stock = lsm_path.read_text(encoding="utf-8").strip() if lsm_path.is_file() else ""
+    cmdline_path = Path("/proc/cmdline")
+    cmdline = cmdline_path.read_text(encoding="utf-8").strip() if cmdline_path.is_file() else ""
+    if not bpf_lsm_active(stock):
+        return 1
+    prior = None
+    if LSM_STOCK_PATH.is_file():
+        try:
+            loaded = json.loads(LSM_STOCK_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            loaded = None
+        prior = loaded if isinstance(loaded, dict) else None
+    body = lsm_status_body(
+        stock,
+        cmdline,
+        prior,
+        distro=_pretty_distro(),
+        kernel=os.uname().release,
+        image_id=os.environ.get("VANTIO_IMAGE_ID", ""),
+    )
+    text = json.dumps(body, indent=2) + "\n"
+    LSM_ROWS_PATH.write_text(text, encoding="utf-8")
+    try:
+        os.chmod(LSM_ROWS_PATH, 0o644)
+    except OSError:
+        pass
+    print(text, flush=True)
+    return 0 if body["host_result"] != "FAIL" else 2
 
 
 def _le_int(value: object) -> int | None:

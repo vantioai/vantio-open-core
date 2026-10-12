@@ -7,7 +7,7 @@ set -euo pipefail
 seal=${1:?}
 here=$(cd "$(dirname "$0")" && pwd)
 stage=/opt/vantio-enterprise
-image_name=vantio-phantom-engine:decision-6f32467
+image_name=vantio-phantom-engine:lsm-04ec89c
 trust_sha=2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876
 if ! printf '%s' "$seal" | grep -Eq '^[0-9a-f]{64}$'; then
   exit 2
@@ -56,6 +56,28 @@ with tarfile.open(path, "r:*") as tar:
 if not found:
     raise SystemExit(5)
 PY
+# A second boot already has bpf in the LSM list. Confirm that and return
+# before docker starts. The first boot falls through and proves the refusal.
+if [ "${2:-}" = "lsm-guard" ]; then
+  set +e
+  sudo python3 - "$here" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+raise SystemExit(baseline_diag.write_lsm_status())
+PY
+  st=$?
+  set -e
+  if [ "$st" -eq 0 ]; then
+    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    exit 0
+  fi
+  if [ "$st" -eq 2 ]; then
+    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    exit 2
+  fi
+fi
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"
@@ -303,7 +325,7 @@ if [ "$mode" = "descendant-b1" ]; then
   exit "$rc"
 fi
 case "$mode" in
-  2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro)
+  2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
     set +e
     sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
@@ -324,6 +346,20 @@ case "$mode" in
     fi
     if ! authorized_uninstall "$image" "$require_row" "$probe_pid"; then
       exit 1
+    fi
+    if [ "$mode" = "lsm-guard" ] && [ -s /tmp/enterprise-pe-rows.json ]; then
+      want=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
+      if [ "$want" = "yes" ]; then
+        sync
+        # The offline lab network leaves google-shutdown-scripts.service/stop
+        # running with no limit, so a normal reboot never reaches a new boot.
+        # Mask that unit, then force the reset after this shell returns.
+        sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
+        sudo systemctl reset-failed vantio-lab-lsm-reboot >/dev/null 2>&1 || true
+        if ! sudo systemd-run --on-active=45s --unit=vantio-lab-lsm-reboot systemctl reboot --force; then
+          sudo systemctl reboot --force || true
+        fi
+      fi
     fi
     exit "$rc"
     ;;

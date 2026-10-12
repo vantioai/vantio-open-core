@@ -11,7 +11,7 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-WORKING_SEAL = "5ee3d3a6501038b3f1314245d6a880745c63d212f340a59693c6262199d5a504"
+WORKING_SEAL = "00035ea98dd597d6ed1da89f06f9ae8d76c86984f3012bdc6492a44e7cb9df1c"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "2c-upgrade-rollback",
@@ -19,6 +19,7 @@ PHASES = (
     "2e-performance",
     "2f-tamper",
     "2g-distro",
+    "lsm-guard",
 )
 MAX_PERF_SECONDS = 900
 # Lab listener on the host's own address. Not a privileged port.
