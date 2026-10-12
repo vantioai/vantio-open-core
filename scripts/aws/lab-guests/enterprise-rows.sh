@@ -59,6 +59,10 @@ PY
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"
+sudo chown -R "$(id -un):$(id -un)" "$stage"
+if find "$stage" -name 'private-key.pem' | grep -q .; then
+  exit 3
+fi
 python3 - "$stage/guest_rows.py" <<'PY'
 import pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -68,10 +72,6 @@ probed = 'os.write(result_w, f"{uid0} {nobody} {here} pid {os.getpid()}\\n".enco
 if probe in text:
     path.write_text(text.replace(probe, probed), encoding="utf-8")
 PY
-sudo chown -R "$(id -un):$(id -un)" "$stage"
-if find "$stage" -name 'private-key.pem' | grep -q .; then
-  exit 3
-fi
 # The lab security group has no egress. Packages arrive over the runner SSH
 # session. This script does not reach apt mirrors.
 if ! compgen -G "$here/debs/*.deb" >/dev/null; then
