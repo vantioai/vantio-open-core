@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-WORKING_SEAL = "67ce63c23d6076243eeaea083ce83adaa5a4f14b3414c60bb10cfe94b886dcfa"
+WORKING_SEAL = "13f7e0798c090634a97b0612378a0564c0adda2bb0ec0881f48d531598e3a834"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "2c-upgrade-rollback",
@@ -37,23 +37,24 @@ def _base(battery: str) -> dict[str, Any]:
 
 DENY_KIND_FILE = 1
 DENY_KIND_SELF = 4
-DENY_ATTR_SIZE = 40
+# DenyAttr on engine a86c7af: pid, uid, kind, path_len, anchor, timestamp, syscall, inodes, 32-byte path.
+DENY_ATTR_SIZE = 88
 
 
 def deny_record_anchor(record: bytes, pid: int) -> int:
     """Lineage anchor from a pinned DenyAttr, or 0 when the row does not name both.
 
-    Layout matches the loader struct: pid at 0, anchor_cgroup at 8, timestamp_ns
-    at 16, kind at 32. A pid with anchor 0 is not a post-kill hold.
+    pid is at 0, kind at 8, anchor_cgroup at 16, timestamp_ns at 24. A pid
+    with anchor 0 is not a post-kill hold.
     """
     if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
         return 0
     if len(record) < DENY_ATTR_SIZE:
         return 0
     got = int.from_bytes(record[0:4], "little")
-    anchor = int.from_bytes(record[8:16], "little")
-    timestamp = int.from_bytes(record[16:24], "little")
-    kind = int.from_bytes(record[32:36], "little")
+    kind = int.from_bytes(record[8:12], "little")
+    anchor = int.from_bytes(record[16:24], "little")
+    timestamp = int.from_bytes(record[24:32], "little")
     if got != pid or anchor == 0 or timestamp == 0 or kind not in (DENY_KIND_FILE, DENY_KIND_SELF):
         return 0
     return anchor

@@ -7,7 +7,7 @@ set -euo pipefail
 seal=${1:?}
 here=$(cd "$(dirname "$0")" && pwd)
 stage=/opt/vantio-enterprise
-image_name=vantio-phantom-engine:inode-371968f
+image_name=vantio-phantom-engine:postkill-a86c7af
 trust_sha=2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876
 if ! printf '%s' "$seal" | grep -Eq '^[0-9a-f]{64}$'; then
   exit 2
@@ -109,6 +109,92 @@ load=$(sudo docker load -i "$here/seal.oci.tar" 2>&1)
 printf '%s\n' "$load"
 image=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
 test "$image" = "$image_name"
+
+authorized_uninstall() {
+  local image="$1"
+  local require_row="${2:-no}"
+  local probe_pid="${3:-0}"
+  export PATH="/usr/sbin:/usr/bin:$PATH"
+  if ! command -v bpftool >/dev/null 2>&1; then
+    echo "UNINSTALL_RESIDUAL bpftool missing" >&2
+    return 1
+  fi
+  sudo docker stop --signal SIGINT --time 20 vantio-lab-loader >/dev/null 2>&1 || true
+  sudo docker rm -f vantio-lab-loader >/dev/null 2>&1 || true
+  sudo mkdir -p /var/lib/vantio /var/log/vantio
+  if [ ! -s /var/lib/vantio/enterprise-uninstall.token ]; then
+    printf '%s\n' "lab-nonprod-uninstall" | sudo tee /var/lib/vantio/enterprise-uninstall.token >/dev/null
+  fi
+  local token
+  token=$(sudo cat /var/lib/vantio/enterprise-uninstall.token)
+  if [ -f /run/vantio-failclosed-mounts ]; then
+    while IFS= read -r path; do
+      case "$path" in
+        /*) sudo umount "$path" >/dev/null 2>&1 || true ;;
+      esac
+    done < /run/vantio-failclosed-mounts
+  fi
+  if ! sudo docker image inspect "$image" >/dev/null 2>&1; then
+    sudo docker load -i "$here/seal.oci.tar" >/dev/null
+  fi
+  local cid
+  cid=$(sudo docker create "$image")
+  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader
+  sudo docker rm "$cid" >/dev/null
+  sudo chmod 755 /var/lib/vantio/vantio-loader
+  set +e
+  sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/tmp/vantio-uninstall.out 2>&1
+  local urc=$?
+  set -e
+  cat /tmp/vantio-uninstall.out
+  if ! grep -qx 'UNINSTALL_VERIFIED' /tmp/vantio-uninstall.out; then
+    echo "UNINSTALL_NOT_VERIFIED rc=$urc" >&2
+    return 1
+  fi
+  if find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null | grep -q .; then
+    echo "UNINSTALL_RESIDUAL bpffs" >&2
+    find /sys/fs/bpf -maxdepth 2 -name 'vantio*' >&2 || true
+    return 1
+  fi
+  if [ "$require_row" = "yes" ]; then
+    python3 - "$probe_pid" /tmp/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
+import json, sys
+want = int(sys.argv[1])
+found = False
+for path in sys.argv[2:]:
+    try:
+        lines = open(path, errors="replace").read().splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("source") != "deny_attr_post_kill" or row.get("ActionTaken") != "DENIED":
+            continue
+        pid = row.get("Pid")
+        anchor = row.get("lineage_anchor")
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            continue
+        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
+            continue
+        if want > 0 and pid != want:
+            continue
+        print(f"deny_attr_post_kill pid {pid} anchor {anchor}")
+        found = True
+        break
+    if found:
+        break
+if not found:
+    raise SystemExit("post_kill_row_missing")
+PY
+  fi
+}
+
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
@@ -162,8 +248,26 @@ case "$mode" in
       cp /tmp/phase2-host.out /tmp/enterprise-pe-rows.json
     fi
     printf 'PY_RC=%s\n' "$rc"
+    require_row=no
+    probe_pid=0
+    if [ "$mode" = "2f-tamper" ]; then
+      require_row=yes
+      if [ -s /tmp/enterprise-pe-rows.json ]; then
+        probe_pid=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); e=d.get("enrolled_after") or {}; p=e.get("pid") or 0; print(p if isinstance(p, int) else 0)')
+      fi
+    fi
+    if ! authorized_uninstall "$image" "$require_row" "$probe_pid"; then
+      exit 1
+    fi
     exit "$rc"
     ;;
 esac
+set +e
 sudo rm -f /tmp/enterprise-pe-rows.json
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
+rc=$?
+set -e
+if ! authorized_uninstall "$image" no 0; then
+  exit 1
+fi
+exit "$rc"

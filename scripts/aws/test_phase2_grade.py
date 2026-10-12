@@ -127,14 +127,14 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertEqual(tamper_held["file_open"], "attributed_deny")
         record = bytearray(grade.DENY_ATTR_SIZE)
         record[0:4] = (4242).to_bytes(4, "little")
-        record[16:24] = (9).to_bytes(8, "little")
-        record[32:36] = (grade.DENY_KIND_FILE).to_bytes(4, "little")
+        record[8:12] = (grade.DENY_KIND_FILE).to_bytes(4, "little")
+        record[24:32] = (9).to_bytes(8, "little")
         self.assertFalse(grade.deny_record_names(bytes(record), 4242))
-        record[8:16] = (7774).to_bytes(8, "little")
+        record[16:24] = (7774).to_bytes(8, "little")
         self.assertEqual(grade.deny_record_anchor(bytes(record), 4242), 7774)
         self.assertTrue(grade.deny_record_names(bytes(record), 4242))
         self.assertFalse(grade.deny_record_names(bytes(record), 4243))
-        record[16:24] = (0).to_bytes(8, "little")
+        record[24:32] = (0).to_bytes(8, "little")
         self.assertFalse(grade.deny_record_names(bytes(record), 4242))
 
     def test_performance_rejects_a_second_host_and_a_long_run(self) -> None:
