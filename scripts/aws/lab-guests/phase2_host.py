@@ -28,6 +28,7 @@ MODE = sys.argv[2] if len(sys.argv) > 2 else ""
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(STAGE))
 
+import baseline_diag  # noqa: E402
 import guest_rows as rows  # noqa: E402
 import phase2_grade as grade  # noqa: E402
 from vantio_enterprise_protocol.control import ControlPlane  # noqa: E402
@@ -950,12 +951,21 @@ def run_2d() -> dict:
         )
     up = enterprise_open(digest)
     if not baseline_ready(up):
+        try:
+            diag = baseline_diag.collect(
+                str(rows.DENY),
+                anchor,
+                str(Path(rows.ANCHOR) / "cgroup.procs"),
+            )
+        except Exception as exc:
+            diag = {"cause": "diag_failed", "error": type(exc).__name__}
         return _setup_invalid(
             up,
             digest,
             while_loader_up=up,
             anchor_before_open=anchor,
             path_facts=path_facts,
+            baseline_diag=diag,
         )
     carried = same_process_across_restart(adapter)
     if not carried.get("held"):
