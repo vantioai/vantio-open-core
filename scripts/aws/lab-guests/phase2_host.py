@@ -326,15 +326,63 @@ def egress_observation() -> dict:
     return {"egress_target": host, "egress_port": port}
 
 
+def _docker_host_ip(args: list[str]):
+    """Run ip in the netns Docker uses for --network=host.
+
+    The loader container uses that flag. A veth created by the host ip
+    command was not visible there, so tc returned ENODEV.
+    """
+    image = os.environ.get("VANTIO_IMAGE") or rows.IMAGE
+    if not image:
+        raise SystemExit("lab_iface_image")
+    return rows.sudo(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network=host",
+            "--privileged",
+            "--entrypoint",
+            "/usr/bin/ip",
+            "-v",
+            "/usr/bin/ip:/usr/bin/ip:ro",
+            "-v",
+            "/lib:/lib:ro",
+            "-v",
+            "/lib64:/lib64:ro",
+            "-v",
+            "/usr/lib:/usr/lib:ro",
+            image,
+            *args,
+        ],
+        timeout=40,
+    )
+
+
 def ensure_lab_iface() -> None:
-    """The loader attaches tc to vlab-host. A missing device exits before the readiness line."""
-    if rows.run(["ip", "link", "show", "vlab-host"]).returncode == 0:
-        rows.sudo(["ip", "link", "set", "vlab-host", "up"])
-        return
-    added = rows.sudo(["ip", "link", "add", "vlab-host", "type", "dummy"])
-    if added.returncode != 0:
-        raise SystemExit("lab_iface")
-    rows.sudo(["ip", "link", "set", "vlab-host", "up"])
+    """Create vlab-host in the loader's network namespace."""
+    show = _docker_host_ip(["link", "show", "vlab-host"])
+    if show.returncode != 0:
+        added = _docker_host_ip(
+            ["link", "add", "vlab-host", "type", "veth", "peer", "name", "vlab-peer"]
+        )
+        if added.returncode != 0:
+            detail = ((added.stderr or "") + (added.stdout or ""))[-240:]
+            raise SystemExit(f"lab_iface {added.returncode} {detail}")
+        peer = _docker_host_ip(["link", "set", "vlab-peer", "up"])
+        if peer.returncode != 0:
+            raise SystemExit("lab_iface_peer")
+    up = _docker_host_ip(["link", "set", "vlab-host", "up"])
+    if up.returncode != 0:
+        raise SystemExit("lab_iface_up")
+
+
+def vantio_bpf_pins() -> list[str]:
+    """Pinned map and program names the loader left under bpffs."""
+    root = Path("/sys/fs/bpf")
+    if not root.is_dir():
+        return []
+    return sorted(path.name for path in root.iterdir() if path.name.startswith("vantio"))
 
 
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
@@ -1305,6 +1353,32 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     return {"updated": True, "error": ""}
 
 
+def _refusal_log() -> str:
+    """One enforce start. On a stock image this exits before any program is pinned."""
+    rows.ensure_cgroups()
+    ensure_lab_iface()
+    meta = rows.load("meta.json")
+    plane = ControlPlane(LocalHostVerifier(load_packaged_test_trust()), root_ids=("cust-root", "cust-b"))
+    adapter = PeHostAdapter(plane)
+    opened = plane.submit_activation(rows.load("activation.json"), rows.sig("activation.sig.json"))
+    adapter.on_activation(opened, plane.policy)
+    granted = plane.submit_governance(rows.load("grant.json"), rows.sig("grant.sig.json"), now=meta["now"])
+    adapter.on_governance(granted, "grant")
+    rows.LAB.mkdir(parents=True, exist_ok=True)
+    (rows.LAB / "evidence").mkdir(parents=True, exist_ok=True)
+    (rows.LAB / "d").mkdir(parents=True, exist_ok=True)
+    rows.DENY.write_text("lab-deny-marker\n", encoding="utf-8")
+    os.chmod(rows.DENY, 0o644)
+    rows.sudo(["mkdir", "-p", rows.ANCHOR])
+    revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
+    adapter.on_governance(revoked, "revoke")
+    ensure_lab_iface()
+    blocked = rows.start_loader(adapter)
+    if blocked["rc"] != 0:
+        raise SystemExit(f"enforce loader {blocked['rc']}")
+    return _wait_readiness_log()
+
+
 def run_lsm_guard() -> dict:
     """Prove the stock host refuses, then write the consented lab cmdline."""
     facts = kernel_facts()
@@ -1325,14 +1399,24 @@ def run_lsm_guard() -> dict:
         body["host_result"] = "LSM_ALREADY_ACTIVE"
         body["reason"] = "stock_bpf_lsm"
         return body
-    log = _enforce_generation_log()
+    log = _refusal_log()
     verdict = baseline_diag.classify_readiness_log(log)
     body["readiness"] = verdict
     body["loader_log_tail"] = log[-2000:]
+    body["egress_present"] = "status=present" in log
+    body["bpf_pins"] = vantio_bpf_pins()
     rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
     if not verdict["blocked"]:
         body["host_result"] = "FAIL"
         body["reason"] = "readiness_not_blocked"
+        return body
+    if body["bpf_pins"]:
+        body["host_result"] = "FAIL"
+        body["reason"] = "pins_left"
+        return body
+    if not body["egress_present"]:
+        body["host_result"] = "FAIL"
+        body["reason"] = "egress_iface_missing"
         return body
     lsm_value = baseline_diag.lsm_list_with_bpf(stock)
     applied = apply_consented_lsm(lsm_value)
