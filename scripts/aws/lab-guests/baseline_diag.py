@@ -114,15 +114,6 @@ def sysctls() -> dict[str, str]:
     return found
 
 
-def _ensure_strace() -> bool:
-    if shutil.which("strace"):
-        return True
-    if os.geteuid() != 0:
-        return False
-    _run(["apt-get", "install", "-y", "strace"], timeout=90)
-    return shutil.which("strace") is not None
-
-
 def _as_subject(argv: list[str]) -> dict:
     if os.geteuid() != 0:
         return _run(argv)
@@ -232,15 +223,26 @@ def _overflow() -> int | None:
     return None
 
 
-def _apparmor() -> dict:
+def relevant_apparmor(lines: list[str], path: str, pid: int) -> list[str]:
+    """AppArmor DENIED lines that name this path or this pid. Other lines do not count."""
+    matched: list[str] = []
+    pid_mark = f"pid={pid}" if pid > 0 else ""
+    for line in lines:
+        lowered = line.lower()
+        if "apparmor" not in lowered or "denied" not in lowered:
+            continue
+        if path and path in line:
+            matched.append(line)
+        elif pid_mark and pid_mark in line:
+            matched.append(line)
+    return matched
+
+
+def _apparmor(path: str, pid: int) -> dict:
     kernel = _run(["dmesg"])
     journal = _run(["journalctl", "-k", "-n", "300", "--no-pager"])
     blob = (kernel.get("stdout") or "") + "\n" + (journal.get("stdout") or "")
-    denied = [
-        line
-        for line in blob.splitlines()
-        if "apparmor" in line.lower() and "denied" in line.lower()
-    ]
+    denied = relevant_apparmor(blob.splitlines(), path, pid)
     return {"denied": denied[:20], "denied_count": len(denied)}
 
 
@@ -287,7 +289,7 @@ def collect(path: str, anchor: int, cgroup_procs: str) -> dict:
         probe_path = handle.name
     os.chmod(probe_path, 0o755)
     probe_argv = ["python3", probe_path, path, cgroup_procs, str(SUBJECT)]
-    if _ensure_strace():
+    if shutil.which("strace"):
         probe_argv = ["strace", "-f", "-e", "trace=openat,open", "-s", "160", *probe_argv]
     try:
         traced = _tracelog_around(probe_argv)
@@ -302,7 +304,7 @@ def collect(path: str, anchor: int, cgroup_procs: str) -> dict:
     lookup = _lookup_deny(probe_pid)
     after_count = _map_count(DENY_PIN)
     after_overflow = _overflow()
-    apparmor = _apparmor()
+    apparmor = _apparmor(path, probe_pid)
     facts = {
         "anchor": anchor,
         "after_uid": parsed.get("after") or "",
@@ -352,8 +354,6 @@ def classify(facts: dict) -> str:
         return "parent_traverse"
     if facts.get("file_unreadable_outside") is True:
         return "file_mode"
-    if facts.get("apparmor_denied") is True:
-        return "apparmor"
     if facts.get("open_errno") != 13:
         return "open_not_eacces"
     if facts.get("open_uses_o_creat") is True and facts.get("sticky_parent") is True:
@@ -364,6 +364,8 @@ def classify(facts: dict) -> str:
         return "deny_row_other_pid"
     if facts.get("overflow_increased") is True:
         return "silent_deny_overflow"
+    if facts.get("apparmor_denied") is True:
+        return "apparmor"
     if facts.get("strace_eacces") is True and facts.get("cgroup_matches_enrolled") is True:
         return "eacces_unaccounted"
     if facts.get("strace_eacces") is True:
