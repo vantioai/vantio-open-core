@@ -806,7 +806,7 @@ def _guest_payload(text: str) -> dict[str, Any] | None:
     found: dict[str, Any] | None = None
     index = 0
     while True:
-        start = text.find("{")
+        start = text.find("{", index)
         if start < 0:
             return found
         try:
