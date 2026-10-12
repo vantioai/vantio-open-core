@@ -40,13 +40,14 @@ from vantio_enterprise_protocol.trust import load_packaged_test_trust  # noqa: E
 
 OUT_PATH = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
 SUBJECT = 65534
-EGRESS_HOST = "192.0.2.2"
-EGRESS_PORT = 9
 _LISTENER_SRC = """\
+import os
 import socket
+host = os.environ["VANTIO_EGRESS_HOST"]
+port = int(os.environ["VANTIO_EGRESS_PORT"])
 server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(("192.0.2.2", 9))
+server.bind((host, port))
 server.listen(64)
 server.settimeout(1)
 while True:
@@ -56,6 +57,8 @@ while True:
         continue
     client.close()
 """
+_ENDPOINT_READY = False
+_ENDPOINT: tuple[str, int] | None = None
 
 
 def publish(body: dict) -> None:
@@ -178,29 +181,77 @@ def attributed(pid: int, action: str) -> bool:
     return False
 
 
-def ensure_net() -> None:
-    if rows.run(["ip", "link", "show", "vlab-host"]).returncode == 0:
-        return
-    rows.sudo(["ip", "link", "add", "vlab-host", "type", "veth", "peer", "name", "vlab-peer"])
-    rows.sudo(["ip", "addr", "add", "192.0.2.1/30", "dev", "vlab-host"])
-    rows.sudo(["ip", "link", "set", "vlab-host", "up"])
-    rows.sudo(["ip", "netns", "add", "pelab-ns"])
-    rows.sudo(["ip", "link", "set", "vlab-peer", "netns", "pelab-ns"])
-    rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "link", "set", "lo", "up"])
-    rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "addr", "add", "192.0.2.2/30", "dev", "vlab-peer"])
-    rows.sudo(["ip", "netns", "exec", "pelab-ns", "ip", "link", "set", "vlab-peer", "up"])
+def _configured_target() -> tuple[str | None, int | None]:
+    """Arm override. An empty host means discover this machine's own address."""
+    host = os.environ.get("VANTIO_EGRESS_HOST", "").strip() or None
+    raw = os.environ.get("VANTIO_EGRESS_PORT", "").strip()
+    if not raw:
+        return host, None
+    if not raw.isdigit():
+        return host, -1
+    return host, int(raw)
+
+
+def primary_local_ipv4s() -> list[str]:
+    """This host's own non-loopback IPv4 addresses, primary source first.
+
+    Docker bridges and the old lab veth stay at the end. A documentation
+    address can appear here and is dropped later by the chooser.
+    """
+    preferred: list[str] = []
+    other: list[str] = []
+    route = rows.run(["ip", "-4", "route", "get", "1.1.1.1"])
+    if route.returncode == 0:
+        parts = (route.stdout or "").split()
+        if "src" in parts:
+            index = parts.index("src")
+            if index + 1 < len(parts):
+                preferred.append(parts[index + 1])
+    listed = rows.run(["ip", "-4", "-o", "addr", "show", "scope", "global"])
+    if listed.returncode == 0:
+        for line in (listed.stdout or "").splitlines():
+            bits = line.split()
+            if len(bits) < 4 or bits[2] != "inet":
+                continue
+            ifname = bits[1]
+            addr = bits[3].split("/", 1)[0]
+            if addr in preferred or addr in other:
+                continue
+            if ifname == "lo" or ifname.startswith(("docker", "veth", "br-", "vlab", "cni")):
+                other.append(addr)
+            else:
+                preferred.append(addr)
+    return preferred + other
+
+
+def egress_endpoint() -> tuple[str, int] | None:
+    """The reachable listener for this run. None means do not grade."""
+    global _ENDPOINT, _ENDPOINT_READY
+    if not _ENDPOINT_READY:
+        configured, port = _configured_target()
+        _ENDPOINT = grade.choose_egress_target(configured, port, primary_local_ipv4s())
+        _ENDPOINT_READY = True
+    return _ENDPOINT
+
+
+def _address_is_local(host: str) -> bool:
+    return host in primary_local_ipv4s()
 
 
 def tcp_handshake_errno(timeout: float = 2.0) -> int:
-    """Complete a TCP handshake with the peer listener, or return the errno.
+    """Complete a TCP handshake with the lab listener, or return the errno.
 
     0 means the handshake finished. 110 is a timeout and is not a grade.
     This process must not be in the enrolled cgroup when it is the control.
     """
+    target = egress_endpoint()
+    if target is None:
+        return 110
+    host, port = target
     sock = socket.socket()
     sock.settimeout(timeout)
     try:
-        sock.connect((EGRESS_HOST, EGRESS_PORT))
+        sock.connect((host, port))
         return 0
     except TimeoutError:
         return 110
@@ -216,14 +267,28 @@ def _listener_up() -> bool:
 
 
 def ensure_egress_listener() -> bool:
-    """Start the peer listener. True only after an unenrolled handshake completes."""
-    ensure_net()
+    """Start the listener on this host's own address, then complete a handshake.
+
+    A paired address is not started here. The arm has to listen on that
+    instance and allow the port. If that handshake does not finish, the
+    caller leaves the case ungraded.
+    """
+    target = egress_endpoint()
+    if target is None:
+        return False
+    host, port = target
+    if not _address_is_local(host):
+        return _listener_up()
     if _listener_up():
         return True
     path = Path("/tmp/vantio-egress-listen.py")
     path.write_text(_LISTENER_SRC, encoding="utf-8")
+    env = os.environ.copy()
+    env["VANTIO_EGRESS_HOST"] = host
+    env["VANTIO_EGRESS_PORT"] = str(port)
     subprocess.Popen(
-        ["ip", "netns", "exec", "pelab-ns", "python3", str(path)],
+        ["python3", str(path)],
+        env=env,
         start_new_session=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -251,9 +316,17 @@ def control_handshake() -> int:
     return tcp_handshake_errno()
 
 
+def egress_observation() -> dict:
+    """The address this run actually used, so a timeout names its target."""
+    target = egress_endpoint()
+    if target is None:
+        return {"egress_target": None, "egress_port": None}
+    host, port = target
+    return {"egress_target": host, "egress_port": port}
+
+
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
     rows.ensure_cgroups()
-    ensure_net()
     meta = rows.load("meta.json")
     plane = ControlPlane(LocalHostVerifier(load_packaged_test_trust()), root_ids=("cust-root", "cust-b"))
     adapter = PeHostAdapter(plane)
@@ -625,7 +698,8 @@ def run_2d() -> dict:
     # finish a TCP handshake with the same listener before any enrolled connect.
     # A control timeout is the lab network, so this case is not graded.
     control_errno = control_handshake()
-    control = {"enrolled": False, "net_errno": control_errno, "role": "control"}
+    control = {"enrolled": False, "net_errno": control_errno, "role": "control", "file_errno": None}
+    observed = egress_observation()
     if control_errno != 0:
         refused = grade.ungraded_egress("2d-crash-recovery", "lab_network")
         refused["policy_digest"] = digest
@@ -634,6 +708,7 @@ def run_2d() -> dict:
         refused["unenrolled_after"] = control
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
+        refused.update(observed)
         return refused
     egress = child_open(True)
     enrolled["net_errno"] = egress.get("net_errno")
@@ -646,8 +721,19 @@ def run_2d() -> dict:
         refused["unenrolled_after"] = control
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
+        refused.update(observed)
         return refused
-    unenrolled = control
+    file_open = child_open(False)
+    unenrolled = {
+        "cgroup": file_open.get("cgroup") or "",
+        "enrolled": False,
+        "file_errno": file_open.get("file_errno"),
+        "net_errno": control_errno,
+        "path": file_open.get("path"),
+        "pid": file_open.get("pid"),
+        "role": "control",
+        "uid": SUBJECT,
+    }
     event = enrolled.get("deny_event")
     file_attributed = (
         isinstance(event, dict)
@@ -667,6 +753,7 @@ def run_2d() -> dict:
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
     graded["control_errno"] = control_errno
+    graded.update(observed)
     graded["file_after_enrolled"] = enrolled.get("file_errno")
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
@@ -702,6 +789,7 @@ def run_2f() -> dict:
     still = loader_running()
     control_errno = control_handshake()
     control = {"enrolled": False, "net_errno": control_errno, "role": "control"}
+    observed = egress_observation()
     if control_errno != 0:
         refused = grade.ungraded_egress("2f-tamper", "lab_network")
         refused["policy_digest"] = digest
@@ -709,6 +797,7 @@ def run_2f() -> dict:
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
         refused["loader_up"] = still
+        refused.update(observed)
         return refused
     enrolled = child_open(True)
     block = grade.egress_grade_block(control_errno, enrolled.get("net_errno"))
@@ -720,6 +809,7 @@ def run_2f() -> dict:
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
         refused["loader_up"] = still
+        refused.update(observed)
         return refused
     unenrolled = control
     file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
@@ -738,6 +828,7 @@ def run_2f() -> dict:
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled
     graded["control_errno"] = control_errno
+    graded.update(observed)
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
     graded["bpf_pin_sample"] = pins

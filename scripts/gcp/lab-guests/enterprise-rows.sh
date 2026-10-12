@@ -349,7 +349,7 @@ case "$mode" in
     test -f "$here/phase2_host.py"
     test -f "$here/phase2_grade.py"
     set +e
-    sudo env VANTIO_IMAGE="$image" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
+    sudo env VANTIO_IMAGE="$image" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out
