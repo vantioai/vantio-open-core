@@ -1466,6 +1466,11 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     main_path.write_text(planned["main"], encoding="utf-8")
     for path, text in zip(extra_paths, planned["extras"]):
         path.write_text(text, encoding="utf-8")
+    extra_dir.mkdir(parents=True, exist_ok=True)
+    dropin = extra_dir / "99-vantio-lsm.cfg"
+    prior_dropin = dropin.read_text(encoding="utf-8") if dropin.is_file() else None
+    dropin.write_text(baseline_diag.lsm_dropin_text(lsm_value), encoding="utf-8")
+    dropin.chmod(0o755)
     proc = subprocess.run(["update-grub"], capture_output=True, text=True)
     if proc.returncode != 0:
         proc = subprocess.run(["grub-mkconfig", "-o", "/boot/grub/grub.cfg"], capture_output=True, text=True)
@@ -1473,9 +1478,14 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         main_path.write_text(main, encoding="utf-8")
         for path, text in zip(extra_paths, extras):
             path.write_text(text, encoding="utf-8")
+        if prior_dropin is None:
+            dropin.unlink(missing_ok=True)
+        else:
+            dropin.write_text(prior_dropin, encoding="utf-8")
+            dropin.chmod(0o755)
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
         return {"updated": False, "error": "update_grub", "tail": tail}
-    return {"updated": True, "error": ""}
+    return {"updated": True, "error": "", "dropin": "99-vantio-lsm.cfg"}
 
 
 def _refusal_log() -> str:

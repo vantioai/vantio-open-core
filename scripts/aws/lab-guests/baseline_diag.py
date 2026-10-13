@@ -369,6 +369,31 @@ def _rewrite_grub_text(text: str, lsm_value: str, *, own_the_value: bool) -> tup
     return body, None
 
 
+def lsm_dropin_text(lsm_value: str) -> str:
+    """Drop-in sourced after the Ubuntu cloud image grub files.
+
+    40-force-partuuid.cfg and 50-cloudimg-settings.cfg set
+    GRUB_CMDLINE_LINUX_DEFAULT. A later 99-vantio-lsm.cfg replaces that
+    value and keeps a single lsm= list. The file has to be executable or
+    grub-mkconfig skips it.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value):
+        raise ValueError("lsm_value")
+    return (
+        "# Lab host. Sourced after the cloud image grub drop-ins.\n"
+        '_vantio_bits=""\n'
+        "for _vantio_tok in $GRUB_CMDLINE_LINUX_DEFAULT $GRUB_CMDLINE_LINUX; do\n"
+        "  case $_vantio_tok in\n"
+        "    lsm=*) ;;\n"
+        '    *) _vantio_bits="$_vantio_bits $_vantio_tok" ;;\n'
+        "  esac\n"
+        "done\n"
+        f'GRUB_CMDLINE_LINUX_DEFAULT="${{_vantio_bits# }} lsm={lsm_value}"\n'
+        'GRUB_CMDLINE_LINUX=""\n'
+        "unset _vantio_tok _vantio_bits\n"
+    )
+
+
 def plan_grub_lsm(main: str, extras: list[str], lsm_value: str) -> dict:
     """Put lsm=<value> on GRUB_CMDLINE_LINUX and drop other lsm= tokens."""
     if not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value):
