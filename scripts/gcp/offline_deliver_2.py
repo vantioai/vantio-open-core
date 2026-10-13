@@ -406,12 +406,39 @@ def _wait_boot(project: str, name: str, before: str, timeout_s: int) -> str:
     return ""
 
 
+def scp_remove_miss_is_ignorable(detail: str) -> bool:
+    """gcloud exits 1 after a finished copy when OS Login key removal misses.
+
+    Any other line keeps the failure.
+    """
+    lines = [line.strip() for line in detail.splitlines() if line.strip()]
+    if not lines:
+        return False
+    saw = False
+    for line in lines:
+        lowered = line.lower()
+        if "os-login.ssh-keys.remove" in lowered and "cannot find requested ssh key" in lowered:
+            saw = True
+            continue
+        return False
+    return saw
+
+
 def _scp_to(project: str, name: str, sources: Sequence[Path]) -> None:
     for path in sources:
-        _run_ok(
-            iap_scp_argv(project, [str(path)], f"{name}:{GUEST_DIR}/{path.name}"),
-            "scp",
-        )
+        completed = _run(iap_scp_argv(project, [str(path)], f"{name}:{GUEST_DIR}/{path.name}"))
+        if completed.returncode == 0:
+            continue
+        detail = redact((completed.stderr or "") + (completed.stdout or ""))
+        if scp_remove_miss_is_ignorable(detail):
+            remote = shlex.quote(f"{GUEST_DIR}/{path.name}")
+            probe = _ssh(project, name, f"stat -c %s {remote}", timeout_s=PROBE_SSH_TIMEOUT)
+            if probe.returncode == 0 and (probe.stdout or "").strip() == str(path.stat().st_size):
+                continue
+        print(path.name, file=sys.stderr)
+        if detail:
+            print(detail[-2000:], file=sys.stderr)
+        raise SystemExit("scp")
 
 
 def _scp_from(project: str, name: str, remote: str, dest: Path) -> bool:
