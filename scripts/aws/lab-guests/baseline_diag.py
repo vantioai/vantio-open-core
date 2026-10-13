@@ -311,6 +311,7 @@ def cgroup_enroll_keys(inode: int, handle_id: int) -> list[int]:
 READINESS_BLOCKED = "INSTALL_ENFORCEMENT_READINESS_BLOCKED"
 READINESS_REASON = "bpf_lsm_inactive"
 LSM_STOCK_PATH = Path("/var/lib/vantio-lab/lsm-stock.json")
+LSM_BOOT_MARK = Path("/boot/vantio-lsm-stock.json")
 LSM_ROWS_PATH = Path("/tmp/enterprise-pe-rows.json")
 
 
@@ -402,14 +403,43 @@ def lsm_dropin_text(lsm_value: str) -> str:
     )
 
 
-def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
-    """True when a generated linux line carries this exact lsm= list."""
-    needle = f"lsm={lsm_value}"
+def first_linux_line(text: str) -> str:
+    """The first generated linux line, which is the entry a cloud image boots."""
     for raw in text.splitlines():
         stripped = raw.strip()
-        if stripped.startswith("linux") and needle in stripped.split():
-            return True
-    return False
+        if stripped.startswith("linux"):
+            return stripped
+    return ""
+
+
+def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
+    """True when the first linux line carries this exact lsm= list."""
+    return f"lsm={lsm_value}" in first_linux_line(text).split()
+
+
+def assignments_with_lsm(text: str, lsm_value: str) -> str:
+    """Put lsm= on every grub assignment in a cloud image drop-in file."""
+    token = f"lsm={lsm_value}"
+    lines: list[str] = []
+    for raw in text.splitlines():
+        matched = re.match(r"^(\s*)(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)(\s*=\s*)(.*)$", raw)
+        if matched is None:
+            lines.append(raw)
+            continue
+        quoted = matched.group(4).strip()
+        quote = '"'
+        if len(quoted) >= 2 and quoted[0] == quoted[-1] and quoted[0] in {'"', "'"}:
+            value = quoted[1:-1]
+            quote = quoted[0]
+        else:
+            value = quoted
+        tokens = [part for part in value.split() if part and not part.startswith("lsm=")]
+        tokens.append(token)
+        lines.append(f"{matched.group(1)}{matched.group(2)}={quote}{' '.join(tokens)}{quote}")
+    body = "\n".join(lines)
+    if text.endswith("\n") or not text:
+        body += "\n"
+    return body
 
 
 def plan_grub_lsm(main: str, extras: list[str], lsm_value: str) -> dict:
@@ -519,12 +549,16 @@ def write_lsm_status() -> int:
     cmdline_path = Path("/proc/cmdline")
     cmdline = cmdline_path.read_text(encoding="utf-8").strip() if cmdline_path.is_file() else ""
     prior = None
-    if LSM_STOCK_PATH.is_file():
+    for mark in (LSM_STOCK_PATH, LSM_BOOT_MARK):
+        if not mark.is_file():
+            continue
         try:
-            loaded = json.loads(LSM_STOCK_PATH.read_text(encoding="utf-8"))
+            loaded = json.loads(mark.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            loaded = None
-        prior = loaded if isinstance(loaded, dict) else None
+            continue
+        if isinstance(loaded, dict):
+            prior = loaded
+            break
     body, code = lsm_boot_decision(
         stock,
         cmdline,

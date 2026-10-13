@@ -435,7 +435,7 @@ def _scp_to(project: str, name: str, sources: Sequence[Path]) -> None:
             probe = _ssh(project, name, f"stat -c %s {remote}", timeout_s=PROBE_SSH_TIMEOUT)
             if probe.returncode == 0 and (probe.stdout or "").strip() == str(path.stat().st_size):
                 continue
-        print(path.name, file=sys.stderr)
+        print(f"scp_failed {path.name} bytes={path.stat().st_size}", file=sys.stderr)
         if detail:
             print(detail[-2000:], file=sys.stderr)
         raise SystemExit("scp")

@@ -1448,12 +1448,19 @@ def _enforce_generation_log() -> str:
     return _wait_readiness_log()
 
 
-def _read_grub_cfg() -> str:
-    chunks: list[str] = []
-    for path in (Path("/boot/grub/grub.cfg"), Path("/boot/efi/EFI/ubuntu/grub.cfg")):
-        if path.is_file():
-            chunks.append(path.read_text(encoding="utf-8", errors="replace"))
-    return "\n".join(chunks)
+def _grub_cfg_paths() -> list[Path]:
+    found: list[Path] = []
+    for root in (Path("/boot/grub"), Path("/boot/efi")):
+        if root.is_dir():
+            found.extend(sorted(path for path in root.rglob("grub.cfg") if path.is_file()))
+    return found
+
+
+def _cfg_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def _run_update_grub() -> subprocess.CompletedProcess[str]:
@@ -1480,7 +1487,7 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     (backup / "grub-default.bak").write_text(main, encoding="utf-8")
     main_path.write_text(planned["main"], encoding="utf-8")
     for path, text in zip(extra_paths, planned["extras"]):
-        path.write_text(text, encoding="utf-8")
+        path.write_text(baseline_diag.assignments_with_lsm(text, lsm_value), encoding="utf-8")
     extra_dir.mkdir(parents=True, exist_ok=True)
     dropin = extra_dir / "99-vantio-lsm.cfg"
     prior_dropin = dropin.read_text(encoding="utf-8") if dropin.is_file() else None
@@ -1502,18 +1509,46 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         restore()
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
         return {"updated": False, "error": "update_grub", "tail": tail}
-    cfg = _read_grub_cfg()
-    if not baseline_diag.grub_cfg_has_lsm(cfg, lsm_value):
+    for path in _grub_cfg_paths():
+        text = _cfg_text(path)
+        if not baseline_diag.first_linux_line(text):
+            continue
+        if baseline_diag.grub_cfg_has_lsm(text, lsm_value):
+            continue
+        subprocess.run(["grub-mkconfig", "-o", str(path)], capture_output=True, text=True)
+    linux_lines: list[str] = []
+    efi_stub = ""
+    saw_linux = False
+    missing = False
+    for path in _grub_cfg_paths():
+        text = _cfg_text(path)
+        line = baseline_diag.first_linux_line(text)
+        if "efi" in path.as_posix() and not line:
+            efi_stub = text[:400]
+            continue
+        if not line:
+            continue
+        saw_linux = True
+        linux_lines.append(f"{path.name}: {line[:220]}")
+        if not baseline_diag.grub_cfg_has_lsm(text, lsm_value):
+            missing = True
+    if not saw_linux or missing:
         restore()
         _run_update_grub()
-        linux_lines = [line.strip()[:240] for line in cfg.splitlines() if line.strip().startswith("linux")][:3]
         return {
             "updated": False,
             "error": "grub_cfg_missing_lsm",
             "dropin": "99-vantio-lsm.cfg",
-            "linux_lines": linux_lines,
+            "efi_grub": efi_stub,
+            "linux_lines": linux_lines[:4],
         }
-    return {"updated": True, "error": "", "dropin": "99-vantio-lsm.cfg"}
+    return {
+        "updated": True,
+        "error": "",
+        "dropin": "99-vantio-lsm.cfg",
+        "efi_grub": efi_stub,
+        "linux_lines": linux_lines[:4],
+    }
 
 
 def _refusal_log() -> str:
@@ -1584,7 +1619,9 @@ def run_lsm_guard() -> dict:
     lsm_value = baseline_diag.lsm_list_with_bpf(stock)
     applied = apply_consented_lsm(lsm_value)
     body["lsm_value"] = lsm_value
-    body["grub"] = {key: applied[key] for key in ("updated", "error", "linux_lines") if key in applied}
+    body["grub"] = {
+        key: applied[key] for key in ("updated", "error", "linux_lines", "efi_grub") if key in applied
+    }
     if not applied.get("updated"):
         body["host_result"] = "FAIL"
         body["reason"] = applied.get("error") or "update_grub"
@@ -1601,7 +1638,12 @@ def run_lsm_guard() -> dict:
         "reboot_requested": True,
         "guard_proved": True,
     }
-    stock_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    record_text = json.dumps(record, indent=2) + "\n"
+    stock_path.write_text(record_text, encoding="utf-8")
+    try:
+        baseline_diag.LSM_BOOT_MARK.write_text(record_text, encoding="utf-8")
+    except OSError:
+        pass
     body["reboot_requested"] = True
     body["host_result"] = "GUARD_PROVED"
     body["reason"] = "bpf_lsm_inactive"
