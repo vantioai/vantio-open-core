@@ -1,5 +1,5 @@
 """
-Vantio Optics Python SDK — Sight Loop observe via shield().
+Vantio Optics Python SDK — shield() observes supported calls.
 Zero dependencies beyond stdlib. Optional observe of requests/httpx/aiohttp when installed.
 """
 from .sdk import (

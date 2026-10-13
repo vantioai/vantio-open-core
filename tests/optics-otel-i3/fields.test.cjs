@@ -4,10 +4,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const api = require("../../packages/optics-otel-i3/src/index.cjs");
-const { CHAT_ATTRIBUTES, assertNoLeak, goodRecord, traceEnable } = require("./helpers.cjs");
+const { CHAT_ATTRIBUTES, assertNoLeak, goodRecord, sourceRecord, traceEnable } = require("./helpers.cjs");
 
 test("chat observation maps allowlisted fields at mapping version 0", async () => {
-  const record = goodRecord({ parent_span_id: "fedcba9876543210" });
+  const record = sourceRecord({ parent_span_id: "fedcba9876543210" });
   const snapshot = structuredClone(record);
   const bodies = [];
   const result = await api.exportOpticsRecords([record], traceEnable({
@@ -61,7 +61,7 @@ test("chat observation maps allowlisted fields at mapping version 0", async () =
 
 test("a record mapping_version does not replace the approved version", async () => {
   const result = await api.exportOpticsRecords([
-    goodRecord({ mapping_version: 99, schema_status: "caller-supplied-schema-label" }),
+    sourceRecord({ mapping_version: 99, schema_status: "caller-supplied-schema-label" }),
   ], traceEnable());
   assert.equal(result.mapping_version, 0);
   assert.equal(result.schema_status, "unstable-pre-1.0");
@@ -75,7 +75,7 @@ test("unknown field names are listed and unknown values are not copied", async (
   const note = "sentence-not-for-export";
   const bodies = [];
   const result = await api.exportOpticsRecords([
-    goodRecord({ customer_note: note, internal_flag: 1 }),
+    sourceRecord({ customer_note: note, internal_flag: 1 }),
   ], traceEnable({
     transport(request) {
       bodies.push(request.body);
@@ -90,7 +90,7 @@ test("unknown field names are listed and unknown values are not copied", async (
 });
 
 test("application error maps error.type and does not read the ok boolean", async () => {
-  const record = goodRecord({
+  const record = sourceRecord({
     provider_id: "anthropic",
     destination_host: "api.anthropic.com",
     path: "/v1/messages",
@@ -118,7 +118,7 @@ test("application error maps error.type and does not read the ok boolean", async
 });
 
 test("optics error is an internal span and optics SUCCESS is not status OK", async () => {
-  const opticsError = goodRecord({
+  const opticsError = sourceRecord({
     optics_status: "OPTICS_ERROR",
     application_status: undefined,
     http_status: undefined,
@@ -131,6 +131,7 @@ test("optics error is an internal span and optics SUCCESS is not status OK", asy
   });
   const opticsSuccess = goodRecord({ optics_status: "SUCCESS" });
   delete opticsSuccess.application_status;
+  assert.equal(api.attestSourceRecord(opticsSuccess).ok, true);
   const bodies = [];
   const errored = await api.exportOpticsRecords([opticsError], traceEnable({
     transport(request) {
@@ -155,7 +156,7 @@ test("optics error is an internal span and optics SUCCESS is not status OK", asy
 test("unmapped providers, string HTTP status, and query paths stay out of the body", async () => {
   const bodies = [];
   const result = await api.exportOpticsRecords([
-    goodRecord({
+    sourceRecord({
       provider_id: "ollama",
       http_status: "200",
       application_status: "SUCCESS",

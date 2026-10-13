@@ -1,5 +1,6 @@
 "use strict";
 
+const { sourceAttestation } = require("./attest.cjs");
 const { POSTURE } = require("./boundary.cjs");
 const { clockPair, errorTypeAgrees, revalidateCandidates, spanName, statusPlan } = require("./encode.cjs");
 const { api } = require("./mapping_ref.cjs");
@@ -36,6 +37,7 @@ function emptyAuthority(index, block) {
     candidates: {},
     span: { client: null, instrumentation: null },
     trace_context: null,
+    attestation: "unattested",
   };
 }
 
@@ -173,11 +175,13 @@ function evaluateOne(record, index) {
       },
     };
   }
+  const bound = sourceAttestation(record);
+  const view = bound.snapshot || record;
   let keys;
   let preview;
   try {
-    keys = inspectKeys(record);
-    preview = api.preview(record);
+    keys = inspectKeys(view);
+    preview = api.preview(view);
   } catch {
     return {
       authority: emptyAuthority(index, "RECORD_UNREADABLE"),
@@ -189,11 +193,12 @@ function evaluateOne(record, index) {
       },
     };
   }
-  const authority = authorityFromPreview(index, record, preview, keys);
-  return { authority, eligibility: eligibilityFor(record, authority) };
+  const authority = authorityFromPreview(index, view, preview, keys);
+  authority.attestation = bound.state === "producer" ? "producer" : "unattested";
+  return { authority, eligibility: eligibilityFor(view, authority, bound.state) };
 }
 
-function eligibilityFor(record, authority) {
+function eligibilityFor(record, authority, mark) {
   const base = {
     index: authority.index,
     export_eligible: false,
@@ -232,11 +237,21 @@ function eligibilityFor(record, authority) {
     base.reason = clock.reason;
     return base;
   }
+  if (mark !== "producer") {
+    return {
+      index: authority.index,
+      export_eligible: false,
+      operational: true,
+      reason: mark === "mismatch" ? "ATTESTATION_MISMATCH" : "UNATTESTED",
+      attestation: "unattested",
+    };
+  }
   return {
     index: authority.index,
     export_eligible: true,
     operational: true,
     reason: null,
+    attestation: "producer",
     attributes: authority.candidates,
     span_name: spanName(authority.candidates),
     kind: plan.kind,

@@ -14,7 +14,7 @@ CLI 0.3.24 prints two different ideas. Keep the tokens.
 | `PARTIAL` | Partial | Application rollup when the calls in one run do not share one application status. |
 | `UNKNOWN` | (no separate CLI human label) | Keep this token if you already have it from an older file or a reviewer note. Do not relabel it as success or as a block. |
 
-JSON values are the tokens. Human words are labels. Unpublished Python 3.1.0 source uses more specific customer sentences ("Provider authentication failed", and similar). CLI 0.3.24 was not updated to those sentences. On 0.3.24 the human application label stays "Application error", "Successful", "Unavailable", "Partial", or "Not observed".
+JSON values are the tokens. Human words are labels. Published CLI 0.3.24 human labels stay "Application error", "Successful", "Unavailable", "Partial", or "Not observed". Source candidate CLI 0.3.25 and Python source use the specific observed sentence ("Provider authentication failed", and similar) while the machine token for HTTP 400–599 stays `APPLICATION_ERROR`.
 
 ## How the CLI derives display fields
 

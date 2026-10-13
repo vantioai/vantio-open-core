@@ -1,5 +1,5 @@
 """
-Vantio Optics Python SDK — Sight Loop observe.
+Vantio Optics Python SDK — local observation.
 Provides shield() decorator/context-manager and report_anomaly() for cloud ingest.
 fetch_policy() does not load a policy. redact_pii() does not rewrite text.
 Enforcement is provided by Phantom Engine.

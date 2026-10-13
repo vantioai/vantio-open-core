@@ -1,0 +1,20 @@
+{
+  "name": "@vantio/optics-export",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Default-off observability export candidate. Not a registry release. Optics observes; this package does not enforce.",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "files": [
+    "src",
+    "SCHEMA.md",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  }
+}

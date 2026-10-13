@@ -5,7 +5,7 @@ const http = require("node:http");
 const test = require("node:test");
 
 const api = require("../../packages/optics-otel-i3/src/index.cjs");
-const { assertNoLeak, goodRecord } = require("./helpers.cjs");
+const { assertNoLeak, goodRecord, sourceRecord } = require("./helpers.cjs");
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -38,7 +38,7 @@ test("the built-in client posts JSON to the customer traces path", async () => {
   try {
     const result = await api.exportOpticsRecords([
       goodRecord({ prompt }),
-      goodRecord({ span_id: "0000000000000002" }),
+      sourceRecord({ span_id: "0000000000000002" }),
     ], {
       enabled: true,
       adapter: "otlp_traces",
@@ -78,7 +78,7 @@ test("redirects are not followed", async () => {
   });
   const port = await listen(redirector);
   try {
-    const result = await api.exportOpticsRecords([goodRecord()], {
+    const result = await api.exportOpticsRecords([sourceRecord()], {
       enabled: true,
       adapter: "otlp_traces",
       endpoint: "http://127.0.0.1:" + port,
@@ -98,7 +98,7 @@ test("a closed port is exporter unavailable and a stall stops at the timeout", a
   const closed = http.createServer();
   const closedPort = await listen(closed);
   await closeServer(closed);
-  const refused = await api.exportOpticsRecords([goodRecord()], {
+  const refused = await api.exportOpticsRecords([sourceRecord()], {
     enabled: true,
     adapter: "otlp_traces",
     endpoint: "http://127.0.0.1:" + closedPort + "/v1/traces",
@@ -113,7 +113,7 @@ test("a closed port is exporter unavailable and a stall stops at the timeout", a
   const stalled = http.createServer(() => {});
   const stalledPort = await listen(stalled);
   try {
-    const timed = await api.exportOpticsRecords([goodRecord()], {
+    const timed = await api.exportOpticsRecords([sourceRecord()], {
       enabled: true,
       adapter: "otlp_traces",
       endpoint: "http://127.0.0.1:" + stalledPort + "/v1/traces",

@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). These source labels are staged here and are not a behavior change.
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). The candidate is not the install pin. It changes observation records in source. It does not publish.
 
 ## Absent on purpose in the current products
 
@@ -10,7 +10,7 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | SQLite or any other database | Absent. One JSON file per trace id. |
 | `vantio ui`, `vantio doctor`, a resident daemon | Absent. |
 | Alerting | Absent. |
-| OTLP export | Absent. A mapping sketch may exist elsewhere in the repository. Optics does not export OTLP. |
+| OTLP export | Published CLI 0.3.24 does not export OTLP. A source candidate can send only when `VANTIO_EXPORT_CONFIG` is set. That candidate is not in the npm tarball and is not a verified production collector deployment. |
 | Stable schema | Absent. Contract is `unstable-pre-1.0`. |
 | PKG-02 and any shared record vocabulary shipped as a runtime | Future work. Not in the CLI or the published SDK. |
 | Retention, prune, max size | Absent. Files stay until you delete them. |
@@ -28,14 +28,14 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 ## Record gaps
 
 - Node writes a file for zero calls. Python writes only when at least one call was stored. "No file" means different things.
-- CLI readers ignore `VANTIO_HOME`. Writers and the MCP reader honor it.
-- Node provider labels are substring guesses. Published Python labels are `"other"`.
-- The same trace id overwrites one file. Prefix search can hit the wrong file.
+- Published CLI 0.3.24 readers ignore `VANTIO_HOME`. Source candidate 0.3.25 readers use it when it is set. Writers and the MCP reader honor it.
+- Published CLI 0.3.24 provider labels are substring guesses. Source candidate 0.3.25 uses catalog hosts and known regional patterns. A hostname that only contains a provider word stays `other`. Published Python labels are `"other"` unless the catalog names the host.
+- The same trace id overwrites one file. Published CLI 0.3.24 prefix search can hit the wrong file. Source candidate 0.3.25 matches the start of the file name, and an exact id wins over a longer id.
 - A crash during the single write can leave a partial file. Write errors are swallowed.
 - `SIGKILL` skips the flush.
 - Query strings are dropped. Path segments are stored and can hold secrets.
 - Published Python 3.0.14 urllib records an HTTP error status with `error` `network_error`. The return path in that source can store `ok` true on a 4xx or 5xx. Display uses the status code.
-- Python files contain `"workflow": "sight_loop"`. That string is not current product terminology.
+- Published Python files contain `"workflow": "sight_loop"`. That string is not current product terminology. Source candidate 3.1.1 omits that field and sets `producer` to `python_observe`. Old files are not rewritten.
 - The published PyPI summary and the MCP package description still contain that older phrase. This manual does not adopt it.
 - `vantio prove` HTML and MCP Markdown do not show the same columns.
 - `prove --from` can render JSON that Optics did not write.

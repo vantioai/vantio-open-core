@@ -1,0 +1,25 @@
+server:
+  http_listen_port: 3200
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+          tls:
+            cert_file: /certs/server.pem
+            key_file: /certs/server.key
+            client_ca_file: /certs/ca.pem
+        http:
+          endpoint: 0.0.0.0:4318
+          tls:
+            cert_file: /certs/server.pem
+            key_file: /certs/server.key
+            client_ca_file: /certs/ca.pem
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/traces
+    wal:
+      path: /tmp/tempo/wal

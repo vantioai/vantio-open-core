@@ -1,5 +1,6 @@
 "use strict";
 
+const { attestSourceRecord } = require("./attest.cjs");
 const { LIMITS, POSTURE, SIGNALS } = require("./boundary.cjs");
 const { evaluateRecords } = require("./authority.cjs");
 const { exportOpticsRecords } = require("./deliver.cjs");
@@ -19,6 +20,7 @@ module.exports = {
   LIMITS,
   POSTURE,
   adapterStatus,
+  attestSourceRecord,
   evaluateRecords,
   exportOpticsRecords,
   parseCustomerEndpoint,

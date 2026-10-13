@@ -1,0 +1,27 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  debug:
+    verbosity: basic
+  opensearch:
+    http:
+      endpoint: http://host.docker.internal:9200
+    traces_index: vantio-traces
+    logs_index: vantio-logs
+    bulk_action: index
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, opensearch]
+    logs:
+      receivers: [otlp]
+      exporters: [debug, opensearch]

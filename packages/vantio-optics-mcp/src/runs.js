@@ -142,7 +142,7 @@ export function proveMarkdown(log) {
     "",
     "## Residual (honest)",
     "",
-    "Optics fills your data log on the attach path. Ungoverned paths (curl, raw sockets, unwrapped processes) stay silent. Upgrade to **Vantio Phantom Engine** ($799/node/mo) for Observe, Enforce, and Control on enrolled Linux hosts. [Enterprise](https://vantio.ai/enterprise) adds governance for larger teams.",
+    "Optics fills your data log on the attach path. Ungoverned paths (curl, raw sockets, unwrapped processes) stay silent. Phantom Engine is the enforcement product. Enterprise adds governance for larger teams. Contact Vantio. [Enterprise](https://vantio.ai/enterprise).",
     "",
     "https://vantio.ai/optics · https://vantio.ai/pricing",
     "",
@@ -198,7 +198,7 @@ export const UPGRADE_PATH = {
   next: [
     {
       brand: "Vantio Phantom Engine",
-      sku: "$799 / enrolled Linux node / month",
+      sku: "Contact Vantio",
       workflow: "Rogue Reconciliation",
       unlocks: "Observe, Enforce, and Control on enrolled Linux hosts in one purchase — Rogue Reconciliation (patent pending)",
       url: "https://vantio.ai/phantom",

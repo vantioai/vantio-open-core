@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const api = require("../../packages/optics-otel-i3/src/index.cjs");
-const { assertNoLeak, goodRecord, traceEnable } = require("./helpers.cjs");
+const { assertNoLeak, goodRecord, sourceRecord, traceEnable } = require("./helpers.cjs");
 
 test("prompts, credentials, kernel details, company ops, and proof claims are withheld", async () => {
   const prompt = "do-not-export-this-prompt";
@@ -45,7 +45,7 @@ test("a credential-shaped path is not exported beside an otherwise valid observa
   const bodies = [];
   const result = await api.exportOpticsRecords([
     goodRecord({ path: "/v1/" + secret }),
-    goodRecord({ span_id: "0000000000000002" }),
+    sourceRecord({ span_id: "0000000000000002" }),
   ], traceEnable({
     transport(request) {
       bodies.push(request.body);
@@ -121,7 +121,7 @@ test("prototype pollution and transport echoes are ignored", async () => {
   Object.prototype.polluted = polluted;
   try {
     const bodies = [];
-    const result = await api.exportOpticsRecords([goodRecord()], traceEnable({
+    const result = await api.exportOpticsRecords([sourceRecord()], traceEnable({
       transport(request) {
         bodies.push(request.body);
         return { status: 200, body: echoed, prompt: echoed };
@@ -138,6 +138,7 @@ test("prototype pollution and transport echoes are ignored", async () => {
 
 test("a frozen record is not mutated and the result is frozen", async () => {
   const record = Object.freeze(goodRecord());
+  assert.equal(api.attestSourceRecord(record).ok, true);
   const result = await api.exportOpticsRecords([record], traceEnable());
   assert.equal(Object.isFrozen(result), true);
   assert.throws(() => {
