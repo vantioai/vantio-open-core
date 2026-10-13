@@ -274,9 +274,15 @@ def create_instance(env: Mapping[str, str]) -> int:
         raise SystemExit("slot_occupied")
     now = int(env["GCP_LAB_NOW_EPOCH"]) if env.get("GCP_LAB_NOW_EPOCH") else int(time.time())
     minutes = lab.bounded_minutes(env.get("STOP_AFTER_MINUTES", "120"))
+    if worm_spread.requested(env) and not brain_requested(env):
+        raise SystemExit("worm")
     if brain_requested(env):
         try:
-            gross = rtbrain.assert_under_cap(rtbrain.BRAIN_MACHINE, minutes, rtbrain.BRAIN_DISK_GB)
+            gross = (
+                worm_spread.pair_under_cap(minutes)
+                if worm_spread.requested(env)
+                else rtbrain.assert_under_cap(rtbrain.BRAIN_MACHINE, minutes, rtbrain.BRAIN_DISK_GB)
+            )
         except ValueError:
             raise SystemExit("cost") from None
         machine = rtbrain.BRAIN_MACHINE
@@ -303,6 +309,10 @@ def create_instance(env: Mapping[str, str]) -> int:
     script_path = script_dir / "gcp-offline-startup.sh"
     script_path.write_text(offline_startup(minutes), encoding="utf-8")
     _run_ok(offline_create_argv(plan, str(script_path)), "create")
+    peer = ""
+    if worm_spread.requested(env):
+        peer = worm_spread.peer_name(env.get("GITHUB_RUN_ID", ""))
+        _run_ok(offline_create_argv(worm_spread.peer_plan(plan, peer), str(script_path)), "create")
     payload = {
         "claim_cap": CLAIM_CAP,
         "expected_oop_usd": gate["expected_oop_usd"],
@@ -316,6 +326,9 @@ def create_instance(env: Mapping[str, str]) -> int:
         "subnet": SUBNET,
         "zone": ZONE,
     }
+    if peer:
+        payload["peer_name"] = peer
+        payload["peer_machine_type"] = lab.MACHINE_TYPE
     write_evidence(_evidence_dir(env) / "instance.json", payload)
     github_output("instance_name", name)
     print(json.dumps(payload))
@@ -448,6 +461,8 @@ SCP_FROM_REMOTES = frozenset(
         "/tmp/gcp-plumb.json",
         "/tmp/self-service-rows.json",
         "/tmp/redteam-rows.json",
+        "/tmp/worm-spread-a.json",
+        "/tmp/worm-spread-b.json",
         ROWS_JSON,
     }
 )
@@ -554,6 +569,10 @@ def prune_evidence(directory: Path) -> list[str]:
                     continue
                 if path.name == "redteam-packet.json":
                     redteam_packet.write_packet(path, payload)
+                    kept.append(path.name)
+                    continue
+                if path.name == "worm-demo.json":
+                    worm_spread.rewrite_demo(path, payload)
                     kept.append(path.name)
                     continue
                 write_evidence(path, payload)
