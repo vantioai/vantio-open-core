@@ -63,6 +63,32 @@ class SoakHourlyTest(unittest.TestCase):
         self.assertEqual(result, "fail")
         self.assertIn("file_deny", detail)
 
+    def test_a_missing_allow_probe_is_not_an_overblock(self) -> None:
+        facts = _pass_facts()
+        facts["allow_errno"] = None
+        facts["allow_error"] = "lab_iface_image"
+        result, detail = soak_check.decide(facts)
+        self.assertEqual(result, "fail")
+        self.assertIn("reason:lab_iface_image", detail)
+        self.assertNotIn("overblock", detail)
+        self.assertIn("allow:na", detail)
+        blocked = _pass_facts()
+        blocked["allow_errno"] = 110
+        blocked_result, blocked_detail = soak_check.decide(blocked)
+        self.assertEqual(blocked_result, "fail")
+        self.assertIn("reason:overblock", blocked_detail)
+        self.assertIn("allow:110", blocked_detail)
+
+    def test_hourly_timer_can_reach_the_allow_listener_without_docker(self) -> None:
+        host = (ROOT / "scripts/aws/lab-guests/phase2_host.py").read_text(encoding="utf-8")
+        start = host.index("def ensure_allowlist_peer")
+        block = host[start:host.index("\ndef enrolled_connect_errno", start)]
+        self.assertLess(block.index('_lo_ip(["addr", "show"'), block.index("allowlist_listener"))
+        self.assertNotIn("_docker_host_ip", block)
+        shell = (ROOT / "scripts/aws/lab-guests/soak-hourly.sh").read_text(encoding="utf-8")
+        self.assertIn("EnvironmentFile=-/var/lib/vantio-lab/soak.env", shell)
+        self.assertIn("VANTIO_IMAGE=%s", shell)
+
     def test_control_timeout_is_not_a_pass(self) -> None:
         facts = _pass_facts()
         facts["control_errno"] = 110

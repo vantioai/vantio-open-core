@@ -404,6 +404,32 @@ def _docker_host_ip(args: list[str]):
     )
 
 
+def _lo_ip(args: list[str]):
+    """Run ip on the host. The allow listener is a host process, not a container.
+
+    Docker is only the fallback. The hourly timer does not have VANTIO_IMAGE,
+    and guest_rows.IMAGE is that same variable, so a docker run cannot name
+    an image there.
+    """
+    try:
+        completed = subprocess.run(
+            ["ip", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        completed = None
+    if completed is not None:
+        if completed.returncode == 0:
+            return completed
+        detail = ((completed.stderr or "") + (completed.stdout or "")).lower()
+        if "exists" in detail:
+            return completed
+    return _docker_host_ip(args)
+
+
 def ensure_allowlist_peer() -> None:
     """Listen on one private address and tell the loader to allow only that one.
 
@@ -411,9 +437,9 @@ def ensure_allowlist_peer() -> None:
     not on this list. An enrolled handshake here has to complete.
     """
     os.environ["VANTIO_LAB_ALLOWLIST"] = ALLOW_HOST
-    show = _docker_host_ip(["addr", "show", "dev", "lo"])
+    show = _lo_ip(["addr", "show", "dev", "lo"])
     if ALLOW_HOST not in (show.stdout or ""):
-        added = _docker_host_ip(["addr", "add", f"{ALLOW_HOST}/32", "dev", "lo"])
+        added = _lo_ip(["addr", "add", f"{ALLOW_HOST}/32", "dev", "lo"])
         detail = (added.stderr or "") + (added.stdout or "")
         if added.returncode != 0 and "File exists" not in detail and "exists" not in detail.lower():
             raise SystemExit(f"allowlist_addr {added.returncode} {detail[-180:]}")
