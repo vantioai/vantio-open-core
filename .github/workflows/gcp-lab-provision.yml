@@ -264,6 +264,7 @@ jobs:
             scripts/gcp/fetch_offline_debs.sh
             scripts/gcp/lab-guests/enterprise-rows.sh
             scripts/gcp/lab-guests/redteam_rows.py
+            scripts/gcp/lab-guests/stage_brain.py
             scripts/aws/lab-guests/descendant_b1.py
             scripts/aws/lab-guests/descendant_probe
             scripts/aws/lab-guests/phase2_host.py

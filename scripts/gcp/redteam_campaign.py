@@ -31,6 +31,29 @@ def _read_remote(od: Any, project: str, name: str, remote: str, dest: Path) -> A
     return body
 
 
+GUEST_PAYLOAD = "/var/lib/vantio-lab/guest"
+GUEST_BRAIN = "/var/lib/vantio-lab/brain"
+
+
+def brain_stage_command(guest_dir: str) -> str:
+    if guest_dir != GUEST_PAYLOAD:
+        raise ValueError("guest_dir")
+    return f"sudo python3 {guest_dir}/stage_brain.py {guest_dir} {GUEST_BRAIN}"
+
+
+def brain_rows_command(guest_dir: str) -> str:
+    if guest_dir != GUEST_PAYLOAD:
+        raise ValueError("guest_dir")
+    return (
+        f"sudo env VANTIO_BRAIN_DIR={GUEST_BRAIN} "
+        f"python3 {guest_dir}/redteam_rows.py /opt/vantio-enterprise"
+    )
+
+
+def campaign_exit(model_loaded: bool) -> int:
+    return 0 if model_loaded else 2
+
+
 def _boot_changed(od: Any, project: str, name: str, before: str) -> str:
     deadline = time.time() + od.SSH_WAIT_SECONDS
     while time.time() < deadline:
@@ -60,15 +83,21 @@ def execute(env: Mapping[str, str], od: Any) -> int:
     brain_dir = Path(env.get("BRAIN_DIR", ""))
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
     debs = od._stage_payload(env, payload_dir)
+    rows_script = Path(env["REDTEAM_ROWS"])
+    stage_script = rows_script.parent / "stage_brain.py"
+    if not stage_script.is_file():
+        raise SystemExit("brain_stage")
     shutil.copy2(brain_dir / rtbrain.MODEL_NAME, payload_dir / rtbrain.MODEL_NAME)
     shutil.copy2(brain_dir / rtbrain.RUNTIME_NAME, payload_dir / rtbrain.RUNTIME_NAME)
-    shutil.copy2(Path(env["REDTEAM_ROWS"]), payload_dir / "redteam_rows.py")
+    shutil.copy2(rows_script, payload_dir / "redteam_rows.py")
+    shutil.copy2(stage_script, payload_dir / "stage_brain.py")
     shutil.copy2(Path(env["REDTEAM_PACKET"]), payload_dir / "redteam_packet.py")
     raw_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "redteam-raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     descendant: Any = None
     guest: Any = None
     rebooted = False
+    model_loaded = False
     try:
         od._wait_until_running(project, name)
         setup = (
@@ -93,6 +122,7 @@ def execute(env: Mapping[str, str], od: Any) -> int:
             payload_dir / rtbrain.MODEL_NAME,
             payload_dir / rtbrain.RUNTIME_NAME,
             payload_dir / "redteam_rows.py",
+            payload_dir / "stage_brain.py",
             payload_dir / "redteam_packet.py",
         ]
         od._scp_to(project, name, sources)
@@ -109,8 +139,17 @@ def execute(env: Mapping[str, str], od: Any) -> int:
                 descendant = _read_remote(
                     od, project, name, "/tmp/enterprise-pe-rows.json", raw_dir / "descendant.json"
                 ) or descendant
-        guest_cmd = f"python3 {od.GUEST_DIR}/redteam_rows.py /opt/vantio-enterprise"
-        od._ssh(project, name, guest_cmd)
+        if od.GUEST_DIR != GUEST_PAYLOAD:
+            raise SystemExit("brain_stage")
+        staged = od._ssh(project, name, brain_stage_command(od.GUEST_DIR))
+        stage_text = od.redact((staged.stdout or "") + (staged.stderr or ""))
+        if staged.returncode != 0:
+            print(stage_text[-2000:], file=sys.stderr)
+        else:
+            for line in stage_text.splitlines():
+                if line.startswith("brain_staged "):
+                    print(line[:500])
+        od._ssh(project, name, brain_rows_command(od.GUEST_DIR))
         guest = _read_remote(od, project, name, "/tmp/redteam-rows.json", raw_dir / "rows.json")
     finally:
         attempts: list[dict] = []
@@ -151,4 +190,4 @@ def execute(env: Mapping[str, str], od: Any) -> int:
             if raw_dir.exists():
                 shutil.rmtree(raw_dir, ignore_errors=True)
             od.remove_os_login_key()
-    return 0
+    return campaign_exit(model_loaded)
