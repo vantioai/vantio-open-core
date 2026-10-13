@@ -360,11 +360,13 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
     }
     grub = body.get("grub") if isinstance(body.get("grub"), dict) else {}
     reason = body.get("reason") if isinstance(body.get("reason"), str) else ""
+    linux_lines = grub.get("linux_lines") if isinstance(grub.get("linux_lines"), list) else []
     print(
         json.dumps(
             {
                 "grub_error": grub.get("error") if isinstance(grub.get("error"), str) else "",
                 "grub_updated": grub.get("updated") is True,
+                "linux_line": str(linux_lines[0])[:240] if linux_lines else "",
                 "lsm_guard": result,
                 "reason": reason,
                 "stock_lsm": stock,
