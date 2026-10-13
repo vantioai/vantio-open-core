@@ -32,7 +32,7 @@ import redteam_packet as packet  # noqa: E402
 SUBJECT = 65534
 LAB_UDP = ("192.0.2.2", 9)
 OUT_PATH = Path("/tmp/redteam-rows.json")
-# AWS sets VANTIO_BRAIN_DIR to /var/lib/vantio-lab/brain. GCP keeps /tmp/vantio-lab.
+# AWS and the GCP campaign set VANTIO_BRAIN_DIR to /var/lib/vantio-lab/brain.
 BRAIN_DIR = Path(os.environ.get("VANTIO_BRAIN_DIR", "/tmp/vantio-lab"))
 AT_FDCWD = -100
 SYS_OPENAT = 257
