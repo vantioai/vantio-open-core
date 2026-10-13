@@ -20,6 +20,7 @@ Description=Vantio lab hourly soak check
 [Service]
 Type=oneshot
 TimeoutStartSec=900
+EnvironmentFile=-/var/lib/vantio-lab/soak.env
 ExecStart=/var/lib/vantio-lab/bin/soak-hourly.sh
 EOF
   cat > /etc/systemd/system/vantio-soak-hourly.timer <<'EOF'
@@ -40,6 +41,21 @@ EOF
 if [ "${1:-}" = "install" ]; then
   install_units
   exit 0
+fi
+
+envfile=/var/lib/vantio-lab/soak.env
+case ${VANTIO_IMAGE:-} in
+  ""|*[!A-Za-z0-9:._/-]*) ;;
+  *)
+    printf 'VANTIO_IMAGE=%s\n' "$VANTIO_IMAGE" > "$envfile"
+    chmod 644 "$envfile"
+    ;;
+esac
+if [ -f "$envfile" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$envfile"
+  set +a
 fi
 
 install -d /var/lib/vantio-lab/checks

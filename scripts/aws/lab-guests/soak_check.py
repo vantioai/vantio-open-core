@@ -106,7 +106,15 @@ def decide(facts: dict) -> tuple[str, str]:
         )
         if not attributed_egress:
             reasons.append("egress_deny")
-        if facts.get("allow_errno") != 0:
+        allow = facts.get("allow_errno")
+        if allow is None:
+            # None means the allow listener was never probed. That is not an
+            # enrolled connect that the engine blocked.
+            reason = str(facts.get("allow_error") or "allow_probe")
+            if not reason.replace("_", "").isalnum():
+                reason = "allow_probe"
+            reasons.append(reason[:48])
+        elif allow != 0:
             reasons.append("overblock")
     if not isinstance(facts.get("mem_kb"), int) or isinstance(facts.get("mem_kb"), bool):
         reasons.append("memory")
@@ -380,7 +388,11 @@ def _probe(host: object, facts: dict) -> None:
     try:
         host.ensure_allowlist_peer()
         facts["allow_errno"] = host.enrolled_connect_errno(host.ALLOW_HOST, host.ALLOW_PORT)
-    except SystemExit:
+    except SystemExit as exc:
+        token = str(exc).strip().split()
+        raw = token[0] if token else "allow_probe"
+        safe = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in raw).strip("_")
+        facts["allow_error"] = (safe or "allow_probe")[:48]
         facts["allow_errno"] = None
 
 
