@@ -1509,7 +1509,7 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     dropin.write_text(baseline_diag.lsm_dropin_text(lsm_value), encoding="utf-8")
     dropin.chmod(0o755)
     reboot_script = backup / "reboot-with-grub.sh"
-    reboot_script.write_text(baseline_diag.reboot_with_grub_script(), encoding="utf-8")
+    reboot_script.write_text(baseline_diag.reboot_with_grub_script(lsm_value), encoding="utf-8")
     reboot_script.chmod(0o755)
 
     def restore() -> None:
@@ -1527,6 +1527,11 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         restore()
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
         return {"updated": False, "error": "update_grub", "tail": tail, "cloud_init": cloud_init}
+    for path in _grub_cfg_paths():
+        text = _cfg_text(path)
+        if not baseline_diag.first_linux_line(text):
+            continue
+        path.write_text(baseline_diag.rewrite_linux_lines(text, lsm_value), encoding="utf-8")
     for path in _grub_cfg_paths():
         text = _cfg_text(path)
         if not baseline_diag.first_linux_line(text):

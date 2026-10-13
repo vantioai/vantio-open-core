@@ -412,33 +412,92 @@ def first_linux_line(text: str) -> str:
     return ""
 
 
+def linux_lines(text: str) -> list[str]:
+    """Every generated linux line. The default entry is not always the first."""
+    return [raw.strip() for raw in text.splitlines() if raw.strip().startswith("linux")]
+
+
+def _last_lsm_token(line: str) -> str:
+    tokens = [part for part in line.split() if part.startswith("lsm=")]
+    return tokens[-1] if tokens else ""
+
+
 def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
-    """True when the last lsm= token on the first linux line is this list.
+    """True when every linux line's last lsm= token is this list.
 
-    grub puts GRUB_CMDLINE_LINUX and then GRUB_CMDLINE_LINUX_DEFAULT on the
-    same line. The kernel keeps the last lsm= token.
+    A later menuentry is what some cloud images boot. The kernel keeps the
+    last lsm= token on the line it actually uses.
     """
-    tokens = [part for part in first_linux_line(text).split() if part.startswith("lsm=")]
-    return bool(tokens) and tokens[-1] == f"lsm={lsm_value}"
+    lines = linux_lines(text)
+    expected = f"lsm={lsm_value}"
+    return bool(lines) and all(_last_lsm_token(line) == expected for line in lines)
 
 
-def reboot_with_grub_script() -> str:
-    """Rewrite grub.cfg and then reboot. A delayed unit runs this as one step."""
+def rewrite_linux_lines(text: str, lsm_value: str) -> str:
+    """Put one lab lsm= token at the end of every linux line."""
+    if not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value):
+        raise ValueError("lsm_value")
+    token = f"lsm={lsm_value}"
+    out: list[str] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped.startswith("linux"):
+            out.append(raw)
+            continue
+        indent = raw[: len(raw) - len(raw.lstrip())]
+        parts = [part for part in stripped.split() if not part.startswith("lsm=")]
+        parts.append(token)
+        out.append(f"{indent}{' '.join(parts)}")
+    body = "\n".join(out)
+    if text.endswith("\n") or not text:
+        body += "\n"
+    return body
+
+
+def reboot_with_grub_script(lsm_value: str = "") -> str:
+    """Regenerate grub.cfg, force lsm= onto every linux line, then reboot."""
+    if lsm_value and (not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value)):
+        raise ValueError("lsm_value")
+    rewrite = ""
+    if lsm_value:
+        rewrite = (
+            "python3 - <<'PY'\n"
+            "from pathlib import Path\n"
+            f"token = 'lsm={lsm_value}'\n"
+            "paths = [Path('/boot/grub/grub.cfg')]\n"
+            "efi = Path('/boot/efi')\n"
+            "if efi.is_dir():\n"
+            "    paths.extend(path for path in efi.rglob('grub.cfg') if path.is_file())\n"
+            "for path in paths:\n"
+            "    if not path.is_file():\n"
+            "        continue\n"
+            "    text = path.read_text(encoding='utf-8', errors='replace')\n"
+            "    if not any(line.strip().startswith('linux') for line in text.splitlines()):\n"
+            "        continue\n"
+            "    out = []\n"
+            "    for raw in text.splitlines():\n"
+            "        stripped = raw.strip()\n"
+            "        if not stripped.startswith('linux'):\n"
+            "            out.append(raw)\n"
+            "            continue\n"
+            "        indent = raw[:len(raw) - len(raw.lstrip())]\n"
+            "        parts = [part for part in stripped.split() if not part.startswith('lsm=')]\n"
+            "        parts.append(token)\n"
+            "        out.append(indent + ' '.join(parts))\n"
+            "    path.write_text('\\n'.join(out) + '\\n', encoding='utf-8')\n"
+            "PY\n"
+        )
     return (
         "#!/bin/bash\n"
-        "# Cloud-init can rewrite grub.cfg during the delay before reboot.\n"
-        "# Regenerate it in this same step so the bootloader reads the lsm= line.\n"
+        "# Regenerate the config, then force the lab lsm= token onto every linux line.\n"
+        "# A stub EFI grub.cfg with no linux line is left alone.\n"
         "set -u\n"
         "log=/var/lib/vantio-lab/grub-mkconfig.txt\n"
         "mkdir -p /var/lib/vantio-lab\n"
         "if command -v grub-mkconfig >/dev/null 2>&1; then\n"
         "  grub-mkconfig -o /boot/grub/grub.cfg >\"$log\" 2>&1 || true\n"
-        "  if [ -d /boot/efi ]; then\n"
-        "    find /boot/efi -name grub.cfg -type f | while IFS= read -r cfg; do\n"
-        "      grub-mkconfig -o \"$cfg\" >>\"$log\" 2>&1 || true\n"
-        "    done\n"
-        "  fi\n"
         "fi\n"
+        f"{rewrite}"
         "sync\n"
         "systemctl reboot --force\n"
     )
@@ -595,6 +654,25 @@ def write_lsm_status() -> int:
         image_id=os.environ.get("VANTIO_IMAGE_ID", ""),
     )
     if body is None:
+        cfg = Path("/boot/grub/grub.cfg")
+        disk = first_linux_line(cfg.read_text(encoding="utf-8", errors="replace")) if cfg.is_file() else ""
+        if "lsm=" in disk and "bpf" in disk and not any(
+            token.startswith("lsm=") and "bpf" in token.split("=", 1)[-1] for token in cmdline.split()
+        ):
+            mismatch = {
+                "battery": "lsm-guard",
+                "host_result": "FAIL",
+                "reason": "grub_cfg_not_booted",
+                "cmdline": cmdline,
+                "grub_first_linux": disk[:500],
+                "lab_pass": False,
+                "customer_claim": False,
+                "reboot_requested": False,
+            }
+            text = json.dumps(mismatch, indent=2) + "\n"
+            LSM_ROWS_PATH.write_text(text, encoding="utf-8")
+            print(text, flush=True)
+            return 2
         return code
     if body.get("host_result") == "FAIL":
         cfg = Path("/boot/grub/grub.cfg")
