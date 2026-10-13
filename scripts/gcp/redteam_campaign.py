@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import time
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -70,8 +71,17 @@ def execute(env: Mapping[str, str], od: Any) -> int:
     rebooted = False
     try:
         od._wait_until_running(project, name)
-        made = od._ssh(project, name, f"rm -rf {od.GUEST_DIR} && mkdir -p {od.GUEST_DIR}")
+        setup = (
+            "sudo mkdir -p /var/lib/vantio-lab && "
+            f"sudo rm -rf {od.GUEST_DIR} && sudo mkdir -p {od.GUEST_DIR} && "
+            "sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab "
+            f"{od.GUEST_DIR} && chmod 755 /var/lib/vantio-lab {od.GUEST_DIR}"
+        )
+        made = od._ssh(project, name, setup)
+        if made.returncode != 0 and od._transport_failure(made) and od._ssh_ready(project, name):
+            made = od._ssh(project, name, setup)
         if made.returncode != 0:
+            print(od.redact((made.stdout or "") + (made.stderr or ""))[-500:], file=sys.stderr)
             raise SystemExit("ssh")
         sources = [
             payload_dir / "seal.oci.tar",

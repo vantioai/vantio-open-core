@@ -482,6 +482,15 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertNotIn("error", planned)
         self.assertIn('GRUB_CMDLINE_LINUX="lsm=lockdown,capability,apparmor,bpf"', planned["main"])
         self.assertNotIn("lsm=", planned["extras"][0])
+        dropin = baseline_diag.lsm_dropin_text("lockdown,capability,apparmor,bpf")
+        self.assertIn("lsm=lockdown,capability,apparmor,bpf", dropin)
+        self.assertIn("case $_vantio_tok in", dropin)
+        host = Path(__file__).resolve().parent.joinpath("lab-guests/phase2_host.py").read_text(encoding="utf-8")
+        self.assertIn("99-vantio-lsm.cfg", host)
+        self.assertIn("0o755", host)
+        redteam = Path(__file__).resolve().parents[1].joinpath("gcp/redteam_campaign.py").read_text(encoding="utf-8")
+        self.assertIn("sudo mkdir -p /var/lib/vantio-lab", redteam)
+        self.assertNotIn("rm -rf {od.GUEST_DIR} && mkdir -p {od.GUEST_DIR}", redteam)
         self.assertEqual(
             baseline_diag.plan_grub_lsm("GRUB_CMDLINE_LINUX+=\"lsm=apparmor\"\n", [], "capability,bpf"),
             {"error": "grub_append"},
