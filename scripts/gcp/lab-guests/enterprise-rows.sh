@@ -434,8 +434,13 @@ case "$mode" in
         # Mask that unit, then force the reset after this shell returns.
         sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
         sudo systemctl reset-failed vantio-lab-lsm-reboot >/dev/null 2>&1 || true
-        if ! sudo systemd-run --on-active=45s --unit=vantio-lab-lsm-reboot systemctl reboot --force; then
-          sudo systemctl reboot --force || true
+        if [ -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+          reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
+        else
+          reboot_cmd="systemctl reboot --force"
+        fi
+        if ! sudo systemd-run --on-active=45s --unit=vantio-lab-lsm-reboot $reboot_cmd; then
+          sudo /var/lib/vantio-lab/reboot-with-grub.sh || sudo systemctl reboot --force || true
         fi
       fi
     fi

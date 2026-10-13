@@ -1463,6 +1463,20 @@ def _cfg_text(path: Path) -> str:
         return ""
 
 
+def _cloud_init_wait() -> str:
+    """Finish cloud-init before editing grub. A late module rewrites the cloud image line."""
+    try:
+        proc = subprocess.run(
+            ["cloud-init", "status", "--wait"],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return type(exc).__name__
+    return ((proc.stdout or "") + (proc.stderr or "")).strip()[-200:]
+
+
 def _run_update_grub() -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(["update-grub"], capture_output=True, text=True)
     if proc.returncode != 0:
@@ -1472,6 +1486,7 @@ def _run_update_grub() -> subprocess.CompletedProcess[str]:
 
 def apply_consented_lsm(lsm_value: str) -> dict:
     """Write the consented lsm= list into grub. Restore the files if update-grub fails."""
+    cloud_init = _cloud_init_wait()
     main_path = Path("/etc/default/grub")
     if not main_path.is_file():
         return {"updated": False, "error": "grub_missing"}
@@ -1493,6 +1508,9 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     prior_dropin = dropin.read_text(encoding="utf-8") if dropin.is_file() else None
     dropin.write_text(baseline_diag.lsm_dropin_text(lsm_value), encoding="utf-8")
     dropin.chmod(0o755)
+    reboot_script = backup / "reboot-with-grub.sh"
+    reboot_script.write_text(baseline_diag.reboot_with_grub_script(), encoding="utf-8")
+    reboot_script.chmod(0o755)
 
     def restore() -> None:
         main_path.write_text(main, encoding="utf-8")
@@ -1508,7 +1526,7 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     if proc.returncode != 0:
         restore()
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
-        return {"updated": False, "error": "update_grub", "tail": tail}
+        return {"updated": False, "error": "update_grub", "tail": tail, "cloud_init": cloud_init}
     for path in _grub_cfg_paths():
         text = _cfg_text(path)
         if not baseline_diag.first_linux_line(text):
@@ -1529,7 +1547,7 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         if not line:
             continue
         saw_linux = True
-        linux_lines.append(f"{path.name}: {line[:220]}")
+        linux_lines.append(f"{path}: {line[:480]}")
         if not baseline_diag.grub_cfg_has_lsm(text, lsm_value):
             missing = True
     if not saw_linux or missing:
@@ -1541,6 +1559,8 @@ def apply_consented_lsm(lsm_value: str) -> dict:
             "dropin": "99-vantio-lsm.cfg",
             "efi_grub": efi_stub,
             "linux_lines": linux_lines[:4],
+            "cloud_init": cloud_init,
+            "update_grub_tail": ((proc.stdout or "") + (proc.stderr or ""))[-400:],
         }
     return {
         "updated": True,
@@ -1548,6 +1568,8 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         "dropin": "99-vantio-lsm.cfg",
         "efi_grub": efi_stub,
         "linux_lines": linux_lines[:4],
+        "cloud_init": cloud_init,
+        "update_grub_tail": ((proc.stdout or "") + (proc.stderr or ""))[-400:],
     }
 
 
@@ -1620,7 +1642,9 @@ def run_lsm_guard() -> dict:
     applied = apply_consented_lsm(lsm_value)
     body["lsm_value"] = lsm_value
     body["grub"] = {
-        key: applied[key] for key in ("updated", "error", "linux_lines", "efi_grub") if key in applied
+        key: applied[key]
+        for key in ("updated", "error", "linux_lines", "efi_grub", "cloud_init", "update_grub_tail")
+        if key in applied
     }
     if not applied.get("updated"):
         body["host_result"] = "FAIL"

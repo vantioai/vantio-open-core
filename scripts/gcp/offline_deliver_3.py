@@ -366,7 +366,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             {
                 "grub_error": grub.get("error") if isinstance(grub.get("error"), str) else "",
                 "grub_updated": grub.get("updated") is True,
-                "linux_line": str(linux_lines[0])[:240] if linux_lines else "",
+                "linux_line": str(linux_lines[0])[:800] if linux_lines else "",
                 "lsm_guard": result,
                 "reason": reason,
                 "stock_lsm": stock,

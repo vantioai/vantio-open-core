@@ -413,8 +413,35 @@ def first_linux_line(text: str) -> str:
 
 
 def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
-    """True when the first linux line carries this exact lsm= list."""
-    return f"lsm={lsm_value}" in first_linux_line(text).split()
+    """True when the last lsm= token on the first linux line is this list.
+
+    grub puts GRUB_CMDLINE_LINUX and then GRUB_CMDLINE_LINUX_DEFAULT on the
+    same line. The kernel keeps the last lsm= token.
+    """
+    tokens = [part for part in first_linux_line(text).split() if part.startswith("lsm=")]
+    return bool(tokens) and tokens[-1] == f"lsm={lsm_value}"
+
+
+def reboot_with_grub_script() -> str:
+    """Rewrite grub.cfg and then reboot. A delayed unit runs this as one step."""
+    return (
+        "#!/bin/bash\n"
+        "# Cloud-init can rewrite grub.cfg during the delay before reboot.\n"
+        "# Regenerate it in this same step so the bootloader reads the lsm= line.\n"
+        "set -u\n"
+        "log=/var/lib/vantio-lab/grub-mkconfig.txt\n"
+        "mkdir -p /var/lib/vantio-lab\n"
+        "if command -v grub-mkconfig >/dev/null 2>&1; then\n"
+        "  grub-mkconfig -o /boot/grub/grub.cfg >\"$log\" 2>&1 || true\n"
+        "  if [ -d /boot/efi ]; then\n"
+        "    find /boot/efi -name grub.cfg -type f | while IFS= read -r cfg; do\n"
+        "      grub-mkconfig -o \"$cfg\" >>\"$log\" 2>&1 || true\n"
+        "    done\n"
+        "  fi\n"
+        "fi\n"
+        "sync\n"
+        "systemctl reboot --force\n"
+    )
 
 
 def assignments_with_lsm(text: str, lsm_value: str) -> str:
@@ -569,6 +596,12 @@ def write_lsm_status() -> int:
     )
     if body is None:
         return code
+    if body.get("host_result") == "FAIL":
+        cfg = Path("/boot/grub/grub.cfg")
+        if cfg.is_file():
+            body["grub_first_linux"] = first_linux_line(cfg.read_text(encoding="utf-8", errors="replace"))[:500]
+        dropin = Path("/etc/default/grub.d/99-vantio-lsm.cfg")
+        body["lsm_dropin_present"] = dropin.is_file()
     text = json.dumps(body, indent=2) + "\n"
     LSM_ROWS_PATH.write_text(text, encoding="utf-8")
     try:
