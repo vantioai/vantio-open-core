@@ -874,20 +874,25 @@ def iap_ssh_argv(project: str, name: str, command: str) -> list[str]:
     ]
 
 
+def _refuse_scp(reason: str) -> None:
+    print(f"scp_refused {reason}", file=sys.stderr)
+    raise SystemExit("scp")
+
+
 def iap_scp_argv(project: str, sources: Sequence[str], destination: str) -> list[str]:
     require_lab_project(project)
     if not sources:
-        raise SystemExit("scp")
+        _refuse_scp("no_sources")
     parts = [*sources, destination]
     remote = [item for item in parts if ":" in item]
     if len(remote) != 1:
-        raise SystemExit("scp")
+        _refuse_scp(f"remote_count={len(remote)}")
     host = remote[0].split(":", 1)[0]
     if not host.startswith(lab.NAME_PREFIX) or ".." in remote[0]:
-        raise SystemExit("scp")
+        _refuse_scp(f"host={host}")
     for item in parts:
         if "\n" in item or "\x00" in item:
-            raise SystemExit("scp")
+            _refuse_scp("bad_character")
     return [
         "gcloud",
         "compute",
