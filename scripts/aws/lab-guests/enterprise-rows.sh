@@ -325,6 +325,23 @@ if [ "$mode" = "descendant-b1" ]; then
   exit "$rc"
 fi
 case "$mode" in
+  soak-hourly)
+    sudo install -d /var/lib/vantio-lab/bin
+    sudo cp "$here/soak_check.py" "$here/soak-hourly.sh" "$here/record-check.sh" \
+      "$here/phase2_host.py" "$here/phase2_grade.py" "$here/baseline_diag.py" "$here/sticky_write.py" \
+      /var/lib/vantio-lab/bin/
+    sudo chmod 755 /var/lib/vantio-lab/bin/soak-hourly.sh /var/lib/vantio-lab/bin/record-check.sh
+    sudo bash /var/lib/vantio-lab/bin/soak-hourly.sh install
+    sudo rm -f /tmp/enterprise-pe-rows.json
+    set +e
+    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh start > /tmp/phase2-host.out 2>&1
+    rc=$?
+    set -e
+    cat /tmp/phase2-host.out
+    chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true
+    printf 'PY_RC=%s\n' "$rc"
+    exit "$rc"
+    ;;
   2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
     # A previous battery leaves this file. Copying only when it is missing
     # would report that older result for this run.

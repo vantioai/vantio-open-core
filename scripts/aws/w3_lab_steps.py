@@ -1019,6 +1019,7 @@ def execute_enterprise_rows(
             "2f-tamper",
             "2g-distro",
             "lsm-guard",
+            "soak-hourly",
         }
         if battery not in {"enterprise", "descendant-b1", "self-service", *phase_batteries}:
             raise lab.GuardAbort("battery")
@@ -1211,6 +1212,10 @@ def execute_enterprise_rows(
                 copy_to(guest_dir / "phase2_grade.py", "phase2_grade.py")
                 copy_to(guest_dir / "baseline_diag.py", "baseline_diag.py")
                 copy_to(guest_dir / "sticky_write.py", "sticky_write.py")
+                if battery == "soak-hourly":
+                    copy_to(guest_dir / "soak_check.py", "soak_check.py")
+                    copy_to(guest_dir / "soak-hourly.sh", "soak-hourly.sh")
+                    copy_to(guest_dir / "record-check.sh", "record-check.sh")
                 ran = remote(
                     [
                         "env",
@@ -1289,6 +1294,8 @@ def execute_enterprise_rows(
                 payload["status"] = "DESCENDANT_B1"
             elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"
+            elif battery == "soak-hourly":
+                payload["status"] = "SOAK_HOURLY"
             else:
                 payload["status"] = "PHASE2"
         finally:
