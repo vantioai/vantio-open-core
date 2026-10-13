@@ -358,7 +358,20 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
         "stock_bpf_lsm": False,
         "stock_lsm": stock,
     }
-    print(json.dumps({"lsm_guard": result, "stock_lsm": stock}), flush=True)
+    grub = body.get("grub") if isinstance(body.get("grub"), dict) else {}
+    reason = body.get("reason") if isinstance(body.get("reason"), str) else ""
+    print(
+        json.dumps(
+            {
+                "grub_error": grub.get("error") if isinstance(grub.get("error"), str) else "",
+                "grub_updated": grub.get("updated") is True,
+                "lsm_guard": result,
+                "reason": reason,
+                "stock_lsm": stock,
+            }
+        ),
+        flush=True,
+    )
     if result == "LSM_ALREADY_ACTIVE":
         record["lsm_guard"] = "already_active"
         record["stock_bpf_lsm"] = True
@@ -375,9 +388,11 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             parsed = _last_object((confirmed.stdout or "") + (confirmed.stderr or ""))
             confirm_body = parsed if isinstance(parsed, dict) else {}
         enabled = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
+        cmdline = confirm_body.get("cmdline") if isinstance(confirm_body.get("cmdline"), str) else ""
         print(
             json.dumps(
                 {
+                    "cmdline": cmdline[:400],
                     "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
                     "enabled_lsm": enabled,
                     "lsm_confirm": confirm_body.get("host_result"),
