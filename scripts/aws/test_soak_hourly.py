@@ -45,6 +45,10 @@ class SoakHourlyTest(unittest.TestCase):
         self.assertIn("eanchor:8498", detail)
         self.assertRegex(detail, r"^[A-Za-z0-9_.:-]+$")
 
+    def test_bpftool_hex_dump_is_the_drops_counter(self) -> None:
+        body = [{"key": ["0x00", "0x00"], "value": ["0x02", "0x00", "0x00", "0x00"]}]
+        self.assertEqual(soak_check._counter(body), 2)
+
     def test_timeout_without_an_anchor_is_not_a_pass(self) -> None:
         facts = _pass_facts()
         facts["egress_anchor"] = 0
