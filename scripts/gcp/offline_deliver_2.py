@@ -441,17 +441,30 @@ def _scp_to(project: str, name: str, sources: Sequence[Path]) -> None:
         raise SystemExit("scp")
 
 
-def _scp_from(project: str, name: str, remote: str, dest: Path) -> bool:
-    if remote not in {
+SCP_FROM_REMOTES = frozenset(
+    {
         "/tmp/enterprise-pe-rows.json",
         "/tmp/gcp-kernel-facts.json",
         "/tmp/gcp-plumb.json",
         "/tmp/self-service-rows.json",
+        "/tmp/redteam-rows.json",
         ROWS_JSON,
-    }:
+    }
+)
+
+
+def _scp_from(project: str, name: str, remote: str, dest: Path) -> bool:
+    if remote not in SCP_FROM_REMOTES:
+        print(f"scp_refused remote={remote}", file=sys.stderr)
         raise SystemExit("scp")
     completed = _run(iap_scp_argv(project, [f"{name}:{remote}"], str(dest)))
-    return completed.returncode == 0 and dest.is_file()
+    if completed.returncode == 0 and dest.is_file():
+        return True
+    detail = redact((completed.stderr or "") + (completed.stdout or ""))
+    print(f"scp_failed from {remote}", file=sys.stderr)
+    if detail:
+        print(detail[-2000:], file=sys.stderr)
+    return False
 
 
 def _load_json_file(path: Path) -> Any:

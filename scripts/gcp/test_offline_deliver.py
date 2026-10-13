@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
@@ -37,6 +38,20 @@ def _trust_tar(directory: Path, body: bytes, *, extra: bytes | None = None, name
 
 
 class OfflineDeliverTest(unittest.TestCase):
+    def test_redteam_rows_pull_names_a_refused_remote(self) -> None:
+        self.assertIn("/tmp/redteam-rows.json", od.SCP_FROM_REMOTES)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as caught:
+                od._scp_from(od.LAB_PROJECT, "vantio-gcp-lab-1", "/tmp/not-a-lab-file.json", Path("/tmp/not-a-lab-file.json"))
+        self.assertEqual(str(caught.exception), "scp")
+        self.assertIn("scp_refused remote=/tmp/not-a-lab-file.json", err.getvalue())
+        argv_err = io.StringIO()
+        with contextlib.redirect_stderr(argv_err):
+            with self.assertRaises(SystemExit):
+                od.iap_scp_argv(od.LAB_PROJECT, [], "vantio-gcp-lab-1:/tmp/x")
+        self.assertIn("scp_refused no_sources", argv_err.getvalue())
+
     def test_project_and_run_id_stay_on_the_lab(self) -> None:
         self.assertEqual(od.require_lab_project("vantio-lab-oct08"), "vantio-lab-oct08")
         for project in ("vantio-lab-navera", "other-project", "vantio-lab-other"):
