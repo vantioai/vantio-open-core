@@ -498,6 +498,11 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertFalse(baseline_diag.grub_cfg_has_lsm(cfg, "lockdown,capability,apparmor"))
         later = "linux /boot/vmlinuz root=PARTUUID ro console=ttyS0\nlinux /boot/vmlinuz root=PARTUUID lsm=lockdown,capability,apparmor,bpf\n"
         self.assertFalse(baseline_diag.grub_cfg_has_lsm(later, "lockdown,capability,apparmor,bpf"))
+        overwritten = "linux /vmlinuz root=PARTUUID ro lsm=lockdown,capability,apparmor,bpf lsm=lockdown,capability,apparmor\n"
+        self.assertFalse(baseline_diag.grub_cfg_has_lsm(overwritten, "lockdown,capability,apparmor,bpf"))
+        regen = baseline_diag.reboot_with_grub_script()
+        self.assertIn("grub-mkconfig -o /boot/grub/grub.cfg", regen)
+        self.assertIn("systemctl reboot --force", regen)
         cloud = 'GRUB_CMDLINE_LINUX="console=ttyS0,115200 panic=-1"\n'
         rewritten = baseline_diag.assignments_with_lsm(cloud, "lockdown,capability,apparmor,bpf")
         self.assertIn("console=ttyS0,115200 panic=-1 lsm=lockdown,capability,apparmor,bpf", rewritten)
