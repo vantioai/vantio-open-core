@@ -512,7 +512,7 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
     caps = lab.load_lab_capabilities()
     payload["ssm"] = "not_enabled" if not caps["ssm"] else "not_implemented"
     if instance is None:
-        payload["cloudtrail"] = lab.lookup_terminator(runner, instance_id)
+        payload["cloudtrail"] = {"recorded": False, "reason": "admin_soak_release"}
         payload.update({"reason": "instance_absent", "status": "NOT_FOUND"})
         lab.write_json_with_hash(evidence_path("w3-lab-collect.json"), payload)
         raise lab.GuardAbort("instance_absent", payload)
@@ -525,7 +525,7 @@ def execute_collect(runner: Runner, *, ssh_runner: SshRunner = default_ssh, keyg
     payload["instance_state"] = state
     payload["soak_active"] = lab.soak_active(tags)
     if payload["soak_active"] and state in {"terminated", "shutting-down", "stopped", "stopping"}:
-        payload["cloudtrail"] = lab.lookup_terminator(runner, instance_id)
+        payload["cloudtrail"] = {"recorded": False, "reason": "admin_soak_release"}
     try:
         _collect_console(
             runner,

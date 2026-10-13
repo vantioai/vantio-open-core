@@ -2,8 +2,9 @@ name: W3 lab auto collect
 
 # Copy soak check lines off owned labs every 15 minutes, which is inside the
 # hourly off-host bar. Each guest check is printed to the EC2 console, and
-# this job stores that text as a GitHub artifact. A terminated soak host
-# also records the CloudTrail username. This job does not launch an instance.
+# this job stores that text as a GitHub artifact. It does not call
+# CloudTrail. Attribution is an admin step in SOAK-RELEASE.sh.
+# This job does not launch an instance.
 # Trust subject:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-auto
 # Role: arn:aws:iam::960577828987:role/vantio-w3-lab-provision

@@ -438,7 +438,11 @@ def sweeper_action(resource: Mapping[str, Any], now: datetime) -> str:
 
 
 def terminator_from_cloudtrail(payload: Mapping[str, Any]) -> list[dict[str, str]]:
-    """Who called TerminateInstances or StopInstances. Raw events stay out."""
+    """Parse a LookupEvents body. Collect does not call CloudTrail.
+
+    The lab role stays denied for cloudtrail:LookupEvents. An admin runs
+    the lookup from SOAK-RELEASE.sh after the soak. Raw events stay out.
+    """
     found: list[dict[str, str]] = []
     events = payload.get("Events")
     if not isinstance(events, list):
@@ -472,27 +476,6 @@ def terminator_from_cloudtrail(payload: Mapping[str, Any]) -> list[dict[str, str
             }
         )
     return found
-
-
-def lookup_terminator(runner: Runner, instance_id: str) -> dict[str, Any]:
-    if ID_SHAPES["instance"].match(instance_id) is None:
-        return {"recorded": False, "error": "instance_id"}
-    args = [
-        "aws",
-        "cloudtrail",
-        "lookup-events",
-        "--region",
-        REGION,
-        "--lookup-attributes",
-        f"AttributeKey=ResourceName,AttributeValue={instance_id}",
-        "--max-results",
-        "10",
-    ]
-    try:
-        body = aws_json(runner, args)
-    except GuardAbort as exc:
-        return {"recorded": False, "error": exc.reason}
-    return {"recorded": True, "events": terminator_from_cloudtrail(body)}
 
 
 def select_image(describe_images_payload: Mapping[str, Any]) -> str:
