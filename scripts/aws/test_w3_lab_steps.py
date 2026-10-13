@@ -412,24 +412,14 @@ class ArmCollectTests(unittest.TestCase):
         self.assertFalse(body["mutated"])
         self.assertFalse(any("terminate-instances" in " ".join(call) for call in calls))
 
-    def test_collect_keeps_the_cloudtrail_username_when_the_soak_host_is_gone(self) -> None:
+    def test_collect_does_not_call_cloudtrail_when_the_soak_host_is_gone(self) -> None:
+        calls: list[list[str]] = []
+
         def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
             text = " ".join(args)
             if "get-caller-identity" in text:
                 return completed({"Account": lab.ACCOUNT_ID})
-            if "lookup-events" in text:
-                return completed(
-                    {
-                        "Events": [
-                            {
-                                "EventId": "evt-9",
-                                "EventName": "TerminateInstances",
-                                "EventTime": "2026-09-30T15:00:00Z",
-                                "Username": "outside-actor",
-                            }
-                        ]
-                    }
-                )
             if "describe-instances" in text:
                 body = instance("terminated")
                 body["LaunchTime"] = "2026-09-30T12:00:00Z"
@@ -448,9 +438,9 @@ class ArmCollectTests(unittest.TestCase):
         row = result["instances"][0]
         self.assertTrue(row["soak_active"])
         self.assertEqual(row["instance_state"], "terminated")
-        self.assertEqual(row["cloudtrail"]["events"][0]["username"], "outside-actor")
+        self.assertEqual(row["cloudtrail"], {"recorded": False, "reason": "admin_soak_release"})
         self.assertEqual(row["check_count"], 1)
-        self.assertNotIn("outside-actor-secret", json.dumps(result))
+        self.assertFalse(any("lookup-events" in " ".join(call) or "cloudtrail" in " ".join(call) for call in calls))
 
     def test_verify_removed_when_the_owned_host_is_terminated(self) -> None:
         runner = FakeAws()
