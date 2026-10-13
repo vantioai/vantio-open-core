@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -164,6 +165,27 @@ def _loader_rss_cpu() -> tuple[int | None, str]:
     return rss, cpu
 
 
+def _byte(item: object) -> int | None:
+    if isinstance(item, bool):
+        return None
+    if isinstance(item, int) and 0 <= item <= 255:
+        return item
+    if isinstance(item, str):
+        text = item.strip().lower()
+        try:
+            if text.startswith("0x"):
+                value = int(text, 16)
+            elif text.isdigit():
+                value = int(text, 10)
+            else:
+                return None
+        except ValueError:
+            return None
+        if 0 <= value <= 255:
+            return value
+    return None
+
+
 def _as_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None
@@ -171,12 +193,10 @@ def _as_int(value: object) -> int | None:
         return value
     if isinstance(value, str) and value.isdigit():
         return int(value)
-    if (
-        isinstance(value, list)
-        and value
-        and all(isinstance(item, int) and not isinstance(item, bool) and 0 <= item <= 255 for item in value)
-    ):
-        return int.from_bytes(bytes(value[:8]), "little")
+    if isinstance(value, list) and value:
+        nums = [_byte(item) for item in value]
+        if all(item is not None for item in nums):
+            return int.from_bytes(bytes(nums[:8]), "little")
     return None
 
 
@@ -256,8 +276,69 @@ def _enrollment_intact(host: object) -> bool:
     return any(host.enrolled_has(key) for key in keys)
 
 
+def _ledger_drops(host: object) -> int | None:
+    latest = None
+    try:
+        rows = host.events()
+    except Exception:
+        return None
+    if not isinstance(rows, list):
+        return None
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        raw = item.get("deny_attr_drops")
+        if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+            latest = raw
+    return latest
+
+
+def _egress_from_events(host: object, pid: int, start: int) -> int:
+    try:
+        rows = host.events()
+    except Exception:
+        return 0
+    if not isinstance(rows, list) or pid <= 0:
+        return 0
+    for item in reversed(rows[start:]):
+        if not isinstance(item, dict) or item.get("Pid") != pid:
+            continue
+        if item.get("EventType") != "CGROUP_BLOCK" or item.get("Payload") != "egress":
+            continue
+        anchor = item.get("lineage_anchor")
+        if isinstance(anchor, int) and not isinstance(anchor, bool) and anchor > 0:
+            return anchor
+    return 0
+
+
+def _wait_egress(host: object, pid: int, errno: object, start: int) -> tuple[object, int]:
+    anchor = 0
+    for _ in range(12):
+        if pid:
+            anchor = host.egress_block_anchor(pid) or _egress_from_events(host, pid, start)
+        if anchor or errno not in (110, None):
+            return errno, anchor
+        time.sleep(0.5)
+    return errno, anchor
+
+
+def _wait_egress_prog() -> None:
+    """Give a just-started loader time to pin the connect program."""
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        proc = subprocess.run(["bpftool", "prog", "show"], capture_output=True, text=True, check=False)
+        text = (proc.stdout or "").lower()
+        if "connect" in text or "cgroup_skb" in text:
+            return
+        time.sleep(1)
+
+
 def _probe(host: object, facts: dict) -> None:
     facts["control_errno"] = host.control_handshake()
+    try:
+        event_start = len(host.events())
+    except Exception:
+        event_start = 0
     sample = host.stamp_deny(host.child_open(True))
     pid = sample.get("pid") if isinstance(sample.get("pid"), int) and not isinstance(sample.get("pid"), bool) else 0
     event = sample.get("deny_event") if isinstance(sample.get("deny_event"), dict) else {}
@@ -277,8 +358,25 @@ def _probe(host: object, facts: dict) -> None:
             or host.pinned_deny_anchor(pid) > 0
         )
     )
-    facts["egress_errno"] = sample.get("net_errno")
-    facts["egress_anchor"] = host.egress_block_anchor(pid) if pid else 0
+    errno = sample.get("net_errno")
+    errno, anchor = _wait_egress(host, pid, errno, event_start)
+    # The egress program can attach just after the path deny banner. A timeout
+    # with no row is tried again. A row for a different pid does not count.
+    for _ in range(3):
+        if anchor or errno != 110:
+            break
+        try:
+            event_start = len(host.events())
+        except Exception:
+            event_start = 0
+        again = host.child_open(True)
+        again_pid = again.get("pid")
+        if isinstance(again_pid, int) and not isinstance(again_pid, bool) and again_pid > 0:
+            pid = again_pid
+        errno = again.get("net_errno")
+        errno, anchor = _wait_egress(host, pid, errno, event_start)
+    facts["egress_errno"] = errno
+    facts["egress_anchor"] = anchor
     try:
         host.ensure_allowlist_peer()
         facts["allow_errno"] = host.enrolled_connect_errno(host.ALLOW_HOST, host.ALLOW_PORT)
@@ -312,8 +410,12 @@ def collect_facts(host: object, *, start: bool) -> dict:
         return facts
     facts["programs_attached"] = _programs_attached()
     facts["enrollment_intact"] = _enrollment_intact(host)
+    if facts.get("started") is True:
+        _wait_egress_prog()
     _probe(host, facts)
     _resources(facts)
+    if facts.get("drops") is None:
+        facts["drops"] = _ledger_drops(host)
     return facts
 
 
