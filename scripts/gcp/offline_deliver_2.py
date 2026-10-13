@@ -448,6 +448,8 @@ SCP_FROM_REMOTES = frozenset(
         "/tmp/gcp-plumb.json",
         "/tmp/self-service-rows.json",
         "/tmp/redteam-rows.json",
+        "/tmp/shutdown-survival-pre.json",
+        "/tmp/shutdown-survival-post.json",
         ROWS_JSON,
     }
 )
@@ -554,6 +556,10 @@ def prune_evidence(directory: Path) -> list[str]:
                     continue
                 if path.name == "redteam-packet.json":
                     redteam_packet.write_packet(path, payload)
+                    kept.append(path.name)
+                    continue
+                if path.name == "shutdown-demo.json":
+                    shutdown_survival.rewrite_demo(path, payload)
                     kept.append(path.name)
                     continue
                 write_evidence(path, payload)

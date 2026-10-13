@@ -49,6 +49,11 @@ on:
         required: false
         default: false
         type: boolean
+      shutdown_survival:
+        description: Enrolled persistence, loader kill, and reboot survival on one throwaway VM. Default off. Dispatch only after the GCP regression and red-team rerun have passed.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -78,6 +83,12 @@ jobs:
           if [ "${{ inputs.self_service }}" = "true" ] && [ "${{ inputs.run_batteries }}" = "true" ]; then
             echo "self_service does not run the enterprise batteries" >&2
             exit 1
+          fi
+          if [ "${{ inputs.shutdown_survival }}" = "true" ]; then
+            if [ "${{ inputs.run_batteries }}" != "true" ] || [ "${{ inputs.redteam_brain }}" != "true" ] || [ "${{ inputs.self_service }}" = "true" ]; then
+              echo "shutdown survival runs with the local model on a battery VM" >&2
+              exit 1
+            fi
           fi
 
       - name: Refuse static cloud keys
@@ -229,6 +240,12 @@ jobs:
             echo "self_service does not run the enterprise batteries" >&2
             exit 1
           fi
+          if [ "${{ inputs.shutdown_survival }}" = "true" ]; then
+            if [ "${{ inputs.run_batteries }}" != "true" ] || [ "${{ inputs.redteam_brain }}" != "true" ] || [ "${{ inputs.self_service }}" = "true" ]; then
+              echo "shutdown survival runs with the local model on a battery VM" >&2
+              exit 1
+            fi
+          fi
 
       - name: Refuse static GCP keys
         env:
@@ -264,6 +281,8 @@ jobs:
             scripts/gcp/fetch_offline_debs.sh
             scripts/gcp/lab-guests/enterprise-rows.sh
             scripts/gcp/lab-guests/redteam_rows.py
+            scripts/gcp/lab-guests/shutdown_survival.py
+            scripts/gcp/shutdown_survival.py
             scripts/aws/lab-guests/descendant_b1.py
             scripts/aws/lab-guests/descendant_probe
             scripts/aws/lab-guests/phase2_host.py
@@ -392,7 +411,7 @@ jobs:
         run: python3 scripts/gcp/offline_deliver.py run-self-service
 
       - name: Run the kernel red-team campaign
-        if: inputs.run_batteries && inputs.redteam_brain
+        if: inputs.run_batteries && inputs.redteam_brain && inputs.shutdown_survival != true
         env:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
@@ -416,6 +435,33 @@ jobs:
           set -euo pipefail
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           python3 scripts/gcp/offline_deliver.py run-redteam
+
+      - name: Run shutdown survival
+        if: inputs.run_batteries && inputs.redteam_brain && inputs.shutdown_survival
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          DEB_DIR: ${{ runner.temp }}/offline-debs
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          RUN_BATTERIES: "true"
+          REDTEAM_BRAIN: "true"
+          BRAIN_DIR: ${{ runner.temp }}/redteam-brain
+          BUNDLE_COMMIT: ${{ inputs.bundle_commit }}
+          FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
+          EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+          GUEST_SCRIPT: scripts/gcp/lab-guests/enterprise-rows.sh
+          DESCENDANT_SCRIPT: scripts/aws/lab-guests/descendant_b1.py
+          PHASE2_HOST: scripts/aws/lab-guests/phase2_host.py
+          PHASE2_GRADE: scripts/aws/lab-guests/phase2_grade.py
+          SHUTDOWN_SCRIPT: scripts/gcp/lab-guests/shutdown_survival.py
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
+        run: |
+          set -euo pipefail
+          export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
+          python3 scripts/gcp/offline_deliver.py run-shutdown-survival
 
       - name: Run the batteries on a new seal
         if: inputs.run_batteries && !inputs.redteam_brain

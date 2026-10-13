@@ -36,6 +36,7 @@ import lab_auto as lab
 import redteam_brain as rtbrain
 import redteam_campaign
 import redteam_packet
+import shutdown_survival
 
 CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 LAB_PROJECT = "vantio-lab-oct08"
@@ -224,6 +225,7 @@ EVIDENCE_FILES = frozenset(
         "prepare-bundle.json",
         "guest-evidence.json",
         "redteam-packet.json",
+        "shutdown-demo.json",
         "teardown.json",
     }
 )

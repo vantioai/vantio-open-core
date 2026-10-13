@@ -854,6 +854,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_self_service(env)
         if command == "run-redteam":
             return redteam_campaign.execute(env, sys.modules[__name__])
+        if command == "run-shutdown-survival":
+            return shutdown_survival.execute(env, sys.modules[__name__])
         if command == "delete-handoff":
             return delete_handoff(env)
         if command == "remove-oslogin-key":
