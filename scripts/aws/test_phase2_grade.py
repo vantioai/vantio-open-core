@@ -484,7 +484,31 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertNotIn("lsm=", planned["extras"][0])
         dropin = baseline_diag.lsm_dropin_text("lockdown,capability,apparmor,bpf")
         self.assertIn("lsm=lockdown,capability,apparmor,bpf", dropin)
+        self.assertIn('GRUB_CMDLINE_LINUX="${_vantio_linux# } lsm=lockdown,capability,apparmor,bpf"', dropin)
+        self.assertNotIn('GRUB_CMDLINE_LINUX=""', dropin)
         self.assertIn("case $_vantio_tok in", dropin)
+        cfg = "\n".join(
+            [
+                "menuentry 'Ubuntu' {",
+                "  linux /boot/vmlinuz root=PARTUUID ro console=ttyS0 lsm=lockdown,capability,apparmor,bpf",
+                "}",
+            ]
+        )
+        self.assertTrue(baseline_diag.grub_cfg_has_lsm(cfg, "lockdown,capability,apparmor,bpf"))
+        self.assertFalse(baseline_diag.grub_cfg_has_lsm(cfg, "lockdown,capability,apparmor"))
+        missed, code = baseline_diag.lsm_boot_decision(
+            "lockdown,capability,apparmor",
+            "root=PARTUUID ro console=ttyS0",
+            {"reboot_requested": True},
+        )
+        self.assertEqual(code, 2)
+        self.assertIsNotNone(missed)
+        self.assertEqual(missed["host_result"], "FAIL")
+        self.assertFalse(missed["cmdline_has_bpf"])
+        self.assertIn("console=ttyS0", missed["cmdline"])
+        pending, pending_code = baseline_diag.lsm_boot_decision("lockdown,capability,apparmor", "root=PARTUUID", None)
+        self.assertIsNone(pending)
+        self.assertEqual(pending_code, 1)
         host = Path(__file__).resolve().parent.joinpath("lab-guests/phase2_host.py").read_text(encoding="utf-8")
         self.assertIn("99-vantio-lsm.cfg", host)
         self.assertIn("0o755", host)
@@ -501,6 +525,13 @@ class BaselineDiagTests(unittest.TestCase):
             {"reboot_requested": True, "stock_lsm": "lockdown,capability,apparmor"},
         )
         self.assertEqual(enabled["host_result"], "LSM_ENABLED")
+        ignored = baseline_diag.lsm_status_body(
+            "lockdown,capability,apparmor",
+            "root=PARTUUID lsm=lockdown,capability,apparmor,bpf",
+            {"reboot_requested": True},
+        )
+        self.assertEqual(ignored["host_result"], "FAIL")
+        self.assertEqual(ignored["reason"], "bpf_not_active")
         stock = baseline_diag.lsm_status_body("capability,bpf", "root=PARTUUID", None)
         self.assertEqual(stock["host_result"], "LSM_ALREADY_ACTIVE")
         self.assertTrue(stock["stock_bpf_lsm"])

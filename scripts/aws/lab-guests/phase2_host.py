@@ -1448,6 +1448,21 @@ def _enforce_generation_log() -> str:
     return _wait_readiness_log()
 
 
+def _read_grub_cfg() -> str:
+    chunks: list[str] = []
+    for path in (Path("/boot/grub/grub.cfg"), Path("/boot/efi/EFI/ubuntu/grub.cfg")):
+        if path.is_file():
+            chunks.append(path.read_text(encoding="utf-8", errors="replace"))
+    return "\n".join(chunks)
+
+
+def _run_update_grub() -> subprocess.CompletedProcess[str]:
+    proc = subprocess.run(["update-grub"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        proc = subprocess.run(["grub-mkconfig", "-o", "/boot/grub/grub.cfg"], capture_output=True, text=True)
+    return proc
+
+
 def apply_consented_lsm(lsm_value: str) -> dict:
     """Write the consented lsm= list into grub. Restore the files if update-grub fails."""
     main_path = Path("/etc/default/grub")
@@ -1471,10 +1486,8 @@ def apply_consented_lsm(lsm_value: str) -> dict:
     prior_dropin = dropin.read_text(encoding="utf-8") if dropin.is_file() else None
     dropin.write_text(baseline_diag.lsm_dropin_text(lsm_value), encoding="utf-8")
     dropin.chmod(0o755)
-    proc = subprocess.run(["update-grub"], capture_output=True, text=True)
-    if proc.returncode != 0:
-        proc = subprocess.run(["grub-mkconfig", "-o", "/boot/grub/grub.cfg"], capture_output=True, text=True)
-    if proc.returncode != 0:
+
+    def restore() -> None:
         main_path.write_text(main, encoding="utf-8")
         for path, text in zip(extra_paths, extras):
             path.write_text(text, encoding="utf-8")
@@ -1483,8 +1496,23 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         else:
             dropin.write_text(prior_dropin, encoding="utf-8")
             dropin.chmod(0o755)
+
+    proc = _run_update_grub()
+    if proc.returncode != 0:
+        restore()
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
         return {"updated": False, "error": "update_grub", "tail": tail}
+    cfg = _read_grub_cfg()
+    if not baseline_diag.grub_cfg_has_lsm(cfg, lsm_value):
+        restore()
+        _run_update_grub()
+        linux_lines = [line.strip()[:240] for line in cfg.splitlines() if line.strip().startswith("linux")][:3]
+        return {
+            "updated": False,
+            "error": "grub_cfg_missing_lsm",
+            "dropin": "99-vantio-lsm.cfg",
+            "linux_lines": linux_lines,
+        }
     return {"updated": True, "error": "", "dropin": "99-vantio-lsm.cfg"}
 
 
@@ -1556,7 +1584,7 @@ def run_lsm_guard() -> dict:
     lsm_value = baseline_diag.lsm_list_with_bpf(stock)
     applied = apply_consented_lsm(lsm_value)
     body["lsm_value"] = lsm_value
-    body["grub"] = {key: applied[key] for key in ("updated", "error") if key in applied}
+    body["grub"] = {key: applied[key] for key in ("updated", "error", "linux_lines") if key in applied}
     if not applied.get("updated"):
         body["host_result"] = "FAIL"
         body["reason"] = applied.get("error") or "update_grub"

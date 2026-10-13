@@ -143,6 +143,10 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("--scp-flag=-oServerAliveInterval=30", scp)
         self.assertIn("--scp-flag=-oServerAliveCountMax=20", scp)
         self.assertNotIn("--ssh-flag=-oServerAliveInterval=30", scp)
+        miss = "ERROR: (gcloud.compute.os-login.ssh-keys.remove) Cannot find requested SSH key."
+        self.assertTrue(od.scp_remove_miss_is_ignorable(miss))
+        self.assertFalse(od.scp_remove_miss_is_ignorable(miss + "\nPermission denied"))
+        self.assertFalse(od.scp_remove_miss_is_ignorable(""))
         self.assertIn("--ssh-flag=-oServerAliveInterval=30", ssh)
         back = od.iap_scp_argv(
             "vantio-lab-oct08",

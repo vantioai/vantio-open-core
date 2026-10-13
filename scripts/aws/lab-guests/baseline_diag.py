@@ -372,26 +372,44 @@ def _rewrite_grub_text(text: str, lsm_value: str, *, own_the_value: bool) -> tup
 def lsm_dropin_text(lsm_value: str) -> str:
     """Drop-in sourced after the Ubuntu cloud image grub files.
 
-    40-force-partuuid.cfg and 50-cloudimg-settings.cfg set
-    GRUB_CMDLINE_LINUX_DEFAULT. A later 99-vantio-lsm.cfg replaces that
-    value and keeps a single lsm= list. The file has to be executable or
-    grub-mkconfig skips it.
+    40-force-partuuid.cfg and 50-cloudimg-settings.cfg assign
+    GRUB_CMDLINE_LINUX_DEFAULT. The booted tokens on a cloud image often
+    live on GRUB_CMDLINE_LINUX instead. A later 99-vantio-lsm.cfg puts the
+    same lsm= list on both. Clearing LINUX drops the token the guest
+    actually boots. The file has to be executable or grub-mkconfig skips it.
     """
     if not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value):
         raise ValueError("lsm_value")
     return (
-        "# Lab host. Sourced after the cloud image grub drop-ins.\n"
-        '_vantio_bits=""\n'
-        "for _vantio_tok in $GRUB_CMDLINE_LINUX_DEFAULT $GRUB_CMDLINE_LINUX; do\n"
+        "# Lab host. Sourced after the cloud image grub files.\n"
+        '_vantio_default=""\n'
+        '_vantio_linux=""\n'
+        "for _vantio_tok in $GRUB_CMDLINE_LINUX_DEFAULT; do\n"
         "  case $_vantio_tok in\n"
         "    lsm=*) ;;\n"
-        '    *) _vantio_bits="$_vantio_bits $_vantio_tok" ;;\n'
+        '    *) _vantio_default="$_vantio_default $_vantio_tok" ;;\n'
         "  esac\n"
         "done\n"
-        f'GRUB_CMDLINE_LINUX_DEFAULT="${{_vantio_bits# }} lsm={lsm_value}"\n'
-        'GRUB_CMDLINE_LINUX=""\n'
-        "unset _vantio_tok _vantio_bits\n"
+        "for _vantio_tok in $GRUB_CMDLINE_LINUX; do\n"
+        "  case $_vantio_tok in\n"
+        "    lsm=*) ;;\n"
+        '    *) _vantio_linux="$_vantio_linux $_vantio_tok" ;;\n'
+        "  esac\n"
+        "done\n"
+        f'GRUB_CMDLINE_LINUX_DEFAULT="${{_vantio_default# }} lsm={lsm_value}"\n'
+        f'GRUB_CMDLINE_LINUX="${{_vantio_linux# }} lsm={lsm_value}"\n'
+        "unset _vantio_tok _vantio_default _vantio_linux\n"
     )
+
+
+def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
+    """True when a generated linux line carries this exact lsm= list."""
+    needle = f"lsm={lsm_value}"
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("linux") and needle in stripped.split():
+            return True
+    return False
 
 
 def plan_grub_lsm(main: str, extras: list[str], lsm_value: str) -> dict:
@@ -425,9 +443,17 @@ def lsm_status_body(
         if token.startswith("lsm=") and bpf_lsm_active(token.split("=", 1)[1]):
             cmdline_has = True
     requested = isinstance(prior, dict) and prior.get("reboot_requested") is True
+    active = bpf_lsm_active(stock)
     if requested:
-        result = "LSM_ENABLED" if cmdline_has else "FAIL"
-        reason = "bpf_listed" if cmdline_has else "cmdline_missing_bpf"
+        if cmdline_has and active:
+            result = "LSM_ENABLED"
+            reason = "bpf_listed"
+        elif not cmdline_has:
+            result = "FAIL"
+            reason = "cmdline_missing_bpf"
+        else:
+            result = "FAIL"
+            reason = "bpf_not_active"
     else:
         result = "LSM_ALREADY_ACTIVE"
         reason = "stock_bpf_lsm"
@@ -436,9 +462,9 @@ def lsm_status_body(
         "host_result": result,
         "reason": reason,
         "stock_lsm": stock,
-        "stock_bpf_lsm": True,
+        "stock_bpf_lsm": bpf_lsm_active(stock),
         "cmdline": cmdline,
-        "bpf_listed": True,
+        "bpf_listed": bpf_lsm_active(stock),
         "cmdline_has_bpf": cmdline_has,
         "prior_guard": prior if isinstance(prior, dict) else None,
         "distro": distro,
@@ -460,14 +486,38 @@ def _pretty_distro() -> str:
     return ""
 
 
+def lsm_boot_decision(
+    stock: str,
+    cmdline: str,
+    prior: dict | None,
+    *,
+    distro: str = "",
+    kernel: str = "",
+    image_id: str = "",
+) -> tuple[dict | None, int]:
+    """Confirm a requested reboot. 1 means the loader proof still has to run."""
+    requested = isinstance(prior, dict) and prior.get("reboot_requested") is True
+    if not bpf_lsm_active(stock) and not requested:
+        return None, 1
+    body = lsm_status_body(
+        stock,
+        cmdline,
+        prior,
+        distro=distro,
+        kernel=kernel,
+        image_id=image_id,
+    )
+    if body["host_result"] == "FAIL":
+        return body, 2
+    return body, 0
+
+
 def write_lsm_status() -> int:
     """0 when bpf is already an active LSM. 1 when the loader proof still has to run."""
     lsm_path = Path("/sys/kernel/security/lsm")
     stock = lsm_path.read_text(encoding="utf-8").strip() if lsm_path.is_file() else ""
     cmdline_path = Path("/proc/cmdline")
     cmdline = cmdline_path.read_text(encoding="utf-8").strip() if cmdline_path.is_file() else ""
-    if not bpf_lsm_active(stock):
-        return 1
     prior = None
     if LSM_STOCK_PATH.is_file():
         try:
@@ -475,7 +525,7 @@ def write_lsm_status() -> int:
         except (OSError, json.JSONDecodeError):
             loaded = None
         prior = loaded if isinstance(loaded, dict) else None
-    body = lsm_status_body(
+    body, code = lsm_boot_decision(
         stock,
         cmdline,
         prior,
@@ -483,6 +533,8 @@ def write_lsm_status() -> int:
         kernel=os.uname().release,
         image_id=os.environ.get("VANTIO_IMAGE_ID", ""),
     )
+    if body is None:
+        return code
     text = json.dumps(body, indent=2) + "\n"
     LSM_ROWS_PATH.write_text(text, encoding="utf-8")
     try:
@@ -490,7 +542,7 @@ def write_lsm_status() -> int:
     except OSError:
         pass
     print(text, flush=True)
-    return 0 if body["host_result"] != "FAIL" else 2
+    return code
 
 
 def _le_int(value: object) -> int | None:
