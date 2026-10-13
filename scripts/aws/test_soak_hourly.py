@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "aws" / "lab-guests"))
 
 import soak_check  # noqa: E402
 import w3_lab_auto as lab  # noqa: E402
+import w3_lab_steps as steps  # noqa: E402
 
 
 def _pass_facts() -> dict:
@@ -105,6 +106,13 @@ class SoakHourlyTest(unittest.TestCase):
         self.assertIn("scripts/aws/lab-guests/soak-hourly.sh", launch)
         steps = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
         self.assertIn('"soak-hourly"', steps)
+
+    def test_collect_keeps_the_check_detail(self) -> None:
+        raw = '{"detail":"began:2026-10-13T12:00:00Z.drops:0","name":"hourly","result":"pass","seq":1}\n'
+        parsed = steps.parse_check_details(raw)
+        self.assertEqual(parsed[0]["result"], "pass")
+        self.assertIn("began:2026-10-13T12:00:00Z", parsed[0]["detail"])
+        self.assertEqual(steps.parse_check_details('{"detail":"PRIVATE KEY","name":"hourly","result":"pass","seq":1}'), [])
 
 
 if __name__ == "__main__":
