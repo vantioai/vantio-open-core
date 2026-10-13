@@ -758,27 +758,37 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
         if created is not None and now >= created:
             hours = Decimal(now - created) / Decimal("3600")
         gross = estimate_gross_usd(hours)
+        if worm_spread.requested(env):
+            gross = worm_spread.pair_under_cap(60) * hours
         instances = _list_instances(project)
-        matched = next((item for item in instances if item.get("name") == name), None)
-        if matched is not None:
-            if not lab.labels_owned(matched.get("labels"), name):
-                skipped = True
-            else:
-                _run_ok(
-                    [
-                        "gcloud",
-                        "compute",
-                        "instances",
-                        "delete",
-                        name,
-                        f"--project={project}",
-                        f"--zone={lab.instance_zone(matched)}",
-                        "--delete-disks=all",
-                        "--quiet",
-                    ],
-                    "teardown",
-                )
-                deleted = True
+        try:
+            peer = worm_spread.peer_name(env.get("GITHUB_RUN_ID", ""))
+        except ValueError:
+            peer = ""
+        targets = [peer, name] if peer else [name]
+        for target in targets:
+            matched = next((item for item in instances if item.get("name") == target), None)
+            if matched is None:
+                continue
+            if not lab.labels_owned(matched.get("labels"), target):
+                if target == name:
+                    skipped = True
+                continue
+            _run_ok(
+                [
+                    "gcloud",
+                    "compute",
+                    "instances",
+                    "delete",
+                    target,
+                    f"--project={project}",
+                    f"--zone={lab.instance_zone(matched)}",
+                    "--delete-disks=all",
+                    "--quiet",
+                ],
+                "teardown",
+            )
+            deleted = True
     finally:
         delete_objects(handoff_objects(env), missing_ok=True)
     if skipped:
@@ -820,6 +830,21 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
     print(json.dumps(payload))
     if verify.get("status") != "VERIFIED_REMOVED" or verify_rc != 0:
         return 2
+    try:
+        peer = worm_spread.peer_name(env.get("GITHUB_RUN_ID", ""))
+    except ValueError:
+        peer = ""
+    if peer:
+        os.environ["INSTANCE_NAME"] = peer
+        peer_buffer = io.StringIO()
+        with redirect_stdout(peer_buffer):
+            peer_rc = lab.execute_verify(os.environ)
+        try:
+            peer_verify = json.loads(peer_buffer.getvalue())
+        except json.JSONDecodeError:
+            peer_verify = {"status": "UNKNOWN"}
+        if peer_rc != 0 or peer_verify.get("status") != "VERIFIED_REMOVED":
+            return 2
     return 0
 
 
@@ -854,6 +879,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_self_service(env)
         if command == "run-redteam":
             return redteam_campaign.execute(env, sys.modules[__name__])
+        if command == "run-worm-spread":
+            return worm_spread.execute(env, sys.modules[__name__])
         if command == "delete-handoff":
             return delete_handoff(env)
         if command == "remove-oslogin-key":

@@ -36,6 +36,7 @@ import lab_auto as lab
 import redteam_brain as rtbrain
 import redteam_campaign
 import redteam_packet
+import worm_spread
 
 CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 LAB_PROJECT = "vantio-lab-oct08"
@@ -225,6 +226,7 @@ EVIDENCE_FILES = frozenset(
         "guest-evidence.json",
         "redteam-packet.json",
         "teardown.json",
+        "worm-demo.json",
     }
 )
 CEILING_PATH = "/var/lib/vantio-pe-clean-host/d/secret"
@@ -435,6 +437,12 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key == "snapshot" and value == SNAPSHOT:
             kept[key] = value
+            continue
+        if key == "peer_name" and isinstance(value, str) and re.fullmatch(r"vantio-gcp-lab-b-[0-9]{1,20}", value):
+            kept["peer_name"] = value
+            continue
+        if key == "peer_machine_type" and value == lab.MACHINE_TYPE:
+            kept["peer_machine_type"] = value
             continue
         if key == "name" and isinstance(value, str) and re.fullmatch(r"vantio-gcp-lab-[0-9]{1,20}", value):
             kept[key] = value
