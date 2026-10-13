@@ -118,6 +118,16 @@ class SoakHourlyTest(unittest.TestCase):
         self.assertIn("began:2026-10-13T12:00:00Z", parsed[0]["detail"])
         self.assertEqual(steps.parse_check_details('{"detail":"PRIVATE KEY","name":"hourly","result":"pass","seq":1}'), [])
 
+    def test_openshell_refuses_the_running_soak_host(self) -> None:
+        self.assertTrue(steps.openshell_refused("i-0f38ffde5ad83c9f2", {}))
+        self.assertTrue(steps.openshell_refused("i-0123456789abcdef0", {"vantio-soak": "active"}))
+        self.assertFalse(steps.openshell_refused("i-0123456789abcdef0", {"vantio-soak": "inactive"}))
+        arm = (ROOT / ".github/workflows/w3-lab-auto-arm.yml").read_text(encoding="utf-8")
+        self.assertIn("- openshell-interop", arm)
+        script = (ROOT / "scripts/aws/lab-guests/openshell-interop.sh").read_text(encoding="utf-8")
+        self.assertNotIn("systemctl reboot", script)
+        self.assertIn("openshell_not_staged", script)
+
 
 if __name__ == "__main__":
     unittest.main()

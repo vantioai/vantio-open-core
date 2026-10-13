@@ -1020,6 +1020,14 @@ def _scan_self_service(directory: Path) -> None:
             raise lab.GuardAbort("token_in_evidence")
 
 
+SOAK_HOST_ID = "i-0f38ffde5ad83c9f2"
+
+
+def openshell_refused(instance_id: str, tags: Mapping[str, Any] | None) -> bool:
+    """OpenShell stays off the running soak host."""
+    return instance_id == SOAK_HOST_ID or lab.soak_active(tags)
+
+
 def execute_enterprise_rows(
     runner: Runner,
     *,
@@ -1055,7 +1063,7 @@ def execute_enterprise_rows(
             "lsm-guard",
             "soak-hourly",
         }
-        if battery not in {"enterprise", "descendant-b1", "self-service", *phase_batteries}:
+        if battery not in {"enterprise", "descendant-b1", "self-service", "openshell-interop", *phase_batteries}:
             raise lab.GuardAbort("battery")
         payload["battery"] = battery
         if battery == "self-service" and os.environ.get("W3_BRAIN_DIR", "").strip():
@@ -1080,6 +1088,8 @@ def execute_enterprise_rows(
         tags = lab._tag_list(instance.get("Tags"))
         if not lab.lab_tags_owned(tags):
             raise lab.GuardAbort("not_owned")
+        if battery == "openshell-interop" and openshell_refused(instance_id, tags):
+            raise lab.GuardAbort("soak_host")
         if instance_state(instance) != "running":
             raise lab.GuardAbort("instance_state")
         host = public_ipv4(instance)
@@ -1230,7 +1240,11 @@ def execute_enterprise_rows(
                 sized = remote(["stat", "-c", "%s", f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"], "")
                 if sized.returncode != 0 or (sized.stdout or "").strip() != "2104932768":
                     raise lab.GuardAbort("brain_not_landed")
-            if battery == "self-service":
+            if battery == "openshell-interop":
+                guest_dir = Path(__file__).resolve().with_name("lab-guests")
+                copy_to(guest_dir / "openshell-interop.sh", "openshell-interop.sh")
+                ran = remote(["bash", f"{GUEST_BUNDLE}/openshell-interop.sh"], "")
+            elif battery == "self-service":
                 deb_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
                 if deb_env:
                     ca_bundle = Path(deb_env) / "ca-certificates.crt"
@@ -1330,6 +1344,8 @@ def execute_enterprise_rows(
                 payload["status"] = "ENTERPRISE_ROWS"
             elif battery == "soak-hourly":
                 payload["status"] = "SOAK_HOURLY"
+            elif battery == "openshell-interop":
+                payload["status"] = "OPENSHELL_INTEROP"
             else:
                 payload["status"] = "PHASE2"
         finally:
