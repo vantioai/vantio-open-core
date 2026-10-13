@@ -245,8 +245,38 @@ def build_user_data(stop_after_minutes: int) -> str:
 
 
 def build_soak_user_data() -> str:
-    """No shutdown timer. The soak host is tagged vantio-soak=active."""
-    return "#!/bin/bash\n# vantio-soak=active. Auto-stop is off for this host.\n"
+    """Install the hourly check. No shutdown timer. Does not reboot the host.
+
+    The seal is not in this script. The timer records a skip until the arm
+    copies the probe and leaves the loader running.
+    """
+    guests = Path(__file__).resolve().parent / "lab-guests"
+    record = (guests / "record-check.sh").read_text(encoding="utf-8")
+    hourly = (guests / "soak-hourly.sh").read_text(encoding="utf-8")
+    if not record.endswith("\n"):
+        record += "\n"
+    if not hourly.endswith("\n"):
+        hourly += "\n"
+    if "END_RECORD" in record or "END_HOURLY" in record or "END_RECORD" in hourly or "END_HOURLY" in hourly:
+        raise ValueError("user_data_delimiter")
+    script = (
+        "#!/bin/bash\n"
+        "set -euo pipefail\n"
+        "# vantio-soak=active. Auto-stop is off for this host.\n"
+        "install -d /var/lib/vantio-lab/bin\n"
+        "cat > /var/lib/vantio-lab/bin/record-check.sh <<'END_RECORD'\n"
+        f"{record}"
+        "END_RECORD\n"
+        "chmod 755 /var/lib/vantio-lab/bin/record-check.sh\n"
+        "cat > /var/lib/vantio-lab/bin/soak-hourly.sh <<'END_HOURLY'\n"
+        f"{hourly}"
+        "END_HOURLY\n"
+        "chmod 755 /var/lib/vantio-lab/bin/soak-hourly.sh\n"
+        "bash /var/lib/vantio-lab/bin/soak-hourly.sh install\n"
+    )
+    if len(script.encode("utf-8")) > 16384:
+        raise ValueError("user_data_size")
+    return script
 
 
 def soak_active(tags: Mapping[str, Any] | None) -> bool:

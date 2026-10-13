@@ -102,6 +102,36 @@ def parse_check_lines(text: str, *, source: str) -> list[dict[str, Any]]:
     return found
 
 
+def parse_check_details(text: str) -> list[dict[str, Any]]:
+    """Read record-check payloads. A payload with a private key is dropped."""
+    found: list[dict[str, Any]] = []
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw.startswith("{") or "PRIVATE" in raw:
+            continue
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(body, dict):
+            continue
+        detail = body.get("detail")
+        name = body.get("name")
+        result = body.get("result")
+        seq = body.get("seq")
+        if not isinstance(detail, str) or re.fullmatch(r"[A-Za-z0-9_.:-]*", detail) is None:
+            continue
+        if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,40}", name) is None:
+            continue
+        if result not in {"pass", "fail", "skip"}:
+            continue
+        if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+            continue
+        found.append({"detail": detail, "name": name, "result": result, "seq": seq})
+    found.sort(key=lambda item: int(item["seq"]))
+    return found
+
+
 def redact(text: str) -> tuple[str, bool]:
     cleaned, count = SECRET.subn("[redacted]", text)
     return cleaned, count > 0
@@ -577,6 +607,8 @@ def _collect_console(
             "cat /var/lib/vantio-lab/marker.json 2>/dev/null || true\n"
             "printf '%s\\n' '---CHECKS---'\n"
             "cat /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true\n"
+            "printf '%s\\n' '---DETAILS---'\n"
+            "cat /var/lib/vantio-lab/checks/*.json 2>/dev/null || true\n"
         )
         stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
         opened = open_ssh(
@@ -593,7 +625,9 @@ def _collect_console(
         payload["collect_channel"] = "console+ssh" if opened.get("opened") else "console"
         guest = redact(str(opened.get("stdout") or ""))[0]
         marker_part, _, check_part = guest.partition("---CHECKS---")
+        check_part, _, detail_part = check_part.partition("---DETAILS---")
         marker_part = marker_part.strip()
+        payload["check_details"] = parse_check_details(detail_part)
         if marker_part.startswith("{") and "PRIVATE" not in marker_part:
             payload["guest_marker_sha256"] = hashlib.sha256(marker_part.encode("utf-8")).hexdigest()
         pulled = parse_check_lines(check_part, source="guest-file")
@@ -1019,6 +1053,7 @@ def execute_enterprise_rows(
             "2f-tamper",
             "2g-distro",
             "lsm-guard",
+            "soak-hourly",
         }
         if battery not in {"enterprise", "descendant-b1", "self-service", *phase_batteries}:
             raise lab.GuardAbort("battery")
@@ -1211,6 +1246,10 @@ def execute_enterprise_rows(
                 copy_to(guest_dir / "phase2_grade.py", "phase2_grade.py")
                 copy_to(guest_dir / "baseline_diag.py", "baseline_diag.py")
                 copy_to(guest_dir / "sticky_write.py", "sticky_write.py")
+                if battery == "soak-hourly":
+                    copy_to(guest_dir / "soak_check.py", "soak_check.py")
+                    copy_to(guest_dir / "soak-hourly.sh", "soak-hourly.sh")
+                    copy_to(guest_dir / "record-check.sh", "record-check.sh")
                 ran = remote(
                     [
                         "env",
@@ -1289,6 +1328,8 @@ def execute_enterprise_rows(
                 payload["status"] = "DESCENDANT_B1"
             elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"
+            elif battery == "soak-hourly":
+                payload["status"] = "SOAK_HOURLY"
             else:
                 payload["status"] = "PHASE2"
         finally:

@@ -131,6 +131,8 @@ jobs:
           sparse-checkout: |
             scripts/aws/w3_lab_auto.py
             scripts/aws/lab_iam_capabilities.json
+            scripts/aws/lab-guests/record-check.sh
+            scripts/aws/lab-guests/soak-hourly.sh
           sparse-checkout-cone-mode: false
 
       - name: Assume vantio-w3-lab-provision

@@ -58,6 +58,7 @@ on:
           - 2f-tamper
           - 2g-distro
           - lsm-guard
+          - soak-hourly
       redteam_brain:
         description: Download the pinned Qwen on the runner and copy it over SSH. Requires m7i-flex.large. Default off.
         required: false
@@ -121,6 +122,9 @@ jobs:
             scripts/aws/lab-guests/phase2_grade.py
             scripts/aws/lab-guests/baseline_diag.py
             scripts/aws/lab-guests/sticky_write.py
+            scripts/aws/lab-guests/soak_check.py
+            scripts/aws/lab-guests/soak-hourly.sh
+            scripts/aws/lab-guests/record-check.sh
             scripts/aws/fetch_offline_debs.sh
             scripts/aws/lab-guests/self_service.py
             scripts/lab/stage_lab_trust.py
