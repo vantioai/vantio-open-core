@@ -1,0 +1,55 @@
+{
+  "audience": "INTERNAL_RESTRICTED",
+  "council": "python-sdk-3.1.0-exact-artifact",
+  "builder": "bc-e89f892d-fdb6-5c0d-8e01-378389cfb821",
+  "source_sha": "620c68fd6fb10960194bbefb25bbfb2036d6d435",
+  "package": "vantio-agent-sdk",
+  "version": "3.1.0",
+  "classifications": [
+    "PYTHON_310_ARTIFACTS_COUNCIL_PASSED",
+    "TRUSTED_PUBLISHER_WORKFLOW_NEEDS_REVISION"
+  ],
+  "publication_occurred": false,
+  "candidates_mutated": false,
+  "candidates": {
+    "vantio_agent_sdk-3.1.0-py3-none-any.whl": {
+      "bytes": 39235,
+      "sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
+      "match": true
+    },
+    "vantio_agent_sdk-3.1.0.tar.gz": {
+      "bytes": 59669,
+      "sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
+      "match": true
+    }
+  },
+  "seats": [
+    {"id": 1, "name": "Python packaging", "verdict": "PASS_WITH_NONBLOCKING_NOTES"},
+    {"id": 2, "name": "Artifact integrity", "verdict": "PASS"},
+    {"id": 3, "name": "Python runtime compatibility", "verdict": "PASS"},
+    {"id": 4, "name": "Observability semantics", "verdict": "PASS"},
+    {"id": 5, "name": "Privacy and telemetry", "verdict": "PASS"},
+    {"id": 6, "name": "Release engineering", "verdict": "PASS_WITH_NONBLOCKING_NOTES"},
+    {"id": 7, "name": "PyPI Trusted Publishing", "verdict": "NEEDS_REVISION"},
+    {"id": 8, "name": "License and metadata", "verdict": "PASS_WITH_NONBLOCKING_NOTES"},
+    {"id": 9, "name": "Ordinary-client installation", "verdict": "PASS"},
+    {"id": 10, "name": "Scope control", "verdict": "PASS_WITH_NONBLOCKING_NOTES"},
+    {"id": 11, "name": "Evidence verification", "verdict": "PASS"},
+    {"id": 12, "name": "Product-positioning accuracy", "verdict": "PASS_WITH_NONBLOCKING_NOTES"}
+  ],
+  "install_matrix": {
+    "interpreters": ["3.10.21", "3.11.16", "3.12.14"],
+    "artifacts": ["wheel", "sdist"],
+    "independent_checks_failed": 0,
+    "independent_checks": 36,
+    "unittest_ran": 115,
+    "unittest_skipped": 3,
+    "unittest_failed": 0
+  },
+  "pypi_readonly": {
+    "latest": "3.0.14",
+    "has_3.1.0": false
+  },
+  "twine_check_strict": "PASSED",
+  "twine_upload": "not run"
+}
