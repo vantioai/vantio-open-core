@@ -1043,7 +1043,7 @@ def execute_enterprise_rows(
         pin = require_hex64(os.environ.get("PUBLIC_PIN", "").strip(), "public_pin")
         import enterprise_bundle
 
-        if seal != enterprise_bundle.POLICY_ALLOW_SEAL or pin != enterprise_bundle.PUBLIC_INSTALLER_PIN:
+        if pin != enterprise_bundle.PUBLIC_INSTALLER_PIN:
             raise lab.GuardAbort("bundle_wrong_seal")
         battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
         phase_batteries = {
@@ -1064,12 +1064,18 @@ def execute_enterprise_rows(
         bundle_dir = Path(os.environ.get("W3_BUNDLE_DIR", ""))
         staged = Path(os.environ.get("W3_SELF_SERVICE_DIR", ""))
         if battery == "self-service":
+            if seal != enterprise_bundle.POLICY_ALLOW_SEAL:
+                raise lab.GuardAbort("bundle_wrong_seal")
             _scan_self_service(staged)
         else:
             if not bundle_dir.is_dir():
                 raise lab.GuardAbort("bundle_layout")
-            check = checker or enterprise_bundle.inspect_bundle
-            inspected = dict(check(bundle_dir))
+            if checker is None:
+                inspected = dict(enterprise_bundle.inspect_bundle(bundle_dir, expected_seal=seal))
+            else:
+                inspected = dict(checker(bundle_dir))
+            if inspected.get("seal_sha256") != seal:
+                raise lab.GuardAbort("bundle_wrong_seal")
             payload.update(inspected)
         payload.update({"instance_id": instance_id, "public_pin": pin, "seal": seal})
         identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
