@@ -430,6 +430,33 @@ def serial_port_argv(project: str, name: str) -> list[str]:
     ]
 
 
+def serial_console_text(blob: str) -> str:
+    """The full serial log. The last 200000 characters of run 38800477282 hid the earlier boot."""
+    return blob.replace("\x00", "")
+
+
+def confirm_matches_boot(body: dict, boot_id: str) -> bool:
+    """True when the rows file was written on the boot the runner just waited for.
+
+    The pre-reboot guard writes GUARD_PROVED and the stock cmdline to
+    /var/lib/vantio-lab/enterprise-pe-rows.json. A confirm that pulls that
+    file reports the stock line while the new boot's kernel log has the
+    sealed line.
+    """
+    got = body.get("boot_id") if isinstance(body, dict) else None
+    return isinstance(got, str) and bool(boot_id) and "\n" not in boot_id and got == boot_id
+
+
+LATER_BOOT_PROBE = (
+    "sudo python3 -c \"import json,sys; sys.path.insert(0,'/var/lib/vantio-lab/guest'); "
+    "import baseline_diag; "
+    "print(json.dumps({'boot_id': baseline_diag.read_boot_id(), "
+    "'cmdline': open('/proc/cmdline',encoding='utf-8').read().strip()[:400], "
+    "'kernel_command_lines': baseline_diag.read_kernel_command_lines(), "
+    "'grubenv': baseline_diag.read_grubenv_assignments()}))\""
+)
+
+
 def capture_serial(env: Mapping[str, str]) -> int:
     """Print the guest serial console while the instance still exists."""
     _require_execute(env)
@@ -445,9 +472,9 @@ def capture_serial(env: Mapping[str, str]) -> int:
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"SERIAL_RC=error SERIAL_BYTES=0 {type(exc).__name__}", flush=True)
         return 0
-    blob = ((proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")).replace("\x00", "")
+    blob = serial_console_text((proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else ""))
     print(f"SERIAL_RC={proc.returncode} SERIAL_BYTES={len(blob)}", flush=True)
-    print(blob[-200000:], flush=True)
+    print(blob, flush=True)
     return 0
 
 
@@ -507,20 +534,48 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             confirm_body = parsed if isinstance(parsed, dict) else {}
         enabled = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
         cmdline = confirm_body.get("cmdline") if isinstance(confirm_body.get("cmdline"), str) else ""
+        matched = confirm_matches_boot(confirm_body, after)
+        kernel_lines = confirm_body.get("kernel_command_lines")
+        grubenv = confirm_body.get("grubenv")
         print(
             json.dumps(
                 {
                     "bootchain": _bootchain_public(confirm_body),
+                    "boot_id": confirm_body.get("boot_id") if isinstance(confirm_body.get("boot_id"), str) else "",
+                    "boot_match": matched,
                     "cmdline": cmdline[:400],
                     "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
                     "enabled_lsm": enabled,
-                    "lsm_confirm": confirm_body.get("host_result"),
+                    "grubenv": grubenv if isinstance(grubenv, list) else [],
+                    "kernel_command_lines": kernel_lines if isinstance(kernel_lines, list) else [],
+                    "lsm_confirm": confirm_body.get("host_result") if matched else "stale_rows",
                 }
             ),
             flush=True,
         )
         _print_saved_boot_evidence(project, name)
+        if not matched:
+            record["lsm_guard"] = "stale_rows"
+            write_evidence(evidence / "lsm-guard.json", record)
+            raise SystemExit("lsm")
         if not lsm_confirm_ok(confirm_body):
+            if confirm_body.get("host_result") == "GUARD_PROVED" and confirm_body.get("reboot_requested") is True:
+                later = _wait_boot(project, name, after, REBOOT_WAIT_SECONDS)
+                probe_body: dict[str, Any] = {}
+                if later:
+                    probed = _ssh(project, name, LATER_BOOT_PROBE, timeout_s=PROBE_SSH_TIMEOUT)
+                    parsed = _last_object((probed.stdout or "") + (probed.stderr or ""))
+                    if isinstance(parsed, dict):
+                        probe_body = parsed
+                print(
+                    json.dumps(
+                        {
+                            "later_boot_id": later,
+                            "later_probe": probe_body,
+                        }
+                    ),
+                    flush=True,
+                )
             record["lsm_guard"] = "confirm_failed"
             write_evidence(evidence / "lsm-guard.json", record)
             raise SystemExit("lsm")
