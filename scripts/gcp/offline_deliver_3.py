@@ -341,6 +341,52 @@ def _run_one_battery(
     )
 
 
+def _bpf_listed(text: str) -> bool:
+    return any(part.strip() == "bpf" for part in text.split(","))
+
+
+def _cmdline_bpf(cmdline: str) -> bool:
+    for token in cmdline.split():
+        if token.startswith("lsm=") and _bpf_listed(token.split("=", 1)[1]):
+            return True
+    return False
+
+
+def lsm_confirm_ok(body: dict) -> bool:
+    """True when the live LSM list and the cmdline both contain bpf as its own token."""
+    result = body.get("host_result")
+    stock = body.get("stock_lsm") if isinstance(body.get("stock_lsm"), str) else ""
+    cmdline = body.get("cmdline") if isinstance(body.get("cmdline"), str) else ""
+    if result == "LSM_ENABLED":
+        return _bpf_listed(stock) and _cmdline_bpf(cmdline)
+    if result != "LSM_ALREADY_ACTIVE":
+        return False
+    return _bpf_listed(stock) and _cmdline_bpf(cmdline)
+
+
+def _bootchain_public(source: dict) -> dict:
+    chain = source.get("bootchain") if isinstance(source.get("bootchain"), dict) else {}
+    if not chain and isinstance(source.get("grub"), dict):
+        nested = source["grub"].get("bootchain")
+        chain = nested if isinstance(nested, dict) else {}
+    keys = (
+        "efi_kind",
+        "efi_head",
+        "stub_uuid",
+        "stub_prefix",
+        "configfile",
+        "esp",
+        "decision",
+        "stock_line",
+        "packages",
+        "kernel",
+        "grub_d",
+        "rewritten",
+        "error",
+    )
+    return {key: chain[key] for key in keys if key in chain}
+
+
 def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict[str, Any]:
     """Record the stock LSM list. Enable bpf only after the loader refuses."""
     before = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
@@ -366,6 +412,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             {
                 "grub_error": grub.get("error") if isinstance(grub.get("error"), str) else "",
                 "grub_updated": grub.get("updated") is True,
+                "bootchain": _bootchain_public(grub),
                 "linux_line": str(linux_lines[0])[:800] if linux_lines else "",
                 "lsm_guard": result,
                 "reason": reason,
@@ -394,6 +441,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
         print(
             json.dumps(
                 {
+                    "bootchain": _bootchain_public(confirm_body),
                     "cmdline": cmdline[:400],
                     "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
                     "enabled_lsm": enabled,
@@ -402,7 +450,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             ),
             flush=True,
         )
-        if confirm_body.get("host_result") != "LSM_ENABLED":
+        if not lsm_confirm_ok(confirm_body):
             record["lsm_guard"] = "confirm_failed"
             write_evidence(evidence / "lsm-guard.json", record)
             raise SystemExit("lsm")

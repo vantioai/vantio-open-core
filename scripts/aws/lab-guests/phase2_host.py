@@ -1553,6 +1553,21 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         restore()
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
         return {"updated": False, "error": "update_grub", "tail": tail, "cloud_init": cloud_init}
+    sealed = baseline_diag.seal_firmware_tree(Path("/"), lsm_value, mount=True)
+    bootchain = sealed.get("bootchain") if isinstance(sealed.get("bootchain"), dict) else {}
+    if not sealed.get("ok"):
+        restore()
+        _run_update_grub()
+        return {
+            "updated": False,
+            "error": sealed.get("error") or "firmware_seal",
+            "dropin": "99-vantio-lsm.cfg",
+            "efi_grub": str(bootchain.get("efi_head") or "")[:400],
+            "linux_lines": [],
+            "bootchain": bootchain,
+            "cloud_init": cloud_init,
+            "update_grub_tail": ((proc.stdout or "") + (proc.stderr or ""))[-400:],
+        }
     linux_lines: list[str] = []
     efi_stub = ""
     saw_linux = False
@@ -1576,8 +1591,9 @@ def apply_consented_lsm(lsm_value: str) -> dict:
             "updated": False,
             "error": "grub_cfg_missing_lsm",
             "dropin": "99-vantio-lsm.cfg",
-            "efi_grub": efi_stub,
+            "efi_grub": efi_stub or str(bootchain.get("efi_head") or "")[:400],
             "linux_lines": linux_lines[:4],
+            "bootchain": bootchain,
             "cloud_init": cloud_init,
             "update_grub_tail": ((proc.stdout or "") + (proc.stderr or ""))[-400:],
         }
@@ -1585,8 +1601,9 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         "updated": True,
         "error": "",
         "dropin": "99-vantio-lsm.cfg",
-        "efi_grub": efi_stub,
+        "efi_grub": efi_stub or str(bootchain.get("efi_head") or "")[:400],
         "linux_lines": linux_lines[:4],
+        "bootchain": bootchain,
         "cloud_init": cloud_init,
         "update_grub_tail": ((proc.stdout or "") + (proc.stderr or ""))[-400:],
     }
@@ -1662,7 +1679,7 @@ def run_lsm_guard() -> dict:
     body["lsm_value"] = lsm_value
     body["grub"] = {
         key: applied[key]
-        for key in ("updated", "error", "linux_lines", "efi_grub", "cloud_init", "update_grub_tail")
+        for key in ("updated", "error", "linux_lines", "efi_grub", "bootchain", "cloud_init", "update_grub_tail")
         if key in applied
     }
     if not applied.get("updated"):
