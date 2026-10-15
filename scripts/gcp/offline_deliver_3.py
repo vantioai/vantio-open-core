@@ -387,6 +387,12 @@ def _bootchain_public(source: dict) -> dict:
     return {key: chain[key] for key in keys if key in chain}
 
 
+def missing_rows_tail(stdout: str, stderr: str) -> str:
+    """Redacted end of a guest run that never wrote a rows file."""
+    tail = redact(((stdout or "") + "\n" + (stderr or "")).strip())
+    return tail[-1200:]
+
+
 def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict[str, Any]:
     """Record the stock LSM list. Enable bpf only after the loader refuses."""
     before = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
@@ -396,6 +402,11 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
     if not isinstance(body, dict) or not body:
         parsed = _last_object((completed.stdout or "") + (completed.stderr or ""))
         body = parsed if isinstance(parsed, dict) else {}
+    rows_missing = not body
+    if rows_missing:
+        tail = missing_rows_tail(completed.stdout or "", completed.stderr or "")
+        if tail:
+            print(tail, file=sys.stderr)
     result = body.get("host_result") if isinstance(body.get("host_result"), str) else ""
     stock = body.get("stock_lsm") if isinstance(body.get("stock_lsm"), str) else ""
     record = {
@@ -407,20 +418,19 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
     grub = body.get("grub") if isinstance(body.get("grub"), dict) else {}
     reason = body.get("reason") if isinstance(body.get("reason"), str) else ""
     linux_lines = grub.get("linux_lines") if isinstance(grub.get("linux_lines"), list) else []
-    print(
-        json.dumps(
-            {
-                "grub_error": grub.get("error") if isinstance(grub.get("error"), str) else "",
-                "grub_updated": grub.get("updated") is True,
-                "bootchain": _bootchain_public(grub),
-                "linux_line": str(linux_lines[0])[:800] if linux_lines else "",
-                "lsm_guard": result,
-                "reason": reason,
-                "stock_lsm": stock,
-            }
-        ),
-        flush=True,
-    )
+    summary = {
+        "grub_error": grub.get("error") if isinstance(grub.get("error"), str) else "",
+        "grub_updated": grub.get("updated") is True,
+        "bootchain": _bootchain_public(grub),
+        "linux_line": str(linux_lines[0])[:800] if linux_lines else "",
+        "lsm_guard": result,
+        "reason": reason,
+        "stock_lsm": stock,
+    }
+    if rows_missing:
+        summary["guest_rc"] = completed.returncode
+        summary["rows"] = "missing"
+    print(json.dumps(summary), flush=True)
     if result == "LSM_ALREADY_ACTIVE":
         record["lsm_guard"] = "already_active"
         record["stock_bpf_lsm"] = True
