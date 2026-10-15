@@ -387,6 +387,30 @@ class LiveExecutorTests(unittest.TestCase):
 
         self.addCleanup(restore)
 
+    def npm_probe_on_path(self) -> None:
+        """Give the live npm probe a binary to find.
+
+        The plan fixture says npm is already on the host. ProductionObserver
+        checks PATH, and the lab runner answers ``npm --version`` with exit 0.
+        These Optics rollback cases need that probe to verify so the failure
+        is the Optics CLI, including on a machine that has no system npm.
+        """
+        shim = Path(tempfile.mkdtemp(prefix="vantio-npm-probe-"))
+        script = shim / "npm"
+        script.write_text("#!/bin/sh\nprintf '%s\\n' 10.8.2\n", encoding="utf-8")
+        script.chmod(0o755)
+        old = os.environ.get("PATH", "")
+        os.environ["PATH"] = str(shim) + os.pathsep + old
+
+        def restore() -> None:
+            if old:
+                os.environ["PATH"] = old
+            else:
+                os.environ.pop("PATH", None)
+            shutil.rmtree(shim, ignore_errors=True)
+
+        self.addCleanup(restore)
+
     def planned(self) -> Harness:
         harness = self.make()
         code, body = harness.run("plan")
@@ -1140,6 +1164,7 @@ class LiveExecutorTests(unittest.TestCase):
     def test_missing_optics_cli_requires_rollback(self) -> None:
         harness = self.planned()
         self.set_env("1")
+        self.npm_probe_on_path()
         lab = Lab()
         ctx = self.ctx(harness, "apply", lab)
         ctx["live_observer"] = ProductionObserver()
@@ -1147,6 +1172,7 @@ class LiveExecutorTests(unittest.TestCase):
         self.assertEqual(code, 4, body)
         self.assertEqual(body["state"], "FAILED_SAFE")
         self.assertEqual(body["live_failure_class"], "ROLLBACK_REQUIRED")
+        self.assertIn("install_optics_cli", body["last_error"])
         tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
         self.assertNotIn("install_optics_cli", tx["completed_steps"])
         self.assertIn("install_optics_cli", tx["rollback_required_steps"])
@@ -1163,6 +1189,7 @@ class LiveExecutorTests(unittest.TestCase):
     def test_wrong_optics_version_rolls_back_uncheckpointed_prefix(self) -> None:
         harness = self.planned()
         self.set_env("1")
+        self.npm_probe_on_path()
         lab = Lab()
 
         def runner(argv: list[str], timeout: int) -> ExecResult:
@@ -1178,6 +1205,7 @@ class LiveExecutorTests(unittest.TestCase):
         code, body = apply(ctx)
         self.assertEqual(code, 4, body)
         self.assertEqual(body["live_failure_class"], "ROLLBACK_REQUIRED")
+        self.assertIn("install_optics_cli", body["last_error"])
         binary = harness.prefix / "bin" / "vantio"
         self.assertTrue(binary.is_file())
         tx = json.loads(harness.tx_file("TRANSACTION.json").read_text(encoding="utf-8"))
