@@ -528,6 +528,17 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("W3_LAB_PRIVATE_BUNDLE_TOKEN", arm)
         self.assertIn("w3-lab-auto-arm.yml@refs/heads/main", arm)
         self.assertNotIn("0.0.0.0/0", arm)
+        self.assertIn("bundle_commit:", arm)
+        self.assertIn("W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}", arm)
+        self.assertIn("W3_EXPECTED_SEAL: ${{ inputs.seal }}", arm)
+        self.assertNotIn("ece6349e", arm)
+        self.assertNotIn("0f3b0ad", arm)
+        bundle = (ROOT / "scripts/aws/enterprise_bundle.py").read_text(encoding="utf-8")
+        self.assertNotIn("ece6349e", bundle)
+        self.assertNotIn("0f3b0ad", bundle)
+
+
+_DROP = object()
 
 
 def _trust(root: bool = True) -> bytes:
@@ -592,6 +603,8 @@ class EnterpriseBundleTests(unittest.TestCase):
             "enterprise_sha": "56a6048c9b1d9907dc4f5879bdaa485d909dae1f",
             "trust_key_id": "test-nonprod-ed25519-2026-10-02",
             "not_a_production_root": True,
+            "lab_only": True,
+            "customer_release": False,
         }
         (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return trust_sha
@@ -697,6 +710,122 @@ class EnterpriseBundleTests(unittest.TestCase):
             enterprise_bundle.TRUST_BUNDLE_SHA256,
             "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876",
         )
+        self.assertEqual(
+            enterprise_bundle.BUNDLE_COMMIT,
+            "75b6a94c1a50f07d3cc419a904ee08260c9c32ff",
+        )
+
+    def _patch_manifest(self, directory: Path, **fields: object) -> None:
+        path = directory / "manifest.json"
+        body = json.loads(path.read_text(encoding="utf-8"))
+        for key, value in fields.items():
+            if value is _DROP:
+                body.pop(key, None)
+            else:
+                body[key] = value
+        path.write_text(json.dumps(body), encoding="utf-8")
+
+    def test_seal_file_that_does_not_match_the_manifest_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            trust_sha = self._write_bundle(directory)
+            (directory / "seal.oci.tar").write_bytes(b"different-seal-bytes")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                enterprise_bundle.inspect_bundle(
+                    directory,
+                    expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
+                    expected_trust=trust_sha,
+                )
+        self.assertEqual(caught.exception.reason, "bundle_seal")
+
+    def test_manifest_digest_that_does_not_match_the_seal_file_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            trust_sha = self._write_bundle(directory)
+            other = hashlib.sha256(b"different-seal-bytes").hexdigest()
+            self._patch_manifest(directory, seal_sha256=other)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                enterprise_bundle.inspect_bundle(
+                    directory,
+                    expected_seal=other,
+                    expected_trust=trust_sha,
+                )
+        self.assertEqual(caught.exception.reason, "bundle_seal")
+
+    def test_lab_only_must_be_exactly_true(self) -> None:
+        for value in (False, "true", _DROP):
+            with self.subTest(value=value):
+                with tempfile.TemporaryDirectory() as tmp:
+                    directory = Path(tmp)
+                    trust_sha = self._write_bundle(directory)
+                    self._patch_manifest(directory, lab_only=value)
+                    with self.assertRaises(lab.GuardAbort) as caught:
+                        enterprise_bundle.inspect_bundle(
+                            directory,
+                            expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
+                            expected_trust=trust_sha,
+                        )
+                self.assertEqual(caught.exception.reason, "bundle_not_lab_only")
+
+    def test_customer_release_must_be_exactly_false(self) -> None:
+        for value in (True, "false", _DROP):
+            with self.subTest(value=value):
+                with tempfile.TemporaryDirectory() as tmp:
+                    directory = Path(tmp)
+                    trust_sha = self._write_bundle(directory)
+                    self._patch_manifest(directory, customer_release=value)
+                    with self.assertRaises(lab.GuardAbort) as caught:
+                        enterprise_bundle.inspect_bundle(
+                            directory,
+                            expected_seal=hashlib.sha256(b"seal-bytes").hexdigest(),
+                            expected_trust=trust_sha,
+                        )
+                self.assertEqual(caught.exception.reason, "bundle_customer_release")
+
+    def test_prepare_reads_seal_and_commit_from_the_environment(self) -> None:
+        commit = "a" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            trust_sha = self._write_bundle(source)
+            seal_sha = hashlib.sha256(b"seal-bytes").hexdigest()
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = "github_pat_test_token_value"
+            os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "dest")
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "bundle.json")
+            os.environ["W3_EXPECTED_SEAL"] = seal_sha
+            os.environ["W3_BUNDLE_COMMIT"] = commit
+
+            def fetch(dest: Path) -> None:
+                dest.mkdir(parents=True, exist_ok=True)
+                for name in ("manifest.json", "seal.oci.tar", "contract.tar"):
+                    (dest / name).write_bytes((source / name).read_bytes())
+
+            result = enterprise_bundle.prepare_bundle(fetcher=fetch, expected_trust=trust_sha)
+        self.assertEqual(result["status"], "BUNDLE_READY")
+        self.assertEqual(result["bundle_commit"], commit)
+        self.assertEqual(result["seal_sha256"], seal_sha)
+        self.assertIs(result["lab_only"], True)
+        self.assertIs(result["customer_release"], False)
+
+    def test_empty_bundle_commit_keeps_the_pinned_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            trust_sha = self._write_bundle(source)
+            seal_sha = hashlib.sha256(b"seal-bytes").hexdigest()
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = "github_pat_test_token_value"
+            os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "dest")
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "bundle.json")
+            os.environ["W3_EXPECTED_SEAL"] = seal_sha
+            os.environ.pop("W3_BUNDLE_COMMIT", None)
+
+            def fetch(dest: Path) -> None:
+                dest.mkdir(parents=True, exist_ok=True)
+                for name in ("manifest.json", "seal.oci.tar", "contract.tar"):
+                    (dest / name).write_bytes((source / name).read_bytes())
+
+            result = enterprise_bundle.prepare_bundle(fetcher=fetch, expected_trust=trust_sha)
+        self.assertEqual(result["bundle_commit"], enterprise_bundle.BUNDLE_COMMIT)
 
 
 class EnterpriseRowSessionTests(unittest.TestCase):
@@ -720,6 +849,18 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "bundle")
         os.environ["W3_ROWS_PATH"] = str(Path(tmp) / "rows.json")
         Path(os.environ["W3_BUNDLE_DIR"]).mkdir()
+
+    def test_checker_seal_mismatch_does_not_call_aws(self) -> None:
+        runner = FakeAws()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    checker=lambda _path: {"seal_sha256": "ab" * 32},
+                )
+        self.assertEqual(caught.exception.reason, "bundle_wrong_seal")
+        self.assertEqual(runner.calls, [])
 
     def test_bad_bundle_does_not_call_aws(self) -> None:
         runner = FakeAws()

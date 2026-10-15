@@ -95,6 +95,10 @@ def inspect_bundle(
         raise lab.GuardAbort("bundle_manifest")
     if manifest.get("seal_sha256") != expected_seal:
         raise lab.GuardAbort("bundle_seal")
+    if manifest.get("lab_only") is not True:
+        raise lab.GuardAbort("bundle_not_lab_only")
+    if manifest.get("customer_release") is not False:
+        raise lab.GuardAbort("bundle_customer_release")
     contract_sha = manifest.get("contract_sha256")
     if not isinstance(contract_sha, str) or HEX64.fullmatch(contract_sha) is None:
         raise lab.GuardAbort("bundle_manifest")
@@ -115,7 +119,9 @@ def inspect_bundle(
         raise lab.GuardAbort("bundle_trust")
     return {
         "contract_sha256": file_contract_sha,
+        "customer_release": False,
         "enterprise_sha": enterprise_sha,
+        "lab_only": True,
         "not_a_production_root": True,
         "seal_sha256": seal_sha,
         "trust_key_id": TRUST_KEY_ID,
