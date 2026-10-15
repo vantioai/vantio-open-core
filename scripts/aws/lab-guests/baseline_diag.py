@@ -470,6 +470,593 @@ def rewrite_linux_lines(text: str, lsm_value: str) -> str:
     return body
 
 
+EFI_PARTTYPE = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+BOOTCHAIN_PATH = Path("/var/lib/vantio-lab/bootchain.json")
+_UUID_RE = re.compile(
+    r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}"
+)
+_GRUB_PACKAGES = (
+    "grub-efi-amd64",
+    "grub-efi-amd64-signed",
+    "grub-pc",
+    "grub-pc-bin",
+    "shim-signed",
+)
+
+
+def _valid_lsm(lsm_value: str) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value):
+        raise ValueError("lsm_value")
+
+
+def place_lsm_before_panic(raw: str, lsm_value: str) -> str:
+    """Insert lsm= immediately before the last panic=-1.
+
+    Run 38669912999 appended the token after panic=-1. The kernel recorded
+    the stock line, with panic=-1 last and no lsm=.
+    """
+    _valid_lsm(lsm_value)
+    token = f"lsm={lsm_value}"
+    indent = raw[: len(raw) - len(raw.lstrip())]
+    parts = raw.strip().split()
+    if not parts:
+        return raw
+    head = parts[0]
+    rest = [part for part in parts[1:] if not part.startswith("lsm=")]
+    if "panic=-1" in rest:
+        index = len(rest) - 1 - rest[::-1].index("panic=-1")
+        rest.insert(index, token)
+    else:
+        rest.append(token)
+    return f"{indent}{head} {' '.join(rest)}"
+
+
+def _linux_command(stripped: str) -> bool:
+    head = stripped.split(None, 1)[0] if stripped else ""
+    return head in {"linux", "linuxefi"}
+
+
+def _loader_options(stripped: str) -> bool:
+    return stripped.startswith("options ") or stripped.startswith("options\t")
+
+
+def rewrite_firmware_text(text: str, lsm_value: str) -> str:
+    """Patch linux lines and systemd-boot options. Leave an EFI stub alone."""
+    out: list[str] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if _linux_command(stripped) or _loader_options(stripped):
+            out.append(place_lsm_before_panic(raw, lsm_value))
+        else:
+            out.append(raw)
+    body = "\n".join(out)
+    if text.endswith("\n") or not text:
+        body += "\n"
+    return body
+
+
+def firmware_cmdline_ok(line: str, lsm_value: str) -> bool:
+    """True when the last lsm= word is the lab list and panic=-1 is still last."""
+    parts = line.strip().split()
+    if not parts:
+        return False
+    words = parts[1:] if parts[0] in {"linux", "linuxefi", "options"} else parts
+    last = ""
+    for word in words:
+        if word.startswith("lsm="):
+            last = word
+    if last != f"lsm={lsm_value}":
+        return False
+    if "panic=-1" in words and words[-1] != "panic=-1":
+        return False
+    return True
+
+
+def cmdline_has_bpf_lsm(cmdline: str) -> bool:
+    for token in cmdline.split():
+        if token.startswith("lsm=") and bpf_lsm_active(token.split("=", 1)[1]):
+            return True
+    return False
+
+
+def efi_stub_facts(text: str) -> dict:
+    """Classify an EFI grub.cfg as a stub, a menu, or neither.
+
+    Ubuntu's EFI file is often three lines: search.fs_uuid, set prefix, and
+    configfile. update-grub does not rewrite that stub. A copied full menu
+    in the same path does boot, and update-grub does not rewrite that either.
+    """
+    has_linux = any(_linux_command(line.strip()) for line in text.splitlines())
+    uuid = ""
+    prefix = ""
+    configfile = ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not uuid and ("search.fs_uuid" in line or "--fs-uuid" in line):
+            found = _UUID_RE.search(line)
+            if found:
+                uuid = found.group(0)
+        if not prefix and line.startswith("set ") and "prefix=" in line:
+            prefix = line.split("prefix=", 1)[1].strip()
+        if not configfile and line.startswith("configfile "):
+            configfile = line.split(None, 1)[1].strip()
+    if has_linux:
+        kind = "menu"
+    elif not text.strip():
+        kind = "absent"
+    elif configfile and ("search.fs_uuid" in text or "--fs-uuid" in text):
+        kind = "stub"
+    else:
+        kind = "other"
+    return {
+        "kind": kind,
+        "uuid": uuid,
+        "prefix": prefix,
+        "configfile": configfile,
+        "head": " ".join(text.split())[:180],
+    }
+
+
+def config_relpath(facts: dict) -> str:
+    """Path of the grub.cfg a stub's configfile line loads, relative to that filesystem."""
+    prefix = str(facts.get("prefix") or "")
+    configfile = str(facts.get("configfile") or "")
+    quoted = re.search(r"'([^']*)'", prefix)
+    if quoted:
+        rel = quoted.group(1).strip("/")
+    else:
+        rel = prefix
+        if rel.startswith("($root)"):
+            rel = rel[len("($root)") :]
+        rel = rel.strip("/'\"")
+    if not configfile or "$prefix" in configfile:
+        return f"{rel}/grub.cfg" if rel else "grub.cfg"
+    if configfile.startswith("($root)"):
+        return configfile.split(")", 1)[-1].strip("'\"").lstrip("/")
+    if configfile.startswith("/"):
+        return configfile.lstrip("/")
+    return configfile.lstrip("/")
+
+
+def stub_boot_decision(stub_uuid: str, mounted_uuid: str, *, target_sealed: bool) -> str:
+    """Name the filesystem the stub searches when it is not the mounted /boot."""
+    if not stub_uuid:
+        return "no_stub_uuid"
+    if target_sealed and mounted_uuid and stub_uuid.lower() != mounted_uuid.lower():
+        return "sealed_other"
+    if not mounted_uuid:
+        return "unknown"
+    if stub_uuid.lower() == mounted_uuid.lower():
+        return "match"
+    return f"boot_uuid_mismatch:{stub_uuid}"
+
+
+def resolve_stub_target(
+    root: Path,
+    facts: dict,
+    *,
+    boot_uuid: str = "",
+    root_uuid: str = "",
+    esp_uuid: str = "",
+) -> Path | None:
+    """Linux path of the configfile target when the stub UUID is one we have mounted."""
+    rel = config_relpath(facts)
+    if not rel:
+        return None
+    uuid = str(facts.get("uuid") or "").lower()
+    if not uuid:
+        return None
+    if esp_uuid and uuid == esp_uuid.lower():
+        return root / "boot/efi" / rel
+    if boot_uuid and uuid == boot_uuid.lower():
+        if rel == "grub/grub.cfg" or rel.startswith("grub/"):
+            return root / "boot" / rel
+        return root / rel.lstrip("/")
+    if root_uuid and uuid == root_uuid.lower():
+        return root / rel.lstrip("/")
+    return None
+
+
+def _boot_lines_ok(text: str, lsm_value: str) -> bool:
+    saw = False
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not (_linux_command(stripped) or _loader_options(stripped)):
+            continue
+        saw = True
+        if not firmware_cmdline_ok(stripped, lsm_value):
+            return False
+    return saw
+
+
+def _find_named(root: Path, base: str, name: str) -> list[Path]:
+    folder = root / base
+    if not folder.is_dir():
+        return []
+    return sorted(path for path in folder.rglob(name) if path.is_file())
+
+
+def _loader_entries(root: Path) -> list[Path]:
+    found: list[Path] = []
+    for base in ("boot/loader/entries", "boot/efi/loader/entries"):
+        folder = root / base
+        if folder.is_dir():
+            found.extend(sorted(path for path in folder.glob("*.conf") if path.is_file()))
+    return found
+
+
+def _findmnt_uuid(mountpoint: str) -> str:
+    try:
+        proc = subprocess.run(
+            ["findmnt", "-n", "-o", "UUID", mountpoint],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    line = (proc.stdout or "").strip().splitlines()
+    return line[0].strip() if line else ""
+
+
+def _lsblk_rows() -> list[dict]:
+    try:
+        proc = subprocess.run(
+            ["lsblk", "-J", "-o", "NAME,LABEL,UUID,FSTYPE,PARTTYPE,MOUNTPOINT,PATH"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if proc.returncode != 0:
+        return []
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError:
+        return []
+    rows: list[dict] = []
+
+    def walk(nodes: object) -> None:
+        if not isinstance(nodes, list):
+            return
+        for node in nodes:
+            if isinstance(node, dict):
+                rows.append(node)
+                walk(node.get("children"))
+
+    walk(payload.get("blockdevices") if isinstance(payload, dict) else None)
+    return rows
+
+
+def ensure_esp_mounted() -> str:
+    """Mount the image's UEFI partition at /boot/efi when it is not already there.
+
+    Ubuntu CPC labels that vfat UEFI. The lab only mounts that label, or a
+    vfat partition whose type is the EFI system GUID. It does not mount an
+    arbitrary disk.
+    """
+    if Path("/boot/efi/EFI").is_dir() or Path("/boot/efi/efi").is_dir():
+        return "already"
+    rows = _lsblk_rows()
+    for row in rows:
+        label = str(row.get("label") or "")
+        part = str(row.get("parttype") or "").lower()
+        fstype = str(row.get("fstype") or "").lower()
+        mountpoint = str(row.get("mountpoint") or "")
+        if fstype != "vfat":
+            continue
+        if label.upper() != "UEFI" and part != EFI_PARTTYPE:
+            continue
+        if mountpoint and (Path(mountpoint) / "EFI").is_dir():
+            Path("/boot/efi").mkdir(parents=True, exist_ok=True)
+            try:
+                proc = subprocess.run(
+                    ["mount", "--bind", mountpoint, "/boot/efi"],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return "absent"
+            if proc.returncode == 0:
+                return "mounted"
+    device = ""
+    for row in rows:
+        label = str(row.get("label") or "")
+        part = str(row.get("parttype") or "").lower()
+        fstype = str(row.get("fstype") or "").lower()
+        path = str(row.get("path") or "")
+        mountpoint = str(row.get("mountpoint") or "")
+        if fstype != "vfat" or mountpoint or not path.startswith("/dev/"):
+            continue
+        if label.upper() == "UEFI" or part == EFI_PARTTYPE:
+            device = path
+            break
+    if not device:
+        return "absent"
+    Path("/boot/efi").mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            ["mount", "-o", "umask=0077", device, "/boot/efi"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "absent"
+    if proc.returncode != 0:
+        return "absent"
+    return "mounted"
+
+
+def _mount_uuid(uuid: str) -> Path | None:
+    if _UUID_RE.fullmatch(uuid) is None:
+        return None
+    target = Path("/run/vantio-lsm-boot")
+    if target.is_mount():
+        return target
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            ["mount", "-U", uuid, str(target)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return target
+
+
+def grub_package_lines() -> list[str]:
+    """Installed grub-efi and grub-pc package names. Missing packages are omitted."""
+    try:
+        proc = subprocess.run(
+            ["dpkg-query", "-W", "-f", "${Package} ${Version}\\n", *_GRUB_PACKAGES],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    lines = []
+    for raw in (proc.stdout or "").splitlines():
+        text = raw.strip()
+        if text and not text.endswith(" "):
+            lines.append(text)
+    return lines
+
+
+def _read_bootchain() -> dict:
+    if not BOOTCHAIN_PATH.is_file():
+        return {}
+    try:
+        loaded = json.loads(BOOTCHAIN_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def seal_firmware_tree(
+    root: Path,
+    lsm_value: str,
+    *,
+    mount: bool = False,
+    boot_uuid: str = "",
+    root_uuid: str = "",
+    esp_uuid: str = "",
+) -> dict:
+    """Put the lab lsm= list on the boot file the firmware actually reads.
+
+    update-grub rewrites /boot/grub/grub.cfg. On the Ubuntu CPC image that file
+    is not always the one GRUB executes: the EFI stub search.fs_uuid's another
+    filesystem, or the EFI path holds a full menu. A stub is not overwritten.
+    Linux lines gain lsm= before panic=-1. mount is honored only for the real
+    root, and only for the UEFI label or the stub UUID.
+    """
+    _valid_lsm(lsm_value)
+    live = root == Path("/")
+    esp_state = "absent"
+    if mount and live:
+        esp_state = ensure_esp_mounted()
+        boot_uuid = boot_uuid or _findmnt_uuid("/boot")
+        root_uuid = root_uuid or _findmnt_uuid("/")
+        esp_uuid = esp_uuid or _findmnt_uuid("/boot/efi")
+    elif (root / "boot/efi/EFI").is_dir() or (root / "boot/efi/efi").is_dir():
+        esp_state = "already"
+    bios = _find_named(root, "boot/grub", "grub.cfg")
+    efi_cfgs = _find_named(root, "boot/efi", "grub.cfg")
+    originals: dict[Path, str] = {}
+    for path in bios + efi_cfgs + _loader_entries(root):
+        originals[path] = path.read_text(encoding="utf-8", errors="replace")
+    stub_facts = {"kind": "absent", "uuid": "", "prefix": "", "configfile": "", "head": ""}
+    for path in efi_cfgs:
+        info = efi_stub_facts(originals[path])
+        if info["kind"] != "stub":
+            continue
+        stub_facts = info
+        if path.as_posix().lower().endswith("/efi/ubuntu/grub.cfg"):
+            break
+    if stub_facts["kind"] == "absent":
+        for path in efi_cfgs:
+            info = efi_stub_facts(originals[path])
+            if info["kind"] == "menu":
+                stub_facts = info
+                break
+    written: list[tuple[Path, str]] = []
+
+    def commit(path: Path, new: str, old: str) -> None:
+        if new == old:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(new, encoding="utf-8")
+        written.append((path, old))
+
+    def rollback() -> None:
+        for path, old in written:
+            path.write_text(old, encoding="utf-8")
+
+    error = ""
+    rewritten: list[Path] = []
+    for path, old in originals.items():
+        if efi_stub_facts(old)["kind"] == "stub":
+            continue
+        if not any(_linux_command(line.strip()) or _loader_options(line.strip()) for line in old.splitlines()):
+            continue
+        new = rewrite_firmware_text(old, lsm_value)
+        if not _boot_lines_ok(new, lsm_value):
+            error = "firmware_line"
+            break
+        commit(path, new, old)
+        rewritten.append(path)
+    side_target: Path | None = None
+    if not error and stub_facts["kind"] == "stub":
+        target = resolve_stub_target(
+            root,
+            stub_facts,
+            boot_uuid=boot_uuid,
+            root_uuid=root_uuid,
+            esp_uuid=esp_uuid,
+        )
+        sealed = target is not None and target in rewritten
+        if target is not None and target.is_file() and not sealed:
+            old = originals.get(target, target.read_text(encoding="utf-8", errors="replace"))
+            if efi_stub_facts(old)["kind"] != "stub":
+                new = rewrite_firmware_text(old, lsm_value)
+                if _boot_lines_ok(new, lsm_value):
+                    commit(target, new, old)
+                    rewritten.append(target)
+                    sealed = True
+                else:
+                    error = "firmware_line"
+        if not sealed and not error and mount and live and stub_facts["uuid"]:
+            mounted_at = _mount_uuid(stub_facts["uuid"])
+            rel = config_relpath(stub_facts)
+            side_target = mounted_at / rel if mounted_at is not None and rel else None
+            if side_target is not None and side_target.is_file():
+                old = side_target.read_text(encoding="utf-8", errors="replace")
+                if efi_stub_facts(old)["kind"] == "stub":
+                    error = "stub_target_is_stub"
+                else:
+                    new = rewrite_firmware_text(old, lsm_value)
+                    if _boot_lines_ok(new, lsm_value):
+                        commit(side_target, new, old)
+                        rewritten.append(side_target)
+                        sealed = True
+                    else:
+                        error = "firmware_line"
+            elif not sealed:
+                error = f"boot_uuid_mismatch:{stub_facts['uuid']}"
+        elif not sealed and not error:
+            uuid = stub_facts["uuid"].lower()
+            on_mounted = bool(uuid) and (
+                (boot_uuid and uuid == boot_uuid.lower())
+                or (root_uuid and uuid == root_uuid.lower())
+                or (esp_uuid and uuid == esp_uuid.lower())
+            )
+            if on_mounted or not stub_facts["uuid"]:
+                error = "stub_target_missing"
+            else:
+                error = f"boot_uuid_mismatch:{stub_facts['uuid']}"
+    if error:
+        rollback()
+        rewritten = []
+    elif live:
+        try:
+            os.sync()
+        except OSError:
+            pass
+    compared = ""
+    uuid = str(stub_facts.get("uuid") or "").lower()
+    if boot_uuid and uuid == boot_uuid.lower():
+        compared = boot_uuid
+    elif root_uuid and uuid == root_uuid.lower():
+        compared = root_uuid
+    elif esp_uuid and uuid == esp_uuid.lower():
+        compared = esp_uuid
+    if stub_facts["kind"] == "stub":
+        decision = stub_boot_decision(
+            str(stub_facts.get("uuid") or ""),
+            compared or boot_uuid or root_uuid,
+            target_sealed=bool(rewritten) and not error,
+        )
+        if error.startswith("boot_uuid_mismatch:"):
+            decision = error
+    elif stub_facts["kind"] == "menu":
+        decision = "menu"
+    elif stub_facts["kind"] == "absent":
+        decision = "no_efi"
+    else:
+        decision = str(stub_facts["kind"])
+    bios_ok = True
+    for path in bios:
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        if any(_linux_command(line.strip()) for line in text.splitlines()) and not _boot_lines_ok(text, lsm_value):
+            bios_ok = False
+    if not bios_ok and not error:
+        error = "bios_grub_cfg"
+        rollback()
+        rewritten = []
+    grub_d: list[str] = []
+    extra = root / "etc/default/grub.d"
+    if extra.is_dir():
+        grub_d = sorted(path.name for path in extra.glob("*.cfg"))[:12]
+    stock_line = ""
+    firmware_paths = [path for path in efi_cfgs + _loader_entries(root) if path in originals]
+    for path in firmware_paths:
+        old = originals[path]
+        if efi_stub_facts(old)["kind"] == "stub":
+            continue
+        for raw in old.splitlines():
+            stripped = raw.strip()
+            if _linux_command(stripped) or _loader_options(stripped):
+                stock_line = stripped[:240]
+                break
+        if stock_line:
+            break
+    relative: list[str] = []
+    for path in rewritten:
+        try:
+            relative.append(str(path.resolve().relative_to(root.resolve())))
+        except (OSError, ValueError):
+            relative.append(str(path))
+    bootchain = {
+        "efi_kind": stub_facts["kind"],
+        "efi_head": stub_facts["head"],
+        "stub_uuid": stub_facts["uuid"],
+        "stub_prefix": stub_facts["prefix"],
+        "configfile": stub_facts["configfile"],
+        "esp": esp_state,
+        "decision": decision,
+        "stock_line": stock_line,
+        "rewritten": relative[:6],
+        "grub_d": grub_d,
+        "packages": grub_package_lines() if live else [],
+        "kernel": os.uname().release if live else "",
+        "error": error,
+    }
+    if live:
+        try:
+            BOOTCHAIN_PATH.parent.mkdir(parents=True, exist_ok=True)
+            BOOTCHAIN_PATH.write_text(json.dumps(bootchain, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+    ok = not error
+    if ok and not bios and not efi_cfgs and not any(
+        _loader_options(line.strip())
+        for path in _loader_entries(root)
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+    ):
+        ok = False
+        bootchain["error"] = "no_boot_config"
+    return {"ok": ok, "error": bootchain.get("error") or "", "bootchain": bootchain}
+
+
 def reboot_with_grub_script(lsm_value: str = "") -> str:
     """Regenerate grub from the drop-in and reboot only if that menuentry has lsm=.
 
@@ -511,6 +1098,23 @@ fi
 if ! "$updater" >>"$log" 2>&1; then
   echo "refusing reboot: update-grub failed" >>"$log"
   exit 1
+fi
+if [ "$dropin" = /etc/default/grub.d/99-vantio-lsm.cfg ] && [ -f /var/lib/vantio-lab/guest/baseline_diag.py ]; then
+  if ! python3 - /var/lib/vantio-lab/guest "$token" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+token = sys.argv[2]
+value = token.split("=", 1)[1]
+result = baseline_diag.seal_firmware_tree(baseline_diag.Path("/"), value, mount=True)
+print(result.get("bootchain") or {{}})
+if not result.get("ok"):
+    raise SystemExit(result.get("error") or "seal")
+PY
+  then
+    echo "refusing reboot: firmware seal failed" >>"$log"
+    exit 1
+  fi
 fi
 is_linux() {{
   case "$1" in
@@ -735,6 +1339,22 @@ def write_lsm_status() -> int:
         image_id=os.environ.get("VANTIO_IMAGE_ID", ""),
     )
     if body is None:
+        chain = _read_bootchain()
+        if chain and not cmdline_has_bpf_lsm(cmdline):
+            mismatch = {
+                "battery": "lsm-guard",
+                "host_result": "FAIL",
+                "reason": "firmware_not_booted",
+                "cmdline": cmdline,
+                "bootchain": chain,
+                "lab_pass": False,
+                "customer_claim": False,
+                "reboot_requested": False,
+            }
+            text = json.dumps(mismatch, indent=2) + "\n"
+            LSM_ROWS_PATH.write_text(text, encoding="utf-8")
+            print(text, flush=True)
+            return 2
         cfg = Path("/boot/grub/grub.cfg")
         disk = first_linux_line(cfg.read_text(encoding="utf-8", errors="replace")) if cfg.is_file() else ""
         if "lsm=" in disk and "bpf" in disk and not any(
@@ -761,6 +1381,9 @@ def write_lsm_status() -> int:
             body["grub_first_linux"] = first_linux_line(cfg.read_text(encoding="utf-8", errors="replace"))[:500]
         dropin = Path("/etc/default/grub.d/99-vantio-lsm.cfg")
         body["lsm_dropin_present"] = dropin.is_file()
+    chain = _read_bootchain()
+    if chain and "bootchain" not in body:
+        body["bootchain"] = chain
     text = json.dumps(body, indent=2) + "\n"
     LSM_ROWS_PATH.write_text(text, encoding="utf-8")
     try:

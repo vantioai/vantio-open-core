@@ -704,6 +704,122 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertTrue(recorded.endswith("ro  console=ttyS0,115200 panic=-1") or recorded.endswith("ro console=ttyS0,115200 panic=-1"), recorded)
             self.assertEqual(baseline_diag.last_lsm_token(recorded), "")
 
+    def test_efi_stub_is_kept_and_the_boot_file_gains_lsm_before_panic(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        stub_uuid = "8e2a9073-72b3-4cba-bf15-3704b810f72a"
+        stub = (
+            f"search.fs_uuid {stub_uuid} root hd0,gpt13\n"
+            "set prefix=($root)'/grub'\n"
+            "configfile $prefix/grub.cfg\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            efi = root / "boot/efi/EFI/ubuntu"
+            efi.mkdir(parents=True)
+            (efi / "grub.cfg").write_text(stub, encoding="utf-8")
+            bios = root / "boot/grub"
+            bios.mkdir(parents=True)
+            (bios / "grub.cfg").write_text(
+                "linux /vmlinuz root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+                "ro console=ttyS0,115200 panic=-1\n",
+                encoding="utf-8",
+            )
+            sealed = baseline_diag.seal_firmware_tree(root, token, boot_uuid=stub_uuid)
+            self.assertTrue(sealed["ok"], sealed)
+            self.assertEqual((efi / "grub.cfg").read_text(encoding="utf-8"), stub)
+            chain = sealed["bootchain"]
+            self.assertEqual(chain["efi_kind"], "stub")
+            self.assertEqual(chain["stub_uuid"], stub_uuid)
+            self.assertIn("/grub", chain["stub_prefix"])
+            self.assertEqual(chain["decision"], "match")
+            booted = (bios / "grub.cfg").read_text(encoding="utf-8").strip()
+            self.assertTrue(booted.endswith("panic=-1"), booted)
+            self.assertIn(f"lsm={token}", booted)
+            self.assertNotIn(f"panic=-1 lsm={token}", booted)
+            self.assertTrue(baseline_diag.firmware_cmdline_ok(booted, token))
+
+    def test_loader_entry_and_efi_menu_keep_panic_last(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entry_dir = root / "boot/loader/entries"
+            entry_dir.mkdir(parents=True)
+            (entry_dir / "ubuntu.conf").write_text(
+                "title Ubuntu\noptions root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+                "ro console=ttyS0,115200 panic=-1\n",
+                encoding="utf-8",
+            )
+            sealed = baseline_diag.seal_firmware_tree(root, token)
+            self.assertTrue(sealed["ok"], sealed)
+            options = (entry_dir / "ubuntu.conf").read_text(encoding="utf-8").splitlines()[-1]
+            self.assertTrue(options.endswith("panic=-1"), options)
+            self.assertIn(f" lsm={token} panic=-1", options)
+            self.assertTrue(baseline_diag.firmware_cmdline_ok(options, token))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            menu = root / "boot/efi/EFI/ubuntu"
+            menu.mkdir(parents=True)
+            (menu / "grub.cfg").write_text(
+                "menuentry 'Ubuntu' {\n"
+                "  linux /vmlinuz root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+                "ro console=ttyS0,115200 panic=-1\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            sealed = baseline_diag.seal_firmware_tree(root, token)
+            self.assertTrue(sealed["ok"], sealed)
+            self.assertEqual(sealed["bootchain"]["efi_kind"], "menu")
+            self.assertIn("panic=-1", sealed["bootchain"]["stock_line"])
+            self.assertNotIn("lsm=", sealed["bootchain"]["stock_line"])
+            text = (menu / "grub.cfg").read_text(encoding="utf-8")
+            self.assertIn(f"lsm={token} panic=-1", text)
+            self.assertNotIn(f"panic=-1 lsm={token}", text)
+            self.assertTrue(text.strip().endswith("}"))
+
+    def test_lsm_after_panic_is_not_the_booted_line(self) -> None:
+        token = "lockdown,capability,apparmor,bpf"
+        late = (
+            "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 "
+            f"panic=-1 lsm={token}"
+        )
+        self.assertFalse(baseline_diag.firmware_cmdline_ok(late, token))
+        self.assertTrue(late.endswith(f"lsm={token}"))
+        placed = baseline_diag.place_lsm_before_panic(
+            "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1",
+            token,
+        )
+        self.assertTrue(baseline_diag.firmware_cmdline_ok(placed, token))
+        self.assertTrue(placed.endswith("panic=-1"))
+
+    def test_stub_uuid_mismatch_names_the_other_filesystem(self) -> None:
+        stub_uuid = "44FB-ACAE"
+        mounted = "8e2a9073-72b3-4cba-bf15-3704b810f72a"
+        decision = baseline_diag.stub_boot_decision(stub_uuid, mounted, target_sealed=False)
+        self.assertEqual(decision, f"boot_uuid_mismatch:{stub_uuid}")
+        self.assertIn(stub_uuid, decision)
+        self.assertNotIn(mounted, decision)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            efi = root / "boot/efi/EFI/ubuntu"
+            efi.mkdir(parents=True)
+            (efi / "grub.cfg").write_text(
+                f"search.fs_uuid {stub_uuid} root\n"
+                "set prefix=($root)'/EFI/ubuntu/grub'\n"
+                "configfile $prefix/grub.cfg\n",
+                encoding="utf-8",
+            )
+            sealed = baseline_diag.seal_firmware_tree(
+                root,
+                "lockdown,capability,apparmor,bpf",
+                boot_uuid=mounted,
+                root_uuid=mounted,
+                esp_uuid="",
+            )
+            self.assertFalse(sealed["ok"])
+            self.assertEqual(sealed["error"], f"boot_uuid_mismatch:{stub_uuid}")
+            self.assertEqual(sealed["bootchain"]["efi_kind"], "stub")
+            self.assertIn("search.fs_uuid", sealed["bootchain"]["efi_head"])
+
     def test_parent_walk_flags_a_directory_without_execute(self) -> None:
         walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"
         self.assertTrue(baseline_diag._parent_blocked(walk))

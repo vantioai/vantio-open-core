@@ -799,6 +799,47 @@ class OfflineDeliverTest(unittest.TestCase):
             od.self_service_requested({"SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
             od.run_self_service({"GCP_LAB_EXECUTE": "1", "SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
 
+    def test_lsm_confirm_needs_bpf_in_the_live_list(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        stock = "lockdown,capability,landlock,yama,apparmor,ima,evm"
+        self.assertTrue(
+            od.lsm_confirm_ok(
+                {
+                    "host_result": "LSM_ENABLED",
+                    "stock_lsm": token,
+                    "cmdline": f"root=PARTUUID ro lsm={token} panic=-1",
+                }
+            )
+        )
+        self.assertTrue(
+            od.lsm_confirm_ok(
+                {
+                    "host_result": "LSM_ALREADY_ACTIVE",
+                    "stock_lsm": token,
+                    "cmdline": f"root=PARTUUID ro lsm={token} panic=-1",
+                }
+            )
+        )
+        self.assertFalse(
+            od.lsm_confirm_ok(
+                {
+                    "host_result": "LSM_ALREADY_ACTIVE",
+                    "stock_lsm": stock,
+                    "cmdline": "root=PARTUUID ro console=ttyS0,115200 panic=-1",
+                }
+            )
+        )
+        self.assertFalse(
+            od.lsm_confirm_ok(
+                {
+                    "host_result": "GUARD_PROVED",
+                    "stock_lsm": stock,
+                    "cmdline": "root=PARTUUID ro console=ttyS0,115200 panic=-1",
+                }
+            )
+        )
+        self.assertFalse(od.lsm_confirm_ok({"host_result": "LSM_ENABLED", "stock_lsm": "bpfextra", "cmdline": "lsm=bpfextra"}))
+
 
 if __name__ == "__main__":
     unittest.main()
