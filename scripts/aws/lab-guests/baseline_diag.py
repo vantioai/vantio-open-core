@@ -842,6 +842,26 @@ def _read_bootchain() -> dict:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def _grub_alias_state(alias: Path, menu: Path, rewritten: list[Path]) -> str:
+    """How /grub/grub.cfg relates to the menu update-grub writes.
+
+    The EFI stub's prefix ($root)'/grub' opens this path when the searched
+    filesystem is mounted at /. A separate /boot filesystem opens
+    /boot/grub/grub.cfg instead, and this file is then absent or a different
+    inode.
+    """
+    if not alias.is_file():
+        return "absent"
+    try:
+        if menu.is_file() and alias.resolve() == menu.resolve():
+            return "same-file"
+    except OSError:
+        pass
+    if alias in rewritten:
+        return "sealed"
+    return "present"
+
+
 def seal_firmware_tree(
     root: Path,
     lsm_value: str,
@@ -888,10 +908,10 @@ def seal_firmware_tree(
             if info["kind"] == "menu":
                 stub_facts = info
                 break
-    written: list[tuple[Path, str]] = []
+    written: list[tuple[Path, str | None]] = []
 
-    def commit(path: Path, new: str, old: str) -> None:
-        if new == old:
+    def commit(path: Path, new: str, old: str | None) -> None:
+        if old is not None and new == old:
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(new, encoding="utf-8")
@@ -899,7 +919,10 @@ def seal_firmware_tree(
 
     def rollback() -> None:
         for path, old in written:
-            path.write_text(old, encoding="utf-8")
+            if old is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(old, encoding="utf-8")
 
     error = ""
     rewritten: list[Path] = []
@@ -963,6 +986,29 @@ def seal_firmware_tree(
                 error = "stub_target_missing"
             else:
                 error = f"boot_uuid_mismatch:{stub_facts['uuid']}"
+    alias = root / "grub" / "grub.cfg"
+    same_fs = bool(
+        boot_uuid
+        and root_uuid
+        and stub_facts.get("uuid")
+        and boot_uuid.lower() == root_uuid.lower() == str(stub_facts.get("uuid")).lower()
+    )
+    if not error and same_fs:
+        menu_path = next((path for path in rewritten if path.as_posix().endswith("/boot/grub/grub.cfg")), None)
+        if menu_path is not None:
+            same_file = False
+            if alias.is_file():
+                try:
+                    same_file = alias.resolve() == menu_path.resolve()
+                except OSError:
+                    same_file = False
+            if not same_file:
+                menu = menu_path.read_text(encoding="utf-8")
+                if _boot_lines_ok(menu, lsm_value) and efi_stub_facts(menu)["kind"] != "stub":
+                    old = alias.read_text(encoding="utf-8", errors="replace") if alias.is_file() else None
+                    commit(alias, menu, old)
+                    if alias not in rewritten:
+                        rewritten.append(alias)
     if error:
         rollback()
         rewritten = []
@@ -1033,6 +1079,24 @@ def seal_firmware_tree(
         "configfile": stub_facts["configfile"],
         "esp": esp_state,
         "decision": decision,
+        "uuid_mount": (
+            "same"
+            if boot_uuid
+            and root_uuid
+            and uuid
+            and boot_uuid.lower() == root_uuid.lower() == uuid
+            else "boot"
+            if boot_uuid and uuid == boot_uuid.lower()
+            else "root"
+            if root_uuid and uuid == root_uuid.lower()
+            else "esp"
+            if esp_uuid and uuid == esp_uuid.lower()
+            else ""
+        ),
+        "boot_uuid": boot_uuid,
+        "root_uuid": root_uuid,
+        "esp_uuid": esp_uuid,
+        "grub_alias": _grub_alias_state(alias, root / "boot/grub/grub.cfg", rewritten),
         "stock_line": stock_line,
         "rewritten": relative[:6],
         "grub_d": grub_d,

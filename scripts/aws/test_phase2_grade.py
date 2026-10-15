@@ -765,6 +765,85 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertIn(f"lsm={token}", booted)
             self.assertNotIn(f"panic=-1 lsm={token}", booted)
             self.assertTrue(baseline_diag.firmware_cmdline_ok(booted, token))
+            self.assertEqual(chain["uuid_mount"], "boot")
+            self.assertEqual(chain["grub_alias"], "absent")
+            self.assertFalse((root / "grub" / "grub.cfg").exists())
+
+    def test_same_filesystem_stub_seals_the_prefix_path(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        stub_uuid = "6a4d7abf-5bb6-427d-a1f5-1df6cda29962"
+        other = "8e2a9073-72b3-4cba-bf15-3704b810f72a"
+        stub = (
+            f"search.fs_uuid {stub_uuid} root\n"
+            "set prefix=($root)'/grub'\n"
+            "configfile $prefix/grub.cfg\n"
+        )
+        stock = (
+            "linux /vmlinuz root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+            "ro console=ttyS0,115200 panic=-1\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            efi = root / "boot/efi/EFI/ubuntu"
+            efi.mkdir(parents=True)
+            (efi / "grub.cfg").write_text(stub, encoding="utf-8")
+            (root / "boot/grub").mkdir(parents=True)
+            (root / "boot/grub/grub.cfg").write_text(stock, encoding="utf-8")
+            (root / "grub").mkdir()
+            (root / "grub/grub.cfg").write_text(stock, encoding="utf-8")
+            sealed = baseline_diag.seal_firmware_tree(
+                root,
+                token,
+                boot_uuid=stub_uuid,
+                root_uuid=stub_uuid,
+            )
+            self.assertTrue(sealed["ok"], sealed)
+            self.assertEqual((efi / "grub.cfg").read_text(encoding="utf-8"), stub)
+            chain = sealed["bootchain"]
+            self.assertEqual(chain["uuid_mount"], "same")
+            self.assertEqual(chain["grub_alias"], "sealed")
+            self.assertEqual(chain["boot_uuid"], stub_uuid)
+            self.assertEqual(chain["root_uuid"], stub_uuid)
+            alias = (root / "grub/grub.cfg").read_text(encoding="utf-8")
+            self.assertIn(f"lsm={token} panic=-1", alias)
+            self.assertNotIn(f"panic=-1 lsm={token}", alias)
+            self.assertTrue(baseline_diag.firmware_cmdline_ok(alias.strip(), token))
+            self.assertIn("grub/grub.cfg", chain["rewritten"])
+            self.assertIn("boot/grub/grub.cfg", chain["rewritten"])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            efi = root / "boot/efi/EFI/ubuntu"
+            efi.mkdir(parents=True)
+            (efi / "grub.cfg").write_text(stub, encoding="utf-8")
+            (root / "boot/grub").mkdir(parents=True)
+            (root / "boot/grub/grub.cfg").write_text(stock, encoding="utf-8")
+            sealed = baseline_diag.seal_firmware_tree(
+                root,
+                token,
+                boot_uuid=stub_uuid,
+                root_uuid=stub_uuid,
+            )
+            self.assertTrue(sealed["ok"], sealed)
+            self.assertEqual(sealed["bootchain"]["grub_alias"], "sealed")
+            created = (root / "grub/grub.cfg").read_text(encoding="utf-8")
+            self.assertIn(f"lsm={token} panic=-1", created)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            efi = root / "boot/efi/EFI/ubuntu"
+            efi.mkdir(parents=True)
+            (efi / "grub.cfg").write_text(stub, encoding="utf-8")
+            (root / "boot/grub").mkdir(parents=True)
+            (root / "boot/grub/grub.cfg").write_text(stock, encoding="utf-8")
+            sealed = baseline_diag.seal_firmware_tree(
+                root,
+                token,
+                boot_uuid=stub_uuid,
+                root_uuid=other,
+            )
+            self.assertTrue(sealed["ok"], sealed)
+            self.assertEqual(sealed["bootchain"]["uuid_mount"], "boot")
+            self.assertEqual(sealed["bootchain"]["grub_alias"], "absent")
+            self.assertFalse((root / "grub/grub.cfg").exists())
 
     def test_loader_entry_and_efi_menu_keep_panic_last(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
