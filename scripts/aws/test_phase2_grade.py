@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -507,12 +508,28 @@ class BaselineDiagTests(unittest.TestCase):
             ]
         )
         self.assertFalse(baseline_diag.grub_cfg_has_lsm(stock_entry, "lockdown,capability,apparmor,bpf"))
+        self.assertEqual(
+            baseline_diag.first_linux_line(stock_entry),
+            "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1",
+        )
+        buried = (
+            "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 "
+            "lsm=lockdown,capability,apparmor,bpf panic=-1\n"
+        )
+        self.assertFalse(baseline_diag.grub_cfg_has_lsm(buried, "lockdown,capability,apparmor,bpf"))
         forced = baseline_diag.rewrite_linux_lines(stock_entry, "lockdown,capability,apparmor,bpf")
         self.assertTrue(baseline_diag.grub_cfg_has_lsm(forced, "lockdown,capability,apparmor,bpf"))
         self.assertIn("panic=-1 lsm=lockdown,capability,apparmor,bpf", forced)
-        regen = baseline_diag.reboot_with_grub_script()
-        self.assertIn("grub-mkconfig -o /boot/grub/grub.cfg", regen)
+        regen = baseline_diag.reboot_with_grub_script("lockdown,capability,apparmor,bpf")
+        self.assertNotIn("grub-mkconfig -o", regen)
+        self.assertNotIn("command -v grub-mkconfig", regen)
+        self.assertIn("set -euo pipefail", regen)
+        self.assertIn("refusing reboot", regen)
         self.assertIn("systemctl reboot --force", regen)
+        self.assertIn("lsm=lockdown,capability,apparmor,bpf", regen)
+        bare = baseline_diag.reboot_with_grub_script()
+        self.assertNotIn("systemctl reboot", bare)
+        self.assertIn("refusing reboot: no lab lsm token", bare)
         cloud = 'GRUB_CMDLINE_LINUX="console=ttyS0,115200 panic=-1"\n'
         rewritten = baseline_diag.assignments_with_lsm(cloud, "lockdown,capability,apparmor,bpf")
         self.assertIn("console=ttyS0,115200 panic=-1 lsm=lockdown,capability,apparmor,bpf", rewritten)
@@ -555,6 +572,51 @@ class BaselineDiagTests(unittest.TestCase):
         stock = baseline_diag.lsm_status_body("capability,bpf", "root=PARTUUID", None)
         self.assertEqual(stock["host_result"], "LSM_ALREADY_ACTIVE")
         self.assertTrue(stock["stock_bpf_lsm"])
+
+    def test_reboot_script_keeps_the_panic_line_token(self) -> None:
+        script = baseline_diag.reboot_with_grub_script("lockdown,capability,apparmor,bpf")
+        syntax = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg = root / "grub.cfg"
+            efi = root / "efi"
+            efi.mkdir()
+            (efi / "grub.cfg").write_text("set prefix=stub\n", encoding="utf-8")
+            cfg.write_text(
+                "menuentry 'Ubuntu' {\n"
+                "\n"
+                "\tlinux\t/vmlinuz root=PARTUUID ro console=ttyS0,115200\n"
+                "\tlinux\t/vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            sandboxed = script.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            sandboxed = sandboxed.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'log.txt'}")
+            sandboxed = sandboxed.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
+            sandboxed = sandboxed.replace("systemctl reboot --force", "echo REBOOT")
+            ran = subprocess.run(["bash", "-c", sandboxed], capture_output=True, text=True)
+            self.assertEqual(ran.returncode, 0, ran.stderr)
+            self.assertIn("REBOOT", ran.stdout)
+            written = cfg.read_text(encoding="utf-8").splitlines()
+            self.assertIn("menuentry 'Ubuntu' {", written)
+            self.assertIn("}", written)
+            self.assertIn("", written)
+            booted = [line.strip() for line in written if "panic=-1" in line]
+            self.assertEqual(booted, [
+                "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1 lsm=lockdown,capability,apparmor,bpf"
+            ])
+            self.assertEqual((efi / "grub.cfg").read_text(encoding="utf-8"), "set prefix=stub\n")
+            bare = root / "bare.cfg"
+            bare.write_text("# no linux line\n", encoding="utf-8")
+            refused = script.replace("/boot/grub/grub.cfg", str(bare)).replace("/boot/efi", str(root / "missing-efi"))
+            refused = refused.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'bare.txt'}")
+            refused = refused.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
+            refused = refused.replace("systemctl reboot --force", "echo REBOOT_SHOULD_NOT")
+            blocked = subprocess.run(["bash", "-c", refused], capture_output=True, text=True)
+            self.assertEqual(blocked.returncode, 1)
+            self.assertNotIn("REBOOT", blocked.stdout)
+            self.assertIn("refusing reboot", (root / "bare.txt").read_text(encoding="utf-8"))
 
     def test_parent_walk_flags_a_directory_without_execute(self) -> None:
         walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"

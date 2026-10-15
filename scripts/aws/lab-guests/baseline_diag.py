@@ -403,34 +403,40 @@ def lsm_dropin_text(lsm_value: str) -> str:
     )
 
 
-def first_linux_line(text: str) -> str:
-    """The first generated linux line, which is the entry a cloud image boots."""
-    for raw in text.splitlines():
-        stripped = raw.strip()
-        if stripped.startswith("linux"):
-            return stripped
-    return ""
-
-
 def linux_lines(text: str) -> list[str]:
     """Every generated linux line. The default entry is not always the first."""
     return [raw.strip() for raw in text.splitlines() if raw.strip().startswith("linux")]
 
 
-def _last_lsm_token(line: str) -> str:
-    tokens = [part for part in line.split() if part.startswith("lsm=")]
-    return tokens[-1] if tokens else ""
+def boot_linux_lines(text: str) -> list[str]:
+    """The linux lines a FORCE_PARTUUID cloud image actually boots.
+
+    /etc/grub.d/10_linux emits two linux lines when GRUB_FORCE_PARTUUID is
+    set. The first sits in the initrd fallback. The else branch is the one
+    that boots, and it hardcodes panic=-1 after the variable arguments.
+    """
+    lines = linux_lines(text)
+    boot = [line for line in lines if "panic=-1" in line.split()]
+    return boot or lines
+
+
+def first_linux_line(text: str) -> str:
+    """The linux line a cloud image boots, not the initrd fallback."""
+    lines = boot_linux_lines(text)
+    return lines[0] if lines else ""
 
 
 def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
-    """True when every linux line's last lsm= token is this list.
+    """True when every boot line's last word is this lsm= list.
 
-    A later menuentry is what some cloud images boot. The kernel keeps the
-    last lsm= token on the line it actually uses.
+    The kernel keeps the last lsm= token. On a cloud image that token has
+    to be the last word of the panic=-1 line. A line that still ends in
+    panic=-1 is the stock 10_linux else branch, and it is the line that
+    booted on the GCP lab guest.
     """
-    lines = linux_lines(text)
+    lines = boot_linux_lines(text)
     expected = f"lsm={lsm_value}"
-    return bool(lines) and all(_last_lsm_token(line) == expected for line in lines)
+    return bool(lines) and all(line.split()[-1] == expected for line in lines)
 
 
 def rewrite_linux_lines(text: str, lsm_value: str) -> str:
@@ -455,52 +461,107 @@ def rewrite_linux_lines(text: str, lsm_value: str) -> str:
 
 
 def reboot_with_grub_script(lsm_value: str = "") -> str:
-    """Regenerate grub.cfg, force lsm= onto every linux line, then reboot."""
+    """Append the lab lsm= token and reboot only if the boot line ends with it.
+
+    Do not run grub-mkconfig here. On a FORCE_PARTUUID image that rebuilds
+    the else branch as `ro ${args} panic=-1`. The GCP lab guest booted that
+    stock line, with no lsm= token, after this script regenerated the file.
+    """
     if lsm_value and (not re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm_value) or not bpf_lsm_active(lsm_value)):
         raise ValueError("lsm_value")
-    rewrite = ""
-    if lsm_value:
-        rewrite = (
-            "python3 - <<'PY'\n"
-            "from pathlib import Path\n"
-            f"token = 'lsm={lsm_value}'\n"
-            "paths = [Path('/boot/grub/grub.cfg')]\n"
-            "efi = Path('/boot/efi')\n"
-            "if efi.is_dir():\n"
-            "    paths.extend(path for path in efi.rglob('grub.cfg') if path.is_file())\n"
-            "for path in paths:\n"
-            "    if not path.is_file():\n"
-            "        continue\n"
-            "    text = path.read_text(encoding='utf-8', errors='replace')\n"
-            "    if not any(line.strip().startswith('linux') for line in text.splitlines()):\n"
-            "        continue\n"
-            "    out = []\n"
-            "    for raw in text.splitlines():\n"
-            "        stripped = raw.strip()\n"
-            "        if not stripped.startswith('linux'):\n"
-            "            out.append(raw)\n"
-            "            continue\n"
-            "        indent = raw[:len(raw) - len(raw.lstrip())]\n"
-            "        parts = [part for part in stripped.split() if not part.startswith('lsm=')]\n"
-            "        parts.append(token)\n"
-            "        out.append(indent + ' '.join(parts))\n"
-            "    path.write_text('\\n'.join(out) + '\\n', encoding='utf-8')\n"
-            "PY\n"
+    if not lsm_value:
+        return (
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            "mkdir -p /var/lib/vantio-lab\n"
+            "echo 'refusing reboot: no lab lsm token' >>/var/lib/vantio-lab/grub-mkconfig.txt\n"
+            "exit 1\n"
         )
-    return (
-        "#!/bin/bash\n"
-        "# Regenerate the config, then force the lab lsm= token onto every linux line.\n"
-        "# A stub EFI grub.cfg with no linux line is left alone.\n"
-        "set -u\n"
-        "log=/var/lib/vantio-lab/grub-mkconfig.txt\n"
-        "mkdir -p /var/lib/vantio-lab\n"
-        "if command -v grub-mkconfig >/dev/null 2>&1; then\n"
-        "  grub-mkconfig -o /boot/grub/grub.cfg >\"$log\" 2>&1 || true\n"
-        "fi\n"
-        f"{rewrite}"
-        "sync\n"
-        "systemctl reboot --force\n"
-    )
+    token = f"lsm={lsm_value}"
+    return f"""#!/bin/bash
+# The cloud image boots the linux line that contains panic=-1. Regenerating
+# grub.cfg restores 10_linux's stock else branch and drops an in-place token.
+set -euo pipefail
+token='{token}'
+log=/var/lib/vantio-lab/grub-mkconfig.txt
+mkdir -p /var/lib/vantio-lab
+: >"$log"
+is_linux() {{
+  case "$1" in
+    linux|linux[[:space:]]*) return 0 ;;
+    *) return 1 ;;
+  esac
+}}
+rewrite() {{
+  path="$1"
+  [ -f "$path" ] || return 0
+  tmp=$(mktemp)
+  : >"$tmp"
+  while IFS= read -r line || [ -n "$line" ]; do
+    stripped=$(printf '%s\\n' "$line" | sed 's/^[[:space:]]*//')
+    if ! is_linux "$stripped"; then
+      printf '%s\\n' "$line" >>"$tmp"
+      continue
+    fi
+    indent=${{line%"$stripped"}}
+    out=""
+    for part in $stripped; do
+      case "$part" in
+        lsm=*) ;;
+        *) out="$out $part" ;;
+      esac
+    done
+    printf '%s%s %s\\n' "$indent" "${{out# }}" "$token" >>"$tmp"
+  done <"$path"
+  cat "$tmp" >"$path"
+  rm -f "$tmp"
+}}
+verify() {{
+  path="$1"
+  if [ ! -f "$path" ]; then
+    if [ "$path" = /boot/grub/grub.cfg ]; then
+      echo "refusing reboot: missing $path" >>"$log"
+      exit 1
+    fi
+    return 0
+  fi
+  saw=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    stripped=$(printf '%s\\n' "$line" | sed 's/^[[:space:]]*//')
+    is_linux "$stripped" || continue
+    saw=1
+    last=""
+    for part in $stripped; do
+      last=$part
+    done
+    if [ "$last" != "$token" ]; then
+      echo "refusing reboot: $path: $stripped" >>"$log"
+      exit 1
+    fi
+  done <"$path"
+  if [ "$path" = /boot/grub/grub.cfg ] && [ "$saw" -eq 0 ]; then
+    echo "refusing reboot: no linux line in $path" >>"$log"
+    exit 1
+  fi
+}}
+rewrite /boot/grub/grub.cfg
+if [ -d /boot/efi ]; then
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    rewrite "$path"
+  done < <(find /boot/efi -type f -name grub.cfg 2>/dev/null || true)
+fi
+verify /boot/grub/grub.cfg
+if [ -d /boot/efi ]; then
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    verify "$path"
+  done < <(find /boot/efi -type f -name grub.cfg 2>/dev/null || true)
+fi
+sync
+echo "reboot boot line ok" >>"$log"
+systemctl reboot --force
+"""
 
 
 def assignments_with_lsm(text: str, lsm_value: str) -> str:
