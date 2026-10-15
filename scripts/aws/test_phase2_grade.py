@@ -516,13 +516,17 @@ class BaselineDiagTests(unittest.TestCase):
             "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 "
             "lsm=lockdown,capability,apparmor,bpf panic=-1\n"
         )
-        self.assertFalse(baseline_diag.grub_cfg_has_lsm(buried, "lockdown,capability,apparmor,bpf"))
+        self.assertTrue(buried.strip().endswith("panic=-1"))
+        self.assertTrue(baseline_diag.grub_cfg_has_lsm(buried, "lockdown,capability,apparmor,bpf"))
         forced = baseline_diag.rewrite_linux_lines(stock_entry, "lockdown,capability,apparmor,bpf")
         self.assertTrue(baseline_diag.grub_cfg_has_lsm(forced, "lockdown,capability,apparmor,bpf"))
         self.assertIn("panic=-1 lsm=lockdown,capability,apparmor,bpf", forced)
         regen = baseline_diag.reboot_with_grub_script("lockdown,capability,apparmor,bpf")
         self.assertNotIn("grub-mkconfig -o", regen)
         self.assertNotIn("command -v grub-mkconfig", regen)
+        self.assertNotIn("panic=-1 lsm=", regen)
+        self.assertIn("updater=update-grub", regen)
+        self.assertIn("/etc/default/grub.d/99-vantio-lsm.cfg", regen)
         self.assertIn("set -euo pipefail", regen)
         self.assertIn("refusing reboot", regen)
         self.assertIn("systemctl reboot --force", regen)
@@ -549,6 +553,9 @@ class BaselineDiagTests(unittest.TestCase):
         host = Path(__file__).resolve().parent.joinpath("lab-guests/phase2_host.py").read_text(encoding="utf-8")
         self.assertIn("99-vantio-lsm.cfg", host)
         self.assertIn("0o755", host)
+        apply = host.split("def apply_consented_lsm", 1)[1].split("\ndef ", 1)[0]
+        self.assertNotIn("rewrite_linux_lines", apply)
+        self.assertNotIn("grub-mkconfig", apply)
         redteam = Path(__file__).resolve().parents[1].joinpath("gcp/redteam_campaign.py").read_text(encoding="utf-8")
         self.assertIn("sudo mkdir -p /var/lib/vantio-lab", redteam)
         self.assertNotIn("rm -rf {od.GUEST_DIR} && mkdir -p {od.GUEST_DIR}", redteam)
@@ -574,7 +581,8 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertTrue(stock["stock_bpf_lsm"])
 
     def test_reboot_script_keeps_the_panic_line_token(self) -> None:
-        script = baseline_diag.reboot_with_grub_script("lockdown,capability,apparmor,bpf")
+        token = "lockdown,capability,apparmor,bpf"
+        script = baseline_diag.reboot_with_grub_script(token)
         syntax = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
         self.assertEqual(syntax.returncode, 0, syntax.stderr)
         with tempfile.TemporaryDirectory() as tmp:
@@ -583,40 +591,118 @@ class BaselineDiagTests(unittest.TestCase):
             efi = root / "efi"
             efi.mkdir()
             (efi / "grub.cfg").write_text("set prefix=stub\n", encoding="utf-8")
-            cfg.write_text(
-                "menuentry 'Ubuntu' {\n"
-                "\n"
-                "\tlinux\t/vmlinuz root=PARTUUID ro console=ttyS0,115200\n"
-                "\tlinux\t/vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1\n"
-                "}\n",
-                encoding="utf-8",
+            cfg.write_text("menuentry 'Ubuntu' {\nset prefix=old\n}\n", encoding="utf-8")
+            dropin = root / "99-vantio-lsm.cfg"
+            dropin.write_text("lab\n", encoding="utf-8")
+            generated = (
+                "linux /vmlinuz root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+                f"ro console=ttyS0,115200 lsm={token} panic=-1\n"
             )
-            sandboxed = script.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            updater = root / "update-grub"
+            updater.write_text(f"#!/bin/sh\nprintf '%s' '{generated}' > '{cfg}'\n", encoding="utf-8")
+            updater.chmod(0o755)
+            sandboxed = script.replace("updater=update-grub", f"updater={updater}")
+            sandboxed = sandboxed.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            sandboxed = sandboxed.replace("dropin=/etc/default/grub.d/99-vantio-lsm.cfg", f"dropin={dropin}")
             sandboxed = sandboxed.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'log.txt'}")
             sandboxed = sandboxed.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
             sandboxed = sandboxed.replace("systemctl reboot --force", "echo REBOOT")
             ran = subprocess.run(["bash", "-c", sandboxed], capture_output=True, text=True)
-            self.assertEqual(ran.returncode, 0, ran.stderr)
+            self.assertEqual(ran.returncode, 0, ran.stderr + ran.stdout)
             self.assertIn("REBOOT", ran.stdout)
-            written = cfg.read_text(encoding="utf-8").splitlines()
-            self.assertIn("menuentry 'Ubuntu' {", written)
-            self.assertIn("}", written)
-            self.assertIn("", written)
-            booted = [line.strip() for line in written if "panic=-1" in line]
-            self.assertEqual(booted, [
-                "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1 lsm=lockdown,capability,apparmor,bpf"
-            ])
+            booted = cfg.read_text(encoding="utf-8").strip()
+            self.assertTrue(booted.endswith("panic=-1"), booted)
+            self.assertIn(f"lsm={token}", booted)
+            self.assertNotIn(f"panic=-1 lsm={token}", booted)
             self.assertEqual((efi / "grub.cfg").read_text(encoding="utf-8"), "set prefix=stub\n")
-            bare = root / "bare.cfg"
-            bare.write_text("# no linux line\n", encoding="utf-8")
-            refused = script.replace("/boot/grub/grub.cfg", str(bare)).replace("/boot/efi", str(root / "missing-efi"))
-            refused = refused.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'bare.txt'}")
+
+            stock = root / "update-grub-stock"
+            stock.write_text(
+                "#!/bin/sh\n"
+                f"printf '%s\\n' 'linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1' > '{cfg}'\n",
+                encoding="utf-8",
+            )
+            stock.chmod(0o755)
+            refused = script.replace("updater=update-grub", f"updater={stock}")
+            refused = refused.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            refused = refused.replace("dropin=/etc/default/grub.d/99-vantio-lsm.cfg", f"dropin={dropin}")
+            refused = refused.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'stock.txt'}")
             refused = refused.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
             refused = refused.replace("systemctl reboot --force", "echo REBOOT_SHOULD_NOT")
             blocked = subprocess.run(["bash", "-c", refused], capture_output=True, text=True)
-            self.assertEqual(blocked.returncode, 1)
+            self.assertEqual(blocked.returncode, 1, blocked.stderr + blocked.stdout)
             self.assertNotIn("REBOOT", blocked.stdout)
-            self.assertIn("refusing reboot", (root / "bare.txt").read_text(encoding="utf-8"))
+            self.assertIn("refusing reboot", (root / "stock.txt").read_text(encoding="utf-8"))
+
+            marker = root / "updater-ran"
+            missing = root / "missing-dropin.cfg"
+            early = root / "update-grub-early"
+            early.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
+            early.chmod(0o755)
+            nodropin = script.replace("updater=update-grub", f"updater={early}")
+            nodropin = nodropin.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            nodropin = nodropin.replace("dropin=/etc/default/grub.d/99-vantio-lsm.cfg", f"dropin={missing}")
+            nodropin = nodropin.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'missing.txt'}")
+            nodropin = nodropin.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
+            nodropin = nodropin.replace("systemctl reboot --force", "echo REBOOT_SHOULD_NOT")
+            missed = subprocess.run(["bash", "-c", nodropin], capture_output=True, text=True)
+            self.assertEqual(missed.returncode, 1, missed.stderr + missed.stdout)
+            self.assertFalse(marker.exists())
+            self.assertIn("refusing reboot", (root / "missing.txt").read_text(encoding="utf-8"))
+
+    def test_dropin_is_the_line_a_cloud_image_boots(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        partuuid = "10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "00-main.cfg").write_text('GRUB_CMDLINE_LINUX=""\n', encoding="utf-8")
+            (root / "40-force-partuuid.cfg").write_text(
+                f'GRUB_FORCE_PARTUUID="{partuuid}"\n',
+                encoding="utf-8",
+            )
+            (root / "50-cloudimg-settings.cfg").write_text(
+                'GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200"\n',
+                encoding="utf-8",
+            )
+            (root / "99-vantio-lsm.cfg").write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            emit = (
+                "linux /vmlinuz root=PARTUUID=$GRUB_FORCE_PARTUUID "
+                "ro $GRUB_CMDLINE_LINUX $GRUB_CMDLINE_LINUX_DEFAULT panic=-1"
+            )
+            sourced = "\n".join(
+                [
+                    "set -eu",
+                    'GRUB_CMDLINE_LINUX=""',
+                    'GRUB_CMDLINE_LINUX_DEFAULT=""',
+                    f'. "{root / "00-main.cfg"}"',
+                    f'. "{root / "40-force-partuuid.cfg"}"',
+                    f'. "{root / "50-cloudimg-settings.cfg"}"',
+                    f'. "{root / "99-vantio-lsm.cfg"}"',
+                    f'. "{root / "99-vantio-lsm.cfg"}"',
+                    f"printf '%s\\n' \"{emit}\"",
+                ]
+            )
+            ran = subprocess.run(["dash", "-c", sourced], capture_output=True, text=True)
+            self.assertEqual(ran.returncode, 0, ran.stderr)
+            line = ran.stdout.strip()
+            self.assertTrue(line.endswith("panic=-1"), line)
+            self.assertEqual(baseline_diag.last_lsm_token(line), f"lsm={token}")
+            stock = "\n".join(
+                [
+                    "set -eu",
+                    'GRUB_CMDLINE_LINUX=""',
+                    'GRUB_CMDLINE_LINUX_DEFAULT=""',
+                    f'. "{root / "00-main.cfg"}"',
+                    f'. "{root / "40-force-partuuid.cfg"}"',
+                    f'. "{root / "50-cloudimg-settings.cfg"}"',
+                    f"printf '%s\\n' \"{emit}\"",
+                ]
+            )
+            plain = subprocess.run(["dash", "-c", stock], capture_output=True, text=True)
+            self.assertEqual(plain.returncode, 0, plain.stderr)
+            recorded = plain.stdout.strip()
+            self.assertTrue(recorded.endswith("ro  console=ttyS0,115200 panic=-1") or recorded.endswith("ro console=ttyS0,115200 panic=-1"), recorded)
+            self.assertEqual(baseline_diag.last_lsm_token(recorded), "")
 
     def test_parent_walk_flags_a_directory_without_execute(self) -> None:
         walk = "/ kind=dir mode=0o755 x=1\n/var kind=dir mode=0o700 x=0\n"

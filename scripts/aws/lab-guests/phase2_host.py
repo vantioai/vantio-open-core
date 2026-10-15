@@ -1553,18 +1553,6 @@ def apply_consented_lsm(lsm_value: str) -> dict:
         restore()
         tail = ((proc.stdout or "") + (proc.stderr or ""))[-500:]
         return {"updated": False, "error": "update_grub", "tail": tail, "cloud_init": cloud_init}
-    for path in _grub_cfg_paths():
-        text = _cfg_text(path)
-        if not baseline_diag.first_linux_line(text):
-            continue
-        path.write_text(baseline_diag.rewrite_linux_lines(text, lsm_value), encoding="utf-8")
-    for path in _grub_cfg_paths():
-        text = _cfg_text(path)
-        if not baseline_diag.first_linux_line(text):
-            continue
-        if baseline_diag.grub_cfg_has_lsm(text, lsm_value):
-            continue
-        subprocess.run(["grub-mkconfig", "-o", str(path)], capture_output=True, text=True)
     linux_lines: list[str] = []
     efi_stub = ""
     saw_linux = False

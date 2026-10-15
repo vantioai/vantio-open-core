@@ -669,6 +669,11 @@ def apply(ctx: dict) -> tuple[int, dict]:
                     )
                     write_json(tx_dir / "HEALTH.json", health)
                     tx["health_overall"] = health["overall"]
+                    bpf_lsm = (health.get("components") or {}).get("bpf_lsm")
+                    if health["overall"] in {"PASS", "PASS_WITH_LIMITATIONS"} and bpf_lsm != "PASS":
+                        health["overall"] = "FAIL"
+                        tx["health_overall"] = "FAIL"
+                        write_json(tx_dir / "HEALTH.json", health)
                     if health["overall"] == "PASS":
                         _move(tx, "HEALTHY", stamp)
                     elif health["overall"] == "PASS_WITH_LIMITATIONS":

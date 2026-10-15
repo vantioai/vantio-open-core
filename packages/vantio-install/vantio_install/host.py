@@ -20,6 +20,7 @@ def empty_runtime_state() -> dict:
         "probe_errors": [],
         "optics_cli_version": None,
         "enforce_flag": False,
+        "active_lsm": "",
     }
 
 
@@ -50,6 +51,7 @@ def ready_host(**overrides: object) -> dict:
         "effective_uid": 0,
     }
     host.update(empty_runtime_state())
+    host["active_lsm"] = "lockdown,capability,landlock,yama,apparmor,bpf"
     host.update(overrides)
     return host
 
@@ -102,6 +104,12 @@ def probe_live() -> dict:
     host["node_version"] = _node_version()
     host["npm_version"] = _npm_version()
     host["effective_uid"] = os.geteuid()
+    lsm_path = Path("/sys/kernel/security/lsm")
+    try:
+        host["active_lsm"] = lsm_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        host["active_lsm"] = ""
+        host["probe_errors"].append("lsm")
     host["probe_note"] = "LIVE_READ_ONLY"
     return host
 

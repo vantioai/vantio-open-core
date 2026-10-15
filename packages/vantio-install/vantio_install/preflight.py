@@ -292,6 +292,19 @@ def run_preflight(
         )
     )
 
+    lsm_text = host.get("active_lsm")
+    lsm_ok = isinstance(lsm_text, str) and any(part.strip() == "bpf" for part in lsm_text.split(","))
+    checks.append(
+        _check(
+            "PF-LSM",
+            "Live kernel LSM list includes bpf",
+            "PASS" if lsm_ok else "BLOCKED",
+            {"active_lsm": lsm_text if isinstance(lsm_text, str) and lsm_text else "UNKNOWN"},
+            {"path": "/sys/kernel/security/lsm", "token": "bpf"},
+            "Reboot so /sys/kernel/security/lsm lists bpf, then rerun preflight. A host without that token is not healthy and is not protected.",
+        )
+    )
+
     checks.append(_tracefs_check(host, allow_unrecorded=allow_unrecorded_tracefs))
 
     docker_bin = host.get("docker_binary") is True
