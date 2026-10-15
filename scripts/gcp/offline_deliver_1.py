@@ -101,7 +101,7 @@ PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
     "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|run-redteam|run-self-service|delete-handoff|remove-oslogin-key|"
-    "teardown-if-present"
+    "serial-console|teardown-if-present"
 )
 
 

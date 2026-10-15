@@ -398,6 +398,59 @@ def missing_rows_tail(stdout: str, stderr: str) -> str:
     return tail[-1200:]
 
 
+def _print_saved_boot_evidence(project: str, name: str) -> None:
+    """The reboot script writes this file after the last verify, before reset."""
+    pulled = _ssh(
+        project,
+        name,
+        "sudo cat /var/lib/vantio-lab/boot-evidence.json",
+        timeout_s=PROBE_SSH_TIMEOUT,
+    )
+    print(
+        json.dumps(
+            {
+                "boot_evidence_rc": pulled.returncode,
+                "boot_evidence": (pulled.stdout or "")[:24000],
+            }
+        ),
+        flush=True,
+    )
+
+
+def serial_port_argv(project: str, name: str) -> list[str]:
+    return [
+        "gcloud",
+        "compute",
+        "instances",
+        "get-serial-port-output",
+        name,
+        f"--project={project}",
+        f"--zone={ZONE}",
+        "--port=1",
+    ]
+
+
+def capture_serial(env: Mapping[str, str]) -> int:
+    """Print the guest serial console while the instance still exists."""
+    _require_execute(env)
+    project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    name = instance_name(env.get("GITHUB_RUN_ID", ""))
+    try:
+        proc = subprocess.run(
+            serial_port_argv(project, name),
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"SERIAL_RC=error SERIAL_BYTES=0 {type(exc).__name__}", flush=True)
+        return 0
+    blob = ((proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")).replace("\x00", "")
+    print(f"SERIAL_RC={proc.returncode} SERIAL_BYTES={len(blob)}", flush=True)
+    print(blob[-200000:], flush=True)
+    return 0
+
+
 def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict[str, Any]:
     """Record the stock LSM list. Enable bpf only after the loader refuses."""
     before = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
@@ -428,6 +481,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
         "grub_updated": grub.get("updated") is True,
         "bootchain": _bootchain_public(grub),
         "linux_line": str(linux_lines[0])[:800] if linux_lines else "",
+        "boot_files": grub.get("boot_files") if isinstance(grub.get("boot_files"), list) else [],
         "lsm_guard": result,
         "reason": reason,
         "stock_lsm": stock,
@@ -465,6 +519,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             ),
             flush=True,
         )
+        _print_saved_boot_evidence(project, name)
         if not lsm_confirm_ok(confirm_body):
             record["lsm_guard"] = "confirm_failed"
             write_evidence(evidence / "lsm-guard.json", record)
@@ -921,6 +976,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return delete_handoff(env)
         if command == "remove-oslogin-key":
             return remove_os_login_key()
+        if command == "serial-console":
+            return capture_serial(env)
         if command == "teardown-if-present":
             return teardown_if_present(env)
     except SystemExit as exc:

@@ -706,6 +706,9 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("create-instance", text)
         self.assertIn("plumb-guest", text)
         self.assertIn("run-batteries", text)
+        self.assertIn("serial-console", text)
+        self.assertLess(text.find("run-batteries"), text.find("serial-console"))
+        self.assertLess(text.find("serial-console"), text.find("delete-handoff"))
         self.assertIn("teardown-if-present", text)
         self.assertIn("vantio-gce-slot", text)
         self.assertIn("EXPECTED_SEAL: ${{ inputs.seal }}", text)
@@ -820,6 +823,23 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("sha256sum: FAILED", tail)
         self.assertNotIn("ghp_", tail)
         self.assertIn("[redacted]", tail)
+
+    def test_serial_port_reads_the_lab_instance(self) -> None:
+        argv = od.serial_port_argv("vantio-lab-oct08", "vantio-gcp-lab-38793701944")
+        self.assertEqual(
+            argv,
+            [
+                "gcloud",
+                "compute",
+                "instances",
+                "get-serial-port-output",
+                "vantio-gcp-lab-38793701944",
+                "--project=vantio-lab-oct08",
+                "--zone=us-central1-a",
+                "--port=1",
+            ],
+        )
+        self.assertIn("serial-console", od.USAGE)
 
     def test_lsm_confirm_needs_bpf_in_the_live_list(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
