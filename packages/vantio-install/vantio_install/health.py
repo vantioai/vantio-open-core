@@ -18,6 +18,13 @@ def component_template(status: str) -> dict[str, str]:
     }
 
 
+def bpf_lsm_active(text: object) -> bool:
+    """True when bpf is its own comma-separated token in the live LSM list."""
+    if not isinstance(text, str):
+        return False
+    return any(part.strip() == "bpf" for part in text.split(","))
+
+
 def derive(snapshot: dict, config: dict, *, limitations: list | None = None) -> dict:
     components = component_template("NOT_TESTED")
     version = snapshot.get("optics_cli_version")
@@ -80,6 +87,8 @@ def derive(snapshot: dict, config: dict, *, limitations: list | None = None) -> 
         components["tc_clsact_iface"] = "NOT_INSTALLED"
     else:
         components["tc_clsact_iface"] = "FAIL"
+
+    components["bpf_lsm"] = "PASS" if bpf_lsm_active(snapshot.get("active_lsm")) else "FAIL"
 
     required = [
         components["optics_cli"],

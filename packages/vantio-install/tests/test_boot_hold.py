@@ -86,6 +86,7 @@ READY = {
         "enrolled_in_slice": True,
         "unenrolled_outside_slice": True,
     },
+    "active_lsm": "apparmor,bpf",
 }
 NOT_READY = {"bpf_pins": [], "loader_cmdline": "", "loader_health": "", "bpf_programs": ""}
 
@@ -562,6 +563,46 @@ class BootHoldTest(unittest.TestCase):
             lsm_cmdline_with_bpf("capability,apparmor", consent=True),
             "capability,apparmor,bpf",
         )
+        omitted = dict(READY)
+        omitted.pop("active_lsm")
+        missing = evaluate_ready(omitted)
+        self.assertFalse(missing["enforce_ready"])
+        self.assertEqual(missing["reason"], "bpf_lsm_inactive")
+        stock = evaluate_ready({**READY, "active_lsm": "lockdown,capability,landlock,yama,apparmor,ima,evm\n"})
+        self.assertFalse(stock["enforce_ready"])
+        self.assertEqual(stock["reason"], "bpf_lsm_inactive")
+
+    def test_live_lsm_file_refuses_healthy_without_bpf(self) -> None:
+        from vantio_install.health import derive
+
+        stock = "lockdown,capability,landlock,yama,apparmor,ima,evm"
+        listed = self.root / "sys/kernel/security"
+        listed.mkdir(parents=True)
+        (listed / "lsm").write_text(stock + "\n", encoding="utf-8")
+        facts = assemble_host_facts(self.root, prog_show="", cgroup_show="", map_show="")
+        self.assertEqual(facts["active_lsm"].strip(), stock)
+        blocked = evaluate_ready({**READY, "active_lsm": facts["active_lsm"]})
+        self.assertFalse(blocked["enforce_ready"])
+        self.assertEqual(blocked["reason"], "bpf_lsm_inactive")
+        snapshot = {
+            "active_lsm": facts["active_lsm"],
+            "optics_cli_version": "0.3.24",
+            "containers": [{"role": "phantom_engine", "status": "running", "cmd": ["--iface", "ens5"], "enforce": False}],
+            "processes": ["vantio-loader"],
+            "bpf_pins": list(BPF_PINS),
+            "clsact_ifaces": ["ens5"],
+        }
+        config = {"enforcement": "NOT_ENABLED", "path_deny": "disabled", "otlp": "DISABLED", "iface": "ens5"}
+        health = derive(snapshot, config)
+        self.assertEqual(health["components"]["bpf_lsm"], "FAIL")
+        self.assertNotIn(health["overall"], {"PASS", "PASS_WITH_LIMITATIONS"})
+        self.assertNotEqual(health.get("protection_state"), "PROTECTED")
+        (listed / "lsm").write_text("apparmor,bpf\n", encoding="utf-8")
+        live = assemble_host_facts(self.root, prog_show="", cgroup_show="", map_show="")
+        snapshot["active_lsm"] = live["active_lsm"]
+        allowed = derive(snapshot, config)
+        self.assertEqual(allowed["components"]["bpf_lsm"], "PASS")
+        self.assertEqual(allowed["overall"], "PASS")
 
     def test_profile_denies_only_the_protected_path(self) -> None:
         text = deny_profile(["/var/lib/app/secrets"])

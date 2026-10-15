@@ -100,6 +100,9 @@ def _recompute_health(snapshot: dict, config: dict, limitations: list) -> str:
         components["tc_clsact_iface"] = "NOT_INSTALLED"
     else:
         components["tc_clsact_iface"] = "FAIL"
+    active_lsm = snapshot.get("active_lsm")
+    lsm_ok = isinstance(active_lsm, str) and any(part.strip() == "bpf" for part in active_lsm.split(","))
+    components["bpf_lsm"] = "PASS" if lsm_ok else "FAIL"
     required = [
         components["optics_cli"],
         components["pe_container"],

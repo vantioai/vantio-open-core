@@ -146,6 +146,12 @@ def run_one_command(ctx: dict) -> tuple[int, dict]:
     applied["fetched"] = fetched
     if applied.get("state") in {"HEALTHY", "DEGRADED"} and applied.get("enforcement", "NOT_ENABLED") == "NOT_ENABLED":
         applied["protection_state"] = "OBSERVE"
+    components = applied.get("components") or {}
+    if applied.get("protection_state") == "PROTECTED" or components.get("bpf_lsm") == "FAIL":
+        applied["protection_state"] = "NOT_PROTECTED"
+        if applied.get("state") in {"HEALTHY", "DEGRADED"}:
+            applied["state"] = "FAILED_SAFE"
+            applied["reason"] = "bpf_lsm_inactive"
     return code, applied
 
 

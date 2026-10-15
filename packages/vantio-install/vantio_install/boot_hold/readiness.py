@@ -100,7 +100,7 @@ def evaluate_ready(facts: dict) -> dict:
         and mode in {"scoped", "node-wide"}
     )
     lsm_text = facts.get("active_lsm")
-    lsm_blocks = isinstance(lsm_text, str) and not bpf_lsm_active(lsm_text)
+    lsm_blocks = not (isinstance(lsm_text, str) and bpf_lsm_active(lsm_text))
     if lsm_blocks:
         ready = False
     if lsm_blocks:

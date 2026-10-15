@@ -890,6 +890,31 @@ class StageAInstallerTests(unittest.TestCase):
                 for alias in node.names:
                     self.assertNotIn(alias.name, banned)
 
+    def test_inactive_bpf_lsm_blocks_preflight(self) -> None:
+        stock = "lockdown,capability,landlock,yama,apparmor,ima,evm"
+        harness = self.make()
+        harness.host["active_lsm"] = stock
+        code, body = harness.run("plan")
+        self.assertNotEqual(code, 0, body)
+        self.assertNotEqual(body.get("state"), "PLANNED")
+        self.assertNotEqual(body.get("state"), "HEALTHY")
+        self.assertIn("PF-LSM", body.get("failed_or_limiting_checks", []))
+        snapshot = host()
+        snapshot["active_lsm"] = stock
+        snapshot["optics_cli_version"] = "0.3.24"
+        snapshot["containers"] = [
+            {"role": "phantom_engine", "status": "running", "cmd": ["--iface", "ens5"], "enforce": False}
+        ]
+        snapshot["processes"] = ["vantio-loader"]
+        snapshot["bpf_pins"] = list(constants.BPF_PINS)
+        snapshot["clsact_ifaces"] = ["ens5"]
+        config = {"enforcement": "NOT_ENABLED", "path_deny": "disabled", "otlp": "DISABLED", "iface": "ens5"}
+        health = derive(snapshot, config)
+        self.assertEqual(health["overall"], "FAIL")
+        self.assertEqual(health["components"]["bpf_lsm"], "FAIL")
+        self.assertEqual(_recompute_health(snapshot, config, []), "FAIL")
+        self.assertNotEqual(health.get("protection_state"), "PROTECTED")
+
     def test_health_rules_match_between_copies(self) -> None:
         snapshot = host()
         snapshot["optics_cli_version"] = "0.3.24"
