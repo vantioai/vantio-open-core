@@ -1077,8 +1077,9 @@ def reboot_with_grub_script(lsm_value: str = "") -> str:
         )
     token = f"lsm={lsm_value}"
     return f"""#!/bin/bash
-# Regenerate from /etc/default/grub.d/99-vantio-lsm.cfg, then boot only if the
-# panic=-1 menuentry still carries that lsm= list. Do not append past panic=-1.
+# Boot the panic=-1 line that already carries the lab lsm= list. Run
+# 38789348650 regenerated that file after the seal and the kernel came back
+# on the stock else line. Do not append past panic=-1.
 set -euo pipefail
 token='{token}'
 log=/var/lib/vantio-lab/grub-mkconfig.txt
@@ -1086,36 +1087,6 @@ dropin=/etc/default/grub.d/99-vantio-lsm.cfg
 mkdir -p /var/lib/vantio-lab
 : >"$log"
 updater=update-grub
-if [ ! -f "$dropin" ]; then
-  echo "refusing reboot: missing $dropin" >>"$log"
-  exit 1
-fi
-chmod 755 "$dropin"
-if ! command -v "$updater" >/dev/null 2>&1; then
-  echo "refusing reboot: update-grub missing" >>"$log"
-  exit 1
-fi
-if ! "$updater" >>"$log" 2>&1; then
-  echo "refusing reboot: update-grub failed" >>"$log"
-  exit 1
-fi
-if [ "$dropin" = /etc/default/grub.d/99-vantio-lsm.cfg ] && [ -f /var/lib/vantio-lab/guest/baseline_diag.py ]; then
-  if ! python3 - /var/lib/vantio-lab/guest "$token" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[1])
-import baseline_diag
-token = sys.argv[2]
-value = token.split("=", 1)[1]
-result = baseline_diag.seal_firmware_tree(baseline_diag.Path("/"), value, mount=True)
-print(result.get("bootchain") or {{}})
-if not result.get("ok"):
-    raise SystemExit(result.get("error") or "seal")
-PY
-  then
-    echo "refusing reboot: firmware seal failed" >>"$log"
-    exit 1
-  fi
-fi
 is_linux() {{
   case "$1" in
     linux|linux[[:space:]]*|linuxefi|linuxefi[[:space:]]*) return 0 ;;
@@ -1175,6 +1146,68 @@ verify() {{
     exit 1
   fi
 }}
+holds() {{
+  path="$1"
+  if [ ! -f "$path" ]; then
+    return 1
+  fi
+  panic_lines=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    stripped=$(printf '%s\\n' "$line" | sed 's/^[[:space:]]*//')
+    is_linux "$stripped" || continue
+    if has_panic "$stripped"; then
+      panic_lines=1
+    fi
+  done <"$path"
+  saw=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    stripped=$(printf '%s\\n' "$line" | sed 's/^[[:space:]]*//')
+    is_linux "$stripped" || continue
+    if [ "$panic_lines" -eq 1 ] && ! has_panic "$stripped"; then
+      continue
+    fi
+    saw=1
+    line_ok "$stripped" || return 1
+  done <"$path"
+  if [ "$path" = /boot/grub/grub.cfg ] && [ "$saw" -eq 0 ]; then
+    return 1
+  fi
+  return 0
+}}
+if holds /boot/grub/grub.cfg; then
+  echo "keeping sealed boot line" >>"$log"
+else
+  if [ ! -f "$dropin" ]; then
+    echo "refusing reboot: missing $dropin" >>"$log"
+    exit 1
+  fi
+  chmod 755 "$dropin"
+  if ! command -v "$updater" >/dev/null 2>&1; then
+    echo "refusing reboot: update-grub missing" >>"$log"
+    exit 1
+  fi
+  if ! "$updater" >>"$log" 2>&1; then
+    echo "refusing reboot: update-grub failed" >>"$log"
+    exit 1
+  fi
+  if [ "$dropin" = /etc/default/grub.d/99-vantio-lsm.cfg ] && [ -f /var/lib/vantio-lab/guest/baseline_diag.py ]; then
+    if ! python3 - /var/lib/vantio-lab/guest "$token" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+token = sys.argv[2]
+value = token.split("=", 1)[1]
+result = baseline_diag.seal_firmware_tree(baseline_diag.Path("/"), value, mount=True)
+print(result.get("bootchain") or {{}})
+if not result.get("ok"):
+    raise SystemExit(result.get("error") or "seal")
+PY
+    then
+      echo "refusing reboot: firmware seal failed" >>"$log"
+      exit 1
+    fi
+  fi
+fi
 verify /boot/grub/grub.cfg
 if [ -d /boot/efi ]; then
   while IFS= read -r path; do
@@ -1182,7 +1215,10 @@ if [ -d /boot/efi ]; then
     verify "$path"
   done < <(find /boot/efi -type f -name grub.cfg 2>/dev/null || true)
 fi
-sync
+if command -v sync >/dev/null 2>&1; then
+  sync -f /boot/grub/grub.cfg >>"$log" 2>&1 || sync >>"$log" 2>&1 || true
+fi
+verify /boot/grub/grub.cfg
 echo "reboot boot line ok" >>"$log"
 systemctl reboot --force
 """

@@ -530,6 +530,7 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertIn("set -euo pipefail", regen)
         self.assertIn("refusing reboot", regen)
         self.assertIn("systemctl reboot --force", regen)
+        self.assertIn("keeping sealed boot line", regen)
         self.assertIn("lsm=lockdown,capability,apparmor,bpf", regen)
         bare = baseline_diag.reboot_with_grub_script()
         self.assertNotIn("systemctl reboot", bare)
@@ -616,6 +617,33 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertNotIn(f"panic=-1 lsm={token}", booted)
             self.assertEqual((efi / "grub.cfg").read_text(encoding="utf-8"), "set prefix=stub\n")
 
+            sealed = cfg.read_text(encoding="utf-8")
+            stamp = root / "regenerated"
+            clobber = root / "update-grub-clobber"
+            clobber.write_text(
+                "#!/bin/sh\n"
+                f"touch '{stamp}'\n"
+                f"printf '%s\\n' 'linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1' > '{cfg}'\n",
+                encoding="utf-8",
+            )
+            clobber.chmod(0o755)
+            keep = script.replace("updater=update-grub", f"updater={clobber}")
+            keep = keep.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            keep = keep.replace("dropin=/etc/default/grub.d/99-vantio-lsm.cfg", f"dropin={dropin}")
+            keep = keep.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'keep.txt'}")
+            keep = keep.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
+            keep = keep.replace("systemctl reboot --force", "echo REBOOT")
+            kept = subprocess.run(["bash", "-c", keep], capture_output=True, text=True)
+            self.assertEqual(kept.returncode, 0, kept.stderr + kept.stdout)
+            self.assertIn("REBOOT", kept.stdout)
+            self.assertFalse(stamp.exists())
+            self.assertEqual(cfg.read_text(encoding="utf-8"), sealed)
+            self.assertIn("keeping sealed boot line", (root / "keep.txt").read_text(encoding="utf-8"))
+
+            cfg.write_text(
+                "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1\n",
+                encoding="utf-8",
+            )
             stock = root / "update-grub-stock"
             stock.write_text(
                 "#!/bin/sh\n"
