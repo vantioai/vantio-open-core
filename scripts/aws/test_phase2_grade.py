@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import socket
@@ -639,6 +640,8 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertFalse(stamp.exists())
             self.assertEqual(cfg.read_text(encoding="utf-8"), sealed)
             self.assertIn("keeping sealed boot line", (root / "keep.txt").read_text(encoding="utf-8"))
+            self.assertIn("boot-evidence.json", script)
+            self.assertIn("boot_evidence_snapshot", script)
 
             cfg.write_text(
                 "linux /vmlinuz root=PARTUUID ro console=ttyS0,115200 panic=-1\n",
@@ -768,6 +771,35 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertEqual(chain["uuid_mount"], "boot")
             self.assertEqual(chain["grub_alias"], "absent")
             self.assertFalse((root / "grub" / "grub.cfg").exists())
+
+    def test_boot_manifest_hashes_the_stub_and_both_menus(self) -> None:
+        stub = "search.fs_uuid 6a4d7abf-5bb6-427d-a1f5-1df6cda29962 root\nset prefix=($root)'/grub'\nconfigfile $prefix/grub.cfg\n"
+        sealed = (
+            "linux /vmlinuz root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+            "ro console=ttyS0,115200 lsm=lockdown,capability,apparmor,bpf panic=-1\n"
+        )
+        stock = (
+            "linux /vmlinuz root=PARTUUID=10c90fd7-bb6d-4926-b2f0-5f9d77cdcf47 "
+            "ro console=ttyS0,115200 panic=-1\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "boot/efi/EFI/ubuntu").mkdir(parents=True)
+            (root / "boot/grub").mkdir(parents=True)
+            (root / "grub").mkdir()
+            (root / "boot/efi/EFI/ubuntu/grub.cfg").write_text(stub, encoding="utf-8")
+            (root / "boot/grub/grub.cfg").write_text(sealed, encoding="utf-8")
+            (root / "grub/grub.cfg").write_text(stock, encoding="utf-8")
+            rows = {row["path"]: row for row in baseline_diag.boot_file_manifest(root)}
+            self.assertEqual(set(rows), {"boot/efi/EFI/ubuntu/grub.cfg", "boot/grub/grub.cfg", "grub/grub.cfg"})
+            self.assertEqual(rows["boot/efi/EFI/ubuntu/grub.cfg"]["kind"], "stub")
+            self.assertEqual(rows["boot/grub/grub.cfg"]["sha256"], hashlib.sha256(sealed.encode()).hexdigest())
+            self.assertIn("lsm=lockdown,capability,apparmor,bpf", rows["boot/grub/grub.cfg"]["boot_line"])
+            self.assertNotIn("lsm=", rows["grub/grub.cfg"]["boot_line"])
+            self.assertEqual(rows["grub/grub.cfg"]["sha256"], hashlib.sha256(stock.encode()).hexdigest())
+            shot = baseline_diag.boot_evidence_snapshot(root)
+            self.assertEqual(shot["files"], baseline_diag.boot_file_manifest(root))
+            self.assertNotIn("efibootmgr", shot)
 
     def test_same_filesystem_stub_seals_the_prefix_path(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"

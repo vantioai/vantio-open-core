@@ -9,6 +9,7 @@ Audience: INTERNAL_RESTRICTED
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -1121,6 +1122,86 @@ def seal_firmware_tree(
     return {"ok": ok, "error": bootchain.get("error") or "", "bootchain": bootchain}
 
 
+def boot_file_manifest(root: Path) -> list[dict]:
+    """Hash every grub.cfg and grubenv under /boot, /efi, and /grub.
+
+    The EFI stub loads ($root)/grub/grub.cfg. update-grub writes
+    /boot/grub/grub.cfg. Both are listed, with the linux line each one would
+    boot, so a later cmdline can be matched to a hash.
+    """
+    names = {"grub.cfg", "grubenv"}
+    found: list[Path] = []
+    seen: set[str] = set()
+    bases = [root / "boot", root / "efi", root / "grub", root / "grub" / "grub.cfg"]
+    for base in bases:
+        if base.is_file() and base.name in names:
+            paths = [base]
+        elif base.is_dir():
+            paths = [path for path in base.rglob("*") if path.is_file() and path.name in names]
+        else:
+            continue
+        for path in paths:
+            try:
+                key = str(path.resolve())
+            except OSError:
+                key = path.as_posix()
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(path)
+    records: list[dict] = []
+    for path in sorted(found, key=lambda item: item.as_posix()):
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        text = data.decode("utf-8", "replace")
+        kind = "env" if path.name == "grubenv" else str(efi_stub_facts(text).get("kind") or "")
+        try:
+            rel = str(path.resolve().relative_to(root.resolve()))
+        except (OSError, ValueError):
+            rel = path.as_posix()
+        records.append(
+            {
+                "path": rel,
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "size": len(data),
+                "kind": kind,
+                "boot_line": first_linux_line(text)[:240],
+            }
+        )
+        if len(records) >= 16:
+            break
+    return records
+
+
+def _command_text(argv: list[str]) -> str:
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return type(exc).__name__
+    text = ((proc.stdout or "") + (proc.stderr or "")).strip()
+    if proc.returncode != 0:
+        text = f"rc={proc.returncode}\n{text}"
+    return text[:4000]
+
+
+def boot_evidence_snapshot(root: Path | None = None) -> dict:
+    """Files the stub can load, plus efibootmgr on the live root."""
+    tree = root if root is not None else Path("/")
+    body: dict = {"files": boot_file_manifest(tree)}
+    if tree == Path("/"):
+        body["uuid"] = {
+            "root": _findmnt_uuid("/"),
+            "boot": _findmnt_uuid("/boot"),
+            "esp": _findmnt_uuid("/boot/efi"),
+        }
+        body["efibootmgr"] = _command_text(["efibootmgr", "-v"])
+        cmdline = Path("/proc/cmdline")
+        body["cmdline"] = cmdline.read_text(encoding="utf-8").strip()[:400] if cmdline.is_file() else ""
+    return body
+
+
 def reboot_with_grub_script(lsm_value: str = "") -> str:
     """Regenerate grub from the drop-in and reboot only if that menuentry has lsm=.
 
@@ -1283,6 +1364,16 @@ if command -v sync >/dev/null 2>&1; then
   sync -f /boot/grub/grub.cfg >>"$log" 2>&1 || sync >>"$log" 2>&1 || true
 fi
 verify /boot/grub/grub.cfg
+if [ -f /var/lib/vantio-lab/guest/baseline_diag.py ]; then
+  python3 - /var/lib/vantio-lab/guest <<'PY' >>"$log" 2>&1 || echo "boot-evidence failed" >>"$log"
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+body = baseline_diag.boot_evidence_snapshot()
+baseline_diag.Path("/var/lib/vantio-lab/boot-evidence.json").write_text(json.dumps(body) + "\\n", encoding="utf-8")
+print("boot-evidence", len(body.get("files") or []))
+PY
+fi
 echo "reboot boot line ok" >>"$log"
 systemctl reboot --force
 """

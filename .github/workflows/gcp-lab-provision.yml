@@ -441,6 +441,13 @@ jobs:
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           python3 scripts/gcp/offline_deliver.py run-batteries
 
+      - name: Capture the serial console
+        if: always() && steps.auth.outcome == 'success'
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+        run: python3 scripts/gcp/offline_deliver.py serial-console
+
       - name: Delete the handoff prefix
         if: always() && steps.auth.outcome == 'success'
         env:

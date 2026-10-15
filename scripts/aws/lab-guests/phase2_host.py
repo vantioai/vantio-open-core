@@ -1676,10 +1676,20 @@ def run_lsm_guard() -> dict:
         return body
     lsm_value = baseline_diag.lsm_list_with_bpf(stock)
     applied = apply_consented_lsm(lsm_value)
+    applied["boot_files"] = baseline_diag.boot_file_manifest(Path("/"))
     body["lsm_value"] = lsm_value
     body["grub"] = {
         key: applied[key]
-        for key in ("updated", "error", "linux_lines", "efi_grub", "bootchain", "cloud_init", "update_grub_tail")
+        for key in (
+            "updated",
+            "error",
+            "linux_lines",
+            "efi_grub",
+            "bootchain",
+            "cloud_init",
+            "update_grub_tail",
+            "boot_files",
+        )
         if key in applied
     }
     if not applied.get("updated"):
