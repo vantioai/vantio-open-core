@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import subprocess
 import sys
 import tarfile
@@ -798,6 +799,27 @@ class OfflineDeliverTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             od.self_service_requested({"SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
             od.run_self_service({"GCP_LAB_EXECUTE": "1", "SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
+
+    def test_loaded_image_keeps_the_historical_tag_and_a_commit_tag(self) -> None:
+        text = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        self.assertIn(od.IMAGE_NAME, text)
+        self.assertIn("normalize_loaded_image", text)
+        self.assertIn("loaded_image_refused", text)
+        self.assertNotIn('test "$image" = "$image_name"', text)
+        pattern = re.compile(r"^vantio-phantom-engine:(egress-2e6ab54|[0-9a-f]{7,40})$")
+        self.assertIsNotNone(pattern.fullmatch("vantio-phantom-engine:e5e15ab"))
+        self.assertIsNotNone(pattern.fullmatch("vantio-phantom-engine:egress-2e6ab54"))
+        self.assertIsNone(pattern.fullmatch("ubuntu:24.04"))
+        self.assertIsNone(pattern.fullmatch("vantio-phantom-engine:latest"))
+        self.assertIsNone(pattern.fullmatch("vantio-phantom-engine:e5e15ab extra"))
+        tail = od.missing_rows_tail(
+            "Loaded image: vantio-phantom-engine:e5e15ab\nghp_" + "a" * 20,
+            "sha256sum: FAILED",
+        )
+        self.assertIn("Loaded image: vantio-phantom-engine:e5e15ab", tail)
+        self.assertIn("sha256sum: FAILED", tail)
+        self.assertNotIn("ghp_", tail)
+        self.assertIn("[redacted]", tail)
 
     def test_lsm_confirm_needs_bpf_in_the_live_list(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
