@@ -4,7 +4,7 @@ UTC: 2026-10-16
 
 Lane digest under re-check: `6d3ce580` (full value in `RESULT.json`).
 
-Current main stores that digest as `COMPARISON_SEAL` in `scripts/gap/t1-stranger-host/constants.py`. `WORKING_SEAL` remains the `bbb1025d` constant. The installer public pin remains `e0b19d55` on `pe_archive_sha256`. This re-check does not move any of those constants.
+Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps the `bbb1025d` constant. `COMPARISON_SEAL` is an alias of `WORKING_SEAL`. The installer public pin remains `e0b19d55` on `pe_archive_sha256`. This re-check does not move any of those constants.
 
 ## What was checked
 

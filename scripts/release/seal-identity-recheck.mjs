@@ -17,11 +17,11 @@ const LANE_DIGEST_PREFIX = "6d3ce580";
 export async function recheck(root) {
   const stranger = readFileSync(join(root, "scripts/gap/t1-stranger-host/constants.py"), "utf8");
   const installer = readFileSync(join(root, "packages/vantio-install/vantio_install/constants.py"), "utf8");
-  const comparison = one(stranger, /COMPARISON_SEAL = "([0-9a-f]{64})"/);
-  const working = one(stranger, /WORKING_SEAL = "([0-9a-f]{64})"/);
-  const publicPin = one(installer, /"pe_archive_sha256": "([0-9a-f]{64})"/);
+  const working = assignedHex(stranger, "WORKING_SEAL");
+  const previous = assignedHex(stranger, "PREVIOUS_WORKING_SEAL");
+  const publicPin = quotedHex(installer, "pe_archive_sha256");
   const files = await walk(root);
-  const matched = files.filter((row) => row.sha256 === comparison).map((row) => row.path);
+  const matched = files.filter((row) => row.sha256 === working).map((row) => row.path);
   const engineDockerfile = files.some((row) => {
     if (!row.path.includes("Dockerfile")) return false;
     const text = readFileSync(join(root, row.path), "utf8");
@@ -34,9 +34,11 @@ export async function recheck(root) {
   return {
     bytes_matching_digest: matched,
     cargo_toml_present: existsSync(join(root, "Cargo.toml")),
+    comparison_aliases_working: /^COMPARISON_SEAL\s*=\s*WORKING_SEAL$/m.test(stranger),
     constants_moved: false,
-    digest_role_on_main: "COMPARISON_SEAL",
-    digest_under_recheck: comparison,
+    digest_role_on_main: "WORKING_SEAL",
+    digest_under_recheck: working,
+    previous_working_seal: previous,
     engine_dockerfile_present: engineDockerfile,
     engine_seal_label: "Lab-only",
     engine_seal_rebuilt: false,
@@ -55,9 +57,11 @@ export async function recheck(root) {
 export function assertShape(body) {
   const errors = [];
   if (!body.digest_under_recheck.startsWith(LANE_DIGEST_PREFIX)) errors.push("prefix");
-  if (body.digest_under_recheck === body.working_seal_constant) errors.push("comparison_is_working");
-  if (body.digest_under_recheck === body.public_installer_pin) errors.push("comparison_is_public_pin");
-  if (body.working_seal_constant === body.public_installer_pin) errors.push("working_is_public_pin");
+  if (body.digest_under_recheck !== body.working_seal_constant) errors.push("not_the_working_seal");
+  if (!body.previous_working_seal.startsWith("bbb1025d")) errors.push("previous_prefix");
+  if (body.previous_working_seal === body.working_seal_constant) errors.push("previous_is_current");
+  if (body.digest_under_recheck === body.public_installer_pin) errors.push("working_is_public_pin");
+  if (!body.comparison_aliases_working) errors.push("comparison_alias");
   if (body.bytes_matching_digest.length !== 0) errors.push("bytes_present");
   if (body.seal_oci_tar_present) errors.push("oci_present");
   if (body.cargo_toml_present) errors.push("cargo_present");
@@ -73,9 +77,15 @@ export function assertShape(body) {
   return errors;
 }
 
-function one(text, pattern) {
-  const found = text.match(pattern);
-  if (!found) throw new Error(`missing ${pattern}`);
+function assignedHex(text, name) {
+  const found = text.match(new RegExp(`^${name}\\s*=\\s*"([0-9a-f]{64})"`, "m"));
+  if (!found) throw new Error(`${name} missing`);
+  return found[1];
+}
+
+function quotedHex(text, name) {
+  const found = text.match(new RegExp(`"${name}": "([0-9a-f]{64})"`));
+  if (!found) throw new Error(`${name} missing`);
   return found[1];
 }
 

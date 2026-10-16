@@ -1,9 +1,11 @@
 {
   "bytes_matching_digest": [],
   "cargo_toml_present": false,
+  "comparison_aliases_working": true,
   "constants_moved": false,
-  "digest_role_on_main": "COMPARISON_SEAL",
+  "digest_role_on_main": "WORKING_SEAL",
   "digest_under_recheck": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403",
+  "previous_working_seal": "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d",
   "engine_dockerfile_present": false,
   "engine_seal_label": "Lab-only",
   "engine_seal_rebuilt": false,
@@ -12,8 +14,8 @@
   "observe_dockerfile_present": true,
   "open_core_manifest_label": "Verified",
   "open_core_manifest_passes_agree": true,
-  "open_core_manifest_sha256": "da7d81155162257b601eaf2f548b0c84e9a1d303e6d8483691205495233892d8",
+  "open_core_manifest_sha256": "f343504ad7f7926c4feb882f7fb2907b9df94cad99de796d6e4db1c47f8b7927",
   "public_installer_pin": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
   "seal_oci_tar_present": false,
-  "working_seal_constant": "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
+  "working_seal_constant": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
 }
