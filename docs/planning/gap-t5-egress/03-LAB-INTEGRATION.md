@@ -14,20 +14,21 @@ GCP project `vantio-lab-oct08` is the only project the plan accepts. At `2026-10
 
 ## What a later lab agent does
 
-1. Read `scripts/clean-host/t5/LAB-REGISTRATION.json`.
-2. Copy `scripts/clean-host/t5` and `packages/t5-egress-drills` onto a guest that agent already owns.
-3. Add battery id `t5-egress` to the allow-list in `scripts/aws/w3_lab_steps.py` in a separate change. Until that change, an unknown battery id is rejected.
-4. Run `python3 scripts/clean-host/t5/proof.py` on that guest. The proof uses `unshare` and does not need a routed interface.
+1. Read `scripts/clean-host/t5/LAB-REGISTRATION.json`. The battery id is already on the allow-list.
+2. Use a guest that agent already owns. Do not start one while `bc-8b310b16` has the AWS slot, and do not dispatch GCP while a battery from that agent is in progress.
+3. The guest command is `scripts/aws/lab-guests/t5-egress.sh`. It runs `python3 scripts/clean-host/t5/proof.py` and `python3 scripts/clean-host/t5/kernel_proof.py`. The proof uses `unshare` and does not need a routed interface. The script does not attach.
+4. A dispatch still needs the keyless workflow on main to grow an input for this battery. This change does not add that input.
 5. Keep the result labeled Lab-only. A guest run is still not a cluster attach and not a customer result.
 
 ## What this track already ran
 
 `python3 scripts/clean-host/t5/proof.py` on the cloud-agent runner. The evidence file is `docs/planning/gap-t5-egress/evidence/proof.json`. Label: Lab-only.
 
+`python3 scripts/clean-host/t5/kernel_proof.py` compiled the program and did not load it. The evidence file is `docs/planning/gap-t5-egress/evidence/kernel-compile.json`. Compile label: Lab-only. Attach label: Roadmap.
+
 Files this track did not change:
 
 - `.github/workflows/w3-lab-*.yml`
 - `.github/workflows/gcp-lab-*.yml`
-- `scripts/aws/w3_lab_steps.py`
 - `README.md`
 - installer pin files
