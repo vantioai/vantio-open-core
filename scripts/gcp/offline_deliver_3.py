@@ -110,6 +110,12 @@ def _kernel_flags(payload: Any) -> dict[str, Any]:
     lsm = payload.get("lsm")
     if isinstance(lsm, str) and re.fullmatch(r"[a-z0-9,]{0,80}", lsm):
         flags["kernel_lsm"] = lsm
+    lockdown = lockdown_text(payload.get("lockdown"))
+    if lockdown:
+        flags["kernel_lockdown"] = lockdown
+    name = exact_image_name(payload.get("image_name"))
+    if name:
+        flags["image_name"] = name
     return flags
 
 
@@ -525,6 +531,7 @@ def live_lsm_from_probe(probe: dict, boot_id: str) -> dict | None:
     }
     if not lsm_confirm_ok(body):
         return None
+    body.update(host_evidence_fields(probe))
     return body
 
 
@@ -550,7 +557,7 @@ def live_stock_bpf(probe: dict, boot_id: str) -> dict | None:
     if not _bpf_listed(enabled):
         return None
     cmdline = probe.get("cmdline") if isinstance(probe.get("cmdline"), str) else ""
-    return {
+    body = {
         "boot_id": probe.get("boot_id"),
         "cmdline": cmdline,
         "stock_lsm": enabled,
@@ -559,6 +566,8 @@ def live_stock_bpf(probe: dict, boot_id: str) -> dict | None:
         "kernel_command_lines": probe.get("kernel_command_lines") if isinstance(probe.get("kernel_command_lines"), list) else [],
         "grubenv": probe.get("grubenv") if isinstance(probe.get("grubenv"), list) else [],
     }
+    body.update(host_evidence_fields(probe))
+    return body
 
 
 LATER_BOOT_PROBE = (
@@ -567,6 +576,8 @@ LATER_BOOT_PROBE = (
     "print(json.dumps({'boot_id': baseline_diag.read_boot_id(), "
     "'cmdline': open('/proc/cmdline',encoding='utf-8').read().strip()[:1200], "
     "'enabled_lsm': open('/sys/kernel/security/lsm',encoding='utf-8').read().strip()[:1200], "
+    "'lockdown': baseline_diag.read_lockdown(), "
+    "'image_name': baseline_diag.read_image_name(), "
     "'kernel_command_lines': baseline_diag.read_kernel_command_lines(), "
     "'grubenv': baseline_diag.read_grubenv_assignments()}))\""
 )
@@ -731,6 +742,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
         "stock_bpf_lsm": False,
         "stock_lsm": stock,
     }
+    record.update(host_evidence_fields(body))
     grub = body.get("grub") if isinstance(body.get("grub"), dict) else {}
     reason = body.get("reason") if isinstance(body.get("reason"), str) else ""
     linux_lines = grub.get("linux_lines") if isinstance(grub.get("linux_lines"), list) else []
@@ -758,6 +770,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
                 write_evidence(evidence / "lsm-guard.json", record)
                 raise SystemExit("lsm")
             body = adopted
+            record.update(host_evidence_fields(body))
             record["stock_lsm"] = adopted.get("stock_lsm") if isinstance(adopted.get("stock_lsm"), str) else ""
         _require_serial(project, name, boot_before, evidence, record)
         record["lsm_guard"] = "already_active"
@@ -783,6 +796,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
     enabled = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
     cmdline = confirm_body.get("cmdline") if isinstance(confirm_body.get("cmdline"), str) else ""
     matched = confirm_matches_boot(confirm_body, after)
+    record.update(host_evidence_fields(confirm_body))
     kernel_lines = confirm_body.get("kernel_command_lines")
     grubenv = confirm_body.get("grubenv")
     print(
@@ -794,6 +808,8 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
                 "cmdline": cmdline[:1200],
                 "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
                 "enabled_lsm": enabled,
+                "lockdown": host_evidence_fields(confirm_body).get("lockdown", ""),
+                "image_name": host_evidence_fields(confirm_body).get("image_name", ""),
                 "grubenv": grubenv if isinstance(grubenv, list) else [],
                 "kernel_command_lines": kernel_lines if isinstance(kernel_lines, list) else [],
                 "lsm_confirm": confirm_body.get("host_result") if matched else "stale_rows",
@@ -824,6 +840,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             write_evidence(evidence / "lsm-guard.json", record)
             raise SystemExit("lsm")
         confirm_body = adopted
+        record.update(host_evidence_fields(confirm_body))
     followed_up = False
     if not lsm_confirm_ok(confirm_body):
         if guard_ready(confirm_body, after):
@@ -844,11 +861,13 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             adopted = live_lsm_from_probe(probe_body, later) if later else None
             if adopted is not None:
                 confirm_body = adopted
+                record.update(host_evidence_fields(confirm_body))
                 followed_up = True
         if not lsm_confirm_ok(confirm_body):
             record["lsm_guard"] = "confirm_failed"
             write_evidence(evidence / "lsm-guard.json", record)
             raise SystemExit("lsm")
+    record.update(host_evidence_fields(confirm_body))
     record["lsm_guard"] = "lsm_enabled_follow_up" if followed_up else "lsm_enabled"
     confirmed_result = confirm_body.get("host_result") if isinstance(confirm_body.get("host_result"), str) else ""
     if confirmed_result in {"LSM_ENABLED", "LSM_ALREADY_ACTIVE"}:

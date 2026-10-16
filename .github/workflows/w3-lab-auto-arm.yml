@@ -49,12 +49,13 @@ on:
         default: lab-bundle/enterprise-pe-2026-10-08
         type: string
       battery:
-        description: enterprise keeps the grant and revoke rows. descendant-b1 runs the moved-child deny and repeats it after reboot. self-service runs the public one-command installer. Phase names run one clean-host battery on the working seal.
+        description: enterprise keeps the grant and revoke rows. reboot-check schedules the LSM reboot and confirms the boot id changed. descendant-b1 runs the moved-child deny and repeats it after that same reboot. self-service runs the public one-command installer. Phase names run one clean-host battery on the working seal.
         required: false
         default: enterprise
         type: choice
         options:
           - enterprise
+          - reboot-check
           - descendant-b1
           - self-service
           - 2c-upgrade-rollback

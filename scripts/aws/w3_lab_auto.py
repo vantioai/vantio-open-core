@@ -720,7 +720,28 @@ def image_facts(payload: Mapping[str, Any], image_id: str) -> dict[str, Any]:
     }
 
 
-def resolve_pinned_image(runner: Runner, image_id: str) -> str:
+EXACT_IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+/-]{0,159}$")
+IMAGE_FAMILIES = frozenset(
+    {
+        "ubuntu-2404-lts-amd64",
+        "ubuntu-os-cloud/ubuntu-2404-lts-amd64",
+    }
+)
+
+
+def exact_image_name(value: object) -> str:
+    """The image that booted. A family name or a filter with a star is not it."""
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text or "\n" in text or "*" in text or text in IMAGE_FAMILIES:
+        return ""
+    if EXACT_IMAGE_RE.fullmatch(text) is None:
+        return ""
+    return text
+
+
+def described_image(runner: Runner, image_id: str) -> tuple[str, dict[str, Any]]:
     if IMAGE_ID_RE.fullmatch(image_id) is None:
         raise GuardAbort("image_id")
     try:
@@ -729,7 +750,13 @@ def resolve_pinned_image(runner: Runner, image_id: str) -> str:
         if "InvalidAMIID.NotFound" in exc.reason or "InvalidAMIID.Unavailable" in exc.reason:
             raise GuardAbort("image_unavailable") from None
         raise
-    return require_available_image(described, image_id)
+    accepted = require_available_image(described, image_id)
+    return accepted, image_facts(described, accepted)
+
+
+def resolve_pinned_image(runner: Runner, image_id: str) -> str:
+    accepted, _facts = described_image(runner, image_id)
+    return accepted
 
 
 def describe_images_args() -> list[str]:
@@ -888,7 +915,7 @@ def execute_launch(
         raise GuardAbort("untagged")
     user_data_path.write_text(plan["user_data"], encoding="utf-8")
     requested = str(spec.get("image_id") or PINNED_IMAGE_ID)
-    image_id = resolve_pinned_image(runner, requested)
+    image_id, facts = described_image(runner, requested)
     created = aws_json(runner, create_security_group_args(plan, LAB_VPC_ID))
     group_id = created.get("GroupId")
     if not isinstance(group_id, str) or not group_id.startswith("sg-"):
@@ -923,6 +950,7 @@ def execute_launch(
         "instance_id": instance_id,
         "security_group_id": group_id,
         "image_id": image_id,
+        "image_name": exact_image_name(facts.get("image_name")),
         "instance_type": plan["instance_type"],
         "stop_after_minutes": plan["stop_after_minutes"],
         "expires_at": plan["expires_at"],

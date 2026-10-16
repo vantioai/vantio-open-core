@@ -264,6 +264,19 @@ def _list_instances(project: str) -> list[dict[str, Any]]:
     return [item for item in parsed if isinstance(item, dict)]
 
 
+def describe_boot_disk_argv(project: str, name: str) -> list[str]:
+    return [
+        "gcloud",
+        "compute",
+        "disks",
+        "describe",
+        name,
+        f"--project={project}",
+        f"--zone={ZONE}",
+        "--format=json(sourceImage)",
+    ]
+
+
 def create_instance(env: Mapping[str, str]) -> int:
     _enabled(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
@@ -303,6 +316,13 @@ def create_instance(env: Mapping[str, str]) -> int:
     script_path = script_dir / "gcp-offline-startup.sh"
     script_path.write_text(offline_startup(minutes), encoding="utf-8")
     _run_ok(offline_create_argv(plan, str(script_path)), "create")
+    described = _run(describe_boot_disk_argv(project, name))
+    image_name = ""
+    if described.returncode == 0 and (described.stdout or "").strip():
+        try:
+            image_name = image_name_from_disk(json.loads(described.stdout))
+        except json.JSONDecodeError:
+            image_name = ""
     payload = {
         "claim_cap": CLAIM_CAP,
         "expected_oop_usd": gate["expected_oop_usd"],
@@ -316,6 +336,8 @@ def create_instance(env: Mapping[str, str]) -> int:
         "subnet": SUBNET,
         "zone": ZONE,
     }
+    if image_name:
+        payload["image_name"] = image_name
     write_evidence(_evidence_dir(env) / "instance.json", payload)
     github_output("instance_name", name)
     print(json.dumps(payload))

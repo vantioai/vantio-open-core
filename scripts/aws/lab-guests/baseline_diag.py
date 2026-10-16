@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import urllib.request
 from pathlib import Path
 
 SUBJECT = 65534
@@ -1488,6 +1489,83 @@ def plan_grub_lsm(main: str, extras: list[str], lsm_value: str) -> dict:
     return {"main": new_main, "extras": new_extras}
 
 
+LOCKDOWN_PATH = Path("/sys/kernel/security/lockdown")
+LOCKDOWN_MODES = frozenset({"none", "integrity", "confidentiality"})
+EXACT_IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+/-]{0,159}$")
+IMAGE_FAMILIES = frozenset(
+    {
+        "ubuntu-2404-lts-amd64",
+        "ubuntu-os-cloud/ubuntu-2404-lts-amd64",
+    }
+)
+
+
+def exact_image_name(value: object) -> str:
+    """The image that booted. A family name or a filter with a star is not it."""
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text or "\n" in text or "*" in text or text in IMAGE_FAMILIES:
+        return ""
+    if EXACT_IMAGE_RE.fullmatch(text) is None:
+        return ""
+    return text
+
+
+def read_lockdown(path: Path | None = None) -> str:
+    """Live /sys/kernel/security/lockdown. The bracket marks the active mode."""
+    source = LOCKDOWN_PATH if path is None else path
+    try:
+        text = source.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if "\n" in text or len(text) > 80:
+        return ""
+    parts = text.split(" ")
+    if not parts or len(parts) > 4:
+        return ""
+    for part in parts:
+        if not part:
+            return ""
+        bare = part[1:-1] if part.startswith("[") and part.endswith("]") and len(part) > 2 else part
+        if bare not in LOCKDOWN_MODES or part.count("[") > 1:
+            return ""
+    return text
+
+
+def _gcp_guest() -> bool:
+    vendor = Path("/sys/class/dmi/id/sys_vendor")
+    try:
+        return "google" in vendor.read_text(encoding="utf-8", errors="replace").lower()
+    except OSError:
+        return False
+
+
+def _gcp_metadata_image() -> str:
+    request = urllib.request.Request(
+        "http://metadata.google.internal/computeMetadata/v1/instance/image",
+        headers={"Metadata-Flavor": "Google"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            raw = response.read(512).decode("utf-8", "replace").strip()
+    except (OSError, ValueError):
+        return ""
+    if "\n" in raw or len(raw) > 300:
+        return ""
+    return raw.rstrip("/").rsplit("/", 1)[-1]
+
+
+def read_image_name() -> str:
+    """Exact image name. The runner passes it; a GCP guest can also read metadata."""
+    named = exact_image_name(os.environ.get("VANTIO_IMAGE_NAME", ""))
+    if named:
+        return named
+    if not _gcp_guest():
+        return ""
+    return exact_image_name(_gcp_metadata_image())
+
+
 def lsm_status_body(
     stock: str,
     cmdline: str,
@@ -1587,6 +1665,12 @@ def write_lsm_rows(body: dict) -> dict:
     boot = stamped.get("boot_id")
     if not isinstance(boot, str) or not boot or "\n" in boot or len(boot) > 80:
         stamped["boot_id"] = read_boot_id()
+    lockdown = read_lockdown()
+    if lockdown:
+        stamped["lockdown"] = lockdown
+    image_name = exact_image_name(stamped.get("image_name")) or read_image_name()
+    if image_name:
+        stamped["image_name"] = image_name
     text = json.dumps(stamped, indent=2) + "\n"
     for path in lsm_row_paths():
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -56,11 +56,34 @@ with tarfile.open(path, "r:*") as tar:
 if not found:
     raise SystemExit(5)
 PY
+# One reboot for every battery. vantio-lab-lsm-reboot running
+# reboot-with-grub.sh is the schedule that changed the boot on this image.
+# A second unit name, and a bare `systemctl reboot`, are a different path.
+# --system --slice=system.slice puts the timer in the system manager.
+# The SSH session scope is not that slice, and the user manager is not
+# this bus. The runner drops its session before the 45s timer fires.
+schedule_forced_reboot() {
+  local unit=vantio-lab-lsm-reboot
+  local reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
+  sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
+  sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
+  sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
+  if [ ! -x "$reboot_cmd" ]; then
+    echo "reboot_script_missing" >&2
+    return 1
+  fi
+  if ! sudo systemd-run --system --slice=system.slice --on-active=45s --timer-property=AccuracySec=1s --unit="$unit" "$reboot_cmd"; then
+    echo "reboot_not_scheduled unit=${unit}" >&2
+    return 1
+  fi
+  echo "reboot_scheduled unit=${unit} delay=45s slice=system.slice"
+}
+
 # A second boot already has bpf in the LSM list. Confirm that and return
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "${2:-}" = "lsm-guard" ]; then
   set +e
-  sudo python3 - "$here" <<'PY'
+  sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here" <<'PY'
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
@@ -77,6 +100,89 @@ PY
     sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
     exit 2
   fi
+fi
+# The rows file is root-owned. Record the live lockdown mode and the exact
+# image name into it. A family name is not that image.
+stamp_host_evidence() {
+  if [ ! -f "$here/baseline_diag.py" ]; then
+    return 0
+  fi
+  sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here" << 'PY' || true
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+from sticky_write import write_replacing
+
+lockdown = baseline_diag.read_lockdown()
+image_name = baseline_diag.read_image_name()
+rows = Path("/tmp/enterprise-pe-rows.json")
+if not rows.is_file():
+    raise SystemExit(0)
+try:
+    body = json.loads(rows.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    body = {}
+if not isinstance(body, dict):
+    body = {}
+changed = False
+if lockdown:
+    body["lockdown"] = lockdown
+    changed = True
+if image_name:
+    body["image_name"] = image_name
+    changed = True
+if changed:
+    write_replacing(rows, json.dumps(body) + "\n")
+PY
+  sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+}
+
+# Reboot proof only. No docker and no descendant probe. The schedule is the
+# function above; the runner leaves and then reads the new boot id.
+# A previous battery leaves the rows file owned by root. Remove it before
+# this run writes, and write as root. If the timer is armed and the record
+# cannot be written, stop the timer so the host does not reboot unwatched.
+if [ "${2:-}" = "reboot-check" ]; then
+  sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
+  boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+  reason=""
+  if [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+    reason=reboot_script_missing
+  elif ! schedule_forced_reboot; then
+    reason=reboot_not_scheduled
+    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+  fi
+  if ! sudo python3 - "$boot_id" "$reason" <<'PY'
+import json
+import sys
+
+boot_id, reason = sys.argv[1], sys.argv[2]
+body = {
+    "battery": "reboot-check",
+    "boot_id": boot_id,
+    "reboot_requested": reason == "",
+    "unit": "vantio-lab-lsm-reboot",
+}
+if reason:
+    body["reason"] = reason
+text = json.dumps(body) + "\n"
+with open("/tmp/enterprise-pe-rows.json", "w", encoding="utf-8") as handle:
+    handle.write(text)
+print(text, end="")
+PY
+  then
+    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+    exit 1
+  fi
+  sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  stamp_host_evidence
+  if [ -n "$reason" ]; then
+    exit 1
+  fi
+  exit 0
 fi
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
@@ -367,28 +473,6 @@ publish_current_rows() {
   fi
 }
 
-# A transient timer's AccuracySec defaults to one minute. Reset the unit
-# first so a second arm can schedule it again. reboot-with-grub.sh is the
-# command that produced a new boot on this image; it refuses when the menu
-# has no lab lsm token. A schedule that does not start fails the phase.
-schedule_forced_reboot() {
-  local unit=$1
-  sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
-  sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
-  sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
-  local reboot_cmd
-  if [ -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
-    reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
-  else
-    reboot_cmd="systemctl reboot --force"
-  fi
-  if ! sudo systemd-run --on-active=45s --timer-property=AccuracySec=1s --unit="$unit" $reboot_cmd; then
-    echo "reboot_not_scheduled unit=${unit}" >&2
-    return 1
-  fi
-  echo "reboot_scheduled unit=${unit} delay=45s"
-}
-
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
@@ -430,10 +514,12 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
-    if ! schedule_forced_reboot vantio-lab-reboot; then
+    if ! schedule_forced_reboot; then
+      stamp_host_evidence
       exit 1
     fi
   fi
+  stamp_host_evidence
   exit "$rc"
 fi
 case "$mode" in
@@ -446,13 +532,14 @@ case "$mode" in
     sudo bash /var/lib/vantio-lab/bin/soak-hourly.sh install
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
-    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh start > /tmp/phase2-host.out 2>&1
+    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh start > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out
     publish_current_rows
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true
     printf 'PY_RC=%s\n' "$rc"
+    stamp_host_evidence
     exit "$rc"
     ;;
   2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
@@ -461,7 +548,7 @@ case "$mode" in
     # this phase writes.
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
-    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
+    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out
@@ -480,17 +567,20 @@ case "$mode" in
       fi
     fi
     if ! authorized_uninstall "$image" "$require_row" "$probe_pid"; then
+      stamp_host_evidence
       exit 1
     fi
     if [ "$mode" = "lsm-guard" ] && [ -s /tmp/enterprise-pe-rows.json ]; then
       want=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
       if [ "$want" = "yes" ]; then
         sync
-        if ! schedule_forced_reboot vantio-lab-lsm-reboot; then
+        if ! schedule_forced_reboot; then
+          stamp_host_evidence
           exit 1
         fi
       fi
     fi
+    stamp_host_evidence
     exit "$rc"
     ;;
 esac
@@ -500,6 +590,8 @@ sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
 if ! authorized_uninstall "$image" no 0; then
+  stamp_host_evidence
   exit 1
 fi
+stamp_host_evidence
 exit "$rc"

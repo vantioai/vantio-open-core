@@ -674,6 +674,94 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("/sys/fs/bpf:/sys/fs/bpf:rshared", text)
         self.assertIn("INTERNAL_CLEAN_HOST_PROOF", text)
         self.assertLess(text.index('mode=${2:-plumb}'), text.index("apt-get install"))
+        uninstall = text[text.index("authorized_uninstall()"): text.index("normalize_loaded_image")]
+        self.assertIn('sudo python3 - "$here/sticky_write.py"', uninstall)
+        self.assertLess(uninstall.index("sudo rm -f /tmp/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpffs"', uninstall)
+        self.assertIn("| tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertNotIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertIn("stamp_host_evidence", text)
+        self.assertIn("baseline_diag.read_lockdown()", text)
+        self.assertIn("baseline_diag.read_image_name()", text)
+        self.assertIn("read_lockdown", od.LATER_BOOT_PROBE)
+        self.assertIn("read_image_name", od.LATER_BOOT_PROBE)
+        self.assertNotIn("\n", od.LATER_BOOT_PROBE)
+
+    def test_evidence_keeps_live_lockdown_and_the_exact_image_name(self) -> None:
+        lockdown = "none [integrity] confidentiality"
+        image = "ubuntu-2404-noble-amd64-v20261014"
+        kept = od.allow_record(
+            {
+                "lockdown": lockdown,
+                "kernel_lockdown": "[none] integrity confidentiality",
+                "image_name": image,
+            }
+        )
+        self.assertEqual(kept["lockdown"], lockdown)
+        self.assertEqual(kept["kernel_lockdown"], "[none] integrity confidentiality")
+        self.assertEqual(kept["image_name"], image)
+        dropped = od.allow_record(
+            {
+                "image_name": od.IMAGE_FAMILY,
+                "lockdown": "lockdown,capability,bpf",
+                "kernel_lockdown": "none [integrity] confidentiality extra",
+            }
+        )
+        self.assertNotIn("image_name", dropped)
+        self.assertNotIn("lockdown", dropped)
+        self.assertNotIn("kernel_lockdown", dropped)
+        flags = od._kernel_flags(
+            {
+                "btf": True,
+                "lsm": "lockdown,capability,bpf",
+                "lockdown": lockdown,
+                "image_name": image,
+            }
+        )
+        self.assertEqual(flags["kernel_lockdown"], lockdown)
+        self.assertEqual(flags["image_name"], image)
+        self.assertNotIn("image_name", od._kernel_flags({"image_name": "ubuntu-os-cloud/ubuntu-2404-lts-amd64"}))
+        source = "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/" + image
+        self.assertEqual(od.image_name_from_disk({"sourceImage": source}), image)
+        self.assertEqual(
+            od.image_name_from_disk(
+                {"sourceImage": "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2404-lts-amd64"}
+            ),
+            "",
+        )
+        argv = od.describe_boot_disk_argv("vantio-lab-oct08", "vantio-gcp-lab-12")
+        self.assertIn("disks", argv)
+        self.assertIn("describe", argv)
+        self.assertIn("--format=json(sourceImage)", argv)
+        fresh = "33333333-3333-3333-3333-333333333333"
+        sealed = "BOOT_IMAGE=/vmlinuz ro lsm=lockdown,capability,landlock,yama,apparmor,ima,evm,bpf panic=-1"
+        listed = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        adopted = od.live_lsm_from_probe(
+            {
+                "boot_id": fresh,
+                "cmdline": sealed,
+                "enabled_lsm": listed,
+                "lockdown": lockdown,
+                "image_name": image,
+            },
+            fresh,
+        )
+        self.assertIsNotNone(adopted)
+        self.assertEqual(adopted["lockdown"], lockdown)
+        self.assertEqual(adopted["image_name"], image)
+        family = od.live_lsm_from_probe(
+            {
+                "boot_id": fresh,
+                "cmdline": sealed,
+                "enabled_lsm": listed,
+                "image_name": od.IMAGE_FAMILY,
+            },
+            fresh,
+        )
+        self.assertIsNotNone(family)
+        self.assertNotIn("image_name", family)
 
     def test_deb_fetch_uses_the_pinned_snapshot(self) -> None:
         text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")

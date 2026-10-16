@@ -152,13 +152,55 @@ stop_loader_containers() {
   done
 }
 
+# The rows file is root-owned. Record the live lockdown mode and the exact
+# image name into it. A family name is not that image.
+stamp_host_evidence() {
+  if [ ! -f "$here/baseline_diag.py" ]; then
+    return 0
+  fi
+  sudo python3 - "$here" << 'PY' || true
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+from sticky_write import write_replacing
+
+lockdown = baseline_diag.read_lockdown()
+image_name = baseline_diag.read_image_name()
+rows = Path("/tmp/enterprise-pe-rows.json")
+if not rows.is_file():
+    raise SystemExit(0)
+try:
+    body = json.loads(rows.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    body = {}
+if not isinstance(body, dict):
+    body = {}
+changed = False
+if lockdown:
+    body["lockdown"] = lockdown
+    changed = True
+if image_name:
+    body["image_name"] = image_name
+    changed = True
+if changed:
+    write_replacing(rows, json.dumps(body) + "\n")
+PY
+  sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+}
+
 authorized_uninstall() {
   local image="$1"
   local require_row="${2:-no}"
   local probe_pid="${3:-0}"
   export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
   record_uninstall() {
-    python3 - "$here/sticky_write.py" << 'PY'
+    # guest_rows.py runs as root and owns this file. The lab user cannot
+    # truncate it, so the tail has to be written as root or the runner
+    # uploads the pre-uninstall body.
+    sudo python3 - "$here/sticky_write.py" << 'PY' || true
 import json
 import sys
 from pathlib import Path
@@ -171,15 +213,28 @@ try:
     body = json.loads(rows.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError):
     body = {}
+if not isinstance(body, dict):
+    body = {}
 out = Path("/tmp/vantio-uninstall.out")
 body["uninstall_tail"] = out.read_text(encoding="utf-8", errors="replace")[-1200:] if out.is_file() else ""
+try:
+    boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+except OSError:
+    boot = ""
+if boot and "\n" not in boot and len(boot) <= 80:
+    body["boot_id"] = boot
 write_replacing(rows, json.dumps(body))
 PY
-    chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    sudo chmod a+r /tmp/enterprise-pe-rows.json /tmp/vantio-uninstall.out 2>/dev/null || true
   }
   trap record_uninstall RETURN
+  # A previous battery can leave this file. The loader truncates it only
+  # when it runs, and the shell markers below have to be in it too. The
+  # recorder reads this file, not the script's stderr. The shell redirect
+  # owns the file. tee as root is refused in sticky /tmp.
+  sudo rm -f /tmp/vantio-uninstall.out
   if ! ensure_working_bpftool; then
-    echo "UNINSTALL_RESIDUAL bpftool missing" >&2
+    echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   stop_loader_containers
@@ -210,12 +265,14 @@ PY
   set -e
   cat /tmp/vantio-uninstall.out
   if ! grep -qx 'UNINSTALL_VERIFIED' /tmp/vantio-uninstall.out; then
-    echo "UNINSTALL_NOT_VERIFIED rc=$urc" >&2
+    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null | grep -q .; then
-    echo "UNINSTALL_RESIDUAL bpffs" >&2
-    find /sys/fs/bpf -maxdepth 2 -name 'vantio*' >&2 || true
+    {
+      echo "UNINSTALL_RESIDUAL bpffs"
+      find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null || true
+    } | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if [ "$require_row" = "yes" ]; then
@@ -328,8 +385,12 @@ if [ "$mode" = "uninstall" ]; then
     printf '%s\n' "$load"
     image=$(accept_loaded_image "$load")
   fi
+  set +e
   authorized_uninstall "$image" "${VANTIO_REQUIRE_POST_KILL:-yes}" "${VANTIO_PROBE_PID:-0}"
-  exit $?
+  urc=$?
+  set -e
+  stamp_host_evidence
+  exit "$urc"
 fi
 if [ -f "$here/debs.tar" ]; then
   if tar -tf "$here/debs.tar" | grep -E '(^/|(^|/)\.\.(/|$))' >/dev/null; then
@@ -415,11 +476,15 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
 done
 test "$ready" = 1
 ensure_working_bpftool || true
-python3 - <<'PY'
+python3 - "$here" <<'PY'
 import json
 import os
 import pathlib
 import subprocess
+import sys
+
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
 
 fs = subprocess.check_output(["stat", "-fc", "%T", "/sys/fs/cgroup"], text=True).strip()
 lsm_path = pathlib.Path("/sys/kernel/security/lsm")
@@ -431,6 +496,8 @@ facts = {
     "btf": pathlib.Path("/sys/kernel/btf/vmlinux").is_file(),
     "bpffs": pathlib.Path("/sys/fs/bpf").is_dir(),
     "lsm": lsm_path.read_text(encoding="utf-8").strip() if lsm_path.is_file() else "",
+    "lockdown": baseline_diag.read_lockdown(),
+    "image_name": baseline_diag.read_image_name(),
 }
 path = pathlib.Path("/tmp/gcp-kernel-facts.json")
 path.write_text(json.dumps(facts, indent=2) + "\n", encoding="utf-8")
@@ -467,6 +534,7 @@ if [ "$mode" = "descendant-b1" ]; then
       sudo systemctl reboot --force || true
     fi
   fi
+  stamp_host_evidence
   exit "$rc"
 fi
 case "$mode" in
@@ -510,6 +578,12 @@ case "$mode" in
         fi
       fi
     fi
+    stamp_host_evidence
+    if [ -s /tmp/enterprise-pe-rows.json ]; then
+      sudo mkdir -p /var/lib/vantio-lab
+      sudo cp /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
+      sudo chmod a+r /var/lib/vantio-lab/enterprise-pe-rows.json
+    fi
     exit "$rc"
     ;;
 esac
@@ -522,6 +596,7 @@ rc=$?
 set -e
 sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
 sudo chmod a+r /tmp/gcp-kernel-facts.json 2>/dev/null || true
+stamp_host_evidence
 if [ -s /tmp/enterprise-pe-rows.json ]; then
   sudo mkdir -p /var/lib/vantio-lab
   sudo cp /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json

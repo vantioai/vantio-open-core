@@ -37,7 +37,11 @@ CHECK_LINE = re.compile(
 SECRET = re.compile(
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"
     r"|AKIA[0-9A-Z]{16}"
-    r"|ghp_[A-Za-z0-9]{20,}",
+    r"|ASIA[0-9A-Z]{16}"
+    r"|ghp_[A-Za-z0-9]{20,}"
+    r"|github_pat_[A-Za-z0-9_]{20,}"
+    r"|(?i:aws_secret_access_key\s*[:=]\s*\S+)"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}",
     re.S,
 )
 DEFAULT_MARKER = Path(__file__).resolve().with_name("lab-guests") / "marker.sh"
@@ -133,7 +137,28 @@ def parse_check_details(text: str) -> list[dict[str, Any]]:
 
 
 def redact(text: str) -> tuple[str, bool]:
+    """Strip secrets. A key block cut off by the console tail is removed too."""
     cleaned, count = SECRET.subn("[redacted]", text)
+    if re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", cleaned):
+        cleaned, extra = re.subn(
+            r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*\Z",
+            "[redacted]",
+            cleaned,
+            count=1,
+        )
+        count += extra
+    if re.search(r"-----END [A-Z ]*PRIVATE KEY-----", cleaned):
+        cleaned, extra = re.subn(
+            r"\A[\s\S]*-----END [A-Z ]*PRIVATE KEY-----",
+            "[redacted]",
+            cleaned,
+            count=1,
+        )
+        count += extra
+    token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
+    if token and token in cleaned:
+        cleaned = cleaned.replace(token, "[redacted]")
+        count += 1
     return cleaned, count > 0
 
 
@@ -589,12 +614,22 @@ def _collect_console(
         ["aws", "ec2", "get-console-output", "--region", lab.REGION, "--instance-id", instance_id, "--latest"],
     )
     text, redacted = redact(console_text(console))
+    if "PRIVATE KEY" in text:
+        raise lab.GuardAbort("token_in_evidence")
+    if text and not text.endswith("\n"):
+        text += "\n"
+    override = os.environ.get("W3_CONSOLE_PATH", "").strip()
+    console_name = f"w3-lab-console-{instance_id}.txt"
+    console_path = Path(override) if override else evidence_path("w3-lab-collect.json").with_name(console_name)
+    console_path.write_text(text, encoding="utf-8")
     marker = next((line for line in text.splitlines() if MARKER_LINE.fullmatch(line)), None)
     checks = parse_check_lines(text, source="console")
     payload.update(
         {
             "checks": checks,
             "collect_channel": "console",
+            "console_bytes": len(text.encode("utf-8")),
+            "console_file": console_path.name,
             "console_redacted": redacted,
             "console_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "marker_line": marker,
@@ -684,6 +719,10 @@ def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner 
                 one = {
                     "checks": extra.get("checks") or [],
                     "cloudtrail": extra.get("cloudtrail"),
+                    "console_bytes": extra.get("console_bytes"),
+                    "console_file": extra.get("console_file"),
+                    "console_redacted": extra.get("console_redacted") is True,
+                    "console_sha256": extra.get("console_sha256"),
                     "instance_id": instance_id,
                     "instance_state": extra.get("instance_state"),
                     "reason": exc.reason,
@@ -695,8 +734,13 @@ def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner 
                     "check_count": len(one.get("checks") or []),
                     "checks": one.get("checks") or [],
                     "cloudtrail": one.get("cloudtrail"),
+                    "console_bytes": one.get("console_bytes"),
+                    "console_file": one.get("console_file"),
+                    "console_redacted": one.get("console_redacted") is True,
+                    "console_sha256": one.get("console_sha256"),
                     "instance_id": instance_id,
                     "instance_state": one.get("instance_state"),
+                    "reason": one.get("reason"),
                     "soak_active": one.get("soak_active") is True,
                     "status": one.get("status"),
                 }
@@ -1088,6 +1132,8 @@ def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
     """Name the uninstall line the guest recorded. A missing tail stays guest."""
     if not isinstance(body, Mapping):
         return "guest"
+    if body.get("reason") in {"reboot_script_missing", "reboot_not_scheduled"}:
+        return str(body["reason"])
     removal = body.get("removal")
     if isinstance(removal, Mapping) and removal.get("verified_removed") is False:
         return "programs_not_removed"
@@ -1102,47 +1148,59 @@ def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
     return "guest"
 
 
+def _reboot_log_tail(remote: Callable[[list[str], str], subprocess.CompletedProcess[str]]) -> str:
+    """Last lines of the grub reboot script, redacted. Empty when SSH cannot read it."""
+    proc = remote(["tail", "-n", "40", "/var/lib/vantio-lab/grub-mkconfig.txt"], "")
+    if proc.returncode != 0:
+        return ""
+    text, _redacted = redact(proc.stdout or "")
+    return text[-800:]
+
+
 def _wait_for_reboot(
     runner: Runner,
     instance_id: str,
     remote: Callable[[list[str], str], subprocess.CompletedProcess[str]],
     connect_with_key: list[str],
     *,
-    drop_budget: float = 180,
+    quiet_budget: float = 70,
     return_budget: float = 240,
     clock: Callable[[], float] = time.time,
     pause: Callable[[float], None] = time.sleep,
     describe: Callable[[Runner, str], Mapping[str, Any] | None] | None = None,
+    release: Callable[[], None] | None = None,
+    reopen: Callable[[], None] | None = None,
+    note: dict[str, str] | None = None,
 ) -> str:
-    """Wait until this boot ends, then until SSH returns on a different boot.
+    """Leave the host, then read the boot id on a new connection.
 
-    The drop budget and the return budget are separate. A host that stays on
-    the same boot id uses only the drop budget. Reachability after the drop
-    is SSH and the instance state. The returned value is the new boot id.
+    The lab reboot is the system timer the LSM guard uses, 45s out. That
+    timer changed the boot when the runner had already dropped its session.
+    Polling SSH through those 45s is a different path, and it is the path
+    that stayed on the old boot. release() drops the runner rule. No SSH
+    runs until quiet_budget has elapsed. The returned value is the new boot id.
     """
     lookup = describe_instance if describe is None else describe
     before = _remote_boot_id(remote)
-    drop_deadline = clock() + drop_budget
-    dropped = False
-    changed = ""
-    while clock() < drop_deadline:
-        probe = remote(["true"], "")
-        if probe.returncode != 0:
-            dropped = True
-            break
-        current = _remote_boot_id(remote)
-        if before and current and current != before:
-            changed = current
-            break
-        pause(2)
-    if changed:
-        return changed
-    if not dropped:
-        raise lab.GuardAbort("reboot_timeout")
+    if note is not None:
+        note["before"] = before
+    if release is not None:
+        release()
+    quiet_deadline = clock() + quiet_budget
+    while clock() < quiet_deadline:
+        instance = lookup(runner, instance_id)
+        if instance is not None and instance_state(instance) in {"stopped", "stopping", "shutting-down", "terminated"}:
+            raise lab.GuardAbort("instance_state")
+        pause(5)
     return_deadline = clock() + return_budget
+    opened = reopen is None
     while clock() < return_deadline:
         instance = lookup(runner, instance_id)
         if instance is not None and instance_state(instance) == "running":
+            if not opened:
+                if reopen is not None:
+                    reopen()
+                opened = True
             try:
                 lab.aws_json(runner, connect_with_key)
             except lab.GuardAbort:
@@ -1151,6 +1209,8 @@ def _wait_for_reboot(
             if remote(["true"], "").returncode == 0:
                 current = _remote_boot_id(remote)
                 if current and (not before or current != before):
+                    if note is not None:
+                        note["after"] = current
                     return current
         pause(5)
     raise lab.GuardAbort("reboot_timeout")
@@ -1247,7 +1307,7 @@ def execute_enterprise_rows(
             "lsm-guard",
             "soak-hourly",
         }
-        if battery not in {"enterprise", "descendant-b1", "self-service", *phase_batteries}:
+        if battery not in {"enterprise", "descendant-b1", "reboot-check", "self-service", *phase_batteries}:
             raise lab.GuardAbort("battery")
         payload["battery"] = battery
         if battery == "self-service" and os.environ.get("W3_BRAIN_DIR", "").strip():
@@ -1287,8 +1347,14 @@ def execute_enterprise_rows(
         if image_id and lab.IMAGE_ID_RE.fullmatch(image_id) is None:
             raise lab.GuardAbort("image_id")
         ssh_user = "admin" if image_id and image_id != lab.PINNED_IMAGE_ID else "ubuntu"
+        image_name = ""
+        if image_id:
+            _accepted, facts = lab.described_image(runner, image_id)
+            image_name = lab.exact_image_name(facts.get("image_name"))
         payload["image_id"] = image_id
+        payload["image_name"] = image_name
         payload["ssh_user"] = ssh_user
+        image_env = ["env", f"VANTIO_IMAGE_ID={image_id}", f"VANTIO_IMAGE_NAME={image_name}"]
         group_id = security_group_id(instance)
         zone = availability_zone(instance)
         authorize = authorize_args(group_id, cidr, revoke=False)
@@ -1330,6 +1396,18 @@ def execute_enterprise_rows(
                     ["ssh", *base, *argv],
                     script,
                 )
+
+            def release_ssh() -> None:
+                revoke_quietly(runner, group_id, cidr)
+                stamp["authorized"] = False
+                write_stamp(stamp_path, stamp)
+
+            def reopen_ssh() -> None:
+                lab.aws_json(runner, authorize)
+                stamp["authorized"] = True
+                write_stamp(stamp_path, stamp)
+
+            reboot_note: dict[str, str] = {}
 
             def copy_to(local: Path, name: str) -> None:
                 if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
@@ -1452,6 +1530,7 @@ def execute_enterprise_rows(
                     [
                         "env",
                         f"VANTIO_IMAGE_ID={image_id}",
+                        f"VANTIO_IMAGE_NAME={image_name}",
                         *phase_egress_env(private_ipv4(instance)),
                         "bash",
                         f"{GUEST_BUNDLE}/enterprise-rows.sh",
@@ -1463,6 +1542,8 @@ def execute_enterprise_rows(
             elif battery == "descendant-b1":
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
                 probe_c = descendant.with_name("descendant_probe.c")
@@ -1475,14 +1556,25 @@ def execute_enterprise_rows(
                 if rows_py.is_file() and packet_py.is_file():
                     copy_to(rows_py, "redteam_rows.py")
                     copy_to(packet_py, "redteam_packet.py")
-                pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
+                pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
                 ran = pre
                 if pre.returncode == 0:
                     try:
-                        payload["boot_id"] = _wait_for_reboot(runner, instance_id, remote, connect + [public])
+                        payload["boot_id"] = _wait_for_reboot(
+                            runner,
+                            instance_id,
+                            remote,
+                            connect + [public],
+                            release=release_ssh,
+                            reopen=reopen_ssh,
+                            note=reboot_note,
+                        )
                     except lab.GuardAbort as exc:
                         if exc.reason != "reboot_timeout":
                             raise
+                        tail = _reboot_log_tail(remote)
+                        if tail:
+                            payload["reboot_log_tail"] = tail
                         payload["guest_rc"] = pre.returncode
                         payload["mutated"] = True
                         rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
@@ -1503,12 +1595,42 @@ def execute_enterprise_rows(
                         _store_guest_rows(rows_local, pre_text)
                         payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
                         raise
-                    ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
+                    ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
+            elif battery == "reboot-check":
+                script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
+                copy_to(script_path, "enterprise-rows.sh")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
+                pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "reboot-check"], "")
+                ran = pre
+                if pre.returncode == 0:
+                    try:
+                        payload["boot_id"] = _wait_for_reboot(
+                            runner,
+                            instance_id,
+                            remote,
+                            connect + [public],
+                            release=release_ssh,
+                            reopen=reopen_ssh,
+                            note=reboot_note,
+                        )
+                    except lab.GuardAbort as exc:
+                        if exc.reason != "reboot_timeout":
+                            raise
+                        tail = _reboot_log_tail(remote)
+                        if tail:
+                            payload["reboot_log_tail"] = tail
+                        payload["guest_rc"] = pre.returncode
+                        payload["mutated"] = True
+                        raise
+                if reboot_note.get("before"):
+                    payload["scheduled_boot_id"] = reboot_note["before"]
             else:
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
-                ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             # Instance Connect keys last 60 seconds. The guest script can run longer.
             # A new scp is a new connection, so send the key again before the pull.
@@ -1546,7 +1668,9 @@ def execute_enterprise_rows(
             except json.JSONDecodeError:
                 loaded = None
             parsed = loaded if isinstance(loaded, dict) else None
-            if parsed is not None and _rows_disagree_with_boot(parsed, live_boot):
+            # reboot-check writes the boot id before the timer fires. A later
+            # live boot is the result of that schedule, not a stale file.
+            if battery != "reboot-check" and parsed is not None and _rows_disagree_with_boot(parsed, live_boot):
                 payload.update({"reason": "stale_rows", "status": "FAILED", "guest_rc": ran.returncode, "mutated": True})
                 raise lab.GuardAbort("stale_rows")
             payload["guest_rc"] = ran.returncode
@@ -1573,6 +1697,21 @@ def execute_enterprise_rows(
                     payload.update({"reason": "reboot_not_observed", "status": "FAILED"})
                     raise lab.GuardAbort("reboot_not_observed")
                 payload["status"] = "DESCENDANT_B1"
+            elif battery == "reboot-check":
+                scheduled = parsed.get("boot_id") if isinstance(parsed, dict) else None
+                armed = isinstance(parsed, dict) and parsed.get("reboot_requested") is True
+                before = str(payload.get("scheduled_boot_id") or "")
+                if (
+                    not armed
+                    or not isinstance(scheduled, str)
+                    or not scheduled
+                    or scheduled != before
+                    or not live_boot
+                    or live_boot == scheduled
+                ):
+                    payload.update({"reason": "reboot_not_observed", "status": "FAILED"})
+                    raise lab.GuardAbort("reboot_not_observed")
+                payload["status"] = "REBOOT_CHECKED"
             elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"
             elif battery == "soak-hourly":

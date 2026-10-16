@@ -38,6 +38,26 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertIn("- enterprise", text)
         self.assertIn("- descendant-b1", text)
 
+    def test_lockdown_file_and_exact_image_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "lockdown"
+            path.write_text("none [integrity] confidentiality\n", encoding="utf-8")
+            self.assertEqual(baseline_diag.read_lockdown(path), "none [integrity] confidentiality")
+            path.write_text("[none] integrity confidentiality\n", encoding="utf-8")
+            self.assertEqual(baseline_diag.read_lockdown(path), "[none] integrity confidentiality")
+            path.write_text("lockdown,capability,bpf\n", encoding="utf-8")
+            self.assertEqual(baseline_diag.read_lockdown(path), "")
+        dated = "ubuntu-2404-noble-amd64-v20261014"
+        ami = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260901"
+        self.assertEqual(baseline_diag.exact_image_name(dated), dated)
+        self.assertEqual(baseline_diag.exact_image_name(ami), ami)
+        self.assertEqual(baseline_diag.exact_image_name("ubuntu-2404-lts-amd64"), "")
+        self.assertEqual(baseline_diag.exact_image_name(ami[:-1] + "*"), "")
+        host = Path(__file__).resolve().parent / "lab-guests" / "phase2_host.py"
+        text = host.read_text(encoding="utf-8")
+        self.assertIn("baseline_diag.read_lockdown()", text)
+        self.assertIn("baseline_diag.read_image_name()", text)
+
     def test_same_seal_is_not_an_upgrade(self) -> None:
         body = grade.grade_upgrade(
             seal_sha256=grade.WORKING_SEAL,
