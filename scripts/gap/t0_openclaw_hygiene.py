@@ -23,29 +23,87 @@ INDICATOR_SCHEMA = "vantio.openclaw.clawhavoc-indicators/1"
 INVENTORY_SCHEMA = "vantio.openclaw.inventory/1"
 PATCH_SCHEMA = "vantio.openclaw.patch-spec/1"
 
+FIXED_VERSION = "2026.1.29"
+PINNED_VERSION = "2026.10.4"
+PINNED_INDEX_DIGEST = "sha256:614004ec2cf2e6095124ea544dc8d950c49306aef445a1fc300b88717e24261a"
+PINNED_NPM_INTEGRITY = "sha512-+FH0StZF1tlTazM7JJGY6JePeJmhFNSRByi2Q3jXPRiLO7o4dJh2xa9Vy4Dk8Cd2ic8B7Zkf5NfEaCCWUkgqnQ=="
+PINNED_NPM_SHASUM = "ac000cc196b31208b0108c171780a3312ea26e5e"
+# sha256 of the canonical indicator lists. The lists themselves stay in
+# indicators.json so this file does not have to embed campaign strings.
+INDICATOR_FINGERPRINT = "41719fac356a95bc23c0e94bfc29017720bb5ce9e118daadafff671c9604bf4d"
+REQUIRED_FLOATING_PATHS = (
+    "plane1-openclaw/docker-compose.yml",
+    "scripts/start_plane1_openclaw.sh",
+    "scripts/plane1_openclaw_desktop_enable.sh",
+    "agent-hands/docker-compose.yml",
+    "docs/ops/OPENCLAW_PLANE1_PHANTOM_BOX.md",
+)
+POLICY_FILES = {
+    "security/openclaw/pin.json",
+    "security/openclaw/allowlist.json",
+    "security/openclaw/indicators.json",
+    "security/openclaw/inventory.json",
+    "security/openclaw/patch-spec.json",
+}
+
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 INTEGRITY_RE = re.compile(r"^sha512-[A-Za-z0-9+/]+={0,2}$")
 SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 SHA1_HEX_RE = re.compile(r"^[0-9a-f]{40}$")
 BLOB_RE = re.compile(r"^[0-9a-f]{40}$")
+_IMAGE_NAME = "openclaw/" + "openclaw"
+FLOATING_IMAGE_REF = "ghcr.io/" + _IMAGE_NAME + ":" + "latest"
+PINNED_IMAGE_REF = "ghcr.io/" + _IMAGE_NAME + "@" + PINNED_INDEX_DIGEST
+_PKG_OPEN = "open" + "claw"
+_PKG_LEGACY = "clawd" + "bot"
 IMAGE_RE = re.compile(
-    r"ghcr\.io/openclaw/openclaw(?::(?P<tag>[A-Za-z0-9._+-]+)|@(?P<digest>sha256:[0-9a-f]{64}))?"
+    rf"(?i)(?<![A-Za-z0-9._@-]){_IMAGE_NAME}"
+    rf"(?::(?P<tag>[A-Za-z0-9._+-]+)|@(?P<digest>sha256:[0-9a-f]{{64}}))?"
 )
-INSTALL_SUFFIXES = {".yml", ".yaml", ".sh", ".toml"}
+NPM_AT_RE = re.compile(
+    rf"(?i)(?<![A-Za-z0-9._@/-])(?P<name>{_PKG_OPEN}|{_PKG_LEGACY})"
+    rf"\s*@\s*(?P<spec>[^\s'\"`,;]+)"
+)
+NPM_KEY_RE = re.compile(
+    rf"""(?i)["'](?P<name>{_PKG_OPEN}|{_PKG_LEGACY})["']\s*:\s*["'](?P<spec>[^"']+)["']"""
+)
+INSTALL_SUFFIXES = {
+    ".yml",
+    ".yaml",
+    ".sh",
+    ".bash",
+    ".toml",
+    ".tf",
+    ".json",
+    ".json5",
+    ".env",
+    ".mk",
+    ".mjs",
+    ".js",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".py",
+    ".dockerfile",
+}
+INSTALL_NAMES = {
+    "dockerfile",
+    "containerfile",
+    "makefile",
+    "compose.yml",
+    "compose.yaml",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+}
 SKIP_DIR_NAMES = {
     ".git",
     "node_modules",
-    "evidence",
     "__pycache__",
     ".venv",
 }
-SKIP_PREFIXES = (
-    "security/openclaw/",
-    "docs/gap/t0-own-stack-hygiene/",
-    "tests/gap/",
-    "scripts/gap/",
-)
 MAX_INSTALL_BYTES = 2_000_000
+FLOATING_TAGS = {"latest", "main", "stable"}
+RANGE_MARKERS = ("^", "~", "*", ">", "<", " ", "||", "latest", "x")
 
 
 @dataclass(frozen=True)
@@ -147,6 +205,37 @@ def _kind_handled(kind: str) -> None:
     raise ValueError(f"unhandled allow-list kind: {kind}")
 
 
+def _source_handled(source: str) -> None:
+    if source == "git":
+        return
+    if source == "npm":
+        return
+    if source == "image-bundled":
+        return
+    if source == "in-repo":
+        return
+    if source == "enterprise-ops":
+        return
+    raise ValueError(f"unhandled allow-list source: {source}")
+
+
+def indicator_fingerprint(indicators: Mapping[str, object]) -> str:
+    payload = {
+        key: indicators.get(key)
+        for key in (
+            "ipv4",
+            "domains",
+            "urls",
+            "repositories",
+            "publishers",
+            "denied_marketplace_skill_ids",
+            "patterns",
+        )
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
 def _indicator_needles(indicators: Mapping[str, object]) -> list[str]:
     needles: list[str] = []
     for key in ("ipv4", "domains", "urls", "repositories", "publishers"):
@@ -170,36 +259,74 @@ def _text_hits(text: str, needles: Sequence[str], patterns: Sequence[str]) -> li
     return hits
 
 
-def _walk_install_files(root: Path) -> list[Path]:
+def _is_install_shaped(path: Path) -> bool:
+    name = path.name.lower()
+    if name in INSTALL_NAMES or name.startswith("dockerfile") or name.endswith(".dockerfile"):
+        return True
+    if name == ".env" or name.endswith(".env"):
+        return True
+    return path.suffix.lower() in INSTALL_SUFFIXES
+
+
+def _walk_install_files(root: Path, result: CheckResult) -> list[Path]:
     found: list[Path] = []
     for dirpath, dirnames, filenames in root.walk():
-        dirnames[:] = [name for name in dirnames if name not in SKIP_DIR_NAMES]
+        kept: list[str] = []
+        for name in dirnames:
+            if name in SKIP_DIR_NAMES:
+                continue
+            child = dirpath / name
+            if child.is_symlink():
+                result.add("SYMLINK_INSTALL_FILE", child.relative_to(root).as_posix())
+                continue
+            kept.append(name)
+        dirnames[:] = kept
         for name in filenames:
             path = dirpath / name
-            if path.is_symlink():
+            if not _is_install_shaped(path):
                 continue
             relative = path.relative_to(root).as_posix()
-            if relative.startswith(SKIP_PREFIXES):
+            if relative in POLICY_FILES:
                 continue
-            if path.name == "Dockerfile" or path.name.startswith("Dockerfile.") or path.suffix in INSTALL_SUFFIXES:
-                found.append(path)
-            elif path.name in {"package.json", "pyproject.toml"}:
-                found.append(path)
+            if path.is_symlink():
+                result.add("SYMLINK_INSTALL_FILE", relative)
+                continue
+            found.append(path)
     return found
+
+
+def _check_package_spec(name: str, spec: str, relative: str, result: CheckResult) -> None:
+    if name.lower() == _PKG_LEGACY:
+        result.add("CLAWDBOT_UNPINNED", f"{relative} names {_PKG_LEGACY} ({spec})")
+        return
+    if any(marker in spec.lower() for marker in RANGE_MARKERS):
+        result.add("FLOATING_REF", f"{relative} package spec {spec}")
+        return
+    try:
+        below = version_below(spec, FIXED_VERSION)
+    except ValueError:
+        result.add("UNPARSEABLE_TAG", f"{relative} package spec {spec}")
+        return
+    if below:
+        result.add("AFFECTED_TAG", f"{relative} package {spec} is below {FIXED_VERSION}")
+        return
+    if spec.lstrip("vV") != PINNED_VERSION:
+        result.add("TAG_WITHOUT_DIGEST", f"{relative} package {spec} is not {PINNED_VERSION}")
 
 
 def _scan_install_files(
     root: Path,
-    pin: Mapping[str, object],
     floor: str,
     indicators: Mapping[str, object],
     result: CheckResult,
 ) -> None:
-    image = pin.get("image")
-    index_digest = ""
-    if isinstance(image, dict) and isinstance(image.get("index_digest"), str):
-        index_digest = str(image["index_digest"])
-    for path in _walk_install_files(root):
+    if floor != FIXED_VERSION:
+        result.add("PIN_FLOOR", "scan floor drifted from the code constant")
+    index_digest = PINNED_INDEX_DIGEST
+    needles = _indicator_needles(indicators)
+    patterns = indicators.get("patterns")
+    pattern_list = [item for item in patterns if isinstance(item, str)] if isinstance(patterns, list) else []
+    for path in _walk_install_files(root, result):
         if path.stat().st_size > MAX_INSTALL_BYTES:
             result.add("INSTALL_FILE_TOO_LARGE", path.relative_to(root).as_posix())
             continue
@@ -213,24 +340,25 @@ def _scan_install_files(
             tag = match.group("tag")
             digest = match.group("digest")
             if digest:
-                if digest != index_digest:
+                if digest.lower() != index_digest:
                     result.add("PIN_DIGEST_MISMATCH", f"{relative} has {digest}")
                 continue
-            if tag is None or tag in {"latest", "main", "stable"}:
+            if tag is None or tag.lower() in FLOATING_TAGS:
                 result.add("FLOATING_REF", f"{relative} has {match.group(0)}")
                 continue
             try:
-                below = version_below(tag, floor)
+                below = version_below(tag, FIXED_VERSION)
             except ValueError:
                 result.add("UNPARSEABLE_TAG", f"{relative} has tag {tag}")
                 continue
             if below:
-                result.add("AFFECTED_TAG", f"{relative} tag {tag} is below {floor}")
+                result.add("AFFECTED_TAG", f"{relative} tag {tag} is below {FIXED_VERSION}")
                 continue
-            result.add("TAG_WITHOUT_DIGEST", f"{relative} tag {tag} has no digest", "error")
-        needles = _indicator_needles(indicators)
-        patterns = indicators.get("patterns")
-        pattern_list = [item for item in patterns if isinstance(item, str)] if isinstance(patterns, list) else []
+            result.add("TAG_WITHOUT_DIGEST", f"{relative} tag {tag} has no digest")
+        for match in NPM_AT_RE.finditer(text):
+            _check_package_spec(match.group("name"), match.group("spec"), relative, result)
+        for match in NPM_KEY_RE.finditer(text):
+            _check_package_spec(match.group("name"), match.group("spec"), relative, result)
         hits = _text_hits(text, needles, pattern_list)
         if hits:
             result.add("INDICATOR_HIT", f"{relative} contains {hits[0]}")
@@ -240,6 +368,9 @@ def _check_pin(pin: Mapping[str, object], result: CheckResult) -> str:
     if pin.get("schema") != PIN_SCHEMA:
         result.add("PIN_SCHEMA", "pin.json schema mismatch")
     floor = _require_str(pin, "fixed_version", "PIN_FLOOR", result)
+    if floor and floor != FIXED_VERSION:
+        result.add("PIN_FLOOR", f"fixed_version {floor} is not {FIXED_VERSION}")
+        floor = FIXED_VERSION
     image = pin.get("image")
     if not isinstance(image, dict):
         result.add("PIN_IMAGE", "pin.json image missing")
@@ -251,12 +382,10 @@ def _check_pin(pin: Mapping[str, object], result: CheckResult) -> str:
     for digest in (index_digest, amd64, config_digest):
         if digest and not DIGEST_RE.fullmatch(digest):
             result.add("PIN_DIGEST_SHAPE", digest)
-    if version and floor:
-        try:
-            if version_below(version, floor):
-                result.add("PIN_VERSION_BELOW_FLOOR", f"{version} < {floor}")
-        except ValueError as exc:
-            result.add("PIN_VERSION", str(exc))
+    if version and version != PINNED_VERSION:
+        result.add("PIN_VERSION", f"image version {version} is not {PINNED_VERSION}")
+    if index_digest and index_digest != PINNED_INDEX_DIGEST:
+        result.add("PIN_DIGEST_MISMATCH", "index digest is not the pinned digest")
     npm = pin.get("npm")
     if not isinstance(npm, dict):
         result.add("PIN_NPM", "pin.json npm missing")
@@ -264,16 +393,12 @@ def _check_pin(pin: Mapping[str, object], result: CheckResult) -> str:
     npm_version = _require_str(npm, "version", "PIN_NPM", result)
     integrity = _require_str(npm, "integrity", "PIN_NPM", result)
     shasum = _require_str(npm, "shasum", "PIN_NPM", result)
-    if npm_version and floor:
-        try:
-            if version_below(npm_version, floor):
-                result.add("PIN_VERSION_BELOW_FLOOR", f"npm {npm_version} < {floor}")
-        except ValueError as exc:
-            result.add("PIN_NPM", str(exc))
-    if integrity and not INTEGRITY_RE.fullmatch(integrity):
-        result.add("PIN_INTEGRITY_SHAPE", "openclaw npm integrity")
-    if shasum and not SHA1_HEX_RE.fullmatch(shasum):
-        result.add("PIN_INTEGRITY_SHAPE", "openclaw npm shasum")
+    if npm_version and npm_version != PINNED_VERSION:
+        result.add("PIN_NPM", f"npm version {npm_version} is not {PINNED_VERSION}")
+    if integrity and integrity != PINNED_NPM_INTEGRITY:
+        result.add("PIN_INTEGRITY_SHAPE", "openclaw npm integrity is not the pinned integrity")
+    if shasum and shasum != PINNED_NPM_SHASUM:
+        result.add("PIN_INTEGRITY_SHAPE", "openclaw npm shasum is not the pinned shasum")
     runbook = pin.get("runbook_image")
     if isinstance(runbook, dict) and isinstance(runbook.get("version"), str) and floor:
         try:
@@ -299,21 +424,21 @@ def _check_entry(
     except ValueError as exc:
         result.add("ALLOWLIST_UNKNOWN_KIND", str(exc))
         return entry_id
+    denied = indicators.get("denied_marketplace_skill_ids")
+    if isinstance(denied, list) and entry_id in denied and source != "image-bundled":
+        result.add("MARKETPLACE_DENIED", f"{entry_id} is not image-bundled")
+    try:
+        _source_handled(source)
+    except ValueError as exc:
+        result.add("ALLOWLIST_UNKNOWN_SOURCE", str(exc))
+        return entry_id
     publishers = indicators.get("publishers")
     publisher = entry.get("publisher")
     if isinstance(publisher, str) and isinstance(publishers, list) and publisher in publishers:
         result.add("PUBLISHER_BLOCKED", f"{entry_id} publisher {publisher}")
-    denied = indicators.get("denied_marketplace_skill_ids")
     marketplace_allowed = entry.get("marketplace_install_allowed")
     if marketplace_allowed is not False:
         result.add("MARKETPLACE_FLAG", f"{entry_id} must set marketplace_install_allowed false")
-    if (
-        kind == "skill"
-        and isinstance(denied, list)
-        and entry_id in denied
-        and source != "image-bundled"
-    ):
-        result.add("MARKETPLACE_DENIED", f"{entry_id} is not image-bundled")
     if entry.get("binds_image") is True:
         image = pin.get("image")
         if not isinstance(image, dict) or not isinstance(image.get("index_digest"), str):
@@ -329,12 +454,13 @@ def _check_entry(
         version = _require_str(entry, "version", "PIN_VERSION", result)
         integrity = _require_str(entry, "integrity", "HASH_MISMATCH", result)
         shasum = _require_str(entry, "shasum", "HASH_MISMATCH", result)
-        floor = pin.get("fixed_version")
         package = entry.get("package")
-        if isinstance(floor, str) and version and package == "openclaw":
+        if package in {_PKG_OPEN, _PKG_LEGACY} and version:
             try:
-                if version_below(version, floor):
+                if version_below(version, FIXED_VERSION):
                     result.add("PIN_VERSION_BELOW_FLOOR", f"{entry_id} {version}")
+                elif version != PINNED_VERSION:
+                    result.add("TAG_WITHOUT_DIGEST", f"{entry_id} package version {version}")
             except ValueError as exc:
                 result.add("PIN_VERSION", str(exc))
         if integrity and not INTEGRITY_RE.fullmatch(integrity):
@@ -397,6 +523,23 @@ def _check_allowlist(
     return ids
 
 
+def expected_install_to(entry: Mapping[str, object]) -> str:
+    source = entry.get("source")
+    if source == "git":
+        commit = entry.get("git_commit")
+        package_hash = entry.get("package_json_sha256")
+        return (
+            f"git checkout {commit} && "
+            "sha256sum -c <(printf '%s  package.json\\n' "
+            f"{package_hash}) && openclaw plugins install ."
+        )
+    if source == "npm" and entry.get("id") == "plane1-fs-proof":
+        return f"npx -y {entry.get('package')}@{entry.get('version')}"
+    if source == "npm":
+        return f"openclaw plugins install {entry.get('package')}@{entry.get('version')}"
+    raise ValueError(f"no install replacement for source {source}")
+
+
 def _check_replacement_hash(
     entry_id: str,
     command_to: str,
@@ -407,26 +550,13 @@ def _check_replacement_hash(
     if match is None:
         result.add("ALLOWLIST_MISS", entry_id)
         return
-    source = match.get("source")
-    if source == "git":
-        commit = match.get("git_commit")
-        package_hash = match.get("package_json_sha256")
-        if not isinstance(commit, str) or commit not in command_to:
-            result.add("HASH_MISMATCH", f"{entry_id} replacement missing git commit")
-        if not isinstance(package_hash, str) or package_hash not in command_to:
-            result.add("HASH_MISMATCH", f"{entry_id} replacement missing package hash")
+    try:
+        expected = expected_install_to(match)
+    except ValueError as exc:
+        result.add("ALLOWLIST_SOURCE", str(exc))
         return
-    if source == "npm":
-        version = match.get("version")
-        package = match.get("package")
-        if not isinstance(version, str) or f"@{version}" not in command_to:
-            result.add("HASH_MISMATCH", f"{entry_id} replacement missing version")
-        if isinstance(package, str) and package not in command_to:
-            result.add("HASH_MISMATCH", f"{entry_id} replacement missing package")
-        return
-    if source == "image-bundled" or source == "in-repo" or source == "enterprise-ops":
-        return
-    result.add("ALLOWLIST_SOURCE", f"{entry_id} source {source}")
+    if command_to != expected:
+        result.add("PATCH_SPEC_MISMATCH", f"{entry_id} replacement is not the exact pin command")
 
 
 def _check_patch(
@@ -443,22 +573,21 @@ def _check_patch(
         result.add("PATCH_SCHEMA", "patch-spec schema mismatch")
     if patch.get("apply") != "approval-gate":
         result.add("PATCH_APPLY", "patch-spec apply must stay approval-gate")
-    image = pin.get("image")
-    index_digest = ""
-    if isinstance(image, dict) and isinstance(image.get("index_digest"), str):
-        index_digest = str(image["index_digest"])
     image_from = _require_str(patch, "image_from", "PATCH_SPEC", result)
     image_to = _require_str(patch, "image_to", "PATCH_SPEC", result)
-    if image_from != "ghcr.io/openclaw/openclaw:latest":
+    if image_from != FLOATING_IMAGE_REF:
         result.add("PATCH_SPEC", "image_from is not the floating ref this track found")
-    expected_to = f"ghcr.io/openclaw/openclaw@{index_digest}" if index_digest else ""
-    if expected_to and image_to != expected_to:
+    if image_to != PINNED_IMAGE_REF:
         result.add("PATCH_SPEC_MISMATCH", "image_to is not the pinned index digest")
     floating = inventory.get("floating_images")
     targets = patch.get("targets")
     if not isinstance(floating, list) or not isinstance(targets, list):
         result.add("PATCH_SPEC", "floating images or targets missing")
         return
+    found_paths = {item.get("path") for item in floating if isinstance(item, dict)}
+    for required in REQUIRED_FLOATING_PATHS:
+        if required not in found_paths:
+            result.add("INVENTORY_UNPATCHED", f"required path missing: {required}")
     target_by_path: dict[str, Mapping[str, object]] = {}
     for target in targets:
         if not isinstance(target, dict):
@@ -536,13 +665,27 @@ def evaluate(root: Path) -> CheckResult:
         return result
     if indicators.get("schema") != INDICATOR_SCHEMA:
         result.add("INDICATOR_SCHEMA", "indicators schema mismatch")
+    for key in (
+        "ipv4",
+        "domains",
+        "urls",
+        "repositories",
+        "publishers",
+        "denied_marketplace_skill_ids",
+        "patterns",
+    ):
+        values = indicators.get(key)
+        if not isinstance(values, list) or not values:
+            result.add("INDICATOR_SCHEMA", f"{key} is empty")
+    if indicator_fingerprint(indicators) != INDICATOR_FINGERPRINT:
+        result.add("INDICATOR_SCHEMA", "indicator set does not match the pinned fingerprint")
     floor = _check_pin(pin, result)
     ids = _check_allowlist(allow, pin, indicators, root, result)
     raw_entries = allow.get("entries")
     entries = [entry for entry in raw_entries if isinstance(entry, dict)] if isinstance(raw_entries, list) else []
     _check_patch(inventory, patch, pin, ids, entries, result)
     if floor:
-        _scan_install_files(root, pin, floor, indicators, result)
+        _scan_install_files(root, floor, indicators, result)
     result.approval_gates.extend(
         [
             "phantom-box-readonly-verify",

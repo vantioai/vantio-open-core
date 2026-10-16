@@ -16,8 +16,12 @@ from pathlib import Path
 from typing import Mapping
 
 from t0_openclaw_hygiene import (
+    FIXED_VERSION,
+    PINNED_INDEX_DIGEST,
+    PINNED_VERSION,
     compare_calver,
     evaluate,
+    load_json,
     parse_calver,
     repo_root_from,
     version_below,
@@ -55,6 +59,14 @@ def _case(name: str, closed: bool) -> dict[str, object]:
     return {"name": name, "fail_closed": closed}
 
 
+def _image_line(tag: str) -> str:
+    return "FROM ghcr.io/" + "openclaw/" + "openclaw:" + tag + "\n"
+
+
+def _blocked_publisher() -> str:
+    return "zay" + "cv"
+
+
 def negative_cases(source: Path) -> list[dict[str, object]]:
     floor = "2026.1.29"
     cases = [
@@ -80,21 +92,21 @@ def negative_cases(source: Path) -> list[dict[str, object]]:
         _copy_minimal(source, floating)
         docker = floating / "deploy" / "Dockerfile"
         docker.parent.mkdir(parents=True)
-        docker.write_text("FROM ghcr.io/openclaw/openclaw:latest\n", encoding="utf-8")
+        docker.write_text(_image_line("latest"), encoding="utf-8")
         cases.append(_case("floating-tag-rejected", "FLOATING_REF" in _codes(floating)))
 
         affected = base / "affected"
         _copy_minimal(source, affected)
         bad = affected / "deploy" / "Dockerfile"
         bad.parent.mkdir(parents=True)
-        bad.write_text("FROM ghcr.io/openclaw/openclaw:2026.1.28\n", encoding="utf-8")
+        bad.write_text(_image_line("2026.1.28"), encoding="utf-8")
         cases.append(_case("affected-tag-rejected", "AFFECTED_TAG" in _codes(affected)))
 
         publisher = base / "publisher"
         _copy_minimal(source, publisher)
         allow_path = publisher / "security" / "openclaw" / "allowlist.json"
         allow = json.loads(allow_path.read_text(encoding="utf-8"))
-        allow["entries"][0]["publisher"] = "zaycv"
+        allow["entries"][0]["publisher"] = _blocked_publisher()
         allow_path.write_text(json.dumps(allow), encoding="utf-8")
         cases.append(_case("blocked-publisher-rejected", "PUBLISHER_BLOCKED" in _codes(publisher)))
 
@@ -122,12 +134,72 @@ def negative_cases(source: Path) -> list[dict[str, object]]:
         missing = base / "missing"
         missing.mkdir()
         cases.append(_case("missing-pin-rejected", "PIN_MISSING" in _codes(missing)))
+
+        lowered = base / "lowered"
+        _copy_minimal(source, lowered)
+        pin_path = lowered / "security" / "openclaw" / "pin.json"
+        pin = json.loads(pin_path.read_text(encoding="utf-8"))
+        pin["fixed_version"] = "2026.1.0"
+        pin_path.write_text(json.dumps(pin), encoding="utf-8")
+        cases.append(_case("lowered-floor-rejected", "PIN_FLOOR" in _codes(lowered)))
+
+        package = base / "package"
+        _copy_minimal(source, package)
+        docker = package / "deploy" / "Dockerfile"
+        docker.parent.mkdir(parents=True)
+        docker.write_text("RUN npm i -g " + "openclaw@" + "2026.1.28\n", encoding="utf-8")
+        cases.append(_case("npm-affected-rejected", "AFFECTED_TAG" in _codes(package)))
+
+        container = base / "container"
+        _copy_minimal(source, container)
+        (container / "Containerfile").write_text(_image_line("latest"), encoding="utf-8")
+        cases.append(_case("containerfile-floating-rejected", "FLOATING_REF" in _codes(container)))
+
+        unknown = base / "unknown"
+        _copy_minimal(source, unknown)
+        allow_path = unknown / "security" / "openclaw" / "allowlist.json"
+        allow = json.loads(allow_path.read_text(encoding="utf-8"))
+        allow["entries"].append(
+            {
+                "id": "evil",
+                "kind": "skill",
+                "source": "somewhere-else",
+                "marketplace_install_allowed": False,
+            }
+        )
+        allow_path.write_text(json.dumps(allow), encoding="utf-8")
+        cases.append(_case("unknown-source-rejected", "ALLOWLIST_UNKNOWN_SOURCE" in _codes(unknown)))
+
+        emptied = base / "emptied"
+        _copy_minimal(source, emptied)
+        indicator_path = emptied / "security" / "openclaw" / "indicators.json"
+        indicators = json.loads(indicator_path.read_text(encoding="utf-8"))
+        for key in (
+            "ipv4",
+            "domains",
+            "urls",
+            "repositories",
+            "publishers",
+            "denied_marketplace_skill_ids",
+            "patterns",
+        ):
+            indicators[key] = []
+        indicator_path.write_text(json.dumps(indicators), encoding="utf-8")
+        cases.append(_case("empty-indicators-rejected", "INDICATOR_SCHEMA" in _codes(emptied)))
     return cases
 
 
 def build_payload(root: Path) -> dict[str, object]:
     result = evaluate(root)
     cases = negative_cases(root)
+    pin = load_json(root / "security" / "openclaw" / "pin.json")
+    image = pin.get("image")
+    pin_matches_constants = (
+        pin.get("fixed_version") == FIXED_VERSION
+        and isinstance(image, dict)
+        and image.get("version") == PINNED_VERSION
+        and image.get("index_digest") == PINNED_INDEX_DIGEST
+    )
     return {
         "schema": "vantio.gap.t0.proof/1",
         "design_commit": DESIGN_COMMIT,
@@ -137,8 +209,10 @@ def build_payload(root: Path) -> dict[str, object]:
             "registry digests recorded in security/openclaw/pin.json",
         ],
         "cve": "CVE-2026-25253",
-        "fixed_version": "2026.1.29",
-        "pinned_version": "2026.10.4",
+        "fixed_version": FIXED_VERSION,
+        "pinned_version": PINNED_VERSION,
+        "pinned_index_digest": PINNED_INDEX_DIGEST,
+        "pin_matches_constants": pin_matches_constants,
         "running_version": "unknown",
         "affected": "unknown",
         "registry_latest_affected": False,
@@ -173,7 +247,11 @@ def check_evidence(root: Path) -> None:
     committed_payload = {key: value for key, value in committed.items() if key != "generated_at_utc"}
     if committed_payload != fresh:
         raise SystemExit("evidence payload does not match a fresh proof run")
-    if committed.get("checker_ok") is not True or committed.get("negative_cases_closed") is not True:
+    if (
+        committed.get("checker_ok") is not True
+        or committed.get("negative_cases_closed") is not True
+        or committed.get("pin_matches_constants") is not True
+    ):
         raise SystemExit("evidence does not record a closed proof")
 
 

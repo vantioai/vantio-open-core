@@ -22,19 +22,7 @@ docker image inspect "$IMG" --format '{{json .RepoDigests}}'
 docker exec vantio-plane1-openclaw openclaw --version
 docker exec vantio-plane1-openclaw openclaw plugins list
 docker exec vantio-plane1-openclaw openclaw skills list
-docker exec vantio-plane1-openclaw python3 - << 'PY'
-import json
-from pathlib import Path
-c = json.loads(Path("/home/node/.openclaw/openclaw.json").read_text())
-plugins = c.get("plugins") or {}
-entries = plugins.get("entries") or {}
-print("plugins.allow", plugins.get("allow"))
-print("plugin.ids", sorted(entries))
-skills = c.get("skills")
-print("skills.keys", sorted(skills) if isinstance(skills, dict) else type(skills).__name__)
-hooks = c.get("hooks")
-print("hooks.keys", sorted(hooks) if isinstance(hooks, dict) else type(hooks).__name__)
-PY
+docker exec vantio-plane1-openclaw node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync("/home/node/.openclaw/openclaw.json","utf8")); const plugins=c.plugins||{}; const entries=plugins.entries||{}; const skills=c.skills; const hooks=c.hooks; console.log("plugins.allow", plugins.allow); console.log("plugin.ids", Object.keys(entries).sort()); console.log("skills.keys", skills&&typeof skills==="object"&&!Array.isArray(skills)?Object.keys(skills).sort():typeof skills); console.log("hooks.keys", hooks&&typeof hooks==="object"&&!Array.isArray(hooks)?Object.keys(hooks).sort():typeof hooks);'
 python3 - << 'PY'
 from pathlib import Path
 path = Path.home() / ".config" / "vantio" / "openclaw.env"
@@ -135,30 +123,11 @@ docker inspect --format '{{.Image}} {{.State.Status}} {{.State.StartedAt}}' vant
 
 `StartedAt` must be unchanged. If it changed, the edit was not file-only and the gate was exceeded.
 
-Plugin and MCP pins, still without a gateway restart, only when the read-only list shows that exact install is present. Skip a line whose plugin is absent.
-
-```bash
-# cursor-cli: commit ee2fc0c57d39dd65e3cbc260a3a43f319a74ece9
-# package.json sha256 8963a59dcf32e532344d053ae4f58f5d292f5021d86513d513f63027351e4ef6
-git clone https://github.com/jeehou/openclaw-cursor-cli.git /tmp/openclaw-cursor-cli-pin
-git -C /tmp/openclaw-cursor-cli-pin checkout ee2fc0c57d39dd65e3cbc260a3a43f319a74ece9
-printf '%s  %s\n' 8963a59dcf32e532344d053ae4f58f5d292f5021d86513d513f63027351e4ef6 /tmp/openclaw-cursor-cli-pin/package.json | sha256sum -c -
-docker cp /tmp/openclaw-cursor-cli-pin vantio-plane1-openclaw:/tmp/openclaw-cursor-cli-pin
-docker exec vantio-plane1-openclaw openclaw plugins install /tmp/openclaw-cursor-cli-pin
-
-# googlechat
-docker exec vantio-plane1-openclaw openclaw plugins install @openclaw/googlechat@2026.10.4
-
-# plane1-fs-proof arguments, edit the live mcp entry from npx -y with no version
-# to: npx -y @modelcontextprotocol/server-filesystem@1.0.0
-# integrity sha512-2fN6qhpsiPSBAe0ev1qDPk4sCWdULCZQTuYc4ZY7+BDWQ1XCxLB+7dqStF2ZflgG4G/9vTwQsjxh7pjFqrrpcg==
-```
-
-`openclaw plugins install` can reload a plugin. If `docker inspect` shows a new `StartedAt`, stop. That was a restart and it was not approved.
-
 ## Approval gate — restart
 
-Leave this block unrun unless the read-only result is `affected=True`, or a founder separately approves moving the running container onto the 2026.10.4 digest.
+`openclaw plugins install` and an edit of the live `openclaw.json` can reload the gateway inside the same container. That is a restart-class change. It stays in this block, not in the file-pin block. `StartedAt` does not move on an in-process reload, so it is not a sufficient guard.
+
+Do not run this block unless the read-only result is `affected=True`, or a founder separately approves moving the running container onto the 2026.10.4 digest or reinstalling a plugin.
 
 ```bash
 set -euo pipefail
@@ -176,9 +145,23 @@ Rollback, if the recreated gateway is not usable, is the saved image id, not `la
 
 ```bash
 ROLLBACK="$(cut -d= -f2 /tmp/plane1-openclaw-rollback.txt)"
+docker tag "$ROLLBACK" plane1-openclaw-rollback:pinned
 cd /home/vantioai/vantio-enterprise
-OPENCLAW_IMAGE="$ROLLBACK" docker compose -f plane1-openclaw/docker-compose.yml up -d --force-recreate openclaw
+OPENCLAW_IMAGE=plane1-openclaw-rollback:pinned docker compose -f plane1-openclaw/docker-compose.yml up -d --force-recreate openclaw
 python3 scripts/vantio_assure.py pe-enroll
 ```
+
+Plugin and MCP reinstalls, only after the recreate above, and only for an id the read-only list showed as installed:
+
+```bash
+git clone https://github.com/jeehou/openclaw-cursor-cli.git /tmp/openclaw-cursor-cli-pin
+git -C /tmp/openclaw-cursor-cli-pin checkout ee2fc0c57d39dd65e3cbc260a3a43f319a74ece9
+printf '%s  %s\n' 8963a59dcf32e532344d053ae4f58f5d292f5021d86513d513f63027351e4ef6 /tmp/openclaw-cursor-cli-pin/package.json | sha256sum -c -
+docker cp /tmp/openclaw-cursor-cli-pin vantio-plane1-openclaw:/tmp/openclaw-cursor-cli-pin
+docker exec vantio-plane1-openclaw openclaw plugins install /tmp/openclaw-cursor-cli-pin
+docker exec vantio-plane1-openclaw openclaw plugins install @openclaw/googlechat@2026.10.4
+```
+
+Point `plane1-fs-proof` at `npx -y @modelcontextprotocol/server-filesystem@1.0.0`. The integrity for that tarball is `sha512-2fN6qhpsiPSBAe0ev1qDPk4sCWdULCZQTuYc4ZY7+BDWQ1XCxLB+7dqStF2ZflgG4G/9vTwQsjxh7pjFqrrpcg==`. Confirm it with `npm view @modelcontextprotocol/server-filesystem@1.0.0 dist.integrity` before changing the live MCP entry.
 
 If `affected=True`, rotate `OPENCLAW_GATEWAY_TOKEN` in the mode-600 env file and recreate so the gateway loads the new token. Do not write the token into a log, a chat, or a commit. Rotation restarts the gateway, so it stays inside this gate.

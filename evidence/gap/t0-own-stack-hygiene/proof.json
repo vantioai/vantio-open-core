@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-10-16T15:59:28Z",
+  "generated_at_utc": "2026-10-16T16:10:49Z",
   "schema": "vantio.gap.t0.proof/1",
   "design_commit": "39ad6c2f8373a29823159f5212dff6ebfb2f68d2",
   "label": "Lab-only",
@@ -10,6 +10,8 @@
   "cve": "CVE-2026-25253",
   "fixed_version": "2026.1.29",
   "pinned_version": "2026.10.4",
+  "pinned_index_digest": "sha256:614004ec2cf2e6095124ea544dc8d950c49306aef445a1fc300b88717e24261a",
+  "pin_matches_constants": true,
   "running_version": "unknown",
   "affected": "unknown",
   "registry_latest_affected": false,
@@ -64,6 +66,26 @@
     },
     {
       "name": "missing-pin-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "lowered-floor-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "npm-affected-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "containerfile-floating-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "unknown-source-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "empty-indicators-rejected",
       "fail_closed": true
     }
   ],

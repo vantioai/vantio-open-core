@@ -6,7 +6,7 @@ Label for the track: Lab-only. The live gateway was not measured.
 | Id | Risk | Label | What remains |
 | --- | --- | --- | --- |
 | R1 | Phantom-Box may still be running an image pulled before 2026.1.29, because the start script does not refresh a present image. | Lab-only | Read-only procedure. Affected stays unknown until that output exists. |
-| R2 | GHCR `latest` today is patched `2026.10.4` and can move again. The committed default is still the floating tag. | Verified for the tag we resolved. The file edit is an approval gate. | `security/openclaw/patch-spec.json` |
+| R2 | GHCR `latest` today is patched `2026.10.4` and can move again. The committed default in `vantio-enterprise` is still the floating tag. The fix line, digest, and indicator fingerprint are constants in the checker, so editing `pin.json` alone cannot lower them. | Verified for the tag we resolved. The file edit is an approval gate. | `security/openclaw/patch-spec.json` |
 | R3 | `openclaw.json` on the container volume can name skills that are not in git. | Lab-only | `openclaw plugins list` and `openclaw skills list` in the procedure. |
 | R4 | Marketplace skill id `clawhub` collides with the image-bundled client. | Verified as a name collision in the cheap-unlocks script. No marketplace copy was found in git. | Checker denies a marketplace source for that id. |
 | R5 | `cursor-cli` install command has no version. The recorded commit is v0.0.6. The bytes inside the container were not hashed. | Lab-only for the live plugin. Verified for the git commit and `package.json` sha256 we fetched. | Gated reinstall from that commit after `sha256sum -c`. |
