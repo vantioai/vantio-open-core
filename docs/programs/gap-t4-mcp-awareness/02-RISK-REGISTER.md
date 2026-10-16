@@ -14,7 +14,7 @@ This register is part of the design packet. It is updated again when the proof e
 | R6 | `hidden_unicode_channel` flags U+200D, which emoji ZWJ sequences use. `control_token` flags the literal `<system>`. `chat_role_frame` flags legitimate `structuredContent` that is a chat turn. `injection: "block"` in enforce withholds those frames | Accepted false-positive cost | The detector is structural. The operator chooses `log` or `block` |
 | R7 | `prompts/get` results, JSON-RPC `error.message` and `error.data`, `elicitation/create`, `roots/list`, `notifications/message`, `completion/complete`, and resource blob bytes are not scanned | Accepted residual | `prompts/get` is role and content by schema. Error text often reaches a model and is still unscanned. The other methods are outside this track's scanned set. Blobs are not decoded |
 | R8 | Raw chunked HTTP, HTTP/2, and WebSocket are not framed | Roadmap | `fetch` bodies are already decoded and use `inspectExchange`. A raw chunked capture returns `chunked_unsupported` |
-| R9 | Argument rules are literal code-unit compares. `/data/../etc/passwd` matches prefix `/data/`. Case, NFKC, and percent-encoding are not folded | Accepted residual | A prefix is not a filesystem jail. This track does not claim path canonicalization |
+| R9 | A `prefix` rule is a lexical path prefix (founder decision Q7, 2026-10-16). It resolves `.` and `..`, collapses repeated slashes, rejects NUL, rejects a path that escapes the root, and rejects a value that still contains `%2e` or `%2f` after one percent-decode. `/data/` does not match `/database`. It does not resolve symlinks, fold case, apply NFKC, or treat non-ASCII separators as slashes. `suffix`, `equals`, and `enum` stay literal code-unit compares. In observe mode a rejected path is `WOULD_BLOCK` and is still forwarded | Accepted residual for symlink, case, and non-ASCII separators. The traversal bypass is closed for the cases in the proof | Lexical normalization is not a filesystem jail. Observe has not been granted withhold |
 | R10 | Argument-rule order is first match wins. An allow before a narrower deny shadows the deny | Accepted configuration hazard | The proof records this order. The library does not reorder rules |
 | R11 | In-process outbound stdio is invisible unless the caller passes a copy to `observeBuffer` or opts into a gate | Accepted residual | A `Writable` has no fan-out. A passive tap would be a false claim |
 | R12 | Single-stream enforce withhold does not answer the workload. The workload waits for its own timeout | Accepted availability cost | That gate does not hold the return path. The pair gate does answer, and it is opt-in |
@@ -33,8 +33,8 @@ This register is part of the design packet. It is updated again when the proof e
 
 Proof script: `node packages/vantio-mcp-awareness/scripts/proof.mjs`  
 Evidence: `docs/programs/gap-t4-mcp-awareness/evidence/t4-proof.json`  
-Evidence timestamp (UTC): 2026-10-16T16:33:42.971Z  
+Evidence timestamp (UTC): 2026-10-16T16:46:35.708Z  
 Node: v22.14.0  
-Result: 19 assertions ok, fuzz seed 1413742596, 500 iterations.  
-Label for those assertions: **Verified**.  
+Result: 26 assertions ok, including the Q7 path-prefix cases. Fuzz seed 1413742596, 500 iterations.  
+Label for those assertions: **Verified**. This is the in-process library on this workspace. It is not a host proof and it is not a symlink jail.  
 Phantom Engine host copy and host enforce stay **Roadmap**.

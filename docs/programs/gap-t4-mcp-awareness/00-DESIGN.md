@@ -130,7 +130,7 @@ Retention caps, and what happens past them:
 | 512 bytes for one rule value | The value is not compared. Finding `retain_truncated`. That rule does not match. Enforce withholds the call. Observe records the finding and does not emit `ALLOW` |
 | Rule key is not a top-level argument name matching `^[A-Za-z0-9_.-]{1,64}$` | The rule is dropped as `invalid_rules`. A dotted name is a literal top-level key, not a nested path. Nested paths are out of scope |
 
-`prefix`, `suffix`, `equals`, and `enum` compare JavaScript string code units. They do not decode percent-encoding, fold case, apply NFKC, or collapse `.` and `..`. The prefix `/data/` matches the string `/data/../etc/passwd`. That is not a filesystem jail. The risk register says so.
+`suffix`, `equals`, and `enum` compare JavaScript string code units. A `prefix` rule is a path prefix. Before that comparison the candidate and the rule value are decoded once and normalized lexically: `.` and `..` are resolved, repeated slashes collapse, and a NUL byte is rejected. A path that escapes the root, stays ambiguous, or still contains `%2e` or `%2f` after that one decode is `path_rejected`. In enforce that is a withhold. The match is on a path-segment boundary, so `/data/` does not match `/database`. This is not a filesystem jail: symlinks, case, and NFKC are not folded. The risk register says so.
 
 The session stores: pin-match bits, HMAC identity of catalog names, pending rows keyed by numeric id or `id_hmac`, the closed property-name set of a pinned tool, and catalog flags. It does not store descriptions, schemas, arguments, results, raw string ids, or skeletons of names the operator did not write.
 
@@ -400,7 +400,7 @@ No result in this track is called unbreakable. No result is called audited.
 - Allow `read_file` and deny `write_file` on one server, in observe (`WOULD_BLOCK` forwards) and enforce (`BLOCK` withholds).
 - Argument prefix allow and a narrower deny, first match wins.
 - Homoglyph and hidden-character spoof, duplicate keys on `name`, `method`, and an argument, mixed script.
-- Literal prefix matches `/data/../etc/passwd` and does not collapse the path.
+- A `/data/` prefix allows `/data/notes.txt` and does not allow `/data/../etc/passwd`, `/data/./../x`, `//data//../etc`, `..%2f`, or `/database`. A trailing slash does not change the segment. A path that escapes root or still contains an encoded dot or slash after one decode is `path_rejected`.
 - Rug-pull on a changed description after a pinned hash, including a list that has no `list_changed` notification. With `rug_pull: "block"` and enforce, the list frame itself is withheld. Stale catalog after `list_changed`.
 - A structural finding inside a tool description is decided on the list frame.
 - Each inbound structure finding, a plain-language sentence that must not match, and a `prompts/get` result that must not match `chat_role_frame`.

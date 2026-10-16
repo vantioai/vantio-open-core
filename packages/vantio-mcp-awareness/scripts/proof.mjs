@@ -92,19 +92,26 @@ const writeObserve = feed(observe, line(call("write_file", { path: "/data/a" }))
 check("write_deny_observe_forwards_decision", writeObserve.records.at(-1).decision.action === "WOULD_BLOCK");
 
 const rules = createRuntimeWithKey(KEY);
-const literal = feed(rules, line(call("read_file", { path: "/data/../etc/passwd" })), {
-  policy: filesPolicy(
-    {},
-    {
-      argument_rules: [
-        { id: "data", tool: "read_file", key: "path", op: "prefix", value: "/data/", effect: "allow" },
-        { id: "etc", tool: "read_file", key: "path", op: "prefix", value: "/etc/", effect: "deny" },
-      ],
-    },
-  ),
-});
-check("prefix_is_not_a_path_jail", literal.records.at(-1).decision.action === "ALLOW");
-check("prefix_record_has_no_path_value", !stringsOf(literal.records.at(-1)).includes("/data/../etc/passwd"));
+const prefixPolicy = filesPolicy(
+  {},
+  {
+    tools: { read_file: { effect: "deny" }, write_file: { class: "write" } },
+    argument_rules: [{ id: "data", tool: "read_file", key: "path", op: "prefix", value: "/data/", effect: "allow" }],
+  },
+);
+function prefixDecision(path) {
+  return feed(rules, line(call("read_file", { path }, path.length)), { policy: prefixPolicy }).records.at(-1).decision;
+}
+check("prefix_allows_inside_directory", prefixDecision("/data/notes.txt").action === "ALLOW");
+check("prefix_blocks_dotdot_etc", prefixDecision("/data/../etc/passwd").action === "BLOCK");
+check("prefix_blocks_dot_dotdot", prefixDecision("/data/./../x").action === "BLOCK");
+check("prefix_blocks_repeated_slashes", prefixDecision("//data//../etc").action === "BLOCK");
+check("prefix_blocks_encoded_dotdot_slash", prefixDecision("/data/..%2fetc/passwd").action === "BLOCK");
+check("prefix_rejects_double_encoding", prefixDecision("/data/%252e%252e%252fetc").reason === "path_rejected");
+check("prefix_does_not_match_database", prefixDecision("/database").action === "BLOCK");
+check("prefix_trailing_slash_variant", prefixDecision("/data/").action === "ALLOW" && prefixDecision("/data/notes/").action === "ALLOW");
+const literal = feed(rules, line(call("read_file", { path: "/data/../etc/passwd" }, 40)), { policy: prefixPolicy });
+check("prefix_record_has_no_path_value", !stringsOf(literal.records.at(-1)).some((item) => item.includes("/data") || item.includes("passwd")));
 
 const spoof = createRuntimeWithKey(KEY);
 const homoglyph = feed(spoof, line(call(`re${"\u0430"}d_file`, { path: CANARY })), { policy: filesPolicy() });

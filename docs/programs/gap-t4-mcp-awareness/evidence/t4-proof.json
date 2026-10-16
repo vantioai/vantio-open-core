@@ -1,7 +1,7 @@
 {
   "track": "T4",
   "subject": "mcp-awareness in-process library",
-  "at": "2026-10-16T16:33:42.971Z",
+  "at": "2026-10-16T16:46:35.708Z",
   "node": "v22.14.0",
   "seed": 1413742596,
   "fuzz_iterations": 500,
@@ -19,7 +19,35 @@
       "ok": true
     },
     {
-      "id": "prefix_is_not_a_path_jail",
+      "id": "prefix_allows_inside_directory",
+      "ok": true
+    },
+    {
+      "id": "prefix_blocks_dotdot_etc",
+      "ok": true
+    },
+    {
+      "id": "prefix_blocks_dot_dotdot",
+      "ok": true
+    },
+    {
+      "id": "prefix_blocks_repeated_slashes",
+      "ok": true
+    },
+    {
+      "id": "prefix_blocks_encoded_dotdot_slash",
+      "ok": true
+    },
+    {
+      "id": "prefix_rejects_double_encoding",
+      "ok": true
+    },
+    {
+      "id": "prefix_does_not_match_database",
+      "ok": true
+    },
+    {
+      "id": "prefix_trailing_slash_variant",
       "ok": true
     },
     {

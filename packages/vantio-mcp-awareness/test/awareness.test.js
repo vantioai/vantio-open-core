@@ -142,7 +142,7 @@ test("allow read and deny write on one server", () => {
   assert.equal(write.records[0].decision.action, "BLOCK");
 });
 
-test("argument prefix is literal and first match wins", () => {
+test("argument prefix matches a normalized path and the first match wins", () => {
   const runtime = rt();
   const rules = {
     argument_rules: [
@@ -150,15 +150,25 @@ test("argument prefix is literal and first match wins", () => {
       { id: "etc", tool: "read_file", key: "path", op: "prefix", value: "/etc/", effect: "deny" },
     ],
   };
-  const sneak = runtime.observeBuffer(Buffer.from(line(call("read_file", { path: "/data/../etc/passwd" }))), {
+  const inside = runtime.observeBuffer(Buffer.from(line(call("read_file", { path: "/data/ok" }))), {
     transport: "stdio",
     direction: "client_to_server",
     serverId: "files",
     policy: policy(rules),
   });
-  assert.equal(sneak.records[0].decision.action, "ALLOW");
+  assert.equal(inside.records[0].decision.action, "ALLOW");
+  assert.equal(inside.records[0].decision.reason, "argument_rule");
+
+  const sneak = runtime.observeBuffer(Buffer.from(line(call("read_file", { path: "/data/../etc/passwd" }, 3))), {
+    transport: "stdio",
+    direction: "client_to_server",
+    serverId: "files",
+    policy: policy(rules),
+  });
+  assert.equal(sneak.records[0].decision.action, "BLOCK");
   assert.equal(sneak.records[0].decision.reason, "argument_rule");
-  assertNoCanary(sneak.records[0]);
+  assert.equal(stringsOf(sneak.records[0]).includes("/data/../etc/passwd"), false);
+  assert.equal(stringsOf(sneak.records[0]).includes("/etc/passwd"), false);
 
   const etc = runtime.observeBuffer(Buffer.from(line(call("read_file", { path: "/etc/passwd" }, 2))), {
     transport: "stdio",

@@ -4,6 +4,7 @@
  */
 
 import { MAX_RETAIN_BYTES, MAX_RETAIN_KEYS } from "./bounds.js";
+import { pathPrefixMatch } from "./path-prefix.js";
 import {
   argumentShape,
   callParts,
@@ -348,7 +349,8 @@ function decideCall(mode, policy, server, session, envelope, hmacHex, findings, 
     reason = session.stale ? "stale_catalog" : "catalog_unknown";
   } else if (rule) {
     effect = rule.effect;
-    reason = "argument_rule";
+    reason = rule.reject ? "path_rejected" : "argument_rule";
+    if (rule.reject) findings.push(finding("path_rejected"));
   } else if (toolName && server.tools[toolName] && server.tools[toolName].effect) {
     effect = server.tools[toolName].effect;
     reason = "tool_effect";
@@ -381,7 +383,9 @@ function decideCall(mode, policy, server, session, envelope, hmacHex, findings, 
 function firstRule(server, toolName, args, retained) {
   for (const rule of server.argument_rules) {
     if (rule.tool !== toolName) continue;
-    if (ruleMatches(rule, args, retained)) return rule;
+    const matched = ruleMatches(rule, args, retained);
+    if (matched === "reject") return { id: rule.id, effect: "deny", reject: true };
+    if (matched === true) return rule;
   }
   return null;
 }
@@ -401,7 +405,11 @@ function ruleMatches(rule, args, retained) {
   if (node.t !== "string") return false;
   const value = retained[rule.key];
   if (typeof value !== "string") return false;
-  if (rule.op === "prefix") return value.startsWith(rule.value);
+  if (rule.op === "prefix") {
+    const matched = pathPrefixMatch(value, rule.value);
+    if (matched === "reject") return "reject";
+    return matched === "match";
+  }
   if (rule.op === "suffix") return value.endsWith(rule.value);
   if (rule.op === "equals") return value === rule.value;
   if (rule.op === "enum") return rule.value.includes(value);
