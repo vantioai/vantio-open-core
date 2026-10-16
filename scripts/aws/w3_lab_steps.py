@@ -49,10 +49,6 @@ DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "e
 DEFAULT_DESCENDANT_GUEST = Path(__file__).resolve().with_name("lab-guests") / "descendant_b1.py"
 DEFAULT_REDTEAM_ROWS = Path(__file__).resolve().parents[1] / "gcp" / "lab-guests" / "redteam_rows.py"
 DEFAULT_REDTEAM_PACKET = Path(__file__).resolve().parents[1] / "gcp" / "redteam_packet.py"
-_T5_DIR = Path(__file__).resolve().parents[1] / "clean-host" / "t5"
-if str(_T5_DIR) not in sys.path:
-    sys.path.insert(0, str(_T5_DIR))
-import t5_battery  # noqa: E402
 
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
@@ -1399,6 +1395,13 @@ def execute_enterprise_rows(
     prepare-bundle must already have accepted the directory. This command
     still re-checks the seal and the trust file before it opens SSH.
     """
+    # Teardown, verify, and collect import this module and do not check out
+    # the t5 package. Load it only when an enterprise arm actually runs.
+    t5_dir = Path(__file__).resolve().parents[1] / "clean-host" / "t5"
+    if str(t5_dir) not in sys.path:
+        sys.path.insert(0, str(t5_dir))
+    import t5_battery
+
     payload = base_evidence("arm-enterprise")
     stamp_path = Path(os.environ.get("W3_STAMP", "w3-lab-ssh-stamp.json"))
     private: Path | None = None
