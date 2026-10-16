@@ -272,8 +272,12 @@ PY
     sudo chmod a+r /tmp/enterprise-pe-rows.json /tmp/vantio-uninstall.out 2>/dev/null || true
   }
   trap record_uninstall RETURN
+  # A previous battery can leave this file. The loader truncates it only
+  # when it runs, and the shell markers below have to be in it too. The
+  # recorder reads this file, not the script's stderr.
+  sudo rm -f /tmp/vantio-uninstall.out
   if ! ensure_working_bpftool; then
-    echo "UNINSTALL_RESIDUAL bpftool missing" >&2
+    echo "UNINSTALL_RESIDUAL bpftool missing" | sudo tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   stop_loader_containers
@@ -304,12 +308,14 @@ PY
   set -e
   cat /tmp/vantio-uninstall.out
   if ! grep -qx 'UNINSTALL_VERIFIED' /tmp/vantio-uninstall.out; then
-    echo "UNINSTALL_NOT_VERIFIED rc=$urc" >&2
+    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | sudo tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null | grep -q .; then
-    echo "UNINSTALL_RESIDUAL bpffs" >&2
-    find /sys/fs/bpf -maxdepth 2 -name 'vantio*' >&2 || true
+    {
+      echo "UNINSTALL_RESIDUAL bpffs"
+      find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null || true
+    } | sudo tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if [ "$require_row" = "yes" ]; then

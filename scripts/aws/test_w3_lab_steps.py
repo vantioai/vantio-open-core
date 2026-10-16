@@ -1442,6 +1442,12 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn("AccuracySec=1s", text)
         self.assertIn("reboot_not_scheduled", text)
         self.assertIn('sudo python3 - "$here/sticky_write.py"', text)
+        uninstall = text[text.index("authorized_uninstall()"): text.index("\nmode=${2:-enterprise}")]
+        self.assertLess(uninstall.index("sudo rm -f /tmp/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | sudo tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | sudo tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpffs"', uninstall)
+        self.assertIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
         self.assertNotIn("systemctl reboot --force || true", text)
         self.assertIn(
             "sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json",
@@ -1523,8 +1529,73 @@ class EnterpriseRowSessionTests(unittest.TestCase):
             else:
                 rows.write_bytes(saved)
 
+    def test_uninstall_tail_is_not_labeled_programs_not_removed(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
 
-class RebootWaitTests(EnterpriseRowSessionTests):
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
+                return completed(code=1, stdout="UNINSTALL_NOT_VERIFIED")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "boot_id": "boot-a",
+                            "removal": {"verified_removed": True, "loader_programs": []},
+                            "uninstall_tail": "UNINSTALL_NOT_VERIFIED rc=1\n",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and "boot_id" in " ".join(args):
+                return completed(stdout="boot-a\n")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(caught.exception.reason, "uninstall_not_verified")
+
+    def test_a_rows_file_from_another_boot_fails_closed(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(json.dumps({"boot_id": "old-boot"}), encoding="utf-8")
+            if args[0] == "ssh" and "boot_id" in " ".join(args):
+                return completed(stdout="new-boot\n")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(caught.exception.reason, "stale_rows")
+
+
+class RebootWaitTests(unittest.TestCase):
     def test_ssh_that_stays_up_on_the_same_boot_uses_only_the_drop_budget(self) -> None:
         now = {"t": 0.0}
 
@@ -1669,71 +1740,6 @@ class RebootWaitTests(EnterpriseRowSessionTests):
             "uninstall_not_verified",
         )
         self.assertEqual(steps._guest_failure_reason({"removal": {"verified_removed": True}}), "guest")
-
-    def test_uninstall_tail_is_not_labeled_programs_not_removed(self) -> None:
-        runner = FakeAws()
-        runner.dry_run = "allowed"
-
-        def keygen(directory: Path) -> tuple[Path, str]:
-            private = directory / "lab-ed25519"
-            private.write_text("key\n", encoding="utf-8")
-            return private, "ssh-ed25519 AAAATEST vantio-lab"
-
-        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
-            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
-                return completed(code=1, stdout="UNINSTALL_NOT_VERIFIED")
-            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
-                Path(args[-1]).write_text(
-                    json.dumps(
-                        {
-                            "boot_id": "boot-a",
-                            "removal": {"verified_removed": True, "loader_programs": []},
-                            "uninstall_tail": "UNINSTALL_NOT_VERIFIED rc=1\n",
-                        }
-                    ),
-                    encoding="utf-8",
-                )
-            if args[0] == "ssh" and "boot_id" in " ".join(args):
-                return completed(stdout="boot-a\n")
-            return completed(stdout="")
-
-        with tempfile.TemporaryDirectory() as tmp:
-            self._env_ready(tmp)
-            with self.assertRaises(lab.GuardAbort) as caught:
-                steps.execute_enterprise_rows(
-                    runner,
-                    keygen=keygen,
-                    ssh_runner=ssh,
-                    checker=lambda _path: {"seal_sha256": SEAL},
-                )
-        self.assertEqual(caught.exception.reason, "uninstall_not_verified")
-
-    def test_a_rows_file_from_another_boot_fails_closed(self) -> None:
-        runner = FakeAws()
-        runner.dry_run = "allowed"
-
-        def keygen(directory: Path) -> tuple[Path, str]:
-            private = directory / "lab-ed25519"
-            private.write_text("key\n", encoding="utf-8")
-            return private, "ssh-ed25519 AAAATEST vantio-lab"
-
-        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
-            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
-                Path(args[-1]).write_text(json.dumps({"boot_id": "old-boot"}), encoding="utf-8")
-            if args[0] == "ssh" and "boot_id" in " ".join(args):
-                return completed(stdout="new-boot\n")
-            return completed(stdout="")
-
-        with tempfile.TemporaryDirectory() as tmp:
-            self._env_ready(tmp)
-            with self.assertRaises(lab.GuardAbort) as caught:
-                steps.execute_enterprise_rows(
-                    runner,
-                    keygen=keygen,
-                    ssh_runner=ssh,
-                    checker=lambda _path: {"seal_sha256": SEAL},
-                )
-        self.assertEqual(caught.exception.reason, "stale_rows")
 
 
 if __name__ == "__main__":
