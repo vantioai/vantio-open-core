@@ -9,6 +9,8 @@ Revised (UTC): 2026-10-16T16:03:15Z after council `COUNCIL_UNSAT` (seats S1–S4
 
 This document is the phase-1 boundary check. No product code belongs in the same commit as the council verdict.
 
+Q13, founder-approved after the library commit `d21bdb08580988429cd3455fcabcf76b098d1c87`, is recorded in `03-Q13-DEFAULT-PATH.md`. Node `vantio run` now loads this library. Sentences below that say the library is not on the default path describe the library commit. They are not the Q13 path. `interceptor.cjs` is still unchanged.
+
 ## 1. What this track builds
 
 A userspace library, `@vantio/mcp-awareness`, that:
@@ -387,7 +389,7 @@ No result in this track is called unbreakable. No result is called audited.
 
 - Merge this branch.
 - Apply the founder-approved label.
-- Load the library from the default interceptor.
+- Load the library from the default interceptor. Q13 approved this for Node `vantio run` only. Gate MCP tools, publish, and host attach stay closed.
 - Add a public tool to `@vantio/gate-mcp` or `@vantio/optics-mcp`.
 - Edit the root README, the website, or a Shipped claim.
 - Publish to npm, GHCR, or a registry. Cut a tag. Use a production signing root.

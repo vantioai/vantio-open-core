@@ -38,6 +38,7 @@ Usage:
 Flags (run):
   --summary, -s   Print a run summary on exit.
   --json          Unstable JSON on stdout when the program exits.
+  --mcp-enforce   Opt in to in-process MCP withhold. Default is observe and log.
 
 --json output includes "schema_status": "unstable-pre-1.0" and may change without notice.
 
@@ -289,13 +290,14 @@ function runCommand(rest) {
       audit:   { type: "boolean", short: "a", default: false },
       summary: { type: "boolean", short: "s", default: false },
       json:    { type: "boolean", default: false },
+      "mcp-enforce": { type: "boolean", default: false },
     },
     allowPositionals: false,
   });
 
   if (progArgs.length === 0) {
     process.stderr.write(
-      "vantio run: no program specified\n\nUsage: vantio run [--summary] [--json] <program> [...args]\n",
+      "vantio run: no program specified\n\nUsage: vantio run [--summary] [--json] [--mcp-enforce] <program> [...args]\n",
     );
     process.exit(1);
   }
@@ -315,13 +317,24 @@ function runCommand(rest) {
 
   // Node runtimes get the interceptor via NODE_OPTIONS (honored by every node
   // invocation in the tree) rather than a CLI argument.
+  // The same option list loads in-process MCP awareness unless the operator
+  // turns it off. Awareness does not add a process or a listen socket.
   // Python runtimes get sitecustomize.py on PYTHONPATH (needs vantio-agent-sdk).
+  const awarenessOff = process.env.VANTIO_MCP_AWARENESS === "off" || process.env.VANTIO_MCP_AWARENESS === "0";
+  const mcpEnforce = values["mcp-enforce"] === true || process.env.VANTIO_MCP_MODE === "enforce";
   let extraNodeOptions = "";
   let extraPythonPath = "";
-  if (isNodeRuntime(program)) {
-    const interceptorPath = join(dirname(fileURLToPath(import.meta.url)), "interceptor.cjs");
+  const nodeRuntime = isNodeRuntime(program);
+  if (nodeRuntime) {
+    const binDir = dirname(fileURLToPath(import.meta.url));
+    const interceptorPath = join(binDir, "interceptor.cjs");
     const requirePath = /\s/.test(interceptorPath) ? `"${interceptorPath}"` : interceptorPath;
     extraNodeOptions = `--require ${requirePath}`;
+    if (!awarenessOff) {
+      const registerPath = join(binDir, "mcp-awareness-register.js");
+      const importPath = /\s/.test(registerPath) ? `"${registerPath}"` : registerPath;
+      extraNodeOptions += ` --import ${importPath}`;
+    }
   } else if (isPythonRuntime(program)) {
     extraPythonPath = join(dirname(fileURLToPath(import.meta.url)), "python-wrap");
   }
@@ -343,6 +356,12 @@ function runCommand(rest) {
     ...(values.audit     ? { VANTIO_AUDIT_MODE: "1" } : {}),
     ...(values.summary   ? { VANTIO_SUMMARY:    "1" } : {}),
     ...(values.json      ? { VANTIO_JSON:       "1" } : {}),
+    ...(nodeRuntime ? {
+      VANTIO_MCP_AWARENESS: awarenessOff ? "off" : "on",
+      VANTIO_MCP_MODE: !awarenessOff && mcpEnforce ? "enforce" : "observe",
+      VANTIO_MCP_INJECTION: process.env.VANTIO_MCP_INJECTION === "block" ? "block" : "log",
+      VANTIO_MCP_RUG_PULL: process.env.VANTIO_MCP_RUG_PULL === "block" ? "block" : "log",
+    } : {}),
     ...(extraNodeOptions ? { NODE_OPTIONS: mergedNodeOptions } : {}),
     ...(mergedPythonPath ? { PYTHONPATH: mergedPythonPath } : {}),
   });

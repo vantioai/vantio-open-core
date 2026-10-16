@@ -50,6 +50,31 @@
       "audience": "public"
     },
     {
+      "name": "VANTIO_MCP_AWARENESS",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_MCP_INJECTION",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_MCP_LIB",
+      "audience": "internal",
+      "reason": "Override path for the in-process MCP library. Used when the packed CLI does not contain the private package. Not a customer setting."
+    },
+    {
+      "name": "VANTIO_MCP_MODE",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_MCP_POLICY",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_MCP_RUG_PULL",
+      "audience": "public"
+    },
+    {
       "name": "VANTIO_SOAK_LOCAL",
       "audience": "internal",
       "reason": "Soak harness flag read by the CLI interceptor. Not a supported customer setting."
