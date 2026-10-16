@@ -604,7 +604,7 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertFalse(plan["disable_api_termination"])
         self.assertIn("shutdown -h", plan["user_data"])
 
-    def test_soak_host_turns_protection_on_and_auto_stop_off(self) -> None:
+    def test_soak_host_leaves_termination_off_and_auto_stop_off(self) -> None:
         plan = lab.plan_launch(
             {
                 "associate_public_ipv4": "true",
@@ -615,7 +615,7 @@ class LaunchShapeTests(unittest.TestCase):
             },
             NOW,
         )
-        self.assertTrue(plan["disable_api_termination"])
+        self.assertFalse(plan["disable_api_termination"])
         self.assertTrue(plan["disable_api_stop"])
         self.assertFalse(plan["auto_stop"])
         self.assertGreaterEqual(plan["stop_after_minutes"], 40 * 60)
@@ -627,7 +627,7 @@ class LaunchShapeTests(unittest.TestCase):
             security_group_id="sg-0123456789abcdef0",
             subnet_id=lab.LAB_SUBNET_ID,
         )
-        self.assertIn("--disable-api-termination", args)
+        self.assertNotIn("--disable-api-termination", args)
         self.assertIn("--disable-api-stop", args)
         group = lab.create_security_group_args(plan, lab.LAB_VPC_ID)
         self.assertIn("vantio-soak", " ".join(group))

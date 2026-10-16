@@ -475,11 +475,9 @@ class ArmCollectTests(unittest.TestCase):
         self.assertEqual(result["founder_close"]["evidence_ref"], "SOAK-HASH-COMPARE.json")
         self.assertTrue(result["slot_clear"])
         joined = [" ".join(call) for call in calls]
-        modify_at = next(i for i, item in enumerate(joined) if "modify-instance-attribute" in item)
+        self.assertFalse(any("modify-instance-attribute" in item for item in joined))
         terminate_at = next(i for i, item in enumerate(joined) if "terminate-instances" in item)
-        self.assertLess(modify_at, terminate_at)
-        self.assertIn("--no-disable-api-termination", joined[modify_at])
-        self.assertIn(soak_id, joined[modify_at])
+        self.assertIn(soak_id, joined[terminate_at])
 
     def test_founder_close_refuses_a_changed_record(self) -> None:
         soak_id = "i-0f38ffde5ad83c9f2"
@@ -526,16 +524,20 @@ class ArmCollectTests(unittest.TestCase):
             text = " ".join(args)
             if "get-caller-identity" in text:
                 return completed({"Account": lab.ACCOUNT_ID})
+            if "terminate-instances" in text:
+                return completed(
+                    code=254,
+                    stderr=(
+                        "An error occurred (OperationNotPermitted) when calling the TerminateInstances "
+                        "operation: The instance may not be terminated. Modify its 'disableApiTermination' "
+                        "instance attribute and try again."
+                    ),
+                )
             if "--instance-ids" in args:
                 body = instance()
                 body["InstanceId"] = soak_id
                 body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
                 return completed({"Reservations": [{"Instances": [body]}]})
-            if "modify-instance-attribute" in text:
-                return completed(
-                    code=254,
-                    stderr="An error occurred (UnauthorizedOperation) when calling the ModifyInstanceAttribute operation: You are not authorized to perform this operation.",
-                )
             return completed({"Reservations": [], "Volumes": [], "SecurityGroups": [], "KeyPairs": []})
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -544,11 +546,13 @@ class ArmCollectTests(unittest.TestCase):
             with self.assertRaises(lab.GuardAbort) as caught:
                 steps.execute_teardown(runner, NOW)
             body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
-        self.assertIn("UnauthorizedOperation", caught.exception.reason)
+        self.assertTrue(steps.termination_protected(caught.exception.reason))
+        self.assertFalse(steps.termination_protected("An error occurred (UnauthorizedOperation) when calling the ModifyInstanceAttribute operation"))
         self.assertEqual(body["status"], "TERMINATION_LOCK")
+        self.assertEqual(body["called"], ["terminate-instances"])
         self.assertEqual(body["founder_close"]["status"], "CLOSED_BY_FOUNDER")
         self.assertFalse(body["mutated"])
-        self.assertFalse(any("terminate-instances" in " ".join(call) for call in calls))
+        self.assertFalse(any("modify-instance-attribute" in " ".join(call) for call in calls))
 
     def test_collect_does_not_call_cloudtrail_when_the_soak_host_is_gone(self) -> None:
         calls: list[list[str]] = []

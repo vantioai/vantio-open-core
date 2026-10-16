@@ -752,6 +752,18 @@ def founder_close_record(path: Path | None = None) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def termination_protected(reason: str) -> bool:
+    """True when TerminateInstances was refused because the instance is locked.
+
+    The sweeper role cannot clear disableApiTermination. A matching error
+    records TERMINATION_LOCK and stops. It does not call ModifyInstanceAttribute.
+    """
+    text = reason or ""
+    return "OperationNotPermitted" in text and (
+        "disableApiTermination" in text or "may not be terminated" in text
+    )
+
+
 def founder_close_honored(instance_id: str, record: Mapping[str, Any] | None) -> bool:
     """True only for the Founder close of i-0f38ffde5ad83c9f2.
 
@@ -791,41 +803,29 @@ def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
             raise lab.GuardAbort("soak_active")
         assert record is not None
         payload["founder_close"] = {key: record[key] for key in FOUNDER_CLOSE_REQUIRED}
-        try:
-            lab.aws_json(
-                runner,
-                [
-                    "aws",
-                    "ec2",
-                    "modify-instance-attribute",
-                    "--region",
-                    lab.REGION,
-                    "--instance-id",
-                    instance_id,
-                    "--no-disable-api-termination",
-                ],
-            )
-        except lab.GuardAbort as exc:
-            payload.update(
-                {
-                    "called": ["modify-instance-attribute"],
-                    "mutated": False,
-                    "reason": exc.reason,
-                    "status": "TERMINATION_LOCK",
-                }
-            )
-            lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
-            raise
-        called.append("modify-instance-attribute")
     name = str(tags.get("Name"))
     state = instance_state(instance)
     if state in lab.OCCUPYING_STATES:
-        called.extend(
-            lab._delete_resource(
-                {"type": "instance", "id": instance_id, "region": lab.REGION, "tags": tags},
-                runner,
+        try:
+            called.extend(
+                lab._delete_resource(
+                    {"type": "instance", "id": instance_id, "region": lab.REGION, "tags": tags},
+                    runner,
+                )
             )
-        )
+        except lab.GuardAbort as exc:
+            if lab.soak_active(tags) and termination_protected(exc.reason):
+                payload.update(
+                    {
+                        "called": ["terminate-instances"],
+                        "mutated": False,
+                        "reason": exc.reason,
+                        "status": "TERMINATION_LOCK",
+                    }
+                )
+                lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+                raise
+            raise
     census = lab.census_from_aws(runner)
     for resource in related_owned(census, name):
         if resource.get("type") == "instance":
