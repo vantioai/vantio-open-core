@@ -1212,6 +1212,30 @@ def _store_serial_log(runner: Runner, instance_id: str, payload: dict[str, Any])
     payload["console_redacted"] = redacted
 
 
+def _json_record(text: str, *, battery: str) -> dict[str, Any] | None:
+    """The guest record. Reboot-check may be one JSON line inside the script log."""
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError:
+        loaded = None
+    if isinstance(loaded, dict):
+        return loaded
+    if battery != "reboot-check":
+        return None
+    found: dict[str, Any] | None = None
+    for line in text.splitlines():
+        candidate = line.strip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            item = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and item.get("battery") == "reboot-check":
+            found = item
+    return found
+
+
 def _reboot_log_tail(remote: Callable[[list[str], str], subprocess.CompletedProcess[str]]) -> str:
     """Last lines of the grub reboot script, redacted. Empty when SSH cannot read it."""
     proc = remote(["tail", "-n", "40", "/var/lib/vantio-lab/grub-mkconfig.txt"], "")
@@ -1698,17 +1722,29 @@ def execute_enterprise_rows(
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             # Instance Connect keys last 60 seconds. The guest script can run longer.
             # A new scp is a new connection, so send the key again before the pull.
-            pulled = _run_with_fresh_key(
-                runner,
-                connect,
-                public,
-                ssh_runner,
-                ["scp", *base[:-1], f"{ssh_user}@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
-                "",
-            )
-            if pulled.returncode == 0 and rows_local.is_file():
-                guest_text = rows_local.read_text(encoding="utf-8", errors="replace")
-            else:
+            # Reboot-check also keeps the record under /var/lib. /tmp is tmpfs
+            # on this image, so it is gone after the boot the step just waited for.
+            remote_rows = ["/tmp/enterprise-pe-rows.json"]
+            if battery == "reboot-check":
+                remote_rows.append("/var/lib/vantio-lab/enterprise-pe-rows.json")
+            guest_text = ""
+            for remote_row in remote_rows:
+                if rows_local.exists():
+                    rows_local.unlink()
+                pulled = _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
+                    ["scp", *base[:-1], f"{ssh_user}@{host}:{remote_row}", str(rows_local)],
+                    "",
+                )
+                if pulled.returncode == 0 and rows_local.is_file() and rows_local.stat().st_size > 0:
+                    guest_text = rows_local.read_text(encoding="utf-8", errors="replace")
+                    if guest_text.strip():
+                        break
+                    guest_text = ""
+            if not guest_text:
                 guest_text = (ran.stdout or "") + (ran.stderr or "")
             _store_guest_rows(rows_local, guest_text)
             payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
@@ -1727,11 +1763,7 @@ def execute_enterprise_rows(
             live_boot = _remote_boot_id(remote)
             if live_boot:
                 payload["boot_id"] = live_boot
-            try:
-                loaded = json.loads(guest_text)
-            except json.JSONDecodeError:
-                loaded = None
-            parsed = loaded if isinstance(loaded, dict) else None
+            parsed = _json_record(guest_text, battery=battery)
             # reboot-check writes the boot id before the timer fires. A later
             # live boot is the result of that schedule, not a stale file.
             if battery != "reboot-check" and parsed is not None and _rows_disagree_with_boot(parsed, live_boot):

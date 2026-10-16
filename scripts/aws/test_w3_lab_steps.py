@@ -1595,6 +1595,7 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn('if [ "${2:-}" = "reboot-check" ]; then', text)
         check = text[text.index('if [ "${2:-}" = "reboot-check" ]; then') : text.index('sudo rm -rf "$stage"')]
         self.assertLess(check.index("sudo rm -f /tmp/enterprise-pe-rows.json"), check.index("schedule_forced_reboot"))
+        self.assertLess(check.index("stamp_host_evidence"), check.index("sudo cp -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json"))
         self.assertLess(check.index("ensure_stock_reboot_script"), check.index("reboot_script_missing"))
         self.assertLess(check.index("reboot_script_missing"), check.index("schedule_forced_reboot"))
         ensure = text[text.index("ensure_stock_reboot_script() {") : text.index("stage_reboot_guest_files() {")]
@@ -1851,6 +1852,125 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertTrue(result["console_file"].startswith("w3-lab-console-"))
         self.assertEqual(len(result["console_sha256"]), 64)
         self.assertTrue(any("get-console-output" in call for call in runner.calls))
+
+    def test_reboot_check_reads_the_record_that_survives_tmpfs(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "/tmp/enterprise-pe-rows.json" in joined:
+                return completed(code=1, stderr="No such file")
+            if args[0] == "scp" and "/var/lib/vantio-lab/enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "reboot-check",
+                            "boot_id": "boot-old",
+                            "reboot_requested": True,
+                            "unit": "vantio-lab-lsm-reboot",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/proc/cmdline":
+                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout="lockdown,capability,apparmor\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(result["status"], "REBOOT_CHECKED")
+        self.assertEqual(result["boot_id"], "boot-new")
+
+    def test_reboot_check_parses_the_schedule_line_from_the_script_log(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        record = json.dumps(
+            {
+                "battery": "reboot-check",
+                "boot_id": "boot-old",
+                "reboot_requested": True,
+                "unit": "vantio-lab-lsm-reboot",
+            }
+        )
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                return completed(code=1, stderr="No such file")
+            if args[0] == "ssh" and "enterprise-rows.sh" in joined:
+                return completed(stdout=f"seal.oci.tar: OK\nreboot_scheduled\n{record}\n")
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/proc/cmdline":
+                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout="lockdown,capability,apparmor\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(result["status"], "REBOOT_CHECKED")
+        self.assertEqual(result["scheduled_boot_id"], "boot-old")
+
+    def test_other_batteries_do_not_parse_a_json_line_out_of_a_log(self) -> None:
+        self.assertIsNone(steps._json_record('ok\n{"battery": "enterprise"}\n', battery="enterprise"))
+        found = steps._json_record('ok\n{"battery": "reboot-check", "boot_id": "a"}\n', battery="reboot-check")
+        self.assertEqual(found["boot_id"], "a")
 
     def test_reboot_check_fails_when_the_new_boot_has_no_cmdline(self) -> None:
         runner = FakeAws()

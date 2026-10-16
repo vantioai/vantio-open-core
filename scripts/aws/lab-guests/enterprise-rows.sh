@@ -210,6 +210,15 @@ PY
   fi
   sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   stamp_host_evidence
+  # Noble mounts /tmp as tmpfs. The reboot clears it, and the runner comes
+  # back to an empty file. Keep this record on the root filesystem.
+  sudo mkdir -p /var/lib/vantio-lab
+  sudo chmod 755 /var/lib/vantio-lab
+  if ! sudo cp -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json; then
+    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+    exit 1
+  fi
+  sudo chmod a+r /var/lib/vantio-lab/enterprise-pe-rows.json
   if [ -n "$reason" ]; then
     exit 1
   fi
