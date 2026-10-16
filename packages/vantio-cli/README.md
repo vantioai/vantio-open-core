@@ -86,7 +86,10 @@ Your code doesn't change. Your agent runs normally. Observed calls are recorded 
 ```bash
 vantio run --summary node agent.js   # print a run summary on exit
 vantio run --json node agent.js      # unstable JSON run record on stdout
+vantio run --mcp-enforce node agent.js
 ```
+
+Node `vantio run` loads in-process MCP awareness. The default is observe, and injection and rug-pull stay on log. `--mcp-enforce` withholds inside that process. `VANTIO_MCP_AWARENESS=off` does not load it. The path does not add a proxy process. Payload text is not stored. This is not Phantom Engine. Host attachment remains a later step. Python `vantio run` does not load this library.
 
 **`--json`** on `run`, `demo`, `status`, `discover`, `prove`, `search`, `tail`, and `diff` prints `"schema_status": "unstable-pre-1.0"`. That shape may change without notice. Field mapping to OpenTelemetry GenAI terms is documented in the open-core repo at `docs/optics-otel-mapping.md`. There is no OTLP exporter.
 
