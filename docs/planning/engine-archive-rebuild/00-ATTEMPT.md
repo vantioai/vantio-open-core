@@ -18,6 +18,6 @@ The comparison has three results:
 
 `scripts/release/engine-archive-rebuild.mjs` asks `git ls-remote` for `vantioai/vantio-phantom-engine` and looks for a local tree that has `Cargo.toml` plus a Dockerfile that names `vantio-loader` or `bpf-linker`. Those are the inputs named in `docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md`.
 
-On this checkout the remote is not readable and no local engine tree was found. `comparison` is `NOT_PERFORMED` and `reason` is `source_unavailable`. `match` is null. No rebuilt digest is recorded.
+When a tree is found, the script runs `docker build` on that Dockerfile and `docker save` of the local tag, then hashes the tar. On this checkout the remote is not readable and no local engine tree was found, so that build did not start. `comparison` is `NOT_PERFORMED` and `reason` is `source_unavailable`. `match` is null. No rebuilt digest is recorded.
 
 A later run that has the source can produce `MATCH` or `MISMATCH`. Until then this page does not claim the seal bytes were reproduced, and it does not claim they differ.

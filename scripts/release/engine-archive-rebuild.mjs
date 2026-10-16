@@ -5,8 +5,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -98,6 +99,7 @@ export function attempt(root) {
     source_present: Boolean(source),
   };
   if (!source) probe.build_reason = "source_unavailable";
+  else Object.assign(probe, buildArchive(source));
   const body = classify(seal, probe);
   return {
     ...body,
@@ -106,6 +108,33 @@ export function attempt(root) {
     remote_stderr: remote.stderr,
     source_dir_found: Boolean(source),
   };
+}
+
+function engineDockerfile(dir) {
+  for (const rel of ["Dockerfile", "deploy/Dockerfile", "vantio-loader/Dockerfile"]) {
+    const path = join(dir, rel);
+    if (!existsSync(path) || !statSync(path).isFile()) continue;
+    const text = readFileSync(path, "utf8");
+    if (text.includes("vantio-loader") || text.includes("bpf-linker")) return path;
+  }
+  return "";
+}
+
+export function buildArchive(sourceDir) {
+  const dockerfile = engineDockerfile(sourceDir);
+  if (!dockerfile) return { source_present: true, build_completed: false, build_reason: "dockerfile_missing", rebuilt_sha256: null };
+  const version = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], { encoding: "utf8", timeout: 20000 });
+  if (version.status !== 0) return { source_present: true, build_completed: false, build_reason: "docker_unavailable", rebuilt_sha256: null };
+  const tag = "vantio-engine-rebuild:local";
+  const built = spawnSync("docker", ["build", "--file", dockerfile, "--tag", tag, sourceDir], { encoding: "utf8" });
+  if (built.status !== 0) return { source_present: true, build_completed: false, build_reason: "docker_build_failed", rebuilt_sha256: null };
+  const archive = join(tmpdir(), "vantio-engine-rebuild.oci.tar");
+  const saved = spawnSync("docker", ["save", "--output", archive, tag], { encoding: "utf8" });
+  spawnSync("docker", ["rmi", tag], { encoding: "utf8", timeout: 60000 });
+  if (saved.status !== 0) return { source_present: true, build_completed: false, build_reason: "docker_save_failed", rebuilt_sha256: null };
+  const rebuilt = sha256File(archive);
+  unlinkSync(archive);
+  return { source_present: true, build_completed: true, build_reason: "built", rebuilt_sha256: rebuilt };
 }
 
 function redact(text) {
