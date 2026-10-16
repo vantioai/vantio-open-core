@@ -1,7 +1,8 @@
 """Userspace model of t5_egress.bpf.c.
 
-The model does not import the Shannon helper. A long left-hand name sets
-entropy_deferred and is still allowed when every other kernel check passes.
+The model does not import the userspace entropy helper. A left-hand name
+with many distinct bytes for its length is a classified deny. A repeated
+character is not.
 """
 
 from __future__ import annotations
@@ -205,15 +206,15 @@ def _name_verdict(name: str, maps: KernelMaps) -> tuple[str, bool]:
         left = name[: len(name) - best - 1].replace(".", "")
         if len(left) > maps.max_label:
             return "dns_label_too_long", False
-        if maps.entropy_min_length > 0 and len(left) >= maps.entropy_min_length:
-            entropy = True
+        if maps.entropy_min_length > 0 and len(left) >= maps.entropy_min_length and len(set(left)) * 4 > len(left):
+            return "dns_label_entropy", False
     return "policy_permits", entropy
 
 
 def _kind_for(reason: str) -> str:
     if reason == "policy_permits":
         return PASS
-    if reason in {"dns_name_not_allowed", "dns_label_too_long", "resolver_not_allowed", "dns_query_volume", "link_local_not_allowed", "icmp_destination_not_allowed", "icmp_type_not_allowed", "loopback_port_not_allowed"}:
+    if reason in {"dns_name_not_allowed", "dns_label_too_long", "dns_label_entropy", "resolver_not_allowed", "dns_query_volume", "link_local_not_allowed", "icmp_destination_not_allowed", "icmp_type_not_allowed", "loopback_port_not_allowed"}:
         return CLASSIFIED
     if reason == "case_not_applicable":
         return SCOPE
