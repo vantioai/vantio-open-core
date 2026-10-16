@@ -130,6 +130,10 @@ jobs:
             scripts/aws/lab-guests/baseline_diag.py
             scripts/aws/lab-guests/sticky_write.py
             scripts/aws/lab-guests/product_uninstall_census.py
+            scripts/aws/lab-guests/t5-egress.sh
+            scripts/clean-host/t5/
+            packages/t5-egress-drills/
+            packages/t5-egress-kernel/
             scripts/aws/lab-guests/soak_check.py
             scripts/aws/lab-guests/soak-hourly.sh
             scripts/aws/lab-guests/record-check.sh

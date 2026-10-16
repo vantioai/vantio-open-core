@@ -997,6 +997,14 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("bundle_commit:", arm)
         self.assertIn("W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}", arm)
         self.assertIn("W3_EXPECTED_SEAL: ${{ inputs.seal }}", arm)
+        self.assertIn("scripts/clean-host/t5/", arm)
+        self.assertIn("scripts/aws/lab-guests/t5-egress.sh", arm)
+        preamble = Path(steps.__file__).read_text(encoding="utf-8").split("def ", 1)[0]
+        self.assertNotIn("import t5_battery", preamble)
+        enterprise = Path(steps.__file__).read_text(encoding="utf-8")
+        start = enterprise.index("def execute_enterprise_rows")
+        chunk = enterprise[start:start + 1800]
+        self.assertIn("import t5_battery", chunk)
         self.assertNotIn("ece6349e", arm)
         self.assertNotIn("0f3b0ad", arm)
         bundle = (ROOT / "scripts/aws/enterprise_bundle.py").read_text(encoding="utf-8")
