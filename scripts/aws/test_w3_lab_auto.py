@@ -769,7 +769,75 @@ class DebianImageTests(unittest.TestCase):
         }
         with self.assertRaises(lab.GuardAbort) as caught:
             lab.require_available_image(payload, "ami-0deb120000000003")
+        self.assertEqual(caught.exception.reason, "image_rejected")
+
+    def test_unknown_owner_is_rejected(self) -> None:
+        payload = {
+            "Images": [
+                {
+                    "ImageId": "ami-0deb120000000004",
+                    "State": "available",
+                    "OwnerId": "111111111111",
+                    "Name": "debian-12-amd64-20251008-2233",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                }
+            ]
+        }
+        with self.assertRaises(lab.GuardAbort) as caught:
+            lab.require_available_image(payload, "ami-0deb120000000004")
         self.assertEqual(caught.exception.reason, "image_owner")
+
+    def test_jammy_and_al2023_images_are_accepted(self) -> None:
+        jammy = "ami-0jammy00000000001"
+        amazon = "ami-0al2023000000001"
+        jammy_payload = {
+            "Images": [
+                {
+                    "ImageId": jammy,
+                    "State": "available",
+                    "OwnerId": lab.CANONICAL_OWNER,
+                    "Name": "ubuntu/images/hvm-ssd-gp3/ubuntu-jammy-22.04-amd64-server-20260901",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                    "ProductCodes": [],
+                }
+            ]
+        }
+        amazon_payload = {
+            "Images": [
+                {
+                    "ImageId": amazon,
+                    "State": "available",
+                    "OwnerId": lab.AMAZON_LINUX_OWNER,
+                    "Name": "al2023-ami-2023.8.20250901.0-kernel-6.1-x86_64",
+                    "Architecture": "x86_64",
+                    "RootDeviceType": "ebs",
+                    "Public": True,
+                    "VirtualizationType": "hvm",
+                    "ProductCodes": [],
+                }
+            ]
+        }
+        self.assertEqual(lab.require_available_image(jammy_payload, jammy), jammy)
+        self.assertEqual(lab.require_available_image(amazon_payload, amazon), amazon)
+        self.assertEqual(
+            lab.ssh_user_for_image(jammy_payload["Images"][0]["Name"], lab.CANONICAL_OWNER, jammy),
+            "ubuntu",
+        )
+        self.assertEqual(
+            lab.ssh_user_for_image(amazon_payload["Images"][0]["Name"], lab.AMAZON_LINUX_OWNER, amazon),
+            "ec2-user",
+        )
+        self.assertEqual(
+            lab.ssh_user_for_image("debian-12-amd64-20251008-2233", lab.DEBIAN_OWNER, "ami-0deb120000000001"),
+            "admin",
+        )
+        self.assertEqual(lab.ssh_user_for_image("", "", lab.PINNED_IMAGE_ID), "ubuntu")
 
 
 if __name__ == "__main__":

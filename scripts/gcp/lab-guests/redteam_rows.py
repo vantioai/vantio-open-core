@@ -31,7 +31,25 @@ import redteam_packet as packet  # noqa: E402
 
 SUBJECT = 65534
 LAB_UDP = ("192.0.2.2", 9)
-OUT_PATH = Path("/tmp/redteam-rows.json")
+OUT_PATH = Path("/var/lib/vantio-lab/redteam-rows.json")
+MIRROR_PATH = Path("/tmp/redteam-rows.json")
+
+
+def kill_on_this_phase(phase: str) -> bool:
+    """The loader-kill row is the pre measurement. Post must not kill again."""
+    return phase == "pre"
+
+
+def write_redteam_rows(body: dict) -> None:
+    text = json.dumps(body, indent=2) + "\n"
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUT_PATH.write_text(text, encoding="utf-8")
+    os.chmod(OUT_PATH, 0o644)
+    try:
+        MIRROR_PATH.write_text(text, encoding="utf-8")
+        os.chmod(MIRROR_PATH, 0o644)
+    except OSError:
+        pass
 # AWS and the GCP campaign set VANTIO_BRAIN_DIR to /var/lib/vantio-lab/brain.
 BRAIN_DIR = Path(os.environ.get("VANTIO_BRAIN_DIR", "/tmp/vantio-lab"))
 AT_FDCWD = -100
@@ -629,6 +647,13 @@ def ask_brain() -> dict:
 def main() -> int:
     if os.uname().nodename == "phantom-box":
         raise SystemExit("refusing host")
+    phase = sys.argv[2] if len(sys.argv) > 2 else "pre"
+    if not kill_on_this_phase(phase):
+        if OUT_PATH.is_file():
+            print(json.dumps({"phase": phase, "kept": True, "path": str(OUT_PATH)}))
+            return 0
+        print(json.dumps({"phase": phase, "kept": False, "reason": "pre_rows_missing"}))
+        return 0
     _ensure_brain()
     attempts: list[dict] = []
     model = {"loaded": False, "reason": "not_started"}
@@ -663,9 +688,8 @@ def main() -> int:
         "model_loaded": bool(model.get("loaded")),
         "model_reason": model.get("reason") or "unknown",
     }
-    OUT_PATH.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
-    os.chmod(OUT_PATH, 0o644)
-    print(json.dumps({"rows": len(attempts), "model_loaded": body["model_loaded"]}))
+    write_redteam_rows(body)
+    print(json.dumps({"rows": len(attempts), "model_loaded": body["model_loaded"], "path": str(OUT_PATH)}))
     return 0
 
 

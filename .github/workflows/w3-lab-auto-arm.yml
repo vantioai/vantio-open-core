@@ -26,7 +26,7 @@ on:
       seal:
         description: Seal sha256, 64 hex characters. The downloaded manifest must carry this digest.
         required: true
-        default: bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d
+        default: 6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403
         type: string
       bundle_commit:
         description: Private lab bundle commit, 40 hex characters. Empty uses the commit already pinned in the bundle checker.
@@ -58,6 +58,7 @@ on:
           - reboot-check
           - descendant-b1
           - self-service
+          - r15-container-exit
           - 2c-upgrade-rollback
           - 2d-crash-recovery
           - 2e-performance

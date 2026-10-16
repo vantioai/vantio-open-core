@@ -366,13 +366,18 @@ class GradeTests(unittest.TestCase):
         for number in range(1, 10):
             self.assertEqual(_step(result, number)["result"], "PASS", _step(result, number))
         self.assertEqual(_step(result, 2)["comparison_seal"], True)
-        self.assertEqual(_step(result, 2)["working_seal"], False)
+        self.assertEqual(_step(result, 2)["working_seal"], True)
         self.assertEqual(_step(result, 8)["removal"], "VERIFIED_REMOVED")
 
     def test_working_seal_flag_and_refused_digests(self) -> None:
         working = _grade(seal=_seal(constants.WORKING_SEAL))
         self.assertEqual(_step(working, 2)["working_seal"], True)
+        self.assertEqual(_step(working, 2)["comparison_seal"], True)
         self.assertEqual(_step(working, 2)["result"], "PASS")
+        previous = _grade(seal=_seal(constants.PREVIOUS_WORKING_SEAL))
+        self.assertEqual(_step(previous, 2)["working_seal"], False)
+        self.assertEqual(_step(previous, 2)["comparison_seal"], False)
+        self.assertEqual(_step(previous, 2)["result"], "PASS")
         for digest, reason in (
             (constants.PUBLIC_PIN, "seal_is_public_pin"),
             (constants.PLUMBING_ONLY_SEAL, "seal_is_plumbing_only"),
@@ -924,8 +929,11 @@ class PackageBoundaryTests(unittest.TestCase):
                 self.assertNotIn("audited", text.casefold(), path.name)
 
     def test_git_paths_stay_in_the_package(self) -> None:
+        # refs/remotes/origin/main stays unambiguous when a local origin/main exists.
+        # Lab harness paths are allowed in the same diff as the seal record.
+        # A path outside the package and the lab prefixes still fails.
         diff = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main"],
+            ["git", "diff", "--name-only", "refs/remotes/origin/main"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -942,9 +950,10 @@ class PackageBoundaryTests(unittest.TestCase):
         for line in status.stdout.splitlines():
             if len(line) >= 4:
                 paths.append(line[3:].strip())
+        allowed = (*constants.PACKAGE_PREFIXES, *constants.LAB_OWNED_PREFIXES)
         for path in paths:
             self.assertTrue(
-                any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in constants.PACKAGE_PREFIXES),
+                any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in allowed),
                 path,
             )
 

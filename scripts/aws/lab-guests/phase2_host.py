@@ -525,7 +525,10 @@ def vantio_bpf_pins() -> list[str]:
     return sorted(path.name for path in root.iterdir() if path.name.startswith("vantio"))
 
 
-def prepare_enforce() -> tuple[PeHostAdapter, str]:
+REVOKE_CONVERGENCE: dict = {}
+
+
+def prepare_enforce(*, time_revoke: bool = False) -> tuple[PeHostAdapter, str]:
     rows.ensure_cgroups()
     ensure_lab_iface()
     ensure_allowlist_peer()
@@ -548,6 +551,7 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     banner = rows.wait_banner("AUDIT")
     if "AUDIT" not in banner and "observe-only" not in banner:
         raise SystemExit(f"loader banner missing: {banner[-400:]}")
+    revoke_started = time.monotonic()
     revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
@@ -560,6 +564,22 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     # Enroll the lab cgroup and clear a mode-0 stand-in before any probe.
     # The 2D battery asserts the anchor is non-zero before its first open.
     anchor_before_first_open()
+    if time_revoke:
+        deadline = time.monotonic() + 30
+        last: dict = {}
+        while time.monotonic() < deadline:
+            last = child_open(True)
+            if last.get("file_errno") == 13:
+                break
+            time.sleep(0.05)
+        REVOKE_CONVERGENCE.clear()
+        REVOKE_CONVERGENCE.update(
+            {
+                "ms": round((time.monotonic() - revoke_started) * 1000, 3),
+                "errno": last.get("file_errno"),
+                "fail_open": last.get("file_errno") == 0,
+            }
+        )
     return adapter, digest
 
 
@@ -1125,46 +1145,23 @@ def image_id() -> str:
 
 
 def run_2c() -> dict:
+    """Name the missing rollback image. Do not reload the same tar as an upgrade.
+
+    The public installer pin is not on the guest. VANTIO_ROLLBACK_OCI is the
+    second image, when a later run copies one. This battery does not fetch it.
+    """
     tar = HERE / "seal.oci.tar"
-    seal_sha = hashlib.sha256(tar.read_bytes()).hexdigest()
-    before = image_id()
-    loaded = rows.sudo(["docker", "load", "-i", str(tar)])
-    if loaded.returncode != 0:
-        raise SystemExit("reload")
-    after = image_id()
-    adapter, digest = prepare_enforce()
-    first = enterprise_open(digest)
-    if not baseline_ready(first):
-        return _setup_invalid(first, digest, deny_before=first)
-    attributed_before = True
-    kill_loader()
-    standin = standin_after_sigkill()
-    restarted = rows.start_loader(adapter)
-    if restarted["rc"] != 0:
-        raise SystemExit(f"restart loader {restarted['rc']}")
-    _wait_scoped_banner()
-    second = enterprise_open(digest)
-    attributed_after = second.get("deny_event") is not None
-    graded = grade.grade_upgrade(
-        seal_sha256=seal_sha,
-        image_before=before,
-        image_after=after,
-        deny_before=first.get("file_errno"),
-        deny_after=second.get("file_errno"),
-        attributed_before=attributed_before,
-        attributed_after=attributed_after,
+    seal_sha = hashlib.sha256(tar.read_bytes()).hexdigest() if tar.is_file() else ""
+    rollback = os.environ.get("VANTIO_ROLLBACK_OCI", "").strip()
+    present = bool(rollback) and Path(rollback).is_file()
+    graded = grade.grade_rollback_gap(
+        from_pin=grade.PUBLIC_INSTALLER_PIN,
+        to_seal=seal_sha,
+        rollback_image_present=present,
     )
-    graded["policy_digest"] = digest
-    graded["deny_before"] = first
-    graded["deny_after"] = second
-    graded["attributed_before"] = attributed_before
-    graded["attributed_after"] = attributed_after
-    graded["standin_after_sigkill"] = standin
-    graded["ndjson_denied_pids"] = [
-        item["pid"]
-        for item in (first, second)
-        if isinstance(item.get("pid"), int) and item.get("deny_event") is not None
-    ]
+    graded["loaded_seal"] = seal_sha
+    graded["working_seal_match"] = seal_sha == grade.WORKING_SEAL
+    graded["rollback_image"] = rollback if present else ""
     return graded
 
 
@@ -1301,7 +1298,7 @@ def run_2d() -> dict:
 
 
 def run_2e() -> dict:
-    _adapter, digest = prepare_enforce()
+    _adapter, digest = prepare_enforce(time_revoke=True)
     started = time.monotonic()
     samples = [child_open(True) for _ in range(100)]
     runtime = time.monotonic() - started
@@ -1309,6 +1306,9 @@ def run_2e() -> dict:
     denied = sum(1 for item in samples if item.get("file_errno") == 13)
     graded["policy_digest"] = digest
     graded["denied_samples"] = denied
+    graded["revoke_convergence_ms"] = REVOKE_CONVERGENCE.get("ms")
+    graded["revoke_errno"] = REVOKE_CONVERGENCE.get("errno")
+    graded["revoke_fail_open"] = REVOKE_CONVERGENCE.get("fail_open") is True
     return graded
 
 
@@ -1399,6 +1399,56 @@ def remove_loader() -> bool:
     return not loader_running()
 
 
+def engine_programs_listed() -> dict:
+    """Read bpftool. This does not detach, unpin, or uninstall."""
+    proc = rows.sudo(["bpftool", "prog", "show"], timeout=30)
+    text = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    names: list[str] = []
+    for line in text.splitlines():
+        if " name " not in line:
+            continue
+        parts = line.split(" name ", 1)[1].split()
+        if parts:
+            names.append(parts[0])
+    if proc.returncode != 0:
+        listed = None
+    else:
+        listed = any(name == "cgroup_skb_egress_enforce" or name.startswith("cgroup_skb_egre") for name in names)
+    return {"bpftool_rc": proc.returncode, "names": names, "program_listed": listed}
+
+
+def run_r15() -> dict:
+    """Stop the loader container, leave the cgroup, probe, then return.
+
+    Uninstall runs later in the shell. This function does not detach the
+    program and does not remove the cgroup the probe has to join.
+    """
+    _adapter, digest = prepare_enforce()
+    while_up = child_open(True)
+    stopped = rows.sudo(["docker", "stop", "--time", "20", rows.LOADER], timeout=40)
+    removed = rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
+    cgroup_present = Path(str(rows.ANCHOR)).is_dir()
+    after = child_open(True)
+    listing = engine_programs_listed()
+    pid = after.get("pid") if isinstance(after.get("pid"), int) else 0
+    graded = grade.grade_container_exit(
+        file_errno=after.get("file_errno") if isinstance(after.get("file_errno"), int) else None,
+        egress_errno=after.get("net_errno") if isinstance(after.get("net_errno"), int) else None,
+        program_listed=listing.get("program_listed") if isinstance(listing.get("program_listed"), bool) else None,
+        egress_anchor=egress_block_anchor(pid),
+    )
+    graded["policy_digest"] = digest
+    graded["while_loader_up"] = while_up
+    graded["after_container_exit"] = after
+    graded["cgroup_present"] = cgroup_present
+    graded["docker_stop_rc"] = stopped.returncode
+    graded["docker_rm_rc"] = removed.returncode
+    graded["bpftool_rc"] = listing.get("bpftool_rc")
+    graded["bpftool_names"] = listing.get("names")
+    graded["detached_by_lab"] = False
+    return graded
+
+
 def run_2g() -> dict:
     facts = kernel_facts()
     _adapter, digest = prepare_enforce()
@@ -1407,13 +1457,15 @@ def run_2g() -> dict:
     unenrolled = child_open(False)
     removed = remove_loader()
     pid = enrolled.get("pid")
+    tar = HERE / "seal.oci.tar"
+    seal_sha = hashlib.sha256(tar.read_bytes()).hexdigest() if tar.is_file() else ""
     measured = {
         "live_probe": True,
         "distro": facts["distro"],
         "kernel": facts["kernel"],
         "btf": facts["btf"],
         "lsm": facts["lsm"],
-        "seal": grade.WORKING_SEAL,
+        "seal": seal_sha,
         "enrolled_errno": enrolled.get("file_errno"),
         "unenrolled_errno": unenrolled.get("file_errno"),
         "removed": removed,
@@ -1732,6 +1784,7 @@ def run_lsm_guard() -> dict:
 
 
 RUNNERS = {
+    "r15-container-exit": run_r15,
     "2c-upgrade-rollback": run_2c,
     "2d-crash-recovery": run_2d,
     "2e-performance": run_2e,

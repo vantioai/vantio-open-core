@@ -22,3 +22,13 @@ Evidence from that run:
 The lab does not detach this program and does not unlink its pins. After `vantio-loader --uninstall`, the enterprise arm reads bpftool and `/sys/fs/bpf`. `verified_removed` is true only when that read shows no engine program and no Vantio pin, and no container is left. A program that is still listed fails the arm as `programs_not_removed`.
 
 The list guest_rows wrote before uninstall is kept on the rows as `after_container_exit`. That field is the container-exit observation. It is not a lab cleanup.
+
+## What uninstall did on 533c0181
+
+Open-core `533c01816848c1a9bb2dc186927cb0a9a958cffd` ran the same enterprise arm on instance `i-0a06cb63d2ac0d4b3`. Run `38960187559` still listed `cgroup_skb_egress_enforce` in `after_container_exit` after the container was gone. The product uninstall then ran with no lab detach. `removal.loader_programs` was empty, `removal.bpffs_vantio` was empty, `removal.verified_removed` was true, and the tail was `UNINSTALL_VERIFIED`.
+
+That run did not probe the secret open or a denied egress in the window after the container exited and before uninstall. `guest_rows` removes the lab cgroup before it reads bpftool, so the listing is not an enforcement measurement.
+
+## What the next battery measures
+
+`r15-container-exit` stops the loader container, leaves the cgroup in place, and probes the secret open and one egress before `vantio-loader --uninstall`. The rows record `fail_open`, `fail_closed`, `mixed`, or `unmeasured`. The harness does not detach the program to change that result.

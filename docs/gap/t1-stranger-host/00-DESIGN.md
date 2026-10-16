@@ -50,7 +50,7 @@ Pass criteria for the nine operator steps are in `STRANGER_HOST_STANDARD.md`. Th
 
 ## What this track leaves alone
 
-Lab agent `bc-8b310b16` owns the lab slot and the `6d3ce580` seal labs. `6d3ce580` is not the working seal. The working seal remains `bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d`. The public pin remains `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`.
+Lab agent `bc-8b310b16` owns the lab slot. On 2026-10-16 Zachary set the working seal to `6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403`. The previous working seal was `bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d`. The public pin remains `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e`.
 
 This track does not edit:
 

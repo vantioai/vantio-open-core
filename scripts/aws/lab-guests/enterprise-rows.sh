@@ -573,18 +573,22 @@ if [ "$mode" = "descendant-b1" ]; then
   cat /tmp/descendant-b1.out
   chmod a+r /tmp/descendant-b1.out 2>/dev/null || true
   publish_current_rows
-  if [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
+  # The kill is measured on pre, while the loader is up. Post-reboot
+  # must not run it again: that overwrite recorded loader_pid_absent and
+  # /tmp does not survive the reboot. The durable file does.
+  if [ "$phase" = "pre" ] && [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
     cp "$here/redteam_packet.py" "$stage/redteam_packet.py"
     brain=/var/lib/vantio-lab/brain
     if [ ! -s "$brain/qwen2.5-3b-instruct-q4_k_m.gguf" ] || [ ! -x "$brain/llama-b11540/llama-server" ]; then
       echo "brain_not_landed $brain" >&2
     fi
+    sudo rm -f /var/lib/vantio-lab/redteam-rows.json /tmp/redteam-rows.json
     set +e
-    sudo env VANTIO_BRAIN_DIR="$brain" python3 "$here/redteam_rows.py" "$stage" > /tmp/redteam-rows.out 2>&1
+    sudo env VANTIO_BRAIN_DIR="$brain" python3 "$here/redteam_rows.py" "$stage" pre > /tmp/redteam-rows.out 2>&1
     rt=$?
     set -e
     cat /tmp/redteam-rows.out
-    chmod a+r /tmp/redteam-rows.json 2>/dev/null || true
+    sudo chmod a+r /var/lib/vantio-lab/redteam-rows.json 2>/dev/null || true
     printf 'REDTEAM_RC=%s\n' "$rt"
   fi
   printf 'PY_RC=%s\n' "$rc"
@@ -628,7 +632,7 @@ case "$mode" in
     fi
     exit "$rc"
     ;;
-  2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
+  r15-container-exit|2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
     # A previous battery leaves both copies. Delete both, then this phase
     # writes the durable file the runner reads.
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
