@@ -213,3 +213,25 @@ jobs:
 
       - name: Fixture tests
         run: python3 -m unittest discover -s tests/optics-agent-inventory -t tests/optics-agent-inventory -v
+
+  test-t5-kernel:
+    name: Test T5 kernel model and battery id
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Model, compile, and battery allow-list
+        run: |
+          python3 packages/t5-egress-kernel/tests/test_kernel_model.py -v
+          python3 scripts/clean-host/t5/kernel_proof.py
+          python3 scripts/aws/test_t5_battery.py -v
+          python3 scripts/gcp/test_t5_battery.py -v

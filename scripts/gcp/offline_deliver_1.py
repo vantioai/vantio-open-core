@@ -647,7 +647,7 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
         if key == "phase" and value in {"pre", "post"}:
             kept[key] = value
             continue
-        if key == "battery" and value in {"enterprise", "descendant-b1"}:
+        if key == "battery" and value in {"enterprise", "descendant-b1", "t5-egress"}:
             kept[key] = value
             continue
         if key == "result" and value in {"open_ok", "open_error", "probe_failed", "not_run", "pass", "fail"}:

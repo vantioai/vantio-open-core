@@ -1,21 +1,24 @@
 {
   "track": "T5",
   "suite": "clean-host",
-  "status": "NOT_WIRED",
+  "status": "WIRED_NOT_DISPATCHED",
   "cloud_run": false,
   "catalog": "scripts/clean-host/t5/catalog.json",
   "proof": "python3 scripts/clean-host/t5/proof.py",
+  "kernel_proof": "python3 scripts/clean-host/t5/kernel_proof.py",
   "battery_id": "t5-egress",
-  "integration_step": "A later lab agent may copy scripts/clean-host/t5 onto a guest it already owns and add battery id t5-egress to the allow-list in scripts/aws/w3_lab_steps.py. This track does not edit that file, does not edit .github/workflows/w3-lab-*.yml or .github/workflows/gcp-lab-*.yml, and does not start a cloud lab.",
+  "label": "Lab-only",
+  "kernel_attach": "Roadmap",
+  "integration_step": "Battery id t5-egress is on the allow-list in scripts/aws/w3_lab_steps.py. The guest script runs the userspace proof and the kernel model. It does not attach. GCP plan scripts/gcp/t5_lab_plan.py returns dispatch false. Workflow files were not edited.",
   "lab_slot_owner": "bc-8b310b16",
-  "seal_note": "6d3ce580 is not the working seal. This registration does not change a seal or the public pin e0b19d55.",
+  "lab_project": "vantio-lab-oct08",
+  "seal_note": "Lane K lab seal is 6d3ce580. This registration does not change the public pin e0b19d55.",
   "do_not_edit": [
     ".github/workflows/w3-lab-auto-provision.yml",
     ".github/workflows/w3-lab-auto-collect.yml",
     ".github/workflows/w3-lab-auto-teardown.yml",
     ".github/workflows/gcp-lab-provision.yml",
     ".github/workflows/gcp-lab-collect.yml",
-    ".github/workflows/gcp-lab-teardown.yml",
-    "scripts/aws/w3_lab_steps.py"
+    ".github/workflows/gcp-lab-teardown.yml"
   ]
 }

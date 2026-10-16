@@ -4,11 +4,13 @@ Audience: INTERNAL_RESTRICTED
 
 Date: 2026-10-16
 
-Status: `NOT_WIRED`
+Status: `WIRED_NOT_DISPATCHED`
 
 The drill catalog is `scripts/clean-host/t5/catalog.json`. The registration file is `scripts/clean-host/t5/LAB-REGISTRATION.json`. `cloud_run` is false.
 
-This track does not run a cloud lab and does not edit a lab workflow. Lab agent `bc-8b310b16` owns the lab slot. `6d3ce580` is not the working seal. The public pin stays `e0b19d55`.
+Lane K wires battery id `t5-egress` and does not start a guest. The lane lab seal is `6d3ce580`. The public pin stays `e0b19d55`. Lab agent `bc-8b310b16` owns the AWS slot through Monday. This change does not start an AWS workflow.
+
+GCP project `vantio-lab-oct08` is the only project the plan accepts. At `2026-10-16T21:47:32Z` there was no in-progress Actions run. The plan in `scripts/gcp/t5_lab_plan.py` returns `dispatch: false` because the keyless workflow on main has no t5 input. Workflow permissions were not edited.
 
 ## What a later lab agent does
 
