@@ -1,0 +1,50 @@
+{
+  "generated_at_utc": "2026-10-16T16:13:32Z",
+  "phase": 1,
+  "feature_code": false,
+  "base_note": "git_head_at_generation is the HEAD when this file was written. The design-file hashes attest those files.",
+  "git_head_at_generation": "ac199f5a759213df7cc2e3493c88638d58c08c14",
+  "track_label": "Roadmap",
+  "inherited_observability_head": "ef3a33a",
+  "product_otlp_export_authorized": false,
+  "files": [
+    {
+      "path": "docs/gap-program/T6-identity-interop.md",
+      "sha256": "ebe6cfd8937f30f1ba38a1937d1beb9caca243c654a5cc85a4fb5882c5b0113d"
+    },
+    {
+      "path": "docs/gap-program/T7-credential-keep-out.md",
+      "sha256": "0c48238d6af6ef4f75593d1d95494e4ac92267c102b02872fba4852d91965a6e"
+    },
+    {
+      "path": "docs/gap-program/T8-ocsf-otlp-siem.md",
+      "sha256": "87cbd744dfbe0fff4b06be43e5c3352f36336d6a0a69c20effb45928a6fa95bb"
+    },
+    {
+      "path": "docs/gap-program/T9-owasp-agentic-matrix.md",
+      "sha256": "b50050ed42e22ebfc55fde1ae9edf9187f93b3956163e76b9f84d643c319759d"
+    },
+    {
+      "path": "docs/gap-program/T10-live-human-approval.md",
+      "sha256": "4531c480fd30d1feda37a73e115585ea0649a808fe820d20b66b12e9d9a94472"
+    },
+    {
+      "path": "docs/gap-program/T11-coding-agent-supply-chain.md",
+      "sha256": "3e985fe7a9a9cbec78f845bb908bd68436dda5dd46ae1b581d73dd1831f2c580"
+    },
+    {
+      "path": "docs/gap-program/T12-policy-preview.md",
+      "sha256": "67d98cd192bb54703470340f4814cef686a42ed6e8ab3e9559de30bcd5aaa5ed"
+    },
+    {
+      "path": "docs/gap-program/T13-fedramp-fips-gap.md",
+      "sha256": "e826eb40bb08077ae626a60e3a3ed0b557af172b3ed93825f89eb00c79112533"
+    },
+    {
+      "path": "docs/gap-program/T14-eu-ai-act-evidence-outline.md",
+      "sha256": "8035467adab12b7bb221441e7c31094bcfdfbf4ecb9a592c0e61a131e73d42ef"
+    }
+  ],
+  "ok": true,
+  "errors": []
+}
