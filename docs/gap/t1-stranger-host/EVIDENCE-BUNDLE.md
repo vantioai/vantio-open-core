@@ -26,7 +26,7 @@ Label inside the manifest: `Roadmap`. Tier: `UNSET`.
   SIGNATURE.json
 ```
 
-`assemble` writes every file except `SIGNATURE.json`, then the hashes, then the grade. `sign` adds `SIGNATURE.json` and refreshes `SHA256SUMS` so the signature file is not a member of the signed set. `verify` recomputes the hashes, checks the signature, and grades the evidence again. A grade file that disagrees with that fresh grade fails verification.
+`assemble` writes every file except `SIGNATURE.json`, then the hashes, then the grade. `sign` adds `SIGNATURE.json` and refreshes `SHA256SUMS` so the signature file is not a member of the signed set. `verify` recomputes the hashes, checks the signature, and grades the evidence again. A grade file that disagrees with that fresh grade fails verification with `grade_mismatch`.
 
 Each member is at most 2_000_000 bytes. `assemble` refuses a private-key PEM header, a token prefix `AKIA`, `ghp_`, `xoxb-`, or `sk_live_`, and any JSON field named `prompt`, `messages`, or `completion`.
 

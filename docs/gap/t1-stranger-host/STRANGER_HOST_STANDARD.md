@@ -14,7 +14,7 @@ The operator entry is:
 scripts/gap/t1-stranger-host/preflight.sh --image-name <exact-image> --out host-record.json
 ```
 
-The other commands are `python3 scripts/gap/t1-stranger-host/operator.py` with `capture-boot`, `capture-uninstall`, `assemble`, `grade`, `sign`, and `verify`.
+The other commands are `python3 scripts/gap/t1-stranger-host/stranger_host.py` with `capture-boot`, `capture-uninstall`, `assemble`, `grade`, `sign`, and `verify`.
 
 The battery itself stays the handover `enterprise-rows.sh`. Run it only on a dedicated test VM. It switches apt to offline mode, adds a swapfile when the host has none, and rewrites the docker daemon config. A clean customer installer is not what the lab validated.
 
@@ -111,7 +111,7 @@ Allow cases, each `pass` true, not skipped, `file_errno` 0:
 The operator reboots with the handover method (the lab drop-in is `lsm=lockdown,capability,landlock,yama,apparmor,ima,evm,bpf` when they choose it) and reconnects. Then:
 
 ```bash
-python3 scripts/gap/t1-stranger-host/operator.py capture-boot \
+python3 scripts/gap/t1-stranger-host/stranger_host.py capture-boot \
   --serial-file <hypervisor-serial.txt> --out boot-evidence.json
 ```
 
@@ -135,7 +135,7 @@ PASS requires `reboot_observed` true, `post.boot_id` equal to the step 6 boot id
 The operator runs `enterprise-rows.sh <seal> uninstall` on the GCP guest script. Then:
 
 ```bash
-python3 scripts/gap/t1-stranger-host/operator.py capture-uninstall \
+python3 scripts/gap/t1-stranger-host/stranger_host.py capture-uninstall \
   --uninstall-out /tmp/vantio-uninstall.out --live --out uninstall.json
 ```
 
