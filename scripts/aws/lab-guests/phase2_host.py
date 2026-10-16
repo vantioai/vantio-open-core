@@ -560,8 +560,12 @@ def prepare_enforce(*, time_revoke: bool = False) -> tuple[PeHostAdapter, str]:
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
     # Docker logs for this container only. A SCOPED line left in the events
-    # file by an earlier battery is not this loader.
-    _wait_scoped_banner()
+    # file by an earlier battery is not this loader. A missing banner is not
+    # a measured fail-open: the probe has not seen a deny yet.
+    banner = _wait_scoped_banner()
+    if not _banner_ready(banner):
+        tail = " ".join(banner.split())[-800:]
+        raise SystemExit(f"loader banner missing: SCOPED (drop enrolled) tail={tail}")
     # Enroll the lab cgroup and clear a mode-0 stand-in before any probe.
     # The 2D battery asserts the anchor is non-zero before its first open.
     anchor_before_first_open()
@@ -752,14 +756,19 @@ def deny_event_for(pid: int) -> dict | None:
 
 
 def _banner_ready(text: str) -> bool:
-    """The live loader is enforcing. The path line is whichever this binary prints."""
-    scoped = "SCOPED (drop enrolled)" in text
-    path = (
-        "Path DENY attached" in text
-        or "Path DENY pinned" in text
-        or "Path enforce maps loaded" in text
+    """Path deny has attached. Map load alone is earlier and is not a deny.
+
+    The plain banner says "enforcing" and does not repeat the verbose SCOPED
+    line. The pin lines are on stderr as soon as open and openat attach.
+    """
+    pins = (
+        "Path DENY pinned: kprobe_open_deny" in text
+        and "Path DENY pinned: kprobe_openat_deny" in text
     )
-    return scoped and path
+    scoped = "SCOPED (drop enrolled)" in text and (
+        "Path DENY pinned" in text or "Path DENY attached" in text
+    )
+    return pins or scoped
 
 
 def _wait_scoped_banner(timeout: float = 120) -> str:
@@ -1587,6 +1596,20 @@ def run_r15() -> dict:
     """
     _adapter, digest = prepare_enforce()
     while_up = child_open(True)
+    if while_up.get("file_errno") != 13:
+        # The container is still up and the secret opened. That is not a
+        # container-exit fail-open. Leave the loader for uninstall.
+        body = grade.grade_container_exit(
+            file_errno=None,
+            egress_errno=None,
+            program_listed=None,
+            while_up_file_errno=while_up.get("file_errno") if isinstance(while_up.get("file_errno"), int) else None,
+        )
+        body["policy_digest"] = digest
+        body["while_loader_up"] = while_up
+        body["detached_by_lab"] = False
+        body["measured_before_uninstall"] = False
+        return body
     stopped = rows.sudo(["docker", "stop", "--time", "20", rows.LOADER], timeout=40)
     removed = rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
     cgroup_present = Path(str(rows.ANCHOR)).is_dir()
@@ -1598,6 +1621,7 @@ def run_r15() -> dict:
         egress_errno=after.get("net_errno") if isinstance(after.get("net_errno"), int) else None,
         program_listed=listing.get("program_listed") if isinstance(listing.get("program_listed"), bool) else None,
         egress_anchor=egress_block_anchor(pid),
+        while_up_file_errno=13,
     )
     graded["policy_digest"] = digest
     graded["while_loader_up"] = while_up

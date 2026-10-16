@@ -632,14 +632,18 @@ def require_scoped_start() -> None:
     banner = ""
     while time.time() < deadline:
         banner = loader_logs()
-        if SCOPED_NEEDLE in banner:
+        decision = scoped_start_decision(banner, loader_is_running())
+        if decision == "scoped":
+            BANNER_STATUS = "scoped"
             break
+        if decision == "open_pins_before_scoped_line":
+            BANNER_STATUS = decision
+            return
         time.sleep(2)
     else:
-        BANNER_STATUS = scoped_start_decision(banner, loader_is_running())
-        if BANNER_STATUS == "missing":
-            raise SystemExit(f"loader banner missing: {SCOPED_NEEDLE}")
-        return
+        BANNER_STATUS = "missing"
+        tail = " ".join(banner.split())[-800:]
+        raise SystemExit(f"loader banner missing: {SCOPED_NEEDLE} tail={tail}")
     for _ in range(15):
         for item in events():
             if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":

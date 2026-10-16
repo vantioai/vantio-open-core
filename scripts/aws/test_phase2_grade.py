@@ -105,16 +105,32 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertFalse(unnamed["process_restart_held"])
 
     def test_container_exit_records_fail_open_and_fail_closed(self) -> None:
-        closed = grade.grade_container_exit(file_errno=13, egress_errno=1, program_listed=True)
+        closed = grade.grade_container_exit(
+            file_errno=13, egress_errno=1, program_listed=True, while_up_file_errno=13
+        )
         self.assertEqual(closed["classification"], "fail_closed")
         self.assertEqual(closed["host_result"], "RECORDED")
         self.assertFalse(closed["lab_pass"])
         self.assertFalse(closed["customer_claim"])
-        opened = grade.grade_container_exit(file_errno=0, egress_errno=0, program_listed=True)
+        opened = grade.grade_container_exit(
+            file_errno=0, egress_errno=0, program_listed=True, while_up_file_errno=13
+        )
         self.assertEqual(opened["classification"], "fail_open")
-        mixed = grade.grade_container_exit(file_errno=13, egress_errno=0, program_listed=True)
+        self.assertFalse(opened["lab_pass"])
+        not_engaged = grade.grade_container_exit(
+            file_errno=0, egress_errno=0, program_listed=False, while_up_file_errno=0
+        )
+        self.assertEqual(not_engaged["classification"], "deny_not_engaged")
+        self.assertNotEqual(not_engaged["classification"], "fail_open")
+        self.assertEqual(not_engaged["host_result"], "NOT_GRADED")
+        self.assertFalse(not_engaged["lab_pass"])
+        mixed = grade.grade_container_exit(
+            file_errno=13, egress_errno=0, program_listed=True, while_up_file_errno=13
+        )
         self.assertEqual(mixed["classification"], "mixed")
-        missing = grade.grade_container_exit(file_errno=None, egress_errno=0, program_listed=None)
+        missing = grade.grade_container_exit(
+            file_errno=None, egress_errno=0, program_listed=None, while_up_file_errno=13
+        )
         self.assertEqual(missing["classification"], "unmeasured")
         host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
         body = host.split("def run_r15", 1)[1].split("\ndef run_2g", 1)[0]
@@ -122,6 +138,7 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertNotIn(".unlink(", body)
         self.assertNotIn("rmdir", body)
         self.assertIn('["docker", "stop"', body)
+        self.assertLess(body.index('file_errno") != 13'), body.index('["docker", "stop"'))
         self.assertIn("detached_by_lab", body)
 
     def test_upgrade_cycle_checks_enforcement_and_uninstall(self) -> None:
