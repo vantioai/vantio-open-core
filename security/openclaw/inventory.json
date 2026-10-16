@@ -1,0 +1,93 @@
+{
+  "schema": "vantio.openclaw.inventory/1",
+  "read_at_utc": "2026-10-16T15:49:13Z",
+  "repos": [
+    {
+      "repo": "vantioai/vantio-open-core",
+      "commit": "69671e97fa359b685232ec7dd4e9fb4badc7be57",
+      "openclaw_image": false
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "openclaw_image": true
+    },
+    {
+      "repo": "vantioai/vantio-enterprise-private",
+      "commit": "c9dc0604649140bff5e593524ff116518bcfe7de",
+      "openclaw_image": false,
+      "coverage": "root and docs/ listing only"
+    },
+    {
+      "repo": "vantioai/vantio-phantom-engine",
+      "commit": "deb6faa33e5cbb887622df5017ce74d2571fa9e8",
+      "openclaw_image": false,
+      "coverage": "Dockerfile, deploy/ listing, and the openclaw workload name in python/pe_ingress_truth.py"
+    },
+    {
+      "repo": "vantioai/vantio-deploy",
+      "commit": "b874411667d2262391f41eb478b3669459839f21",
+      "openclaw_image": false,
+      "coverage": "root listing and manifests/artifacts.json"
+    }
+  ],
+  "floating_images": [
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "plane1-openclaw/docker-compose.yml",
+      "git_blob": "9de238e56427f905aab88a29a37b5154f5b454c6",
+      "occurrences": 1,
+      "ref": "ghcr.io/openclaw/openclaw:latest"
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "scripts/start_plane1_openclaw.sh",
+      "git_blob": "1c9e3c24dfca1de611fe52bc5d68fa21a5d32061",
+      "occurrences": 1,
+      "ref": "ghcr.io/openclaw/openclaw:latest"
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "scripts/plane1_openclaw_desktop_enable.sh",
+      "git_blob": "c96294fb978b96299c0da8c78dc8a45ecac4a577",
+      "occurrences": 1,
+      "ref": "ghcr.io/openclaw/openclaw:latest"
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "agent-hands/docker-compose.yml",
+      "git_blob": "601a59f3093f0cb040281d1360b7bcf2d3348a03",
+      "occurrences": 2,
+      "ref": "ghcr.io/openclaw/openclaw:latest"
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "docs/ops/OPENCLAW_PLANE1_PHANTOM_BOX.md",
+      "git_blob": "dd4a9098b4dbe3c5cce121703b4c0b006a5eb7ed",
+      "occurrences": 2,
+      "ref": "ghcr.io/openclaw/openclaw:latest"
+    }
+  ],
+  "unpinned_installs": [
+    {
+      "id": "cursor-cli",
+      "command": "openclaw plugins install clawhub:@jeehou/openclaw-cursor-cli",
+      "where": "vantio-enterprise docs/ops/OPENCLAW_PLANE1_PHANTOM_BOX.md"
+    },
+    {
+      "id": "googlechat",
+      "command": "openclaw plugins install @openclaw/googlechat",
+      "where": "vantio-enterprise scripts/plane1_googlechat_enable.sh"
+    },
+    {
+      "id": "plane1-fs-proof",
+      "command": "npx -y @modelcontextprotocol/server-filesystem",
+      "where": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    }
+  ]
+}

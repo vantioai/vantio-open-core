@@ -1,0 +1,28 @@
+{
+  "schema": "vantio.openclaw.pin/1",
+  "cve": "CVE-2026-25253",
+  "advisory": "GHSA-g8p2-7wf7-98mq",
+  "fixed_version": "2026.1.29",
+  "resolved_at_utc": "2026-10-16T15:49:13Z",
+  "image": {
+    "repository": "ghcr.io/openclaw/openclaw",
+    "version": "2026.10.4",
+    "index_digest": "sha256:614004ec2cf2e6095124ea544dc8d950c49306aef445a1fc300b88717e24261a",
+    "linux_amd64_manifest_digest": "sha256:07091f4b3fef9b56f3b6f5d556a2a48cea7ac9d4b3634235c1eccc15f5cf91ed",
+    "config_digest": "sha256:1500f1058cec475b9f2d2725554aed424ed136533071016f3734fd772aadc695",
+    "revision": "383c124cc32ffee3f8e56f549b88da94d269a4af",
+    "source": "https://github.com/openclaw/openclaw"
+  },
+  "npm": {
+    "name": "openclaw",
+    "version": "2026.10.4",
+    "integrity": "sha512-+FH0StZF1tlTazM7JJGY6JePeJmhFNSRByi2Q3jXPRiLO7o4dJh2xa9Vy4Dk8Cd2ic8B7Zkf5NfEaCCWUkgqnQ==",
+    "shasum": "ac000cc196b31208b0108c171780a3312ea26e5e"
+  },
+  "registry_latest_matches_pin": true,
+  "runbook_image": {
+    "version": "2026.6.34",
+    "index_digest": "sha256:47d342bafe83bd3b2dca6f1d8d8b608ba7b542a1952564960648943346206759",
+    "note": "Runbook says the 2026.6.34 ACP CLI is present on Phantom-Box. That is not an openclaw --version capture. The live image id is an approval-gate read."
+  }
+}

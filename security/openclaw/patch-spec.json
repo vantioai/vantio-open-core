@@ -1,0 +1,60 @@
+{
+  "schema": "vantio.openclaw.patch-spec/1",
+  "apply": "approval-gate",
+  "image_from": "ghcr.io/openclaw/openclaw:latest",
+  "image_to": "ghcr.io/openclaw/openclaw@sha256:614004ec2cf2e6095124ea544dc8d950c49306aef445a1fc300b88717e24261a",
+  "targets": [
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "plane1-openclaw/docker-compose.yml",
+      "git_blob": "9de238e56427f905aab88a29a37b5154f5b454c6",
+      "occurrences": 1
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "scripts/start_plane1_openclaw.sh",
+      "git_blob": "1c9e3c24dfca1de611fe52bc5d68fa21a5d32061",
+      "occurrences": 1
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "scripts/plane1_openclaw_desktop_enable.sh",
+      "git_blob": "c96294fb978b96299c0da8c78dc8a45ecac4a577",
+      "occurrences": 1
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "agent-hands/docker-compose.yml",
+      "git_blob": "601a59f3093f0cb040281d1360b7bcf2d3348a03",
+      "occurrences": 2
+    },
+    {
+      "repo": "vantioai/vantio-enterprise",
+      "commit": "59002fb5df244702b1df344c1258839f9b8a3d6b",
+      "path": "docs/ops/OPENCLAW_PLANE1_PHANTOM_BOX.md",
+      "git_blob": "dd4a9098b4dbe3c5cce121703b4c0b006a5eb7ed",
+      "occurrences": 2
+    }
+  ],
+  "install_replacements": [
+    {
+      "id": "cursor-cli",
+      "from": "openclaw plugins install clawhub:@jeehou/openclaw-cursor-cli",
+      "to": "git checkout ee2fc0c57d39dd65e3cbc260a3a43f319a74ece9 && sha256sum -c <(printf '%s  package.json\\n' 8963a59dcf32e532344d053ae4f58f5d292f5021d86513d513f63027351e4ef6) && openclaw plugins install ."
+    },
+    {
+      "id": "googlechat",
+      "from": "openclaw plugins install @openclaw/googlechat",
+      "to": "openclaw plugins install @openclaw/googlechat@2026.10.4"
+    },
+    {
+      "id": "plane1-fs-proof",
+      "from": "npx -y @modelcontextprotocol/server-filesystem",
+      "to": "npx -y @modelcontextprotocol/server-filesystem@1.0.0"
+    }
+  ]
+}

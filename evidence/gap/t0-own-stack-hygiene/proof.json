@@ -1,0 +1,71 @@
+{
+  "generated_at_utc": "2026-10-16T15:59:28Z",
+  "schema": "vantio.gap.t0.proof/1",
+  "design_commit": "39ad6c2f8373a29823159f5212dff6ebfb2f68d2",
+  "label": "Lab-only",
+  "verified_subset": [
+    "git reads named in docs/gap/t0-own-stack-hygiene/00-DESIGN.md",
+    "registry digests recorded in security/openclaw/pin.json"
+  ],
+  "cve": "CVE-2026-25253",
+  "fixed_version": "2026.1.29",
+  "pinned_version": "2026.10.4",
+  "running_version": "unknown",
+  "affected": "unknown",
+  "registry_latest_affected": false,
+  "checker_ok": true,
+  "error_count": 0,
+  "approval_gates": [
+    "phantom-box-readonly-verify",
+    "phantom-box-apply-image-pin",
+    "phantom-box-recreate-only-if-version-below-2026.1.29",
+    "phantom-box-rotate-gateway-token-only-if-affected"
+  ],
+  "negative_cases": [
+    {
+      "name": "version-2026.1.28-affected",
+      "fail_closed": true
+    },
+    {
+      "name": "version-2026.1.29-patched",
+      "fail_closed": true
+    },
+    {
+      "name": "version-2026.1.29-beta-below-release",
+      "fail_closed": true
+    },
+    {
+      "name": "calver-2026.10.4-after-2026.6.34",
+      "fail_closed": true
+    },
+    {
+      "name": "lexicographic-trap",
+      "fail_closed": true
+    },
+    {
+      "name": "floating-tag-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "affected-tag-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "blocked-publisher-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "marketplace-clawhub-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "hook-hash-mismatch-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "missing-pin-rejected",
+      "fail_closed": true
+    }
+  ],
+  "negative_cases_closed": true
+}

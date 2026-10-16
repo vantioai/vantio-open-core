@@ -1,0 +1,253 @@
+{
+  "schema": "vantio.openclaw.allowlist/1",
+  "note": "Created 2026-10-16. No earlier in-house OpenClaw allow-list existed in vantio-open-core.",
+  "entries": [
+    {
+      "id": "cursor-cli",
+      "kind": "plugin",
+      "source": "git",
+      "publisher": "jeehou",
+      "version": "0.0.6",
+      "git_commit": "ee2fc0c57d39dd65e3cbc260a3a43f319a74ece9",
+      "package_json_sha256": "8963a59dcf32e532344d053ae4f58f5d292f5021d86513d513f63027351e4ef6",
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise docs/ops/OPENCLAW_PLANE1_PHANTOM_BOX.md"
+    },
+    {
+      "id": "browser",
+      "kind": "plugin",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_browser_enable.sh"
+    },
+    {
+      "id": "cua-computer",
+      "kind": "plugin",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_desktop_enable.sh",
+      "note": "Allowed only when the pinned image already contains the plugin. The desktop script's npm install attempt is not an allowed install path."
+    },
+    {
+      "id": "googlechat",
+      "kind": "plugin",
+      "source": "npm",
+      "package": "@openclaw/googlechat",
+      "version": "2026.10.4",
+      "integrity": "sha512-Og+HTkRAoD5UcPsQVmneuELVS5GOCJLjd56yF4ncnmS/bTnK0zxV6q/aCNkU+9wP69n+dcM7WXxOa4//rf3geA==",
+      "shasum": "d911ee96cf0af7a462dca648c46b6dfe98252e6c",
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_googlechat_enable.sh"
+    },
+    {
+      "id": "healthcheck",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "taskflow",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "taskflow-inbox-triage",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "browser-automation",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "weather",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "skill-creator",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "clawhub",
+      "kind": "skill",
+      "source": "image-bundled",
+      "binds_image": true,
+      "marketplace_install_allowed": false,
+      "name_collision": "The same skill id was published on the marketplace by a ClawHavoc publisher. This entry is the image-bundled client only.",
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "plane1-fs-proof",
+      "kind": "mcp",
+      "source": "npm",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "1.0.0",
+      "integrity": "sha512-2fN6qhpsiPSBAe0ev1qDPk4sCWdULCZQTuYc4ZY7+BDWQ1XCxLB+7dqStF2ZflgG4G/9vTwQsjxh7pjFqrrpcg==",
+      "shasum": "af4d1b4851ffe0c394c6e1ac5135f2b4c3318508",
+      "marketplace_install_allowed": false,
+      "referenced_by": "vantio-enterprise scripts/plane1_openclaw_cheap_unlocks.sh"
+    },
+    {
+      "id": "cursor-before-shell",
+      "kind": "hook",
+      "source": "in-repo",
+      "path": "integrations/hooks/cursor-hooks.json",
+      "sha256": "82563e99a5f23f589e2c3aaa086c9e51f7a9e5a653b9cab4fc039a6485691ecb",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "claude-pre-tool-bash",
+      "kind": "hook",
+      "source": "in-repo",
+      "path": "integrations/hooks/claude-code-settings.example.json",
+      "sha256": "0f3bf53ec59d5a07b354114df179b758b28c6d3687dd29765cb60d48a66a2c90",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "openclaw-optics-sketch",
+      "kind": "example",
+      "source": "in-repo",
+      "path": "integrations/hooks/openclaw-plugin.example.md",
+      "sha256": "02d45fd99e7b0129d17c763a7daff123a7cd7a4fc55347be2e3643bfa7ef22f1",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "optics-hook-helper",
+      "kind": "hook",
+      "source": "in-repo",
+      "path": "integrations/hooks/lib/maybe-vantio-run.mjs",
+      "sha256": "c1b2131fcd8067cf10ffe6c6fc026fa1440e6176109eeb9d58c71ad075711aca",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "hitl_approvals",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "86d260ad83114b348aa7cb04d88cd7e85808679a",
+      "path": "skills/approvals/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "google_chat_notify",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "1489b2e0f6d7ef7fbb7278625df17b793904dc4f",
+      "path": "skills/chat/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "content_draft",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "2885347e2ffcbce3e529c7e8fc7daf60320c4a09",
+      "path": "skills/content/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "cs_triage",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "c8923d4cf3d8ce8e7436a6f98f426a842bf25ca6",
+      "path": "skills/cs/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "finance_payroll",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "541bb5437fcb1192c5123e17bd3aa9ab82f18916",
+      "path": "skills/finance/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "growth_funnel",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "9ceab7deb327e31b477fc95869d96ede40cca2fc",
+      "path": "skills/growth/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "heal",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "2ece54c5c6386e46a398c9ba64589b34f658c210",
+      "path": "skills/heal/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "legal_review",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "6834d5faaef1f17994350e04fd84218d61a72412",
+      "path": "skills/legal/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "product_triage",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "f59df0124406614a4e55749e0e43a2a76e1e2b60",
+      "path": "skills/product/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "research_scout",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "6db58aec1c8df0b1d17fcb192efc0bd99fdb3243",
+      "path": "skills/research/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "sales_outbound",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "1267eae041ecb1920ce5f6784cc60923297ce159",
+      "path": "skills/sales/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    },
+    {
+      "id": "security_posture",
+      "kind": "enterprise-ops-pointer",
+      "source": "enterprise-ops",
+      "git_blob": "5917b554fe666fb5e8c6e457be6219828b81e4a5",
+      "path": "skills/security/SKILL.md",
+      "indicator_scan": "clear",
+      "marketplace_install_allowed": false
+    }
+  ]
+}
