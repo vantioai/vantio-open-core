@@ -104,6 +104,69 @@ class Phase2GradeTests(unittest.TestCase):
         )
         self.assertFalse(unnamed["process_restart_held"])
 
+    def test_container_exit_records_fail_open_and_fail_closed(self) -> None:
+        closed = grade.grade_container_exit(file_errno=13, egress_errno=1, program_listed=True)
+        self.assertEqual(closed["classification"], "fail_closed")
+        self.assertEqual(closed["host_result"], "RECORDED")
+        self.assertFalse(closed["lab_pass"])
+        self.assertFalse(closed["customer_claim"])
+        opened = grade.grade_container_exit(file_errno=0, egress_errno=0, program_listed=True)
+        self.assertEqual(opened["classification"], "fail_open")
+        mixed = grade.grade_container_exit(file_errno=13, egress_errno=0, program_listed=True)
+        self.assertEqual(mixed["classification"], "mixed")
+        missing = grade.grade_container_exit(file_errno=None, egress_errno=0, program_listed=None)
+        self.assertEqual(missing["classification"], "unmeasured")
+        host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        body = host.split("def run_r15", 1)[1].split("\ndef run_2g", 1)[0]
+        self.assertNotIn("cgroup detach", body)
+        self.assertNotIn(".unlink(", body)
+        self.assertNotIn("rmdir", body)
+        self.assertIn('["docker", "stop"', body)
+        self.assertIn("detached_by_lab", body)
+
+    def test_rollback_names_the_missing_second_image(self) -> None:
+        body = grade.grade_rollback_gap(
+            from_pin=grade.PUBLIC_INSTALLER_PIN,
+            to_seal=grade.WORKING_SEAL,
+            rollback_image_present=False,
+        )
+        self.assertEqual(body["reason"], "rollback_image_absent")
+        self.assertEqual(body["host_result"], "HOLD")
+        self.assertEqual(body["host_rollback"], "NOT_RUN")
+        self.assertFalse(body["upgrade_pass"])
+        self.assertNotEqual(grade.PUBLIC_INSTALLER_PIN, grade.WORKING_SEAL)
+        self.assertNotEqual(grade.WORKING_SEAL, grade.PREVIOUS_WORKING_SEAL)
+        wrong = grade.grade_rollback_gap(
+            from_pin=grade.PUBLIC_INSTALLER_PIN,
+            to_seal=grade.PREVIOUS_WORKING_SEAL,
+            rollback_image_present=False,
+        )
+        self.assertEqual(wrong["reason"], "seal")
+        host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        run = host.split("def run_2c", 1)[1].split("\ndef run_2d", 1)[0]
+        self.assertNotIn("docker", run)
+        self.assertIn("grade_rollback_gap", run)
+        perf = host.split("def run_2e", 1)[1].split("\ndef run_2f", 1)[0]
+        self.assertIn("time_revoke=True", perf)
+        self.assertIn("revoke_convergence_ms", perf)
+
+    def test_redteam_kill_stays_on_the_pre_phase(self) -> None:
+        text = Path(__file__).resolve().parents[1].joinpath("gcp", "lab-guests", "redteam_rows.py").read_text(
+            encoding="utf-8"
+        )
+        start = text.index("def kill_on_this_phase")
+        end = text.index("\ndef ", start + 1)
+        namespace: dict[str, object] = {}
+        exec(text[start:end], namespace)
+        kill = namespace["kill_on_this_phase"]
+        assert callable(kill)
+        self.assertTrue(kill("pre"))
+        self.assertFalse(kill("post"))
+        self.assertIn('OUT_PATH = Path("/var/lib/vantio-lab/redteam-rows.json")', text)
+        steps = Path(__file__).resolve().parents[1].joinpath("aws", "w3_lab_steps.py").read_text(encoding="utf-8")
+        self.assertIn('REDTEAM_ROWS_REMOTE = "/var/lib/vantio-lab/redteam-rows.json"', steps)
+        self.assertNotIn(":/tmp/redteam-rows.json", steps)
+
     def test_dead_loader_that_still_allows_enrolled_traffic_fails(self) -> None:
         body = grade.grade_crash(enrolled_errno=0, unenrolled_errno=0)
         self.assertEqual(body["classification"], "silent_weakening")

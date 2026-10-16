@@ -160,7 +160,11 @@ def execute(env: Mapping[str, str], od: Any) -> int:
                 if line.startswith("brain_staged "):
                     print(line[:500])
         od._ssh(project, name, brain_rows_command(od.GUEST_DIR))
-        guest = _read_remote(od, project, name, "/tmp/redteam-rows.json", raw_dir / "rows.json")
+        guest = None
+        for remote in ("/var/lib/vantio-lab/redteam-rows.json", "/tmp/redteam-rows.json"):
+            guest = _read_remote(od, project, name, remote, raw_dir / "rows.json")
+            if isinstance(guest, dict):
+                break
     finally:
         attempts: list[dict] = []
         if isinstance(descendant, dict):

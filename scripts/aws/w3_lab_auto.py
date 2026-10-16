@@ -56,7 +56,9 @@ HOURS_PER_MONTH = Decimal("730")
 ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small", BRAIN_INSTANCE_TYPE)
 CANONICAL_OWNER = "099720109477"
 DEBIAN_OWNER = "136693071363"
+AMAZON_LINUX_OWNER = "137112412989"
 DEBIAN_NAME_RE = re.compile(r"^debian-12-amd64-[0-9]{8}-[0-9]{4}$")
+AL2023_NAME_RE = re.compile(r"^al2023-ami-2023\..*x86_64$")
 # Last OIDC launch that RunInstances allowed. Run 36831748889, 2026-10-01.
 PINNED_IMAGE_ID = "ami-0fa99aa8f97f9e30b"
 IMAGE_ID_RE = re.compile(r"^ami-[0-9a-f]{8,17}$")
@@ -667,11 +669,34 @@ def _machine_image_ok(image: Mapping[str, Any]) -> bool:
     return True
 
 
-def require_available_image(payload: Mapping[str, Any], image_id: str) -> str:
-    """Accept the pinned Ubuntu image, or one official Debian 12 amd64 image.
+def _ubuntu_server_name(name: object, token: str) -> bool:
+    return isinstance(name, str) and token in name and "pro" not in name.lower()
 
-    This does not launch. Debian 12 must be owned by 136693071363 and named
-    debian-12-amd64-YYYYMMDD-HHMM. The default launch id stays the Ubuntu pin.
+
+def ssh_user_for_image(image_name: str, image_owner: str, image_id: str) -> str:
+    """The account Instance Connect must name. Noble and Jammy use ubuntu.
+
+    Debian 12 uses admin. Amazon Linux 2023 uses ec2-user. An unnamed image
+    that is not the Noble pin stays admin, which is the Debian account.
+    """
+    name = image_name.lower()
+    if "debian" in name or image_owner == DEBIAN_OWNER:
+        return "admin"
+    if "al2023" in name or image_owner == AMAZON_LINUX_OWNER:
+        return "ec2-user"
+    if image_id and image_id != PINNED_IMAGE_ID and not name:
+        return "admin"
+    return "ubuntu"
+
+
+def require_available_image(payload: Mapping[str, Any], image_id: str) -> str:
+    """Accept Noble, Jammy, official Debian 12, or official AL2023.
+
+    This does not launch and does not change IAM. Debian 12 must be owned by
+    136693071363 and named debian-12-amd64-YYYYMMDD-HHMM. Jammy uses the
+    Canonical owner and ubuntu-jammy-22.04-amd64-server. AL2023 uses owner
+    137112412989 and an al2023-ami-2023 name. The default launch id stays
+    the Noble pin.
     """
     images = payload.get("Images")
     if not isinstance(images, list) or len(images) != 1 or not isinstance(images[0], Mapping):
@@ -680,15 +705,22 @@ def require_available_image(payload: Mapping[str, Any], image_id: str) -> str:
     if image.get("ImageId") != image_id or image.get("State") != "available":
         raise GuardAbort("image_unavailable")
     name = image.get("Name")
-    if image.get("OwnerId") == DEBIAN_OWNER:
+    owner = image.get("OwnerId")
+    if owner == DEBIAN_OWNER:
         if not isinstance(name, str) or DEBIAN_NAME_RE.fullmatch(name) is None or not _machine_image_ok(image):
             raise GuardAbort("image_rejected")
         return image_id
-    if image.get("OwnerId") != CANONICAL_OWNER:
+    if owner == AMAZON_LINUX_OWNER:
+        if not isinstance(name, str) or AL2023_NAME_RE.fullmatch(name) is None or not _machine_image_ok(image):
+            raise GuardAbort("image_rejected")
+        return image_id
+    if owner != CANONICAL_OWNER:
         raise GuardAbort("image_owner")
     if not _machine_image_ok(image):
         raise GuardAbort("image_rejected")
-    if not isinstance(name, str) or "ubuntu-noble-24.04-amd64-server" not in name or "pro" in name.lower():
+    noble = _ubuntu_server_name(name, "ubuntu-noble-24.04-amd64-server")
+    jammy = _ubuntu_server_name(name, "ubuntu-jammy-22.04-amd64-server")
+    if not noble and not jammy:
         raise GuardAbort("image_rejected")
     return image_id
 

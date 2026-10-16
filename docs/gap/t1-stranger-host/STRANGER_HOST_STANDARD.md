@@ -60,7 +60,7 @@ The operator runs `sha256sum -c` on `seal.oci.tar` with the digest they were han
 | `seal_is_tracking` | the digest is `16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a` |
 | `seal_bytes_mismatch` | the file digest differs from the handover digest |
 
-PASS records `sha256sum` as `seal.oci.tar: OK`. `working_seal` is true only for `bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d`. The comparison digest `6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403` may pass this step with `working_seal` false and `comparison_seal` true. Any other well-formed handover digest may pass with both flags false. Passing step 2 does not make that digest the working seal.
+PASS records `sha256sum` as `seal.oci.tar: OK`. On 2026-10-16 Zachary set the working seal to `6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403`. That digest is also the comparison digest, so both `working_seal` and `comparison_seal` are true for it. The previous working seal `bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d` may still pass this step with both flags false. Any other well-formed handover digest may pass with both flags false. Passing step 2 does not by itself move a capability to Shipped.
 
 ## Step 3 — Enforcement
 

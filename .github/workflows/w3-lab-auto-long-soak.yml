@@ -2,8 +2,9 @@ name: W3 lab auto long soak
 
 # Launch one Free-lab host whose life tag is 36 hours, then exit.
 # A later collect workflow reads it. This file does not stay online for the soak.
-# The capability switch ships false, so a dispatch writes BLOCKED_IAM and does
-# not call the cost gate or RunInstances.
+# max_life_hours_36 is read from lab_iam_capabilities.json. execute defaults
+# false. Termination protection stays off: disable_api_termination is false
+# because the sweeper role cannot clear it.
 # Trust subject, after the switch is true and this file is on main:
 #   repo:vantioai/vantio-open-core:environment:w3-lab-auto
 # Billing role stays on the cost-gate workflow. Launch uses vantio-w3-lab-provision.

@@ -485,6 +485,7 @@ SCP_FROM_REMOTES = frozenset(
         "/tmp/gcp-kernel-facts.json",
         "/tmp/gcp-plumb.json",
         "/tmp/redteam-rows.json",
+        "/var/lib/vantio-lab/redteam-rows.json",
         ROWS_JSON,
     }
 )

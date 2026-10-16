@@ -22,7 +22,7 @@ import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
 NOW = datetime(2026, 9, 30, 16, 0, tzinfo=timezone.utc)
-SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
+SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
 PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 INSTANCE = "i-0123456789abcdef0"
 SECRET = "SUPER-SECRET-PRIVATE"
@@ -1617,6 +1617,10 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         descendant_at = b1.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then')
         descendant = b1[descendant_at : b1.index('exit "$rc"', descendant_at)]
         self.assertLess(descendant.index("ensure_stock_reboot_script"), descendant.index("schedule_forced_reboot"))
+        self.assertIn('python3 "$here/redteam_rows.py" "$stage" pre', b1)
+        self.assertNotIn('redteam_rows.py" "$stage" post', b1)
+        self.assertIn("/var/lib/vantio-lab/redteam-rows.json", b1)
+        self.assertIn("r15-container-exit|2c-upgrade-rollback", text)
         guard_at = text.index('if [ "$mode" = "lsm-guard" ]; then')
         guard = text[text.rfind("publish_durable_rows", 0, guard_at) : text.index('exit "$rc"', guard_at)]
         self.assertLess(guard.index("publish_durable_rows"), guard.index("schedule_forced_reboot"))
@@ -2004,6 +2008,14 @@ class EnterpriseRowSessionTests(unittest.TestCase):
 
         def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
             joined = " ".join(args)
+            if args[0] == "scp" and "redteam-rows.json" in joined:
+                pulled.append(joined)
+                if "/tmp/redteam-rows.json" in joined:
+                    raise AssertionError("descendant-b1 pulled /tmp redteam rows")
+                Path(args[-1]).write_text(
+                    json.dumps({"attempts": [{"technique_id": "pe.tamper.loader_kill"}]}),
+                    encoding="utf-8",
+                )
             if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
                 pulled.append(joined)
                 if "/tmp/enterprise-pe-rows.json" in joined:
@@ -2045,8 +2057,13 @@ class EnterpriseRowSessionTests(unittest.TestCase):
             steps._wait_for_reboot = original
         self.assertEqual(result["status"], "DESCENDANT_B1")
         self.assertEqual(result["boot_id"], "boot-new")
-        self.assertTrue(pulled)
-        self.assertTrue(all("/var/lib/vantio-lab/enterprise-pe-rows.json" in item for item in pulled))
+        enterprise_pulls = [item for item in pulled if "enterprise-pe-rows.json" in item]
+        redteam_pulls = [item for item in pulled if "redteam-rows.json" in item]
+        self.assertTrue(enterprise_pulls)
+        self.assertTrue(all("/var/lib/vantio-lab/enterprise-pe-rows.json" in item for item in enterprise_pulls))
+        self.assertTrue(redteam_pulls)
+        self.assertTrue(all("/var/lib/vantio-lab/redteam-rows.json" in item for item in redteam_pulls))
+        self.assertTrue(result.get("redteam_rows_sha256"))
 
     def test_lsm_guard_reads_the_durable_record_after_tmp_is_wiped(self) -> None:
         runner = FakeAws()

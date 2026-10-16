@@ -1213,6 +1213,7 @@ def _store_serial_log(runner: Runner, instance_id: str, payload: dict[str, Any])
 
 
 LAB_ROWS_REMOTE = "/var/lib/vantio-lab/enterprise-pe-rows.json"
+REDTEAM_ROWS_REMOTE = "/var/lib/vantio-lab/redteam-rows.json"
 
 
 def _read_lab_rows(text: str) -> dict[str, Any]:
@@ -1408,6 +1409,7 @@ def execute_enterprise_rows(
             raise lab.GuardAbort("bundle_wrong_seal")
         battery = os.environ.get("W3_BATTERY", "enterprise").strip() or "enterprise"
         phase_batteries = {
+            "r15-container-exit",
             "2c-upgrade-rollback",
             "2d-crash-recovery",
             "2e-performance",
@@ -1455,11 +1457,13 @@ def execute_enterprise_rows(
         image_id = str(instance.get("ImageId") or "")
         if image_id and lab.IMAGE_ID_RE.fullmatch(image_id) is None:
             raise lab.GuardAbort("image_id")
-        ssh_user = "admin" if image_id and image_id != lab.PINNED_IMAGE_ID else "ubuntu"
         image_name = ""
+        image_owner = ""
         if image_id:
             _accepted, facts = lab.described_image(runner, image_id)
             image_name = lab.exact_image_name(facts.get("image_name"))
+            image_owner = str(facts.get("image_owner") or "")
+        ssh_user = lab.ssh_user_for_image(image_name, image_owner, image_id)
         payload["image_id"] = image_id
         payload["image_name"] = image_name
         payload["ssh_user"] = ssh_user
@@ -1775,10 +1779,30 @@ def execute_enterprise_rows(
                 connect,
                 public,
                 ssh_runner,
-                ["scp", *base[:-1], f"{ssh_user}@{host}:/tmp/redteam-rows.json", str(redteam_local)],
+                ["scp", *base[:-1], f"{ssh_user}@{host}:{REDTEAM_ROWS_REMOTE}", str(redteam_local)],
                 "",
             )
-            if pulled_redteam.returncode == 0 and redteam_local.is_file():
+            if battery == "descendant-b1":
+                redteam_text = ""
+                if pulled_redteam.returncode == 0 and redteam_local.is_file():
+                    redteam_text = redteam_local.read_text(encoding="utf-8", errors="replace")
+                try:
+                    redteam_body = json.loads(redteam_text) if redteam_text else None
+                except json.JSONDecodeError:
+                    redteam_body = None
+                if not isinstance(redteam_body, dict) or not isinstance(redteam_body.get("attempts"), list):
+                    payload.update(
+                        {
+                            "reason": "redteam_rows_missing" if not redteam_text else "redteam_rows_malformed",
+                            "status": "FAILED",
+                            "guest_rc": ran.returncode,
+                            "mutated": True,
+                        }
+                    )
+                    raise lab.GuardAbort(payload["reason"])
+                _store_guest_rows(redteam_local, redteam_text)
+                payload["redteam_rows_sha256"] = hashlib.sha256(redteam_local.read_bytes()).hexdigest()
+            elif pulled_redteam.returncode == 0 and redteam_local.is_file():
                 _store_guest_rows(redteam_local, redteam_local.read_text(encoding="utf-8", errors="replace"))
                 payload["redteam_rows_sha256"] = hashlib.sha256(redteam_local.read_bytes()).hexdigest()
             live_boot = _remote_boot_id(remote)

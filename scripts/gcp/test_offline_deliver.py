@@ -42,6 +42,7 @@ def _trust_tar(directory: Path, body: bytes, *, extra: bytes | None = None, name
 class OfflineDeliverTest(unittest.TestCase):
     def test_redteam_rows_pull_names_a_refused_remote(self) -> None:
         self.assertIn("/tmp/redteam-rows.json", od.SCP_FROM_REMOTES)
+        self.assertIn("/var/lib/vantio-lab/redteam-rows.json", od.SCP_FROM_REMOTES)
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
             with self.assertRaises(SystemExit) as caught:

@@ -11,9 +11,14 @@ from __future__ import annotations
 import ipaddress
 from typing import Any
 
-WORKING_SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
+# Zachary, 2026-10-16: the comparison digest is the working seal.
+# The previous working seal was bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d.
+WORKING_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
+PREVIOUS_WORKING_SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
+PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
+    "r15-container-exit",
     "2c-upgrade-rollback",
     "2d-crash-recovery",
     "2e-performance",
@@ -260,6 +265,78 @@ def ungraded_egress(battery: str, reason: str) -> dict[str, Any]:
     body["host_result"] = "NOT_GRADED"
     body["expectation_met"] = False
     body["classification"] = "not_graded"
+    return body
+
+
+def grade_container_exit(
+    *,
+    file_errno: int | None,
+    egress_errno: int | None,
+    program_listed: bool | None,
+    egress_anchor: int = 0,
+) -> dict[str, Any]:
+    """After the loader container exits, before uninstall.
+
+    This records whether the secret open and one egress still deny. It does
+    not detach a program and it does not turn a fail-open into a pass.
+    """
+    body = _base("r15-container-exit")
+    body["file_errno"] = file_errno
+    body["egress_errno"] = egress_errno
+    body["program_listed"] = program_listed
+    body["measured_before_uninstall"] = True
+    file_denied = file_errno == 13
+    file_allowed = file_errno == 0
+    egress_denied = egress_errno in (1, 13, 111) or _recorded_egress_block(egress_errno, egress_anchor)
+    egress_allowed = egress_errno == 0
+    if file_errno is None or egress_errno is None:
+        classification = "unmeasured"
+    elif (file_denied or egress_denied) and (file_allowed or egress_allowed):
+        classification = "mixed"
+    elif file_denied or egress_denied:
+        classification = "fail_closed"
+    elif file_allowed and egress_allowed:
+        classification = "fail_open"
+    else:
+        classification = "unmeasured"
+    body["classification"] = classification
+    body["file_open"] = "denied" if file_denied else "allowed" if file_allowed else "other"
+    body["egress"] = "denied" if egress_denied else "allowed" if egress_allowed else "other"
+    body["host_result"] = "RECORDED"
+    body["expectation_met"] = False
+    return body
+
+
+def grade_rollback_gap(*, from_pin: str, to_seal: str, rollback_image_present: bool) -> dict[str, Any]:
+    """e0b19d55 to the working seal and back needs a second image on the guest.
+
+    The public installer pin is not a seal tar. Reloading the one seal tar
+    the runner copied is not that upgrade.
+    """
+    body = _base("2c-upgrade-rollback")
+    body["from_pin"] = from_pin
+    body["to_seal"] = to_seal
+    body["public_pin_unchanged"] = from_pin == PUBLIC_INSTALLER_PIN
+    body["host_rollback"] = "NOT_RUN"
+    body["upgrade_pass"] = False
+    if from_pin != PUBLIC_INSTALLER_PIN:
+        body["action"] = "HOLD"
+        body["reason"] = "public_pin_mismatch"
+        body["host_result"] = "FAIL"
+        return body
+    if to_seal != WORKING_SEAL:
+        body["action"] = "HOLD"
+        body["reason"] = "seal"
+        body["host_result"] = "FAIL"
+        return body
+    if not rollback_image_present:
+        body["action"] = "HOLD"
+        body["reason"] = "rollback_image_absent"
+        body["host_result"] = "HOLD"
+        return body
+    body["action"] = "HOLD"
+    body["reason"] = "rollback_image_not_graded"
+    body["host_result"] = "HOLD"
     return body
 
 
