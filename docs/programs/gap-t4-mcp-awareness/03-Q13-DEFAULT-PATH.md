@@ -20,7 +20,7 @@ For `node`, `npx`, `tsx`, and `ts-node`, `vantio run` adds `--import` of `packag
 
 `--mcp-enforce` does not win over `VANTIO_MCP_AWARENESS=off`. A mode other than `enforce` stays observe. A value other than `block` stays log.
 
-Python `vantio run` loads the same library for a copy of each complete line on a child stdin pipe. The python process still owns that pipe.
+Python `vantio run` loads the same library for a copy of each complete line on a child stdin pipe. The python process still owns that pipe. A one-shot `node` process evaluates the copy and does not listen. Observe forwards the original line. Enforce withholds the line when a record action is `BLOCK` or `GAP`, and when that helper returns no records.
 
 ## No proxy hop
 
