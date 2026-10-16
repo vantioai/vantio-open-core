@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from vantio_install.kernel_lockdown import read_facts
+
 
 def empty_runtime_state() -> dict:
     return {
@@ -49,6 +51,9 @@ def ready_host(**overrides: object) -> dict:
         "node_version": "v20.11.0",
         "npm_version": "9.2.0",
         "effective_uid": 0,
+        "lockdown_raw": "none [integrity] confidentiality",
+        "lockdown_mode": "integrity",
+        "secure_boot": "absent",
     }
     host.update(empty_runtime_state())
     host["active_lsm"] = "lockdown,capability,landlock,yama,apparmor,bpf"
@@ -104,6 +109,7 @@ def probe_live() -> dict:
     host["node_version"] = _node_version()
     host["npm_version"] = _npm_version()
     host["effective_uid"] = os.geteuid()
+    host.update(read_facts(Path("/")))
     lsm_path = Path("/sys/kernel/security/lsm")
     try:
         host["active_lsm"] = lsm_path.read_text(encoding="utf-8").strip()
