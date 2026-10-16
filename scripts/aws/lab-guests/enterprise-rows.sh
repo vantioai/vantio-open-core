@@ -127,10 +127,67 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   sleep 2
 done
 test "$ready" = 1
+
+# The seal tar is already sha256-checked. docker load prints the tag baked
+# into that tar. Keep the historical lab tag, and also accept a
+# vantio-phantom-engine tag that is the engine commit. Anything else stops
+# here and writes a rows file so the runner can see the refusal.
+normalize_loaded_image() {
+  local loaded=$1
+  loaded=${loaded#docker.io/library/}
+  loaded=${loaded//$'\r'/}
+  loaded=${loaded#"${loaded%%[![:space:]]*}"}
+  loaded=${loaded%"${loaded##*[![:space:]]}"}
+  if [ "$loaded" = "$image_name" ]; then
+    printf '%s\n' "$loaded"
+    return 0
+  fi
+  if printf '%s' "$loaded" | grep -Eq '^vantio-phantom-engine:[0-9a-f]{7,40}$'; then
+    printf '%s\n' "$loaded"
+    return 0
+  fi
+  return 1
+}
+
+refuse_loaded_image() {
+  local loaded=$1
+  printf '%s\n' "loaded image refused" >&2
+  python3 - "$loaded" <<'PY'
+import json
+import sys
+
+loaded = sys.argv[1][:180]
+body = {
+    "battery": "lsm-guard",
+    "host_result": "FAIL",
+    "reason": "loaded_image_refused",
+    "loaded_image": loaded,
+    "lab_pass": False,
+    "customer_claim": False,
+    "reboot_requested": False,
+    "bootchain": {},
+}
+text = json.dumps(body) + "\n"
+with open("/tmp/enterprise-pe-rows.json", "w", encoding="utf-8") as handle:
+    handle.write(text)
+print(text, end="")
+PY
+  chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  exit 6
+}
+
+accept_loaded_image() {
+  local load=$1 loaded normalized
+  loaded=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
+  if ! normalized=$(normalize_loaded_image "$loaded"); then
+    refuse_loaded_image "$loaded"
+  fi
+  printf '%s\n' "$normalized"
+}
+
 load=$(sudo docker load -i "$here/seal.oci.tar" 2>&1)
 printf '%s\n' "$load"
-image=$(printf '%s\n' "$load" | sed -n 's/^Loaded image: //p' | tail -n 1)
-test "$image" = "$image_name"
+image=$(accept_loaded_image "$load")
 
 # The distro bpftool is a wrapper. It exits 2 when the package for this
 # kernel is absent, even if another kernel's bpftool binary is installed.

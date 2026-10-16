@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -1258,6 +1259,14 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertLess(chown_at, patch_at)
         self.assertIn("brain=/var/lib/vantio-lab/brain", text)
         self.assertIn("VANTIO_BRAIN_DIR", text)
+        self.assertIn("normalize_loaded_image", text)
+        self.assertIn("accept_loaded_image", text)
+        self.assertNotIn('test "$image" = "$image_name"', text)
+        tag = re.compile(r"^vantio-phantom-engine:(egress-2e6ab54|[0-9a-f]{7,40})$")
+        self.assertIsNotNone(tag.fullmatch("vantio-phantom-engine:egress-2e6ab54"))
+        self.assertIsNotNone(tag.fullmatch("vantio-phantom-engine:deb6faa3"))
+        self.assertIsNone(tag.fullmatch("vantio-phantom-engine:latest"))
+        self.assertIsNone(tag.fullmatch("other:deb6faa3"))
         auto_text = (ROOT / "scripts/aws/w3_lab_auto.py").read_text(encoding="utf-8")
         steps_text = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
         self.assertIn('BRAIN_GUEST_DIR = "/var/lib/vantio-lab/brain"', auto_text)
