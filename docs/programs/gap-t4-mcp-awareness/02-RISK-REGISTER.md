@@ -37,4 +37,12 @@ Evidence timestamp (UTC): 2026-10-16T16:46:35.708Z
 Node: v22.14.0  
 Result: 26 assertions ok, including the Q7 path-prefix cases. Fuzz seed 1413742596, 500 iterations.  
 Label for those assertions: **Verified**. This is the in-process library on this workspace. It is not a host proof and it is not a symlink jail.  
-Phantom Engine host copy and host enforce stay **Roadmap**.
+Phantom Engine host copy and host enforce stay **Roadmap**. The copy primitive is chosen in `04-HOST-COPY.md`. It is not loaded.
+
+| ID | Risk | Label | Exposure |
+| --- | --- | --- | --- |
+| R23 | A truncated host copy can hide a write tool in the unread tail. | Lab-only classification. Roadmap for the attach | The row is a gap, not an allow |
+| R24 | A replaced fd can point a registered slot at another stream. | Roadmap | The map does not prove the pipe |
+| R25 | TLS and unregistered fds are not copied as MCP. | Roadmap | Those calls are not observed by this copy |
+| R26 | A full ring drops the event. | Roadmap | Loss is a missing observation, not an allow |
+| R27 | The classification can be described as host enforce. | Roadmap for enforce | A copy after `write` returns cannot withhold the write |
