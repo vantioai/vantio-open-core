@@ -14,6 +14,8 @@ from pathlib import Path
 from vantio import shield
 from vantio import _http_observe as observe
 
+from .refused_port import RefusedPort
+
 DELAY_S = 0.25
 MIN_MS = 200
 
@@ -169,10 +171,10 @@ class SocketTimingTests(unittest.IsolatedAsyncioTestCase):
         self._assert_timed(call, ok=True)
 
     async def test_refused_connect_is_a_timed_network_error(self) -> None:
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        port = int(probe.getsockname()[1])
-        probe.close()
+        with RefusedPort() as refused:
+            await self._refused_connect(refused.port)
+
+    async def _refused_connect(self, port: int) -> None:
         async with shield(trace_id="py-time-refused"):
             real = observe._orig_socket_connect
 
