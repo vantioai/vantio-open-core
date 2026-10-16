@@ -1,7 +1,7 @@
 {
   "schema": "vantio.optics.t3_inventory_proof.v1",
   "label": "lab-only",
-  "observed_at": "2026-10-16T16:30:27Z",
+  "observed_at": "2026-10-16T17:18:12Z",
   "runtime": "namespace",
   "scanner_euid": 1000,
   "scored_population": "seeded_container_ids",
@@ -27,13 +27,13 @@
   "lineage_socket_reach": [
     {
       "host": "api.anthropic.com",
-      "port": 8443,
+      "port": 53840,
       "provider": "anthropic",
       "source": "socket"
     },
     {
       "host": "api.anthropic.com",
-      "port": 44572,
+      "port": 8443,
       "provider": "anthropic",
       "source": "socket"
     }
