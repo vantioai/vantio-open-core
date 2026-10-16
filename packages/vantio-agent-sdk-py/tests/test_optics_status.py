@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import tempfile
 import unittest
 import urllib.error
@@ -19,6 +18,7 @@ from vantio._http_observe import (
 from vantio._outcome import http_outcome_label, http_response_text
 
 from .mock_server import MockServer
+from .refused_port import RefusedPort
 
 
 class StatusMappingTests(unittest.TestCase):
@@ -145,13 +145,10 @@ class HttpOutcomeTests(unittest.IsolatedAsyncioTestCase):
         self._assert_application_error(calls[0], 401, "python_urllib")
 
     async def test_urlopen_connection_refused_stays_network_error(self) -> None:
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        port = int(probe.getsockname()[1])
-        probe.close()
-        with self.assertRaises(urllib.error.URLError):
-            async with shield(trace_id="py-urlopen-down"):
-                urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/chat", timeout=2)
+        with RefusedPort() as refused:
+            with self.assertRaises(urllib.error.URLError):
+                async with shield(trace_id="py-urlopen-down"):
+                    urllib.request.urlopen(f"http://127.0.0.1:{refused.port}/v1/chat", timeout=2)
         data = self._log("py-urlopen-down")
         calls = [c for c in data["calls"] if c.get("mediation") == "python_urllib"]
         self.assertEqual(len(calls), 1)

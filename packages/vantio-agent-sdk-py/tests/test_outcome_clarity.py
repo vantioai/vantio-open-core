@@ -60,6 +60,7 @@ from vantio._outcome import (
 )
 
 from .mock_server import MockServer
+from .refused_port import RefusedPort
 
 HTTP_CODES = (200, 302, 400, 401, 403, 404, 408, 409, 422, 429, 500, 502, 503)
 
@@ -592,17 +593,13 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_dns_connection_tls_wrapped_and_unavailable(self) -> None:
         secret = "sk-live-do-not-store"
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        refused_port = int(probe.getsockname()[1])
-        probe.close()
-        with MockServer() as server:
+        with RefusedPort() as refused, MockServer() as server:
             server.respond_with(200, {"ok": True})
             async with shield(trace_id="outcome-transport"):
                 with self.assertRaises(urllib.error.URLError):
                     urllib.request.urlopen("http://does-not-exist.invalid/v1/chat", timeout=2)
                 with self.assertRaises(urllib.error.URLError):
-                    urllib.request.urlopen(f"http://127.0.0.1:{refused_port}/v1/chat", timeout=2)
+                    urllib.request.urlopen(f"http://127.0.0.1:{refused.port}/v1/chat", timeout=2)
                 with self.assertRaises(urllib.error.URLError):
                     urllib.request.urlopen(server.url.replace("http://", "https://", 1) + "/v1/chat", timeout=2)
                 real = observe._orig_urlopen
@@ -748,10 +745,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_optional_clients_classify_transport_chains(self) -> None:
         if requests is None and httpx is None and aiohttp is None and urllib3 is None:
             self.skipTest("no optional HTTP client installed")
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        refused_port = int(probe.getsockname()[1])
-        probe.close()
+        refused = RefusedPort()
         hold = _HoldPort()
         try:
             with MockServer() as server:
@@ -761,7 +755,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     if requests is not None:
                         for url in (
                             "http://does-not-exist.invalid/v1",
-                            f"http://127.0.0.1:{refused_port}/v1",
+                            f"http://127.0.0.1:{refused.port}/v1",
                             https + "/v1",
                             f"http://127.0.0.1:{hold.port}/v1",
                         ):
@@ -770,7 +764,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     if httpx is not None:
                         for url in (
                             "http://does-not-exist.invalid/v1",
-                            f"http://127.0.0.1:{refused_port}/v1",
+                            f"http://127.0.0.1:{refused.port}/v1",
                             https + "/v1",
                             f"http://127.0.0.1:{hold.port}/v1",
                         ):
@@ -779,7 +773,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         async with httpx.AsyncClient(timeout=0.5, verify=False) as client:
                             for url in (
                                 "http://does-not-exist.invalid/v1",
-                                f"http://127.0.0.1:{refused_port}/v1",
+                                f"http://127.0.0.1:{refused.port}/v1",
                                 https + "/v1",
                                 f"http://127.0.0.1:{hold.port}/v1",
                             ):
@@ -790,7 +784,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         async with aiohttp.ClientSession(timeout=timeout) as session:
                             for url, ssl_flag in (
                                 ("http://does-not-exist.invalid/v1", None),
-                                (f"http://127.0.0.1:{refused_port}/v1", None),
+                                (f"http://127.0.0.1:{refused.port}/v1", None),
                                 (https + "/v1", False),
                                 (f"http://127.0.0.1:{hold.port}/v1", None),
                             ):
@@ -802,7 +796,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                         http = urllib3.PoolManager(cert_reqs="CERT_NONE")
                         for url in (
                             "http://does-not-exist.invalid/v1",
-                            f"http://127.0.0.1:{refused_port}/v1",
+                            f"http://127.0.0.1:{refused.port}/v1",
                             https + "/v1",
                             f"http://127.0.0.1:{hold.port}/v1",
                         ):
@@ -810,6 +804,7 @@ class OutcomeIntegrationTests(unittest.IsolatedAsyncioTestCase):
                                 http.request("GET", url, timeout=0.5, retries=False)
         finally:
             hold.close()
+            refused.close()
         calls = self._log("outcome-clients")["calls"]
         blob = json.dumps(calls)
         self.assertNotIn("Application error", blob)
