@@ -274,10 +274,11 @@ PY
   trap record_uninstall RETURN
   # A previous battery can leave this file. The loader truncates it only
   # when it runs, and the shell markers below have to be in it too. The
-  # recorder reads this file, not the script's stderr.
+  # recorder reads this file, not the script's stderr. The shell redirect
+  # owns the file. tee as root is refused in sticky /tmp.
   sudo rm -f /tmp/vantio-uninstall.out
   if ! ensure_working_bpftool; then
-    echo "UNINSTALL_RESIDUAL bpftool missing" | sudo tee -a /tmp/vantio-uninstall.out >&2
+    echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   stop_loader_containers
@@ -308,14 +309,14 @@ PY
   set -e
   cat /tmp/vantio-uninstall.out
   if ! grep -qx 'UNINSTALL_VERIFIED' /tmp/vantio-uninstall.out; then
-    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | sudo tee -a /tmp/vantio-uninstall.out >&2
+    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null | grep -q .; then
     {
       echo "UNINSTALL_RESIDUAL bpffs"
       find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null || true
-    } | sudo tee -a /tmp/vantio-uninstall.out >&2
+    } | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if [ "$require_row" = "yes" ]; then

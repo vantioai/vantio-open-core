@@ -1444,10 +1444,11 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn('sudo python3 - "$here/sticky_write.py"', text)
         uninstall = text[text.index("authorized_uninstall()"): text.index("\nmode=${2:-enterprise}")]
         self.assertLess(uninstall.index("sudo rm -f /tmp/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
-        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | sudo tee -a /tmp/vantio-uninstall.out', uninstall)
-        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | sudo tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out', uninstall)
         self.assertIn('echo "UNINSTALL_RESIDUAL bpffs"', uninstall)
-        self.assertIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertIn("| tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertNotIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
         self.assertNotIn("systemctl reboot --force || true", text)
         self.assertIn(
             "sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json",
