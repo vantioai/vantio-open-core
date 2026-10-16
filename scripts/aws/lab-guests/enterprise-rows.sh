@@ -83,7 +83,7 @@ schedule_forced_reboot() {
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "${2:-}" = "lsm-guard" ]; then
   set +e
-  sudo python3 - "$here" <<'PY'
+  sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here" <<'PY'
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
@@ -107,7 +107,7 @@ stamp_host_evidence() {
   if [ ! -f "$here/baseline_diag.py" ]; then
     return 0
   fi
-  sudo python3 - "$here" << 'PY' || true
+  sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here" << 'PY' || true
 import json
 import sys
 from pathlib import Path
@@ -532,7 +532,7 @@ case "$mode" in
     sudo bash /var/lib/vantio-lab/bin/soak-hourly.sh install
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
-    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh start > /tmp/phase2-host.out 2>&1
+    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh start > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out
@@ -548,7 +548,7 @@ case "$mode" in
     # this phase writes.
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
-    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
+    sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out

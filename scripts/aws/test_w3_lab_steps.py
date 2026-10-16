@@ -1606,7 +1606,15 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn("| tee -a /tmp/vantio-uninstall.out", uninstall)
         self.assertNotIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
         self.assertIn("stamp_host_evidence", text)
-        self.assertIn('sudo python3 - "$here"', text)
+        self.assertIn('sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here"', text)
+        self.assertIn(
+            'VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py"',
+            text,
+        )
+        self.assertIn(
+            'VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh',
+            text,
+        )
         diag = (ROOT / "scripts/aws/lab-guests/baseline_diag.py").read_text(encoding="utf-8")
         self.assertIn('Path("/sys/kernel/security/lockdown")', diag)
         self.assertIn("def read_image_name", diag)
