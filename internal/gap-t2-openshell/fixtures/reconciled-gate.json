@@ -1,0 +1,33 @@
+{
+  "run": {
+    "schema": "vantio.internal.openshell_reconciliation.run.v1",
+    "host_id": "lab-host-1",
+    "window_ms": 5000,
+    "bindings": [
+      {
+        "cgroup_id": "21",
+        "sandbox_id": "policy-demo"
+      }
+    ]
+  },
+  "kernel": [
+    {
+      "host_id": "lab-host-1",
+      "cgroup_id": "21",
+      "EventType": "TLS_EGRESS",
+      "ActionTaken": "OBSERVED",
+      "TraceId": "c0ffee00c0ffee00",
+      "observed_at_ms": 1775014138811,
+      "destination_host": "lab.invalid",
+      "destination_port": 443
+    }
+  ],
+  "openshell": [],
+  "gate": [
+    {
+      "trace_id": "0xc0ffee00c0ffee00",
+      "host_id": "lab-host-1",
+      "action": "OBSERVED"
+    }
+  ]
+}

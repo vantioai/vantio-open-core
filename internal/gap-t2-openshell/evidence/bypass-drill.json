@@ -1,0 +1,21 @@
+{
+  "schema": "vantio.internal.openshell_reconciliation.evidence.v1",
+  "generated_at": "2026-10-16T16:01:29.765Z",
+  "label": "LAB_ONLY",
+  "live_stack": "ROADMAP",
+  "drill": "kernel TLS_EGRESS with an OpenShell process record and no Gate record",
+  "indicator": "BYPASS_INDICATOR",
+  "reason": "no_matching_openshell_or_gate_record",
+  "controls": {
+    "openshell": "matched_openshell",
+    "gate": "matched_gate"
+  },
+  "fixture_sha256": {
+    "bypass-drill.json": "e8f60c55410565495461e772be5be6eec50f017b98e1326bc55b6764c6e7ec3f",
+    "reconciled-openshell.json": "adaa08939d69d54cf67208a557bd56d18dce2137fbcd9ff03ec800dc3e3a6f6b",
+    "reconciled-gate.json": "7dc6888577ea5698c02f643bc87a748a5d063222e9373dcc33ac37ce634c8d8a"
+  },
+  "node": "v22.14.0",
+  "openshell_runtime": "not-executed",
+  "phantom_engine_runtime": "not-executed"
+}

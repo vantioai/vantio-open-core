@@ -25,6 +25,27 @@ Update this file again when the fixture proof has run. Do not delete a risk beca
 | R15 | Sentry on BlueField-4 could be described as something Phantom Engine already does. | Open. Wording rule. | No BlueField port. No hardware claim. |
 | R16 | Public pricing figures from older briefs could be copied. | Open. Wording rule. | Artifacts say Contact Vantio and contain no prices. |
 | R17 | The internal positioning line could be pasted onto the website or README. | Open. | `POSITIONING.md` is marked draft and not for public use. This track does not edit those surfaces. |
+| R18 | One OpenShell network row can match every kernel write to that destination inside the window. Counts are not compared. | Open. Accepted for the lab join. | A second TLS write is not, by itself, `BYPASS_INDICATOR` while the first row still matches. Cardinality is part of the Roadmap live drill. |
+| R19 | An OCSF object with more than 64 keys, or a line over 65,536 bytes, rejects the snapshot. | Open. Accepted. | Rejection emits no finding. A richer live export needs a recorded adapter, not a silent skip. |
+| R20 | `decision_mismatch` recognizes OpenShell disposition `Allowed` and Gate action `ALLOWED` only. | Open. Accepted. | Other spellings stay reconciled without the flag. The flag does not block traffic. |
+
+## Fixture proof
+
+Command: `node --test internal/gap-t2-openshell/test/*.test.cjs`, which also runs `proof/prove-bypass.cjs`.
+
+| Check | Result |
+| --- | --- |
+| Tests | 25 passed |
+| Evidence time | 2026-10-16T16:01:29.765Z |
+| Drill indicator | `BYPASS_INDICATOR` |
+| OpenShell control | `matched_openshell` |
+| Gate control | `matched_gate` |
+| Label | Lab-only |
+| Live OpenShell process | not executed |
+| Live Phantom Engine loader | not executed |
+| Evidence | `internal/gap-t2-openshell/evidence/bypass-drill.json` |
+
+R1 stays open. The fixture proof does not move the live stack off Roadmap. R3, R9, R10, R11, and R12 have fixture coverage and stay open as properties of a live capture.
 
 ## Approval gates still closed
 

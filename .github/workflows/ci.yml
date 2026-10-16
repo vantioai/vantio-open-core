@@ -178,3 +178,20 @@ jobs:
 
       - name: Test Optics docker observe example
         run: python -m unittest deploy/docker/test_observe_example.py -v
+
+  test-openshell-reconciliation:
+    name: Test OpenShell reconciliation fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Test the lab join and run the bypass proof
+        run: |
+          node --test internal/gap-t2-openshell/test/*.test.cjs
+          node internal/gap-t2-openshell/proof/prove-bypass.cjs

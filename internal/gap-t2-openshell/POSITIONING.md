@@ -23,7 +23,7 @@ The sandbox and the host record stay separate. Phantom Engine does not become th
 - Publishing the line, or any paraphrase of it, on vantio.ai, in a README, in a package description, or in a sales asset.
 - Saying the combination was run on an enrolled host. That drill is Roadmap as of this draft.
 - Saying the fixture join is a production verification. The fixture join, once the proof script has run, is Lab-only.
-- Saying either product is unbreakable or audited.
+- A finished assurance claim for either product.
 - A claim about BlueField, Sentry, or any other hardware this track did not run.
 - A claim that a missing OpenShell row is a completed sandbox escape. The indicator means the supplied snapshot has no matching row.
 - Contacting NVIDIA. That contact is an approval gate.

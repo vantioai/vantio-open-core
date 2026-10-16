@@ -34,7 +34,7 @@ Positioning line, internal only: "Independent verification beneath any agent san
 | Reconciliation logic that follows this design | Lab-only, after the fixture proof exists. | The join can run on this runner against recorded fixtures. |
 | Phantom Engine beneath a live OpenShell sandbox on an enrolled host | Roadmap | This runner is not an enrolled host. See the feasibility probe. |
 
-Remaining risks are in `RISK-REGISTER.md`. This document does not say the design is unbreakable or audited.
+Remaining risks are in `RISK-REGISTER.md`. The labels in the table above are the strongest claims this document makes.
 
 ## Scope of the later code
 
@@ -101,7 +101,7 @@ Phantom Engine is not a credential broker. This track must not teach it to becom
 
 OpenShell's `openshell-prover` uses an SMT solver. A boundary check compares a candidate policy with an operator boundary across filesystem paths, L4 network, REST, process identity, and the Landlock compatibility setting. `within_boundary` means the modeled candidate allows nothing beyond the modeled boundary in those domains. The prover documentation states that this does not mean the policy is safe for a task, and it does not mean a running sandbox enforces it. GraphQL, MCP, WebSocket, and JSON-RPC return `unsupported`. A passing proposal-risk check does not imply a passing boundary check. Exit status is `within_boundary` (0), `exceeds_boundary` (1), `error` (2), or `unsupported` / `inconclusive` (3). Anything other than `within_boundary` is a failed check in OpenShell's own instructions.
 
-Phantom Engine's recorded proof object is the kernel event and the local NDJSON ledger. The product spec marks a live Spanner write as target design. Signed-policy ceiling behavior in `architecture_state.md` requires a verified Ed25519 document when deny is on. An unsigned file does not replace compiled defaults. Optics `vantio prove` exports observations. It is not an SMT proof. This track does not add a prover and does not call either product audited.
+Phantom Engine's recorded proof object is the kernel event and the local NDJSON ledger. The product spec marks a live Spanner write as target design. Signed-policy ceiling behavior in `architecture_state.md` requires a verified Ed25519 document when deny is on. An unsigned file does not replace compiled defaults. Optics `vantio prove` exports observations. That export is a record bundle. This track does not add a prover, and it does not treat a modeled check or a ledger export as a finished assurance claim.
 
 ### Evidence and OCSF
 
@@ -187,6 +187,8 @@ Indicators for each kernel row:
 `RECONCILED_OK` records which side matched. `decision_mismatch` is true only when a matched row says the action was allowed (`OpenShell` disposition `Allowed`, or Gate action `ALLOWED`) and the kernel action is `NETWORK_BLOCK` or `BLOCKED`. `OBSERVED` is not an allow, so it does not mismatch a denial. Mismatch does not change the indicator.
 
 A rejected run has status `rejected`, an empty finding list, and one of these reason codes: `AMBIGUOUS_BINDING`, `CORRUPT_LINE`, `LIMIT_EXCEEDED`, `SECRET_FIELD`, `CONVERSATION_FIELD`, `SCHEMA`, `KERNEL_RECORD`, `OPENSHELL_RECORD`, `GATE_RECORD`. Invalid input does not produce a cleared run and does not produce a bypass finding.
+
+A process name that is not an absolute path is a missing subject. It does not reject the snapshot, and it does not cover a network or file row. A NUL, an over-long path, or a host without a port still rejects the snapshot. One OpenShell row can match more than one kernel write to the same subject inside the window. The indicator compares presence, not counts.
 
 Secret keys, matched case-insensitively on the final path segment: `authorization`, `api_key`, `apikey`, `token`, `secret`, `password`, `credential`, `credentials`, `bearer`, `access_key`, `private_key`, `client_secret`. Secret values: a bearer token, an `sk-` prefix, an `AKIA` access-key shape, or a PEM private-key banner. Conversation keys: `prompt`, `prompts`, `completion`, `completions`, `messages`, `tool_arguments`, `input_text`, `output_text`. Keys `__proto__`, `prototype`, and `constructor` reject the run. The error names the reason code and a path of key names. It does not contain the value.
 
