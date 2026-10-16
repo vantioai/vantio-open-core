@@ -392,7 +392,10 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         "metadata_http_tokens": "required",
         "metadata_hop_limit": 1,
         "iam_instance_profile": None,
-        "disable_api_termination": soak,
+        # Termination protection stays off. The sweeper role cannot clear
+        # disableApiTermination, and the soak tag is what keeps the sweeper
+        # from deleting the host. Stop protection still blocks StopInstances.
+        "disable_api_termination": False,
         "disable_api_stop": soak,
         "auto_stop": not soak,
         "image_owner": CANONICAL_OWNER,

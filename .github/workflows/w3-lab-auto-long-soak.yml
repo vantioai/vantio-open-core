@@ -152,6 +152,8 @@ jobs:
           INSTANCE_TYPE: ${{ inputs.instance_type }}
           STOP_AFTER_MINUTES: "2400"
           MAX_LIFE_HOURS: "36"
+          # The soak tag keeps the sweeper off this host. Termination protection
+          # stays off, because the sweeper role cannot clear it at teardown.
           SOAK: "true"
           ASSOCIATE_PUBLIC_IPV4: ${{ inputs.associate_public_ipv4 }}
           IMAGE_ID: ${{ inputs.image_id }}
