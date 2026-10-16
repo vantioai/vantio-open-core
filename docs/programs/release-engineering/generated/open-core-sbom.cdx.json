@@ -198,6 +198,20 @@
           }
         }
       ],
+      "name": "@vantio/mcp-awareness",
+      "purl": "pkg:npm/%40vantio/mcp-awareness@0.0.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0"
+    },
+    {
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
       "name": "@vantio/optics-mcp",
       "purl": "pkg:npm/%40vantio/optics-mcp@0.1.2",
       "scope": "workspace-manifest",

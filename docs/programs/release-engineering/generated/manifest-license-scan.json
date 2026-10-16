@@ -21,6 +21,12 @@
     },
     {
       "accepted": false,
+      "id": "license-missing:packages/optics-agent-inventory/pyproject.toml",
+      "name": "packages/optics-agent-inventory/pyproject.toml",
+      "path": "packages/optics-agent-inventory/pyproject.toml"
+    },
+    {
+      "accepted": false,
       "id": "license-missing:packages/optics-evidence-contract/package.json",
       "name": "@vantio/optics-evidence-contract",
       "path": "packages/optics-evidence-contract/package.json"
@@ -122,6 +128,7 @@
     "internal/gap-t2-openshell/package.json",
     "package.json",
     "packages/governance-assurance/package.json",
+    "packages/optics-agent-inventory/pyproject.toml",
     "packages/optics-evidence-contract/package.json",
     "packages/optics-node-adapter/package.json",
     "packages/optics-operational-store/package.json",
@@ -144,6 +151,7 @@
     "packages/vantio-cli/package.json",
     "packages/vantio-gate-mcp/package.json",
     "packages/vantio-install/pyproject.toml",
+    "packages/vantio-mcp-awareness/package.json",
     "packages/vantio-optics-mcp/package.json"
   ],
   "schema": "vantio.ws11.manifest-license-scan/v1",
