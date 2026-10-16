@@ -26,11 +26,14 @@ PATCH_SCHEMA = "vantio.openclaw.patch-spec/1"
 FIXED_VERSION = "2026.1.29"
 PINNED_VERSION = "2026.10.4"
 PINNED_INDEX_DIGEST = "sha256:614004ec2cf2e6095124ea544dc8d950c49306aef445a1fc300b88717e24261a"
+PINNED_AMD64_DIGEST = "sha256:07091f4b3fef9b56f3b6f5d556a2a48cea7ac9d4b3634235c1eccc15f5cf91ed"
+PINNED_CONFIG_DIGEST = "sha256:1500f1058cec475b9f2d2725554aed424ed136533071016f3734fd772aadc695"
 PINNED_NPM_INTEGRITY = "sha512-+FH0StZF1tlTazM7JJGY6JePeJmhFNSRByi2Q3jXPRiLO7o4dJh2xa9Vy4Dk8Cd2ic8B7Zkf5NfEaCCWUkgqnQ=="
 PINNED_NPM_SHASUM = "ac000cc196b31208b0108c171780a3312ea26e5e"
 # sha256 of the canonical indicator lists. The lists themselves stay in
 # indicators.json so this file does not have to embed campaign strings.
 INDICATOR_FINGERPRINT = "41719fac356a95bc23c0e94bfc29017720bb5ce9e118daadafff671c9604bf4d"
+REQUIRED_UNPINNED_IDS = ("cursor-cli", "googlechat", "plane1-fs-proof")
 REQUIRED_FLOATING_PATHS = (
     "plane1-openclaw/docker-compose.yml",
     "scripts/start_plane1_openclaw.sh",
@@ -62,7 +65,12 @@ IMAGE_RE = re.compile(
 )
 NPM_AT_RE = re.compile(
     rf"(?i)(?<![A-Za-z0-9._@/-])(?P<name>{_PKG_OPEN}|{_PKG_LEGACY})"
-    rf"\s*@\s*(?P<spec>[^\s'\"`,;]+)"
+    rf"\s*@\s*[\"']?(?P<spec>[^\s'\"`,;]+)[\"']?"
+)
+BARE_INSTALL_RE = re.compile(
+    rf"(?ix)(?:(?:npm|pnpm|yarn|bun)\s+(?:install|add|i)|npx|bunx)"
+    rf"(?:\s+--?[A-Za-z0-9][A-Za-z0-9-]*)*"
+    rf"\s+(?P<name>{_PKG_OPEN}|{_PKG_LEGACY})(?!@)"
 )
 NPM_KEY_RE = re.compile(
     rf"""(?i)["'](?P<name>{_PKG_OPEN}|{_PKG_LEGACY})["']\s*:\s*["'](?P<spec>[^"']+)["']"""
@@ -85,6 +93,9 @@ INSTALL_SUFFIXES = {
     ".tsx",
     ".py",
     ".dockerfile",
+    ".ps1",
+    ".zsh",
+    ".hcl",
 }
 INSTALL_NAMES = {
     "dockerfile",
@@ -261,11 +272,13 @@ def _text_hits(text: str, needles: Sequence[str], patterns: Sequence[str]) -> li
 
 def _is_install_shaped(path: Path) -> bool:
     name = path.name.lower()
+    if name.endswith(".example"):
+        name = name[: -len(".example")]
     if name in INSTALL_NAMES or name.startswith("dockerfile") or name.endswith(".dockerfile"):
         return True
     if name == ".env" or name.endswith(".env"):
         return True
-    return path.suffix.lower() in INSTALL_SUFFIXES
+    return Path(name).suffix.lower() in INSTALL_SUFFIXES
 
 
 def _walk_install_files(root: Path, result: CheckResult) -> list[Path]:
@@ -283,13 +296,14 @@ def _walk_install_files(root: Path, result: CheckResult) -> list[Path]:
         dirnames[:] = kept
         for name in filenames:
             path = dirpath / name
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink():
+                if path.is_dir() or _is_install_shaped(path):
+                    result.add("SYMLINK_INSTALL_FILE", relative)
+                continue
             if not _is_install_shaped(path):
                 continue
-            relative = path.relative_to(root).as_posix()
             if relative in POLICY_FILES:
-                continue
-            if path.is_symlink():
-                result.add("SYMLINK_INSTALL_FILE", relative)
                 continue
             found.append(path)
     return found
@@ -357,6 +371,12 @@ def _scan_install_files(
             result.add("TAG_WITHOUT_DIGEST", f"{relative} tag {tag} has no digest")
         for match in NPM_AT_RE.finditer(text):
             _check_package_spec(match.group("name"), match.group("spec"), relative, result)
+        for match in BARE_INSTALL_RE.finditer(text):
+            name = match.group("name")
+            if name.lower() == _PKG_LEGACY:
+                result.add("CLAWDBOT_UNPINNED", f"{relative} installs {_PKG_LEGACY} without a version")
+            else:
+                result.add("FLOATING_REF", f"{relative} installs {_PKG_OPEN} without a version")
         for match in NPM_KEY_RE.finditer(text):
             _check_package_spec(match.group("name"), match.group("spec"), relative, result)
         hits = _text_hits(text, needles, pattern_list)
@@ -386,6 +406,10 @@ def _check_pin(pin: Mapping[str, object], result: CheckResult) -> str:
         result.add("PIN_VERSION", f"image version {version} is not {PINNED_VERSION}")
     if index_digest and index_digest != PINNED_INDEX_DIGEST:
         result.add("PIN_DIGEST_MISMATCH", "index digest is not the pinned digest")
+    if amd64 and amd64 != PINNED_AMD64_DIGEST:
+        result.add("PIN_DIGEST_MISMATCH", "amd64 manifest digest is not the pinned digest")
+    if config_digest and config_digest != PINNED_CONFIG_DIGEST:
+        result.add("PIN_DIGEST_MISMATCH", "config digest is not the pinned digest")
     npm = pin.get("npm")
     if not isinstance(npm, dict):
         result.add("PIN_NPM", "pin.json npm missing")
@@ -622,6 +646,10 @@ def _check_patch(
     if not isinstance(unpinned, list) or not isinstance(replacements, list):
         result.add("PATCH_SPEC", "unpinned installs or replacements missing")
         return
+    found_ids = {item.get("id") for item in unpinned if isinstance(item, dict)}
+    for required in REQUIRED_UNPINNED_IDS:
+        if required not in found_ids:
+            result.add("INVENTORY_UNPATCHED", f"required unpinned install missing: {required}")
     replacement_by_id = {
         item.get("id"): item for item in replacements if isinstance(item, dict) and isinstance(item.get("id"), str)
     }

@@ -186,6 +186,20 @@ def negative_cases(source: Path) -> list[dict[str, object]]:
             indicators[key] = []
         indicator_path.write_text(json.dumps(indicators), encoding="utf-8")
         cases.append(_case("empty-indicators-rejected", "INDICATOR_SCHEMA" in _codes(emptied)))
+
+        bare = base / "bare"
+        _copy_minimal(source, bare)
+        script = bare / "install.sh"
+        script.write_text("npm install -g " + "openclaw" + "\n", encoding="utf-8")
+        cases.append(_case("unversioned-npm-rejected", "FLOATING_REF" in _codes(bare)))
+
+        linked = base / "linked"
+        _copy_minimal(source, linked)
+        real = linked / "real"
+        real.mkdir()
+        (real / "compose.yml").write_text(_image_line("latest"), encoding="utf-8")
+        (linked / "deploy").symlink_to(real, target_is_directory=True)
+        cases.append(_case("symlink-directory-rejected", "SYMLINK_INSTALL_FILE" in _codes(linked)))
     return cases
 
 

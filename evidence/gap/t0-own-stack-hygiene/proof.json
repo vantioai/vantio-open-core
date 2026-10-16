@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-10-16T16:10:49Z",
+  "generated_at_utc": "2026-10-16T16:15:33Z",
   "schema": "vantio.gap.t0.proof/1",
   "design_commit": "39ad6c2f8373a29823159f5212dff6ebfb2f68d2",
   "label": "Lab-only",
@@ -86,6 +86,14 @@
     },
     {
       "name": "empty-indicators-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "unversioned-npm-rejected",
+      "fail_closed": true
+    },
+    {
+      "name": "symlink-directory-rejected",
       "fail_closed": true
     }
   ],
