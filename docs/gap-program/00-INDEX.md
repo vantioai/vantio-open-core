@@ -18,7 +18,7 @@ Public pricing language stays "Contact Vantio". This packet contains no prices. 
 
 ## What this packet is
 
-Nine design documents, one per track, plus this index, a risk register, a design-packet checker, and an evidence file the checker writes. A reviewer from a different model family reviews the final head. Until that review is recorded in `COUNCIL-VERDICT.md`, the council state is `PENDING_INDEPENDENT_REVIEW`. The producer does not sit the council.
+Nine design documents, one per track, plus this index, a risk register, a design-packet checker, and an evidence file the checker writes. The council record is `COUNCIL-VERDICT.md`. The design head `3c2c581a48ef001c3ef78df232926d6c236acb88` received `PASS_WITH_NONBLOCKING_NOTES` from a Claude Opus reviewer. The producer does not sit the council.
 
 Phantom Engine covers supported AI workloads on enrolled Linux machines only. Optics observes. Gate is the application-path dry-run inside that host product, and a dry-run is not host activation. Enterprise is governance on top of that protection. Permissions move in order: Observe, then Enforce, then Control. An AI capability does not grant a permission.
 

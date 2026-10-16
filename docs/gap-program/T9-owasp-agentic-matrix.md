@@ -187,6 +187,6 @@ Phase 2 does not bulk-promote cells. One cell moves only with one proof script, 
 
 ## Council
 
-Verdict: PENDING_INDEPENDENT_REVIEW
+Verdict: PASS_WITH_NONBLOCKING_NOTES
 
-The producer does not write the verdict.
+Recorded from the Claude Opus review of design head `3c2c581a48ef001c3ef78df232926d6c236acb88`. Detail is in `COUNCIL-VERDICT.md`. The producer does not sit the council.

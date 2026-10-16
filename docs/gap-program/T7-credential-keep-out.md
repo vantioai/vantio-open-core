@@ -133,6 +133,6 @@ Passing this list is still Lab-only until it is repeated on an enrolled host the
 
 ## Council
 
-Verdict: PENDING_INDEPENDENT_REVIEW
+Verdict: PASS_WITH_NONBLOCKING_NOTES
 
-The producer does not write the verdict.
+Recorded from the Claude Opus review of design head `3c2c581a48ef001c3ef78df232926d6c236acb88`. Detail is in `COUNCIL-VERDICT.md`. The producer does not sit the council.
