@@ -1,0 +1,56 @@
+{
+  "track": "T5",
+  "suite": "clean-host",
+  "label": "Lab-only",
+  "kernel_attach": "Roadmap",
+  "cloud_run": false,
+  "proof": "python3 scripts/clean-host/t5/proof.py",
+  "policy": "scripts/clean-host/t5/policy.json",
+  "drills": [
+    {
+      "id": "t5-dns-allow-list",
+      "isolation": "netns",
+      "cases": ["listed name sent", "unlisted name blocked in enforce"]
+    },
+    {
+      "id": "t5-dns-long-label",
+      "isolation": "netns",
+      "cases": ["single long label", "split-label octet sum", "short listed name"]
+    },
+    {
+      "id": "t5-dns-high-entropy",
+      "isolation": "netns",
+      "cases": ["high-entropy left-hand label", "low-entropy left-hand label"]
+    },
+    {
+      "id": "t5-dns-query-volume",
+      "isolation": "netns",
+      "cases": ["cap in observe", "cap in enforce", "allow after the window"]
+    },
+    {
+      "id": "t5-dns-unknown-delegation",
+      "isolation": "netns",
+      "cases": ["unknown glue", "follow-up blocked", "listed resolver sent"]
+    },
+    {
+      "id": "t5-icmp-egress",
+      "isolation": "netns",
+      "cases": ["echo to listed destination", "other destination", "non-echo type", "link-local", "ICMPv6"]
+    },
+    {
+      "id": "t5-get-write",
+      "isolation": "netns",
+      "cases": ["benign GET", "GET with a body", "loopback host out of this case"]
+    },
+    {
+      "id": "t5-loopback-priv-esc",
+      "isolation": "netns",
+      "cases": ["allow-listed port", "port 22", "0.0.0.0:2375", "IPv4-mapped loopback", "UDP"]
+    },
+    {
+      "id": "t5-symlink-escape",
+      "isolation": "mountns",
+      "cases": ["in-root file", "in-root symlink", "escape", "dotdot", "bind mount", "symlink root", "race", "magic link"]
+    }
+  ]
+}
