@@ -406,6 +406,23 @@ def _wait_boot(project: str, name: str, before: str, timeout_s: int) -> str:
     return ""
 
 
+def _wait_live_boot(project: str, name: str, timeout_s: int) -> str:
+    """Wait until sshd returns a boot id. This does not require the id to change."""
+    deadline = time.time() + timeout_s
+    delay = 5
+    while time.time() < deadline:
+        probe = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
+        boot = (probe.stdout or "").strip()
+        if probe.returncode == 0 and boot and "\n" not in boot:
+            return boot
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, 30)
+    return ""
+
+
 def scp_remove_miss_is_ignorable(detail: str) -> bool:
     """gcloud exits 1 after a finished copy when OS Login key removal misses.
 
@@ -1051,6 +1068,13 @@ def _setup_case(name: str, sample: Mapping[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _read_copied_rows(local: Path) -> dict[str, Any] | None:
+    if not local.is_file():
+        return None
+    parsed = _load_json_file(local)
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _pull_guest_json(project: str, name: str) -> dict[str, Any] | None:
     local = Path(tempfile.mkdtemp(prefix="vantio-guest-")) / "rows.json"
     try:
@@ -1058,8 +1082,17 @@ def _pull_guest_json(project: str, name: str) -> dict[str, Any] | None:
             project, name, "/tmp/enterprise-pe-rows.json", local
         ):
             return None
-        parsed = _load_json_file(local)
-        return parsed if isinstance(parsed, dict) else None
+        return _read_copied_rows(local)
+    finally:
+        shutil.rmtree(local.parent, ignore_errors=True)
+
+
+def _pull_remote_json(project: str, name: str, remote: str) -> dict[str, Any] | None:
+    local = Path(tempfile.mkdtemp(prefix="vantio-guest-")) / "rows.json"
+    try:
+        if not _scp_from(project, name, remote, local):
+            return None
+        return _read_copied_rows(local)
     finally:
         shutil.rmtree(local.parent, ignore_errors=True)
 

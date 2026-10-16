@@ -85,8 +85,8 @@ fi
 # A second boot already has bpf in the LSM list. Confirm that and return
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "$mode" = "lsm-guard" ]; then
-  # The runner reads the var-lib file first. Drop the pre-reboot copy
-  # before this boot writes its own result.
+  # Drop both copies before this boot writes its own result. The runner
+  # keeps the file whose boot id matches the boot it just waited for.
   sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
   set +e
   sudo python3 - "$here" <<'PY'
@@ -445,6 +445,11 @@ if [ "$mode" = "descendant-b1" ]; then
     echo "vfork probe missing" >&2
     exit 6
   fi
+  # b1-pre.json survives a reboot. A later pre that fails before it writes
+  # would otherwise leave the previous repeat's measurements for post to read.
+  if [ "$phase" = "pre" ]; then
+    sudo rm -f /var/lib/vantio-lab/b1-pre.json
+  fi
   set +e
   sudo env VANTIO_IMAGE="$image" VANTIO_PROBE="$here/descendant_probe" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
   rc=$?
@@ -476,10 +481,15 @@ case "$mode" in
     rc=$?
     set -e
     cat /tmp/phase2-host.out
-    chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json 2>/dev/null || true
-    if [ ! -s /tmp/enterprise-pe-rows.json ]; then
+    # publish() writes the rows JSON under /var/lib. The transcript in
+    # phase2-host.out is not that file. Copy the published JSON before the
+    # reboot decision reads it.
+    if [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
+      sudo cp /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
+    elif [ ! -s /tmp/enterprise-pe-rows.json ]; then
       cp /tmp/phase2-host.out /tmp/enterprise-pe-rows.json
     fi
+    sudo chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json 2>/dev/null || true
     printf 'PY_RC=%s\n' "$rc"
     if [ "$mode" = "lsm-guard" ] && [ -s /tmp/enterprise-pe-rows.json ]; then
       want=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
@@ -503,8 +513,9 @@ case "$mode" in
     exit "$rc"
     ;;
 esac
-# A user-owned file in /tmp makes root's recreate return EACCES. Each repeat starts clean.
-sudo rm -f /tmp/enterprise-pe-rows.json
+# A user-owned file in /tmp makes root's recreate return EACCES. Each repeat
+# starts clean. The var-lib copy survives a reboot, so drop that too.
+sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
 set +e
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?

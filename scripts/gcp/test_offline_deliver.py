@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import unittest
 from decimal import Decimal
+from unittest import mock
 from pathlib import Path
 
 import lab_auto as lab
@@ -729,6 +730,55 @@ class OfflineDeliverTest(unittest.TestCase):
                 fresh_boot,
             )
         )
+        stale = {"boot_id": "old", "host_result": "GUARD_PROVED", "reboot_requested": True}
+        current = {"boot_id": fresh_boot, "host_result": "LSM_ENABLED", "reboot_requested": False}
+        self.assertFalse(od.guard_ready(stale, fresh_boot))
+        self.assertTrue(od.guard_ready({**stale, "boot_id": fresh_boot}, fresh_boot))
+        self.assertFalse(od.guard_ready({**current, "host_result": "GUARD_PROVED"}, fresh_boot))
+        self.assertEqual(od.choose_boot_rows(stale, current, fresh_boot)["boot_id"], fresh_boot)
+        self.assertEqual(od.choose_boot_rows(current, stale, fresh_boot)["boot_id"], fresh_boot)
+        self.assertEqual(od.choose_boot_rows(stale, None, fresh_boot)["boot_id"], "old")
+        self.assertIsNone(od.choose_boot_rows(None, None, fresh_boot))
+        deliver = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        self.assertIn("live_lsm_from_probe(probe_body, later)", deliver)
+        self.assertNotIn('_wait_boot(project, name, "down"', deliver)
+        self.assertIn("_wait_live_boot", deliver)
+        published = script.find("cp /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json")
+        decision = script.find('json.load(open("/tmp/enterprise-pe-rows.json"))')
+        self.assertGreaterEqual(published, 0)
+        self.assertGreaterEqual(decision, 0)
+        self.assertLess(published, decision)
+        pre_clear = script.find("sudo rm -f /var/lib/vantio-lab/b1-pre.json")
+        pre_run = script.find('python3 "$here/descendant_b1.py"')
+        self.assertGreaterEqual(pre_clear, 0)
+        self.assertGreaterEqual(pre_run, 0)
+        self.assertLess(pre_clear, pre_run)
+        stock_boot = "44444444-4444-4444-4444-444444444444"
+        self.assertTrue(
+            od.stock_bpf_ready(
+                {
+                    "boot_id": stock_boot,
+                    "host_result": "LSM_ALREADY_ACTIVE",
+                    "stock_lsm": listed,
+                    "cmdline": "BOOT_IMAGE=/vmlinuz ro panic=-1",
+                },
+                stock_boot,
+            )
+        )
+        self.assertIsNotNone(
+            od.live_stock_bpf(
+                {"boot_id": stock_boot, "cmdline": "BOOT_IMAGE=/vmlinuz ro panic=-1", "enabled_lsm": listed},
+                stock_boot,
+            )
+        )
+        self.assertIn("lsm_enabled_follow_up", deliver)
+        self.assertIn("boot_id_unread", deliver)
+        hint = "Specify --start=552072 in the next get-serial-port-output command\n"
+        self.assertEqual(od.next_serial_start("noise\n" + hint), 552072)
+        self.assertIsNone(od.next_serial_start("kernel line only"))
+        self.assertEqual(od.serial_console_text("boot line\n" + hint), "boot line\n")
+        self.assertEqual(od.serial_port_argv("vantio-lab-oct08", "vantio-gcp-lab-1", 552072)[-1], "--start=552072")
+        self.assertNotIn("The full serial log", deliver)
 
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))
@@ -918,6 +968,346 @@ class OfflineDeliverTest(unittest.TestCase):
             )
         )
         self.assertFalse(od.lsm_confirm_ok({"host_result": "LSM_ENABLED", "stock_lsm": "bpfextra", "cmdline": "lsm=bpfextra"}))
+
+    def test_prune_keeps_the_lsm_guard_diagnosis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "lsm-guard.json").write_text(
+                json.dumps(
+                    {
+                        "host_result": "GUARD_PROVED",
+                        "hostname": "box",
+                        "lsm_guard": "stale_rows",
+                        "note": "ghp_" + "a" * 20,
+                        "stock_bpf_lsm": False,
+                        "stock_lsm": "lockdown,capability,apparmor",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (directory / "not-evidence.json").write_text("{}\n", encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse((directory / "not-evidence.json").exists())
+            body = json.loads((directory / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(body["host_result"], "GUARD_PROVED")
+            self.assertEqual(body["lsm_guard"], "stale_rows")
+            self.assertEqual(body["stock_lsm"], "lockdown,capability,apparmor")
+            self.assertIs(body["stock_bpf_lsm"], False)
+            self.assertNotIn("hostname", body)
+            self.assertNotIn("note", body)
+            self.assertNotIn("ghp_", (directory / "lsm-guard.json").read_text(encoding="utf-8"))
+        dropped = od.allow_record({"host_result": "PASS", "lsm_guard": "lsm_enabled"})
+        self.assertEqual(dropped, {"lsm_guard": "lsm_enabled"})
+        self.assertEqual(od.allow_record({"host_result": ""})["host_result"], "")
+
+    def test_serial_window_names_a_page_failure(self) -> None:
+        calls = {"n": 0}
+
+        def first_then_timeout(argv, **_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return subprocess.CompletedProcess(
+                    argv,
+                    0,
+                    stdout="first boot\n",
+                    stderr="Specify --start=100 in the next get-serial-port-output command\n",
+                )
+            raise subprocess.TimeoutExpired(argv, 180)
+
+        with mock.patch.object(od.subprocess, "run", first_then_timeout):
+            rc, blob, pages, error, note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(rc, 0)
+        self.assertEqual(pages, 1)
+        self.assertEqual(error, "")
+        self.assertIn("first boot\n", blob)
+        self.assertNotIn("Specify --start=", blob)
+        self.assertIn("--start=100", note)
+        buf = io.StringIO()
+        calls["n"] = 0
+        with mock.patch.object(od.subprocess, "run", first_then_timeout), contextlib.redirect_stdout(buf):
+            self.assertEqual(od._log_serial("vantio-lab-oct08", "vantio-gcp-lab-1", "boot"), 0)
+        self.assertNotIn("SERIAL_ERROR=", buf.getvalue())
+
+        def empty(argv, **_kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        with mock.patch.object(od.subprocess, "run", empty):
+            _rc, blob, _pages, error, _note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(blob, "")
+        self.assertEqual(error, "empty")
+
+        def warning_only(argv, **_kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout="\n",
+                stderr="WARNING: some serial port output was lost\nSpecify --start=12 in the next get-serial-port-output command\n",
+            )
+
+        with mock.patch.object(od.subprocess, "run", warning_only):
+            _rc, blob, _pages, error, note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(error, "empty")
+        self.assertNotIn("WARNING", blob)
+        self.assertIn("WARNING", note)
+        buf = io.StringIO()
+        with mock.patch.object(od.subprocess, "run", warning_only), contextlib.redirect_stdout(buf):
+            self.assertEqual(od._log_serial("vantio-lab-oct08", "vantio-gcp-lab-1", "boot"), 1)
+        logged = buf.getvalue()
+        self.assertIn("SERIAL_ERROR=empty", logged)
+        self.assertIn("SERIAL_STDERR=", logged)
+        self.assertLess(logged.index("SERIAL_BYTES="), logged.index("WARNING"))
+
+        def first_call_times_out(argv, **_kwargs):
+            raise subprocess.TimeoutExpired(argv, 180)
+
+        with mock.patch.object(od.subprocess, "run", first_call_times_out):
+            _rc, blob, pages, error, _note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(blob, "")
+        self.assertEqual(pages, 0)
+        self.assertEqual(error, "page_timeout")
+
+        def advancing(argv, **_kwargs):
+            start = 0
+            for arg in argv:
+                if str(arg).startswith("--start="):
+                    start = int(str(arg).split("=", 1)[1])
+            nxt = start + 10
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=f"page-{start}\n",
+                stderr=f"Specify --start={nxt} in the next get-serial-port-output command\n",
+            )
+
+        with mock.patch.object(od.subprocess, "run", advancing):
+            _rc, blob, pages, error, _note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(pages, 4)
+        self.assertEqual(error, "")
+        self.assertIn("page-0\n", blob)
+        self.assertIn("page-30\n", blob)
+        buf = io.StringIO()
+        with mock.patch.object(od.subprocess, "run", advancing), contextlib.redirect_stdout(buf):
+            self.assertEqual(od._log_serial("vantio-lab-oct08", "vantio-gcp-lab-1", "boot"), 0)
+        self.assertNotIn("SERIAL_ERROR=", buf.getvalue())
+
+        buf = io.StringIO()
+        with mock.patch.object(od.subprocess, "run", empty), contextlib.redirect_stdout(buf):
+            status = od.capture_serial(
+                {"GCP_LAB_EXECUTE": "1", "GCP_LAB_PROJECT": "vantio-lab-oct08", "GITHUB_RUN_ID": "1"}
+            )
+        self.assertEqual(status, 1)
+        self.assertIn("SERIAL_ERROR=empty", buf.getvalue())
+
+    def _drive_lsm(self, *, live, rows, boots, probe=None, ssh_stdout="", serial_status=None):
+        calls = {"ssh_case": [], "wait_boot": [], "ssh": 0, "probe": 0, "log": []}
+        statuses = list(serial_status) if serial_status is not None else []
+
+        def wait_live(_project, _name, _timeout):
+            return live
+
+        def ssh_case(_project, _name, command):
+            calls["ssh_case"].append(command)
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        def rows_for(_project, _name, boot_id, _transcript):
+            return rows(boot_id)
+
+        def wait_boot(_project, _name, previous, _timeout):
+            calls["wait_boot"].append(previous)
+            return boots(previous)
+
+        def probe_live(_project, _name):
+            calls["probe"] += 1
+            return {} if probe is None else probe
+
+        def ssh(_project, _name, _command, timeout_s=20):
+            calls["ssh"] += 1
+            return subprocess.CompletedProcess([], 0, stdout=ssh_stdout, stderr="")
+
+        def log_serial(_project, _name, boot_id=""):
+            calls["log"].append(boot_id)
+            if statuses:
+                return statuses.pop(0)
+            return 0
+
+        stack = contextlib.ExitStack()
+        for name, fn in (
+            ("_wait_live_boot", wait_live),
+            ("_ssh_case", ssh_case),
+            ("_rows_for_boot", rows_for),
+            ("_wait_boot", wait_boot),
+            ("_log_serial", log_serial),
+            ("_probe_live", probe_live),
+            ("_ssh", ssh),
+            ("_print_saved_boot_evidence", lambda *_args, **_kwargs: None),
+        ):
+            stack.enter_context(mock.patch.object(od, name, fn))
+        return stack, calls
+
+    def test_prepare_lab_lsm_follows_the_boot_it_waited_for(self) -> None:
+        seal = "ab" * 32
+        before = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        after = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        later = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        listed = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        sealed = f"BOOT_IMAGE=/vmlinuz ro lsm={listed} panic=-1"
+        proved = {
+            "cmdline": "panic=-1",
+            "host_result": "GUARD_PROVED",
+            "reboot_requested": True,
+            "stock_lsm": "lockdown,capability,apparmor",
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(live="", rows=lambda _boot: {}, boots=lambda _prev: "")
+            with stack:
+                with self.assertRaises(SystemExit) as unread:
+                    od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(unread.exception.code, "lsm")
+            self.assertEqual(calls["ssh_case"], [])
+            unread_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(unread_body["lsm_guard"], "boot_id_unread")
+            self.assertEqual(unread_body["host_result"], "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda _boot: {**proved, "boot_id": "old-boot"},
+                boots=lambda _prev: after,
+            )
+            with stack:
+                with self.assertRaises(SystemExit) as stale:
+                    od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(stale.exception.code, "lsm")
+            self.assertEqual(calls["wait_boot"], [])
+            self.assertEqual(len(calls["ssh_case"]), 1)
+            stale_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(stale_body["lsm_guard"], "stale_rows")
+            self.assertEqual(stale_body["host_result"], "GUARD_PROVED")
+
+        def rows_for(boot_id: str) -> dict:
+            if boot_id == before:
+                return {**proved, "boot_id": before}
+            if boot_id == after:
+                return {**proved, "boot_id": after}
+            return {}
+
+        def boots(previous: str) -> str:
+            if previous == before:
+                return after
+            if previous == after:
+                return later
+            return ""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=rows_for,
+                boots=boots,
+                probe={"boot_id": later, "cmdline": sealed, "enabled_lsm": listed},
+            )
+            with stack:
+                record = od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(record["lsm_guard"], "lsm_enabled_follow_up")
+            self.assertEqual(record["host_result"], "LSM_ENABLED")
+            self.assertEqual(record["stock_lsm"], listed)
+            self.assertIs(record["stock_bpf_lsm"], True)
+            self.assertEqual(calls["wait_boot"], [before, after])
+            self.assertEqual(calls["probe"], 1)
+            self.assertEqual(calls["ssh"], 0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda boot_id: {**proved, "boot_id": before} if boot_id == before else {**proved, "boot_id": "old-boot"},
+                boots=lambda previous: after if previous == before else "",
+                ssh_stdout=json.dumps({"boot_id": after, "cmdline": sealed, "enabled_lsm": listed}),
+            )
+            with stack:
+                record = od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(record["lsm_guard"], "lsm_enabled")
+            self.assertEqual(record["host_result"], "LSM_ENABLED")
+            self.assertEqual(calls["ssh"], 1)
+            self.assertEqual(calls["probe"], 0)
+            self.assertEqual(calls["wait_boot"], [before])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda boot_id: {**proved, "boot_id": before} if boot_id == before else {},
+                boots=lambda previous: after if previous == before else "",
+                serial_status=[1],
+            )
+            with stack:
+                with self.assertRaises(SystemExit) as missing:
+                    od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(missing.exception.code, "lsm")
+            self.assertEqual(calls["log"], [after])
+            self.assertEqual(len(calls["ssh_case"]), 1)
+            self.assertEqual(calls["probe"], 0)
+            missing_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(missing_body["lsm_guard"], "serial_missing")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=rows_for,
+                boots=boots,
+                probe={"boot_id": later, "cmdline": sealed, "enabled_lsm": listed},
+                serial_status=[0, 1],
+            )
+            with stack:
+                with self.assertRaises(SystemExit) as follow_missing:
+                    od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(follow_missing.exception.code, "lsm")
+            self.assertEqual(calls["log"], [after, later])
+            self.assertEqual(calls["probe"], 0)
+            follow_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(follow_body["lsm_guard"], "serial_missing")
+
+        active = {
+            "boot_id": before,
+            "cmdline": "BOOT_IMAGE=/vmlinuz ro panic=-1",
+            "host_result": "LSM_ALREADY_ACTIVE",
+            "reboot_requested": False,
+            "stock_lsm": listed,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda boot_id: active if boot_id == before else {},
+                boots=lambda _previous: "",
+                serial_status=[1],
+            )
+            with stack:
+                with self.assertRaises(SystemExit) as active_missing:
+                    od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(active_missing.exception.code, "lsm")
+            self.assertEqual(calls["log"], [before])
+            self.assertEqual(calls["wait_boot"], [])
+            active_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(active_body["lsm_guard"], "serial_missing")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda boot_id: active if boot_id == before else {},
+                boots=lambda _previous: "",
+            )
+            with stack:
+                record = od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(record["lsm_guard"], "already_active")
+            self.assertIs(record["stock_bpf_lsm"], True)
+            self.assertEqual(calls["log"], [before])
+            self.assertEqual(calls["wait_boot"], [])
 
 
 if __name__ == "__main__":

@@ -291,6 +291,11 @@ if [ "$mode" = "descendant-b1" ]; then
   fi
   test -x "$here/descendant_probe"
   printf 'IMAGE_LINE=%s\n' "$image"
+  # b1-pre.json survives a reboot. A later pre that fails before it writes
+  # would otherwise leave the previous repeat's measurements for post to read.
+  if [ "$phase" = "pre" ]; then
+    sudo rm -f /var/lib/vantio-lab/b1-pre.json
+  fi
   set +e
   sudo env VANTIO_IMAGE="$image" VANTIO_PROBE="$here/descendant_probe" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
   rc=$?
