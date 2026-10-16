@@ -365,9 +365,9 @@ describe("local proof still works with no config", () => {
       const body = readFileSync(join(home, "p.html"), "utf8");
       assert.match(body, />503</);
       assert.match(body, /Optics status/);
-      assert.match(body, /Application outcome/);
+      assert.match(body, /Observed outcome/);
+      assert.match(body, /Provider service error/);
       assert.match(body, /Successful/);
-      assert.match(body, /Application error/);
       assert.doesNotMatch(body, /Blocked|BLOCKED|REDACTED|DRY_RUN/);
       const md = await runCli(["prove", "--from", logPath, "--format=md"], { HOME: home });
       assert.equal(md.code, 0);

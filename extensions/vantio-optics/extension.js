@@ -47,7 +47,7 @@ function activate(context) {
           "Ungoverned paths stay silent — that gap is the upgrade signal.",
           "",
           "When observe is not enough:",
-          "  → Vantio Phantom Engine ($799/enrolled node/mo) — Observe, Enforce, and Control — protect machines you own",
+          "  → Vantio Phantom Engine — Observe, Enforce, and Control — Contact Vantio",
           "  → Vantio Enterprise (talk to sales) — governance on top",
           "",
           "https://vantio.ai/pricing",

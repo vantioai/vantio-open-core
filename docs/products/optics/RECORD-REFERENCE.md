@@ -103,7 +103,7 @@ No `schema_status`, `pid`, `ppid`, `free_mode`, envelope `duration_ms`, `by_host
 
 ## Unpublished Python 3.1.0 source
 
-Same write path, plus file fields that 3.0.14 does not have: `schema_status` `unstable-pre-1.0`, `status_labels`, and summary fields `opticsStatus`, `applicationStatus`, `opticsLabel`, and customer summary fields. Calls gain `opticsStatus`, `applicationStatus`, `applicationOutcomeLabel`, `providerResponse`, and related lines. `workflow` is still the leftover string `sight_loop` in that source. Do not treat a PyPI install as this shape.
+Same write path, plus file fields that 3.0.14 does not have: `schema_status` `unstable-pre-1.0`, `status_labels`, and summary fields `opticsStatus`, `applicationStatus`, `opticsLabel`, and customer summary fields. Calls gain `opticsStatus`, `applicationStatus`, `applicationOutcomeLabel`, `providerResponse`, and related lines. Source candidate 3.1.1 omits `workflow`. Older unpublished source stored the leftover string `sight_loop`. Do not treat a PyPI install as this shape.
 
 ## Schema markers
 

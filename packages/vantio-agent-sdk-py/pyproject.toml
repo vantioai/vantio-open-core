@@ -8,7 +8,7 @@ packages = ["vantio"]
 [project]
 name = "vantio-agent-sdk"
 version = "3.1.1"
-description = "Vantio Optics Python SDK — shield() for Sight Loop observe. Metadata only; no prompts."
+description = "Vantio Optics Python SDK — shield() observes supported calls. Metadata only; no prompts."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -18,7 +18,7 @@ keywords = [
   "vantio",
   "vantio-optics",
   "optics",
-  "sight-loop",
+  "observe",
   "ai",
   "agent",
   "governance",

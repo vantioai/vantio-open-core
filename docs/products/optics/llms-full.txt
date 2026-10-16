@@ -636,7 +636,7 @@ The file is JSON with `vantio_run_log` `"1"`, `schema_version` 2, `plane` `"opti
 
 Each call stores `hostname`, `provider`, `action`, `mediation`, and `ts`, plus extras the hook passed (`path`, `ok`, `duration_ms`, `error`, `error_class`, and similar). Published 3.0.14 sets `provider` to `"other"` unless a caller passed another value. No in-tree call site passes one, so published logs label `provider` as `other`. The hostname is still stored. Node's substring provider guess does not run on these files.
 
-The file also contains `"workflow": "sight_loop"`. That value is leftover storage from an older name. It is not the product name. Vantio Optics is the product name. The string does not turn a feature on. CLI 0.3.24 Node files do not write `workflow`.
+Published Python 3.0.14 also contains `"workflow": "sight_loop"`. That value is leftover storage from an older name. It is not the product name. Vantio Optics is the product name. The string does not turn a feature on. Source candidate 3.1.1 does not write that field. CLI Node files do not write `workflow`.
 
 The file does not include `pid`, `ppid`, `free_mode`, `duration_ms` on the envelope, `by_host`, or `schema_status`.
 
@@ -658,7 +658,7 @@ In this repository's Python 3.1.0 source:
 - `http.client` and `pycurl` still do not store an HTTP status on the success path. Outcome stays `UNAVAILABLE` with the line `Provider outcome unavailable`.
 - Telemetry matches the CLI opt-in rule.
 
-CLI customer-line text for those outcomes is deferred. `@vantio/cli@0.3.24` still says "Application outcome" and "Application error". It was not reopened for the 3.1.0 wording.
+Published `@vantio/cli@0.3.24` says "Application outcome" and "Application error". Source candidate 0.3.25 says "Observed outcome" and the specific sentence for that HTTP status. The machine token for HTTP 400–599 stays `APPLICATION_ERROR`.
 
 ## Upgrade from Python v2
 
@@ -881,7 +881,7 @@ No `schema_status`, `pid`, `ppid`, `free_mode`, envelope `duration_ms`, `by_host
 
 ## Unpublished Python 3.1.0 source
 
-Same write path, plus file fields that 3.0.14 does not have: `schema_status` `unstable-pre-1.0`, `status_labels`, and summary fields `opticsStatus`, `applicationStatus`, `opticsLabel`, and customer summary fields. Calls gain `opticsStatus`, `applicationStatus`, `applicationOutcomeLabel`, `providerResponse`, and related lines. `workflow` is still the leftover string `sight_loop` in that source. Do not treat a PyPI install as this shape.
+Same write path, plus file fields that 3.0.14 does not have: `schema_status` `unstable-pre-1.0`, `status_labels`, and summary fields `opticsStatus`, `applicationStatus`, `opticsLabel`, and customer summary fields. Calls gain `opticsStatus`, `applicationStatus`, `applicationOutcomeLabel`, `providerResponse`, and related lines. Source candidate 3.1.1 omits `workflow`. Older unpublished source stored the leftover string `sight_loop`. Do not treat a PyPI install as this shape.
 
 ## Schema markers
 
@@ -931,7 +931,7 @@ CLI 0.3.24 prints two different ideas. Keep the tokens.
 | `PARTIAL` | Partial | Application rollup when the calls in one run do not share one application status. |
 | `UNKNOWN` | (no separate CLI human label) | Keep this token if you already have it from an older file or a reviewer note. Do not relabel it as success or as a block. |
 
-JSON values are the tokens. Human words are labels. Unpublished Python 3.1.0 source uses more specific customer sentences ("Provider authentication failed", and similar). CLI 0.3.24 was not updated to those sentences. On 0.3.24 the human application label stays "Application error", "Successful", "Unavailable", "Partial", or "Not observed".
+JSON values are the tokens. Human words are labels. Published CLI 0.3.24 human labels stay "Application error", "Successful", "Unavailable", "Partial", or "Not observed". Source candidate CLI 0.3.25 and Python source use the specific observed sentence ("Provider authentication failed", and similar) while the machine token for HTTP 400–599 stays `APPLICATION_ERROR`.
 
 ## How the CLI derives display fields
 
@@ -1374,14 +1374,14 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 ## Record gaps
 
 - Node writes a file for zero calls. Python writes only when at least one call was stored. "No file" means different things.
-- CLI readers ignore `VANTIO_HOME`. Writers and the MCP reader honor it.
-- Node provider labels are substring guesses. Published Python labels are `"other"`.
-- The same trace id overwrites one file. Prefix search can hit the wrong file.
+- Published CLI 0.3.24 readers ignore `VANTIO_HOME`. Source candidate 0.3.25 readers use it when it is set. Writers and the MCP reader honor it.
+- Published CLI 0.3.24 provider labels are substring guesses. Source candidate 0.3.25 uses catalog hosts and known regional patterns. A hostname that only contains a provider word stays `other`. Published Python labels are `"other"` unless the catalog names the host.
+- The same trace id overwrites one file. Published CLI 0.3.24 prefix search can hit the wrong file. Source candidate 0.3.25 matches the start of the file name, and an exact id wins over a longer id.
 - A crash during the single write can leave a partial file. Write errors are swallowed.
 - `SIGKILL` skips the flush.
 - Query strings are dropped. Path segments are stored and can hold secrets.
 - Published Python 3.0.14 urllib records an HTTP error status with `error` `network_error`. The return path in that source can store `ok` true on a 4xx or 5xx. Display uses the status code.
-- Python files contain `"workflow": "sight_loop"`. That string is not current product terminology.
+- Published Python files contain `"workflow": "sight_loop"`. That string is not current product terminology. Source candidate 3.1.1 omits that field and sets `producer` to `python_observe`. Old files are not rewritten.
 - The published PyPI summary and the MCP package description still contain that older phrase. This manual does not adopt it.
 - `vantio prove` HTML and MCP Markdown do not show the same columns.
 - `prove --from` can render JSON that Optics did not write.

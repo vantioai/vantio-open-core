@@ -4,7 +4,10 @@
 
 CANDIDATE_ONLY_NOT_FOR_PUBLICATION. This heading is source. It is not a PyPI release.
 
-This heading stages the source version label. It does not change SDK behavior. The sealed publisher stays on 3.1.0. Enforcement removal and the http.client status fix are separate changes.
+Candidate behavior, not a registry release. The sealed publisher stays on 3.1.0.
+
+- New run logs omit the leftover workflow field and set `producer` to `python_observe`. `runtime` stays `python`. Files already on disk are not rewritten.
+- Optics remains observational. This package does not block, redact, or cap a call.
 
 ## 3.1.0
 
@@ -29,15 +32,14 @@ Documentation correction for anonymous telemetry. The payload schema and send be
 
 Packaging metadata correction only. No SDK behavior change.
 
-- Corrects public package metadata to reflect the current Optics, Phantom Engine, and Vantio Enterprise product model.
-- Removes stale Gate project metadata from the published package (project URL and long description as served by PyPI).
-- Does not reintroduce Gate as a current standalone SKU.
+- Corrects public package metadata to the Optics, Phantom Engine, and Enterprise names.
+- Removes a retired standalone product name and its retired price from the project URL and the long description.
+- Does not add a fourth public product.
 - Does not claim external proof or customer validation.
 
 ## 3.0.13
 
 Packaging metadata only. PyPI long description and project URLs matched the public ladder then in effect. Continuous Assurance is named as the platform trust loop, not a fifth product. No SDK behavior change.
 
-> **Historical note:** this release originally listed Gate as a separate $499/month SKU. Gate is the
-> internal name for the Enforce function set inside Phantom Engine; it is not a current standalone
-> public product.
+> **Historical note:** an older note for this release used a retired product name and a retired
+> price. Those words are not current. Phantom Engine is the enforcement product. Optics observes.
