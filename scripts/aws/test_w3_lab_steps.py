@@ -46,6 +46,7 @@ def instance(state: str = "running") -> dict:
         "Placement": {"AvailabilityZone": "us-east-2a"},
         "PublicIpAddress": "1.1.1.1",
         "SecurityGroups": [{"GroupId": "sg-0123456789abcdef0"}],
+        "ImageId": lab.PINNED_IMAGE_ID,
         "State": {"Name": state},
         "Tags": owned_tags(),
     }
@@ -57,6 +58,7 @@ class FakeAws:
         self.state = "running"
         self.dry_run = "denied"
         self.egress_revoke = "allowed"
+        self.console = b"boot\nvantio-lab-marker seal=" + SEAL.encode() + b" pin=" + PIN.encode() + b"\n"
 
     def __call__(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         self.calls.append(list(args))
@@ -106,7 +108,7 @@ class FakeAws:
         if "describe-volumes" in text or "describe-security-groups" in text or "describe-key-pairs" in text:
             return completed({"Volumes": [], "SecurityGroups": [], "KeyPairs": []})
         if "get-console-output" in text:
-            raw = base64.b64encode(b"boot\nvantio-lab-marker seal=" + SEAL.encode() + b" pin=" + PIN.encode() + b"\n").decode()
+            raw = base64.b64encode(self.console).decode()
             return completed({"Output": raw})
         if "terminate-instances" in text:
             self.state = "terminated"
@@ -971,6 +973,8 @@ class WorkflowTextTests(unittest.TestCase):
             self.assertNotRegex(text, r"(?m)^\s*AWS_ACCESS_KEY_ID:", name)
         arm = (ROOT / ".github/workflows/w3-lab-auto-arm.yml").read_text(encoding="utf-8")
         self.assertIn("close-ssh", arm)
+        self.assertIn("w3-lab-console-${{ github.run_id }}", arm)
+        self.assertIn("w3-lab-console-*.txt", arm)
         self.assertIn("if: always()", arm)
         soak = (ROOT / ".github/workflows/w3-lab-auto-long-soak.yml").read_text(encoding="utf-8")
         self.assertIn("default: false", soak)
@@ -1591,7 +1595,19 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn('if [ "${2:-}" = "reboot-check" ]; then', text)
         check = text[text.index('if [ "${2:-}" = "reboot-check" ]; then') : text.index('sudo rm -rf "$stage"')]
         self.assertLess(check.index("sudo rm -f /tmp/enterprise-pe-rows.json"), check.index("schedule_forced_reboot"))
+        self.assertLess(check.index("ensure_stock_reboot_script"), check.index("reboot_script_missing"))
         self.assertLess(check.index("reboot_script_missing"), check.index("schedule_forced_reboot"))
+        ensure = text[text.index("ensure_stock_reboot_script() {") : text.index("stage_reboot_guest_files() {")]
+        self.assertIn("install_stock_reboot_script", ensure)
+        self.assertIn("[ -x /var/lib/vantio-lab/reboot-with-grub.sh ]", ensure)
+        schedule = text[text.index("schedule_forced_reboot() {") : text.index("# A second boot already has bpf")]
+        self.assertLess(schedule.index("stage_reboot_guest_files"), schedule.index("systemd-run"))
+        self.assertNotIn("install_stock_reboot_script", schedule)
+        staged = text[text.index("stage_reboot_guest_files() {") : text.index("schedule_forced_reboot() {")]
+        self.assertIn("/var/lib/vantio-lab/guest/baseline_diag.py", staged)
+        descendant_at = text.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then')
+        descendant = text[descendant_at : text.index('stamp_host_evidence\n  exit "$rc"', descendant_at)]
+        self.assertLess(descendant.index("ensure_stock_reboot_script"), descendant.index("schedule_forced_reboot"))
         self.assertIn("sudo python3", check)
         self.assertIn("systemctl stop vantio-lab-lsm-reboot.timer", check)
         self.assertNotIn("schedule_forced_reboot vantio-lab", text)
@@ -1788,8 +1804,14 @@ class EnterpriseRowSessionTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-            if args[0] == "ssh" and "boot_id" in joined:
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
                 return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/proc/cmdline":
+                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout="lockdown,capability,landlock,yama,apparmor\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
             return completed(stdout="")
 
         def wait(*_args: object, **kwargs: object) -> str:
@@ -1820,6 +1842,127 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(result["scheduled_boot_id"], "boot-old")
         self.assertEqual(result["boot_id"], "boot-new")
         self.assertEqual(released["n"], 1)
+        post = result["post_boot"]
+        self.assertEqual(post["boot_id"], "boot-new")
+        self.assertEqual(post["cmdline"], "root=PARTUUID ro console=ttyS0")
+        self.assertEqual(post["lsm"], "lockdown,capability,landlock,yama,apparmor")
+        self.assertEqual(post["lockdown"], "[none] integrity confidentiality")
+        self.assertEqual(post["image_name"], "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260901")
+        self.assertTrue(result["console_file"].startswith("w3-lab-console-"))
+        self.assertEqual(len(result["console_sha256"]), 64)
+        self.assertTrue(any("get-console-output" in call for call in runner.calls))
+
+    def test_reboot_check_fails_when_the_new_boot_has_no_cmdline(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "reboot-check",
+                            "boot_id": "boot-old",
+                            "reboot_requested": True,
+                            "unit": "vantio-lab-lsm-reboot",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout="lockdown,capability,apparmor\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                with self.assertRaises(lab.GuardAbort) as caught:
+                    steps.execute_enterprise_rows(
+                        runner,
+                        keygen=keygen,
+                        ssh_runner=ssh,
+                        checker=lambda _path: {"seal_sha256": SEAL},
+                    )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(caught.exception.reason, "post_boot_incomplete")
+        self.assertFalse(any("get-console-output" in call for call in runner.calls))
+
+    def test_reboot_check_fails_when_the_serial_log_is_empty(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        runner.console = b""
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "reboot-check",
+                            "boot_id": "boot-old",
+                            "reboot_requested": True,
+                            "unit": "vantio-lab-lsm-reboot",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/proc/cmdline":
+                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout="lockdown,capability,apparmor\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                with self.assertRaises(lab.GuardAbort) as caught:
+                    steps.execute_enterprise_rows(
+                        runner,
+                        keygen=keygen,
+                        ssh_runner=ssh,
+                        checker=lambda _path: {"seal_sha256": SEAL},
+                    )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(caught.exception.reason, "console_missing")
 
 
 class RebootWaitTests(unittest.TestCase):

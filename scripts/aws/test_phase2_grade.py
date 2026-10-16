@@ -557,6 +557,13 @@ class BaselineDiagTests(unittest.TestCase):
         bare = baseline_diag.reboot_with_grub_script()
         self.assertNotIn("systemctl reboot", bare)
         self.assertIn("refusing reboot: no lab lsm token", bare)
+        fresh = baseline_diag.stock_reboot_script()
+        self.assertIn("systemctl reboot --force", fresh)
+        self.assertNotIn("update-grub", fresh)
+        self.assertNotIn("lsm=", fresh)
+        self.assertIn("stock reboot", fresh)
+        syntax = subprocess.run(["bash", "-n"], input=fresh, text=True, capture_output=True)
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
         cloud = 'GRUB_CMDLINE_LINUX="console=ttyS0,115200 panic=-1"\n'
         rewritten = baseline_diag.assignments_with_lsm(cloud, "lockdown,capability,apparmor,bpf")
         self.assertIn("console=ttyS0,115200 panic=-1 lsm=lockdown,capability,apparmor,bpf", rewritten)
@@ -602,6 +609,20 @@ class BaselineDiagTests(unittest.TestCase):
         stock = baseline_diag.lsm_status_body("capability,bpf", "root=PARTUUID", None)
         self.assertEqual(stock["host_result"], "LSM_ALREADY_ACTIVE")
         self.assertTrue(stock["stock_bpf_lsm"])
+
+    def test_stock_reboot_script_does_not_replace_a_sealed_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "reboot-with-grub.sh"
+            target.write_text("#!/bin/bash\necho sealed\n", encoding="utf-8")
+            target.chmod(0o755)
+            self.assertEqual(baseline_diag.install_stock_reboot_script(target), "present")
+            self.assertIn("echo sealed", target.read_text(encoding="utf-8"))
+            missing = Path(tmp) / "fresh" / "reboot-with-grub.sh"
+            self.assertEqual(baseline_diag.install_stock_reboot_script(missing), "installed")
+            text = missing.read_text(encoding="utf-8")
+            self.assertIn("systemctl reboot --force", text)
+            self.assertNotIn("update-grub", text)
+            self.assertTrue(os.access(missing, os.X_OK))
 
     def test_reboot_script_keeps_the_panic_line_token(self) -> None:
         token = "lockdown,capability,apparmor,bpf"
