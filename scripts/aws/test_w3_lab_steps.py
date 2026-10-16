@@ -1439,6 +1439,21 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn("normalize_loaded_image", text)
         self.assertIn("accept_loaded_image", text)
         self.assertNotIn('test "$image" = "$image_name"', text)
+        self.assertIn("AccuracySec=1s", text)
+        self.assertIn("reboot_not_scheduled", text)
+        self.assertIn('sudo python3 - "$here/sticky_write.py"', text)
+        uninstall = text[text.index("authorized_uninstall()"): text.index("\nmode=${2:-enterprise}")]
+        self.assertLess(uninstall.index("sudo rm -f /tmp/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpffs"', uninstall)
+        self.assertIn("| tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertNotIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertNotIn("systemctl reboot --force || true", text)
+        self.assertIn(
+            "sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json",
+            text,
+        )
         auto_text = (ROOT / "scripts/aws/w3_lab_auto.py").read_text(encoding="utf-8")
         steps_text = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
         self.assertIn('BRAIN_GUEST_DIR = "/var/lib/vantio-lab/brain"', auto_text)
@@ -1514,6 +1529,218 @@ class EnterpriseRowSessionTests(unittest.TestCase):
                 rows.unlink(missing_ok=True)
             else:
                 rows.write_bytes(saved)
+
+    def test_uninstall_tail_is_not_labeled_programs_not_removed(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "ssh" and "enterprise-rows.sh" in " ".join(args):
+                return completed(code=1, stdout="UNINSTALL_NOT_VERIFIED")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "boot_id": "boot-a",
+                            "removal": {"verified_removed": True, "loader_programs": []},
+                            "uninstall_tail": "UNINSTALL_NOT_VERIFIED rc=1\n",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and "boot_id" in " ".join(args):
+                return completed(stdout="boot-a\n")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(caught.exception.reason, "uninstall_not_verified")
+
+    def test_a_rows_file_from_another_boot_fails_closed(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if args[0] == "scp" and "enterprise-pe-rows.json" in " ".join(args):
+                Path(args[-1]).write_text(json.dumps({"boot_id": "old-boot"}), encoding="utf-8")
+            if args[0] == "ssh" and "boot_id" in " ".join(args):
+                return completed(stdout="new-boot\n")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(caught.exception.reason, "stale_rows")
+
+
+class RebootWaitTests(unittest.TestCase):
+    def test_ssh_that_stays_up_on_the_same_boot_uses_only_the_drop_budget(self) -> None:
+        now = {"t": 0.0}
+
+        def clock() -> float:
+            return now["t"]
+
+        def pause(seconds: float) -> None:
+            now["t"] += seconds
+
+        def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if argv[:1] == ["cat"]:
+                return completed(stdout="boot-a\n")
+            return completed(stdout="")
+
+        with self.assertRaises(lab.GuardAbort) as caught:
+            steps._wait_for_reboot(
+                lambda _args: completed(payload={}),
+                INSTANCE,
+                remote,
+                ["aws", "sts", "get-caller-identity"],
+                drop_budget=10,
+                return_budget=30,
+                clock=clock,
+                pause=pause,
+            )
+        self.assertEqual(caught.exception.reason, "reboot_timeout")
+        self.assertEqual(now["t"], 10)
+
+    def test_a_changed_boot_id_ends_the_wait(self) -> None:
+        now = {"t": 0.0}
+        seen = {"n": 0}
+
+        def clock() -> float:
+            return now["t"]
+
+        def pause(seconds: float) -> None:
+            now["t"] += seconds
+
+        def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if argv[:1] == ["cat"]:
+                seen["n"] += 1
+                return completed(stdout="boot-b\n" if seen["n"] >= 3 else "boot-a\n")
+            return completed(stdout="")
+
+        found = steps._wait_for_reboot(
+            lambda _args: completed(payload={}),
+            INSTANCE,
+            remote,
+            ["aws", "sts", "get-caller-identity"],
+            drop_budget=30,
+            return_budget=30,
+            clock=clock,
+            pause=pause,
+        )
+        self.assertEqual(found, "boot-b")
+        self.assertLess(now["t"], 30)
+
+    def test_return_budget_starts_after_ssh_drops(self) -> None:
+        now = {"t": 0.0}
+
+        def clock() -> float:
+            return now["t"]
+
+        def pause(seconds: float) -> None:
+            now["t"] += seconds
+
+        def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if argv[:1] == ["cat"]:
+                return completed(stdout="boot-a\n")
+            return completed(code=255, stderr="Connection refused")
+
+        with self.assertRaises(lab.GuardAbort) as caught:
+            steps._wait_for_reboot(
+                lambda _args: completed(payload={}),
+                INSTANCE,
+                remote,
+                ["aws", "sts", "get-caller-identity"],
+                drop_budget=10,
+                return_budget=30,
+                clock=clock,
+                pause=pause,
+                describe=lambda _runner, _instance_id: {"State": {"Name": "stopped"}},
+            )
+        self.assertEqual(caught.exception.reason, "reboot_timeout")
+        self.assertGreaterEqual(now["t"], 30)
+        self.assertLess(now["t"], 40)
+
+    def test_ssh_returning_on_the_same_boot_is_not_a_reboot(self) -> None:
+        now = {"t": 0.0}
+        down = {"value": True}
+
+        def clock() -> float:
+            return now["t"]
+
+        def pause(seconds: float) -> None:
+            now["t"] += seconds
+
+        def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            if argv == ["true"] and down["value"]:
+                down["value"] = False
+                return completed(code=255, stderr="Connection refused")
+            if argv[:1] == ["cat"]:
+                return completed(stdout="boot-a\n")
+            return completed(stdout="")
+
+        with self.assertRaises(lab.GuardAbort) as caught:
+            steps._wait_for_reboot(
+                lambda _args: completed(payload={}),
+                INSTANCE,
+                remote,
+                ["aws", "sts", "get-caller-identity"],
+                drop_budget=10,
+                return_budget=20,
+                clock=clock,
+                pause=pause,
+                describe=lambda _runner, _instance_id: {"State": {"Name": "running"}},
+            )
+        self.assertEqual(caught.exception.reason, "reboot_timeout")
+        self.assertGreaterEqual(now["t"], 20)
+        self.assertLess(now["t"], 30)
+
+    def test_waiter_does_not_reach_for_a_manager_session(self) -> None:
+        import inspect
+
+        source = inspect.getsource(steps._wait_for_reboot).lower()
+        self.assertNotIn("send-command", source)
+        self.assertNotIn("start-session", source)
+        self.assertNotIn("ssm", source)
+
+    def test_rows_from_another_boot_are_refused(self) -> None:
+        self.assertTrue(steps._rows_disagree_with_boot({"boot_id": "old-boot"}, "new-boot"))
+        self.assertFalse(steps._rows_disagree_with_boot({"pre": {"boot_id": "old-boot"}, "post": {"boot_id": "new-boot"}}, "new-boot"))
+        self.assertFalse(steps._rows_disagree_with_boot({}, "new-boot"))
+        self.assertEqual(
+            steps._guest_failure_reason({"removal": {"verified_removed": False}}),
+            "programs_not_removed",
+        )
+        self.assertEqual(
+            steps._guest_failure_reason(
+                {"removal": {"verified_removed": True}, "uninstall_tail": "UNINSTALL_NOT_VERIFIED rc=1\n"}
+            ),
+            "uninstall_not_verified",
+        )
+        self.assertEqual(steps._guest_failure_reason({"removal": {"verified_removed": True}}), "guest")
 
 
 if __name__ == "__main__":

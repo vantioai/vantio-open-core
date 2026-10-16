@@ -241,7 +241,10 @@ authorized_uninstall() {
   local probe_pid="${3:-0}"
   export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
   record_uninstall() {
-    python3 - "$here/sticky_write.py" << 'PY'
+    # guest_rows.py runs as root and owns this file. The lab user cannot
+    # truncate it, so the tail has to be written as root or the runner
+    # uploads the pre-uninstall body.
+    sudo python3 - "$here/sticky_write.py" << 'PY' || true
 import json
 import sys
 from pathlib import Path
@@ -254,15 +257,28 @@ try:
     body = json.loads(rows.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError):
     body = {}
+if not isinstance(body, dict):
+    body = {}
 out = Path("/tmp/vantio-uninstall.out")
 body["uninstall_tail"] = out.read_text(encoding="utf-8", errors="replace")[-1200:] if out.is_file() else ""
+try:
+    boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+except OSError:
+    boot = ""
+if boot and "\n" not in boot and len(boot) <= 80:
+    body["boot_id"] = boot
 write_replacing(rows, json.dumps(body))
 PY
-    chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    sudo chmod a+r /tmp/enterprise-pe-rows.json /tmp/vantio-uninstall.out 2>/dev/null || true
   }
   trap record_uninstall RETURN
+  # A previous battery can leave this file. The loader truncates it only
+  # when it runs, and the shell markers below have to be in it too. The
+  # recorder reads this file, not the script's stderr. The shell redirect
+  # owns the file. tee as root is refused in sticky /tmp.
+  sudo rm -f /tmp/vantio-uninstall.out
   if ! ensure_working_bpftool; then
-    echo "UNINSTALL_RESIDUAL bpftool missing" >&2
+    echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   stop_loader_containers
@@ -293,12 +309,14 @@ PY
   set -e
   cat /tmp/vantio-uninstall.out
   if ! grep -qx 'UNINSTALL_VERIFIED' /tmp/vantio-uninstall.out; then
-    echo "UNINSTALL_NOT_VERIFIED rc=$urc" >&2
+    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null | grep -q .; then
-    echo "UNINSTALL_RESIDUAL bpffs" >&2
-    find /sys/fs/bpf -maxdepth 2 -name 'vantio*' >&2 || true
+    {
+      echo "UNINSTALL_RESIDUAL bpffs"
+      find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null || true
+    } | tee -a /tmp/vantio-uninstall.out >&2
     return 1
   fi
   if [ "$require_row" = "yes" ]; then
@@ -340,6 +358,37 @@ PY
   fi
 }
 
+# The runner reads /tmp. phase2 and descendant publish under /var/lib,
+# and a reboot does not clear a recent /tmp file.
+publish_current_rows() {
+  if [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
+    sudo cp -f /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
+    sudo chmod a+r /tmp/enterprise-pe-rows.json || true
+  fi
+}
+
+# A transient timer's AccuracySec defaults to one minute. Reset the unit
+# first so a second arm can schedule it again. reboot-with-grub.sh is the
+# command that produced a new boot on this image; it refuses when the menu
+# has no lab lsm token. A schedule that does not start fails the phase.
+schedule_forced_reboot() {
+  local unit=$1
+  sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
+  sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
+  sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
+  local reboot_cmd
+  if [ -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+    reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
+  else
+    reboot_cmd="systemctl reboot --force"
+  fi
+  if ! sudo systemd-run --on-active=45s --timer-property=AccuracySec=1s --unit="$unit" $reboot_cmd; then
+    echo "reboot_not_scheduled unit=${unit}" >&2
+    return 1
+  fi
+  echo "reboot_scheduled unit=${unit} delay=45s"
+}
+
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
@@ -350,8 +399,12 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'IMAGE_LINE=%s\n' "$image"
   # b1-pre.json survives a reboot. A later pre that fails before it writes
   # would otherwise leave the previous repeat's measurements for post to read.
+  # The enterprise rows file also survives, and the runner would upload it
+  # as this phase's result.
   if [ "$phase" = "pre" ]; then
-    sudo rm -f /var/lib/vantio-lab/b1-pre.json
+    sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
+  else
+    sudo rm -f /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
   fi
   set +e
   sudo env VANTIO_IMAGE="$image" VANTIO_PROBE="$here/descendant_probe" python3 "$here/descendant_b1.py" "$stage" "$phase" > /tmp/descendant-b1.out 2>&1
@@ -359,6 +412,7 @@ if [ "$mode" = "descendant-b1" ]; then
   set -e
   cat /tmp/descendant-b1.out
   chmod a+r /tmp/descendant-b1.out 2>/dev/null || true
+  publish_current_rows
   if [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
     cp "$here/redteam_packet.py" "$stage/redteam_packet.py"
     brain=/var/lib/vantio-lab/brain
@@ -376,12 +430,8 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
-    # The offline lab network leaves google-shutdown-scripts.service/stop
-    # running with no limit, so a normal reboot never reaches a new boot.
-    # Mask that unit, then force the reset after this shell returns.
-    sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
-    if ! sudo systemd-run --on-active=8s --unit=vantio-lab-reboot systemctl reboot --force; then
-      sudo systemctl reboot --force || true
+    if ! schedule_forced_reboot vantio-lab-reboot; then
+      exit 1
     fi
   fi
   exit "$rc"
@@ -394,26 +444,29 @@ case "$mode" in
       /var/lib/vantio-lab/bin/
     sudo chmod 755 /var/lib/vantio-lab/bin/soak-hourly.sh /var/lib/vantio-lab/bin/record-check.sh
     sudo bash /var/lib/vantio-lab/bin/soak-hourly.sh install
-    sudo rm -f /tmp/enterprise-pe-rows.json
+    sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
     sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh start > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out
+    publish_current_rows
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true
     printf 'PY_RC=%s\n' "$rc"
     exit "$rc"
     ;;
   2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
-    # A previous battery leaves this file. Copying only when it is missing
-    # would report that older result for this run.
-    sudo rm -f /tmp/enterprise-pe-rows.json
+    # A previous battery leaves both copies. The runner reads /tmp, and
+    # phase2 publishes under /var/lib. Delete both, then copy the file
+    # this phase writes.
+    sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
     sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    publish_current_rows
     if [ ! -s /tmp/enterprise-pe-rows.json ]; then
       cp /tmp/phase2-host.out /tmp/enterprise-pe-rows.json
     fi
@@ -433,18 +486,8 @@ case "$mode" in
       want=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
       if [ "$want" = "yes" ]; then
         sync
-        # The offline lab network leaves google-shutdown-scripts.service/stop
-        # running with no limit, so a normal reboot never reaches a new boot.
-        # Mask that unit, then force the reset after this shell returns.
-        sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
-        sudo systemctl reset-failed vantio-lab-lsm-reboot >/dev/null 2>&1 || true
-        if [ -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
-          reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
-        else
-          reboot_cmd="systemctl reboot --force"
-        fi
-        if ! sudo systemd-run --on-active=45s --unit=vantio-lab-lsm-reboot $reboot_cmd; then
-          sudo /var/lib/vantio-lab/reboot-with-grub.sh || sudo systemctl reboot --force || true
+        if ! schedule_forced_reboot vantio-lab-lsm-reboot; then
+          exit 1
         fi
       fi
     fi
@@ -452,7 +495,7 @@ case "$mode" in
     ;;
 esac
 set +e
-sudo rm -f /tmp/enterprise-pe-rows.json
+sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
