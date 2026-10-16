@@ -1,9 +1,9 @@
 {
-  "generated_at_utc": "2026-10-16T16:07:34Z",
+  "generated_at_utc": "2026-10-16T16:11:00Z",
   "phase": 1,
   "feature_code": false,
   "base_note": "git_head_at_generation is the HEAD when this file was written. The design-file hashes attest those files.",
-  "git_head_at_generation": "5dc1c23052289bd7a0c794509dd8b984775b0b6f",
+  "git_head_at_generation": "0e87d375e37a697da626393d4f9971ee618d53db",
   "track_label": "Roadmap",
   "inherited_observability_head": "ef3a33a",
   "product_otlp_export_authorized": false,
@@ -14,15 +14,15 @@
     },
     {
       "path": "docs/gap-program/T7-credential-keep-out.md",
-      "sha256": "e219fa4f9f2c2202c3f4f95ba57918b94bfcffda369f982bb3650ef574e0f858"
+      "sha256": "4795e43dacbaa6d102f5bdc0c471a3349bbb22548902a8d7a6d08a2b411856f2"
     },
     {
       "path": "docs/gap-program/T8-ocsf-otlp-siem.md",
-      "sha256": "145c714c73262a8bef932008067ef1b61a38514ec84ad0b3d25242fa9a72176c"
+      "sha256": "972a4d37b7b768bc9df72a4b1e1233f9b7aacd98f5a65471570ddbeb4b9d63b8"
     },
     {
       "path": "docs/gap-program/T9-owasp-agentic-matrix.md",
-      "sha256": "1987499b9c6e0c8dfa91f42a40373e4598ec398da71bfae6499e72415d04eb64"
+      "sha256": "b6743fff28366bdae1e69e5df06bc93fbf397e9e847bca9955de5c41ae5814d4"
     },
     {
       "path": "docs/gap-program/T10-live-human-approval.md",
@@ -38,11 +38,11 @@
     },
     {
       "path": "docs/gap-program/T13-fedramp-fips-gap.md",
-      "sha256": "2aaf7731befd9af0e203730dffc506f96894e71404c6a3bcc6fc926acdfb0833"
+      "sha256": "83c0717f2b22a224132cf088b85bd7f9d6d5ea10aa3ffb6f8ccaa4ebc31d9a71"
     },
     {
       "path": "docs/gap-program/T14-eu-ai-act-evidence-outline.md",
-      "sha256": "264b22a665d14ec3d568538784ed8000d2f99c3d2cc46b883677c7fcc47835cb"
+      "sha256": "235dab12cb2187a5e94fc2cd7e6c04cca706f6490a9d8c1febeed5435d117585"
     }
   ],
   "ok": true,
