@@ -1,0 +1,56 @@
+{
+  "run": {
+    "schema": "vantio.internal.openshell_reconciliation.run.v1",
+    "host_id": "lab-host-1",
+    "window_ms": 5000,
+    "bindings": [
+      {
+        "cgroup_id": "21",
+        "sandbox_id": "policy-demo"
+      }
+    ]
+  },
+  "kernel": [
+    {
+      "host_id": "lab-host-1",
+      "cgroup_id": "21",
+      "EventType": "TLS_EGRESS",
+      "ActionTaken": "OBSERVED",
+      "TraceId": "0xc0ffee00c0ffee00",
+      "Pid": 4242,
+      "observed_at_ms": 1775014138811,
+      "destination_host": "Lab.Invalid.",
+      "destination_port": 443,
+      "BytesObserved": 128
+    }
+  ],
+  "openshell": [
+    {
+      "class_uid": 4001,
+      "class_name": "Network Activity",
+      "activity_name": "Open",
+      "time": 1775014139000,
+      "action": "Allowed",
+      "disposition": "Allowed",
+      "message": "CONNECT allowed lab.invalid:443",
+      "metadata": {
+        "uid": "event-not-a-trace",
+        "version": "1.8.0"
+      },
+      "container": {
+        "uid": "policy-demo"
+      },
+      "dst_endpoint": {
+        "domain": "lab.invalid",
+        "port": 443
+      },
+      "actor": {
+        "process": {
+          "name": "/usr/bin/python3.12",
+          "pid": 99
+        }
+      }
+    }
+  ],
+  "gate": []
+}

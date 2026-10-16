@@ -1,0 +1,50 @@
+{
+  "run": {
+    "schema": "vantio.internal.openshell_reconciliation.run.v1",
+    "host_id": "lab-host-1",
+    "window_ms": 5000,
+    "bindings": [
+      {
+        "cgroup_id": "21",
+        "sandbox_id": "policy-demo"
+      }
+    ]
+  },
+  "kernel": [
+    {
+      "host_id": "lab-host-1",
+      "cgroup_id": "21",
+      "EventType": "TLS_EGRESS",
+      "ActionTaken": "OBSERVED",
+      "TraceId": "0xc0ffee00c0ffee00",
+      "Pid": 4242,
+      "observed_at_ms": 1775014138811,
+      "destination_host": "lab.invalid",
+      "destination_port": 443,
+      "BytesObserved": 128
+    }
+  ],
+  "openshell": [
+    {
+      "class_uid": 1007,
+      "class_name": "Process Activity",
+      "time": 1775014138811,
+      "action": "Allowed",
+      "message": "process start",
+      "metadata": {
+        "uid": "c0ffee00c0ffee00",
+        "version": "1.8.0"
+      },
+      "container": {
+        "uid": "policy-demo"
+      },
+      "actor": {
+        "process": {
+          "name": "/usr/bin/python3.12",
+          "pid": 4242
+        }
+      }
+    }
+  ],
+  "gate": []
+}

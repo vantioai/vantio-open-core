@@ -1,0 +1,18 @@
+{
+  "name": "@vantio/openshell-rogue-reconciliation",
+  "private": true,
+  "version": "0.0.0-unstable-pre-1.0",
+  "description": "INTERNAL_RESTRICTED. Lab-only join of recorded Phantom Engine observations with OpenShell and Gate snapshots. Not shipped. Not Phantom Engine. No network. No eBPF.",
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "exports": {
+    ".": "./src/index.cjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "prove": "node proof/prove-bypass.cjs"
+  }
+}
