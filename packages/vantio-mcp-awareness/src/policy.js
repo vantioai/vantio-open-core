@@ -188,7 +188,7 @@ export function decideEnvelope({ policy, session, direction, envelope, hmacHex }
 
   if (server.policy_incomplete) {
     findings.push(finding("policy_incomplete"));
-    return finish(mode, mode === "enforce" ? "BLOCK" : "LOG", findings, next, envelope, hmacHex, { labeled, idHmac, force: true });
+    return finish(mode, mode === "enforce" ? "BLOCK" : "LOG", findings, next, envelope, hmacHex, { labeled, idHmac });
   }
 
   if (envelope.kind === "request" && pendingKey && labeled.method) {

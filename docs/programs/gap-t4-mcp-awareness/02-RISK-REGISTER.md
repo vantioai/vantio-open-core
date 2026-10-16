@@ -33,7 +33,7 @@ This register is part of the design packet. It is updated again when the proof e
 
 Proof script: `node packages/vantio-mcp-awareness/scripts/proof.mjs`  
 Evidence: `docs/programs/gap-t4-mcp-awareness/evidence/t4-proof.json`  
-Evidence timestamp (UTC): 2026-10-16T16:28:02.742Z  
+Evidence timestamp (UTC): 2026-10-16T16:33:42.971Z  
 Node: v22.14.0  
 Result: 19 assertions ok, fuzz seed 1413742596, 500 iterations.  
 Label for those assertions: **Verified**.  

@@ -119,15 +119,26 @@ export function assemble(key) {
     createSession,
     hmacHex,
     observeBuffer(buffer, meta) {
-      return runBuffer(buffer, { ...meta, policyObject: normalizePolicy(meta.policy) });
+      try {
+        const safe = meta && typeof meta === "object" ? meta : {};
+        const bytes = toBuffer(buffer);
+        return runBuffer(bytes, {
+          ...safe,
+          serverId: typeof safe.serverId === "string" ? safe.serverId : "unspecified",
+          policyObject: normalizePolicy(safe.policy),
+        });
+      } catch {
+        return { records: [gapRecord(meta)], session: null };
+      }
     },
     inspectExchange(input) {
-      const policyObject = normalizePolicy(input.policy);
+      const safe = input && typeof input === "object" ? input : {};
+      const policyObject = normalizePolicy(safe.policy);
       const records = [];
-      let session = store.get(input.serverId);
+      let session = store.get(typeof safe.serverId === "string" ? safe.serverId : "unspecified");
       const sides = [
-        ["client_to_server", input.requestBody, input.requestType],
-        ["server_to_client", input.responseBody, input.responseType],
+        ["client_to_server", safe.requestBody, safe.requestType],
+        ["server_to_client", safe.responseBody, safe.responseType],
       ];
       for (const [direction, body, type] of sides) {
         if (body == null) continue;
@@ -135,7 +146,7 @@ export function assemble(key) {
         const out = runBuffer(body, {
           transport,
           direction,
-          serverId: input.serverId,
+          serverId: typeof safe.serverId === "string" ? safe.serverId : "unspecified",
           policyObject,
         });
         records.push(...out.records);
@@ -145,14 +156,18 @@ export function assemble(key) {
     },
     tapReadable(readable, meta) {
       if (taps >= MAX_TAPS) return { ok: false, reason: "cap" };
-      const policyObject = normalizePolicy(meta.policy);
-      const framer = createFramer(meta.transport || "stdio");
+      const safe = meta && typeof meta === "object" ? meta : {};
+      const policyObject = normalizePolicy(safe.policy);
+      const framer = createFramer(safe.transport || "stdio");
       const tap = tapReadable(readable, (chunk) => {
         if (!chunk) return;
         const frames = framer.push(chunk);
         for (const fr of frames) {
-          const out = evaluateFrame({ ...meta, policyObject, direction: meta.direction || "server_to_client" }, fr);
-          if (meta.onRecord) meta.onRecord(out.record);
+          const out = evaluateFrame(
+            { ...safe, policyObject, serverId: safe.serverId || "unspecified", direction: safe.direction || "server_to_client" },
+            fr,
+          );
+          if (safe.onRecord) safe.onRecord(out.record);
         }
       });
       if (tap.ok) taps += 1;
@@ -160,21 +175,31 @@ export function assemble(key) {
     },
     createInProcessGate(meta) {
       if (gates >= MAX_GATES) return { ok: false, reason: "cap" };
-      const policyObject = normalizePolicy(meta.policy);
+      const safe = meta && typeof meta === "object" ? meta : {};
+      const policyObject = normalizePolicy(safe.policy);
       gates += 1;
-      const stream = createInProcessGate(meta.transport || "stdio", (fr) => {
+      const stream = createInProcessGate(safe.transport || "stdio", (fr) => {
         const out = evaluateFrame(
-          { ...meta, policyObject, direction: meta.direction || "client_to_server", pair: false },
+          {
+            ...safe,
+            policyObject,
+            serverId: safe.serverId || "unspecified",
+            direction: safe.direction || "client_to_server",
+            pair: false,
+          },
           fr,
         );
-        if (meta.onRecord) meta.onRecord(out.record);
-        if (out.withheld && meta.onWithheld) meta.onWithheld(out.record);
+        if (safe.onRecord) safe.onRecord(out.record);
+        if (out.withheld && safe.onWithheld) safe.onWithheld(out.record);
         return { forward: out.forward, replacement: null };
       });
       return { ok: true, stream };
     },
     createStdioPairGate(meta) {
       if (gates >= MAX_GATES) return { ok: false, reason: "cap" };
+      if (!meta || typeof meta.fromChild?.on !== "function" || !meta.toChild || typeof meta.toChild.write !== "function") {
+        return { ok: false, reason: "not_a_stream" };
+      }
       const policyObject = normalizePolicy(meta.policy);
       gates += 1;
       const gate = createStdioPairGate({
@@ -199,6 +224,28 @@ export function assemble(key) {
       });
       return { ok: true, ...gate };
     },
+  };
+}
+
+function toBuffer(value) {
+  if (Buffer.isBuffer(value)) return value;
+  if (value == null) return Buffer.alloc(0);
+  if (typeof value === "string") return Buffer.from(value);
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  throw new TypeError("not a byte buffer");
+}
+
+function gapRecord(meta) {
+  const serverId = meta && typeof meta === "object" && typeof meta.serverId === "string" ? meta.serverId : "unspecified";
+  return {
+    schema: "vantio.mcp_observation.v1",
+    at: new Date().toISOString(),
+    transport: "stdio",
+    direction: "client_to_server",
+    server_id: serverId,
+    findings: [{ kind: "malformed_frame" }],
+    decision: { action: "GAP", reason: "malformed_frame" },
+    retention: { payload: false, values: false },
   };
 }
 

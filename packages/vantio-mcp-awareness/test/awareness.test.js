@@ -660,6 +660,18 @@ test("policy keys do not write Object.prototype", () => {
   assert.equal(Object.prototype.polluted, before);
 });
 
+test("observeBuffer does not throw when meta is missing", () => {
+  const runtime = rt();
+  const actions = new Set(["ALLOW", "LOG", "WOULD_BLOCK", "BLOCK", "GAP"]);
+  const missing = runtime.observeBuffer(Buffer.from(line({ jsonrpc: "2.0", method: "ping", id: 1 })));
+  assert.equal(actions.has(missing.records[0].decision.action), true);
+  const empty = runtime.observeBuffer(Buffer.from(line({ jsonrpc: "2.0", method: "ping", id: 1 })), null);
+  assert.equal(actions.has(empty.records[0].decision.action), true);
+  const bad = runtime.observeBuffer(12, null);
+  assert.equal(bad.records[0].decision.action, "GAP");
+  assert.equal(runtime.createStdioPairGate({}).ok, false);
+});
+
 test("production entry ignores a caller-supplied key", () => {
   const injected = createRuntimeWithKey(KEY);
   const a = injected.observeBuffer(Buffer.from(line({ jsonrpc: "2.0", id: "abc", method: "ping" })), {
