@@ -101,6 +101,45 @@ PY
     exit 2
   fi
 fi
+# The rows file is root-owned. Record the live lockdown mode and the exact
+# image name into it. A family name is not that image.
+stamp_host_evidence() {
+  if [ ! -f "$here/baseline_diag.py" ]; then
+    return 0
+  fi
+  sudo python3 - "$here" << 'PY' || true
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+from sticky_write import write_replacing
+
+lockdown = baseline_diag.read_lockdown()
+image_name = baseline_diag.read_image_name()
+rows = Path("/tmp/enterprise-pe-rows.json")
+if not rows.is_file():
+    raise SystemExit(0)
+try:
+    body = json.loads(rows.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    body = {}
+if not isinstance(body, dict):
+    body = {}
+changed = False
+if lockdown:
+    body["lockdown"] = lockdown
+    changed = True
+if image_name:
+    body["image_name"] = image_name
+    changed = True
+if changed:
+    write_replacing(rows, json.dumps(body) + "\n")
+PY
+  sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+}
+
 # Reboot proof only. No docker and no descendant probe. The schedule is the
 # function above; the runner leaves and then reads the new boot id.
 # A previous battery leaves the rows file owned by root. Remove it before
@@ -139,6 +178,7 @@ PY
     exit 1
   fi
   sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  stamp_host_evidence
   if [ -n "$reason" ]; then
     exit 1
   fi
@@ -475,9 +515,11 @@ if [ "$mode" = "descendant-b1" ]; then
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
     if ! schedule_forced_reboot; then
+      stamp_host_evidence
       exit 1
     fi
   fi
+  stamp_host_evidence
   exit "$rc"
 fi
 case "$mode" in
@@ -497,6 +539,7 @@ case "$mode" in
     publish_current_rows
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true
     printf 'PY_RC=%s\n' "$rc"
+    stamp_host_evidence
     exit "$rc"
     ;;
   2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
@@ -524,6 +567,7 @@ case "$mode" in
       fi
     fi
     if ! authorized_uninstall "$image" "$require_row" "$probe_pid"; then
+      stamp_host_evidence
       exit 1
     fi
     if [ "$mode" = "lsm-guard" ] && [ -s /tmp/enterprise-pe-rows.json ]; then
@@ -531,10 +575,12 @@ case "$mode" in
       if [ "$want" = "yes" ]; then
         sync
         if ! schedule_forced_reboot; then
+          stamp_host_evidence
           exit 1
         fi
       fi
     fi
+    stamp_host_evidence
     exit "$rc"
     ;;
 esac
@@ -544,6 +590,8 @@ sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
 if ! authorized_uninstall "$image" no 0; then
+  stamp_host_evidence
   exit 1
 fi
+stamp_host_evidence
 exit "$rc"

@@ -231,6 +231,54 @@ EVIDENCE_FILES = frozenset(
 CEILING_PATH = "/var/lib/vantio-pe-clean-host/d/secret"
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHORT_RE = re.compile(r"^[A-Za-z0-9_.:@+/-]{1,80}$")
+LOCKDOWN_RE = re.compile(
+    r"^(?:none|\[none\]|integrity|\[integrity\]|confidentiality|\[confidentiality\])"
+    r"(?: (?:none|\[none\]|integrity|\[integrity\]|confidentiality|\[confidentiality\])){0,3}$"
+)
+EXACT_IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+/-]{0,159}$")
+
+
+def exact_image_name(value: object) -> str:
+    """The image that booted. The family used at create time is not this name."""
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text or "\n" in text or "*" in text or text in {IMAGE_FAMILY, f"{IMAGE_PROJECT}/{IMAGE_FAMILY}"}:
+        return ""
+    if EXACT_IMAGE_RE.fullmatch(text) is None:
+        return ""
+    return text
+
+
+def lockdown_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if LOCKDOWN_RE.fullmatch(text) is None:
+        return ""
+    return text
+
+
+def host_evidence_fields(body: object) -> dict[str, str]:
+    if not isinstance(body, dict):
+        return {}
+    kept: dict[str, str] = {}
+    lockdown = lockdown_text(body.get("lockdown"))
+    if lockdown:
+        kept["lockdown"] = lockdown
+    name = exact_image_name(body.get("image_name"))
+    if name:
+        kept["image_name"] = name
+    return kept
+
+
+def image_name_from_disk(payload: object) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    source = payload.get("sourceImage")
+    if not isinstance(source, str) or not source or "\n" in source:
+        return ""
+    return exact_image_name(source.rstrip("/").rsplit("/", 1)[-1])
 ENUMS = {
     "bucket": frozenset({BUCKET}),
     "claim_cap": frozenset({CLAIM_CAP}),
@@ -401,6 +449,16 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key == "stock_lsm" and isinstance(value, str) and re.fullmatch(r"[a-z0-9,]{0,80}", value):
             kept[key] = value
+            continue
+        if key in {"lockdown", "kernel_lockdown"}:
+            text = lockdown_text(value)
+            if text:
+                kept[key] = text
+            continue
+        if key == "image_name":
+            text = exact_image_name(value)
+            if text:
+                kept[key] = text
             continue
         if key == "lsm_guard" and isinstance(value, str) and re.fullmatch(r"[a-z0-9_]{1,40}", value):
             kept[key] = value
@@ -612,6 +670,16 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
             continue
         if key == "kernel_lsm" and isinstance(value, str) and re.fullmatch(r"[a-z0-9,]{0,80}", value):
             kept[key] = value
+            continue
+        if key in {"lockdown", "kernel_lockdown"}:
+            text = lockdown_text(value)
+            if text:
+                kept[key] = text
+            continue
+        if key == "image_name":
+            text = exact_image_name(value)
+            if text:
+                kept[key] = text
             continue
         if key == "seal_checked" and isinstance(value, bool):
             kept[key] = value

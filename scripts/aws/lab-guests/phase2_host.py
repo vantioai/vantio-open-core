@@ -1384,6 +1384,8 @@ def kernel_facts() -> dict:
         "kernel": os.uname().release,
         "btf": Path("/sys/kernel/btf/vmlinux").is_file(),
         "lsm": lsm_path.read_text(encoding="utf-8").strip() if lsm_path.is_file() else "",
+        "lockdown": baseline_diag.read_lockdown(),
+        "image_name": baseline_diag.read_image_name(),
         "cgroup_v2": Path("/sys/fs/cgroup/cgroup.controllers").is_file(),
         "bpffs": "bpf" in Path("/proc/mounts").read_text(encoding="utf-8", errors="replace"),
     }
@@ -1418,6 +1420,8 @@ def run_2g() -> dict:
         "descendant_pass": False,
         "docker_child_pass": False,
         "ami": os.environ.get("VANTIO_IMAGE_ID", ""),
+        "image_name": facts.get("image_name") or "",
+        "lockdown": facts.get("lockdown") or "",
     }
     graded = grade.grade_distro(measured)
     graded["kernel_facts"] = facts
@@ -1646,6 +1650,8 @@ def run_lsm_guard() -> dict:
         "distro": facts["distro"],
         "kernel": facts["kernel"],
         "image_id": os.environ.get("VANTIO_IMAGE_ID", ""),
+        "image_name": facts.get("image_name") or "",
+        "lockdown": facts.get("lockdown") or "",
         "cmdline": Path("/proc/cmdline").read_text(encoding="utf-8").strip() if Path("/proc/cmdline").is_file() else "",
         "boot_id": baseline_diag.read_boot_id(),
         "kernel_command_lines": baseline_diag.read_kernel_command_lines(),
@@ -1706,6 +1712,8 @@ def run_lsm_guard() -> dict:
         "stock_bpf_lsm": False,
         "lsm_value": lsm_value,
         "image_id": body["image_id"],
+        "image_name": body.get("image_name") or "",
+        "lockdown": body.get("lockdown") or "",
         "distro": facts["distro"],
         "kernel": facts["kernel"],
         "reboot_requested": True,

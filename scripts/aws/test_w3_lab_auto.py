@@ -353,6 +353,11 @@ class LaunchShapeTests(unittest.TestCase):
         self.assertEqual(run[run.index("--instance-initiated-shutdown-behavior") + 1], "terminate")
         self.assertEqual(run[run.index("--region") + 1], "us-east-2")
         self.assertEqual(run[run.index("--image-id") + 1], lab.PINNED_IMAGE_ID)
+        self.assertEqual(
+            result["image_name"],
+            "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260901",
+        )
+        self.assertNotIn("*", result["image_name"])
         self.assertIn(lab.LAB_SUBNET_ID, " ".join(run))
         self.assertNotIn(lab.FORBIDDEN_ACCOUNT_ID, " ".join(run))
         self.assertNotIn("iam-instance-profile", " ".join(run))

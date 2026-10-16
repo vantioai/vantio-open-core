@@ -1605,6 +1605,11 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn('echo "UNINSTALL_RESIDUAL bpffs"', uninstall)
         self.assertIn("| tee -a /tmp/vantio-uninstall.out", uninstall)
         self.assertNotIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertIn("stamp_host_evidence", text)
+        self.assertIn('sudo python3 - "$here"', text)
+        diag = (ROOT / "scripts/aws/lab-guests/baseline_diag.py").read_text(encoding="utf-8")
+        self.assertIn('Path("/sys/kernel/security/lockdown")', diag)
+        self.assertIn("def read_image_name", diag)
         self.assertNotIn("systemctl reboot --force || true", text)
         self.assertIn(
             "sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json",

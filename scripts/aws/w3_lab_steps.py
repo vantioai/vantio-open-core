@@ -1347,8 +1347,14 @@ def execute_enterprise_rows(
         if image_id and lab.IMAGE_ID_RE.fullmatch(image_id) is None:
             raise lab.GuardAbort("image_id")
         ssh_user = "admin" if image_id and image_id != lab.PINNED_IMAGE_ID else "ubuntu"
+        image_name = ""
+        if image_id:
+            _accepted, facts = lab.described_image(runner, image_id)
+            image_name = lab.exact_image_name(facts.get("image_name"))
         payload["image_id"] = image_id
+        payload["image_name"] = image_name
         payload["ssh_user"] = ssh_user
+        image_env = ["env", f"VANTIO_IMAGE_ID={image_id}", f"VANTIO_IMAGE_NAME={image_name}"]
         group_id = security_group_id(instance)
         zone = availability_zone(instance)
         authorize = authorize_args(group_id, cidr, revoke=False)
@@ -1524,6 +1530,7 @@ def execute_enterprise_rows(
                     [
                         "env",
                         f"VANTIO_IMAGE_ID={image_id}",
+                        f"VANTIO_IMAGE_NAME={image_name}",
                         *phase_egress_env(private_ipv4(instance)),
                         "bash",
                         f"{GUEST_BUNDLE}/enterprise-rows.sh",
@@ -1535,6 +1542,8 @@ def execute_enterprise_rows(
             elif battery == "descendant-b1":
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
                 probe_c = descendant.with_name("descendant_probe.c")
@@ -1547,7 +1556,7 @@ def execute_enterprise_rows(
                 if rows_py.is_file() and packet_py.is_file():
                     copy_to(rows_py, "redteam_rows.py")
                     copy_to(packet_py, "redteam_packet.py")
-                pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
+                pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
                 ran = pre
                 if pre.returncode == 0:
                     try:
@@ -1586,11 +1595,13 @@ def execute_enterprise_rows(
                         _store_guest_rows(rows_local, pre_text)
                         payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
                         raise
-                    ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
+                    ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
             elif battery == "reboot-check":
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
-                pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "reboot-check"], "")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
+                pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "reboot-check"], "")
                 ran = pre
                 if pre.returncode == 0:
                     try:
@@ -1618,7 +1629,8 @@ def execute_enterprise_rows(
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
-                ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             # Instance Connect keys last 60 seconds. The guest script can run longer.
             # A new scp is a new connection, so send the key again before the pull.
