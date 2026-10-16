@@ -693,6 +693,24 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertLess(text.index("--download-only"), text.index("apt-get download ca-certificates"))
         self.assertIn("ca-certificates.crt", text)
 
+    def test_confirm_rejects_the_pre_reboot_rows_file(self) -> None:
+        stock = {"host_result": "GUARD_PROVED", "cmdline": "panic=-1", "reboot_requested": True}
+        self.assertFalse(od.confirm_matches_boot(stock, "11111111-1111-1111-1111-111111111111"))
+        fresh = "22222222-2222-2222-2222-222222222222"
+        self.assertTrue(od.confirm_matches_boot({"boot_id": fresh}, fresh))
+        self.assertFalse(od.confirm_matches_boot({"boot_id": "old"}, fresh))
+        blob = "x" * 200001 + "Command line: sealed"
+        self.assertEqual(od.serial_console_text(blob), blob)
+        self.assertNotIn("[-200000:]", (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8"))
+        script = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            "sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json",
+            script,
+        )
+        self.assertNotIn("\n", od.LATER_BOOT_PROBE)
+        self.assertIn("grubenv", od.LATER_BOOT_PROBE)
+        self.assertNotIn("reboot", od.LATER_BOOT_PROBE)
+
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))
         self.assertEqual(set(names), set(lab.WORKFLOWS))

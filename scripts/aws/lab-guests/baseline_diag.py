@@ -1122,6 +1122,72 @@ def seal_firmware_tree(
     return {"ok": ok, "error": bootchain.get("error") or "", "bootchain": bootchain}
 
 
+def grubenv_assignments(data: bytes) -> list[str]:
+    """Assignment lines in a grubenv block. Hash padding and the warning are not keys.
+
+    Run 38800477282 hashed boot/grub/grubenv as
+    f64122858064885ef0733e42c6a3d2d3fd642671f714db0d974b880c0f087430.
+    That is the empty grub-editenv block: no saved_entry, next_entry,
+    recordfail, or initrdfail. The keys have to be in the evidence, not
+    recovered from the hash after the instance is gone.
+    """
+    text = data.decode("utf-8", "replace")
+    found: list[str] = []
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        found.append(line[:200])
+        if len(found) >= 12:
+            break
+    return found
+
+
+def read_grubenv_assignments(root: Path | None = None) -> list[str]:
+    tree = root if root is not None else Path("/")
+    path = tree / "boot/grub/grubenv"
+    if not path.is_file():
+        return []
+    try:
+        return grubenv_assignments(path.read_bytes())
+    except OSError:
+        return []
+
+
+def kernel_command_lines(text: str) -> list[str]:
+    """The command lines the kernel logged. /proc/cmdline is a separate read."""
+    found: list[str] = []
+    for line in text.splitlines():
+        for marker in ("Kernel command line:", "Command line:"):
+            index = line.find(marker)
+            if index == -1:
+                continue
+            found.append(line[index + len(marker) :].strip()[:400])
+            break
+        if len(found) >= 4:
+            break
+    return found
+
+
+def read_kernel_command_lines() -> list[str]:
+    try:
+        proc = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return kernel_command_lines((proc.stdout or "") + "\n" + (proc.stderr or ""))
+
+
+def read_boot_id() -> str:
+    path = Path("/proc/sys/kernel/random/boot_id")
+    if not path.is_file():
+        return ""
+    text = path.read_text(encoding="utf-8", errors="replace").strip()
+    if "\n" in text or len(text) > 80:
+        return ""
+    return text
+
+
 def boot_file_manifest(root: Path) -> list[dict]:
     """Hash every grub.cfg and grubenv under /boot, /efi, and /grub.
 
@@ -1161,15 +1227,16 @@ def boot_file_manifest(root: Path) -> list[dict]:
             rel = str(path.resolve().relative_to(root.resolve()))
         except (OSError, ValueError):
             rel = path.as_posix()
-        records.append(
-            {
-                "path": rel,
-                "sha256": hashlib.sha256(data).hexdigest(),
-                "size": len(data),
-                "kind": kind,
-                "boot_line": first_linux_line(text)[:240],
-            }
-        )
+        record = {
+            "path": rel,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "size": len(data),
+            "kind": kind,
+            "boot_line": first_linux_line(text)[:240],
+        }
+        if kind == "env":
+            record["variables"] = grubenv_assignments(data)
+        records.append(record)
         if len(records) >= 16:
             break
     return records
