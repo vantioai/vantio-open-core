@@ -1,6 +1,6 @@
 # T1 risk register
 
-UTC: 2026-10-16T15:47:41Z
+UTC: 2026-10-16T19:20:00Z
 
 Track label: **Roadmap**
 
@@ -20,3 +20,4 @@ Track label: **Roadmap**
 | R12 | Lab workflows can change under the lab agent | `bc-8b310b16` owns the lab slot. This package pins its dependency notes to `69671e97` and does not edit those workflows. A later lab change can move field names. The grade then fails closed until this standard is revised. |
 | R13 | TOCTOU on sysfs | The bundle stores the bytes one capture read. A boot id mismatch across steps fails the grade. The package does not lock the kernel. |
 | R14 | Public website and README stay as they are | Nothing in this track moves a Roadmap item to Shipped. |
+| R15 | `cgroup_skb_survives_container_exit` | The Phantom Engine loader loads `cgroup_skb_egress_enforce`. After the loader container exits, that program can still be listed by bpftool. The lab harness does not detach it. The enterprise proof fails unless `vantio-loader --uninstall` leaves bpftool and bpffs with no Vantio programs. Repro: `docs/gap/t1-stranger-host/CGROUP-SKB-CONTAINER-EXIT.md`. |

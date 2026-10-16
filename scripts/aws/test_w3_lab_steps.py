@@ -2391,70 +2391,53 @@ class RebootWaitTests(unittest.TestCase):
         )
 
 
-class LabProgramReleaseTests(unittest.TestCase):
+class ProductUninstallCensusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         sys.path.insert(0, str(ROOT / "scripts" / "aws" / "lab-guests"))
 
-    def test_guest_releases_programs_before_the_next_battery_reads_them(self) -> None:
+    def test_the_shell_does_not_detach_before_the_product_uninstall(self) -> None:
         text = (ROOT / "scripts/aws/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
-        b1_at = text.index('if [ "$mode" = "descendant-b1" ]; then')
-        b1 = text[b1_at : text.index('case "$mode" in', b1_at)]
-        self.assertLess(
-            b1.index("release_loaded_lab_programs"),
-            b1.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then'),
-        )
+        self.assertNotIn("release_loaded_lab_programs", text)
+        self.assertNotIn("release_lab_programs.py", text)
+        self.assertNotIn("bpftool cgroup detach", text)
         final = text[text.index("esac\nset +e") :]
-        self.assertLess(final.index("release_loaded_lab_programs"), final.index('python3 "$stage/guest_rows.py"'))
+        self.assertLess(final.index("ensure_working_bpftool"), final.index('python3 "$stage/guest_rows.py"'))
+        self.assertLess(final.index('python3 "$stage/guest_rows.py"'), final.index('authorized_uninstall "$image" no 0'))
         self.assertLess(
             final.index('authorized_uninstall "$image" no 0'),
-            final.index('--guest-rc "$rc"'),
+            final.index("product_uninstall_census.py"),
         )
-        self.assertIn('local record="${4:-yes}"', text)
-        self.assertIn('if [ "$record" = "yes" ]; then', text)
         source = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
-        self.assertEqual(source.count('copy_to(script_path.with_name("release_lab_programs.py")'), 2)
+        self.assertEqual(source.count('copy_to(script_path.with_name("product_uninstall_census.py")'), 1)
+        self.assertNotIn("release_lab_programs.py", source)
+        census = (ROOT / "scripts/aws/lab-guests/product_uninstall_census.py").read_text(encoding="utf-8")
+        self.assertNotIn("cgroup detach", census)
+        self.assertNotIn(".unlink(", census)
+        self.assertIn("write_replacing", census)
 
-    def test_detach_is_only_the_lab_program_on_a_cgroup_path(self) -> None:
-        from release_lab_programs import detach_commands, pin_paths
-
-        commands = detach_commands(
-            [
-                {
-                    "cgroup": "/sys/fs/cgroup/vantio-pe-lab",
-                    "programs": [
-                        {"id": 12, "attach_type": "cgroup_inet_egress", "name": "cgroup_skb_egress_enforce"},
-                        {"id": 13, "attach_type": "egress", "name": "not_ours"},
-                    ],
-                },
-                {
-                    "cgroup": "/etc/passwd",
-                    "programs": [{"id": 14, "attach_type": "egress", "name": "cgroup_skb_egress_enforce"}],
-                },
-            ]
-        )
-        self.assertEqual(
-            commands,
-            [["bpftool", "cgroup", "detach", "/sys/fs/cgroup/vantio-pe-lab", "egress", "id", "12"]],
-        )
-        self.assertEqual(
-            pin_paths(
-                [
-                    {"name": "cgroup_skb_egress_enforce", "pinned": ["/sys/fs/bpf/vantio_prog"]},
-                    {"name": "cgroup_skb_egress_enforce", "pinned": ["/tmp/nope", "/sys/fs/bpf/../etc/passwd"]},
-                    {"name": "sshd", "pinned": ["/sys/fs/bpf/other"]},
-                ]
-            ),
-            ["/sys/fs/bpf/vantio_prog"],
+    def test_a_remaining_engine_program_is_not_removed(self) -> None:
+        from product_uninstall_census import (
+            bpffs_vantio_paths,
+            classify_bpffs,
+            finish_code,
+            loaded_programs,
+            regression_still_holds,
         )
 
-    def test_a_clean_list_after_uninstall_keeps_a_held_regression(self) -> None:
-        from release_lab_programs import finish_code, names_in_prog_show, regression_still_holds
-
         self.assertEqual(
-            names_in_prog_show([{"name": "cgroup_skb_egre"}], ""),
+            loaded_programs([{"name": "cgroup_skb_egre"}, {"name": "sshd"}], ""),
             ["cgroup_skb_egress_enforce"],
         )
+        self.assertEqual(
+            loaded_programs([{"name": "sshd", "pinned": ["/sys/fs/bpf/vantio_maps"]}], ""),
+            ["/sys/fs/bpf/vantio_maps"],
+        )
+        self.assertEqual(bpffs_vantio_paths("/sys/fs/bpf/vantio_prog\n/sys/fs/bpf/other\n"), ["/sys/fs/bpf/vantio_prog"])
+        self.assertEqual(classify_bpffs(mounted=False, find_rc=1, text="/sys/fs/bpf/vantio_prog"), [])
+        self.assertEqual(classify_bpffs(mounted=True, find_rc=1, text=""), ["find_failed"])
+        digest = "sha256:5d7095cb4fa029c388cce558e95336fd73e8e65930a7b58a31976b4d96163848"
+        secret = "/var/lib/vantio-pe-clean-host/d/secret"
         rows = {
             "grant_loader": {
                 "rc": 0,
@@ -2465,7 +2448,15 @@ class LabProgramReleaseTests(unittest.TestCase):
                 "phantom_deny": False,
             },
             "grant_probe": {"nobody_errno": 0},
-            "grant_allow_event": {"ActionTaken": "POLICY_ALLOW", "Uid": 65534},
+            "grant_allow_event": {
+                "ActionTaken": "POLICY_ALLOW",
+                "EventType": "POLICY_ALLOW",
+                "Uid": 65534,
+                "open_result": "open_ok",
+                "Payload": secret,
+                "PolicyRuleMatched": f"POLICY_ALLOW:{secret}",
+                "policy_digest": digest,
+            },
             "unchanged": {
                 "unsigned_changed": False,
                 "replay_changed": False,
@@ -2477,7 +2468,19 @@ class LabProgramReleaseTests(unittest.TestCase):
             "unchanged_probe": {"nobody_errno": 0},
             "freeze": {"widen_changed": False, "widen_reason": "FROZEN"},
             "unreachable": {"changed": False, "reason": "ENTERPRISE_UNREACHABLE"},
-            "revoke": {"probe": {"nobody_errno": 13}, "block_event": {"ActionTaken": "DENIED"}},
+            "revoke": {
+                "policy_digest": digest,
+                "probe": {"nobody_errno": 13},
+                "block_event": {
+                    "ActionTaken": "DENIED",
+                    "EventType": "SYSCALL_OPENAT",
+                    "Uid": 65534,
+                    "BytesSevered": 0,
+                    "Payload": secret,
+                    "PolicyRuleMatched": f"ENFORCE_DENIED:{secret}",
+                    "policy_digest": digest,
+                },
+            },
         }
         self.assertTrue(regression_still_holds(rows))
         self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=rows), 0)
@@ -2485,6 +2488,9 @@ class LabProgramReleaseTests(unittest.TestCase):
         broken = json.loads(json.dumps(rows))
         broken["grant_loader"]["rc"] = 1
         self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=broken), 1)
+        unlabeled = json.loads(json.dumps(rows))
+        unlabeled["grant_allow_event"].pop("EventType")
+        self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=unlabeled), 1)
 
 
 if __name__ == "__main__":
