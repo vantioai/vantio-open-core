@@ -284,6 +284,10 @@ jobs:
               cp "$name" row-evidence/
             fi
           done
+          shopt -s nullglob
+          for console in w3-lab-console-*.txt; do
+            cp "$console" row-evidence/
+          done
 
       - name: Upload enterprise row evidence
         if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service')
@@ -291,4 +295,12 @@ jobs:
         with:
           name: w3-lab-enterprise-rows-${{ github.run_id }}
           path: row-evidence/
+          if-no-files-found: warn
+
+      - name: Upload the reboot serial log
+        if: always() && inputs.battery == 'reboot-check'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: w3-lab-console-${{ github.run_id }}
+          path: w3-lab-console-*.txt
           if-no-files-found: warn

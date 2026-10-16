@@ -1148,6 +1148,70 @@ def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
     return "guest"
 
 
+def _baseline_diag():
+    """Guest helpers. Imported here so arm tests do not load them at import."""
+    root = Path(__file__).resolve().parent / "lab-guests"
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    import baseline_diag
+
+    return baseline_diag
+
+
+def _remote_line(remote: Callable[[list[str], str], subprocess.CompletedProcess[str]], path: str, limit: int) -> str:
+    """One live file after the new boot. A second line or a long read is empty."""
+    proc = remote(["cat", path], "")
+    if proc.returncode != 0:
+        return ""
+    text = (proc.stdout or "").replace("\r", "").strip()
+    if not text or "\n" in text or len(text) > limit:
+        return ""
+    return text
+
+
+def _post_boot_evidence(
+    remote: Callable[[list[str], str], subprocess.CompletedProcess[str]],
+    *,
+    image_name: str,
+    image_id: str,
+) -> dict[str, str]:
+    """Cmdline, LSM list, lockdown, and image name read after the boot id changed."""
+    diag = _baseline_diag()
+    lsm = _remote_line(remote, "/sys/kernel/security/lsm", 200)
+    if lsm and re.fullmatch(r"[A-Za-z0-9_,.-]+", lsm) is None:
+        lsm = ""
+    named = diag.exact_image_name(image_name)
+    accepted_id = image_id if lab.IMAGE_ID_RE.fullmatch(image_id) else ""
+    return {
+        "cmdline": _remote_line(remote, "/proc/cmdline", 400),
+        "lsm": lsm,
+        "lockdown": diag.accept_lockdown(_remote_line(remote, "/sys/kernel/security/lockdown", 80)),
+        "image_name": named,
+        "image_id": accepted_id,
+    }
+
+
+def _store_serial_log(runner: Runner, instance_id: str, payload: dict[str, Any]) -> None:
+    """Write the EC2 serial log next to the arm JSON. An empty log is a failure."""
+    console = lab.aws_json(
+        runner,
+        ["aws", "ec2", "get-console-output", "--region", lab.REGION, "--instance-id", instance_id, "--latest"],
+    )
+    text, redacted = redact(console_text(console))
+    if "PRIVATE KEY" in text:
+        raise lab.GuardAbort("token_in_evidence")
+    if not text.strip():
+        raise lab.GuardAbort("console_missing")
+    if not text.endswith("\n"):
+        text += "\n"
+    console_path = evidence_path("w3-lab-arm.json").with_name(f"w3-lab-console-{instance_id}.txt")
+    console_path.write_text(text, encoding="utf-8")
+    payload["console_file"] = console_path.name
+    payload["console_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    payload["console_bytes"] = len(text.encode("utf-8"))
+    payload["console_redacted"] = redacted
+
+
 def _reboot_log_tail(remote: Callable[[list[str], str], subprocess.CompletedProcess[str]]) -> str:
     """Last lines of the grub reboot script, redacted. Empty when SSH cannot read it."""
     proc = remote(["tail", "-n", "40", "/var/lib/vantio-lab/grub-mkconfig.txt"], "")
@@ -1711,6 +1775,26 @@ def execute_enterprise_rows(
                 ):
                     payload.update({"reason": "reboot_not_observed", "status": "FAILED"})
                     raise lab.GuardAbort("reboot_not_observed")
+                post = _post_boot_evidence(
+                    remote,
+                    image_name=str(payload.get("image_name") or ""),
+                    image_id=str(payload.get("image_id") or ""),
+                )
+                post["boot_id"] = live_boot
+                payload["post_boot"] = post
+                missing = [key for key in ("cmdline", "lsm", "lockdown", "image_name") if not post.get(key)]
+                if isinstance(parsed, dict):
+                    parsed["post"] = post
+                    rows_local.write_text(json.dumps(parsed) + "\n", encoding="utf-8")
+                    payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
+                if missing:
+                    payload.update({"reason": "post_boot_incomplete", "status": "FAILED", "post_boot_missing": missing})
+                    raise lab.GuardAbort("post_boot_incomplete")
+                try:
+                    _store_serial_log(runner, instance_id, payload)
+                except lab.GuardAbort as exc:
+                    payload.update({"reason": exc.reason, "status": "FAILED"})
+                    raise
                 payload["status"] = "REBOOT_CHECKED"
             elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"

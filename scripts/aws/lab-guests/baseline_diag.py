@@ -1512,16 +1512,12 @@ def exact_image_name(value: object) -> str:
     return text
 
 
-def read_lockdown(path: Path | None = None) -> str:
-    """Live /sys/kernel/security/lockdown. The bracket marks the active mode."""
-    source = LOCKDOWN_PATH if path is None else path
-    try:
-        text = source.read_text(encoding="utf-8").strip()
-    except OSError:
+def accept_lockdown(text: str) -> str:
+    """The live lockdown file, or empty when the text is not that file."""
+    cleaned = text.strip()
+    if not cleaned or "\n" in cleaned or len(cleaned) > 80:
         return ""
-    if "\n" in text or len(text) > 80:
-        return ""
-    parts = text.split(" ")
+    parts = cleaned.split(" ")
     if not parts or len(parts) > 4:
         return ""
     for part in parts:
@@ -1530,7 +1526,56 @@ def read_lockdown(path: Path | None = None) -> str:
         bare = part[1:-1] if part.startswith("[") and part.endswith("]") and len(part) > 2 else part
         if bare not in LOCKDOWN_MODES or part.count("[") > 1:
             return ""
-    return text
+    return cleaned
+
+
+def read_lockdown(path: Path | None = None) -> str:
+    """Live /sys/kernel/security/lockdown. The bracket marks the active mode."""
+    source = LOCKDOWN_PATH if path is None else path
+    try:
+        text = source.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    return accept_lockdown(text)
+
+
+def stock_reboot_script() -> str:
+    """Reboot the menu already installed on a fresh host.
+
+    The LSM guard writes a different script at the same path after it seals
+    grub. This one does not call update-grub and does not invent an lsm= line.
+    The last command is the systemctl reboot that sealed script uses.
+    """
+    return """#!/bin/bash
+# Fresh host. The sealed reboot script is not on disk yet. Reboot the
+# menu that is already installed. Do not regenerate the menu.
+set -euo pipefail
+log=/var/lib/vantio-lab/grub-mkconfig.txt
+mkdir -p /var/lib/vantio-lab
+: >"$log"
+echo "stock reboot" >>"$log"
+if [ -r /proc/cmdline ]; then
+  echo "cmdline $(tr -d '\\n' </proc/cmdline)" >>"$log"
+fi
+if command -v sync >/dev/null 2>&1; then
+  sync >>"$log" 2>&1 || true
+fi
+echo "reboot boot line ok" >>"$log"
+systemctl reboot --force
+"""
+
+
+def install_stock_reboot_script(path: Path | None = None) -> str:
+    """Write the fresh-host reboot script when the sealed one is not already there."""
+    target = Path("/var/lib/vantio-lab/reboot-with-grub.sh") if path is None else path
+    if target.is_file() and os.access(target, os.X_OK) and target.stat().st_size > 0:
+        return "present"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(stock_reboot_script(), encoding="utf-8")
+    target.chmod(0o755)
+    if not target.is_file() or not os.access(target, os.X_OK):
+        raise OSError("reboot_script_missing")
+    return "installed"
 
 
 def _gcp_guest() -> bool:

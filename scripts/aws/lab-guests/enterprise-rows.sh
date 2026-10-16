@@ -142,6 +142,8 @@ PY
 
 # Reboot proof only. No docker and no descendant probe. The schedule is the
 # function above; the runner leaves and then reads the new boot id.
+# A fresh host has never run the LSM guard, so the sealed script is absent.
+# Install the stock reboot script first. Leave a sealed script in place.
 # A previous battery leaves the rows file owned by root. Remove it before
 # this run writes, and write as root. If the timer is armed and the record
 # cannot be written, stop the timer so the host does not reboot unwatched.
@@ -149,7 +151,15 @@ if [ "${2:-}" = "reboot-check" ]; then
   sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
   boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
   reason=""
-  if [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+  if ! sudo python3 - "$here" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+baseline_diag.install_stock_reboot_script()
+PY
+  then
+    reason=reboot_script_missing
+  elif [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
     reason=reboot_script_missing
   elif ! schedule_forced_reboot; then
     reason=reboot_not_scheduled
