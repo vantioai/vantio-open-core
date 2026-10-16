@@ -131,7 +131,7 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("enterprise_rows")
         if key == "bundle_tag" and re.fullmatch(r"lab-bundle/[A-Za-z0-9._-]{1,64}", value) is None:
             raise TriggerError("bundle_tag")
-        if key == "battery" and value not in ("enterprise", "descendant-b1", "self-service"):
+        if key == "battery" and value not in ("enterprise", "reboot-check", "descendant-b1", "self-service"):
             raise TriggerError("battery")
         if key == "redteam_brain" and value not in ("true", "false"):
             raise TriggerError("redteam_brain")

@@ -56,6 +56,29 @@ with tarfile.open(path, "r:*") as tar:
 if not found:
     raise SystemExit(5)
 PY
+# One reboot for every battery. vantio-lab-lsm-reboot running
+# reboot-with-grub.sh is the schedule that changed the boot on this image.
+# A second unit name, and a bare `systemctl reboot`, are a different path.
+# --system --slice=system.slice puts the timer in the system manager.
+# The SSH session scope is not that slice, and the user manager is not
+# this bus. The runner drops its session before the 45s timer fires.
+schedule_forced_reboot() {
+  local unit=vantio-lab-lsm-reboot
+  local reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
+  sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
+  sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
+  sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
+  if [ ! -x "$reboot_cmd" ]; then
+    echo "reboot_script_missing" >&2
+    return 1
+  fi
+  if ! sudo systemd-run --system --slice=system.slice --on-active=45s --timer-property=AccuracySec=1s --unit="$unit" "$reboot_cmd"; then
+    echo "reboot_not_scheduled unit=${unit}" >&2
+    return 1
+  fi
+  echo "reboot_scheduled unit=${unit} delay=45s slice=system.slice"
+}
+
 # A second boot already has bpf in the LSM list. Confirm that and return
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "${2:-}" = "lsm-guard" ]; then
@@ -77,6 +100,41 @@ PY
     sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
     exit 2
   fi
+fi
+# Reboot proof only. No docker and no descendant probe. The schedule is the
+# function above; the runner leaves and then reads the new boot id.
+if [ "${2:-}" = "reboot-check" ]; then
+  boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+  reason=""
+  if ! schedule_forced_reboot; then
+    reason=reboot_not_scheduled
+    if [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+      reason=reboot_script_missing
+    fi
+  fi
+  python3 - "$boot_id" "$reason" <<'PY'
+import json
+import sys
+
+boot_id, reason = sys.argv[1], sys.argv[2]
+body = {
+    "battery": "reboot-check",
+    "boot_id": boot_id,
+    "reboot_requested": reason == "",
+    "unit": "vantio-lab-lsm-reboot",
+}
+if reason:
+    body["reason"] = reason
+text = json.dumps(body) + "\n"
+with open("/tmp/enterprise-pe-rows.json", "w", encoding="utf-8") as handle:
+    handle.write(text)
+print(text, end="")
+PY
+  chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  if [ -n "$reason" ]; then
+    exit 1
+  fi
+  exit 0
 fi
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
@@ -367,28 +425,6 @@ publish_current_rows() {
   fi
 }
 
-# A transient timer's AccuracySec defaults to one minute. Reset the unit
-# first so a second arm can schedule it again. reboot-with-grub.sh is the
-# command that produced a new boot on this image; it refuses when the menu
-# has no lab lsm token. A schedule that does not start fails the phase.
-schedule_forced_reboot() {
-  local unit=$1
-  sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
-  sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
-  sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
-  local reboot_cmd
-  if [ -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
-    reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
-  else
-    reboot_cmd="systemctl reboot --force"
-  fi
-  if ! sudo systemd-run --on-active=45s --timer-property=AccuracySec=1s --unit="$unit" $reboot_cmd; then
-    echo "reboot_not_scheduled unit=${unit}" >&2
-    return 1
-  fi
-  echo "reboot_scheduled unit=${unit} delay=45s"
-}
-
 mode=${2:-enterprise}
 phase=${3:-pre}
 if [ "$mode" = "descendant-b1" ]; then
@@ -430,7 +466,7 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
-    if ! schedule_forced_reboot vantio-lab-reboot; then
+    if ! schedule_forced_reboot; then
       exit 1
     fi
   fi
@@ -486,7 +522,7 @@ case "$mode" in
       want=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
       if [ "$want" = "yes" ]; then
         sync
-        if ! schedule_forced_reboot vantio-lab-lsm-reboot; then
+        if ! schedule_forced_reboot; then
           exit 1
         fi
       fi

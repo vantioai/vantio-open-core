@@ -354,17 +354,50 @@ class ArmCollectTests(unittest.TestCase):
         self.assertTrue(any("authorize-security-group-ingress" in item and "--dry-run" not in item for item in joined))
         self.assertTrue(any("revoke-security-group-ingress" in item and "--dry-run" not in item for item in joined))
 
-    def test_collect_keeps_the_console_body_out_of_the_artifact(self) -> None:
+    def test_collect_uploads_the_redacted_console(self) -> None:
         runner = FakeAws()
         with tempfile.TemporaryDirectory() as tmp:
             os.environ["INSTANCE_ID"] = INSTANCE
             os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ["W3_CONSOLE_PATH"] = str(Path(tmp) / "w3-lab-console.txt")
             result = steps.execute_collect(runner)
             body = Path(os.environ["EVIDENCE_PATH"]).read_text()
+            console = Path(os.environ["W3_CONSOLE_PATH"]).read_text(encoding="utf-8")
         self.assertTrue(result["marker_found"])
         self.assertEqual(result["collect_channel"], "console")
+        self.assertIn("boot", console)
+        self.assertIn("vantio-lab-marker", console)
+        self.assertEqual(result["console_sha256"], hashlib.sha256(console.encode("utf-8")).hexdigest())
+        self.assertEqual(result["console_file"], "w3-lab-console.txt")
         self.assertNotIn("boot", body)
         self.assertNotIn(SECRET, body)
+        self.assertNotIn(SECRET, console)
+
+    def test_collect_redacts_a_private_key_before_it_writes_the_console(self) -> None:
+        secret = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"
+        raw = base64.b64encode(f"boot\n{secret}\n".encode()).decode()
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "--instance-ids" in args:
+                return completed({"Reservations": [{"Instances": [instance()]}]})
+            if "get-console-output" in text:
+                return completed({"Output": raw})
+            return completed({})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = INSTANCE
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ["W3_CONSOLE_PATH"] = str(Path(tmp) / "w3-lab-console.txt")
+            result = steps.execute_collect(runner)
+            console = Path(os.environ["W3_CONSOLE_PATH"]).read_text(encoding="utf-8")
+        self.assertNotIn("BEGIN OPENSSH", console)
+        self.assertNotIn("abc", console)
+        self.assertIn("[redacted]", console)
+        self.assertTrue(result["console_redacted"])
+        self.assertEqual(result["console_sha256"], hashlib.sha256(console.encode("utf-8")).hexdigest())
 
     def test_teardown_leaves_an_unowned_host(self) -> None:
         runner = FakeAws()
@@ -837,6 +870,9 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertFalse((ROOT / ".github/workflows/w3-lab-auto-enterprise-pe.yml").exists())
         self.assertIn("enterprise_rows:", arm)
         self.assertIn("- self-service", arm)
+        self.assertIn("- reboot-check", arm)
+        collect = (ROOT / ".github/workflows/w3-lab-auto-collect.yml").read_text(encoding="utf-8")
+        self.assertIn("w3-lab-console.txt", collect)
         self.assertIn("arm-self-service", arm)
         self.assertNotIn("packages/vantio-install/docs/INSTALL.md", arm)
         self.assertNotIn("packages/vantio-install/pyproject.toml", arm)
@@ -1441,6 +1477,13 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertNotIn('test "$image" = "$image_name"', text)
         self.assertIn("AccuracySec=1s", text)
         self.assertIn("reboot_not_scheduled", text)
+        self.assertIn("--system --slice=system.slice", text)
+        self.assertIn("--unit=\"$unit\"", text)
+        self.assertIn("unit=vantio-lab-lsm-reboot", text)
+        self.assertIn('if [ "${2:-}" = "reboot-check" ]; then', text)
+        self.assertNotIn("schedule_forced_reboot vantio-lab", text)
+        self.assertNotIn("systemctl reboot --force", text)
+        self.assertEqual(text.count("schedule_forced_reboot()"), 1)
         self.assertIn('sudo python3 - "$here/sticky_write.py"', text)
         uninstall = text[text.index("authorized_uninstall()"): text.index("\nmode=${2:-enterprise}")]
         self.assertLess(uninstall.index("sudo rm -f /tmp/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
@@ -1597,7 +1640,7 @@ class EnterpriseRowSessionTests(unittest.TestCase):
 
 
 class RebootWaitTests(unittest.TestCase):
-    def test_ssh_that_stays_up_on_the_same_boot_uses_only_the_drop_budget(self) -> None:
+    def test_ssh_that_stays_up_on_the_same_boot_uses_the_observe_budget(self) -> None:
         now = {"t": 0.0}
 
         def clock() -> float:
@@ -1617,13 +1660,51 @@ class RebootWaitTests(unittest.TestCase):
                 INSTANCE,
                 remote,
                 ["aws", "sts", "get-caller-identity"],
-                drop_budget=10,
-                return_budget=30,
+                quiet_budget=0,
+                return_budget=10,
                 clock=clock,
                 pause=pause,
+                describe=lambda _runner, _instance_id: {"State": {"Name": "running"}},
             )
         self.assertEqual(caught.exception.reason, "reboot_timeout")
         self.assertEqual(now["t"], 10)
+
+    def test_the_quiet_window_does_not_open_ssh(self) -> None:
+        now = {"t": 0.0}
+        calls: list[tuple[float, str]] = []
+
+        def clock() -> float:
+            return now["t"]
+
+        def pause(seconds: float) -> None:
+            now["t"] += seconds
+
+        def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            calls.append((now["t"], argv[0]))
+            if argv[:1] == ["cat"]:
+                return completed(stdout="boot-b\n" if now["t"] >= 10 else "boot-a\n")
+            return completed(stdout="")
+
+        def release() -> None:
+            calls.append((now["t"], "release"))
+
+        found = steps._wait_for_reboot(
+            lambda _args: completed(payload={}),
+            INSTANCE,
+            remote,
+            ["aws", "sts", "get-caller-identity"],
+            quiet_budget=10,
+            return_budget=10,
+            clock=clock,
+            pause=pause,
+            describe=lambda _runner, _instance_id: {"State": {"Name": "running"}},
+            release=release,
+        )
+        self.assertEqual(found, "boot-b")
+        self.assertEqual(calls[0], (0.0, "cat"))
+        self.assertEqual(calls[1], (0.0, "release"))
+        self.assertFalse(any(name != "release" and 0 < stamp < 10 for stamp, name in calls))
+        self.assertGreaterEqual(now["t"], 10)
 
     def test_a_changed_boot_id_ends_the_wait(self) -> None:
         now = {"t": 0.0}
@@ -1638,7 +1719,7 @@ class RebootWaitTests(unittest.TestCase):
         def remote(argv: list[str], script: str) -> subprocess.CompletedProcess[str]:
             if argv[:1] == ["cat"]:
                 seen["n"] += 1
-                return completed(stdout="boot-b\n" if seen["n"] >= 3 else "boot-a\n")
+                return completed(stdout="boot-b\n" if seen["n"] >= 2 else "boot-a\n")
             return completed(stdout="")
 
         found = steps._wait_for_reboot(
@@ -1646,15 +1727,16 @@ class RebootWaitTests(unittest.TestCase):
             INSTANCE,
             remote,
             ["aws", "sts", "get-caller-identity"],
-            drop_budget=30,
+            quiet_budget=0,
             return_budget=30,
             clock=clock,
             pause=pause,
+            describe=lambda _runner, _instance_id: {"State": {"Name": "running"}},
         )
         self.assertEqual(found, "boot-b")
-        self.assertLess(now["t"], 30)
+        self.assertEqual(now["t"], 0)
 
-    def test_return_budget_starts_after_ssh_drops(self) -> None:
+    def test_return_budget_starts_after_the_quiet_window(self) -> None:
         now = {"t": 0.0}
 
         def clock() -> float:
@@ -1674,7 +1756,7 @@ class RebootWaitTests(unittest.TestCase):
                 INSTANCE,
                 remote,
                 ["aws", "sts", "get-caller-identity"],
-                drop_budget=10,
+                quiet_budget=0,
                 return_budget=30,
                 clock=clock,
                 pause=pause,
@@ -1708,7 +1790,7 @@ class RebootWaitTests(unittest.TestCase):
                 INSTANCE,
                 remote,
                 ["aws", "sts", "get-caller-identity"],
-                drop_budget=10,
+                quiet_budget=0,
                 return_budget=20,
                 clock=clock,
                 pause=pause,
@@ -1741,6 +1823,10 @@ class RebootWaitTests(unittest.TestCase):
             "uninstall_not_verified",
         )
         self.assertEqual(steps._guest_failure_reason({"removal": {"verified_removed": True}}), "guest")
+        self.assertEqual(
+            steps._guest_failure_reason({"reason": "reboot_script_missing"}),
+            "reboot_script_missing",
+        )
 
 
 if __name__ == "__main__":
