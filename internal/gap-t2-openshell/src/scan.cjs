@@ -64,18 +64,18 @@ function joinPath(base, segment) {
   return `${base}${safeSegment(segment)}`;
 }
 
-function scan(value, path, depth, seen) {
+function copyPlain(value, path, depth, seen) {
   if (depth > MAX_DEPTH) {
     return problem("LIMIT_EXCEEDED", path || "root");
   }
   if (value === null || value === undefined || typeof value === "boolean") {
-    return { ok: true };
+    return { ok: true, value };
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
       return problem("SCHEMA", path || "root");
     }
-    return { ok: true };
+    return { ok: true, value };
   }
   if (typeof value === "string") {
     if (value.length > MAX_STRING) {
@@ -84,7 +84,7 @@ function scan(value, path, depth, seen) {
     if (isSecretString(value)) {
       return problem("SECRET_FIELD", path || "root");
     }
-    return { ok: true };
+    return { ok: true, value };
   }
   if (typeof value !== "object") {
     return problem("SCHEMA", path || "root");
@@ -97,19 +97,22 @@ function scan(value, path, depth, seen) {
     if (value.length > MAX_RECORDS) {
       return problem("LIMIT_EXCEEDED", path || "root");
     }
+    const copy = [];
     for (let index = 0; index < value.length; index += 1) {
-      const child = scan(value[index], joinPath(path, index), depth + 1, seen);
+      const child = copyPlain(value[index], joinPath(path, index), depth + 1, seen);
       if (!child.ok) {
         return child;
       }
+      copy.push(child.value);
     }
-    return { ok: true };
+    return { ok: true, value: copy };
   }
-  const keys = Object.keys(value);
-  if (keys.length > MAX_KEYS) {
+  const names = Object.getOwnPropertyNames(value);
+  if (names.length > MAX_KEYS) {
     return problem("LIMIT_EXCEEDED", path || "root");
   }
-  for (const key of keys) {
+  const copy = Object.create(null);
+  for (const key of names) {
     const leaf = key.toLowerCase();
     const next = joinPath(path, key);
     if (leaf === "__proto__" || leaf === "prototype" || leaf === "constructor") {
@@ -121,19 +124,24 @@ function scan(value, path, depth, seen) {
     if (CONVERSATION_KEY_SET.has(leaf)) {
       return problem("CONVERSATION_FIELD", next);
     }
-    const child = scan(value[key], next, depth + 1, seen);
+    const description = Object.getOwnPropertyDescriptor(value, key);
+    if (!description || description.get || description.set || !description.enumerable) {
+      return problem("SCHEMA", next);
+    }
+    const child = copyPlain(description.value, next, depth + 1, seen);
     if (!child.ok) {
       return child;
     }
+    copy[key] = child.value;
   }
-  return { ok: true };
+  return { ok: true, value: copy };
 }
 
-function scanValue(value, path) {
-  return scan(value, path, 0, new WeakSet());
+function copyValue(value, path) {
+  return copyPlain(value, path, 0, new WeakSet());
 }
 
 module.exports = {
+  copyValue,
   isSecretString,
-  scanValue,
 };

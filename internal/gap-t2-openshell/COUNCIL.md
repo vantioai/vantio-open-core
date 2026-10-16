@@ -150,7 +150,7 @@ window_ms: integer 0 through 60000, inclusive on both ends
 bindings: 1 to 64 rows of { cgroup_id, sandbox_id }
 ```
 
-`cgroup_id` is a decimal string. `sandbox_id` is 1 to 128 characters from `[A-Za-z0-9._-]`. One cgroup maps to one sandbox. A repeated cgroup, including an identical repeat, rejects the run with `AMBIGUOUS_BINDING` and emits no findings.
+`cgroup_id` is a decimal string, or a safe integer on a kernel row. The join canonicalizes it to the decimal form of that integer with leading zeros removed, and rejects a value above the unsigned 64-bit maximum. `sandbox_id` is 1 to 128 characters from `[A-Za-z0-9._-]`. One canonical cgroup maps to one sandbox. A repeated cgroup, including `21` and `021`, rejects the run with `AMBIGUOUS_BINDING` and emits no findings.
 
 Kernel rows accept the field names already used by the private demo (`EventType` or `event_type`, and the same pattern for action, trace, pid, path). The join uses these derived fields:
 
@@ -159,9 +159,9 @@ Kernel rows accept the field names already used by the private demo (`EventType`
 | `action_class` | `TLS_EGRESS`, `NETWORK_BLOCK`, `SYSCALL_CONNECT` are `network`. `SYSCALL_OPENAT` and `SYSCALL_OPEN` are `file`. `SYSCALL_EXECVE` and `SYSCALL_EXECVEAT` are `process`. Any other type is not a class. |
 | `subject` | Network: lowercase host, one trailing dot removed, port 1 through 65535. File: the path string, length 1 through 4096, no NUL. Process: the executable path, same limits. A string `Payload` is ignored. |
 | `trace_id` | Optional. Canonical form is 16 lowercase hex digits, from a `0x` prefix and leading-zero pad. |
-| `observed_at_ms` | Required for an OpenShell match. Values from `1700000000000` through `4102444800000` (2023-11-14 through 2100-01-01 UTC) are Unix milliseconds. A monotonic `EventTimestamp` outside that range does not become a Unix time. |
+| `observed_at_ms` | Required for an OpenShell match. Values from `1700000000000` through `4102444800000` (2023-11-14 through 2100-01-01 UTC) are Unix milliseconds. `EventTimestamp` is never a clock. A monotonic nanosecond reading can fall inside that numeric window after roughly 28 to 68 minutes of uptime, so adopting it would mint a false bypass. |
 
-OpenShell rows accept an OCSF object. `container.uid` is the sandbox id. Class 4001 and 4002 are `network`. Class 1007 is `process`. `dst_endpoint.domain` and `dst_endpoint.port` are the network subject. `actor.process.name` is the process subject when the class is process. `metadata.uid` is stored only as an event id and is never compared to a trace id. HTTP bodies, headers, and URLs with userinfo are not copied.
+OpenShell rows accept an OCSF object. `container.uid` is the sandbox id. Class 4001 and 4002 are `network`. Class 1007 is `process`. `dst_endpoint.domain` and `dst_endpoint.port` are the network subject. For class 1007 the subject is the top-level `process.name` absolute path, which is the process the activity is about. `actor.process.name` alone is not a subject, so a parent record does not clear a kernel exec. `metadata.uid` is stored only as an event id and is never compared to a trace id. HTTP bodies, headers, and URLs with userinfo are not copied. Two aliases for the same fact, such as `destination_host` and `host`, must normalize to the same value. A disagreement rejects the snapshot.
 
 Gate rows require a trace id. Host, destination, and time are optional. A Gate row with no trace id rejects the run.
 

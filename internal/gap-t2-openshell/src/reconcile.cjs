@@ -16,7 +16,7 @@ const {
   normalizeOpenshell,
   normalizeRun,
 } = require("./normalize.cjs");
-const { scanValue } = require("./scan.cjs");
+const { copyValue } = require("./scan.cjs");
 
 function emptyCounts() {
   return {
@@ -248,26 +248,27 @@ function reconcile(input) {
   if (input == null || typeof input !== "object") {
     return rejected("SCHEMA", "input");
   }
-  const scanned = scanValue(input, "");
-  if (!scanned.ok) {
-    return rejected(scanned.reason_code, scanned.detail);
+  const copied = copyValue(input, "");
+  if (!copied.ok) {
+    return rejected(copied.reason_code, copied.detail);
   }
-  if (!Array.isArray(input.kernel) || !Array.isArray(input.openshell) || !Array.isArray(input.gate)) {
+  const snapshot = copied.value;
+  if (!Array.isArray(snapshot.kernel) || !Array.isArray(snapshot.openshell) || !Array.isArray(snapshot.gate)) {
     return rejected("SCHEMA", "input.arrays");
   }
-  const run = normalizeRun(input.run);
+  const run = normalizeRun(snapshot.run);
   if (!run.ok) {
     return rejected(run.reason_code, run.detail);
   }
-  const kernel = mapRows(input.kernel, normalizeKernel, "kernel");
+  const kernel = mapRows(snapshot.kernel, normalizeKernel, "kernel");
   if (!kernel.ok) {
     return rejected(kernel.reason_code, kernel.detail);
   }
-  const openshell = mapRows(input.openshell, normalizeOpenshell, "openshell");
+  const openshell = mapRows(snapshot.openshell, normalizeOpenshell, "openshell");
   if (!openshell.ok) {
     return rejected(openshell.reason_code, openshell.detail);
   }
-  const gate = mapRows(input.gate, normalizeGate, "gate");
+  const gate = mapRows(snapshot.gate, normalizeGate, "gate");
   if (!gate.ok) {
     return rejected(gate.reason_code, gate.detail);
   }

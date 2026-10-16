@@ -1,24 +1,27 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+
+const { reconcile } = require("../src/index.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "src");
 
 const FORBIDDEN = [
   "child_process",
-  "node:child_process",
-  "node:net",
-  "node:http",
-  "node:https",
-  "node:tls",
-  "node:dgram",
-  "node:dns",
-  "node:fs",
+  "fs",
+  "net",
+  "http",
+  "https",
+  "http2",
+  "tls",
+  "dgram",
+  "dns",
+  "worker_threads",
 ];
 
 test("the join modules do not open sockets, spawn, or touch the filesystem", () => {
@@ -27,9 +30,12 @@ test("the join modules do not open sockets, spawn, or touch the filesystem", () 
   for (const name of files) {
     const source = fs.readFileSync(path.join(SRC, name), "utf8");
     for (const token of FORBIDDEN) {
-      assert.equal(source.includes(`require("${token}")`), false, `${name} requires ${token}`);
-      assert.equal(source.includes(`require('${token}')`), false, `${name} requires ${token}`);
+      for (const style of [`"${token}"`, `'${token}'`, `"node:${token}"`, `'node:${token}'`]) {
+        assert.equal(source.includes(`require(${style})`), false, `${name} require ${style}`);
+      }
     }
+    assert.equal(source.includes("import("), false, name);
+    assert.equal(source.includes("process.binding"), false, name);
     assert.equal(source.includes("process.env"), false, name);
   }
 });
@@ -52,10 +58,7 @@ test("lab documents contain no price figures", () => {
   }
 });
 
-test("the proof script writes the bypass evidence and exits 0", () => {
-  const script = path.join(ROOT, "proof", "prove-bypass.cjs");
-  const stdout = execFileSync(process.execPath, [script], { encoding: "utf8" });
-  assert.match(stdout, /BYPASS_INDICATOR/);
+test("committed evidence matches the fixtures and the current join", () => {
   const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, "evidence", "bypass-drill.json"), "utf8"));
   assert.equal(evidence.label, "LAB_ONLY");
   assert.equal(evidence.live_stack, "ROADMAP");
@@ -64,6 +67,14 @@ test("the proof script writes the bypass evidence and exits 0", () => {
   assert.equal(evidence.phantom_engine_runtime, "not-executed");
   assert.equal(evidence.controls.openshell, "matched_openshell");
   assert.equal(evidence.controls.gate, "matched_gate");
-  assert.equal(typeof evidence.generated_at, "string");
   assert.equal(evidence.generated_at.endsWith("Z"), true);
+  for (const [name, expected] of Object.entries(evidence.fixture_sha256)) {
+    const bytes = fs.readFileSync(path.join(ROOT, "fixtures", name));
+    const actual = crypto.createHash("sha256").update(bytes).digest("hex");
+    assert.equal(actual, expected, name);
+  }
+  const bypass = JSON.parse(fs.readFileSync(path.join(ROOT, "fixtures", "bypass-drill.json"), "utf8"));
+  const result = reconcile(bypass);
+  assert.equal(result.findings[0].indicator, evidence.indicator);
+  assert.equal(result.findings[0].reason, evidence.reason);
 });

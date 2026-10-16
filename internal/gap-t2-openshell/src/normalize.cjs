@@ -12,7 +12,8 @@ const {
 } = require("./boundary.cjs");
 
 const ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
-const CGROUP_PATTERN = /^[0-9]{1,20}$/;
+const CGROUP_TEXT = /^[0-9]{1,20}$/;
+const CGROUP_MAX = 18446744073709551615n;
 const NETWORK_TYPES = new Set(["TLS_EGRESS", "NETWORK_BLOCK", "SYSCALL_CONNECT"]);
 const FILE_TYPES = new Set(["SYSCALL_OPENAT", "SYSCALL_OPEN"]);
 const PROCESS_TYPES = new Set(["SYSCALL_EXECVE", "SYSCALL_EXECVEAT"]);
@@ -40,6 +41,49 @@ function own(record, names) {
     }
   }
   return undefined;
+}
+
+function stable(value) {
+  return JSON.stringify(value);
+}
+
+function consistent(record, names, convert, reason, detail) {
+  let canonical;
+  let saw = false;
+  for (const name of names) {
+    if (!Object.prototype.hasOwnProperty.call(record, name) || record[name] == null) {
+      continue;
+    }
+    const next = convert(record[name]);
+    if (!next.ok) {
+      return fail(reason, detail);
+    }
+    if (!saw) {
+      canonical = next.value;
+      saw = true;
+      continue;
+    }
+    if (stable(canonical) !== stable(next.value)) {
+      return fail(reason, detail);
+    }
+  }
+  return pass(saw ? canonical : undefined);
+}
+
+function canonicalCgroup(value) {
+  let text;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    text = String(value);
+  } else if (typeof value === "string" && CGROUP_TEXT.test(value)) {
+    text = value;
+  } else {
+    return null;
+  }
+  const id = BigInt(text);
+  if (id > CGROUP_MAX) {
+    return null;
+  }
+  return id.toString();
 }
 
 function actionClass(eventType) {
@@ -160,16 +204,17 @@ function normalizeRun(run) {
     if (!isPlainObject(row)) {
       return fail("SCHEMA", `run.bindings[${index}]`);
     }
-    if (typeof row.cgroup_id !== "string" || !CGROUP_PATTERN.test(row.cgroup_id)) {
+    const cgroupId = canonicalCgroup(row.cgroup_id);
+    if (cgroupId == null || typeof row.cgroup_id !== "string") {
       return fail("SCHEMA", `run.bindings[${index}].cgroup_id`);
     }
     if (typeof row.sandbox_id !== "string" || !ID_PATTERN.test(row.sandbox_id)) {
       return fail("SCHEMA", `run.bindings[${index}].sandbox_id`);
     }
-    if (bindings.has(row.cgroup_id)) {
+    if (bindings.has(cgroupId)) {
       return fail("AMBIGUOUS_BINDING", `run.bindings[${index}].cgroup_id`);
     }
-    bindings.set(row.cgroup_id, row.sandbox_id);
+    bindings.set(cgroupId, row.sandbox_id);
   }
   return pass({
     host_id: run.host_id,
@@ -180,44 +225,62 @@ function normalizeRun(run) {
 
 function kernelSubject(record, kind) {
   if (kind === "network") {
-    const host = own(record, ["destination_host", "dst_host", "host"]);
-    const port = own(record, ["destination_port", "dst_port", "port"]);
-    if (host == null && port == null) {
+    const host = consistent(
+      record,
+      ["destination_host", "dst_host", "host"],
+      normalizeHost,
+      "KERNEL_RECORD",
+      "kernel.subject",
+    );
+    const port = consistent(
+      record,
+      ["destination_port", "dst_port", "port"],
+      normalizePort,
+      "KERNEL_RECORD",
+      "kernel.subject",
+    );
+    if (!host.ok || !port.ok) {
+      return host.ok ? port : host;
+    }
+    if (host.value == null && port.value == null) {
       return pass(null);
     }
-    if (host == null || port == null) {
+    if (host.value == null || port.value == null) {
       return fail("KERNEL_RECORD", "kernel.subject");
     }
-    const subject = networkSubject(host, port);
-    if (!subject.ok) {
-      return fail("KERNEL_RECORD", "kernel.subject");
-    }
-    return subject;
+    return pass({ kind: "network", host: host.value, port: port.value });
   }
   if (kind === "file") {
-    const pathValue = own(record, ["PathAttempted", "path_attempted", "path"]);
-    if (pathValue == null) {
+    const pathValue = consistent(
+      record,
+      ["PathAttempted", "path_attempted", "path"],
+      normalizePath,
+      "KERNEL_RECORD",
+      "kernel.subject",
+    );
+    if (!pathValue.ok) {
+      return pathValue;
+    }
+    if (pathValue.value == null) {
       return pass(null);
     }
-    const subject = normalizePath(pathValue);
-    if (!subject.ok) {
-      return fail("KERNEL_RECORD", "kernel.subject");
-    }
-    return pass({ kind: "file", path: subject.value });
+    return pass({ kind: "file", path: pathValue.value });
   }
   if (kind === "process") {
-    const pathValue = own(record, ["exe", "executable", "path"]);
-    if (pathValue == null) {
+    const pathValue = consistent(
+      record,
+      ["exe", "executable", "path"],
+      normalizePath,
+      "KERNEL_RECORD",
+      "kernel.subject",
+    );
+    if (!pathValue.ok) {
+      return pathValue;
+    }
+    if (pathValue.value == null || !pathValue.value.startsWith("/")) {
       return pass(null);
     }
-    const subject = normalizePath(pathValue);
-    if (!subject.ok) {
-      return fail("KERNEL_RECORD", "kernel.subject");
-    }
-    if (!subject.value.startsWith("/")) {
-      return pass(null);
-    }
-    return pass({ kind: "process", path: subject.value });
+    return pass({ kind: "process", path: pathValue.value });
   }
   return pass(null);
 }
@@ -230,50 +293,83 @@ function normalizeKernel(record, index) {
   if (typeof record.host_id !== "string" || !ID_PATTERN.test(record.host_id)) {
     return fail("KERNEL_RECORD", `${where}.host_id`);
   }
-  const cgroupRaw = own(record, ["cgroup_id", "cgroup"]);
-  const cgroupId = typeof cgroupRaw === "number" && Number.isSafeInteger(cgroupRaw)
-    ? String(cgroupRaw)
-    : cgroupRaw;
-  if (typeof cgroupId !== "string" || !CGROUP_PATTERN.test(cgroupId)) {
+  const cgroupRaw = consistent(
+    record,
+    ["cgroup_id", "cgroup"],
+    (value) => {
+      const id = canonicalCgroup(value);
+      return id == null ? fail("cgroup") : pass(id);
+    },
+    "KERNEL_RECORD",
+    `${where}.cgroup_id`,
+  );
+  if (!cgroupRaw.ok || cgroupRaw.value == null) {
     return fail("KERNEL_RECORD", `${where}.cgroup_id`);
   }
-  const eventRaw = own(record, ["EventType", "event_type"]);
-  if (typeof eventRaw !== "string" || eventRaw.length < 1 || eventRaw.length > 64) {
+  const cgroupId = cgroupRaw.value;
+  const eventRaw = consistent(
+    record,
+    ["EventType", "event_type"],
+    (value) => {
+      if (typeof value !== "string" || value.length < 1 || value.length > 64) {
+        return fail("event");
+      }
+      return pass(value.toUpperCase());
+    },
+    "KERNEL_RECORD",
+    `${where}.event_type`,
+  );
+  if (!eventRaw.ok || eventRaw.value == null) {
     return fail("KERNEL_RECORD", `${where}.event_type`);
   }
-  const eventType = eventRaw.toUpperCase();
+  const eventType = eventRaw.value;
   const kind = actionClass(eventType);
-  const trace = canonicalTrace(own(record, ["TraceId", "trace_id"]));
+  const trace = consistent(
+    record,
+    ["TraceId", "trace_id"],
+    canonicalTrace,
+    "KERNEL_RECORD",
+    `${where}.trace_id`,
+  );
   if (!trace.ok) {
     return fail("KERNEL_RECORD", `${where}.trace_id`);
   }
   const explicitTime = own(record, ["observed_at_ms"]);
-  const eventTimestamp = own(record, ["EventTimestamp", "event_timestamp"]);
   let observedAt = null;
   if (explicitTime != null) {
     observedAt = unixMillis(explicitTime);
     if (observedAt == null) {
       return fail("KERNEL_RECORD", `${where}.observed_at_ms`);
     }
-  } else if (eventTimestamp != null && unixMillis(eventTimestamp) != null) {
-    observedAt = unixMillis(eventTimestamp);
   }
   const subject = kernelSubject(record, kind);
   if (!subject.ok) {
     return fail("KERNEL_RECORD", `${where}.subject`);
   }
-  const actionRaw = own(record, ["ActionTaken", "action_taken"]);
-  const actionTaken = actionRaw == null ? null : String(actionRaw).toUpperCase();
-  if (actionTaken != null && !/^[A-Z_]{1,32}$/.test(actionTaken)) {
+  const actionRaw = consistent(
+    record,
+    ["ActionTaken", "action_taken"],
+    (value) => {
+      const action = String(value).toUpperCase();
+      if (!/^[A-Z_]{1,32}$/.test(action)) {
+        return fail("action");
+      }
+      return pass(action);
+    },
+    "KERNEL_RECORD",
+    `${where}.action_taken`,
+  );
+  if (!actionRaw.ok) {
     return fail("KERNEL_RECORD", `${where}.action_taken`);
   }
+  const actionTaken = actionRaw.value == null ? null : actionRaw.value;
   return pass({
     host_id: record.host_id,
     cgroup_id: cgroupId,
     event_type: eventType,
     action_class: kind,
     action_taken: actionTaken,
-    trace_id: trace.value,
+    trace_id: trace.value == null ? null : trace.value,
     observed_at_ms: observedAt,
     subject: subject.value,
   });
@@ -303,17 +399,13 @@ function openshellSubject(record, kind) {
     return subject;
   }
   if (kind === "process") {
-    const actor = record.actor;
-    const process = isPlainObject(actor) ? actor.process : undefined;
-    if (process == null) {
+    const target = isPlainObject(record.process) ? record.process.name : undefined;
+    if (target == null) {
       return pass(null);
     }
-    if (!isPlainObject(process) || process.name == null) {
-      return fail("OPENSHELL_RECORD", "openshell.actor.process");
-    }
-    const subject = normalizePath(process.name);
+    const subject = normalizePath(target);
     if (!subject.ok) {
-      return fail("OPENSHELL_RECORD", "openshell.actor.process.name");
+      return fail("OPENSHELL_RECORD", "openshell.process.name");
     }
     if (!subject.value.startsWith("/")) {
       return pass(null);
@@ -358,11 +450,23 @@ function normalizeOpenshell(record, index) {
   if (!subject.ok) {
     return subject;
   }
-  const dispositionRaw = own(record, ["action", "disposition"]);
-  const disposition = dispositionRaw == null ? null : String(dispositionRaw);
-  if (disposition != null && !/^[A-Za-z_]{1,32}$/.test(disposition)) {
+  const dispositionRaw = consistent(
+    record,
+    ["action", "disposition"],
+    (value) => {
+      const text = String(value);
+      if (!/^[A-Za-z_]{1,32}$/.test(text)) {
+        return fail("action");
+      }
+      return pass(text);
+    },
+    "OPENSHELL_RECORD",
+    `${where}.action`,
+  );
+  if (!dispositionRaw.ok) {
     return fail("OPENSHELL_RECORD", `${where}.action`);
   }
+  const disposition = dispositionRaw.value == null ? null : dispositionRaw.value;
   let eventId = null;
   if (isPlainObject(record.metadata) && record.metadata.uid != null) {
     if (typeof record.metadata.uid !== "string" || record.metadata.uid.length > MAX_ID) {
@@ -382,17 +486,28 @@ function normalizeOpenshell(record, index) {
 }
 
 function gateSubject(record) {
-  const host = own(record, ["destination_host", "host"]);
-  const port = own(record, ["destination_port", "port"]);
-  if (host != null || port != null) {
-    if (host == null || port == null) {
+  const host = consistent(
+    record,
+    ["destination_host", "host"],
+    normalizeHost,
+    "GATE_RECORD",
+    "gate.subject",
+  );
+  const port = consistent(
+    record,
+    ["destination_port", "port"],
+    normalizePort,
+    "GATE_RECORD",
+    "gate.subject",
+  );
+  if (!host.ok || !port.ok) {
+    return host.ok ? port : host;
+  }
+  if (host.value != null || port.value != null) {
+    if (host.value == null || port.value == null) {
       return fail("GATE_RECORD", "gate.subject");
     }
-    const subject = networkSubject(host, port);
-    if (!subject.ok) {
-      return fail("GATE_RECORD", "gate.subject");
-    }
-    return subject;
+    return pass({ kind: "network", host: host.value, port: port.value });
   }
   const executable = own(record, ["exe", "executable"]);
   if (executable != null) {
@@ -421,7 +536,13 @@ function normalizeGate(record, index) {
   if (!isPlainObject(record)) {
     return fail("GATE_RECORD", where);
   }
-  const trace = canonicalTrace(own(record, ["TraceId", "trace_id"]));
+  const trace = consistent(
+    record,
+    ["TraceId", "trace_id"],
+    canonicalTrace,
+    "GATE_RECORD",
+    `${where}.trace_id`,
+  );
   if (!trace.ok || trace.value == null) {
     return fail("GATE_RECORD", `${where}.trace_id`);
   }

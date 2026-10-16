@@ -10,7 +10,7 @@ Update this file again when the fixture proof has run. Do not delete a risk beca
 | --- | --- | --- | --- |
 | R1 | Live OpenShell and Phantom Engine were not run together. | Open. Label Roadmap. | The council comparison is a source reading. The join, once tested, is Lab-only against fixtures. |
 | R2 | This runner is not an enrolled Vantio host. Docker and Podman are absent. Effective `cap_bpf` is absent. `unprivileged_bpf_disabled` is 2. | Open. Accepted for this track. | No install is attempted. A later drill needs a host the company owns. |
-| R3 | Kernel `EventTimestamp` in the architecture case study is a monotonic nanosecond clock. OpenShell `time` is Unix time. | Open. Designed. | Rows without a Unix millisecond stamp are `UNATTRIBUTED` unless a Gate trace id matches. They are not cleared and they are not bypasses. |
+| R3 | Kernel `EventTimestamp` in the architecture case study is a monotonic nanosecond clock. OpenShell `time` is Unix time. A monotonic reading can numerically overlap the Unix millisecond window. | Open. Designed. | `EventTimestamp` is ignored. Only `observed_at_ms` is a clock. Rows without that stamp are `UNATTRIBUTED` unless a Gate trace id matches. |
 | R4 | OpenShell OCSF export is best-effort and drops lines when its 1,024-line queue is full. | Open. Accepted. | A dropped sandbox row can become `BYPASS_INDICATOR`. The reason is absence from the snapshot. |
 | R5 | Scoped TC passes packets whose cgroup id is 0. | Open. Outside this track's code. | Those packets are `OUT_OF_SCOPE` for the indicator. The pass remains a Phantom Engine property. |
 | R6 | Kubernetes `--enroll-watch` does not auto-attach `cgroup_skb` to pod cgroups, per the architecture roadmap. | Open. Inherited. | A pod forwarded path can miss both the TC attribution and this join. |
@@ -35,7 +35,7 @@ Command: `node --test internal/gap-t2-openshell/test/*.test.cjs`, which also run
 
 | Check | Result |
 | --- | --- |
-| Tests | 25 passed |
+| Tests | 29 passed after the review fixes. The evidence file still records the 2026-10-16T16:01:29.765Z fixture proof. Fixtures did not change, so its hashes still match. |
 | Evidence time | 2026-10-16T16:01:29.765Z |
 | Drill indicator | `BYPASS_INDICATOR` |
 | OpenShell control | `matched_openshell` |

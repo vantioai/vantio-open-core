@@ -187,7 +187,8 @@ test("a process OpenShell row reconciles an exec and does not need the kernel pi
       time: T0,
       action: "Allowed",
       container: { uid: "policy-demo" },
-      actor: { process: { name: "/usr/bin/python3.12", pid: 99 } },
+      process: { name: "/usr/bin/python3.12" },
+      actor: { process: { name: "/usr/bin/bash", pid: 1 } },
     }],
   })));
   assert.equal(finding.indicator, "RECONCILED_OK");
@@ -203,10 +204,15 @@ test("an allowed OpenShell row against a kernel drop is a mismatch on a reconcil
   assert.equal(finding.indicator, "RECONCILED_OK");
   assert.equal(finding.decision_mismatch, true);
   const observed = one(reconcile(snapshot({
-    openshell: [networkRow({ action: "Denied", disposition: "Blocked" })],
+    openshell: [networkRow({ action: "Denied" })],
   })));
   assert.equal(observed.indicator, "RECONCILED_OK");
   assert.equal(observed.decision_mismatch, false);
+  const clash = reconcile(snapshot({
+    openshell: [networkRow({ action: "Allowed", disposition: "Blocked" })],
+  }));
+  assert.equal(clash.status, "rejected");
+  assert.equal(clash.reason_code, "OPENSHELL_RECORD");
 });
 
 test("both sides matching names matched_both", () => {
@@ -317,6 +323,123 @@ test("an empty kernel snapshot is not a bypass", () => {
   assert.equal(result.status, "ok");
   assert.equal(result.counts.bypass, 0);
   assert.equal(result.findings.length, 0);
+});
+
+test("a parent actor record does not clear the parent exec or a network write", () => {
+  const parentExec = one(reconcile(snapshot({
+    kernel: [kernel({
+      EventType: "SYSCALL_EXECVE",
+      destination_host: undefined,
+      destination_port: undefined,
+      exe: "/usr/bin/bash",
+    })],
+    openshell: [{
+      class_uid: 1007,
+      time: T0,
+      container: { uid: "policy-demo" },
+      process: { name: "/usr/bin/python3.12" },
+      actor: { process: { name: "/usr/bin/bash" } },
+    }],
+  })));
+  assert.equal(parentExec.indicator, "BYPASS_INDICATOR");
+  const childExec = one(reconcile(snapshot({
+    kernel: [kernel({
+      EventType: "SYSCALL_EXECVE",
+      destination_host: undefined,
+      destination_port: undefined,
+      exe: "/usr/bin/python3.12",
+    })],
+    openshell: [{
+      class_uid: 1007,
+      time: T0,
+      container: { uid: "policy-demo" },
+      process: { name: "/usr/bin/python3.12" },
+      actor: { process: { name: "/usr/bin/bash" } },
+    }],
+  })));
+  assert.equal(childExec.indicator, "RECONCILED_OK");
+  const actorOnly = one(reconcile(snapshot({
+    kernel: [kernel({
+      EventType: "SYSCALL_EXECVE",
+      destination_host: undefined,
+      destination_port: undefined,
+      exe: "/usr/bin/python3.12",
+    })],
+    openshell: [{
+      class_uid: 1007,
+      time: T0,
+      container: { uid: "policy-demo" },
+      actor: { process: { name: "/usr/bin/python3.12" } },
+    }],
+  })));
+  assert.equal(actorOnly.indicator, "BYPASS_INDICATOR");
+});
+
+test("an in-window monotonic timestamp is not a Unix clock", () => {
+  const finding = one(reconcile(snapshot({
+    kernel: [kernel({
+      observed_at_ms: undefined,
+      EventTimestamp: 1792000000000,
+    })],
+    openshell: [networkRow({ time: 1792000000000 })],
+  })));
+  assert.equal(finding.indicator, "UNATTRIBUTED");
+  assert.equal(finding.reason, "kernel_time_not_unix");
+  const gated = one(reconcile(snapshot({
+    kernel: [kernel({
+      observed_at_ms: undefined,
+      EventTimestamp: 1792000000000,
+    })],
+    gate: [{ trace_id: "0xc0ffee00c0ffee00", observed_at_ms: T0 }],
+  })));
+  assert.equal(gated.indicator, "RECONCILED_OK");
+  assert.equal(gated.reason, "matched_gate");
+});
+
+test("leading-zero cgroup ids are one id, and disagreeing aliases reject", () => {
+  const clash = reconcile(snapshot({
+    run: run({
+      bindings: [
+        { cgroup_id: "21", sandbox_id: "policy-demo" },
+        { cgroup_id: "021", sandbox_id: "other-demo" },
+      ],
+    }),
+  }));
+  assert.equal(clash.status, "rejected");
+  assert.equal(clash.reason_code, "AMBIGUOUS_BINDING");
+  const padded = one(reconcile(snapshot({
+    run: run({ bindings: [{ cgroup_id: "021", sandbox_id: "policy-demo" }] }),
+    kernel: [kernel({ cgroup_id: 21 })],
+  })));
+  assert.equal(padded.indicator, "BYPASS_INDICATOR");
+  const alias = reconcile(snapshot({
+    kernel: [kernel({ host: "evil.example" })],
+    openshell: [networkRow()],
+  }));
+  assert.equal(alias.status, "rejected");
+  assert.equal(alias.reason_code, "KERNEL_RECORD");
+  assert.equal(JSON.stringify(alias).includes("evil.example"), false);
+});
+
+test("a throwing getter or a hidden field rejects without leaking", () => {
+  const hidden = kernel();
+  Object.defineProperty(hidden, "note", {
+    value: "sk-livesecretvalue",
+    enumerable: false,
+  });
+  const hiddenResult = reconcile(snapshot({ kernel: [hidden] }));
+  assert.equal(hiddenResult.status, "rejected");
+  assert.equal(JSON.stringify(hiddenResult).includes("sk-livesecretvalue"), false);
+  const throwing = kernel();
+  Object.defineProperty(throwing, "host", {
+    enumerable: true,
+    get() {
+      throw new Error("boom");
+    },
+  });
+  const thrown = reconcile(snapshot({ kernel: [throwing] }));
+  assert.equal(thrown.status, "rejected");
+  assert.equal(thrown.reason_code, "SCHEMA");
 });
 
 test("a basename process record does not reject the snapshot or cover a network write", () => {
