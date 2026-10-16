@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vantio_install import constants
 from vantio_install.commands import apt_install_npm_argv, npm_version_argv
+from vantio_install.kernel_lockdown import check_fields
 from vantio_install.oci_load import describe_archive
 from vantio_install.manifest import (
     artifact_paths,
@@ -304,6 +305,8 @@ def run_preflight(
             "Reboot so /sys/kernel/security/lsm lists bpf, then rerun preflight. A host without that token is not healthy and is not protected.",
         )
     )
+
+    checks.append(check_fields(host))
 
     checks.append(_tracefs_check(host, allow_unrecorded=allow_unrecorded_tracefs))
 
