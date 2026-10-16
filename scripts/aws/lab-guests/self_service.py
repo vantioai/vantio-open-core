@@ -282,7 +282,7 @@ def main() -> int:
         ),
         "proof_state": "NOT_PROVED",
     }
-    destination = Path(os.environ.get("VANTIO_SELF_SERVICE_OUT", "/tmp/self-service-rows.json"))
+    destination = Path(os.environ.get("VANTIO_SELF_SERVICE_OUT", "/var/lib/vantio-lab/enterprise-pe-rows.json"))
     destination.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
     print(destination.read_text(encoding="utf-8"), end="")
     return 0

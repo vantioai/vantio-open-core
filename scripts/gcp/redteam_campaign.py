@@ -131,14 +131,24 @@ def execute(env: Mapping[str, str], od: Any) -> int:
         before = od._wait_ssh(project, name, od.SSH_WAIT_SECONDS)
         pre = od._ssh(project, name, od.guest_command(seal, "descendant-b1", "pre"))
         pre_text = od.redact((pre.stdout or "") + (pre.stderr or ""))
-        descendant = _read_remote(od, project, name, "/tmp/enterprise-pe-rows.json", raw_dir / "descendant.json")
+        descendant = _read_remote(
+            od, project, name, "/var/lib/vantio-lab/enterprise-pe-rows.json", raw_dir / "descendant.json"
+        )
         if "PY_RC=0" in pre_text:
             rebooted = bool(_boot_changed(od, project, name, before))
             if rebooted:
                 od._ssh(project, name, od.guest_command(seal, "descendant-b1", "post"))
                 descendant = _read_remote(
-                    od, project, name, "/tmp/enterprise-pe-rows.json", raw_dir / "descendant.json"
-                ) or descendant
+                    od,
+                    project,
+                    name,
+                    "/var/lib/vantio-lab/enterprise-pe-rows.json",
+                    raw_dir / "descendant.json",
+                )
+        if descendant is None:
+            raise SystemExit("rows_missing")
+        if not isinstance(descendant, dict):
+            raise SystemExit("rows_malformed")
         if od.GUEST_DIR != GUEST_PAYLOAD:
             raise SystemExit("brain_stage")
         staged = od._ssh(project, name, brain_stage_command(od.GUEST_DIR))

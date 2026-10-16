@@ -1156,14 +1156,18 @@ class EnterpriseBundleTests(unittest.TestCase):
 
     def test_row_pull_sends_a_fresh_instance_connect_key(self) -> None:
         text = Path(steps.__file__).read_text(encoding="utf-8")
-        pull = text.find('{ssh_user}@{host}:/tmp/enterprise-pe-rows.json')
-        note = text.rfind("Instance Connect keys last 60 seconds", 0, pull)
-        refresh = text.rfind("_run_with_fresh_key", 0, pull)
+        helper = text[text.find("def _pull_lab_rows"): text.find("def _reboot_log_tail")]
+        self.assertIn("LAB_ROWS_REMOTE", helper)
+        self.assertNotIn("/tmp/enterprise-pe-rows.json", helper)
+        note = helper.find("Instance Connect keys last 60 seconds")
+        refresh = helper.find("_run_with_fresh_key")
         self.assertGreater(note, 0)
-        self.assertGreater(refresh, note)
-        helper = text[text.find("def _run_with_fresh_key"): text.find("def _ssh_failure")]
-        self.assertIn("connect + [public]", helper)
-        self.assertIn("ubuntu", text[text.find("def execute_enterprise_rows"): pull])
+        self.assertLess(note, refresh)
+        key_helper = text[text.find("def _run_with_fresh_key"): text.find("def _ssh_failure")]
+        self.assertIn("connect + [public]", key_helper)
+        execute = text[text.find("def execute_enterprise_rows"):]
+        self.assertNotIn("/tmp/enterprise-pe-rows.json", execute)
+        self.assertIn('f"{ssh_user}@{host}:{LAB_ROWS_REMOTE}"', helper)
 
     def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
         self.assertEqual(enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
@@ -1595,6 +1599,8 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn('if [ "${2:-}" = "reboot-check" ]; then', text)
         check = text[text.index('if [ "${2:-}" = "reboot-check" ]; then') : text.index('sudo rm -rf "$stage"')]
         self.assertLess(check.index("sudo rm -f /tmp/enterprise-pe-rows.json"), check.index("schedule_forced_reboot"))
+        self.assertLess(check.index("stamp_host_evidence"), check.index("publish_durable_rows"))
+        self.assertLess(check.index("publish_durable_rows"), check.index("schedule_forced_reboot"))
         self.assertLess(check.index("ensure_stock_reboot_script"), check.index("reboot_script_missing"))
         self.assertLess(check.index("reboot_script_missing"), check.index("schedule_forced_reboot"))
         ensure = text[text.index("ensure_stock_reboot_script() {") : text.index("stage_reboot_guest_files() {")]
@@ -1605,9 +1611,16 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertNotIn("install_stock_reboot_script", schedule)
         staged = text[text.index("stage_reboot_guest_files() {") : text.index("schedule_forced_reboot() {")]
         self.assertIn("/var/lib/vantio-lab/guest/baseline_diag.py", staged)
-        descendant_at = text.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then')
-        descendant = text[descendant_at : text.index('stamp_host_evidence\n  exit "$rc"', descendant_at)]
+        b1_at = text.index('if [ "$mode" = "descendant-b1" ]; then')
+        b1 = text[b1_at : text.index('case "$mode" in', b1_at)]
+        self.assertLess(b1.index("publish_durable_rows"), b1.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then'))
+        descendant_at = b1.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then')
+        descendant = b1[descendant_at : b1.index('exit "$rc"', descendant_at)]
         self.assertLess(descendant.index("ensure_stock_reboot_script"), descendant.index("schedule_forced_reboot"))
+        guard_at = text.index('if [ "$mode" = "lsm-guard" ]; then')
+        guard = text[text.rfind("publish_durable_rows", 0, guard_at) : text.index('exit "$rc"', guard_at)]
+        self.assertLess(guard.index("publish_durable_rows"), guard.index("schedule_forced_reboot"))
+        self.assertIn('open("/var/lib/vantio-lab/enterprise-pe-rows.json")', guard)
         self.assertIn("sudo python3", check)
         self.assertIn("systemctl stop vantio-lab-lsm-reboot.timer", check)
         self.assertNotIn("schedule_forced_reboot vantio-lab", text)
@@ -1615,12 +1628,13 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(text.count("schedule_forced_reboot()"), 1)
         self.assertIn('sudo python3 - "$here/sticky_write.py"', text)
         uninstall = text[text.index("authorized_uninstall()"): text.index("\nmode=${2:-enterprise}")]
-        self.assertLess(uninstall.index("sudo rm -f /tmp/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
-        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out', uninstall)
-        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out', uninstall)
+        self.assertLess(uninstall.index("sudo rm -f /var/lib/vantio-lab/vantio-uninstall.out"), uninstall.index("ensure_working_bpftool"))
+        self.assertIn('echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /var/lib/vantio-lab/vantio-uninstall.out', uninstall)
+        self.assertIn('echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /var/lib/vantio-lab/vantio-uninstall.out', uninstall)
         self.assertIn('echo "UNINSTALL_RESIDUAL bpffs"', uninstall)
-        self.assertIn("| tee -a /tmp/vantio-uninstall.out", uninstall)
-        self.assertNotIn("sudo tee -a /tmp/vantio-uninstall.out", uninstall)
+        self.assertIn("| tee -a /var/lib/vantio-lab/vantio-uninstall.out", uninstall)
+        self.assertNotIn("sudo tee -a /var/lib/vantio-lab/vantio-uninstall.out", uninstall)
+        self.assertNotIn("/tmp/vantio-uninstall.out", uninstall)
         self.assertIn("stamp_host_evidence", text)
         self.assertIn('sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here"', text)
         self.assertIn(
@@ -1663,6 +1677,7 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         saved = rows.read_bytes() if rows.is_file() else None
         program = (
             "set -u\n"
+            "publish_durable_rows() { return 0; }\n"
             "image_name=vantio-phantom-engine:egress-2e6ab54\n"
             f"{funcs}\n"
             'if [ "$1" = accept ]; then accept_loaded_image "$2"; else normalize_loaded_image "$2"; fi\n'
@@ -1851,6 +1866,227 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertTrue(result["console_file"].startswith("w3-lab-console-"))
         self.assertEqual(len(result["console_sha256"]), 64)
         self.assertTrue(any("get-console-output" in call for call in runner.calls))
+
+    def _keygen(self, directory: Path) -> tuple[Path, str]:
+        private = directory / "lab-ed25519"
+        private.write_text("key\n", encoding="utf-8")
+        return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+    def test_reboot_check_reads_the_record_that_survives_tmpfs(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        pulled: list[str] = []
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                pulled.append(joined)
+                if "/tmp/enterprise-pe-rows.json" in joined:
+                    raise AssertionError("reboot-check pulled /tmp")
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "reboot-check",
+                            "boot_id": "boot-old",
+                            "reboot_requested": True,
+                            "unit": "vantio-lab-lsm-reboot",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/proc/cmdline":
+                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout="lockdown,capability,apparmor\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=self._keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(result["status"], "REBOOT_CHECKED")
+        self.assertEqual(result["boot_id"], "boot-new")
+        self.assertTrue(pulled)
+        self.assertTrue(all("/var/lib/vantio-lab/enterprise-pe-rows.json" in item for item in pulled))
+
+    def test_a_missing_record_is_rows_missing_even_when_the_log_has_json(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        record = json.dumps(
+            {
+                "battery": "reboot-check",
+                "boot_id": "boot-old",
+                "reboot_requested": True,
+                "unit": "vantio-lab-lsm-reboot",
+            }
+        )
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                return completed(code=1, stderr="No such file")
+            if args[0] == "ssh" and "enterprise-rows.sh" in joined:
+                return completed(stdout=f"seal.oci.tar: OK\nreboot_scheduled\n{record}\n")
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                with self.assertRaises(lab.GuardAbort) as caught:
+                    steps.execute_enterprise_rows(
+                        runner,
+                        keygen=self._keygen,
+                        ssh_runner=ssh,
+                        checker=lambda _path: {"seal_sha256": SEAL},
+                    )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(caught.exception.reason, "rows_missing")
+
+    def test_a_malformed_record_is_rows_malformed(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text("not-json\n", encoding="utf-8")
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=self._keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(caught.exception.reason, "rows_malformed")
+
+    def test_descendant_b1_reads_the_durable_record_after_tmp_is_wiped(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        pulled: list[str] = []
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                pulled.append(joined)
+                if "/tmp/enterprise-pe-rows.json" in joined:
+                    raise AssertionError("descendant-b1 pulled /tmp")
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "descendant-b1",
+                            "reboot_observed": True,
+                            "pre": {"boot_id": "boot-old", "descendant_pass": True},
+                            "post": {"boot_id": "boot-new", "descendant_pass": True},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "descendant-b1"
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=self._keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(result["status"], "DESCENDANT_B1")
+        self.assertEqual(result["boot_id"], "boot-new")
+        self.assertTrue(pulled)
+        self.assertTrue(all("/var/lib/vantio-lab/enterprise-pe-rows.json" in item for item in pulled))
+
+    def test_lsm_guard_reads_the_durable_record_after_tmp_is_wiped(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        pulled: list[str] = []
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                pulled.append(joined)
+                if "/tmp/enterprise-pe-rows.json" in joined:
+                    raise AssertionError("lsm-guard pulled /tmp")
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "lsm-guard",
+                            "boot_id": "boot-new",
+                            "host_result": "GUARD_PROVED",
+                            "reboot_requested": True,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            return completed(stdout="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            os.environ["W3_BATTERY"] = "lsm-guard"
+            result = steps.execute_enterprise_rows(
+                runner,
+                keygen=self._keygen,
+                ssh_runner=ssh,
+                checker=lambda _path: {"seal_sha256": SEAL},
+            )
+        self.assertEqual(result["status"], "PHASE2")
+        self.assertEqual(result["boot_id"], "boot-new")
+        self.assertTrue(pulled)
+        self.assertTrue(all("/var/lib/vantio-lab/enterprise-pe-rows.json" in item for item in pulled))
 
     def test_reboot_check_fails_when_the_new_boot_has_no_cmdline(self) -> None:
         runner = FakeAws()

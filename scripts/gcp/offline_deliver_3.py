@@ -156,10 +156,6 @@ def _run_one_battery(
     enterprise_text = (enterprise.stdout or "") + (enterprise.stderr or "")
     kernel_path = evidence / "kernel-facts.json"
     raw = _pull_guest_json(project, name)
-    if not isinstance(raw, dict) or not isinstance(raw.get("revoke"), dict):
-        parsed = _guest_payload(enterprise_text)
-        if isinstance(parsed, dict) and isinstance(parsed.get("revoke"), dict):
-            raw = parsed
     got_kernel = _scp_from(project, name, "/tmp/gcp-kernel-facts.json", kernel_path)
     if enterprise.returncode != 0:
         print(redact(enterprise_text)[-1500:], file=sys.stderr)
@@ -221,7 +217,7 @@ def _run_one_battery(
     pre = _ssh_case(project, name, guest_command(seal, "descendant-b1", "pre"))
     pre_text = (pre.stdout or "") + (pre.stderr or "")
     # Pull while the guest is still up. The reboot is scheduled after the shell returns.
-    pre_guest = _with_descendant_cases(_pull_guest_json(project, name), pre_text)
+    pre_guest = _pull_guest_json(project, name)
     pre_cases = _descendant_cases(pre_guest)
     after = _wait_boot(project, name, before, REBOOT_WAIT_SECONDS)
     if after and not _ssh_ready(project, name):
@@ -291,10 +287,8 @@ def _run_one_battery(
     if post.returncode != 0:
         print(redact(post_text)[-1500:], file=sys.stderr)
     guest = _pull_guest_json(project, name)
-    if not isinstance(guest, dict) or not isinstance(guest.get("post"), dict):
-        parsed = _guest_payload(post_text)
-        if isinstance(parsed, dict) and isinstance(parsed.get("post"), dict):
-            guest = parsed
+    if not isinstance(guest.get("post"), dict):
+        raise SystemExit("rows_missing")
     post_cases = _descendant_cases({"post": guest.get("post")} if isinstance(guest, dict) else None)
     if isinstance(guest, dict):
         nested = allow_battery(guest) or {}
@@ -692,19 +686,29 @@ def _require_serial(project: str, name: str, boot_id: str, evidence: Path, recor
 
 
 def _rows_for_boot(project: str, name: str, boot_id: str, transcript: str) -> dict[str, Any]:
-    """The rows file written on boot_id. A surviving var-lib file loses to that boot's /tmp copy.
+    """The durable rows file. A transcript is not that file.
 
-    The second copy is skipped when the var-lib file is already this boot.
+    boot_id is the boot the caller will compare. A file from another boot
+    is returned so the caller can name it stale. A missing file is
+    rows_missing. A file that is not one JSON object is rows_malformed.
     """
-    primary = _pull_remote_json(project, name, ROWS_JSON)
-    if isinstance(primary, dict) and confirm_matches_boot(primary, boot_id):
-        return primary
-    secondary = _pull_remote_json(project, name, "/tmp/enterprise-pe-rows.json")
-    chosen = choose_boot_rows(primary, secondary, boot_id)
-    if isinstance(chosen, dict) and chosen:
-        return chosen
-    parsed = _guest_payload(transcript)
-    return parsed if isinstance(parsed, dict) else {}
+    del boot_id, transcript
+    local = Path(tempfile.mkdtemp(prefix="vantio-guest-")) / "rows.json"
+    try:
+        if not _scp_from(project, name, ROWS_JSON, local):
+            raise SystemExit("rows_missing")
+        text = local.read_text(encoding="utf-8")
+        if not text.strip():
+            raise SystemExit("rows_missing")
+        try:
+            loaded = json.loads(text)
+        except json.JSONDecodeError:
+            raise SystemExit("rows_malformed")
+        if not isinstance(loaded, dict):
+            raise SystemExit("rows_malformed")
+        return loaded
+    finally:
+        shutil.rmtree(local.parent, ignore_errors=True)
 
 
 def _probe_live(project: str, name: str) -> dict[str, Any]:
@@ -1137,7 +1141,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
         f"VANTIO_POLICY_FILE={GUEST_DIR}/policy.json "
         f"VANTIO_SIGNATURE_FILE={GUEST_DIR}/signature.json "
         "VANTIO_STATE_DIR=/var/lib/vantio/install "
-        "VANTIO_SELF_SERVICE_OUT=/tmp/self-service-rows.json "
+        f"VANTIO_SELF_SERVICE_OUT={ROWS_JSON} "
         f"python3 {GUEST_DIR}/self_service.py"
     )
     if "--artifact-trust" in script or "--fixture-host" in script or "\n" in script:
@@ -1145,8 +1149,17 @@ def run_self_service(env: Mapping[str, str]) -> int:
     _run_guest(project, name, f"bash -c {json.dumps(script)}", "self_service")
     evidence = _evidence_dir(env)
     local = evidence / "self-service-rows.json"
-    pulled = _scp_from(project, name, "/tmp/self-service-rows.json", local)
-    body = _load_json_file(local) if pulled else {}
+    if not _scp_from(project, name, ROWS_JSON, local):
+        raise SystemExit("rows_missing")
+    text = local.read_text(encoding="utf-8")
+    if not text.strip():
+        raise SystemExit("rows_missing")
+    try:
+        body = json.loads(text)
+    except json.JSONDecodeError:
+        raise SystemExit("rows_malformed")
+    if not isinstance(body, dict):
+        raise SystemExit("rows_malformed")
     write_evidence(
         evidence / "gcp-lab-rows.json",
         {

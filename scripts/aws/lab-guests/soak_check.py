@@ -19,7 +19,7 @@ from pathlib import Path
 
 DETAIL = re.compile(r"^[A-Za-z0-9_.:-]*$")
 CPU = re.compile(r"^[0-9]+(?:\.[0-9]+)?$")
-ROWS = Path("/tmp/enterprise-pe-rows.json")
+ROWS = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
 
 
 def _now() -> str:
