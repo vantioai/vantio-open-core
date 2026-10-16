@@ -59,3 +59,5 @@ No result here is called unbreakable. No result is called audited.
 ## Rollback
 
 Set `VANTIO_MCP_AWARENESS=off`. The register is not imported. In-memory sessions leave with the process. There is no on-disk conversation store to migrate.
+
+The stdin-only withhold is the test `enforce withholds on stdin when there is no stdout pipe for the pair gate`.
