@@ -3,7 +3,7 @@
   "phase": 1,
   "feature_code": false,
   "base_note": "git_head_at_generation is the HEAD when this file was written. The design-file hashes attest those files.",
-  "git_head_at_generation": "26dbbac7c19cb78a0d253f35d89bd541bfd0a638",
+  "git_head_at_generation": "5dc1c23052289bd7a0c794509dd8b984775b0b6f",
   "track_label": "Roadmap",
   "inherited_observability_head": "ef3a33a",
   "product_otlp_export_authorized": false,
