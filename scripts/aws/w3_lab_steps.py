@@ -741,6 +741,9 @@ FOUNDER_CLOSE_REQUIRED = {
     "note": "26.9h was accepted",
     "evidence_ref": "SOAK-HASH-COMPARE.json",
 }
+# Name tag on the leftovers of that one instance. Teardown uses this constant
+# when DescribeInstances no longer returns the instance. It is not a workflow input.
+FOUNDER_CLOSE_LAB_NAME = "vantio-w3-lab-auto-38371704891"
 
 
 def founder_close_record(path: Path | None = None) -> dict[str, Any] | None:
@@ -778,6 +781,50 @@ def founder_close_honored(instance_id: str, record: Mapping[str, Any] | None) ->
     return all(record.get(key) == expected for key, expected in FOUNDER_CLOSE_REQUIRED.items())
 
 
+def _teardown_absent_founder_leftovers(
+    runner: Runner,
+    now: datetime,
+    payload: dict[str, Any],
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Delete Name-tagged leftovers after the Founder-closed instance is gone.
+
+    sweeper_action still returns keep_soak for vantio-soak=active. This path
+    does not call it. It runs only when founder_close_honored is true, and it
+    deletes only resources whose Name is FOUNDER_CLOSE_LAB_NAME.
+    """
+    name = FOUNDER_CLOSE_LAB_NAME
+    if not name.startswith(lab.NAME_PREFIX):
+        raise lab.GuardAbort("founder_close_name")
+    census = lab.census_from_aws(runner)
+    called: list[str] = []
+    for resource in related_owned(census, name):
+        if resource.get("type") == "instance":
+            continue
+        called.extend(lab._delete_resource(resource, runner))
+    previous_name = os.environ.get("LAB_NAME")
+    os.environ["LAB_NAME"] = name
+    try:
+        check = execute_verify(runner, now, write=False)
+    finally:
+        if previous_name is None:
+            os.environ.pop("LAB_NAME", None)
+        else:
+            os.environ["LAB_NAME"] = previous_name
+    payload.update(
+        {
+            "called": called,
+            "founder_close": {key: record[key] for key in FOUNDER_CLOSE_REQUIRED},
+            "mutated": bool(called),
+            "name": name,
+            "slot_clear": check["slot_clear"],
+            "status": check["status"],
+        }
+    )
+    lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+    return payload
+
+
 def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
     instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
     identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
@@ -786,6 +833,10 @@ def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
     payload = base_evidence("teardown")
     payload["instance_id"] = instance_id
     if instance is None:
+        record = founder_close_record()
+        if founder_close_honored(instance_id, record):
+            assert record is not None
+            return _teardown_absent_founder_leftovers(runner, now, payload, record)
         payload.update({"reason": "instance_absent", "status": "NOT_FOUND"})
         lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
         raise lab.GuardAbort("instance_absent")

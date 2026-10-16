@@ -554,6 +554,180 @@ class ArmCollectTests(unittest.TestCase):
         self.assertFalse(body["mutated"])
         self.assertFalse(any("modify-instance-attribute" in " ".join(call) for call in calls))
 
+    def test_absent_founder_instance_deletes_its_named_leftovers(self) -> None:
+        soak_id = "i-0f38ffde5ad83c9f2"
+        group_id = "sg-05de088ec47eca7c4"
+        other_id = "sg-0abcabcabcabcabc0"
+        groups = {"present": True}
+        calls: list[list[str]] = []
+
+        def group(group_id_value: str, name: str) -> dict:
+            values = dict(lab.EXACT_TAGS)
+            values["vantio:max-life-hours"] = "36"
+            values["Name"] = name
+            values["vantio:expires-at"] = "2026-10-15T00:00:00Z"
+            values["vantio-soak"] = "active"
+            tags = [{"Key": key, "Value": value} for key, value in values.items()]
+            return {"GroupId": group_id_value, "Tags": tags}
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "describe-instances" in text and "--instance-ids" in args:
+                return completed(code=254, stderr="InvalidInstanceID.NotFound")
+            if "describe-instances" in text:
+                return completed({"Reservations": []})
+            if "describe-volumes" in text:
+                return completed({"Volumes": []})
+            if "describe-key-pairs" in text:
+                return completed({"KeyPairs": []})
+            if "describe-security-groups" in text:
+                listed = []
+                if groups["present"]:
+                    listed.append(group(group_id, steps.FOUNDER_CLOSE_LAB_NAME))
+                listed.append(group(other_id, "vantio-w3-lab-auto-other"))
+                return completed({"SecurityGroups": listed})
+            if "delete-security-group" in text:
+                deleted = args[args.index("--group-id") + 1]
+                if deleted == group_id:
+                    groups["present"] = False
+                    return completed({})
+                return completed(code=254, stderr="An error occurred (UnauthorizedOperation)")
+            if "modify-instance-attribute" in text or "terminate-instances" in text:
+                return completed({})
+            return completed({})
+
+        decoy = "vantio-w3-lab-auto-decoy"
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = soak_id
+            os.environ["LAB_NAME"] = decoy
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            result = steps.execute_teardown(runner, NOW)
+            body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
+        self.assertEqual(os.environ.get("LAB_NAME"), decoy)
+        self.assertEqual(result["status"], "VERIFIED_REMOVED")
+        self.assertEqual(body["status"], "VERIFIED_REMOVED")
+        self.assertEqual(result["name"], steps.FOUNDER_CLOSE_LAB_NAME)
+        self.assertTrue(result["slot_clear"])
+        self.assertTrue(result["mutated"])
+        self.assertEqual(result["called"], ["delete-security-group"])
+        self.assertEqual(result["founder_close"]["status"], "CLOSED_BY_FOUNDER")
+        self.assertEqual(result["founder_close"]["instance_id"], soak_id)
+        joined = [" ".join(call) for call in calls]
+        self.assertFalse(any("modify-instance-attribute" in item for item in joined))
+        self.assertFalse(any("terminate-instances" in item for item in joined))
+        deletes = [item for item in joined if "delete-security-group" in item]
+        self.assertEqual(len(deletes), 1)
+        self.assertIn(group_id, deletes[0])
+        self.assertNotIn(other_id, deletes[0])
+        leftover = {
+            "type": "security-group",
+            "id": group_id,
+            "region": lab.REGION,
+            "tags": {
+                **lab.EXACT_TAGS,
+                "Name": steps.FOUNDER_CLOSE_LAB_NAME,
+                "vantio:max-life-hours": "36",
+                "vantio-soak": "active",
+            },
+        }
+        self.assertEqual(lab.sweeper_action(leftover, NOW), "keep_soak")
+
+    def test_absent_instance_without_the_founder_record_deletes_nothing(self) -> None:
+        soak_id = "i-0f38ffde5ad83c9f2"
+        calls: list[list[str]] = []
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "describe-instances" in text and "--instance-ids" in args:
+                return completed(code=254, stderr="InvalidInstanceID.NotFound")
+            if "describe-security-groups" in text:
+                return completed(
+                    {
+                        "SecurityGroups": [
+                            {
+                                "GroupId": "sg-05de088ec47eca7c4",
+                                "Tags": [{"Key": "Name", "Value": steps.FOUNDER_CLOSE_LAB_NAME}],
+                            }
+                        ]
+                    }
+                )
+            return completed({"Reservations": [], "Volumes": [], "SecurityGroups": [], "KeyPairs": []})
+
+        original = steps.FOUNDER_CLOSE_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            changed = json.loads(original.read_text(encoding="utf-8"))
+            changed["note"] = "changed"
+            path = Path(tmp) / "founder-soak-close.json"
+            path.write_text(json.dumps(changed), encoding="utf-8")
+            steps.FOUNDER_CLOSE_PATH = path
+            os.environ["INSTANCE_ID"] = soak_id
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            try:
+                with self.assertRaises(lab.GuardAbort) as caught:
+                    steps.execute_teardown(runner, NOW)
+                body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
+            finally:
+                steps.FOUNDER_CLOSE_PATH = original
+        self.assertEqual(caught.exception.reason, "instance_absent")
+        self.assertEqual(body["status"], "NOT_FOUND")
+        self.assertNotIn("called", body)
+        self.assertFalse(any("delete-security-group" in " ".join(call) for call in calls))
+        self.assertFalse(any("modify-instance-attribute" in " ".join(call) for call in calls))
+
+        calls.clear()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = INSTANCE
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_teardown(runner, NOW)
+            body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
+        self.assertEqual(caught.exception.reason, "instance_absent")
+        self.assertEqual(body["status"], "NOT_FOUND")
+        self.assertFalse(any("delete-security-group" in " ".join(call) for call in calls))
+
+    def test_absent_founder_delete_stops_when_the_group_delete_is_denied(self) -> None:
+        soak_id = "i-0f38ffde5ad83c9f2"
+        calls: list[list[str]] = []
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "describe-instances" in text and "--instance-ids" in args:
+                return completed(code=254, stderr="InvalidInstanceID.NotFound")
+            if "describe-instances" in text:
+                return completed({"Reservations": []})
+            if "describe-volumes" in text:
+                return completed({"Volumes": []})
+            if "describe-key-pairs" in text:
+                return completed({"KeyPairs": []})
+            if "describe-security-groups" in text:
+                tags = [{"Key": key, "Value": value} for key, value in lab.EXACT_TAGS.items()]
+                tags.append({"Key": "Name", "Value": steps.FOUNDER_CLOSE_LAB_NAME})
+                tags.append({"Key": "vantio-soak", "Value": "active"})
+                return completed({"SecurityGroups": [{"GroupId": "sg-05de088ec47eca7c4", "Tags": tags}]})
+            if "delete-security-group" in text:
+                return completed(code=254, stderr="An error occurred (UnauthorizedOperation) when calling the DeleteSecurityGroup operation")
+            return completed({})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = soak_id
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_teardown(runner, NOW)
+            written = Path(os.environ["EVIDENCE_PATH"]).exists()
+        self.assertEqual(caught.exception.reason, "delete_security_group")
+        self.assertFalse(written)
+        self.assertTrue(any("delete-security-group" in " ".join(call) for call in calls))
+        self.assertFalse(any("modify-instance-attribute" in " ".join(call) for call in calls))
+
     def test_collect_does_not_call_cloudtrail_when_the_soak_host_is_gone(self) -> None:
         calls: list[list[str]] = []
 
