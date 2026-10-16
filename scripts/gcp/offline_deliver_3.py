@@ -627,11 +627,12 @@ def read_serial_log(project: str, name: str) -> tuple[int, str, int, str]:
     return rc, blob, len(chunks), error
 
 
-def _log_serial(project: str, name: str, boot_id: str = "") -> None:
-    """Print the retained serial window before later guest output can fill it.
+def _log_serial(project: str, name: str, boot_id: str = "") -> int:
+    """Print the retained serial window and return 0 only when it kept text.
 
-    A page error, an empty window, or a four-page cap is named on the
-    SERIAL_ERROR line. The deliver step still returns success.
+    An empty window, a page error, a timeout, a non-zero gcloud status, or a
+    four-page cap returns 1. Bytes already read are still printed. The caller
+    decides whether that boot can proceed.
     """
     rc, blob, pages, error = read_serial_log(project, name)
     marker = f" SERIAL_ERROR={error}" if error else ""
@@ -640,15 +641,30 @@ def _log_serial(project: str, name: str, boot_id: str = "") -> None:
         flush=True,
     )
     print(blob, flush=True)
+    if error or not blob.strip():
+        return 1
+    return 0
 
 
 def capture_serial(env: Mapping[str, str]) -> int:
-    """Print the guest serial console while the instance still exists."""
+    """Print the guest serial console while the instance still exists.
+
+    Returns 1 when the window is empty or the read failed. Teardown and
+    handoff deletion still run, because those steps are unconditional.
+    """
     _require_execute(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     name = instance_name(env.get("GITHUB_RUN_ID", ""))
-    _log_serial(project, name)
-    return 0
+    return _log_serial(project, name)
+
+
+def _require_serial(project: str, name: str, boot_id: str, evidence: Path, record: dict[str, Any]) -> None:
+    """Stop before batteries when this boot has no usable serial window."""
+    if _log_serial(project, name, boot_id) == 0:
+        return
+    record["lsm_guard"] = "serial_missing"
+    write_evidence(evidence / "lsm-guard.json", record)
+    raise SystemExit("lsm")
 
 
 def _rows_for_boot(project: str, name: str, boot_id: str, transcript: str) -> dict[str, Any]:
@@ -730,7 +746,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
                 raise SystemExit("lsm")
             body = adopted
             record["stock_lsm"] = adopted.get("stock_lsm") if isinstance(adopted.get("stock_lsm"), str) else ""
-        _log_serial(project, name, boot_before)
+        _require_serial(project, name, boot_before, evidence, record)
         record["lsm_guard"] = "already_active"
         record["stock_bpf_lsm"] = True
         write_evidence(evidence / "lsm-guard.json", record)
@@ -743,7 +759,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
     if not after:
         write_evidence(evidence / "lsm-guard.json", record)
         raise SystemExit("lsm")
-    _log_serial(project, name, after)
+    _require_serial(project, name, after, evidence, record)
     confirmed = _ssh_case(project, name, guest_command(seal, "lsm-guard"))
     confirm_body = _rows_for_boot(
         project,
@@ -801,7 +817,7 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             later = _wait_boot(project, name, after, REBOOT_WAIT_SECONDS)
             probe_body: dict[str, Any] = {}
             if later:
-                _log_serial(project, name, later)
+                _require_serial(project, name, later, evidence, record)
                 probe_body = _probe_live(project, name)
             print(
                 json.dumps(
