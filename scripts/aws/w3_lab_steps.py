@@ -1049,34 +1049,110 @@ def _ssh_base(private: Path, known: Path, host: str) -> list[str]:
     ]
 
 
+def _remote_boot_id(remote: Callable[[list[str], str], subprocess.CompletedProcess[str]]) -> str:
+    proc = remote(["cat", "/proc/sys/kernel/random/boot_id"], "")
+    if proc.returncode != 0:
+        return ""
+    text = (proc.stdout or "").strip()
+    if not text or "\n" in text or len(text) > 80:
+        return ""
+    return text
+
+
+def _boot_ids_in_rows(body: Mapping[str, Any]) -> set[str]:
+    found: set[str] = set()
+
+    def take(value: object) -> None:
+        if isinstance(value, str) and value and "\n" not in value and len(value) <= 80:
+            found.add(value)
+
+    take(body.get("boot_id"))
+    for key in ("pre", "post"):
+        nested = body.get(key)
+        if isinstance(nested, Mapping):
+            take(nested.get("boot_id"))
+    return found
+
+
+def _rows_disagree_with_boot(body: Mapping[str, Any], live_boot: str) -> bool:
+    """True when the file names a boot and the live boot is not among them."""
+    if not live_boot:
+        return False
+    named = _boot_ids_in_rows(body)
+    if not named:
+        return False
+    return live_boot not in named
+
+
+def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
+    """Name the uninstall line the guest recorded. A missing tail stays guest."""
+    if not isinstance(body, Mapping):
+        return "guest"
+    removal = body.get("removal")
+    if isinstance(removal, Mapping) and removal.get("verified_removed") is False:
+        return "programs_not_removed"
+    tail = body.get("uninstall_tail")
+    if isinstance(tail, str):
+        if "bpftool missing" in tail:
+            return "uninstall_bpftool"
+        if "UNINSTALL_RESIDUAL" in tail:
+            return "uninstall_residual"
+        if "UNINSTALL_NOT_VERIFIED" in tail or "uninstall refused" in tail:
+            return "uninstall_not_verified"
+    return "guest"
+
+
 def _wait_for_reboot(
     runner: Runner,
     instance_id: str,
     remote: Callable[[list[str], str], subprocess.CompletedProcess[str]],
     connect_with_key: list[str],
-) -> None:
-    """Wait until SSH drops for the reboot, then comes back with a new key."""
-    deadline = time.time() + 300
+    *,
+    drop_budget: float = 180,
+    return_budget: float = 240,
+    clock: Callable[[], float] = time.time,
+    pause: Callable[[float], None] = time.sleep,
+    describe: Callable[[Runner, str], Mapping[str, Any] | None] | None = None,
+) -> str:
+    """Wait until this boot ends, then until SSH returns on a different boot.
+
+    The drop budget and the return budget are separate. A host that stays on
+    the same boot id uses only the drop budget. Reachability after the drop
+    is SSH and the instance state. The returned value is the new boot id.
+    """
+    lookup = describe_instance if describe is None else describe
+    before = _remote_boot_id(remote)
+    drop_deadline = clock() + drop_budget
     dropped = False
-    while time.time() < deadline:
+    changed = ""
+    while clock() < drop_deadline:
         probe = remote(["true"], "")
         if probe.returncode != 0:
             dropped = True
             break
-        time.sleep(2)
+        current = _remote_boot_id(remote)
+        if before and current and current != before:
+            changed = current
+            break
+        pause(2)
+    if changed:
+        return changed
     if not dropped:
         raise lab.GuardAbort("reboot_timeout")
-    while time.time() < deadline:
-        instance = describe_instance(runner, instance_id)
+    return_deadline = clock() + return_budget
+    while clock() < return_deadline:
+        instance = lookup(runner, instance_id)
         if instance is not None and instance_state(instance) == "running":
             try:
                 lab.aws_json(runner, connect_with_key)
             except lab.GuardAbort:
-                time.sleep(5)
+                pause(5)
                 continue
             if remote(["true"], "").returncode == 0:
-                return
-        time.sleep(5)
+                current = _remote_boot_id(remote)
+                if current and (not before or current != before):
+                    return current
+        pause(5)
     raise lab.GuardAbort("reboot_timeout")
 
 
@@ -1400,10 +1476,33 @@ def execute_enterprise_rows(
                     copy_to(rows_py, "redteam_rows.py")
                     copy_to(packet_py, "redteam_packet.py")
                 pre = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
-                if pre.returncode != 0:
-                    ran = pre
-                else:
-                    _wait_for_reboot(runner, instance_id, remote, connect + [public])
+                ran = pre
+                if pre.returncode == 0:
+                    try:
+                        payload["boot_id"] = _wait_for_reboot(runner, instance_id, remote, connect + [public])
+                    except lab.GuardAbort as exc:
+                        if exc.reason != "reboot_timeout":
+                            raise
+                        payload["guest_rc"] = pre.returncode
+                        payload["mutated"] = True
+                        rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
+                        # Instance Connect keys last 60 seconds. The guest script can run longer.
+                        # A new scp is a new connection, so send the key again before the pull.
+                        pulled_pre = _run_with_fresh_key(
+                            runner,
+                            connect,
+                            public,
+                            ssh_runner,
+                            ["scp", *base[:-1], f"{ssh_user}@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
+                            "",
+                        )
+                        if pulled_pre.returncode == 0 and rows_local.is_file():
+                            pre_text = rows_local.read_text(encoding="utf-8", errors="replace")
+                        else:
+                            pre_text = (pre.stdout or "") + (pre.stderr or "")
+                        _store_guest_rows(rows_local, pre_text)
+                        payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
+                        raise
                     ran = remote(["bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
             else:
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
@@ -1439,14 +1538,40 @@ def execute_enterprise_rows(
             if pulled_redteam.returncode == 0 and redteam_local.is_file():
                 _store_guest_rows(redteam_local, redteam_local.read_text(encoding="utf-8", errors="replace"))
                 payload["redteam_rows_sha256"] = hashlib.sha256(redteam_local.read_bytes()).hexdigest()
+            live_boot = _remote_boot_id(remote)
+            if live_boot:
+                payload["boot_id"] = live_boot
+            try:
+                loaded = json.loads(guest_text)
+            except json.JSONDecodeError:
+                loaded = None
+            parsed = loaded if isinstance(loaded, dict) else None
+            if parsed is not None and _rows_disagree_with_boot(parsed, live_boot):
+                payload.update({"reason": "stale_rows", "status": "FAILED", "guest_rc": ran.returncode, "mutated": True})
+                raise lab.GuardAbort("stale_rows")
             payload["guest_rc"] = ran.returncode
             payload["mutated"] = True
             if ran.returncode != 0:
-                payload.update({"reason": "guest", "status": "FAILED"})
-                raise lab.GuardAbort("guest")
+                reason = _guest_failure_reason(parsed)
+                payload.update({"reason": reason, "status": "FAILED"})
+                raise lab.GuardAbort(reason)
             if battery == "self-service":
                 payload["status"] = "SELF_SERVICE"
             elif battery == "descendant-b1":
+                post_body = parsed.get("post") if isinstance(parsed, dict) and isinstance(parsed.get("post"), dict) else {}
+                pre_body = parsed.get("pre") if isinstance(parsed, dict) and isinstance(parsed.get("pre"), dict) else {}
+                observed = isinstance(parsed, dict) and parsed.get("reboot_observed") is True
+                post_boot = post_body.get("boot_id")
+                pre_boot = pre_body.get("boot_id")
+                if (
+                    not observed
+                    or not isinstance(post_boot, str)
+                    or not isinstance(pre_boot, str)
+                    or post_boot == pre_boot
+                    or (live_boot and post_boot != live_boot)
+                ):
+                    payload.update({"reason": "reboot_not_observed", "status": "FAILED"})
+                    raise lab.GuardAbort("reboot_not_observed")
                 payload["status"] = "DESCENDANT_B1"
             elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"
