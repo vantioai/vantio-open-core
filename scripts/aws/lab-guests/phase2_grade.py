@@ -340,6 +340,77 @@ def grade_rollback_gap(*, from_pin: str, to_seal: str, rollback_image_present: b
     return body
 
 
+CYCLE_STEPS = ("baseline", "upgrade", "rollback", "reupgrade")
+
+
+def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Upgrade, roll back, and upgrade again on two different archives.
+
+    Each step has already been measured. This records whether enforcement
+    held and whether that image's own uninstall left bpftool and bpffs clean.
+    lab_pass stays false.
+    """
+    body = _base("2c-upgrade-rollback")
+    body["from_pin"] = PUBLIC_INSTALLER_PIN
+    body["to_seal"] = WORKING_SEAL
+    body["public_pin_unchanged"] = True
+    body["host_rollback"] = "NOT_RUN"
+    body["upgrade_pass"] = False
+    body["steps"] = steps
+    names = [step.get("name") for step in steps] if isinstance(steps, list) else []
+    if names != list(CYCLE_STEPS):
+        body["action"] = "FAIL"
+        body["host_result"] = "FAIL"
+        body["reason"] = "cycle_incomplete"
+        return body
+    expected = {
+        "baseline": PUBLIC_INSTALLER_PIN,
+        "upgrade": WORKING_SEAL,
+        "rollback": PUBLIC_INSTALLER_PIN,
+        "reupgrade": WORKING_SEAL,
+    }
+    pin_ids: list[str] = []
+    seal_ids: list[str] = []
+    reasons: list[str] = []
+    for step in steps:
+        name = str(step.get("name"))
+        if step.get("archive_sha256") != expected[name]:
+            reasons.append(f"{name}_digest")
+        image_id = step.get("image_id")
+        if not isinstance(image_id, str) or not image_id.startswith("sha256:") or len(image_id) < 16:
+            reasons.append(f"{name}_image")
+        elif name in {"baseline", "rollback"}:
+            pin_ids.append(image_id)
+        else:
+            seal_ids.append(image_id)
+        if step.get("file_errno") != 13 or step.get("attributed") is not True:
+            reasons.append(f"{name}_enforcement")
+        uninstall = step.get("uninstall") if isinstance(step.get("uninstall"), dict) else {}
+        tail = str(uninstall.get("tail") or "")
+        if uninstall.get("verified_removed") is not True or "UNINSTALL_VERIFIED" not in tail:
+            reasons.append(f"{name}_uninstall")
+    if (
+        len(pin_ids) != 2
+        or len(seal_ids) != 2
+        or len(set(pin_ids)) != 1
+        or len(set(seal_ids)) != 1
+        or pin_ids[0] == seal_ids[0]
+    ):
+        reasons.append("image_identity")
+    body["host_rollback"] = "RAN"
+    if reasons:
+        body["action"] = "FAIL"
+        body["host_result"] = "FAIL"
+        body["reason"] = reasons[0]
+        body["reasons"] = reasons
+        return body
+    body["action"] = "RECORDED"
+    body["host_result"] = "RECORDED"
+    body["reason"] = "upgrade_rollback_reupgrade"
+    body["upgrade_pass"] = True
+    return body
+
+
 def grade_upgrade(
     *,
     seal_sha256: str,

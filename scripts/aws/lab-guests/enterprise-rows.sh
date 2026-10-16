@@ -644,6 +644,35 @@ case "$mode" in
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json 2>/dev/null || true
     publish_current_rows
     printf 'PY_RC=%s\n' "$rc"
+    skip_uninstall=no
+    if [ "$mode" = "2c-upgrade-rollback" ]; then
+      # The cycle already ran vantio-loader --uninstall on the last image.
+      # A second uninstall is not required when that census is clean.
+      skip_uninstall=$(python3 - <<'PY' || true
+import json
+from pathlib import Path
+try:
+    body = json.loads(Path("/var/lib/vantio-lab/enterprise-pe-rows.json").read_text(encoding="utf-8"))
+    last = (body.get("steps") or [])[-1]
+    uninstall = last.get("uninstall") or {}
+    ready = (
+        last.get("name") == "reupgrade"
+        and uninstall.get("verified_removed") is True
+        and "UNINSTALL_VERIFIED" in str(uninstall.get("tail") or "")
+    )
+    print("yes" if ready else "no")
+except Exception:
+    print("no")
+PY
+)
+    fi
+    if [ "$skip_uninstall" = "yes" ]; then
+      stamp_host_evidence
+      if ! publish_durable_rows; then
+        exit 1
+      fi
+      exit "$rc"
+    fi
     require_row=no
     probe_pid=0
     if [ "$mode" = "2f-tamper" ]; then

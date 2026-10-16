@@ -3,8 +3,9 @@
 
 The runner has already loaded the seal and extracted the contract. This
 script starts the loader the same way the descendant battery does, measures
-one phase, and writes /var/lib/vantio-lab/enterprise-pe-rows.json. It does not fetch, and
-it does not treat a same-seal reload as an upgrade.
+one phase, and writes /var/lib/vantio-lab/enterprise-pe-rows.json. It does not fetch.
+The upgrade battery loads the public pin tar and the working seal tar that
+the runner already copied, and it does not treat one of those tars as the other.
 
 Audience: INTERNAL_RESTRICTED
 """
@@ -1144,24 +1145,185 @@ def image_id() -> str:
     return (proc.stdout or "").strip()
 
 
-def run_2c() -> dict:
-    """Name the missing rollback image. Do not reload the same tar as an upgrade.
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-    The public installer pin is not on the guest. VANTIO_ROLLBACK_OCI is the
-    second image, when a later run copies one. This battery does not fetch it.
+
+def _load_oci(path: Path) -> str:
+    proc = rows.sudo(["docker", "load", "-i", str(path)], timeout=180)
+    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    if proc.returncode != 0:
+        raise SystemExit(f"docker_load {proc.returncode}")
+    loaded = ""
+    for line in text.splitlines():
+        if line.startswith("Loaded image: "):
+            loaded = line.split("Loaded image: ", 1)[1].strip()
+    if not loaded or len(loaded) > 180 or any(char in loaded for char in "\n\r"):
+        raise SystemExit("loaded_image")
+    return loaded
+
+
+def _image_id(ref: str) -> str:
+    proc = rows.sudo(["docker", "image", "inspect", "--format", "{{.Id}}", ref], timeout=30)
+    return (proc.stdout or "").strip()
+
+
+def _use_image(ref: str) -> None:
+    os.environ["VANTIO_IMAGE"] = ref
+    rows.IMAGE = ref
+
+
+def _measure_loaded(ref: str) -> dict:
+    """Start this image and record one attributed enrolled open. No detach."""
+    _use_image(ref)
+    try:
+        _adapter, digest = prepare_enforce()
+    except SystemExit as exc:
+        return {
+            "attributed": False,
+            "file_errno": None,
+            "image_id": _image_id(ref),
+            "policy_digest": "",
+            "setup_error": str(exc.code)[:180],
+        }
+    sample = enterprise_open(digest)
+    errno = sample.get("file_errno")
+    return {
+        "attributed": baseline_ready(sample),
+        "file_errno": errno if isinstance(errno, int) and not isinstance(errno, bool) else None,
+        "image_id": _image_id(ref),
+        "policy_digest": digest,
+        "setup_error": "",
+    }
+
+
+def _product_uninstall(image: str) -> dict:
+    """Run this image's vantio-loader --uninstall, then read bpftool and bpffs.
+
+    Stopping the loader container is what the shell already does before the
+    product binary. This does not detach a program and does not unlink a pin.
     """
-    tar = HERE / "seal.oci.tar"
-    seal_sha = hashlib.sha256(tar.read_bytes()).hexdigest() if tar.is_file() else ""
-    rollback = os.environ.get("VANTIO_ROLLBACK_OCI", "").strip()
-    present = bool(rollback) and Path(rollback).is_file()
-    graded = grade.grade_rollback_gap(
-        from_pin=grade.PUBLIC_INSTALLER_PIN,
-        to_seal=seal_sha,
-        rollback_image_present=present,
+    import product_uninstall_census as census
+
+    rows.sudo(["docker", "update", "--restart=no", rows.LOADER], timeout=20)
+    rows.sudo(["docker", "stop", "--signal", "SIGINT", "--time", "20", rows.LOADER], timeout=40)
+    rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
+    rows.sudo(["docker", "update", "--restart=no", "vantio-pe-lab"], timeout=20)
+    rows.sudo(["docker", "rm", "-f", "vantio-pe-lab"], timeout=40)
+    record = Path("/run/vantio-failclosed-mounts")
+    if record.is_file():
+        for path in record.read_text(encoding="utf-8", errors="replace").splitlines():
+            if path.startswith("/") and ".." not in path.split("/"):
+                rows.sudo(["umount", path], timeout=20)
+    rows.sudo(["mkdir", "-p", "/var/lib/vantio", "/var/log/vantio", "/var/lib/vantio-lab"], timeout=20)
+    token_path = "/var/lib/vantio/enterprise-uninstall.token"
+    if rows.sudo(["test", "-s", token_path], timeout=10).returncode != 0:
+        rows.sudo(
+            ["bash", "-c", "printf '%s\\n' lab-nonprod-uninstall > /var/lib/vantio/enterprise-uninstall.token"],
+            timeout=10,
+        )
+    token = (rows.sudo(["cat", token_path], timeout=10).stdout or "").strip()
+    created = rows.sudo(["docker", "create", image], timeout=60)
+    cid = (created.stdout or "").strip()
+    if created.returncode != 0 or not cid or "\n" in cid:
+        return {"tail": "", "verified_removed": False, "reason": "create_failed"}
+    copied = rows.sudo(["docker", "cp", f"{cid}:/vantio-loader", "/var/lib/vantio/vantio-loader"], timeout=60)
+    rows.sudo(["docker", "rm", cid], timeout=30)
+    if copied.returncode != 0:
+        return {"tail": "", "verified_removed": False, "reason": "loader_copy_failed"}
+    rows.sudo(["chmod", "755", "/var/lib/vantio/vantio-loader"], timeout=10)
+    proc = rows.sudo(
+        [
+            "/var/lib/vantio/vantio-loader",
+            "--uninstall",
+            "--confirm",
+            "uninstall",
+            "--enterprise-approval",
+            token,
+        ],
+        timeout=180,
     )
+    text = ((proc.stdout or "") + "\n" + (proc.stderr or "")).replace(token, "[token]")
+    show = rows.sudo(["bpftool", "-j", "prog", "show"], timeout=30)
+    raw = (show.stdout or "") + "\n" + (show.stderr or "")
+    try:
+        payload = json.loads(show.stdout or "")
+    except json.JSONDecodeError:
+        payload = raw
+    programs = census.loaded_programs(payload, raw)
+    find = rows.sudo(["find", "/sys/fs/bpf", "-maxdepth", "2", "-name", "vantio*"], timeout=20)
+    mounted = "bpf" in Path("/proc/mounts").read_text(encoding="utf-8", errors="replace")
+    paths = census.classify_bpffs(mounted=mounted, find_rc=find.returncode, text=find.stdout or "")
+    ps = rows.sudo(["docker", "ps", "-q"], timeout=20)
+    removed = census.removal_census(programs, paths, ps.stdout or "", show.returncode)
+    tail = text[-400:]
+    removed["tail"] = tail
+    removed["uninstall_rc"] = proc.returncode
+    removed["verified_removed"] = bool(removed.get("verified_removed")) and "UNINSTALL_VERIFIED" in text
+    return removed
+
+
+def _cycle_step(name: str, ref: str, archive_sha256: str) -> dict:
+    measured = _measure_loaded(ref)
+    uninstall = _product_uninstall(ref)
+    return {
+        "archive_sha256": archive_sha256,
+        "attributed": measured["attributed"],
+        "file_errno": measured["file_errno"],
+        "image_id": measured["image_id"],
+        "image_ref": ref,
+        "name": name,
+        "policy_digest": measured["policy_digest"],
+        "setup_error": measured["setup_error"],
+        "uninstall": {
+            "loader_programs": uninstall.get("loader_programs"),
+            "reason": uninstall.get("reason", ""),
+            "tail": uninstall.get("tail", ""),
+            "verified_removed": uninstall.get("verified_removed") is True,
+        },
+    }
+
+
+def run_2c() -> dict:
+    """Load the public pin, upgrade to the working seal, roll back, and upgrade again.
+
+    The runner copied both tars. This function checks their digests, then
+    measures enforcement and the product uninstall on each image. It does
+    not fetch, and it does not call a missing image a finished rollback.
+    """
+    pin_tar = HERE / "public-pin.oci.tar"
+    seal_tar = HERE / "seal.oci.tar"
+    pin_sha = _sha256_file(pin_tar) if pin_tar.is_file() else ""
+    seal_sha = _sha256_file(seal_tar) if seal_tar.is_file() else ""
+    if pin_sha != grade.PUBLIC_INSTALLER_PIN or seal_sha != grade.WORKING_SEAL:
+        graded = grade.grade_image_cycle([])
+        graded["loaded_seal"] = seal_sha
+        graded["public_pin_sha256"] = pin_sha
+        graded["working_seal_match"] = seal_sha == grade.WORKING_SEAL
+        if pin_sha != grade.PUBLIC_INSTALLER_PIN:
+            graded["reason"] = "public_pin_absent" if not pin_sha else "public_pin_digest"
+        elif seal_sha != grade.WORKING_SEAL:
+            graded["reason"] = "seal_absent" if not seal_sha else "seal"
+        graded["host_result"] = "FAIL"
+        graded["action"] = "FAIL"
+        graded["upgrade_pass"] = False
+        return graded
+    pin_image = _load_oci(pin_tar)
+    seal_image = _load_oci(seal_tar)
+    steps = [
+        _cycle_step("baseline", pin_image, pin_sha),
+        _cycle_step("upgrade", seal_image, seal_sha),
+        _cycle_step("rollback", pin_image, pin_sha),
+        _cycle_step("reupgrade", seal_image, seal_sha),
+    ]
+    graded = grade.grade_image_cycle(steps)
     graded["loaded_seal"] = seal_sha
-    graded["working_seal_match"] = seal_sha == grade.WORKING_SEAL
-    graded["rollback_image"] = rollback if present else ""
+    graded["public_pin_sha256"] = pin_sha
+    graded["working_seal_match"] = True
     return graded
 
 

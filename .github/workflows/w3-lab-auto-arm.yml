@@ -163,6 +163,7 @@ jobs:
           W3_BUNDLE_TAG: ${{ inputs.bundle_tag }}
           W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}
           W3_EXPECTED_SEAL: ${{ inputs.seal }}
+          W3_BATTERY: ${{ inputs.battery }}
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_PATH: w3-lab-bundle.json
         run: python3 scripts/aws/w3_lab_steps.py prepare-bundle

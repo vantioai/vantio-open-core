@@ -36,6 +36,9 @@ DEFAULT_BUNDLE_TAG = "lab-bundle/enterprise-pe-2026-10-08"
 # The release tag is deleted. These bytes live on this commit, which is not a tag.
 BUNDLE_COMMIT = "75b6a94c1a50f07d3cc419a904ee08260c9c32ff"
 BUNDLE_FILES = ("manifest.json", "seal.oci.tar", "contract.tar")
+# The public installer archive lives beside the working seal on the lab bundle
+# commit. It is not a seal. inspect_bundle still refuses this digest as expected_seal.
+PUBLIC_PIN_FILE = "public-pin.oci.tar"
 BUNDLE_TAG = re.compile(r"^lab-bundle/[A-Za-z0-9._-]{1,64}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -200,6 +203,54 @@ def commit_download_args(name: str, commit: str) -> list[str]:
     ]
 
 
+def public_pin_download_args(commit: str) -> list[str]:
+    """Fetch the public installer archive from the same pinned bundle commit."""
+    if HEX40.fullmatch(commit) is None:
+        raise lab.GuardAbort("public_pin_download")
+    return [
+        "gh",
+        "api",
+        "-H",
+        "Accept: application/vnd.github.raw",
+        f"repos/{BUNDLE_REPO}/contents/lab-bundle/{PUBLIC_PIN_FILE}?ref={commit}",
+    ]
+
+
+def verify_public_pin(path: Path) -> str:
+    """Keep the file only when its sha256 is the public installer pin."""
+    if not path.is_file():
+        raise lab.GuardAbort("public_pin_absent")
+    size = path.stat().st_size
+    if size <= 0 or size > MAX_SEAL_BYTES:
+        raise lab.GuardAbort("public_pin_digest")
+    digest = sha256_file(path)
+    if digest != PUBLIC_INSTALLER_PIN or digest == POLICY_ALLOW_SEAL:
+        raise lab.GuardAbort("public_pin_digest")
+    return digest
+
+
+def stage_public_pin(token: str, commit: str, dest: Path) -> str:
+    """Download public-pin.oci.tar and refuse it unless the digest matches."""
+    if not token or HEX40.fullmatch(commit) is None:
+        raise lab.GuardAbort("public_pin_download")
+    dest.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.pop("GH_TOKEN", None)
+    env.pop("GITHUB_TOKEN", None)
+    env["GH_TOKEN"] = token
+    proc = subprocess.run(
+        public_pin_download_args(commit),
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if proc.returncode != 0 or not proc.stdout or len(proc.stdout) > MAX_SEAL_BYTES:
+        raise lab.GuardAbort("public_pin_download")
+    path = dest / PUBLIC_PIN_FILE
+    path.write_bytes(proc.stdout)
+    return verify_public_pin(path)
+
+
 def download_commit_assets(token: str, commit: str, dest: Path) -> None:
     """Download the three bundle files from a commit. The token stays in the environment."""
     if not token or HEX40.fullmatch(commit) is None:
@@ -297,6 +348,8 @@ def prepare_bundle(
         else:
             fetcher(dest)
         payload.update(inspect_bundle(dest, expected_seal=expected_seal, expected_trust=expected_trust))
+        if os.environ.get("W3_BATTERY", "").strip() == "2c-upgrade-rollback":
+            payload["public_pin_sha256"] = stage_public_pin(token, commit, dest)
         payload["status"] = "BUNDLE_READY"
         github_output("ready", "true")
     except lab.GuardAbort as exc:

@@ -1559,6 +1559,9 @@ def execute_enterprise_rows(
                 if battery != t5_battery.BATTERY_ID:
                     copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
                     copy_to(bundle_dir / "contract.tar", "contract.tar")
+                    if battery == "2c-upgrade-rollback":
+                        enterprise_bundle.verify_public_pin(bundle_dir / enterprise_bundle.PUBLIC_PIN_FILE)
+                        copy_to(bundle_dir / enterprise_bundle.PUBLIC_PIN_FILE, enterprise_bundle.PUBLIC_PIN_FILE)
             debs_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
             if debs_env:
                 debs_dir = Path(debs_env)
@@ -1656,6 +1659,8 @@ def execute_enterprise_rows(
                 copy_to(guest_dir / "phase2_grade.py", "phase2_grade.py")
                 copy_to(guest_dir / "baseline_diag.py", "baseline_diag.py")
                 copy_to(guest_dir / "sticky_write.py", "sticky_write.py")
+                if battery == "2c-upgrade-rollback":
+                    copy_to(guest_dir / "product_uninstall_census.py", "product_uninstall_census.py")
                 if battery == "soak-hourly":
                     copy_to(guest_dir / "soak_check.py", "soak_check.py")
                     copy_to(guest_dir / "soak-hourly.sh", "soak-hourly.sh")
