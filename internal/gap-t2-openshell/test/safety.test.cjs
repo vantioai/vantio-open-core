@@ -46,6 +46,7 @@ test("lab documents contain no price figures", () => {
     "POSITIONING.md",
     "RISK-REGISTER.md",
     "README.md",
+    "LIVE-JOIN.md",
     "fixtures/bypass-drill.json",
     "fixtures/reconciled-openshell.json",
     "fixtures/reconciled-gate.json",
