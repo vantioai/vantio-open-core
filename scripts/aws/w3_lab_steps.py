@@ -137,7 +137,24 @@ def parse_check_details(text: str) -> list[dict[str, Any]]:
 
 
 def redact(text: str) -> tuple[str, bool]:
+    """Strip secrets. A key block cut off by the console tail is removed too."""
     cleaned, count = SECRET.subn("[redacted]", text)
+    if re.search(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", cleaned):
+        cleaned, extra = re.subn(
+            r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*\Z",
+            "[redacted]",
+            cleaned,
+            count=1,
+        )
+        count += extra
+    if re.search(r"-----END [A-Z ]*PRIVATE KEY-----", cleaned):
+        cleaned, extra = re.subn(
+            r"\A[\s\S]*-----END [A-Z ]*PRIVATE KEY-----",
+            "[redacted]",
+            cleaned,
+            count=1,
+        )
+        count += extra
     token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
     if token and token in cleaned:
         cleaned = cleaned.replace(token, "[redacted]")
@@ -597,10 +614,13 @@ def _collect_console(
         ["aws", "ec2", "get-console-output", "--region", lab.REGION, "--instance-id", instance_id, "--latest"],
     )
     text, redacted = redact(console_text(console))
+    if "PRIVATE KEY" in text:
+        raise lab.GuardAbort("token_in_evidence")
     if text and not text.endswith("\n"):
         text += "\n"
     override = os.environ.get("W3_CONSOLE_PATH", "").strip()
-    console_path = Path(override) if override else evidence_path("w3-lab-collect.json").with_name("w3-lab-console.txt")
+    console_name = f"w3-lab-console-{instance_id}.txt"
+    console_path = Path(override) if override else evidence_path("w3-lab-collect.json").with_name(console_name)
     console_path.write_text(text, encoding="utf-8")
     marker = next((line for line in text.splitlines() if MARKER_LINE.fullmatch(line)), None)
     checks = parse_check_lines(text, source="console")
@@ -710,6 +730,10 @@ def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner 
                     "check_count": len(one.get("checks") or []),
                     "checks": one.get("checks") or [],
                     "cloudtrail": one.get("cloudtrail"),
+                    "console_bytes": one.get("console_bytes"),
+                    "console_file": one.get("console_file"),
+                    "console_redacted": one.get("console_redacted") is True,
+                    "console_sha256": one.get("console_sha256"),
                     "instance_id": instance_id,
                     "instance_state": one.get("instance_state"),
                     "soak_active": one.get("soak_active") is True,

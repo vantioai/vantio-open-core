@@ -103,16 +103,20 @@ PY
 fi
 # Reboot proof only. No docker and no descendant probe. The schedule is the
 # function above; the runner leaves and then reads the new boot id.
+# A previous battery leaves the rows file owned by root. Remove it before
+# this run writes, and write as root. If the timer is armed and the record
+# cannot be written, stop the timer so the host does not reboot unwatched.
 if [ "${2:-}" = "reboot-check" ]; then
+  sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
   boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
   reason=""
-  if ! schedule_forced_reboot; then
+  if [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+    reason=reboot_script_missing
+  elif ! schedule_forced_reboot; then
     reason=reboot_not_scheduled
-    if [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
-      reason=reboot_script_missing
-    fi
+    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
   fi
-  python3 - "$boot_id" "$reason" <<'PY'
+  if ! sudo python3 - "$boot_id" "$reason" <<'PY'
 import json
 import sys
 
@@ -130,7 +134,11 @@ with open("/tmp/enterprise-pe-rows.json", "w", encoding="utf-8") as handle:
     handle.write(text)
 print(text, end="")
 PY
-  chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  then
+    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+    exit 1
+  fi
+  sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   if [ -n "$reason" ]; then
     exit 1
   fi

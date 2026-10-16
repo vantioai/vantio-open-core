@@ -119,5 +119,5 @@ jobs:
           path: |
             w3-lab-collect.json
             w3-lab-collect.json.sha256
-            w3-lab-console.txt
+            w3-lab-console-*.txt
           if-no-files-found: error

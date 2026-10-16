@@ -359,16 +359,17 @@ class ArmCollectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.environ["INSTANCE_ID"] = INSTANCE
             os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
-            os.environ["W3_CONSOLE_PATH"] = str(Path(tmp) / "w3-lab-console.txt")
+            os.environ.pop("W3_CONSOLE_PATH", None)
             result = steps.execute_collect(runner)
             body = Path(os.environ["EVIDENCE_PATH"]).read_text()
-            console = Path(os.environ["W3_CONSOLE_PATH"]).read_text(encoding="utf-8")
+            console_path = Path(tmp) / f"w3-lab-console-{INSTANCE}.txt"
+            console = console_path.read_text(encoding="utf-8")
         self.assertTrue(result["marker_found"])
         self.assertEqual(result["collect_channel"], "console")
         self.assertIn("boot", console)
         self.assertIn("vantio-lab-marker", console)
         self.assertEqual(result["console_sha256"], hashlib.sha256(console.encode("utf-8")).hexdigest())
-        self.assertEqual(result["console_file"], "w3-lab-console.txt")
+        self.assertEqual(result["console_file"], console_path.name)
         self.assertNotIn("boot", body)
         self.assertNotIn(SECRET, body)
         self.assertNotIn(SECRET, console)
@@ -390,14 +391,44 @@ class ArmCollectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             os.environ["INSTANCE_ID"] = INSTANCE
             os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
-            os.environ["W3_CONSOLE_PATH"] = str(Path(tmp) / "w3-lab-console.txt")
+            os.environ.pop("W3_CONSOLE_PATH", None)
             result = steps.execute_collect(runner)
-            console = Path(os.environ["W3_CONSOLE_PATH"]).read_text(encoding="utf-8")
+            console = (Path(tmp) / f"w3-lab-console-{INSTANCE}.txt").read_text(encoding="utf-8")
         self.assertNotIn("BEGIN OPENSSH", console)
         self.assertNotIn("abc", console)
+        self.assertNotIn("PRIVATE KEY", console)
         self.assertIn("[redacted]", console)
         self.assertTrue(result["console_redacted"])
         self.assertEqual(result["console_sha256"], hashlib.sha256(console.encode("utf-8")).hexdigest())
+
+    def test_a_cut_off_private_key_is_not_written(self) -> None:
+        head, _changed = steps.redact("boot\n-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n")
+        tail, _changed_tail = steps.redact("abc\n-----END OPENSSH PRIVATE KEY-----\nboot\n")
+        self.assertNotIn("PRIVATE KEY", head)
+        self.assertNotIn("abc", head)
+        self.assertNotIn("PRIVATE KEY", tail)
+        self.assertNotIn("abc", tail)
+        raw = base64.b64encode(b"still PRIVATE KEY in the tail\n").decode()
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "--instance-ids" in args:
+                return completed({"Reservations": [{"Instances": [instance()]}]})
+            if "get-console-output" in text:
+                return completed({"Output": raw})
+            return completed({})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = INSTANCE
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ.pop("W3_CONSOLE_PATH", None)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_collect(runner)
+            written = list(Path(tmp).glob("w3-lab-console-*.txt"))
+        self.assertEqual(caught.exception.reason, "token_in_evidence")
+        self.assertEqual(written, [])
 
     def test_teardown_leaves_an_unowned_host(self) -> None:
         runner = FakeAws()
@@ -789,7 +820,48 @@ class ArmCollectTests(unittest.TestCase):
         self.assertEqual(row["instance_state"], "terminated")
         self.assertEqual(row["cloudtrail"], {"recorded": False, "reason": "admin_soak_release"})
         self.assertEqual(row["check_count"], 1)
+        self.assertEqual(row["console_file"], f"w3-lab-console-{INSTANCE}.txt")
+        self.assertEqual(len(row["console_sha256"]), 64)
         self.assertFalse(any("lookup-events" in " ".join(call) or "cloudtrail" in " ".join(call) for call in calls))
+
+    def test_each_due_instance_keeps_its_own_console(self) -> None:
+        second = "i-0abcdef1234567890"
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "describe-instances" in text and "--instance-ids" in args:
+                wanted = args[args.index("--instance-ids") + 1]
+                body = instance("terminated")
+                body["InstanceId"] = wanted
+                body["LaunchTime"] = "2026-09-30T12:00:00Z"
+                return completed({"Reservations": [{"Instances": [body]}]})
+            if "describe-instances" in text:
+                first = instance("terminated")
+                first["LaunchTime"] = "2026-09-30T12:00:00Z"
+                other = instance("terminated")
+                other["InstanceId"] = second
+                other["LaunchTime"] = "2026-09-30T12:00:00Z"
+                return completed({"Reservations": [{"Instances": [first, other]}]})
+            if "get-console-output" in text:
+                wanted = args[args.index("--instance-id") + 1]
+                raw = base64.b64encode(f"console {wanted}\n".encode()).decode()
+                return completed({"Output": raw})
+            return completed({})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ.pop("INSTANCE_ID", None)
+            os.environ.pop("W3_RUNNER_CIDR", None)
+            result = steps.execute_collect_due(runner, NOW)
+            names = sorted(path.name for path in Path(tmp).glob("w3-lab-console-*.txt"))
+        rows = {row["instance_id"]: row for row in result["instances"]}
+        self.assertEqual(names, sorted(row["console_file"] for row in rows.values()))
+        self.assertEqual(set(rows), {INSTANCE, second})
+        for row in rows.values():
+            self.assertEqual(len(row["console_sha256"]), 64)
+            self.assertNotEqual(rows[INSTANCE]["console_sha256"], rows[second]["console_sha256"])
 
     def test_verify_removed_when_the_owned_host_is_terminated(self) -> None:
         runner = FakeAws()
@@ -872,7 +944,7 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("- self-service", arm)
         self.assertIn("- reboot-check", arm)
         collect = (ROOT / ".github/workflows/w3-lab-auto-collect.yml").read_text(encoding="utf-8")
-        self.assertIn("w3-lab-console.txt", collect)
+        self.assertIn("w3-lab-console-*.txt", collect)
         self.assertIn("arm-self-service", arm)
         self.assertNotIn("packages/vantio-install/docs/INSTALL.md", arm)
         self.assertNotIn("packages/vantio-install/pyproject.toml", arm)
@@ -1481,6 +1553,11 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn("--unit=\"$unit\"", text)
         self.assertIn("unit=vantio-lab-lsm-reboot", text)
         self.assertIn('if [ "${2:-}" = "reboot-check" ]; then', text)
+        check = text[text.index('if [ "${2:-}" = "reboot-check" ]; then') : text.index('sudo rm -rf "$stage"')]
+        self.assertLess(check.index("sudo rm -f /tmp/enterprise-pe-rows.json"), check.index("schedule_forced_reboot"))
+        self.assertLess(check.index("reboot_script_missing"), check.index("schedule_forced_reboot"))
+        self.assertIn("sudo python3", check)
+        self.assertIn("systemctl stop vantio-lab-lsm-reboot.timer", check)
         self.assertNotIn("schedule_forced_reboot vantio-lab", text)
         self.assertNotIn("systemctl reboot --force", text)
         self.assertEqual(text.count("schedule_forced_reboot()"), 1)
@@ -1637,6 +1714,63 @@ class EnterpriseRowSessionTests(unittest.TestCase):
                     checker=lambda _path: {"seal_sha256": SEAL},
                 )
         self.assertEqual(caught.exception.reason, "stale_rows")
+
+    def test_reboot_check_confirms_a_new_boot_id(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        released = {"n": 0}
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "reboot-check",
+                            "boot_id": "boot-old",
+                            "reboot_requested": True,
+                            "unit": "vantio-lab-lsm-reboot",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and "boot_id" in joined:
+                return completed(stdout="boot-new\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            release = kwargs.get("release")
+            if callable(release):
+                release()
+                released["n"] += 1
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(result["status"], "REBOOT_CHECKED")
+        self.assertEqual(result["scheduled_boot_id"], "boot-old")
+        self.assertEqual(result["boot_id"], "boot-new")
+        self.assertEqual(released["n"], 1)
 
 
 class RebootWaitTests(unittest.TestCase):
