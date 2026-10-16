@@ -673,6 +673,17 @@ case "$mode" in
 esac
 set +e
 sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
+# guest_rows reads bpftool before this shell's uninstall. The Noble wrapper
+# exits 2 until a real bpftool is on PATH. Point at that binary first.
+# This does not detach programs.
+if ! ensure_working_bpftool; then
+  python3 -c 'import json; json.dump({"uninstall_tail":"UNINSTALL_RESIDUAL bpftool missing\n"}, open("/tmp/enterprise-pe-rows.json","w"))'
+  stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
+  exit 1
+fi
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
@@ -683,8 +694,16 @@ if ! authorized_uninstall "$image" no 0; then
   fi
   exit 1
 fi
+# Read bpftool and bpffs after the product uninstall. Do not detach.
+if ! sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/product_uninstall_census.py" --record /tmp/enterprise-pe-rows.json --guest-rc "$rc"; then
+  stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
+  exit 1
+fi
 stamp_host_evidence
 if ! publish_durable_rows; then
   exit 1
 fi
-exit "$rc"
+exit 0

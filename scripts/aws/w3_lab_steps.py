@@ -1741,6 +1741,7 @@ def execute_enterprise_rows(
                 copy_to(script_path, "enterprise-rows.sh")
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("product_uninstall_census.py"), "product_uninstall_census.py")
                 ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             try:
