@@ -411,6 +411,144 @@ class ArmCollectTests(unittest.TestCase):
         self.assertEqual(body["status"], "REFUSED_SOAK")
         self.assertFalse(body["mutated"])
         self.assertFalse(any("terminate-instances" in " ".join(call) for call in calls))
+        self.assertFalse(any("modify-instance-attribute" in " ".join(call) for call in calls))
+
+    def test_founder_close_record_names_this_soak_only(self) -> None:
+        record = json.loads(steps.FOUNDER_CLOSE_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(record["status"], "CLOSED_BY_FOUNDER")
+        self.assertEqual(record["closed_by"], "Zachary Balicki (Founder)")
+        self.assertEqual(record["instance_id"], "i-0f38ffde5ad83c9f2")
+        self.assertEqual(record["decision_time"], "2026-10-15T21:10:00-04:00")
+        self.assertEqual(record["decision_time_spoken"], "2026-10-15 ~9:10 PM ET")
+        self.assertEqual(record["note"], "26.9h was accepted")
+        self.assertEqual(record["evidence_ref"], "SOAK-HASH-COMPARE.json")
+        self.assertTrue(steps.founder_close_honored("i-0f38ffde5ad83c9f2", record))
+        self.assertFalse(steps.founder_close_honored(INSTANCE, record))
+        renamed = dict(record)
+        renamed["instance_id"] = INSTANCE
+        self.assertFalse(steps.founder_close_honored(INSTANCE, renamed))
+        self.assertFalse(steps.founder_close_honored("i-0f38ffde5ad83c9f2", renamed))
+        for key in ("closed_by", "note", "decision_time", "decision_time_spoken", "evidence_ref", "status"):
+            changed = dict(record)
+            changed[key] = "changed"
+            self.assertFalse(steps.founder_close_honored("i-0f38ffde5ad83c9f2", changed), key)
+
+    def test_founder_close_tears_down_only_the_recorded_soak(self) -> None:
+        soak_id = "i-0f38ffde5ad83c9f2"
+        state = {"name": "running"}
+        calls: list[list[str]] = []
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "describe-instances" in text and "--instance-ids" in args:
+                body = instance(state["name"])
+                body["InstanceId"] = soak_id
+                body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
+                return completed({"Reservations": [{"Instances": [body]}]})
+            if "describe-instances" in text:
+                if state["name"] in lab.OCCUPYING_STATES:
+                    body = instance(state["name"])
+                    body["InstanceId"] = soak_id
+                    body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
+                    return completed({"Reservations": [{"Instances": [body]}]})
+                return completed({"Reservations": []})
+            if "modify-instance-attribute" in text:
+                return completed({})
+            if "terminate-instances" in text:
+                state["name"] = "terminated"
+                return completed({})
+            if text.startswith("aws ec2 wait"):
+                return completed(stdout="")
+            return completed({"Volumes": [], "SecurityGroups": [], "KeyPairs": [], "Reservations": []})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = soak_id
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            result = steps.execute_teardown(runner, NOW)
+        self.assertEqual(result["status"], "VERIFIED_REMOVED")
+        self.assertEqual(result["founder_close"]["status"], "CLOSED_BY_FOUNDER")
+        self.assertEqual(result["founder_close"]["closed_by"], "Zachary Balicki (Founder)")
+        self.assertEqual(result["founder_close"]["note"], "26.9h was accepted")
+        self.assertEqual(result["founder_close"]["evidence_ref"], "SOAK-HASH-COMPARE.json")
+        self.assertTrue(result["slot_clear"])
+        joined = [" ".join(call) for call in calls]
+        modify_at = next(i for i, item in enumerate(joined) if "modify-instance-attribute" in item)
+        terminate_at = next(i for i, item in enumerate(joined) if "terminate-instances" in item)
+        self.assertLess(modify_at, terminate_at)
+        self.assertIn("--no-disable-api-termination", joined[modify_at])
+        self.assertIn(soak_id, joined[modify_at])
+
+    def test_founder_close_refuses_a_changed_record(self) -> None:
+        soak_id = "i-0f38ffde5ad83c9f2"
+        calls: list[list[str]] = []
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "--instance-ids" in args:
+                body = instance()
+                body["InstanceId"] = soak_id
+                body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
+                return completed({"Reservations": [{"Instances": [body]}]})
+            return completed({"Reservations": [], "Volumes": [], "SecurityGroups": [], "KeyPairs": []})
+
+        original = steps.FOUNDER_CLOSE_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            changed = json.loads(original.read_text(encoding="utf-8"))
+            changed["closed_by"] = "someone else"
+            path = Path(tmp) / "founder-soak-close.json"
+            path.write_text(json.dumps(changed), encoding="utf-8")
+            steps.FOUNDER_CLOSE_PATH = path
+            os.environ["INSTANCE_ID"] = soak_id
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            try:
+                with self.assertRaises(lab.GuardAbort) as caught:
+                    steps.execute_teardown(runner, NOW)
+                body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
+            finally:
+                steps.FOUNDER_CLOSE_PATH = original
+        self.assertEqual(caught.exception.reason, "soak_active")
+        self.assertEqual(body["status"], "REFUSED_SOAK")
+        self.assertFalse(any("terminate-instances" in " ".join(call) for call in calls))
+        self.assertFalse(any("modify-instance-attribute" in " ".join(call) for call in calls))
+
+    def test_founder_close_records_a_termination_lock(self) -> None:
+        soak_id = "i-0f38ffde5ad83c9f2"
+        calls: list[list[str]] = []
+
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            text = " ".join(args)
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "--instance-ids" in args:
+                body = instance()
+                body["InstanceId"] = soak_id
+                body["Tags"].append({"Key": "vantio-soak", "Value": "active"})
+                return completed({"Reservations": [{"Instances": [body]}]})
+            if "modify-instance-attribute" in text:
+                return completed(
+                    code=254,
+                    stderr="An error occurred (UnauthorizedOperation) when calling the ModifyInstanceAttribute operation: You are not authorized to perform this operation.",
+                )
+            return completed({"Reservations": [], "Volumes": [], "SecurityGroups": [], "KeyPairs": []})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["INSTANCE_ID"] = soak_id
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "teardown.json")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_teardown(runner, NOW)
+            body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text())
+        self.assertIn("UnauthorizedOperation", caught.exception.reason)
+        self.assertEqual(body["status"], "TERMINATION_LOCK")
+        self.assertEqual(body["founder_close"]["status"], "CLOSED_BY_FOUNDER")
+        self.assertFalse(body["mutated"])
+        self.assertFalse(any("terminate-instances" in " ".join(call) for call in calls))
 
     def test_collect_does_not_call_cloudtrail_when_the_soak_host_is_gone(self) -> None:
         calls: list[list[str]] = []
@@ -528,6 +666,8 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("W3_LAB_PRIVATE_BUNDLE_TOKEN", arm)
         self.assertIn("w3-lab-auto-arm.yml@refs/heads/main", arm)
         self.assertNotIn("0.0.0.0/0", arm)
+        teardown = (ROOT / ".github/workflows/w3-lab-auto-teardown.yml").read_text(encoding="utf-8")
+        self.assertIn("scripts/aws/founder-soak-close.json", teardown)
         self.assertIn("bundle_commit:", arm)
         self.assertIn("W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}", arm)
         self.assertIn("W3_EXPECTED_SEAL: ${{ inputs.seal }}", arm)
