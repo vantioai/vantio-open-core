@@ -447,11 +447,36 @@ def confirm_matches_boot(body: dict, boot_id: str) -> bool:
     return isinstance(got, str) and bool(boot_id) and "\n" not in boot_id and got == boot_id
 
 
+def live_lsm_from_probe(probe: dict, boot_id: str) -> dict | None:
+    """Confirm built from the live files when the rows file is an older boot.
+
+    The probe has to be the boot the runner waited for, and bpf has to be its
+    own token in both /proc/cmdline and /sys/kernel/security/lsm.
+    """
+    if not isinstance(probe, dict) or not confirm_matches_boot(probe, boot_id):
+        return None
+    cmdline = probe.get("cmdline") if isinstance(probe.get("cmdline"), str) else ""
+    enabled = probe.get("enabled_lsm") if isinstance(probe.get("enabled_lsm"), str) else ""
+    body = {
+        "boot_id": probe.get("boot_id"),
+        "cmdline": cmdline,
+        "stock_lsm": enabled,
+        "cmdline_has_bpf": _cmdline_bpf(cmdline),
+        "host_result": "LSM_ENABLED",
+        "kernel_command_lines": probe.get("kernel_command_lines") if isinstance(probe.get("kernel_command_lines"), list) else [],
+        "grubenv": probe.get("grubenv") if isinstance(probe.get("grubenv"), list) else [],
+    }
+    if not lsm_confirm_ok(body):
+        return None
+    return body
+
+
 LATER_BOOT_PROBE = (
     "sudo python3 -c \"import json,sys; sys.path.insert(0,'/var/lib/vantio-lab/guest'); "
     "import baseline_diag; "
     "print(json.dumps({'boot_id': baseline_diag.read_boot_id(), "
     "'cmdline': open('/proc/cmdline',encoding='utf-8').read().strip()[:400], "
+    "'enabled_lsm': open('/sys/kernel/security/lsm',encoding='utf-8').read().strip()[:400], "
     "'kernel_command_lines': baseline_diag.read_kernel_command_lines(), "
     "'grubenv': baseline_diag.read_grubenv_assignments()}))\""
 )
@@ -555,9 +580,27 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
         )
         _print_saved_boot_evidence(project, name)
         if not matched:
-            record["lsm_guard"] = "stale_rows"
-            write_evidence(evidence / "lsm-guard.json", record)
-            raise SystemExit("lsm")
+            probe_body: dict[str, Any] = {}
+            probed = _ssh(project, name, LATER_BOOT_PROBE, timeout_s=PROBE_SSH_TIMEOUT)
+            parsed = _last_object((probed.stdout or "") + (probed.stderr or ""))
+            if isinstance(parsed, dict):
+                probe_body = parsed
+            print(
+                json.dumps(
+                    {
+                        "later_boot_id": after,
+                        "later_probe": probe_body,
+                        "rows_boot_id": confirm_body.get("boot_id") if isinstance(confirm_body.get("boot_id"), str) else "",
+                    }
+                ),
+                flush=True,
+            )
+            adopted = live_lsm_from_probe(probe_body, after)
+            if adopted is None:
+                record["lsm_guard"] = "stale_rows"
+                write_evidence(evidence / "lsm-guard.json", record)
+                raise SystemExit("lsm")
+            confirm_body = adopted
         if not lsm_confirm_ok(confirm_body):
             if confirm_body.get("host_result") == "GUARD_PROVED" and confirm_body.get("reboot_requested") is True:
                 later = _wait_boot(project, name, after, REBOOT_WAIT_SECONDS)

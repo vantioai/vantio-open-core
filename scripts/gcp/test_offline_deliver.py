@@ -709,7 +709,26 @@ class OfflineDeliverTest(unittest.TestCase):
         )
         self.assertNotIn("\n", od.LATER_BOOT_PROBE)
         self.assertIn("grubenv", od.LATER_BOOT_PROBE)
+        self.assertIn("enabled_lsm", od.LATER_BOOT_PROBE)
+        self.assertIn("/sys/kernel/security/lsm", od.LATER_BOOT_PROBE)
         self.assertNotIn("reboot", od.LATER_BOOT_PROBE)
+        self.assertLess(script.find("sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json"), script.find("write_lsm_status"))
+        fresh_boot = "33333333-3333-3333-3333-333333333333"
+        sealed = "BOOT_IMAGE=/vmlinuz ro lsm=lockdown,capability,landlock,yama,apparmor,ima,evm,bpf panic=-1"
+        listed = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        adopted = od.live_lsm_from_probe(
+            {"boot_id": fresh_boot, "cmdline": sealed, "enabled_lsm": listed},
+            fresh_boot,
+        )
+        self.assertIsNotNone(adopted)
+        self.assertTrue(od.lsm_confirm_ok(adopted))
+        self.assertIsNone(od.live_lsm_from_probe({"boot_id": "old", "cmdline": sealed, "enabled_lsm": listed}, fresh_boot))
+        self.assertIsNone(
+            od.live_lsm_from_probe(
+                {"boot_id": fresh_boot, "cmdline": "panic=-1", "enabled_lsm": "lockdown,capability,apparmor"},
+                fresh_boot,
+            )
+        )
 
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))

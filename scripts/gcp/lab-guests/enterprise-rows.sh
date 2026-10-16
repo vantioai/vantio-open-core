@@ -85,6 +85,9 @@ fi
 # A second boot already has bpf in the LSM list. Confirm that and return
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "$mode" = "lsm-guard" ]; then
+  # The runner reads the var-lib file first. Drop the pre-reboot copy
+  # before this boot writes its own result.
+  sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
   set +e
   sudo python3 - "$here" <<'PY'
 import sys
@@ -96,11 +99,11 @@ PY
   st=$?
   set -e
   if [ "$st" -eq 0 ]; then
-    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    sudo chmod a+r /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json 2>/dev/null || true
     exit 0
   fi
   if [ "$st" -eq 2 ]; then
-    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    sudo chmod a+r /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json 2>/dev/null || true
     exit 2
   fi
 fi
