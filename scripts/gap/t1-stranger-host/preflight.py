@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from errors import PackageError
-from facts import bpf_in_lsm_list, bpffs_mounted, image_is_exact, parse_lockdown
+from facts import boot_id_ok, bpf_in_lsm_list, bpffs_mounted, image_is_exact, parse_lockdown
 
 
 class PreflightFailure(PackageError):
@@ -28,6 +28,20 @@ def _optional(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
+
+
+def _maybe_text(path: Path) -> str | None:
+    """Return file text, or None when the path is missing or unreadable.
+
+    The caller still runs the earlier preflight stops before treating None
+    as an unreadable lockdown file.
+    """
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 def read_link_local_image(opener: Callable[..., object], timeout: float = 2) -> str:
@@ -89,7 +103,7 @@ def evaluate(
     enabled_lsm: str,
     btf_bytes: int,
     cgroup_fstype_name: str,
-    lockdown_raw: str,
+    lockdown_raw: str | None,
     mounts: str,
     boot_id: str,
     cmdline: str,
@@ -104,6 +118,8 @@ def evaluate(
         raise PreflightFailure("btf_missing")
     if cgroup_fstype_name != "cgroup2fs":
         raise PreflightFailure("cgroup_v2_missing")
+    if not isinstance(lockdown_raw, str):
+        raise PreflightFailure("lockdown_unreadable")
     try:
         mode = parse_lockdown(lockdown_raw)
     except ValueError as exc:
@@ -116,9 +132,12 @@ def evaluate(
     source = image.get("source") if isinstance(image, Mapping) else ""
     if not image_is_exact(exact, source=source):
         raise PreflightFailure("image_exact_missing")
+    recorded_boot = boot_id.strip() if isinstance(boot_id, str) else ""
+    if not boot_id_ok(recorded_boot):
+        raise PreflightFailure("boot_id")
     supplemental = image.get("supplemental") if isinstance(image, Mapping) else {}
     return {
-        "boot_id": boot_id.strip(),
+        "boot_id": recorded_boot,
         "bpffs": True,
         "btf_bytes": btf_bytes,
         "cgroup_fstype": cgroup_fstype_name,
@@ -170,8 +189,7 @@ def collect_host(
         btf_bytes = 0
     if cgroup_name is None:
         cgroup_name = cgroup_fstype(root / "sys/fs/cgroup")
-    lockdown_path = root / "sys/kernel/security/lockdown"
-    lockdown_raw = _text(lockdown_path, "lockdown_unreadable") if lockdown_path.is_file() else ""
+    lockdown_raw = _maybe_text(root / "sys/kernel/security/lockdown")
     mounts = _optional(root / "proc/mounts")
     boot_id = _optional(root / "proc/sys/kernel/random/boot_id")
     cmdline = _optional(root / "proc/cmdline")

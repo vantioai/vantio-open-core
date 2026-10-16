@@ -173,7 +173,7 @@ def _public_matches(key: Mapping[str, object], private: Ed25519PrivateKey) -> bo
 
 def file_hashes(directory: Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    for name in BUNDLE_FILES:
+    for name in sorted(BUNDLE_FILES):
         path = directory / name
         if not path.is_file():
             raise PackageError("signature_invalid")
@@ -342,7 +342,15 @@ def _read_signature(directory: Path) -> dict[str, object]:
     return parsed
 
 
+def _refuse_extra_members(directory: Path) -> None:
+    allowed = set(BUNDLE_FILES) | {"SHA256SUMS", "SIGNATURE.json"}
+    for path in directory.iterdir():
+        if not path.is_file() or path.name not in allowed:
+            raise PackageError("claim_refused")
+
+
 def verify_bundle(directory: Path) -> dict[str, object]:
+    _refuse_extra_members(directory)
     scan_tree(directory)
     signature = _read_signature(directory)
     claim = signature.get("claim_cap")

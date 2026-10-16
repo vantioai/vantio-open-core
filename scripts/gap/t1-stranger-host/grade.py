@@ -24,6 +24,7 @@ from constants import (
     TRACKING_SEAL,
     WORKING_SEAL,
 )
+from capture import uninstall_line_present, vantio_bpftool_lines, vantio_pin_names
 from facts import bpf_in_cmdline, bpf_in_lsm_list, boot_id_ok, exact_int, image_is_exact, lsm_word, parse_lockdown, positive_int
 
 
@@ -82,6 +83,8 @@ def grade_preflight(host: object) -> dict[str, object]:
     image = _mapping(body.get("image")) or {}
     if not image_is_exact(image.get("exact"), source=image.get("source")):
         reasons.append("image_exact_missing")
+    if not boot_id_ok(body.get("boot_id")):
+        reasons.append("boot_id")
     return _step(1, "preflight", reasons)
 
 
@@ -126,7 +129,7 @@ def grade_enterprise(rows: object) -> dict[str, object]:
         return _step(3, "enforcement", ["enterprise_rows_missing"])
     reasons: list[str] = []
     grant = _mapping(body.get("grant_loader"))
-    if grant is None or grant.get("rc") != 0 or isinstance(grant.get("rc"), bool):
+    if grant is None or type(grant.get("rc")) is not int or grant.get("rc") != 0:
         reasons.append("grant_loader")
     if grant is None or grant.get("audit") is not True:
         reasons.append("grant_audit")
@@ -140,9 +143,9 @@ def grade_enterprise(rows: object) -> dict[str, object]:
         reasons.append("unchanged_probe")
     if unchanged is None or unchanged.get("conflict_reason") != "VERSION_CONFLICT":
         reasons.append("conflict_reason")
-    if unchanged is None or "generation" not in unchanged or "generation_before" not in unchanged:
-        reasons.append("generation_moved")
-    elif unchanged.get("generation") != unchanged.get("generation_before") or isinstance(unchanged.get("generation"), bool):
+    generation = unchanged.get("generation") if unchanged is not None else None
+    before = unchanged.get("generation_before") if unchanged is not None else None
+    if type(generation) is not int or type(before) is not int or generation != before:
         reasons.append("generation_moved")
     freeze = _mapping(body.get("freeze"))
     if freeze is None or freeze.get("widen_reason") != "FROZEN":
@@ -199,8 +202,8 @@ def grade_loader(rows: object) -> dict[str, object]:
     return _step(4, "loader", reasons)
 
 
-def _cases(body: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
-    found: dict[str, Mapping[str, object]] = {}
+def _case_groups(body: Mapping[str, object]) -> dict[str, list[Mapping[str, object]]]:
+    found: dict[str, list[Mapping[str, object]]] = {}
     raw = body.get("cases")
     if not isinstance(raw, list):
         return found
@@ -210,8 +213,30 @@ def _cases(body: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
             continue
         name = mapped.get("name")
         if isinstance(name, str):
-            found[name] = mapped
+            found.setdefault(name, []).append(mapped)
     return found
+
+
+def _marked_skipped(item: Mapping[str, object]) -> bool:
+    if "skipped" not in item:
+        return False
+    return item.get("skipped") is not False
+
+
+def _grade_case(item: Mapping[str, object], *, deny: bool) -> list[str]:
+    reasons: list[str] = []
+    if _marked_skipped(item):
+        reasons.append("case_skipped")
+    if item.get("pass") is not True:
+        reasons.append("case_not_passed")
+    if deny:
+        if not exact_int(item.get("file_errno"), 13):
+            reasons.append("file_errno")
+        if not exact_int(item.get("net_errno"), 1):
+            reasons.append("net_errno")
+    elif not exact_int(item.get("file_errno"), 0):
+        reasons.append("file_errno")
+    return reasons
 
 
 def _grade_measure(body: Mapping[str, object] | None, *, expected_boot: str | None) -> list[str]:
@@ -220,34 +245,16 @@ def _grade_measure(body: Mapping[str, object] | None, *, expected_boot: str | No
     reasons: list[str] = []
     if body.get("failed_cases") != []:
         reasons.append("failed_cases")
-    found = _cases(body)
+    found = _case_groups(body)
     if not isinstance(body.get("cases"), list):
         reasons.append("case_missing")
-    for name in DENY_CASES:
-        item = found.get(name)
-        if item is None:
-            reasons.append("case_missing")
-            continue
-        if item.get("skipped") is True:
-            reasons.append("case_skipped")
-        if item.get("pass") is not True:
-            reasons.append("case_not_passed")
-        if not exact_int(item.get("file_errno"), 13):
-            reasons.append("file_errno")
-        if not exact_int(item.get("net_errno"), 1):
-            reasons.append("net_errno")
-    for name in ALLOW_CASES:
-        item = found.get(name)
-        if item is None:
-            reasons.append("case_missing")
-            continue
-        if item.get("skipped") is True:
-            reasons.append("case_skipped")
-        if item.get("pass") is not True:
-            reasons.append("case_not_passed")
-        if not exact_int(item.get("file_errno"), 0):
-            reasons.append("file_errno")
-    if expected_boot is not None and body.get("boot_id") != expected_boot:
+    for name, deny in [(case, True) for case in DENY_CASES] + [(case, False) for case in ALLOW_CASES]:
+        items = found.get(name, [])
+        if len(items) != 1:
+            reasons.append("case_missing" if not items else "case_not_passed")
+        for item in items:
+            reasons.extend(_grade_case(item, deny=deny))
+    if expected_boot is not None and (not boot_id_ok(expected_boot) or body.get("boot_id") != expected_boot):
         reasons.append("boot_id")
     return reasons
 
@@ -267,6 +274,8 @@ def grade_reboot(boot: object, pre_boot: object, serial_text: str | None = None)
         return _step(6, "reboot", ["boot_id"])
     reasons: list[str] = []
     boot_id = body.get("boot_id")
+    if not boot_id_ok(pre_boot):
+        reasons.append("boot_id")
     if not boot_id_ok(boot_id):
         reasons.append("boot_id")
     elif boot_id == pre_boot:
@@ -284,12 +293,15 @@ def grade_reboot(boot: object, pre_boot: object, serial_text: str | None = None)
         encoded = serial.encode("utf-8")
         if len(encoded) > MAX_BYTES:
             reasons.append("serial_too_large")
+        digest = hashlib.sha256(encoded).hexdigest()
         recorded = body.get("serial_sha256")
-        if isinstance(recorded, str) and recorded != hashlib.sha256(encoded).hexdigest():
+        if not isinstance(recorded, str) or recorded != digest:
             reasons.append("serial_boot_mismatch")
         word = lsm_word(cmdline)
         if word is None or word not in serial:
             reasons.append("serial_lsm_missing")
+        if not boot_id_ok(boot_id) or boot_id not in serial:
+            reasons.append("serial_boot_mismatch")
     if body.get("serial_boot_id") != boot_id:
         reasons.append("serial_boot_mismatch")
     return _step(6, "reboot", reasons)
@@ -320,19 +332,38 @@ def grade_uninstall(record: object) -> dict[str, object]:
     if body is None:
         return _step(8, "uninstall", ["uninstall_output_missing"], removal="NOT_REMOVED")
     reasons: list[str] = []
-    if body.get("uninstall_verified_line") is not True:
-        reasons.append("uninstall_not_verified")
-    lines = body.get("bpftool_vantio_lines")
-    if not isinstance(lines, list):
+    transcript = body.get("uninstall_transcript")
+    if not isinstance(transcript, str):
+        reasons.append("uninstall_output_missing")
+        verified = False
+    else:
+        verified = uninstall_line_present(transcript)
+        if not verified or body.get("uninstall_verified_line") is not True:
+            reasons.append("uninstall_not_verified")
+    bpftool_text = body.get("bpftool_text")
+    if not isinstance(bpftool_text, str):
         reasons.append("bpftool_missing")
-    elif lines:
-        reasons.append("bpftool_vantio_present")
-    pins = body.get("bpffs_vantio_names")
-    if not isinstance(pins, list):
+        lines: list[str] = []
+    else:
+        lines = vantio_bpftool_lines(bpftool_text)
+        if body.get("bpftool_vantio_lines") != lines:
+            reasons.append("bpftool_vantio_present")
+        elif lines:
+            reasons.append("bpftool_vantio_present")
+    pin_listing = body.get("pin_listing")
+    if not isinstance(pin_listing, str):
         reasons.append("bpffs_pins_missing")
-    elif pins:
-        reasons.append("bpffs_vantio_present")
-    status = "VERIFIED_REMOVED" if not reasons else "NOT_REMOVED"
+        pins: list[str] = []
+    else:
+        pins = vantio_pin_names(pin_listing)
+        if body.get("bpffs_vantio_names") != pins:
+            reasons.append("bpffs_vantio_present")
+        elif pins:
+            reasons.append("bpffs_vantio_present")
+    status = "VERIFIED_REMOVED" if verified and not lines and not pins and not reasons else "NOT_REMOVED"
+    if body.get("status") != status:
+        reasons.append("uninstall_not_verified")
+        status = "NOT_REMOVED"
     notes: list[str] = []
     raw = body.get("fail_reasons") or []
     if status == "VERIFIED_REMOVED" and isinstance(raw, list) and "programs_not_removed" in raw:

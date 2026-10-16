@@ -41,6 +41,7 @@ Stops on the first failure. Exit 1 prints `PREFLIGHT_FAIL <reason>`. Exit 0 prin
 | 5 | `lockdown_confidentiality` | the bracketed mode is `none` or `integrity` |
 | 6 | `bpffs_missing` | `/proc/mounts` has fstype `bpf` on `/sys/fs/bpf` |
 | 7 | `image_exact_missing` | an exact image was recorded |
+| 8 | `boot_id` | the boot id is one line of 1 to 80 characters |
 
 The host record includes `boot_id`, `uname_release`, `uname_version`, `cmdline`, `enabled_lsm`, `lockdown_raw`, `lockdown_mode`, `cgroup_fstype`, `bpffs`, `btf_bytes`, and `image` (`exact`, `source`, `supplemental`). Supplemental os-release text does not satisfy the exact-image check.
 
@@ -67,10 +68,10 @@ Grade `rows-enterprise.json`. The ceiling path is `/var/lib/vantio-pe-clean-host
 
 PASS requires all of:
 
-- `grant_loader.rc` is 0, `grant_loader.audit` is true, `grant_loader.path_observe` is true
+- `grant_loader.rc` is the integer 0, `grant_loader.audit` is true, `grant_loader.path_observe` is true
 - `grant_probe.nobody_errno` is 0
 - `unchanged.conflict_reason` is `VERSION_CONFLICT`
-- `unchanged.generation` equals `unchanged.generation_before`
+- `unchanged.generation` and `unchanged.generation_before` are both integers and they are equal
 - unchanged probe is `open_ok` (`unchanged.probe`, `unchanged.probe.result`, or `unchanged.result`)
 - `freeze.widen_reason` is `FROZEN`
 - `unreachable.reason` is `ENTERPRISE_UNREACHABLE`
@@ -104,11 +105,17 @@ Allow cases, each `pass` true, not skipped, `file_errno` 0:
 
 `ancestor_9`, `unenrolled`
 
-`failed_cases` is an empty list. `pre.boot_id` equals the step 1 boot id.
+`failed_cases` is an empty list. `pre.boot_id` equals the step 1 boot id, and that id is well formed. Each case name appears once. `skipped` is absent or false. Any other skipped value fails.
 
 ## Step 6 — Reboot
 
-The operator reboots with the handover method (the lab drop-in is `lsm=lockdown,capability,landlock,yama,apparmor,ima,evm,bpf` when they choose it) and reconnects. Then:
+The operator reboots with the handover method (the lab drop-in is `lsm=lockdown,capability,landlock,yama,apparmor,ima,evm,bpf` when they choose it) and reconnects. On the new boot, before saving the hypervisor serial, they mark the console with this boot id:
+
+```bash
+echo "VANTIO_BOOT_MARK=$(cat /proc/sys/kernel/random/boot_id)" | sudo tee /dev/kmsg >/dev/null
+```
+
+Then:
 
 ```bash
 python3 scripts/gap/t1-stranger-host/stranger_host.py capture-boot \
@@ -121,7 +128,8 @@ PASS requires:
 - live cmdline has a `bpf` LSM token (`cmdline_bpf_missing`)
 - live `/sys/kernel/security/lsm` has a `bpf` token (`lsm_bpf_missing`)
 - `serial_log` is non-empty and at most 2_000_000 bytes (`serial_missing`, `serial_too_large`)
-- `serial_boot_id` equals `boot_id` (`serial_boot_mismatch`)
+- `serial_sha256` is present and matches that text (`serial_boot_mismatch` when it is missing or different)
+- `serial_boot_id` equals `boot_id`, and the serial text contains that boot id (`serial_boot_mismatch`)
 - the serial text contains the cmdline's `lsm=` word (`serial_lsm_missing`)
 
 ## Step 7 — Enforcement returns on the new boot
@@ -141,11 +149,13 @@ python3 scripts/gap/t1-stranger-host/stranger_host.py capture-uninstall \
 
 `--live` runs `bpftool prog show` and lists `/sys/fs/bpf` names. Fixture runs pass those texts as files.
 
+`uninstall.json` stores `uninstall_transcript`, `bpftool_text`, `pin_listing`, the derived lists, `listing_source` (`live` or `operator-file`), and `status`. The grade recomputes the line and the lists from those texts. A boolean or a list that disagrees with the text fails.
+
 `status` is `VERIFIED_REMOVED` only when all three hold:
 
-- the uninstall output has a line whose entire text is `UNINSTALL_VERIFIED`
-- `bpftool_vantio_lines` is an empty list
-- `bpffs_vantio_names` is an empty list
+- `uninstall_transcript` has a line whose entire text is `UNINSTALL_VERIFIED`, and `uninstall_verified_line` is true
+- `bpftool_text` is present and its vantio lines are an empty list that matches `bpftool_vantio_lines`
+- `pin_listing` is present and its vantio names are an empty list that matches `bpffs_vantio_names`
 
 A missing list fails (`bpftool_missing` or `bpffs_pins_missing`). A non-empty list fails (`bpftool_vantio_present` or `bpffs_vantio_present`). Any other outcome is `NOT_REMOVED`.
 

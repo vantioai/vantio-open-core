@@ -82,4 +82,4 @@ The pinned trust bytes and the TEST private key are not in this repository. `sig
 
 ## Uninstall evidence
 
-`uninstall.json` stores `status` (`VERIFIED_REMOVED` or `NOT_REMOVED`), `uninstall_verified_line`, `bpftool_vantio_lines`, `bpffs_vantio_names`, and optional `notes`.
+`uninstall.json` stores `status` (`VERIFIED_REMOVED` or `NOT_REMOVED`), `uninstall_transcript`, `uninstall_verified_line`, `bpftool_text`, `bpftool_vantio_lines`, `pin_listing`, `bpffs_vantio_names`, and `listing_source`. The grade recomputes the derived fields from the transcript and the two listings.

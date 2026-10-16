@@ -104,6 +104,7 @@ def command_capture_uninstall(args: argparse.Namespace) -> int:
             bpftool_text=bpftool,
             pin_listing=pins,
             fail_reasons=fail_reasons,
+            listing_source="live" if args.live else "operator-file",
         )
     except PackageError as exc:
         return _print_error(exc)

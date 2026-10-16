@@ -38,7 +38,7 @@ A package beside the lab harness, under:
 
 The operator commands are `preflight`, `capture-boot`, `capture-uninstall`, `assemble`, `grade`, `sign`, and `verify`. They run on the stranger host or on the operator workstation. They do not call AWS or GCP. They do not import `scripts/gcp` or `scripts/aws`.
 
-`preflight` stops on the first failure, in this order: BPF LSM inactive, BTF missing, cgroup v2 missing, lockdown unreadable, lockdown `confidentiality`, bpffs missing, exact image missing. A pass writes a host record that contains the lockdown mode and the exact image, plus the boot id, the live cmdline, and the live LSM list.
+`preflight` stops on the first failure, in this order: BPF LSM inactive, BTF missing, cgroup v2 missing, lockdown unreadable, lockdown `confidentiality`, bpffs missing, exact image missing, then a boot id that is not one line of 1 to 80 characters. A pass writes a host record that contains the lockdown mode, the exact image, and that boot id, plus the live cmdline and the live LSM list.
 
 `capture-boot` records the new-boot rule used by the lab: boot id, live `/proc/cmdline`, live `/sys/kernel/security/lsm`, and a serial log bound to that boot id. The serial file is supplied by the operator from the hypervisor console. This package does not call `gcloud compute instances get-serial-port-output`.
 
@@ -78,7 +78,7 @@ Fail closed. A missing control, an unreadable lockdown file, an empty serial log
 - Metadata reads are off unless the operator passes `--allow-metadata`. The local proof never contacts link-local metadata.
 - A descendant case marked skipped, including `probe_missing`, fails the stranger standard even though `descendant_b1.py` currently scores that skip as pass. `descendant_pass: true` is not sufficient.
 - Deny cases in the comparison plan require file errno 13 and net errno 1. Allow cases (`ancestor_9`, `unenrolled`) require file errno 0. Net errno on an allow case is recorded and is not a fail, because `score()` in `descendant_b1.py` documents that egress can still drop past the file walk.
-- Serial text must contain the post-reboot `lsm=` word. The binding is the capture command's boot id plus that substring. A swapped console file that does not contain the booted `lsm=` word fails.
+- Serial text must contain the post-reboot `lsm=` word and the new boot id. The operator writes that boot id to `/dev/kmsg` before saving the hypervisor serial. A log from another boot fails. `serial_sha256` is required and must match the text.
 - Boot ids are a single line of 1 to 80 characters, matching the AWS runner's bound. The post-reboot id must differ from preflight.
 
 ## Memory, verifier, privileges

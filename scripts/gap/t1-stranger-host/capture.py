@@ -102,18 +102,31 @@ def capture_uninstall(
     bpftool_text: str | None,
     pin_listing: str | None,
     fail_reasons: list[str] | None = None,
+    listing_source: str = "operator-file",
 ) -> dict[str, object]:
-    uninstall_text = _bounded(uninstall_text, "uninstall_output_missing")
-    body: dict[str, object] = {
-        "fail_reasons": list(fail_reasons or []),
-        "uninstall_verified_line": uninstall_line_present(uninstall_text),
-    }
+    transcript = _bounded(uninstall_text, "uninstall_output_missing")
+    verified = uninstall_line_present(transcript)
     if bpftool_text is None:
-        body["bpftool_vantio_lines"] = None
+        lines: list[str] | None = None
+        stored_bpftool: str | None = None
     else:
-        body["bpftool_vantio_lines"] = vantio_bpftool_lines(_bounded(bpftool_text, "bpftool_missing"))
+        stored_bpftool = _bounded(bpftool_text, "bpftool_missing")
+        lines = vantio_bpftool_lines(stored_bpftool)
     if pin_listing is None:
-        body["bpffs_vantio_names"] = None
+        pins: list[str] | None = None
+        stored_pins: str | None = None
     else:
-        body["bpffs_vantio_names"] = vantio_pin_names(_bounded(pin_listing, "bpffs_pins_missing"))
-    return body
+        stored_pins = _bounded(pin_listing, "bpffs_pins_missing")
+        pins = vantio_pin_names(stored_pins)
+    removed = verified and lines == [] and pins == []
+    return {
+        "bpftool_text": stored_bpftool,
+        "bpftool_vantio_lines": lines,
+        "bpffs_vantio_names": pins,
+        "fail_reasons": list(fail_reasons or []),
+        "listing_source": listing_source,
+        "pin_listing": stored_pins,
+        "status": "VERIFIED_REMOVED" if removed else "NOT_REMOVED",
+        "uninstall_transcript": transcript,
+        "uninstall_verified_line": verified,
+    }

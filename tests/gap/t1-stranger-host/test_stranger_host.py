@@ -34,7 +34,9 @@ LOCKDOWN = "none [integrity] confidentiality"
 BOOT1 = "11111111-1111-1111-1111-111111111111"
 BOOT2 = "22222222-2222-2222-2222-222222222222"
 IMAGE = "ubuntu-2404-noble-amd64-v20261009"
-SERIAL = f"Linux version 7.0.0-1014-gcp\nKernel command line: {CMDLINE}\n"
+SERIAL = (
+    f"Linux version 7.0.0-1014-gcp\nKernel command line: {CMDLINE}\nVANTIO_BOOT_MARK={BOOT2}\n"
+)
 OPERATOR = str(SCRIPT / "stranger_host.py")
 
 
@@ -138,9 +140,14 @@ def _seal(digest: str | None = None) -> dict[str, object]:
 
 def _uninstall(**updates: object) -> dict[str, object]:
     body: dict[str, object] = {
+        "bpftool_text": "1: kprobe name do_sys_open\n",
         "bpftool_vantio_lines": [],
         "bpffs_vantio_names": [],
         "fail_reasons": [],
+        "listing_source": "operator-file",
+        "pin_listing": "cgroup\n",
+        "status": "VERIFIED_REMOVED",
+        "uninstall_transcript": "loader stopped\nUNINSTALL_VERIFIED\n",
         "uninstall_verified_line": True,
     }
     body.update(updates)
@@ -283,6 +290,21 @@ class PreflightTests(unittest.TestCase):
                 preflight.collect_host(root, attestation=constants.IMAGE_FAMILY, cgroup_name="cgroup2fs")
             self.assertEqual(caught.exception.reason, "image_exact_missing")
 
+            _write_root(root, btf=b"")
+            lockdown = root / "sys/kernel/security/lockdown"
+            lockdown.unlink()
+            lockdown.mkdir()
+            with self.assertRaises(preflight.PreflightFailure) as caught:
+                preflight.collect_host(root, attestation=IMAGE, cgroup_name="cgroup2fs")
+            self.assertEqual(caught.exception.reason, "btf_missing")
+
+            lockdown.rmdir()
+            _write_root(root)
+            (root / "proc/sys/kernel/random/boot_id").unlink()
+            with self.assertRaises(preflight.PreflightFailure) as caught:
+                preflight.collect_host(root, attestation=IMAGE, cgroup_name="cgroup2fs")
+            self.assertEqual(caught.exception.reason, "boot_id")
+
     def test_pass_records_lockdown_and_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -367,7 +389,14 @@ class GradeTests(unittest.TestCase):
         removed = _grade(uninstall=_uninstall(fail_reasons=["programs_not_removed"]))
         self.assertEqual(_step(removed, 8)["removal"], "VERIFIED_REMOVED")
         self.assertEqual(_step(removed, 8)["notes"], ["harness_fault_candidate"])
-        residual = _grade(uninstall=_uninstall(fail_reasons=["programs_not_removed"], bpffs_vantio_names=["vantio_persist"]))
+        residual = _grade(
+            uninstall=_uninstall(
+                bpffs_vantio_names=["vantio_persist"],
+                fail_reasons=["programs_not_removed"],
+                pin_listing="/sys/fs/bpf/vantio_persist\n",
+                status="NOT_REMOVED",
+            )
+        )
         self.assertEqual(_step(residual, 8)["removal"], "NOT_REMOVED")
         self.assertIn("bpffs_vantio_present", _step(residual, 8)["reasons"])
 
@@ -424,6 +453,60 @@ class GradeTests(unittest.TestCase):
         self.assertIn("teardown_incomplete", _step(_grade(teardown=incomplete), 9)["reasons"])
         owned = _teardown(vantio_ran_teardown=True)
         self.assertIn("teardown_ran_by_vantio", _step(_grade(teardown=owned), 9)["reasons"])
+
+    def test_review_fail_open_cases(self) -> None:
+        empty_boot = _host()
+        empty_boot["boot_id"] = ""
+        blank = _grade(host=empty_boot)
+        self.assertNotEqual(blank["result"], "PASS")
+        self.assertIn("boot_id", _step(blank, 1)["reasons"])
+        self.assertIn("boot_id", _step(blank, 5)["reasons"])
+
+        stale_serial = SERIAL.replace(BOOT2, BOOT1)
+        rebound = _grade(
+            serial_text=stale_serial,
+            boot={**_boot(), "serial_sha256": hashlib.sha256(stale_serial.encode()).hexdigest()},
+        )
+        self.assertIn("serial_boot_mismatch", _step(rebound, 6)["reasons"])
+        unsigned = _boot()
+        del unsigned["serial_sha256"]
+        self.assertIn("serial_boot_mismatch", _step(_grade(boot=unsigned), 6)["reasons"])
+
+        fractional = _enterprise()
+        fractional["grant_loader"] = {"audit": True, "path_observe": True, "rc": 0.0}
+        self.assertIn("grant_loader", _step(_grade(enterprise=fractional), 3)["reasons"])
+        nulls = _enterprise()
+        unchanged = dict(nulls["unchanged"]) if isinstance(nulls["unchanged"], dict) else {}
+        unchanged["generation"] = None
+        unchanged["generation_before"] = None
+        nulls["unchanged"] = unchanged
+        self.assertIn("generation_moved", _step(_grade(enterprise=nulls), 3)["reasons"])
+        coerced = _enterprise()
+        coerced_unchanged = dict(coerced["unchanged"]) if isinstance(coerced["unchanged"], dict) else {}
+        coerced_unchanged["generation"] = 1
+        coerced_unchanged["generation_before"] = True
+        coerced["unchanged"] = coerced_unchanged
+        self.assertIn("generation_moved", _step(_grade(enterprise=coerced), 3)["reasons"])
+
+        measure = _measure(BOOT1)
+        cases = measure["cases"]
+        assert isinstance(cases, list)
+        failed = dict(cases[0])
+        failed["pass"] = False
+        failed["file_errno"] = 0
+        passed = dict(cases[0])
+        cases[0] = failed
+        cases.append(passed)
+        hidden = _grade(descendant_pre={"pre": measure})
+        self.assertIn("case_not_passed", _step(hidden, 5)["reasons"])
+        measure = _measure(BOOT1)
+        cases = measure["cases"]
+        assert isinstance(cases, list)
+        skipped = dict(cases[0])
+        skipped["skipped"] = 1
+        cases[0] = skipped
+        marked = _grade(descendant_pre={"pre": measure})
+        self.assertIn("case_skipped", _step(marked, 5)["reasons"])
 
 
 class BundleTests(unittest.TestCase):
@@ -514,6 +597,13 @@ class BundleTests(unittest.TestCase):
             self.assertFalse(body["host_proof"])
             self.assertEqual(body["claim_cap"], constants.CLAIM_FIXTURE)
             self.assertNotIn(b"PRIVATE KEY", (out / "SIGNATURE.json").read_bytes())
+            sums = (out / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+            paths = [line.split("  ", 1)[1] for line in sums if line]
+            self.assertEqual(paths, sorted(paths))
+            (out / "CLAIM.md").write_text("STRANGER_HOST_PROVED\n", encoding="utf-8")
+            with self.assertRaises(PackageError) as caught:
+                bundle.verify_bundle(out)
+            self.assertEqual(caught.exception.reason, "claim_refused")
 
     def test_awaiting_requires_the_pinned_trust_document(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
