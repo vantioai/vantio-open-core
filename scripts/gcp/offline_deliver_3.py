@@ -572,25 +572,25 @@ LATER_BOOT_PROBE = (
 )
 
 
-def read_serial_log(project: str, name: str) -> tuple[int, str, int, str]:
+def read_serial_log(project: str, name: str) -> tuple[int, str, int, str, str]:
     """Read the retained serial window.
 
-    gcloud's --start hint is the next byte after this response. When the
-    response already held the buffer, the next call only returns bytes written
-    after it. Bytes the ring has already dropped do not come back. A timeout
-    on a later page keeps the pages already read. The error name is empty when
-    the walk finished on a non-empty window.
+    The first response is the window. Its stdout is the serial text. gcloud
+    writes the --start hint, and any warning, on stderr. That hint is the next
+    byte after this response, so a later call only returns bytes written after
+    it. Those later pages are best-effort. A timeout or error on one of them
+    keeps the first page and does not fail the window. Bytes the ring has
+    already dropped do not come back.
     """
     chunks: list[str] = []
+    notes: list[str] = []
     start: int | None = None
     seen: set[int] = set()
     rc = 0
     error = ""
-    finished = False
-    for _page in range(4):
+    for page_index in range(4):
         key = -1 if start is None else start
         if key in seen:
-            finished = True
             break
         seen.add(key)
         try:
@@ -601,46 +601,59 @@ def read_serial_log(project: str, name: str) -> tuple[int, str, int, str]:
                 timeout=180,
             )
         except subprocess.TimeoutExpired:
-            error = "page_timeout"
+            if page_index == 0:
+                error = "page_timeout"
             break
         except OSError:
-            error = "page_error"
+            if page_index == 0:
+                error = "page_error"
             break
         rc = proc.returncode
-        raw = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-        page = serial_console_text(raw)
-        previous = chunks[-1] if chunks else ""
-        if page and page != previous:
-            chunks.append(page)
-        nxt = next_serial_start(raw)
-        if nxt is None or not page.strip() or (start is not None and nxt <= start) or (previous and page == previous):
-            finished = True
+        page = serial_console_text(proc.stdout or "")
+        stderr = proc.stderr or ""
+        if stderr.strip():
+            notes.append(stderr.strip())
+        if page_index == 0:
+            if page.strip():
+                chunks.append(page)
+            elif rc != 0:
+                error = "nonzero"
+                break
+            else:
+                error = "empty"
+                break
+        elif page.strip():
+            previous = chunks[-1] if chunks else ""
+            if page != previous:
+                chunks.append(page)
+        else:
+            break
+        nxt = next_serial_start(stderr)
+        if nxt is None or (start is not None and nxt <= start):
             break
         start = nxt
     blob = "".join(chunks)
     if not error and not blob.strip():
         error = "empty"
-    elif not error and not finished:
-        error = "truncated"
-    elif not error and rc != 0:
-        error = "nonzero"
-    return rc, blob, len(chunks), error
+    return rc, blob, len(chunks), error, "\n".join(notes)
 
 
 def _log_serial(project: str, name: str, boot_id: str = "") -> int:
-    """Print the retained serial window and return 0 only when it kept text.
+    """Print the retained serial window and return 0 only when stdout kept text.
 
-    An empty window, a page error, a timeout, a non-zero gcloud status, or a
-    four-page cap returns 1. Bytes already read are still printed. The caller
-    decides whether that boot can proceed.
+    gcloud's own stderr is printed on SERIAL_STDERR and is not part of the
+    byte count. An empty window, a failed first page, or a non-zero gcloud
+    status with no serial text returns 1. A later page that times out does not.
     """
-    rc, blob, pages, error = read_serial_log(project, name)
+    rc, blob, pages, error, note = read_serial_log(project, name)
     marker = f" SERIAL_ERROR={error}" if error else ""
     print(
         f"SERIAL_RC={rc} SERIAL_BYTES={len(blob)} SERIAL_PAGES={pages} SERIAL_BOOT={boot_id}{marker}",
         flush=True,
     )
     print(blob, flush=True)
+    if note:
+        print(f"SERIAL_STDERR={note}", flush=True)
     if error or not blob.strip():
         return 1
     return 0

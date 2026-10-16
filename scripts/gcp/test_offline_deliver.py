@@ -1015,20 +1015,56 @@ class OfflineDeliverTest(unittest.TestCase):
             raise subprocess.TimeoutExpired(argv, 180)
 
         with mock.patch.object(od.subprocess, "run", first_then_timeout):
-            rc, blob, pages, error = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+            rc, blob, pages, error, note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
         self.assertEqual(rc, 0)
         self.assertEqual(pages, 1)
-        self.assertEqual(error, "page_timeout")
+        self.assertEqual(error, "")
         self.assertIn("first boot\n", blob)
         self.assertNotIn("Specify --start=", blob)
+        self.assertIn("--start=100", note)
+        buf = io.StringIO()
+        calls["n"] = 0
+        with mock.patch.object(od.subprocess, "run", first_then_timeout), contextlib.redirect_stdout(buf):
+            self.assertEqual(od._log_serial("vantio-lab-oct08", "vantio-gcp-lab-1", "boot"), 0)
+        self.assertNotIn("SERIAL_ERROR=", buf.getvalue())
 
         def empty(argv, **_kwargs):
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
         with mock.patch.object(od.subprocess, "run", empty):
-            _rc, blob, _pages, error = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+            _rc, blob, _pages, error, _note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
         self.assertEqual(blob, "")
         self.assertEqual(error, "empty")
+
+        def warning_only(argv, **_kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout="\n",
+                stderr="WARNING: some serial port output was lost\nSpecify --start=12 in the next get-serial-port-output command\n",
+            )
+
+        with mock.patch.object(od.subprocess, "run", warning_only):
+            _rc, blob, _pages, error, note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(error, "empty")
+        self.assertNotIn("WARNING", blob)
+        self.assertIn("WARNING", note)
+        buf = io.StringIO()
+        with mock.patch.object(od.subprocess, "run", warning_only), contextlib.redirect_stdout(buf):
+            self.assertEqual(od._log_serial("vantio-lab-oct08", "vantio-gcp-lab-1", "boot"), 1)
+        logged = buf.getvalue()
+        self.assertIn("SERIAL_ERROR=empty", logged)
+        self.assertIn("SERIAL_STDERR=", logged)
+        self.assertLess(logged.index("SERIAL_BYTES="), logged.index("WARNING"))
+
+        def first_call_times_out(argv, **_kwargs):
+            raise subprocess.TimeoutExpired(argv, 180)
+
+        with mock.patch.object(od.subprocess, "run", first_call_times_out):
+            _rc, blob, pages, error, _note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+        self.assertEqual(blob, "")
+        self.assertEqual(pages, 0)
+        self.assertEqual(error, "page_timeout")
 
         def advancing(argv, **_kwargs):
             start = 0
@@ -1044,11 +1080,15 @@ class OfflineDeliverTest(unittest.TestCase):
             )
 
         with mock.patch.object(od.subprocess, "run", advancing):
-            _rc, blob, pages, error = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
+            _rc, blob, pages, error, _note = od.read_serial_log("vantio-lab-oct08", "vantio-gcp-lab-1")
         self.assertEqual(pages, 4)
-        self.assertEqual(error, "truncated")
+        self.assertEqual(error, "")
         self.assertIn("page-0\n", blob)
         self.assertIn("page-30\n", blob)
+        buf = io.StringIO()
+        with mock.patch.object(od.subprocess, "run", advancing), contextlib.redirect_stdout(buf):
+            self.assertEqual(od._log_serial("vantio-lab-oct08", "vantio-gcp-lab-1", "boot"), 0)
+        self.assertNotIn("SERIAL_ERROR=", buf.getvalue())
 
         buf = io.StringIO()
         with mock.patch.object(od.subprocess, "run", empty), contextlib.redirect_stdout(buf):
@@ -1230,6 +1270,44 @@ class OfflineDeliverTest(unittest.TestCase):
             self.assertEqual(calls["probe"], 0)
             follow_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
             self.assertEqual(follow_body["lsm_guard"], "serial_missing")
+
+        active = {
+            "boot_id": before,
+            "cmdline": "BOOT_IMAGE=/vmlinuz ro panic=-1",
+            "host_result": "LSM_ALREADY_ACTIVE",
+            "reboot_requested": False,
+            "stock_lsm": listed,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda boot_id: active if boot_id == before else {},
+                boots=lambda _previous: "",
+                serial_status=[1],
+            )
+            with stack:
+                with self.assertRaises(SystemExit) as active_missing:
+                    od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(active_missing.exception.code, "lsm")
+            self.assertEqual(calls["log"], [before])
+            self.assertEqual(calls["wait_boot"], [])
+            active_body = json.loads((evidence / "lsm-guard.json").read_text(encoding="utf-8"))
+            self.assertEqual(active_body["lsm_guard"], "serial_missing")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            stack, calls = self._drive_lsm(
+                live=before,
+                rows=lambda boot_id: active if boot_id == before else {},
+                boots=lambda _previous: "",
+            )
+            with stack:
+                record = od._prepare_lab_lsm("vantio-lab-oct08", "vantio-gcp-lab-1", seal, evidence)
+            self.assertEqual(record["lsm_guard"], "already_active")
+            self.assertIs(record["stock_bpf_lsm"], True)
+            self.assertEqual(calls["log"], [before])
+            self.assertEqual(calls["wait_boot"], [])
 
 
 if __name__ == "__main__":
