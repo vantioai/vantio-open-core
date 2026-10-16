@@ -1,0 +1,13 @@
+{
+  "formal_reproducibility": "NOT_CLAIMED",
+  "label": "Lab-only",
+  "working_seal": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403",
+  "comparison": "NOT_PERFORMED",
+  "match": null,
+  "reason": "source_unavailable",
+  "rebuilt_sha256": null,
+  "remote_exit_code": 128,
+  "remote_ok": false,
+  "remote_stderr": "remote: Repository not found.\nfatal: repository 'https://github.com/vantioai/vantio-phantom-engine.git/' not found",
+  "source_dir_found": false
+}
