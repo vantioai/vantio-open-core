@@ -314,6 +314,7 @@ READINESS_REASON = "bpf_lsm_inactive"
 LSM_STOCK_PATH = Path("/var/lib/vantio-lab/lsm-stock.json")
 LSM_BOOT_MARK = Path("/boot/vantio-lsm-stock.json")
 LSM_ROWS_PATH = Path("/tmp/enterprise-pe-rows.json")
+LAB_ROWS_PATH = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
 
 
 def lsm_list_with_bpf(current: str) -> str:
@@ -1571,6 +1572,33 @@ def lsm_boot_decision(
     return body, 0
 
 
+def lsm_row_paths() -> tuple[Path, Path]:
+    return (LSM_ROWS_PATH, LAB_ROWS_PATH)
+
+
+def write_lsm_rows(body: dict) -> dict:
+    """Write this boot's LSM result where the runner reads it first.
+
+    The pre-reboot guard leaves /var/lib/vantio-lab/enterprise-pe-rows.json
+    in place. A second boot that only refreshes /tmp is reported as the
+    first boot.
+    """
+    stamped = dict(body)
+    boot = stamped.get("boot_id")
+    if not isinstance(boot, str) or not boot or "\n" in boot or len(boot) > 80:
+        stamped["boot_id"] = read_boot_id()
+    text = json.dumps(stamped, indent=2) + "\n"
+    for path in lsm_row_paths():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        try:
+            os.chmod(path, 0o644)
+        except OSError:
+            pass
+    print(text, flush=True)
+    return stamped
+
+
 def write_lsm_status() -> int:
     """0 when bpf is already an active LSM. 1 when the loader proof still has to run."""
     lsm_path = Path("/sys/kernel/security/lsm")
@@ -1609,9 +1637,7 @@ def write_lsm_status() -> int:
                 "customer_claim": False,
                 "reboot_requested": False,
             }
-            text = json.dumps(mismatch, indent=2) + "\n"
-            LSM_ROWS_PATH.write_text(text, encoding="utf-8")
-            print(text, flush=True)
+            write_lsm_rows(mismatch)
             return 2
         cfg = Path("/boot/grub/grub.cfg")
         disk = first_linux_line(cfg.read_text(encoding="utf-8", errors="replace")) if cfg.is_file() else ""
@@ -1628,9 +1654,7 @@ def write_lsm_status() -> int:
                 "customer_claim": False,
                 "reboot_requested": False,
             }
-            text = json.dumps(mismatch, indent=2) + "\n"
-            LSM_ROWS_PATH.write_text(text, encoding="utf-8")
-            print(text, flush=True)
+            write_lsm_rows(mismatch)
             return 2
         return code
     if body.get("host_result") == "FAIL":
@@ -1642,13 +1666,7 @@ def write_lsm_status() -> int:
     chain = _read_bootchain()
     if chain and "bootchain" not in body:
         body["bootchain"] = chain
-    text = json.dumps(body, indent=2) + "\n"
-    LSM_ROWS_PATH.write_text(text, encoding="utf-8")
-    try:
-        os.chmod(LSM_ROWS_PATH, 0o644)
-    except OSError:
-        pass
-    print(text, flush=True)
+    write_lsm_rows(body)
     return code
 
 

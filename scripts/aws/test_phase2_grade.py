@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import socket
@@ -823,6 +824,29 @@ class BaselineDiagTests(unittest.TestCase):
             rows = baseline_diag.boot_file_manifest(root)
             self.assertEqual(rows[0]["kind"], "env")
             self.assertEqual(rows[0]["variables"], [])
+
+    def test_lsm_rows_record_this_boot_in_both_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tmp_rows = root / "tmp-rows.json"
+            lib_rows = root / "var" / "enterprise-pe-rows.json"
+            original = baseline_diag.lsm_row_paths
+            baseline_diag.lsm_row_paths = lambda: (tmp_rows, lib_rows)
+            try:
+                written = baseline_diag.write_lsm_rows(
+                    {
+                        "host_result": "LSM_ENABLED",
+                        "cmdline": "lsm=lockdown,capability,bpf panic=-1",
+                        "stock_lsm": "lockdown,capability,bpf",
+                    }
+                )
+            finally:
+                baseline_diag.lsm_row_paths = original
+            self.assertEqual(written["boot_id"], baseline_diag.read_boot_id())
+            for path in (tmp_rows, lib_rows):
+                body = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(body["boot_id"], written["boot_id"])
+                self.assertEqual(body["host_result"], "LSM_ENABLED")
 
     def test_same_filesystem_stub_seals_the_prefix_path(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
