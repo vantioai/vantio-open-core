@@ -999,6 +999,7 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("W3_EXPECTED_SEAL: ${{ inputs.seal }}", arm)
         self.assertIn("scripts/clean-host/t5/", arm)
         self.assertIn("scripts/aws/lab-guests/t5-egress.sh", arm)
+        self.assertIn("W3_BATTERY: ${{ inputs.battery }}", arm)
         preamble = Path(steps.__file__).read_text(encoding="utf-8").split("def ", 1)[0]
         self.assertNotIn("import t5_battery", preamble)
         enterprise = Path(steps.__file__).read_text(encoding="utf-8")
@@ -1161,6 +1162,24 @@ class EnterpriseBundleTests(unittest.TestCase):
         self.assertIn("application/vnd.github.raw", text)
         self.assertNotIn("release", text)
         self.assertNotIn("lab-bundle/enterprise-pe-2026-10-08", text)
+        pin_args = " ".join(enterprise_bundle.public_pin_download_args(enterprise_bundle.BUNDLE_COMMIT))
+        self.assertIn("lab-bundle/public-pin.oci.tar", pin_args)
+        self.assertIn(enterprise_bundle.BUNDLE_COMMIT, pin_args)
+        self.assertNotIn("release", pin_args)
+        with tempfile.TemporaryDirectory() as tmp:
+            wrong = Path(tmp) / "public-pin.oci.tar"
+            wrong.write_bytes(b"not-the-public-pin")
+            with self.assertRaises(lab.GuardAbort) as caught:
+                enterprise_bundle.verify_public_pin(wrong)
+            self.assertEqual(caught.exception.reason, "public_pin_digest")
+        steps_text = Path(steps.__file__).read_text(encoding="utf-8")
+        self.assertIn("verify_public_pin", steps_text)
+        self.assertIn('copy_to(guest_dir / "product_uninstall_census.py", "product_uninstall_census.py")', steps_text)
+        shell = Path(steps.__file__).resolve().parent.joinpath("lab-guests", "enterprise-rows.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('last.get("name") == "reupgrade"', shell)
+        self.assertIn("authorized_uninstall", shell)
 
     def test_row_pull_sends_a_fresh_instance_connect_key(self) -> None:
         text = Path(steps.__file__).read_text(encoding="utf-8")

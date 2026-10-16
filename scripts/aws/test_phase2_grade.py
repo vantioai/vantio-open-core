@@ -124,28 +124,63 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertIn('["docker", "stop"', body)
         self.assertIn("detached_by_lab", body)
 
-    def test_rollback_names_the_missing_second_image(self) -> None:
-        body = grade.grade_rollback_gap(
-            from_pin=grade.PUBLIC_INSTALLER_PIN,
-            to_seal=grade.WORKING_SEAL,
-            rollback_image_present=False,
+    def test_upgrade_cycle_checks_enforcement_and_uninstall(self) -> None:
+        pin = "sha256:" + "a" * 64
+        seal = "sha256:" + "b" * 64
+
+        def step(name: str, digest: str, image: str, errno: int = 13) -> dict:
+            return {
+                "archive_sha256": digest,
+                "attributed": errno == 13,
+                "file_errno": errno,
+                "image_id": image,
+                "name": name,
+                "uninstall": {"tail": "UNINSTALL_VERIFIED\n", "verified_removed": True},
+            }
+
+        held = grade.grade_image_cycle(
+            [
+                step("baseline", grade.PUBLIC_INSTALLER_PIN, pin),
+                step("upgrade", grade.WORKING_SEAL, seal),
+                step("rollback", grade.PUBLIC_INSTALLER_PIN, pin),
+                step("reupgrade", grade.WORKING_SEAL, seal),
+            ]
         )
-        self.assertEqual(body["reason"], "rollback_image_absent")
-        self.assertEqual(body["host_result"], "HOLD")
-        self.assertEqual(body["host_rollback"], "NOT_RUN")
-        self.assertFalse(body["upgrade_pass"])
-        self.assertNotEqual(grade.PUBLIC_INSTALLER_PIN, grade.WORKING_SEAL)
-        self.assertNotEqual(grade.WORKING_SEAL, grade.PREVIOUS_WORKING_SEAL)
-        wrong = grade.grade_rollback_gap(
-            from_pin=grade.PUBLIC_INSTALLER_PIN,
-            to_seal=grade.PREVIOUS_WORKING_SEAL,
-            rollback_image_present=False,
+        self.assertEqual(held["host_result"], "RECORDED")
+        self.assertEqual(held["host_rollback"], "RAN")
+        self.assertTrue(held["upgrade_pass"])
+        self.assertFalse(held["lab_pass"])
+        self.assertFalse(held["customer_claim"])
+        self.assertEqual(held["reason"], "upgrade_rollback_reupgrade")
+        opened = grade.grade_image_cycle(
+            [
+                step("baseline", grade.PUBLIC_INSTALLER_PIN, pin),
+                step("upgrade", grade.WORKING_SEAL, seal, errno=0),
+                step("rollback", grade.PUBLIC_INSTALLER_PIN, pin),
+                step("reupgrade", grade.WORKING_SEAL, seal),
+            ]
         )
-        self.assertEqual(wrong["reason"], "seal")
+        self.assertEqual(opened["reason"], "upgrade_enforcement")
+        self.assertEqual(opened["host_result"], "FAIL")
+        self.assertFalse(opened["upgrade_pass"])
+        same = grade.grade_image_cycle(
+            [
+                step("baseline", grade.PUBLIC_INSTALLER_PIN, pin),
+                step("upgrade", grade.WORKING_SEAL, pin),
+                step("rollback", grade.PUBLIC_INSTALLER_PIN, pin),
+                step("reupgrade", grade.WORKING_SEAL, pin),
+            ]
+        )
+        self.assertEqual(same["reason"], "image_identity")
         host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
-        run = host.split("def run_2c", 1)[1].split("\ndef run_2d", 1)[0]
-        self.assertNotIn("docker", run)
-        self.assertIn("grade_rollback_gap", run)
+        run = host.split("def _load_oci", 1)[1].split("\ndef run_2d", 1)[0]
+        self.assertIn("public-pin.oci.tar", run)
+        self.assertIn("grade_image_cycle", run)
+        self.assertIn('"--uninstall"', run)
+        self.assertNotIn("grade_rollback_gap", run)
+        self.assertNotIn("cgroup detach", run)
+        self.assertNotIn(".unlink(", run)
+        self.assertNotIn("rmdir", run)
         perf = host.split("def run_2e", 1)[1].split("\ndef run_2f", 1)[0]
         self.assertIn("time_revoke=True", perf)
         self.assertIn("revoke_convergence_ms", perf)
