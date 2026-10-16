@@ -26,7 +26,7 @@ class GcpT5PlanTests(unittest.TestCase):
         self.assertFalse(quiet["dispatch"])
         self.assertFalse(quiet["attached"])
         self.assertIn("not_dispatched", quiet["reasons"])
-        self.assertIn("workflow_has_no_t5_input", quiet["reasons"])
+        self.assertNotIn("workflow_has_no_t5_input", quiet["reasons"])
         self.assertNotIn("navera", quiet["reasons"])
 
     def test_navera_and_static_keys_are_refused(self) -> None:
@@ -38,6 +38,50 @@ class GcpT5PlanTests(unittest.TestCase):
         )
         self.assertIn("static_key", keyed["reasons"])
         self.assertFalse(keyed["dispatch"])
+
+    def test_dispatch_guard_accepts_only_the_lane_seal(self) -> None:
+        env = {
+            "T5_EGRESS": "true",
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "EXPECTED_SEAL": od.t5_battery.LANE_SEAL,
+            "RUN_BATTERIES": "false",
+            "SELF_SERVICE": "false",
+        }
+        self.assertEqual(od.assert_t5_dispatch(env), od.t5_battery.LANE_SEAL)
+        public = dict(env)
+        public["EXPECTED_SEAL"] = od.t5_battery.PUBLIC_PIN
+        with self.assertRaises(SystemExit):
+            od.assert_t5_dispatch(public)
+        mixed = dict(env)
+        mixed["RUN_BATTERIES"] = "true"
+        with self.assertRaises(SystemExit):
+            od.assert_t5_dispatch(mixed)
+        foreign = dict(env)
+        foreign["GCP_LAB_PROJECT"] = "vantio-lab-navera"
+        with self.assertRaises(SystemExit):
+            od.assert_t5_dispatch(foreign)
+
+    def test_t5_evidence_keeps_the_lab_cgroup_only(self) -> None:
+        kept = od.allow_battery(
+            {
+                "battery": "t5-egress",
+                "result": "pass",
+                "verifier": "accepted",
+                "user_port": "pass",
+                "kernel_attach": "Lab-only",
+                "label": "Lab-only",
+                "cgroup": "/sys/fs/cgroup/vantio-t5-lab.slice/t5-drill",
+                "attached": True,
+                "outside_unaffected": True,
+                "enrolled_slice": False,
+                "hostname": "hidden.example",
+            }
+        )
+        self.assertEqual(kept["cgroup"], "/sys/fs/cgroup/vantio-t5-lab.slice/t5-drill")
+        self.assertEqual(kept["verifier"], "accepted")
+        self.assertNotIn("hostname", kept)
+        other = od.allow_battery({"cgroup": "/sys/fs/cgroup/vantio-enrolled.slice"})
+        self.assertIsNone(other)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,11 @@ on:
         required: false
         default: false
         type: boolean
+      t5_egress:
+        description: Run battery t5-egress on the fresh VM. Does not run enterprise, descendant, self-service, or red-team rows.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -77,6 +82,10 @@ jobs:
           test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
           if [ "${{ inputs.self_service }}" = "true" ] && [ "${{ inputs.run_batteries }}" = "true" ]; then
             echo "self_service does not run the enterprise batteries" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.t5_egress }}" = "true" ] && { [ "${{ inputs.run_batteries }}" = "true" ] || [ "${{ inputs.self_service }}" = "true" ] || [ "${{ inputs.redteam_brain }}" = "true" ]; }; then
+            echo "t5_egress does not run the other batteries" >&2
             exit 1
           fi
 
@@ -229,6 +238,10 @@ jobs:
             echo "self_service does not run the enterprise batteries" >&2
             exit 1
           fi
+          if [ "${{ inputs.t5_egress }}" = "true" ] && { [ "${{ inputs.run_batteries }}" = "true" ] || [ "${{ inputs.self_service }}" = "true" ] || [ "${{ inputs.redteam_brain }}" = "true" ]; }; then
+            echo "t5_egress does not run the other batteries" >&2
+            exit 1
+          fi
 
       - name: Refuse static GCP keys
         env:
@@ -272,6 +285,10 @@ jobs:
             scripts/aws/lab-guests/baseline_diag.py
             scripts/aws/lab-guests/sticky_write.py
             scripts/aws/lab-guests/self_service.py
+            scripts/aws/lab-guests/t5-egress.sh
+            scripts/clean-host/t5/
+            packages/t5-egress-drills/
+            packages/t5-egress-kernel/
             scripts/lab/stage_lab_trust.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
@@ -345,7 +362,7 @@ jobs:
           python3 scripts/gcp/offline_deliver.py create-instance
 
       - name: Copy the bundle over IAP and re-check the digest
-        if: ${{ !inputs.run_batteries && !inputs.self_service }}
+        if: ${{ !inputs.run_batteries && !inputs.self_service && !inputs.t5_egress }}
         env:
           GCP_LAB_EXECUTE: "1"
           GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
@@ -440,6 +457,43 @@ jobs:
           set -euo pipefail
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           python3 scripts/gcp/offline_deliver.py run-batteries
+
+      - name: Compile the T5 loader
+        if: inputs.t5_egress
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang gcc libbpf-dev
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
+            -c packages/t5-egress-kernel/bpf/t5_egress.bpf.c \
+            -o "${{ runner.temp }}/t5_egress.bpf.o"
+          gcc -O2 -Wall -Wextra -Werror \
+            -o "${{ runner.temp }}/t5_load" \
+            scripts/clean-host/t5/t5_load.c -lbpf -lelf -lz
+          "${{ runner.temp }}/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill
+          "${{ runner.temp }}/t5_load" path-check /sys/fs/cgroup/vantio-enrolled.slice && exit 1 || true
+
+      - name: Run t5-egress on the fresh VM
+        if: inputs.t5_egress
+        env:
+          GCP_LAB_EXECUTE: "1"
+          GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
+          GCP_LAB_GATE_JSON: ${{ runner.temp }}/gcp-lab-evidence/cost-gate.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          T5_EGRESS: "true"
+          RUN_BATTERIES: "false"
+          SELF_SERVICE: "false"
+          FETCHED_SEAL: ${{ needs.fetch.outputs.seal_sha256 }}
+          EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
+          T5_OBJECT: ${{ runner.temp }}/t5_egress.bpf.o
+          T5_LOADER: ${{ runner.temp }}/t5_load
+          T5_GUEST_SCRIPT: scripts/aws/lab-guests/t5-egress.sh
+        run: |
+          set -euo pipefail
+          export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
+          python3 scripts/gcp/offline_deliver.py run-t5-egress
 
       - name: Capture the serial console
         if: always() && steps.auth.outcome == 'success'

@@ -1303,6 +1303,115 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
     return 0
 
 
+def _loader_libs(loader: Path) -> list[Path]:
+    completed = subprocess.run(["ldd", str(loader)], check=False, capture_output=True, text=True)
+    found: list[Path] = []
+    for line in (completed.stdout or "").splitlines():
+        if "=>" not in line:
+            continue
+        parts = line.split()
+        if len(parts) < 3 or not parts[2].startswith("/"):
+            continue
+        path = Path(parts[2])
+        if path.is_file() and path.name.startswith(("libbpf", "libelf", "libzstd")):
+            found.append(path)
+    return found
+
+
+def run_t5_egress(env: Mapping[str, str]) -> int:
+    """Copy the lab program to the fresh VM and run verifier, port check, then drills."""
+    _enabled(env)
+    project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    _gate_ok(env)
+    seal = assert_t5_dispatch(env)
+    fetched = env.get("FETCHED_SEAL", "").strip().lower()
+    if fetched and fetched != seal:
+        raise SystemExit("seal")
+    bundle = Path(env.get("W3_BUNDLE_DIR", ""))
+    if bundle.is_dir():
+        checked = assert_bundle_dir(bundle, seal)
+        contract = env.get("EXPECTED_CONTRACT_SHA256", "").strip()
+        if contract and checked["contract_sha256"] != contract:
+            raise SystemExit("contract_sha")
+    name = instance_name(env.get("GITHUB_RUN_ID", ""))
+    evidence = _evidence_dir(env)
+    repo = Path(env.get("T5_REPO") or Path(__file__).resolve().parents[2])
+    loader = Path(env.get("T5_LOADER", ""))
+    obj = Path(env.get("T5_OBJECT", ""))
+    script = Path(env.get("T5_GUEST_SCRIPT") or t5_battery.GUEST_SCRIPT)
+    if not loader.is_file() or not obj.is_file() or not script.is_file():
+        raise SystemExit("t5_files")
+    payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "t5-guest-payload"
+    if payload_dir.exists():
+        shutil.rmtree(payload_dir)
+    payload_dir.mkdir(parents=True)
+    try:
+        t5_battery.pack_tree(repo, payload_dir / "t5-egress.tar")
+        shutil.copy2(loader, payload_dir / "t5_load")
+        shutil.copy2(obj, payload_dir / "t5_egress.bpf.o")
+        shutil.copy2(script, payload_dir / "t5-egress.sh")
+        for lib in _loader_libs(loader):
+            shutil.copy2(lib, payload_dir / lib.name)
+        _wait_until_running(project, name)
+        made = _ssh(
+            project,
+            name,
+            f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} "
+            f"&& sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR}",
+        )
+        if made.returncode != 0:
+            raise SystemExit("ssh")
+        _scp_to(project, name, sorted(payload_dir.iterdir()))
+        rows_remote = f"{GUEST_DIR}/t5-rows.json"
+        ran = _ssh(
+            project,
+            name,
+            "chmod 755 "
+            f"{GUEST_DIR}/t5_load {GUEST_DIR}/t5-egress.sh && "
+            "sudo env T5_REQUIRE_ATTACH=1 T5_HOST_CLASS=vantio-owned "
+            f"bash {GUEST_DIR}/t5-egress.sh {GUEST_DIR} {rows_remote}",
+        )
+        local = evidence / "t5-rows.json"
+        if not _scp_from(project, name, rows_remote, local):
+            raise SystemExit("t5_rows")
+        body = _load_json_file(local)
+        if not isinstance(body, dict):
+            raise SystemExit("t5_rows")
+        summary = {
+            "battery": "t5-egress",
+            "boot_id": body.get("boot_id"),
+            "cgroup": body.get("cgroup"),
+            "claim_cap": CLAIM_CAP,
+            "cloud": "gcp",
+            "enrolled_slice": False,
+            "kernel_attach": body.get("kernel_attach"),
+            "label": body.get("label"),
+            "mode": "t5-egress",
+            "network": NETWORK,
+            "project_id": project,
+            "public_ip": False,
+            "result": body.get("result"),
+            "seal_sha256": seal,
+            "status": "T5_EGRESS",
+            "uptime_seconds": body.get("uptime_seconds"),
+            "user_port": body.get("user_port"),
+            "verifier": body.get("verifier"),
+            "attached": body.get("attached") is True,
+            "outside_unaffected": body.get("outside_unaffected") is True,
+        }
+        write_evidence(evidence / "gcp-lab-rows.json", summary)
+        print(json.dumps(summary))
+        if ran.returncode != 0 or body.get("result") != "pass" or body.get("verifier") != "accepted":
+            raise SystemExit("t5_egress")
+        if body.get("user_port") != "pass" or body.get("cgroup") != "/sys/fs/cgroup/vantio-t5-lab.slice/t5-drill":
+            raise SystemExit("t5_egress")
+        return 0
+    finally:
+        if payload_dir.exists():
+            shutil.rmtree(payload_dir, ignore_errors=True)
+        remove_os_login_key()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     command = args[0] if args else ""
@@ -1330,6 +1439,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return plumb_guest(env)
         if command == "run-batteries":
             return run_batteries(env)
+        if command == "run-t5-egress":
+            return run_t5_egress(env)
         if command == "run-self-service":
             return run_self_service(env)
         if command == "run-redteam":

@@ -37,6 +37,11 @@ import redteam_brain as rtbrain
 import redteam_campaign
 import redteam_packet
 
+_T5_DIR = Path(__file__).resolve().parents[1] / "clean-host" / "t5"
+if str(_T5_DIR) not in sys.path:
+    sys.path.insert(0, str(_T5_DIR))
+import t5_battery  # noqa: E402
+
 CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 LAB_PROJECT = "vantio-lab-oct08"
 BUCKET = "vantio-lab-oct08-handoff"
@@ -100,7 +105,7 @@ MAX_BATTERY_DEPTH = 8
 PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 USAGE = (
     "usage: offline_deliver.py assert-bundle|upload-handoff|download-handoff|"
-    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|run-redteam|run-self-service|delete-handoff|remove-oslogin-key|"
+    "hash-debs|check-dispatch|create-instance|plumb-guest|run-batteries|run-t5-egress|run-redteam|run-self-service|delete-handoff|remove-oslogin-key|"
     "serial-console|teardown-if-present"
 )
 
@@ -285,10 +290,20 @@ ENUMS = {
     "cloud": frozenset({"gcp"}),
     "image": frozenset({f"{IMAGE_PROJECT}/{IMAGE_FAMILY}", IMAGE_NAME}),
     "machine_type": frozenset({lab.MACHINE_TYPE, rtbrain.BRAIN_MACHINE}),
-    "mode": frozenset({"plumb", "enterprise", "descendant-b1", "self-service"}),
+    "mode": frozenset({"plumb", "enterprise", "descendant-b1", "self-service", "t5-egress"}),
     "network": frozenset({NETWORK}),
     "project_id": frozenset({LAB_PROJECT}),
-    "status": frozenset({"PLUMB_DIGEST_MATCH", "BUNDLE_READY", "BLOCKED_BUNDLE", "VERIFIED_REMOVED", "NOT_REMOVED", "SELF_SERVICE"}),
+    "status": frozenset(
+        {
+            "PLUMB_DIGEST_MATCH",
+            "BUNDLE_READY",
+            "BLOCKED_BUNDLE",
+            "VERIFIED_REMOVED",
+            "NOT_REMOVED",
+            "SELF_SERVICE",
+            "T5_EGRESS",
+        }
+    ),
     "subnet": frozenset({SUBNET}),
     "verify_status": frozenset({"VERIFIED_REMOVED", "NOT_REMOVED", "UNKNOWN"}),
     "zone": frozenset({ZONE}),
@@ -647,6 +662,30 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
         if key == "phase" and value in {"pre", "post"}:
             kept[key] = value
             continue
+        if key == "verifier" and value in {"accepted", "rejected", "not_run"}:
+            kept[key] = value
+            continue
+        if key == "user_port" and value in {"pass", "fail", "not_run"}:
+            kept[key] = value
+            continue
+        if key == "kernel_attach" and value in {"Lab-only", "Roadmap"}:
+            kept[key] = value
+            continue
+        if key == "label" and value in {"Verified", "Lab-only", "Roadmap"}:
+            kept[key] = value
+            continue
+        if key == "cgroup" and value == "/sys/fs/cgroup/vantio-t5-lab.slice/t5-drill":
+            kept[key] = value
+            continue
+        if key in {"attached", "outside_unaffected"} and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key == "enrolled_slice" and value is False:
+            kept[key] = value
+            continue
+        if key == "uptime_seconds" and isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 7200:
+            kept[key] = value
+            continue
         if key == "battery" and value in {"enterprise", "descendant-b1", "t5-egress"}:
             kept[key] = value
             continue
@@ -828,6 +867,28 @@ def expected_seal(env: Mapping[str, str]) -> str:
     if HEX64_RE.fullmatch(raw) is None or raw in (PUBLIC_INSTALLER_PIN, TRACKING_2A_SEAL):
         raise SystemExit("seal")
     return raw
+
+
+def t5_requested(env: Mapping[str, str]) -> bool:
+    raw = env.get("T5_EGRESS", "false").strip().lower()
+    if raw not in ("true", "false"):
+        raise SystemExit("t5_egress")
+    return raw == "true"
+
+
+def assert_t5_dispatch(env: Mapping[str, str]) -> str:
+    """t5-egress is one battery. It does not run the enterprise set."""
+    if not t5_requested(env):
+        raise SystemExit("t5_egress")
+    if batteries_requested(env) or env.get("SELF_SERVICE", "false").strip().lower() == "true" or brain_requested(env):
+        raise SystemExit("t5_egress")
+    project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
+    if "navera" in project.lower():
+        raise SystemExit("navera")
+    seal = expected_seal(env)
+    if seal != t5_battery.LANE_SEAL:
+        raise SystemExit("seal")
+    return seal
 
 
 def batteries_requested(env: Mapping[str, str]) -> bool:

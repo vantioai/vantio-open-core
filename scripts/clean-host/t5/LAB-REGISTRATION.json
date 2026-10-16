@@ -1,7 +1,7 @@
 {
   "track": "T5",
   "suite": "clean-host",
-  "status": "WIRED_NOT_DISPATCHED",
+  "status": "INPUT_READY_NOT_DISPATCHED",
   "cloud_run": false,
   "catalog": "scripts/clean-host/t5/catalog.json",
   "proof": "python3 scripts/clean-host/t5/proof.py",
@@ -9,7 +9,7 @@
   "battery_id": "t5-egress",
   "label": "Lab-only",
   "kernel_attach": "Roadmap",
-  "integration_step": "Battery id t5-egress is on the allow-list in scripts/aws/w3_lab_steps.py. The guest script runs the userspace proof and the kernel model. It does not attach. GCP plan scripts/gcp/t5_lab_plan.py returns dispatch false. Workflow files were not edited.",
+  "integration_step": "Battery id t5-egress is on the allow-list. The GCP workflow input t5_egress defaults to false and does not run the enterprise batteries. The guest runs the loader only on /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill.",
   "lab_slot_owner": "bc-8b310b16",
   "lab_project": "vantio-lab-oct08",
   "seal_note": "Lane K lab seal is 6d3ce580. This registration does not change the public pin e0b19d55.",
