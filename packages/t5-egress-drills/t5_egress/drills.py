@@ -174,10 +174,7 @@ def _volume_pass(policy: Policy, mode: str, upstream: socket.socket, gate: Volum
         packet = dns_query(LISTED, qid=index + 1)
         decision = decide_dns_query(packet, "127.0.0.1", policy, mode, True, gate)
         peer = _dns_exchange(packet, "127.0.0.1", 5353, decision.transmit, upstream)
-        if index == 0 or index == cap - 1:
-            log.add(f"{mode}_within_{index}", decision, peer, "ALLOW", True)
-        elif not peer or decision.action != "ALLOW":
-            log.add(f"{mode}_within_{index}", decision, peer, "ALLOW", True)
+        log.add(f"{mode}_within_{index}", decision, peer, "ALLOW", True)
     packet = dns_query(LISTED, qid=cap + 1)
     decision = decide_dns_query(packet, "127.0.0.1", policy, mode, True, gate)
     expect = "OBSERVE_WOULD_DENY" if mode == "observe" else "DENY"
