@@ -36,7 +36,7 @@ Inherited destinations and the limit this track accepts:
 | Destination in the 2026-10-10 drill | What T8 does with it |
 | --- | --- |
 | Collector contrib 0.136.0 and 0.103.0, Jaeger 1.62.0, Tempo 2.7.1, Loki 3.4.2, Grafana 11.5.2, local webhook, local rsyslog | Keep as the lab method for a later phase. Do not rerun it here |
-| Prometheus series scraped from the collector | The drill says this is not an Optics event count. T8 does not call it one |
+| Prometheus v3.2.1 | The earlier row scraped the collector series `traces_span_metrics_calls_total` at sample value 0 and says that row is not an Optics event count. The final build's mTLS scrape returned `vantio_optics_events_sent_total` at 4, and remote-write over TLS returned that counter at 6. T8 records both notes and does not treat either as product metrics |
 | OpenSearch 2.19.1 | Lab only. Its own TLS listener was a gap. nginx in front of plaintext is not OpenSearch TLS |
 | Splunk HEC mock and Datadog mock | Mocks. The products were not used. A Splunk product connector stays Roadmap |
 | Microsoft Sentinel | Absent from the drill. Designed below. Not tested |
@@ -113,7 +113,7 @@ Spanner, or any other immutable store, stays out of phase 2 until a founder forc
 
 The workload path fails open when the exporter cannot deliver. Reason: a SIEM outage must not become a required proxy and must not stop an enrolled agent by itself. The claim fails closed: undelivered events stay `NOT_SENT`, and a mutable ledger stays `MUTABLE_LOCAL_LEDGER`.
 
-An exporter bug that would block `offer()` for longer than the drill's lab bound is a failed design. The drill's closed-port offers stayed under 5 ms in that lab note. Phase 2 reuses that method. It does not promote the number to a product limit in this document.
+An exporter bug that would block `offer()` for longer than the drill's lab method allows is a failed design. The nine-exporter closed-port run recorded a max offer of 4.792 ms. The final-build Jaeger TLS closed-port run recorded a max offer of 5.368 ms. Phase 2 reuses that method. It does not promote either number to a product limit.
 
 WORM validation fails closed on any write error, short read, or hash mismatch. It does not repair the file and it does not replace it with an empty store. That matches the Optics corrupt-store rule already in `docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md`: preserve bytes, do not present a partial salvage as complete.
 
@@ -155,7 +155,7 @@ WORM rollback is deleting the lab copy of the fixture file. It does not touch a 
 
 ## Proof plan
 
-Phase 1 proof is `node scripts/gap-program/check-p1-design.mjs`, which checks that this document cites `ef3a33a` and does not authorize product OTLP.
+Phase 1 proof is `node scripts/gap-program/check-p1-design.mjs`. For this file it checks that the strings `ef3a33a` and `MUTABLE_LOCAL_LEDGER` appear, and that no line assigns the product OTLP authorization flag a yes value. It does not re-run the drill.
 
 Phase 2 proof, not authorized by this packet:
 

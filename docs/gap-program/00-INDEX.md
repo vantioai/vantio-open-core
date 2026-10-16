@@ -55,8 +55,8 @@ These forces were started in parallel on 2026-10-16 and are not in this commit. 
 
 T8 merges with the zero-cost local OTLP and SIEM drill already recorded on `cursor/optics-observability-5bed` at `ef3a33a` (2026-10-10), draft PR 191. That branch is not merged here. `product_otlp_export_authorized` stays false. Public docs on this base still say there is no OTLP exporter.
 
-A search of this repository, `vantio-phantom-engine` `docs/`, `vantio-enterprise` `docs/`, and `vantio-deploy` `docs/` on 2026-10-16 did not find a separate file titled as an 9 October 2026 test plan. The drill that matches the request is the 10 October 2026 packet. It used local receivers and mocks, and it recorded Zach's scoped acceptance the same day. Splunk HEC and Datadog were mocks. The Splunk product, the Datadog product, Microsoft Sentinel, OCSF, and WORM validation were not part of that packet.
+A search of this repository, `vantio-phantom-engine` `docs/`, `vantio-enterprise` `docs/`, and `vantio-deploy` `docs/` on 2026-10-16 did not find a separate file titled as an 9 October 2026 test plan. The drill that matches the request is the 10 October 2026 packet. Its first commit `92b814d` and draft pull request 191 are timestamped 2026-10-10T04:43Z, which is still 9 October in US Pacific time. Zach's scoped acceptance is recorded at 2026-10-10T15:09:57Z. The drill used local receivers and mocks. Splunk HEC and Datadog were mocks. The Splunk product, the Datadog product, Microsoft Sentinel, OCSF, and WORM validation were not part of that packet.
 
 ## Checker
 
-`node scripts/gap-program/check-p1-design.mjs` checks the required sections, the labels, and the claim fence, then writes `evidence/gap-program/T6-T14-P1.json`.
+`node scripts/gap-program/check-p1-design.mjs` checks the required sections, the track labels, the T9 cell counts, the T13 family rows, and the claim fence inside `docs/gap-program/`. It writes `evidence/gap-program/T6-T14-P1.json`. The field `git_head_at_generation` is the HEAD at the moment the checker ran. The nine design-file hashes are the attestation of those files. The checker does not watch the README, tags, or commits outside this directory.

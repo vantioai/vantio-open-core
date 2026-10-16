@@ -35,7 +35,13 @@ test("a price in a track file fails the fence", () => {
       writeFileSync(path.join(dir, "docs", "gap-program", name), readFileSync(path.join(source, name)));
     }
     const t6 = path.join(dir, "docs", "gap-program", "T6-identity-interop.md");
-    writeFileSync(t6, `${readFileSync(t6, "utf8")}\nPrice leak $499\n`);
+    writeFileSync(t6, `${readFileSync(t6, "utf8")}\nPrice leak $499 and 1200 USD\n`);
+    const t8 = path.join(dir, "docs", "gap-program", "T8-ocsf-otlp-siem.md");
+    writeFileSync(t8, `${readFileSync(t8, "utf8")}\nproduct_otlp_export_authorized: true\n`);
+    const t13 = path.join(dir, "docs", "gap-program", "T13-fedramp-fips-gap.md");
+    writeFileSync(t13, `${readFileSync(t13, "utf8")}\nFedRAMP Moderate authorization granted.\n`);
+    const t14 = path.join(dir, "docs", "gap-program", "T14-eu-ai-act-evidence-outline.md");
+    writeFileSync(t14, `${readFileSync(t14, "utf8")}\nVantio fulfills the regulation and is conformant.\n`);
     const evidence = checkDesign(dir);
     assert.equal(evidence.ok, false);
     assert.ok(evidence.errors.some((line) => line.includes("forbidden")));

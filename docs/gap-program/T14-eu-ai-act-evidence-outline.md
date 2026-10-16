@@ -46,7 +46,7 @@ The pack, if a later force writes it, has these sections and no others until cou
 5. Human oversight description. Points at T10 and at the E3 status `PLANNED`. Includes timeout deny and the rule that the workload is not an approver.
 6. Cybersecurity description. Points at the T9 matrix, with Verified count 0, and at T7 and T11 as designs.
 7. Change log of the pack. Git revision, not a conformity version.
-8. Explicit omissions. Prompts, credentials, prices, article quotations, notified-body name, registration number, and any sentence that Vantio fulfills the regulation.
+8. Explicit omissions. Prompts, credentials, prices, article quotations, a notified-body name, a registration number, and any wording that would claim fulfillment.
 
 A template that fills section 3 with Vantio's marketing sentence is a failed pack. The customer writes the purpose.
 
@@ -100,7 +100,7 @@ T6, T8, T9, T10, and T11 are the internal inputs sections 4 through 6 would cite
 
 ## Proof plan
 
-Phase 1 proof is the design checker: this file names 2 December 2027, names the Service Desk as the source, keeps `vantio_fulfills_function` unclaimed, and does not contain a conformity sentence.
+Phase 1 proof is the design checker. It requires the strings `2 December 2027`, `2 August 2028`, and `AI Act Service Desk` in this file, and it rejects an affirmative fulfillment sentence. It does not fetch the regulation text, and it does not change `vantio_fulfills_function` in the assurance package.
 
 Phase 2 is still an outline review with counsel inside the company. It does not fill the template and does not notify an authority.
 

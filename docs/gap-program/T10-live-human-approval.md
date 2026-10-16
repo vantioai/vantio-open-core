@@ -60,7 +60,7 @@ Audit record, one row per decision, including timeout and deny:
 
 The record does not contain prompts, completions, packet payloads, credentials, or raw assertions. `APPROVED` is not `ACTIVE`. E3 already separates those states. Host activation stays on the customer host. This design does not activate anything.
 
-Pending holds on one host are capped by a parameter the implementation must set. Over the cap, a new hold is `TIMEOUT_DENY` immediately with reason `HOLD_CAPACITY`. The cap is a design parameter, not a measured limit. This document does not pick the number.
+Pending holds on one host are capped by a parameter the implementation must set. Over the cap, a new hold is not opened. The decision is `DENY` and the reason is `HOLD_CAPACITY`. That is a different reason from `TIMEOUT_DENY`. The cap is a design parameter, not a measured limit. This document does not pick the number.
 
 ## Threat model
 

@@ -19,7 +19,7 @@ Two different things are already called preview or dry-run. They are not this co
 - `packages/optics-otel-mapping/src/preview.cjs` maps Optics display fields toward a canonical record shape. It does not evaluate a policy and it does not block or allow a call.
 - `packages/vantio-gate-mcp` exposes `gate_evaluate` as a dry-run. The package readme says live enforcement is `vantio run` plus Phantom Engine policy, and that this MCP cannot block live traffic. `packages/vantio-cli/test/interceptor.test.js` shows `dry_run: true` lets the blocked host through and records a dry-run event.
 - E3 lists counting a dry-run as host activation as a rejected act.
-- `packages/pe-egress` tests record a dry-run deny as `dry_run_pass_through`, not as an allow that was enforced.
+- `packages/pe-egress-authority/src/decision.cjs` and `tests/pe-egress/adversarial.test.cjs` record a dry-run deny as `dry_run_pass_through`. There is no `packages/pe-egress` directory.
 
 So a preview-shaped tool exists, and it is defined as non-activating. It does not yet show T6 identity, a T10 hold, or a T11 manifest refusal. It can be mistaken for enforcement. That mistake is the gap.
 

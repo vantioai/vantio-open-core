@@ -105,14 +105,15 @@ The catalog in `packages/governance-assurance/src/data/mappings.cjs` already map
 
 ## MITRE ATLAS
 
-Tactic names only. Technique IDs are not pinned. A later phase pins an ATLAS version before any technique row is written. This list is a coverage sketch, not a detection claim.
+Tactic names only. Technique IDs are not pinned. This table uses the labels it has, including ML Model Access and ML Attack Staging. A later phase pins an ATLAS version before any technique row is written and before any renamed tactic is adopted. This list is a coverage sketch, not a detection claim.
 
 | Tactic | Nearest track | Cell |
 | --- | --- | --- |
 | Reconnaissance | T3 discovery, if the sibling lands | Roadmap |
 | Resource Development | T11 supply chain | Roadmap |
 | Initial Access | T1 stranger host, T11 repo config | Roadmap |
-| ML Model Access | Out of scope for model evaluation | Not addressed |
+| Command and Control | Omitted until an ATLAS version is pinned | Not addressed |
+| ML Model Access | Out of scope for model evaluation. A later pin may use a different tactic title | Not addressed |
 | Execution | T11 unknown children, ASI05 | Roadmap |
 | Persistence | T11 hook and skill change | Roadmap |
 | Privilege Escalation | T6 and the child-widen rejection | Roadmap |

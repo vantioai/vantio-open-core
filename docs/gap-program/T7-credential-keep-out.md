@@ -39,7 +39,7 @@ Flow on a supported path:
 3. On allow, the broker opens the one approved connection and places the mock secret on that connection. The secret is not written back into the workload's address space, environment, or files.
 4. The workload receives the call result, not the secret.
 
-Calls that do not carry a placeholder stay on the existing path. Customers who do not use placeholders have no broker hop. The broker is a local process on the enrolled host. It is not a central proxy and it is not required for Observe.
+Calls that do not carry a placeholder stay on the existing path. Customers who do not use placeholders have no broker hop. For a call that does carry a placeholder, the broker is a required local hop and a single point of failure: if it is down, that call fails closed. The broker is a local process on the enrolled host. It is not a central proxy, and it is not required for Observe or for uncredentialed traffic.
 
 An in-process swap inside the workload is rejected by this design. A compromised workload that shares the interceptor's address space can read a secret the interceptor holds. Keep-out against that workload requires the secret to stay in the broker.
 
@@ -53,7 +53,8 @@ Kernel payload rewrite inside TLS is not the mechanism. Current uprobes observe 
 | Workload reads the broker `/proc/<pid>/environ` or mem | Different uid and file mode return `EACCES` | Root on the host can still read both. Root is a named residual |
 | Workload `ptrace`s the broker | The workload uid cannot attach | A kernel that ignores `ptrace` scope is outside the claim |
 | Workload opens a raw socket with a secret it already had | Keep-out applies to secrets the broker holds. A secret the workload already possessed is outside this control | T5 covers egress of that class |
-| Policy bypass by calling the broker directly | The broker accepts a request only from the enrolled interceptor socket, after a policy allow token that the workload cannot mint | A local socket bug is a phase-3 check |
+| Policy bypass by calling the broker directly | The allow bit is decided in the broker, outside the workload. The in-process interceptor may only present the placeholder and the destination metadata. A compromised workload can send that presentation. It cannot mark the presentation allowed, because the broker does not trust an allow bit that comes from the workload address space | A bug that trusts a workload-supplied allow bit fails the proof |
+| Destination echoes the credential | The broker removes the exact mock secret from the response bytes before they are returned, and the proof checks those bytes | A transformed encoding of the secret can still come back. That encoding is a named residual |
 | Broker used as a general proxy | The broker dials only after a placeholder allow. Other traffic is not accepted | A future patch that accepts all traffic violates the no-required-proxy rule and fails review |
 
 ## Failure modes
@@ -111,7 +112,7 @@ Phase 2 lab, mock secret only. The proof is an assertion list, not a procedure f
 2. Start the workload as uid A, A different from B, with only the placeholder in its environment.
 3. From uid A, assert: the secret string is absent from the environment, from readable maps, and from files the workload can open; opening the broker secret path and the broker `/proc` environ returns `EACCES`; `ptrace` of the broker fails.
 4. A policy deny does not dial, and a capture on the lab interface does not contain the mock secret.
-5. A policy allow dials from the broker. The workload's maps still do not contain the mock secret after the call returns.
+5. A policy allow dials from the broker. The workload's maps still do not contain the mock secret after the call returns. The bytes returned to the workload do not contain the exact mock secret.
 6. Kill the broker. The next credentialed call fails and does not fall back to an in-process secret.
 
 Passing this list is still Lab-only until it is repeated on an enrolled host the program allows. It is not a production claim. Root on the host remains able to read the broker. That residual stays in the report.

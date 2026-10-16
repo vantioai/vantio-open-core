@@ -38,7 +38,7 @@ A path that does not exist is recorded as absent. Absence is a stable state. A p
 
 The manifest stores a hash per file, the file mode, and whether the file is a symlink. The hash is SHA-256 of the bytes. Symlink targets are recorded and are not followed outside the repository root. A symlink that escapes the root fails the check.
 
-Risky configuration, any one of which refuses the start:
+Risky configuration means a difference from the last approved manifest, not the mere presence of a hook or a local command. A hook or an MCP command that is already in that manifest may start. Any one of these, when it is not in the manifest or its hash has changed, refuses the start:
 
 - a git hook that is executable
 - an MCP server entry whose transport is a local command

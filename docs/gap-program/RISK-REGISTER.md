@@ -27,7 +27,7 @@ This register rolls up the track risks. It is not a closed risk list. "Accepted"
 | R13 | T12 | OTEL field preview and policy preview are merged | Open. Different modules |
 | R14 | T13 | The gap list is shortened to a FedRAMP or FIPS claim | Open. Every row is GAP |
 | R15 | T14 | 2 December 2027 is quoted as the only application date, or as a classification | Open. Annex III qualifier required. 2 August 2028 stays named |
-| R16 | All | A price, a public README edit, a tag, or a production signing root lands in a later commit on this branch | Open. Checker fences the first two. Pin stays `e0b19d55` |
+| R16 | All | A dollar amount or a currency code in `docs/gap-program`, or a later README price, tag, or production signing root | Open. The checker rejects a dollar sign and the currency codes inside `docs/gap-program`. It does not watch the README, tags, or the pin. The pin stays `e0b19d55` |
 | R17 | All | T0–T5 artifacts are assumed merged | Accepted. They are sibling charters, not in this commit |
 
 ## Threat model
@@ -36,7 +36,7 @@ The register itself can be copied without the track documents. Each row is a poi
 
 ## Failure modes
 
-A risk that loses its track pointer fails closed in the checker: the register must mention T6 through T14. Reason: an orphan risk is how a gap gets dropped.
+A risk register that does not name every track from T6 through T14 fails the checker. Reason: an omitted track id is how a gap gets dropped. The checker looks for those ids. It does not judge whether the row is wise.
 
 ## Edge cases
 

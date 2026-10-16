@@ -26,15 +26,15 @@ Public pricing language stays "Contact Vantio". Commercial terms are not part of
 
 The assessment is a table of families. Each row is GAP. Family names are the usual labels only. Control sentences from NIST SP 800-53 are not copied.
 
-| Family | Gap this packet records |
-| --- | --- |
-| Access control | E3 approval classes are `PLANNED`. No live dual control. T10 is a design |
-| Audit and accountability | Local NDJSON is mutable. T8's validator is specified to return `MUTABLE_LOCAL_LEDGER`. Product OTLP is not authorized. No FedRAMP-authorized log store is selected |
-| Assessment and authorization | No package, no boundary diagram an agency could inherit, no 3PAO, no SSP. This row stays GAP on purpose |
-| Configuration management | The public pin stays `e0b19d55`. This packet adds no signing root and no baseline image |
-| Identification and authentication | T6 consumes customer identities and is not built. No federal issuer is configured. Mocks only, later |
-| System and communications protection | FIPS gap below. No validated module claim. TLS in the 2026-10-10 drill used a local test CA |
-| System and information integrity | T11 manifest checks are a design. They are not a file-integrity program under an authorization |
+| Family | Status | Gap this packet records |
+| --- | --- | --- |
+| Access control | GAP | E3 approval classes are `PLANNED`. No live dual control. T10 is a design |
+| Audit and accountability | GAP | Local NDJSON is mutable. T8's validator is specified to return `MUTABLE_LOCAL_LEDGER`. Product OTLP is not authorized. No log store in this packet is an authorized store |
+| Assessment and authorization | GAP | No package, no boundary diagram an agency could inherit, no 3PAO, no SSP. This row stays GAP on purpose |
+| Configuration management | GAP | The public pin stays `e0b19d55`. This packet adds no signing root and no baseline image |
+| Identification and authentication | GAP | T6 consumes customer identities and is not built. No federal issuer is configured. Mocks only, later |
+| System and communications protection | GAP | FIPS gap below. No validated module claim. TLS in the 2026-10-10 drill used a local test CA |
+| System and information integrity | GAP | T11 manifest checks are a design. They are not a file-integrity program under an authorization |
 
 FIPS gap, also GAP:
 
@@ -93,7 +93,7 @@ T6, T8, T10, and T11 are the designs that would later feed IA, AU, AC, and SI. T
 
 ## Proof plan
 
-Phase 1 proof is the design checker confirming every family row in this file stays GAP and the file contains no authorization claim.
+Phase 1 proof is the design checker. It requires each family name in the table above to appear on a line whose status cell is GAP. It rejects an affirmative authorization sentence. It does not score a control as implemented.
 
 Phase 2, only if a founder force allows a lab host: write an inventory of module names and versions, with a column `validation` set to `NOT_CLAIMED` on every row. Do not query CMVP from this program if that query is a stand-in for a claim. Reading a public certificate list is a later force.
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -35,13 +35,45 @@ const FORBIDDEN = [
   { name: "unbreakable", re: /unbreakable/i },
   { name: "audited", re: /audited/i },
   { name: "unbypassable", re: /unbypassable/i },
-  { name: "price", re: /\$\s?\d/ },
+  { name: "dollar-amount", re: /\$\s?\d/ },
+  { name: "usd", re: /\bUSD\b/ },
+  { name: "eur", re: /\bEUR\b/ },
+  { name: "dollars", re: /\bdollars\b/i },
   { name: "retired-499", re: /\b499\b/ },
   { name: "retired-799", re: /\b799\b/ },
+  { name: "conformant", re: /\bconformant\b/i },
+  { name: "fulfills-the-regulation", re: /fulfills the regulation/i },
+  { name: "authorization-granted", re: /authorization granted/i },
+  { name: "fedramp-moderate", re: /FedRAMP Moderate/i },
 ];
+
+const FAMILIES = [
+  "Access control",
+  "Audit and accountability",
+  "Assessment and authorization",
+  "Configuration management",
+  "Identification and authentication",
+  "System and communications protection",
+  "System and information integrity",
+];
+
+const TRACK_IDS = ["T6", "T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14"];
 
 function read(repoRoot, rel) {
   return readFileSync(path.join(repoRoot, rel), "utf8");
+}
+
+function scanFence(rel, text, errors) {
+  for (const rule of FORBIDDEN) {
+    if (rule.re.test(text)) errors.push(`${rel} contains forbidden ${rule.name}`);
+  }
+  const flag = /product_otlp_export_authorized([^\n]{0,80})/gi;
+  for (const match of text.matchAll(flag)) {
+    const tail = match[1];
+    if (/\btrue\b/i.test(tail) && !/\bfalse\b/i.test(tail)) {
+      errors.push(`${rel} sets product_otlp_export_authorized true`);
+    }
+  }
 }
 
 function sha256(text) {
@@ -97,10 +129,31 @@ export function checkDesign(repoRoot) {
     for (const section of SECTIONS) {
       if (!text.includes(section)) errors.push(`${id} missing ${section}`);
     }
-    for (const rule of FORBIDDEN) {
-      if (rule.re.test(text)) errors.push(`${id} contains forbidden ${rule.name}`);
-    }
+    scanFence(rel, text, errors);
     files.push({ path: rel, sha256: sha256(text) });
+  }
+
+  const packetDir = path.join(repoRoot, "docs", "gap-program");
+  let packetNames = [];
+  try {
+    packetNames = readdirSync(packetDir).filter((name) => name.endsWith(".md"));
+  } catch {
+    errors.push("docs/gap-program is missing");
+  }
+  for (const name of packetNames) {
+    if (TRACKS.some((row) => row[1].endsWith(name))) continue;
+    const rel = path.join("docs", "gap-program", name);
+    scanFence(rel, read(repoRoot, rel), errors);
+  }
+
+  let register = "";
+  try {
+    register = read(repoRoot, "docs/gap-program/RISK-REGISTER.md");
+  } catch {
+    errors.push("risk register missing");
+  }
+  for (const id of TRACK_IDS) {
+    if (register && !register.includes(id)) errors.push(`risk register misses ${id}`);
   }
 
   let t8 = "";
@@ -117,9 +170,6 @@ export function checkDesign(repoRoot) {
   }
 
   if (t8 && !t8.includes("ef3a33a")) errors.push("T8 does not cite the inherited observability head");
-  if (t8 && !t8.includes("product_otlp_export_authorized")) {
-    errors.push("T8 does not keep the OTLP authorization flag");
-  }
   if (t8 && !t8.includes("MUTABLE_LOCAL_LEDGER")) errors.push("T8 missing WORM failure token");
 
   if (t9) {
@@ -134,20 +184,22 @@ export function checkDesign(repoRoot) {
     }
   }
 
-  if (t13 && !t13.includes("GAP")) errors.push("T13 has no GAP row");
-  if (t13 && /FedRAMP authorized/i.test(t13)) errors.push("T13 claims FedRAMP authorization");
+  if (t13) {
+    for (const family of FAMILIES) {
+      const row = t13.split("\n").find((line) => line.startsWith(`| ${family} |`));
+      if (!row || !row.includes("GAP")) errors.push(`T13 family row is not GAP: ${family}`);
+    }
+  }
   if (t14 && !t14.includes("2 December 2027")) errors.push("T14 missing the program date");
   if (t14 && !t14.includes("2 August 2028")) errors.push("T14 collapses the application dates");
-  if (t14 && /fulfills the regulation/i.test(t14) && !/fulfills the regulation/.test(t14)) {
-    errors.push("T14 conformity sentence");
-  }
+  if (t14 && !t14.includes("AI Act Service Desk")) errors.push("T14 missing the Service Desk source");
 
   const evidence = {
     generated_at_utc: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     phase: 1,
     feature_code: false,
-    base_note: "design packet checker",
-    head_sha: headSha(repoRoot),
+    base_note: "git_head_at_generation is the HEAD when this file was written. The design-file hashes attest those files.",
+    git_head_at_generation: headSha(repoRoot),
     track_label: "Roadmap",
     inherited_observability_head: "ef3a33a",
     product_otlp_export_authorized: false,
@@ -173,6 +225,6 @@ function main() {
   console.log(`wrote ${outPath}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
