@@ -1,0 +1,20 @@
+{
+  "schema": "vantio.openclaw.clawhavoc-indicators/1",
+  "campaign": "ClawHavoc",
+  "sources": [
+    "https://snyk.io/articles/clawdhub-malicious-campaign-ai-agent-skills/",
+    "https://github.com/oakencore/skillvet/commit/d5b3976d8d422e56fe2e77ad1b44079cf94c9cc7",
+    "https://blog.polyswarm.io/the-clawhavoc-campaign"
+  ],
+  "ipv4": ["91.92.242.30", "54.91.154.110"],
+  "domains": ["download.setup-service.com", "openclawcli.vercel.app", "clawhavoc.net"],
+  "urls": ["glot.io/snippets/hfd3x9ueu5"],
+  "repositories": ["Ddoy233/openclawcli"],
+  "publishers": ["zaycv", "Ddoy233", "hightower6eu", "moonshine-100rze"],
+  "denied_marketplace_skill_ids": ["clawhub", "clawdhub1"],
+  "patterns": [
+    "echo '.*'\\|\\s*base64\\s+-D\\s*\\|\\s*bash",
+    "xattr\\s+-c\\b",
+    "password:\\s*openclaw"
+  ]
+}
