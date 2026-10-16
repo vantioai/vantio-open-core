@@ -14,7 +14,7 @@ const CLI_PATH = join(__dirname, "..", "bin", "vantio.js");
 const REGISTER_PATH = join(__dirname, "..", "bin", "mcp-awareness-register.js");
 const CANARY = "CANARY_MCP_PAYLOAD_9f3a";
 
-function runCli(args, env = {}) {
+function runCli(args, env = {}, timeoutMs = 8000) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [CLI_PATH, ...args], {
       env: { PATH: process.env.PATH, ...env },
@@ -30,7 +30,7 @@ function runCli(args, env = {}) {
     });
     const killer = setTimeout(() => {
       child.kill("SIGKILL");
-    }, 8000);
+    }, timeoutMs);
     child.on("close", (code) => {
       clearTimeout(killer);
       resolve({ code, stdout, stderr });
@@ -228,6 +228,41 @@ test("enforce opt-in withholds the tool call and still forwards a non-MCP line",
     assert.equal(log.includes(CANARY), false);
     assert.match(log, /"action":"BLOCK"/);
     assert.equal(`${result.stderr}`.includes(CANARY), false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("enforce withholds on stdin when there is no stdout pipe for the pair gate", async () => {
+  const home = mkdtempSync(join(tmpdir(), "vantio-mcp-line-"));
+  const sink = join(home, "sink");
+  const agent = `
+const { spawn } = require("node:child_process");
+const child = spawn(process.execPath, ["-e", \`
+  const fs = require("fs");
+  const chunks = [];
+  process.stdin.on("data", (c) => chunks.push(c));
+  process.stdin.on("end", () => fs.writeFileSync(process.env.SINK, Buffer.concat(chunks)));
+\`], { stdio: ["pipe", "ignore", "ignore"], env: { ...process.env, SINK: process.env.SINK } });
+child.stdin.write("hello\\n");
+child.stdin.write(process.env.FRAME);
+child.stdin.end();
+child.on("close", () => process.exit(0));
+`;
+  try {
+    const path = writeAgent(home, agent);
+    const result = await runCli(["run", "--mcp-enforce", "node", path], {
+      HOME: home,
+      SINK: sink,
+      FRAME: frame(),
+    });
+    assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
+    const received = readFileSync(sink, "utf8");
+    assert.equal(received.includes(CANARY), false);
+    assert.equal(received.includes("hello\n"), true);
+    const log = readLog(home);
+    assert.equal(log.includes(CANARY), false);
+    assert.match(log, /"action":"BLOCK"/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -35,6 +35,7 @@ Observe copies bytes the workload already holds:
 Enforce is the opt-in that can withhold:
 
 - Piped stdio uses `createStdioPairGate` in this process. A non-MCP line is forwarded. A blocked JSON-RPC frame is not written to the child. The fixed error `vantio_mcp_policy_block` is written on the workload's readable and does not include payload bytes.
+- If that gate cannot be installed, enforce still withholds blocked lines on the real stdin and forwards other lines. It does not fall through to observe. `stdio: "inherit"` has no pipe, so it cannot withhold.
 - A buffered HTTP request whose first 256 bytes are a JSON-RPC object is withheld before `fetch` when the decision is `BLOCK` or `GAP`. The caller receives that same fixed error. A stream or `Request` body is not read and is not withheld.
 - `stdio: "inherit"` has no pipe to gate. It is logged only when observe can see a copy.
 
@@ -48,7 +49,7 @@ Records are the library's `vantio.mcp_observation.v1` objects. Argument values, 
 
 | Result | Label |
 | --- | --- |
-| Observe forwards a stdio tool call, enforce withholds it, HTTP observe sends the request, HTTP enforce does not, and the canary is absent from the log and from stderr. Tests: `packages/vantio-cli/test/mcp-awareness-run.test.js` | Verified |
+| Observe forwards a stdio tool call, enforce withholds it on the pair gate and on a stdin-only pipe, HTTP observe sends the request, HTTP enforce does not, and the canary is absent from the log and from stderr. Tests: `packages/vantio-cli/test/mcp-awareness-run.test.js` | Verified |
 | Phantom Engine host copy and host enforce | Roadmap |
 | A packed `@vantio/cli` tarball that does not contain this private package. The import fails closed to "do not change the workload" | Roadmap |
 | Python `vantio run`, `spawnSync`, `fork`, and a stream HTTP body | Roadmap |

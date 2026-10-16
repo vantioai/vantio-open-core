@@ -14,6 +14,11 @@ Free Optics runs with no account and no API key. Telemetry stays off unless `VAN
 | `VANTIO_IDENTITY` | Older alias read by `@vantio/agent-sdk` when `VANTIO_API_KEY` is unset. |
 | `VANTIO_INGEST_URL` | Control-plane base URL. Default `https://vantio.ai`. |
 | `VANTIO_JSON` | Set to `1` for the unstable JSON run record. `vantio run --json` sets this. |
+| `VANTIO_MCP_AWARENESS` | Node `vantio run` sets `on`. `off` or `0` does not load in-process MCP awareness. |
+| `VANTIO_MCP_INJECTION` | `log` unless set to `block`. |
+| `VANTIO_MCP_MODE` | `observe` unless `--mcp-enforce` or the value `enforce`. |
+| `VANTIO_MCP_POLICY` | Optional path to an operator policy file. The mode still comes from `VANTIO_MCP_MODE`. |
+| `VANTIO_MCP_RUG_PULL` | `log` unless set to `block`. |
 | `VANTIO_SUMMARY` | Set to `1` to print the run summary. `vantio run --summary` sets this. |
 | `VANTIO_TELEMETRY` | Set to `1` to opt in to the anonymous usage ping. |
 | `VANTIO_TELEMETRY_DISABLED` | Set to `1` to keep the ping off even when `VANTIO_TELEMETRY=1`. |

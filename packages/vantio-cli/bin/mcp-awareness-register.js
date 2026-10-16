@@ -187,36 +187,148 @@ function patchSpawn(runtime, policy, writeLog) {
 function attachChild(runtime, policy, writeLog, child, command) {
   if (!child) return;
   const serverId = serverIdFromCommand(command);
-  const meta = { transport: "stdio", serverId, policy };
-  if (policy.mode === "enforce" && piped(child.stdin) && piped(child.stdout)) {
-    const realStdin = child.stdin;
-    const realStdout = child.stdout;
-    const gate = runtime.createStdioPairGate({
-      fromChild: realStdout,
-      toChild: realStdin,
-      serverId,
-      policy,
-      onRecord: writeLog,
-    });
-    if (gate && gate.ok && gate.stdin && gate.stdout) {
-      gate.stdin.on("finish", () => {
-        try {
-          realStdin.end();
-        } catch {
-          // The child pipe is already closed.
-        }
-      });
-      child.stdin = gate.stdin;
-      child.stdout = gate.stdout;
-      if (Array.isArray(child.stdio)) {
-        child.stdio[0] = gate.stdin;
-        child.stdio[1] = gate.stdout;
-      }
-      return;
-    }
-    writeLog(gapRecord(serverId, "gate_unavailable", "client_to_server", "stdio"));
+  const meta = { transport: "stdio", serverId, policy, pending: Buffer.alloc(0) };
+  if (policy.mode === "enforce" && canWrite(child.stdin)) {
+    if (canRead(child.stdout) && installPairGate(runtime, writeLog, child, meta)) return;
+    if (canRead(child.stdout)) writeLog(gapRecord(serverId, "gate_unavailable", "client_to_server", "stdio"));
+    attachEnforceLines(runtime, writeLog, child, meta);
+    return;
   }
   attachObserve(runtime, writeLog, child, meta);
+}
+
+function installPairGate(runtime, writeLog, child, meta) {
+  const realStdin = child.stdin;
+  const realStdout = child.stdout;
+  const gate = runtime.createStdioPairGate({
+    fromChild: realStdout,
+    toChild: realStdin,
+    serverId: meta.serverId,
+    policy: meta.policy,
+    onRecord: writeLog,
+  });
+  if (!gate || !gate.ok || !gate.stdin || !gate.stdout) return false;
+  gate.stdin.on("finish", () => {
+    try {
+      realStdin.end();
+    } catch {
+      // The child pipe is already closed.
+    }
+  });
+  child.stdin = gate.stdin;
+  child.stdout = gate.stdout;
+  if (Array.isArray(child.stdio)) {
+    child.stdio[0] = gate.stdin;
+    child.stdio[1] = gate.stdout;
+  }
+  return true;
+}
+
+function attachEnforceLines(runtime, writeLog, child, meta) {
+  const stdin = child.stdin;
+  const origWrite = stdin.write.bind(stdin);
+  const origEnd = stdin.end.bind(stdin);
+  function take(extra, final) {
+    if (extra && extra.length) {
+      if (meta.pending.length + extra.length > MAX_FRAME) {
+        meta.pending = Buffer.alloc(0);
+        writeLog(gapRecord(meta.serverId, "oversize", "client_to_server", "stdio"));
+        if (final) return;
+        extra = Buffer.alloc(0);
+      } else {
+        meta.pending = Buffer.concat([meta.pending, extra]);
+      }
+    }
+    let newline = meta.pending.indexOf(0x0a);
+    while (newline >= 0) {
+      const line = meta.pending.subarray(0, newline + 1);
+      meta.pending = Buffer.from(meta.pending.subarray(newline + 1));
+      decideLine(runtime, writeLog, child, meta, line, origWrite);
+      newline = meta.pending.indexOf(0x0a);
+    }
+    if (final && meta.pending.length) {
+      const tail = meta.pending;
+      meta.pending = Buffer.alloc(0);
+      decideLine(runtime, writeLog, child, meta, tail, origWrite);
+    }
+  }
+  stdin.write = function vantioMcpEnforceWrite(chunk, encoding, cb) {
+    try {
+      take(asBuffer(chunk, encoding), false);
+    } catch {
+      // Enforce must not throw into the workload.
+    }
+    const done = typeof encoding === "function" ? encoding : cb;
+    if (typeof done === "function") done();
+    return true;
+  };
+  stdin.end = function vantioMcpEnforceEnd(chunk, encoding, cb) {
+    try {
+      if (chunk != null && typeof chunk !== "function") take(asBuffer(chunk, encoding), true);
+      else take(Buffer.alloc(0), true);
+    } catch {
+      // Same rule as write.
+    }
+    const ended = origEnd();
+    const done = typeof cb === "function" ? cb : typeof encoding === "function" ? encoding : typeof chunk === "function" ? chunk : null;
+    if (done) done();
+    return ended;
+  };
+}
+
+function decideLine(runtime, writeLog, child, meta, line, origWrite) {
+  let records = [];
+  try {
+    const out = runtime.observeBuffer(line, {
+      transport: "stdio",
+      direction: "client_to_server",
+      serverId: meta.serverId,
+      policy: meta.policy,
+    });
+    records = out && Array.isArray(out.records) ? out.records : [];
+  } catch {
+    records = [gapRecord(meta.serverId, "malformed_frame", "client_to_server", "stdio")];
+  }
+  for (const record of records) writeLog(record);
+  const blocked = records.some((record) => {
+    const action = record && record.decision && record.decision.action;
+    return action === "BLOCK" || action === "GAP";
+  });
+  if (!blocked) {
+    try {
+      origWrite(line);
+    } catch {
+      // The child pipe is already closed.
+    }
+    return;
+  }
+  if (child.stdout && typeof child.stdout.write === "function") {
+    try {
+      child.stdout.write(policyError(records));
+    } catch {
+      // A missing return path does not turn the withhold into a forward.
+    }
+  }
+}
+
+function policyError(records) {
+  let id = null;
+  let finding = "policy";
+  for (const record of records) {
+    if (record && record.id_type === "number" && Number.isSafeInteger(record.id_number)) id = record.id_number;
+    const reason = record && record.decision && record.decision.reason;
+    if (typeof reason === "string" && REASON_RE.test(reason)) finding = reason;
+  }
+  const idJson = id === null ? "null" : String(id);
+  return `{"jsonrpc":"2.0","id":${idJson},"error":{"code":-32001,"message":"vantio_mcp_policy_block","data":{"finding":${JSON.stringify(finding)}}}}\n`;
+}
+
+function canWrite(stream) {
+  return Boolean(stream && typeof stream.write === "function" && typeof stream.end === "function");
+}
+
+function canRead(stream) {
+  return Boolean(stream && typeof stream.on === "function");
 }
 
 function attachObserve(runtime, writeLog, child, meta) {
