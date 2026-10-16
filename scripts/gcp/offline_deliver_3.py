@@ -417,8 +417,8 @@ def _print_saved_boot_evidence(project: str, name: str) -> None:
     )
 
 
-def serial_port_argv(project: str, name: str) -> list[str]:
-    return [
+def serial_port_argv(project: str, name: str, start: int | None = None) -> list[str]:
+    argv = [
         "gcloud",
         "compute",
         "instances",
@@ -428,11 +428,63 @@ def serial_port_argv(project: str, name: str) -> list[str]:
         f"--zone={ZONE}",
         "--port=1",
     ]
+    if start is None:
+        return argv
+    if isinstance(start, bool) or not isinstance(start, int) or start < 0:
+        raise SystemExit("serial")
+    argv.append(f"--start={start}")
+    return argv
+
+
+_SERIAL_NEXT = re.compile(r"Specify --start=(\d+) in the next get-serial-port-output")
+
+
+def next_serial_start(text: str) -> int | None:
+    """Byte offset gcloud prints when the serial buffer continues."""
+    match = _SERIAL_NEXT.search(text or "")
+    if match is None:
+        return None
+    return int(match.group(1))
 
 
 def serial_console_text(blob: str) -> str:
     """The full serial log. The last 200000 characters of run 38800477282 hid the earlier boot."""
-    return blob.replace("\x00", "")
+    kept: list[str] = []
+    for line in blob.replace("\x00", "").splitlines(keepends=True):
+        if "Specify --start=" in line and "get-serial-port-output" in line:
+            continue
+        kept.append(line)
+    return "".join(kept)
+
+
+def guard_ready(body: dict, boot_id: str) -> bool:
+    """True when this boot's guard asked for a reboot.
+
+    A rows file from an earlier boot must not schedule the wait.
+    """
+    return (
+        isinstance(body, dict)
+        and body.get("host_result") == "GUARD_PROVED"
+        and body.get("reboot_requested") is True
+        and confirm_matches_boot(body, boot_id)
+    )
+
+
+def choose_boot_rows(
+    primary: dict | None,
+    secondary: dict | None,
+    boot_id: str,
+) -> dict | None:
+    """Prefer the rows file written on boot_id. Otherwise keep the var-lib copy."""
+    if isinstance(primary, dict) and confirm_matches_boot(primary, boot_id):
+        return primary
+    if isinstance(secondary, dict) and confirm_matches_boot(secondary, boot_id):
+        return secondary
+    if isinstance(primary, dict):
+        return primary
+    if isinstance(secondary, dict):
+        return secondary
+    return None
 
 
 def confirm_matches_boot(body: dict, boot_id: str) -> bool:
@@ -471,15 +523,97 @@ def live_lsm_from_probe(probe: dict, boot_id: str) -> dict | None:
     return body
 
 
+def stock_bpf_ready(body: dict, boot_id: str) -> bool:
+    """True when this boot's LSM list already contains bpf as its own token.
+
+    A stock kernel can enable bpf without an lsm= cmdline word. The sealed
+    reboot still has to show bpf in both places. That check is lsm_confirm_ok.
+    """
+    if not isinstance(body, dict) or not confirm_matches_boot(body, boot_id):
+        return False
+    if body.get("host_result") not in {"LSM_ALREADY_ACTIVE", "LSM_ENABLED"}:
+        return False
+    stock = body.get("stock_lsm") if isinstance(body.get("stock_lsm"), str) else ""
+    return _bpf_listed(stock)
+
+
+def live_stock_bpf(probe: dict, boot_id: str) -> dict | None:
+    """Live LSM list for a stock host. Does not require an lsm= cmdline token."""
+    if not isinstance(probe, dict) or not confirm_matches_boot(probe, boot_id):
+        return None
+    enabled = probe.get("enabled_lsm") if isinstance(probe.get("enabled_lsm"), str) else ""
+    if not _bpf_listed(enabled):
+        return None
+    cmdline = probe.get("cmdline") if isinstance(probe.get("cmdline"), str) else ""
+    return {
+        "boot_id": probe.get("boot_id"),
+        "cmdline": cmdline,
+        "stock_lsm": enabled,
+        "cmdline_has_bpf": _cmdline_bpf(cmdline),
+        "host_result": "LSM_ALREADY_ACTIVE",
+        "kernel_command_lines": probe.get("kernel_command_lines") if isinstance(probe.get("kernel_command_lines"), list) else [],
+        "grubenv": probe.get("grubenv") if isinstance(probe.get("grubenv"), list) else [],
+    }
+
+
 LATER_BOOT_PROBE = (
     "sudo python3 -c \"import json,sys; sys.path.insert(0,'/var/lib/vantio-lab/guest'); "
     "import baseline_diag; "
     "print(json.dumps({'boot_id': baseline_diag.read_boot_id(), "
-    "'cmdline': open('/proc/cmdline',encoding='utf-8').read().strip()[:400], "
-    "'enabled_lsm': open('/sys/kernel/security/lsm',encoding='utf-8').read().strip()[:400], "
+    "'cmdline': open('/proc/cmdline',encoding='utf-8').read().strip()[:1200], "
+    "'enabled_lsm': open('/sys/kernel/security/lsm',encoding='utf-8').read().strip()[:1200], "
     "'kernel_command_lines': baseline_diag.read_kernel_command_lines(), "
     "'grubenv': baseline_diag.read_grubenv_assignments()}))\""
 )
+
+
+def read_serial_log(project: str, name: str) -> tuple[int, str, int]:
+    """Read the retained serial window.
+
+    gcloud's --start hint is the next byte after this response. When the
+    response already held the buffer, the next call only returns bytes written
+    after it. Bytes the ring has already dropped do not come back. A timeout
+    on a later page keeps the pages already read.
+    """
+    chunks: list[str] = []
+    start: int | None = None
+    seen: set[int] = set()
+    rc = 0
+    for _page in range(4):
+        key = -1 if start is None else start
+        if key in seen:
+            break
+        seen.add(key)
+        try:
+            proc = subprocess.run(
+                serial_port_argv(project, name, start),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            break
+        rc = proc.returncode
+        raw = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+        page = serial_console_text(raw)
+        previous = chunks[-1] if chunks else ""
+        if page and page != previous:
+            chunks.append(page)
+        nxt = next_serial_start(raw)
+        if nxt is None or not page.strip() or (start is not None and nxt <= start) or (previous and page == previous):
+            break
+        start = nxt
+    return rc, "".join(chunks), len(chunks)
+
+
+def _log_serial(project: str, name: str, boot_id: str = "") -> None:
+    """Print the serial log now, before later guest output can fill the buffer."""
+    rc, blob, pages = read_serial_log(project, name)
+    print(
+        f"SERIAL_RC={rc} SERIAL_BYTES={len(blob)} SERIAL_PAGES={pages} SERIAL_BOOT={boot_id}",
+        flush=True,
+    )
+    print(blob, flush=True)
 
 
 def capture_serial(env: Mapping[str, str]) -> int:
@@ -487,31 +621,48 @@ def capture_serial(env: Mapping[str, str]) -> int:
     _require_execute(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     name = instance_name(env.get("GITHUB_RUN_ID", ""))
-    try:
-        proc = subprocess.run(
-            serial_port_argv(project, name),
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"SERIAL_RC=error SERIAL_BYTES=0 {type(exc).__name__}", flush=True)
-        return 0
-    blob = serial_console_text((proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else ""))
-    print(f"SERIAL_RC={proc.returncode} SERIAL_BYTES={len(blob)}", flush=True)
-    print(blob, flush=True)
+    _log_serial(project, name)
     return 0
+
+
+def _rows_for_boot(project: str, name: str, boot_id: str, transcript: str) -> dict[str, Any]:
+    """The rows file written on boot_id. A surviving var-lib file loses to that boot's /tmp copy.
+
+    The second copy is skipped when the var-lib file is already this boot.
+    """
+    primary = _pull_remote_json(project, name, ROWS_JSON)
+    if isinstance(primary, dict) and confirm_matches_boot(primary, boot_id):
+        return primary
+    secondary = _pull_remote_json(project, name, "/tmp/enterprise-pe-rows.json")
+    chosen = choose_boot_rows(primary, secondary, boot_id)
+    if isinstance(chosen, dict) and chosen:
+        return chosen
+    parsed = _guest_payload(transcript)
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _probe_live(project: str, name: str) -> dict[str, Any]:
+    probed = _ssh(project, name, LATER_BOOT_PROBE, timeout_s=PROBE_SSH_TIMEOUT)
+    parsed = _last_object((probed.stdout or "") + (probed.stderr or ""))
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict[str, Any]:
     """Record the stock LSM list. Enable bpf only after the loader refuses."""
-    before = _ssh(project, name, "cat /proc/sys/kernel/random/boot_id", timeout_s=PROBE_SSH_TIMEOUT)
-    boot_before = (before.stdout or "").strip()
+    boot_before = _wait_live_boot(project, name, SSHD_WAIT_SECONDS)
+    if not boot_before:
+        write_evidence(
+            evidence / "lsm-guard.json",
+            {
+                "host_result": "",
+                "lsm_guard": "boot_id_unread",
+                "stock_bpf_lsm": False,
+                "stock_lsm": "",
+            },
+        )
+        raise SystemExit("lsm")
     completed = _ssh_case(project, name, guest_command(seal, "lsm-guard"))
-    body = _pull_guest_json(project, name) or {}
-    if not isinstance(body, dict) or not body:
-        parsed = _last_object((completed.stdout or "") + (completed.stderr or ""))
-        body = parsed if isinstance(parsed, dict) else {}
+    body = _rows_for_boot(project, name, boot_before, (completed.stdout or "") + (completed.stderr or ""))
     rows_missing = not body
     if rows_missing:
         tail = missing_rows_tail(completed.stdout or "", completed.stderr or "")
@@ -543,91 +694,109 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
         summary["rows"] = "missing"
     print(json.dumps(summary), flush=True)
     if result == "LSM_ALREADY_ACTIVE":
+        if not stock_bpf_ready(body, boot_before):
+            probe_body = _probe_live(project, name)
+            print(json.dumps({"boot_id": boot_before, "live_probe": probe_body}), flush=True)
+            adopted = live_stock_bpf(probe_body, boot_before)
+            if adopted is None:
+                record["lsm_guard"] = "stale_rows" if not confirm_matches_boot(body, boot_before) else "confirm_failed"
+                write_evidence(evidence / "lsm-guard.json", record)
+                raise SystemExit("lsm")
+            body = adopted
+            record["stock_lsm"] = adopted.get("stock_lsm") if isinstance(adopted.get("stock_lsm"), str) else ""
+        _log_serial(project, name, boot_before)
         record["lsm_guard"] = "already_active"
         record["stock_bpf_lsm"] = True
         write_evidence(evidence / "lsm-guard.json", record)
         return record
-    if result == "GUARD_PROVED" and body.get("reboot_requested") is True:
-        after = _wait_boot(project, name, boot_before, REBOOT_WAIT_SECONDS)
-        if not after:
-            write_evidence(evidence / "lsm-guard.json", record)
-            raise SystemExit("lsm")
-        confirmed = _ssh_case(project, name, guest_command(seal, "lsm-guard"))
-        confirm_body = _pull_guest_json(project, name) or {}
-        if not isinstance(confirm_body, dict) or not confirm_body:
-            parsed = _last_object((confirmed.stdout or "") + (confirmed.stderr or ""))
-            confirm_body = parsed if isinstance(parsed, dict) else {}
-        enabled = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
-        cmdline = confirm_body.get("cmdline") if isinstance(confirm_body.get("cmdline"), str) else ""
-        matched = confirm_matches_boot(confirm_body, after)
-        kernel_lines = confirm_body.get("kernel_command_lines")
-        grubenv = confirm_body.get("grubenv")
+    if not guard_ready(body, boot_before):
+        record["lsm_guard"] = "stale_rows" if result == "GUARD_PROVED" else ("refused" if result else "missing")
+        write_evidence(evidence / "lsm-guard.json", record)
+        raise SystemExit("lsm")
+    after = _wait_boot(project, name, boot_before, REBOOT_WAIT_SECONDS)
+    if not after:
+        write_evidence(evidence / "lsm-guard.json", record)
+        raise SystemExit("lsm")
+    _log_serial(project, name, after)
+    confirmed = _ssh_case(project, name, guest_command(seal, "lsm-guard"))
+    confirm_body = _rows_for_boot(
+        project,
+        name,
+        after,
+        (confirmed.stdout or "") + (confirmed.stderr or ""),
+    )
+    enabled = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
+    cmdline = confirm_body.get("cmdline") if isinstance(confirm_body.get("cmdline"), str) else ""
+    matched = confirm_matches_boot(confirm_body, after)
+    kernel_lines = confirm_body.get("kernel_command_lines")
+    grubenv = confirm_body.get("grubenv")
+    print(
+        json.dumps(
+            {
+                "bootchain": _bootchain_public(confirm_body),
+                "boot_id": confirm_body.get("boot_id") if isinstance(confirm_body.get("boot_id"), str) else "",
+                "boot_match": matched,
+                "cmdline": cmdline[:1200],
+                "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
+                "enabled_lsm": enabled,
+                "grubenv": grubenv if isinstance(grubenv, list) else [],
+                "kernel_command_lines": kernel_lines if isinstance(kernel_lines, list) else [],
+                "lsm_confirm": confirm_body.get("host_result") if matched else "stale_rows",
+            }
+        ),
+        flush=True,
+    )
+    _print_saved_boot_evidence(project, name)
+    if not matched:
+        probe_body: dict[str, Any] = {}
+        probed = _ssh(project, name, LATER_BOOT_PROBE, timeout_s=PROBE_SSH_TIMEOUT)
+        parsed = _last_object((probed.stdout or "") + (probed.stderr or ""))
+        if isinstance(parsed, dict):
+            probe_body = parsed
         print(
             json.dumps(
                 {
-                    "bootchain": _bootchain_public(confirm_body),
-                    "boot_id": confirm_body.get("boot_id") if isinstance(confirm_body.get("boot_id"), str) else "",
-                    "boot_match": matched,
-                    "cmdline": cmdline[:400],
-                    "cmdline_has_bpf": confirm_body.get("cmdline_has_bpf") is True,
-                    "enabled_lsm": enabled,
-                    "grubenv": grubenv if isinstance(grubenv, list) else [],
-                    "kernel_command_lines": kernel_lines if isinstance(kernel_lines, list) else [],
-                    "lsm_confirm": confirm_body.get("host_result") if matched else "stale_rows",
+                    "later_boot_id": after,
+                    "later_probe": probe_body,
+                    "rows_boot_id": confirm_body.get("boot_id") if isinstance(confirm_body.get("boot_id"), str) else "",
                 }
             ),
             flush=True,
         )
-        _print_saved_boot_evidence(project, name)
-        if not matched:
+        adopted = live_lsm_from_probe(probe_body, after)
+        if adopted is None:
+            record["lsm_guard"] = "stale_rows"
+            write_evidence(evidence / "lsm-guard.json", record)
+            raise SystemExit("lsm")
+        confirm_body = adopted
+    followed_up = False
+    if not lsm_confirm_ok(confirm_body):
+        if guard_ready(confirm_body, after):
+            later = _wait_boot(project, name, after, REBOOT_WAIT_SECONDS)
             probe_body: dict[str, Any] = {}
-            probed = _ssh(project, name, LATER_BOOT_PROBE, timeout_s=PROBE_SSH_TIMEOUT)
-            parsed = _last_object((probed.stdout or "") + (probed.stderr or ""))
-            if isinstance(parsed, dict):
-                probe_body = parsed
+            if later:
+                _log_serial(project, name, later)
+                probe_body = _probe_live(project, name)
             print(
                 json.dumps(
                     {
-                        "later_boot_id": after,
+                        "later_boot_id": later,
                         "later_probe": probe_body,
-                        "rows_boot_id": confirm_body.get("boot_id") if isinstance(confirm_body.get("boot_id"), str) else "",
                     }
                 ),
                 flush=True,
             )
-            adopted = live_lsm_from_probe(probe_body, after)
-            if adopted is None:
-                record["lsm_guard"] = "stale_rows"
-                write_evidence(evidence / "lsm-guard.json", record)
-                raise SystemExit("lsm")
-            confirm_body = adopted
+            adopted = live_lsm_from_probe(probe_body, later) if later else None
+            if adopted is not None:
+                confirm_body = adopted
+                followed_up = True
         if not lsm_confirm_ok(confirm_body):
-            if confirm_body.get("host_result") == "GUARD_PROVED" and confirm_body.get("reboot_requested") is True:
-                later = _wait_boot(project, name, after, REBOOT_WAIT_SECONDS)
-                probe_body: dict[str, Any] = {}
-                if later:
-                    probed = _ssh(project, name, LATER_BOOT_PROBE, timeout_s=PROBE_SSH_TIMEOUT)
-                    parsed = _last_object((probed.stdout or "") + (probed.stderr or ""))
-                    if isinstance(parsed, dict):
-                        probe_body = parsed
-                print(
-                    json.dumps(
-                        {
-                            "later_boot_id": later,
-                            "later_probe": probe_body,
-                        }
-                    ),
-                    flush=True,
-                )
             record["lsm_guard"] = "confirm_failed"
             write_evidence(evidence / "lsm-guard.json", record)
             raise SystemExit("lsm")
-        record["lsm_guard"] = "lsm_enabled"
-        write_evidence(evidence / "lsm-guard.json", record)
-        return record
-    record["lsm_guard"] = "refused" if result else "missing"
+    record["lsm_guard"] = "lsm_enabled_follow_up" if followed_up else "lsm_enabled"
     write_evidence(evidence / "lsm-guard.json", record)
-    raise SystemExit("lsm")
+    return record
 
 
 def run_batteries(env: Mapping[str, str]) -> int:
@@ -673,7 +842,8 @@ def run_batteries(env: Mapping[str, str]) -> int:
             raise SystemExit("repeats")
         for index in range(BATTERY_REPEATS):
             if index:
-                back = _wait_boot(project, name, "down", REBOOT_WAIT_SECONDS)
+                back = _wait_live_boot(project, name, REBOOT_WAIT_SECONDS)
+                print(json.dumps({"repeat": index + 1, "repeat_boot_id": back}), flush=True)
                 if not back:
                     if _boot_lockout(project, name):
                         captures.append(

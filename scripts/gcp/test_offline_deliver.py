@@ -729,6 +729,54 @@ class OfflineDeliverTest(unittest.TestCase):
                 fresh_boot,
             )
         )
+        stale = {"boot_id": "old", "host_result": "GUARD_PROVED", "reboot_requested": True}
+        current = {"boot_id": fresh_boot, "host_result": "LSM_ENABLED", "reboot_requested": False}
+        self.assertFalse(od.guard_ready(stale, fresh_boot))
+        self.assertTrue(od.guard_ready({**stale, "boot_id": fresh_boot}, fresh_boot))
+        self.assertFalse(od.guard_ready({**current, "host_result": "GUARD_PROVED"}, fresh_boot))
+        self.assertEqual(od.choose_boot_rows(stale, current, fresh_boot)["boot_id"], fresh_boot)
+        self.assertEqual(od.choose_boot_rows(current, stale, fresh_boot)["boot_id"], fresh_boot)
+        self.assertEqual(od.choose_boot_rows(stale, None, fresh_boot)["boot_id"], "old")
+        self.assertIsNone(od.choose_boot_rows(None, None, fresh_boot))
+        deliver = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        self.assertIn("live_lsm_from_probe(probe_body, later)", deliver)
+        self.assertNotIn('_wait_boot(project, name, "down"', deliver)
+        self.assertIn("_wait_live_boot", deliver)
+        published = script.find("cp /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json")
+        decision = script.find('json.load(open("/tmp/enterprise-pe-rows.json"))')
+        self.assertGreaterEqual(published, 0)
+        self.assertGreaterEqual(decision, 0)
+        self.assertLess(published, decision)
+        pre_clear = script.find("sudo rm -f /var/lib/vantio-lab/b1-pre.json")
+        pre_run = script.find('python3 "$here/descendant_b1.py"')
+        self.assertGreaterEqual(pre_clear, 0)
+        self.assertGreaterEqual(pre_run, 0)
+        self.assertLess(pre_clear, pre_run)
+        stock_boot = "44444444-4444-4444-4444-444444444444"
+        self.assertTrue(
+            od.stock_bpf_ready(
+                {
+                    "boot_id": stock_boot,
+                    "host_result": "LSM_ALREADY_ACTIVE",
+                    "stock_lsm": listed,
+                    "cmdline": "BOOT_IMAGE=/vmlinuz ro panic=-1",
+                },
+                stock_boot,
+            )
+        )
+        self.assertIsNotNone(
+            od.live_stock_bpf(
+                {"boot_id": stock_boot, "cmdline": "BOOT_IMAGE=/vmlinuz ro panic=-1", "enabled_lsm": listed},
+                stock_boot,
+            )
+        )
+        self.assertIn("lsm_enabled_follow_up", deliver)
+        self.assertIn("boot_id_unread", deliver)
+        hint = "Specify --start=552072 in the next get-serial-port-output command\n"
+        self.assertEqual(od.next_serial_start("noise\n" + hint), 552072)
+        self.assertIsNone(od.next_serial_start("kernel line only"))
+        self.assertEqual(od.serial_console_text("boot line\n" + hint), "boot line\n")
+        self.assertEqual(od.serial_port_argv("vantio-lab-oct08", "vantio-gcp-lab-1", 552072)[-1], "--start=552072")
 
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))

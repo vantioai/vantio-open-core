@@ -1164,7 +1164,7 @@ def kernel_command_lines(text: str) -> list[str]:
             index = line.find(marker)
             if index == -1:
                 continue
-            found.append(line[index + len(marker) :].strip()[:400])
+            found.append(line[index + len(marker) :].strip()[:1200])
             break
         if len(found) >= 4:
             break

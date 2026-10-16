@@ -817,6 +817,11 @@ class BaselineDiagTests(unittest.TestCase):
             baseline_diag.kernel_command_lines(logged),
             ["BOOT_IMAGE=/vmlinuz ro lsm=lockdown,capability,bpf panic=-1"],
         )
+        long_line = "BOOT_IMAGE=/vmlinuz ro " + ("x" * 500) + " lsm=lockdown,capability,bpf panic=-1"
+        self.assertEqual(
+            baseline_diag.kernel_command_lines(f"Kernel command line: {long_line}\n"),
+            [long_line],
+        )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "boot/grub").mkdir(parents=True)

@@ -3,7 +3,7 @@
 
 The runner has already loaded the seal and extracted the contract. This
 script starts the loader the same way the descendant battery does, measures
-one phase, and writes /tmp/enterprise-pe-rows.json. It does not fetch, and
+one phase, and writes /var/lib/vantio-lab/enterprise-pe-rows.json. It does not fetch, and
 it does not treat a same-seal reload as an upgrade.
 
 Audience: INTERNAL_RESTRICTED
