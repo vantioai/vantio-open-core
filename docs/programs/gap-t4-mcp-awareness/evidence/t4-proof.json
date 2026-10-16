@@ -1,0 +1,94 @@
+{
+  "track": "T4",
+  "subject": "mcp-awareness in-process library",
+  "at": "2026-10-16T16:28:02.742Z",
+  "node": "v22.14.0",
+  "seed": 1413742596,
+  "fuzz_iterations": 500,
+  "assertions": [
+    {
+      "id": "read_allow",
+      "ok": true
+    },
+    {
+      "id": "write_deny_enforce",
+      "ok": true
+    },
+    {
+      "id": "write_deny_observe_forwards_decision",
+      "ok": true
+    },
+    {
+      "id": "prefix_is_not_a_path_jail",
+      "ok": true
+    },
+    {
+      "id": "prefix_record_has_no_path_value",
+      "ok": true
+    },
+    {
+      "id": "confusable_name_blocked",
+      "ok": true
+    },
+    {
+      "id": "spoof_record_has_no_canary",
+      "ok": true
+    },
+    {
+      "id": "rug_pull_withholds_list",
+      "ok": true
+    },
+    {
+      "id": "embedded_jsonrpc_blocked",
+      "ok": true
+    },
+    {
+      "id": "plain_language_not_scored",
+      "ok": true
+    },
+    {
+      "id": "stdio_split_frame",
+      "ok": true
+    },
+    {
+      "id": "sse_data_frame",
+      "ok": true
+    },
+    {
+      "id": "http_json_frame",
+      "ok": true
+    },
+    {
+      "id": "pair_gate_waits_for_frame_boundary",
+      "ok": true
+    },
+    {
+      "id": "pair_gate_error_has_no_canary",
+      "ok": true
+    },
+    {
+      "id": "tap_refuses_paused",
+      "ok": true
+    },
+    {
+      "id": "tap_refuses_web_stream",
+      "ok": true
+    },
+    {
+      "id": "fuzz_parser_and_records",
+      "ok": true
+    },
+    {
+      "id": "no_listen_socket",
+      "ok": true
+    }
+  ],
+  "canary_in_records": false,
+  "labels": {
+    "in_process_parser_policy_observe_and_opt_in_gate": "Verified",
+    "phantom_engine_host_observe_copy": "Roadmap",
+    "phantom_engine_host_enforce": "Roadmap",
+    "default_interceptor_wiring": "Roadmap"
+  },
+  "verification": "proof script assertions on this workspace"
+}

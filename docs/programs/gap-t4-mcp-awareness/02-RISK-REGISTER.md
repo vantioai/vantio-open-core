@@ -26,3 +26,15 @@ This register is part of the design packet. It is updated again when the proof e
 | R18 | HMAC values cannot be correlated across processes or restarts | Accepted operational limit | The key exists only in that process, which is what keeps the digests from being confirmed offline |
 | R19 | A pinned tool called before this process has seen `tools/list` follows the name policy with no pin comparison | Accepted residual | Rug-pull comparison runs when a list arrives. A restart does not invent a stale flag. The call is not reported as a pin match |
 | R20 | Existing sentences that say enforcement is Phantom Engine, in `interceptor.cjs` and the `@vantio/gate-mcp` README, stay as they are | Label boundary | This track must not describe the in-process library as Phantom Engine on those surfaces |
+| R21 | A blocked frame whose JSON-RPC id is a string is replaced, on the pair gate, with an error whose id is null | Accepted availability cost | A string id can be conversation content. Copying it into the error would put that text on the wire and in any capture of the error. A numeric id is copied. The single-stream gate still writes no replacement |
+| R22 | An enforce session still forwards a `tools/list` request, and an `initialize` request, when the frame itself is classifiable and the policy is complete | Accepted, so a stale catalog can be refreshed | Forwarding that request is not an allow of `tools/call`. A spoofed, duplicate-key, or incomplete-policy frame is still withheld |
+
+## Verification
+
+Proof script: `node packages/vantio-mcp-awareness/scripts/proof.mjs`  
+Evidence: `docs/programs/gap-t4-mcp-awareness/evidence/t4-proof.json`  
+Evidence timestamp (UTC): 2026-10-16T16:28:02.742Z  
+Node: v22.14.0  
+Result: 19 assertions ok, fuzz seed 1413742596, 500 iterations.  
+Label for those assertions: **Verified**.  
+Phantom Engine host copy and host enforce stay **Roadmap**.

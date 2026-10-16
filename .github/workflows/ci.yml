@@ -46,6 +46,9 @@ jobs:
       - name: Test @vantio/gate-mcp
         run: pnpm --filter @vantio/gate-mcp test
 
+      - name: Test MCP awareness (T4, no install)
+        run: node --test packages/vantio-mcp-awareness/test/*.test.js && node packages/vantio-mcp-awareness/scripts/proof.mjs
+
       - name: Test @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run test
 
