@@ -8,10 +8,10 @@
  */
 
 import { createRequire } from "node:module";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { libraryHref, resolveLibrary } from "./mcp-awareness-paths.js";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
 const MAX_FRAME = 256 * 1024;
@@ -29,11 +29,9 @@ if (enabled && !globalThis.__vantioMcpAwareness) {
 
 async function boot() {
   try {
-    const override = process.env.VANTIO_MCP_LIB;
-    const bundled = resolve(dirname(fileURLToPath(import.meta.url)), "../../vantio-mcp-awareness/src/index.js");
-    const target = override || bundled;
+    const target = resolveLibrary();
     if (!existsSync(target)) return;
-    const loaded = await import(pathToFileURL(target).href);
+    const loaded = await import(libraryHref());
     if (!loaded || typeof loaded.createRuntime !== "function") return;
     install(loaded.createRuntime());
   } catch {

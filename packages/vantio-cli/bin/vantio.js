@@ -320,11 +320,13 @@ function runCommand(rest) {
   // The same option list loads in-process MCP awareness unless the operator
   // turns it off. Awareness does not add a process or a listen socket.
   // Python runtimes get sitecustomize.py on PYTHONPATH (needs vantio-agent-sdk).
+  // That sitecustomize also loads MCP awareness.
   const awarenessOff = process.env.VANTIO_MCP_AWARENESS === "off" || process.env.VANTIO_MCP_AWARENESS === "0";
   const mcpEnforce = values["mcp-enforce"] === true || process.env.VANTIO_MCP_MODE === "enforce";
   let extraNodeOptions = "";
   let extraPythonPath = "";
   const nodeRuntime = isNodeRuntime(program);
+  const pythonRuntime = isPythonRuntime(program);
   if (nodeRuntime) {
     const binDir = dirname(fileURLToPath(import.meta.url));
     const interceptorPath = join(binDir, "interceptor.cjs");
@@ -356,7 +358,7 @@ function runCommand(rest) {
     ...(values.audit     ? { VANTIO_AUDIT_MODE: "1" } : {}),
     ...(values.summary   ? { VANTIO_SUMMARY:    "1" } : {}),
     ...(values.json      ? { VANTIO_JSON:       "1" } : {}),
-    ...(nodeRuntime ? {
+    ...(nodeRuntime || pythonRuntime ? {
       VANTIO_MCP_AWARENESS: awarenessOff ? "off" : "on",
       VANTIO_MCP_MODE: !awarenessOff && mcpEnforce ? "enforce" : "observe",
       VANTIO_MCP_INJECTION: process.env.VANTIO_MCP_INJECTION === "block" ? "block" : "log",
