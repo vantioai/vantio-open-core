@@ -28,6 +28,10 @@ Update this file again when the fixture proof has run. Do not delete a risk beca
 | R18 | One OpenShell network row can match every kernel write to that destination inside the window. Counts are not compared. | Open. Accepted for the lab join. | A second TLS write is not, by itself, `BYPASS_INDICATOR` while the first row still matches. Cardinality is part of the Roadmap live drill. |
 | R19 | An OCSF object with more than 64 keys, or a line over 65,536 bytes, rejects the snapshot. | Open. Accepted. | Rejection emits no finding. A richer live export needs a recorded adapter, not a silent skip. |
 | R20 | `decision_mismatch` recognizes OpenShell disposition `Allowed` and Gate action `ALLOWED` only. | Open. Accepted. | Other spellings stay reconciled without the flag. The flag does not block traffic. |
+| R21 | A caller-supplied clock offset can join unrelated events inside the window. | Open. Lab-only harness. | The offset is an input, not a measurement. See `LIVE-JOIN.md`. |
+| R22 | The file harness can be described as a live OpenShell run. | Open. The live stack stays Roadmap. | `openshell_runtime` stays `not-executed`. |
+| R23 | An OCSF drop still becomes `BYPASS_INDICATOR` when the file tail is missing that row. | Open. Accepted. | Absence is not a captured bypass on a live host. |
+| R24 | A concurrent append during the file read is not locked. | Open. Lab-only. | Two readers can observe different prefixes. |
 
 ## Fixture proof
 

@@ -13,4 +13,6 @@ node internal/gap-t2-openshell/proof/prove-bypass.cjs
 
 The proof reads the fixtures in this directory and writes `evidence/bypass-drill.json`. It does not enroll a host, load a kernel program, or open a socket.
 
+`harness/live.cjs` is the Lab-only file tail. It joins local NDJSON the same way. A live OpenShell sandbox on an enrolled host stays Roadmap. Read `LIVE-JOIN.md`.
+
 Public pricing stays Contact Vantio. This package is not part of the pnpm workspace and is not a published module.
