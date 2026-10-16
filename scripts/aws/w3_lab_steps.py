@@ -731,6 +731,41 @@ def related_owned(resources: list[Mapping[str, Any]], name: str) -> list[Mapping
     return chosen
 
 
+FOUNDER_CLOSE_PATH = Path(__file__).resolve().with_name("founder-soak-close.json")
+FOUNDER_CLOSE_REQUIRED = {
+    "status": "CLOSED_BY_FOUNDER",
+    "closed_by": "Zachary Balicki (Founder)",
+    "instance_id": "i-0f38ffde5ad83c9f2",
+    "decision_time": "2026-10-15T21:10:00-04:00",
+    "decision_time_spoken": "2026-10-15 ~9:10 PM ET",
+    "note": "26.9h was accepted",
+    "evidence_ref": "SOAK-HASH-COMPARE.json",
+}
+
+
+def founder_close_record(path: Path | None = None) -> dict[str, Any] | None:
+    chosen = FOUNDER_CLOSE_PATH if path is None else path
+    try:
+        payload = json.loads(chosen.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def founder_close_honored(instance_id: str, record: Mapping[str, Any] | None) -> bool:
+    """True only for the Founder close of i-0f38ffde5ad83c9f2.
+
+    Every other soak stays refused. A record that changes the closed-by line,
+    the decision time, the 26.9h note, or the SOAK-HASH-COMPARE.json reference
+    stays refused too.
+    """
+    if instance_id != FOUNDER_CLOSE_REQUIRED["instance_id"]:
+        return False
+    if not isinstance(record, Mapping):
+        return False
+    return all(record.get(key) == expected for key, expected in FOUNDER_CLOSE_REQUIRED.items())
+
+
 def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
     instance_id = require_instance_id(os.environ.get("INSTANCE_ID", "").strip())
     identity = lab.aws_json(runner, ["aws", "sts", "get-caller-identity"])
@@ -747,13 +782,43 @@ def execute_teardown(runner: Runner, now: datetime) -> dict[str, Any]:
         payload.update({"reason": "not_owned", "status": "NOT_OWNED"})
         lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
         raise lab.GuardAbort("not_owned")
+    called: list[str] = []
     if lab.soak_active(tags):
-        payload.update({"called": [], "mutated": False, "reason": "soak_active", "status": "REFUSED_SOAK"})
-        lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
-        raise lab.GuardAbort("soak_active")
+        record = founder_close_record()
+        if not founder_close_honored(instance_id, record):
+            payload.update({"called": [], "mutated": False, "reason": "soak_active", "status": "REFUSED_SOAK"})
+            lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+            raise lab.GuardAbort("soak_active")
+        assert record is not None
+        payload["founder_close"] = {key: record[key] for key in FOUNDER_CLOSE_REQUIRED}
+        try:
+            lab.aws_json(
+                runner,
+                [
+                    "aws",
+                    "ec2",
+                    "modify-instance-attribute",
+                    "--region",
+                    lab.REGION,
+                    "--instance-id",
+                    instance_id,
+                    "--no-disable-api-termination",
+                ],
+            )
+        except lab.GuardAbort as exc:
+            payload.update(
+                {
+                    "called": ["modify-instance-attribute"],
+                    "mutated": False,
+                    "reason": exc.reason,
+                    "status": "TERMINATION_LOCK",
+                }
+            )
+            lab.write_json_with_hash(evidence_path("w3-lab-teardown.json"), payload)
+            raise
+        called.append("modify-instance-attribute")
     name = str(tags.get("Name"))
     state = instance_state(instance)
-    called: list[str] = []
     if state in lab.OCCUPYING_STATES:
         called.extend(
             lab._delete_resource(
