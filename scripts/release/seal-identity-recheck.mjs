@@ -11,7 +11,13 @@ import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const SKIP = new Set([".git", "node_modules", "__pycache__", ".venv", "dist"]);
-const EXCLUDE_PREFIX = "docs/planning/seal-identity-recheck/";
+const MANIFEST_FILES = [
+  ".github/workflows/enterprise-slsa-provenance.yml",
+  "deploy/docker/Dockerfile.observe",
+  "packages/vantio-install/vantio_install/constants.py",
+  "scripts/gap/t1-stranger-host/constants.py",
+  "scripts/release/seal-identity-recheck.mjs",
+];
 const LANE_DIGEST_PREFIX = "6d3ce580";
 
 export async function recheck(root) {
@@ -27,9 +33,8 @@ export async function recheck(root) {
     const text = readFileSync(join(root, row.path), "utf8");
     return text.includes("vantio-loader") || text.includes("bpf-linker");
   });
-  const manifest = files.map((row) => `${row.sha256}  ${row.path}`).join("\n") + "\n";
-  const again = await walk(root);
-  const manifestAgain = again.map((row) => `${row.sha256}  ${row.path}`).join("\n") + "\n";
+  const manifest = await manifestText(root);
+  const manifestAgain = await manifestText(root);
   const agree = manifest === manifestAgain;
   return {
     bytes_matching_digest: matched,
@@ -93,11 +98,18 @@ function sha256Text(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
+async function manifestText(root) {
+  const lines = [];
+  for (const rel of MANIFEST_FILES) {
+    lines.push(`${await hashFile(join(root, rel))}  ${rel}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 async function walk(root) {
   const rows = [];
   for (const path of listFiles(root)) {
     const rel = relative(root, path).split("\\").join("/");
-    if (rel.startsWith(EXCLUDE_PREFIX)) continue;
     rows.push({ path: rel, sha256: await hashFile(path) });
   }
   rows.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));

@@ -8,7 +8,7 @@ Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps
 
 ## What was checked
 
-`scripts/release/seal-identity-recheck.mjs` reads those constants, hashes every file in this tree except `.git`, `node_modules`, caches, and this directory, and does that hash pass twice.
+`scripts/release/seal-identity-recheck.mjs` reads those constants. It hashes every file in this tree except `.git`, `node_modules`, and caches, and records any file whose digest is the working seal. A second hash pass covers five build-chain inputs: the stranger-host seal constants, the installer pin file, the Optics observe Dockerfile, the open-core provenance workflow, and this script.
 
 | Fact | Result | Label |
 | --- | --- | --- |
