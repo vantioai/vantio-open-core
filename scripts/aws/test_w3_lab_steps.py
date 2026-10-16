@@ -2411,6 +2411,8 @@ class ProductUninstallCensusTests(unittest.TestCase):
         source = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
         self.assertEqual(source.count('copy_to(script_path.with_name("product_uninstall_census.py")'), 1)
         self.assertNotIn("release_lab_programs.py", source)
+        arm = (ROOT / ".github/workflows/w3-lab-auto-arm.yml").read_text(encoding="utf-8")
+        self.assertIn("scripts/aws/lab-guests/product_uninstall_census.py", arm)
         census = (ROOT / "scripts/aws/lab-guests/product_uninstall_census.py").read_text(encoding="utf-8")
         self.assertNotIn("cgroup detach", census)
         self.assertNotIn(".unlink(", census)
