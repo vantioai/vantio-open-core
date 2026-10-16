@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,35 +16,59 @@ test("the phase-1 packet passes the claim fence", () => {
   assert.equal(evidence.files.length, 9);
 });
 
+function copyPacket(dir) {
+  const source = path.join(REPO, "docs", "gap-program");
+  const dest = path.join(dir, "docs", "gap-program");
+  mkdirSync(dest, { recursive: true });
+  for (const name of readdirSync(source)) {
+    if (!name.endsWith(".md")) continue;
+    writeFileSync(path.join(dest, name), readFileSync(path.join(source, name)));
+  }
+  return dest;
+}
+
 test("a price in a track file fails the fence", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "gap-p1-"));
   try {
-    const source = path.join(REPO, "docs", "gap-program");
-    mkdirSync(path.join(dir, "docs", "gap-program"), { recursive: true });
-    for (const name of [
-      "T6-identity-interop.md",
-      "T7-credential-keep-out.md",
-      "T8-ocsf-otlp-siem.md",
-      "T9-owasp-agentic-matrix.md",
-      "T10-live-human-approval.md",
-      "T11-coding-agent-supply-chain.md",
-      "T12-policy-preview.md",
-      "T13-fedramp-fips-gap.md",
-      "T14-eu-ai-act-evidence-outline.md",
-    ]) {
-      writeFileSync(path.join(dir, "docs", "gap-program", name), readFileSync(path.join(source, name)));
-    }
-    const t6 = path.join(dir, "docs", "gap-program", "T6-identity-interop.md");
+    const dest = copyPacket(dir);
+    const t6 = path.join(dest, "T6-identity-interop.md");
     writeFileSync(t6, `${readFileSync(t6, "utf8")}\nPrice leak $499 and 1200 USD\n`);
-    const t8 = path.join(dir, "docs", "gap-program", "T8-ocsf-otlp-siem.md");
-    writeFileSync(t8, `${readFileSync(t8, "utf8")}\nproduct_otlp_export_authorized: true\n`);
-    const t13 = path.join(dir, "docs", "gap-program", "T13-fedramp-fips-gap.md");
-    writeFileSync(t13, `${readFileSync(t13, "utf8")}\nFedRAMP Moderate authorization granted.\n`);
-    const t14 = path.join(dir, "docs", "gap-program", "T14-eu-ai-act-evidence-outline.md");
-    writeFileSync(t14, `${readFileSync(t14, "utf8")}\nVantio fulfills the regulation and is conformant.\n`);
     const evidence = checkDesign(dir);
     assert.equal(evidence.ok, false);
-    assert.ok(evidence.errors.some((line) => line.includes("forbidden")));
+    assert.ok(evidence.errors.some((line) => line.includes("dollar-amount")));
+    assert.ok(evidence.errors.some((line) => line.includes("usd")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a GAP word later in the row does not satisfy the status column", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "gap-p1-"));
+  try {
+    const dest = copyPacket(dir);
+    const t13 = path.join(dest, "T13-fedramp-fips-gap.md");
+    const text = readFileSync(t13, "utf8").replace(
+      "| Assessment and authorization | GAP |",
+      "| Assessment and authorization | PASS |",
+    );
+    writeFileSync(t13, text);
+    const evidence = checkDesign(dir);
+    assert.equal(evidence.ok, false);
+    assert.ok(evidence.errors.some((line) => line.includes("Assessment and authorization")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a FedRAMP authorized sentence fails the fence", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "gap-p1-"));
+  try {
+    const dest = copyPacket(dir);
+    const t13 = path.join(dest, "T13-fedramp-fips-gap.md");
+    writeFileSync(t13, `${readFileSync(t13, "utf8")}\nVantio is FedRAMP authorized.\n`);
+    const evidence = checkDesign(dir);
+    assert.equal(evidence.ok, false);
+    assert.ok(evidence.errors.some((line) => line.includes("fedramp-authorized")));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

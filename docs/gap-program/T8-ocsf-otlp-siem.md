@@ -155,7 +155,7 @@ WORM rollback is deleting the lab copy of the fixture file. It does not touch a 
 
 ## Proof plan
 
-Phase 1 proof is `node scripts/gap-program/check-p1-design.mjs`. For this file it checks that the strings `ef3a33a` and `MUTABLE_LOCAL_LEDGER` appear, and that no line assigns the product OTLP authorization flag a yes value. It does not re-run the drill.
+Phase 1 proof is `node scripts/gap-program/check-p1-design.mjs`. For this file it checks that the strings `ef3a33a` and `MUTABLE_LOCAL_LEDGER` appear. On the authorization flag, it rejects a line where the boolean true occurs within 80 characters after the flag name unless that same span also contains false. A yes value in that span is outside this check. It does not re-run the drill.
 
 Phase 2 proof, not authorized by this packet:
 

@@ -112,7 +112,7 @@ Phase 2 lab, mock secret only. The proof is an assertion list, not a procedure f
 2. Start the workload as uid A, A different from B, with only the placeholder in its environment.
 3. From uid A, assert: the secret string is absent from the environment, from readable maps, and from files the workload can open; opening the broker secret path and the broker `/proc` environ returns `EACCES`; `ptrace` of the broker fails.
 4. A policy deny does not dial, and a capture on the lab interface does not contain the mock secret.
-5. A policy allow dials from the broker. The workload's maps still do not contain the mock secret after the call returns. The bytes returned to the workload do not contain the exact mock secret.
+5. A policy allow dials from the broker. The workload's maps still do not contain the mock secret after the call returns. The bytes returned to the workload do not contain the exact mock secret. A gzip or otherwise transformed body is part of the encoding residual and is not a pass of this step.
 6. Kill the broker. The next credentialed call fails and does not fall back to an in-process secret.
 
 Passing this list is still Lab-only until it is repeated on an enrolled host the program allows. It is not a production claim. Root on the host remains able to read the broker. That residual stays in the report.

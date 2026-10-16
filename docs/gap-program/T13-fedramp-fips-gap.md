@@ -93,7 +93,7 @@ T6, T8, T10, and T11 are the designs that would later feed IA, AU, AC, and SI. T
 
 ## Proof plan
 
-Phase 1 proof is the design checker. It requires each family name in the table above to appear on a line whose status cell is GAP. It rejects an affirmative authorization sentence. It does not score a control as implemented.
+Phase 1 proof is the design checker. It requires the status column of each family row above to be exactly GAP. A later GAP word in the same row does not satisfy that column. It also rejects the literal claim phrases named in `scripts/gap-program/check-p1-design.mjs`. It does not parse an arbitrary authorization sentence, and it does not score a control as implemented.
 
 Phase 2, only if a founder force allows a lab host: write an inventory of module names and versions, with a column `validation` set to `NOT_CLAIMED` on every row. Do not query CMVP from this program if that query is a stand-in for a claim. Reading a public certificate list is a later force.
 

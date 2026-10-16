@@ -100,7 +100,7 @@ T6, T8, T9, T10, and T11 are the internal inputs sections 4 through 6 would cite
 
 ## Proof plan
 
-Phase 1 proof is the design checker. It requires the strings `2 December 2027`, `2 August 2028`, and `AI Act Service Desk` in this file, and it rejects an affirmative fulfillment sentence. It does not fetch the regulation text, and it does not change `vantio_fulfills_function` in the assurance package.
+Phase 1 proof is the design checker. It requires the strings `2 December 2027`, `2 August 2028`, and `AI Act Service Desk` in this file. It rejects the literal fulfillment phrases named in `scripts/gap-program/check-p1-design.mjs`. It does not parse an arbitrary compliance sentence, it does not fetch the regulation text, and it does not change `vantio_fulfills_function` in the assurance package.
 
 Phase 2 is still an outline review with counsel inside the company. It does not fill the template and does not notify an authority.
 

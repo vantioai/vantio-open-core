@@ -45,6 +45,7 @@ const FORBIDDEN = [
   { name: "fulfills-the-regulation", re: /fulfills the regulation/i },
   { name: "authorization-granted", re: /authorization granted/i },
   { name: "fedramp-moderate", re: /FedRAMP Moderate/i },
+  { name: "fedramp-authorized", re: /FedRAMP authorized/i },
 ];
 
 const FAMILIES = [
@@ -187,7 +188,8 @@ export function checkDesign(repoRoot) {
   if (t13) {
     for (const family of FAMILIES) {
       const row = t13.split("\n").find((line) => line.startsWith(`| ${family} |`));
-      if (!row || !row.includes("GAP")) errors.push(`T13 family row is not GAP: ${family}`);
+      const cells = row ? row.split("|").map((part) => part.trim()).filter(Boolean) : [];
+      if (cells[1] !== "GAP") errors.push(`T13 status column is not GAP: ${family}`);
     }
   }
   if (t14 && !t14.includes("2 December 2027")) errors.push("T14 missing the program date");

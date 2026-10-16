@@ -59,4 +59,4 @@ A search of this repository, `vantio-phantom-engine` `docs/`, `vantio-enterprise
 
 ## Checker
 
-`node scripts/gap-program/check-p1-design.mjs` checks the required sections, the track labels, the T9 cell counts, the T13 family rows, and the claim fence inside `docs/gap-program/`. It writes `evidence/gap-program/T6-T14-P1.json`. The field `git_head_at_generation` is the HEAD at the moment the checker ran. The nine design-file hashes are the attestation of those files. The checker does not watch the README, tags, or commits outside this directory.
+`node scripts/gap-program/check-p1-design.mjs` checks the required sections, the track labels, the T9 cell counts, the T13 status column, and the claim fence inside `docs/gap-program/`. It writes `evidence/gap-program/T6-T14-P1.json`. `git_head_at_generation` is the HEAD the checker read. When the latest commit only refreshes that evidence file, the field names that commit's parent. The nine design-file hashes are the attestation of those files. The checker does not watch the README, tags, or commits outside this directory, and it does not parse arbitrary claim sentences beyond the literal phrases in the script.

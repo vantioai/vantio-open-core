@@ -112,7 +112,7 @@ Tactic names only. Technique IDs are not pinned. This table uses the labels it h
 | Reconnaissance | T3 discovery, if the sibling lands | Roadmap |
 | Resource Development | T11 supply chain | Roadmap |
 | Initial Access | T1 stranger host, T11 repo config | Roadmap |
-| Command and Control | Omitted until an ATLAS version is pinned | Not addressed |
+| Command and Control | Named so the gap is visible. No mapping is adopted until an ATLAS version is pinned | Not addressed |
 | ML Model Access | Out of scope for model evaluation. A later pin may use a different tactic title | Not addressed |
 | Execution | T11 unknown children, ASI05 | Roadmap |
 | Persistence | T11 hook and skill change | Roadmap |
