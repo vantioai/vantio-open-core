@@ -1,0 +1,21 @@
+{
+  "track": "T5",
+  "suite": "clean-host",
+  "status": "NOT_WIRED",
+  "cloud_run": false,
+  "catalog": "scripts/clean-host/t5/catalog.json",
+  "proof": "python3 scripts/clean-host/t5/proof.py",
+  "battery_id": "t5-egress",
+  "integration_step": "A later lab agent may copy scripts/clean-host/t5 onto a guest it already owns and add battery id t5-egress to the allow-list in scripts/aws/w3_lab_steps.py. This track does not edit that file, does not edit .github/workflows/w3-lab-*.yml or .github/workflows/gcp-lab-*.yml, and does not start a cloud lab.",
+  "lab_slot_owner": "bc-8b310b16",
+  "seal_note": "6d3ce580 is not the working seal. This registration does not change a seal or the public pin e0b19d55.",
+  "do_not_edit": [
+    ".github/workflows/w3-lab-auto-provision.yml",
+    ".github/workflows/w3-lab-auto-collect.yml",
+    ".github/workflows/w3-lab-auto-teardown.yml",
+    ".github/workflows/gcp-lab-provision.yml",
+    ".github/workflows/gcp-lab-collect.yml",
+    ".github/workflows/gcp-lab-teardown.yml",
+    "scripts/aws/w3_lab_steps.py"
+  ]
+}

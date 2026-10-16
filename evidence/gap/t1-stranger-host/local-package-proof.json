@@ -1,0 +1,17 @@
+{
+  "base_sha": "69671e97fa359b685232ec7dd4e9fb4badc7be57",
+  "claim_cap": "FIXTURE_NOT_A_HOST_PROOF",
+  "cloud_labs_run": false,
+  "created_utc": "2026-10-16T16:20:27Z",
+  "head_sha": "b8f8411358b70d07393e2505edc140ad25fcd4bd",
+  "host_run": false,
+  "label": "Roadmap",
+  "paths_outside_package": [],
+  "pinned_trust_signature": "not_produced",
+  "public_pin_moved": false,
+  "schema": "vantio.t1-package-proof/v1",
+  "stranger_host": "not_run",
+  "tests_exit": 0,
+  "tests_passed": true,
+  "tier": "UNSET"
+}

@@ -46,6 +46,9 @@ jobs:
       - name: Test @vantio/gate-mcp
         run: pnpm --filter @vantio/gate-mcp test
 
+      - name: Test MCP awareness (T4, no install)
+        run: node --test packages/vantio-mcp-awareness/test/*.test.js && node packages/vantio-mcp-awareness/scripts/proof.mjs
+
       - name: Test @vantio/agent-sdk
         run: pnpm --filter @vantio/agent-sdk run test
 
@@ -195,3 +198,18 @@ jobs:
         run: |
           node --test internal/gap-t2-openshell/test/*.test.cjs
           node internal/gap-t2-openshell/proof/prove-bypass.cjs
+
+  test-optics-agent-inventory:
+    name: Test Optics agent inventory fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Fixture tests
+        run: python3 -m unittest discover -s tests/optics-agent-inventory -t tests/optics-agent-inventory -v
