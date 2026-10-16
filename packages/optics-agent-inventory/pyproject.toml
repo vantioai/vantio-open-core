@@ -1,0 +1,9 @@
+[project]
+name = "optics-agent-inventory"
+version = "0.0.0-unstable-pre-1.0"
+description = "Lab-only Optics agent inventory. Not published. Not Phantom Engine coverage."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
