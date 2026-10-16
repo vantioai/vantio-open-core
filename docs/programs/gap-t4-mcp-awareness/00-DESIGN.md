@@ -167,6 +167,8 @@ What this track commits to, and no further:
 
 Nothing here claims cluster verification or a live enrolled host. Local in-process observe never needs a network path. The bytes are the workload's own pipe or a copy of a buffer it already had.
 
+Lane K, founder Q11 and Q12, chooses the copy primitive in `04-HOST-COPY.md`. The sentences above are the phase-1 record. The later design uses a ring buffer and a 4096-byte cap. It does not load a program, and it does not withhold a write.
+
 ## 7. Policy
 
 Schema `vantio.mcp_policy.v1`.
