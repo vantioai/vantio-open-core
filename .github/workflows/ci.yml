@@ -229,7 +229,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install clang
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: sudo apt-get update && sudo apt-get install -y clang gcc libbpf-dev
 
       - name: Model, compile, and battery allow-list
         run: |
@@ -237,3 +237,6 @@ jobs:
           python3 scripts/clean-host/t5/kernel_proof.py
           python3 scripts/aws/test_t5_battery.py -v
           python3 scripts/gcp/test_t5_battery.py -v
+          gcc -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/t5_load" scripts/clean-host/t5/t5_load.c -lbpf -lelf -lz
+          "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill
+          if "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-enrolled.slice; then exit 1; fi

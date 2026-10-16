@@ -1,8 +1,8 @@
 """GCP plan for battery id t5-egress.
 
 This module does not call gcloud and does not start a guest. The keyless
-workflow on main has no input that selects this battery. The only accepted
-project is vantio-lab-oct08.
+workflow input is t5_egress. This function still does not dispatch it.
+The only accepted project is vantio-lab-oct08.
 """
 
 from __future__ import annotations
@@ -36,7 +36,6 @@ def plan(env: Mapping[str, str]) -> dict[str, object]:
         reasons.append("project")
     if any(env.get(name) for name in STATIC_KEY_NAMES):
         reasons.append("static_key")
-    reasons.append("workflow_has_no_t5_input")
     reasons.append("not_dispatched")
     return {
         "battery_id": t5.BATTERY_ID,
