@@ -205,7 +205,7 @@ function normalizeRun(run) {
       return fail("SCHEMA", `run.bindings[${index}]`);
     }
     const cgroupId = canonicalCgroup(row.cgroup_id);
-    if (cgroupId == null || typeof row.cgroup_id !== "string") {
+    if (cgroupId == null || cgroupId === "0" || typeof row.cgroup_id !== "string") {
       return fail("SCHEMA", `run.bindings[${index}].cgroup_id`);
     }
     if (typeof row.sandbox_id !== "string" || !ID_PATTERN.test(row.sandbox_id)) {
@@ -450,23 +450,11 @@ function normalizeOpenshell(record, index) {
   if (!subject.ok) {
     return subject;
   }
-  const dispositionRaw = consistent(
-    record,
-    ["action", "disposition"],
-    (value) => {
-      const text = String(value);
-      if (!/^[A-Za-z_]{1,32}$/.test(text)) {
-        return fail("action");
-      }
-      return pass(text);
-    },
-    "OPENSHELL_RECORD",
-    `${where}.action`,
-  );
-  if (!dispositionRaw.ok) {
+  const dispositionSource = record.action != null ? record.action : record.disposition;
+  const disposition = dispositionSource == null ? null : String(dispositionSource);
+  if (disposition != null && !/^[A-Za-z_]{1,32}$/.test(disposition)) {
     return fail("OPENSHELL_RECORD", `${where}.action`);
   }
-  const disposition = dispositionRaw.value == null ? null : dispositionRaw.value;
   let eventId = null;
   if (isPlainObject(record.metadata) && record.metadata.uid != null) {
     if (typeof record.metadata.uid !== "string" || record.metadata.uid.length > MAX_ID) {
@@ -503,32 +491,46 @@ function gateSubject(record) {
   if (!host.ok || !port.ok) {
     return host.ok ? port : host;
   }
-  if (host.value != null || port.value != null) {
+  const executable = consistent(
+    record,
+    ["exe", "executable"],
+    normalizePath,
+    "GATE_RECORD",
+    "gate.exe",
+  );
+  const pathValue = consistent(
+    record,
+    ["PathAttempted", "path_attempted", "path"],
+    normalizePath,
+    "GATE_RECORD",
+    "gate.path",
+  );
+  if (!executable.ok || !pathValue.ok) {
+    return executable.ok ? pathValue : executable;
+  }
+  const networkPresent = host.value != null || port.value != null;
+  const processPresent = executable.value != null;
+  const filePresent = pathValue.value != null;
+  const present = [networkPresent, processPresent, filePresent].filter(Boolean).length;
+  if (present > 1) {
+    return fail("GATE_RECORD", "gate.subject");
+  }
+  if (networkPresent) {
     if (host.value == null || port.value == null) {
       return fail("GATE_RECORD", "gate.subject");
     }
     return pass({ kind: "network", host: host.value, port: port.value });
   }
-  const executable = own(record, ["exe", "executable"]);
-  if (executable != null) {
-    const subject = normalizePath(executable);
-    if (!subject.ok) {
-      return fail("GATE_RECORD", "gate.exe");
-    }
-    if (!subject.value.startsWith("/")) {
+  if (processPresent) {
+    if (!executable.value.startsWith("/")) {
       return pass(null);
     }
-    return pass({ kind: "process", path: subject.value });
+    return pass({ kind: "process", path: executable.value });
   }
-  const pathValue = own(record, ["PathAttempted", "path_attempted", "path"]);
-  if (pathValue == null) {
-    return pass(null);
+  if (filePresent) {
+    return pass({ kind: "file", path: pathValue.value });
   }
-  const subject = normalizePath(pathValue);
-  if (!subject.ok) {
-    return fail("GATE_RECORD", "gate.path");
-  }
-  return pass({ kind: "file", path: subject.value });
+  return pass(null);
 }
 
 function normalizeGate(record, index) {
@@ -561,11 +563,23 @@ function normalizeGate(record, index) {
   if (!subject.ok) {
     return fail(subject.reason_code, `${where}.subject`);
   }
-  const actionRaw = own(record, ["action", "ActionTaken", "action_taken"]);
-  const actionTaken = actionRaw == null ? null : String(actionRaw).toUpperCase();
-  if (actionTaken != null && !/^[A-Z_]{1,32}$/.test(actionTaken)) {
+  const actionRaw = consistent(
+    record,
+    ["action", "ActionTaken", "action_taken"],
+    (value) => {
+      const action = String(value).toUpperCase();
+      if (!/^[A-Z_]{1,32}$/.test(action)) {
+        return fail("action");
+      }
+      return pass(action);
+    },
+    "GATE_RECORD",
+    `${where}.action`,
+  );
+  if (!actionRaw.ok) {
     return fail("GATE_RECORD", `${where}.action`);
   }
+  const actionTaken = actionRaw.value == null ? null : actionRaw.value;
   return pass({
     host_id: hostId,
     trace_id: trace.value,

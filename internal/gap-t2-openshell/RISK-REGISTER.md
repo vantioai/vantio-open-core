@@ -35,7 +35,7 @@ Command: `node --test internal/gap-t2-openshell/test/*.test.cjs`, which also run
 
 | Check | Result |
 | --- | --- |
-| Tests | 29 passed after the review fixes. The evidence file still records the 2026-10-16T16:01:29.765Z fixture proof. Fixtures did not change, so its hashes still match. |
+| Tests | 32 passed. The evidence file still records the 2026-10-16T16:01:29.765Z fixture proof. Fixtures did not change, so its hashes still match. |
 | Evidence time | 2026-10-16T16:01:29.765Z |
 | Drill indicator | `BYPASS_INDICATOR` |
 | OpenShell control | `matched_openshell` |

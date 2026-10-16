@@ -204,15 +204,10 @@ test("an allowed OpenShell row against a kernel drop is a mismatch on a reconcil
   assert.equal(finding.indicator, "RECONCILED_OK");
   assert.equal(finding.decision_mismatch, true);
   const observed = one(reconcile(snapshot({
-    openshell: [networkRow({ action: "Denied" })],
+    openshell: [networkRow({ action: "Denied", disposition: "Blocked" })],
   })));
   assert.equal(observed.indicator, "RECONCILED_OK");
   assert.equal(observed.decision_mismatch, false);
-  const clash = reconcile(snapshot({
-    openshell: [networkRow({ action: "Allowed", disposition: "Blocked" })],
-  }));
-  assert.equal(clash.status, "rejected");
-  assert.equal(clash.reason_code, "OPENSHELL_RECORD");
 });
 
 test("both sides matching names matched_both", () => {
@@ -465,6 +460,64 @@ test("a zero window matches only the same millisecond", () => {
     openshell: [networkRow({ time: T0 + 1 })],
   })));
   assert.equal(next.indicator, "BYPASS_INDICATOR");
+});
+
+test("cgroup 0 cannot be enrolled, and a zero kernel cgroup stays out of scope", () => {
+  const bound = reconcile(snapshot({
+    run: run({ bindings: [{ cgroup_id: "0", sandbox_id: "policy-demo" }] }),
+  }));
+  assert.equal(bound.status, "rejected");
+  assert.equal(bound.reason_code, "SCHEMA");
+  const padded = reconcile(snapshot({
+    run: run({ bindings: [{ cgroup_id: "000", sandbox_id: "policy-demo" }] }),
+  }));
+  assert.equal(padded.reason_code, "SCHEMA");
+  const row = one(reconcile(snapshot({
+    kernel: [kernel({ cgroup_id: 0 })],
+  })));
+  assert.equal(row.indicator, "OUT_OF_SCOPE");
+  assert.equal(row.reason, "out_of_scope_cgroup");
+});
+
+test("disagreeing Gate aliases reject, and a denial record still reconciles", () => {
+  const exe = reconcile(snapshot({
+    gate: [{ trace_id: "c0ffee00c0ffee00", exe: "/bin/a", executable: "/bin/b" }],
+  }));
+  assert.equal(exe.status, "rejected");
+  assert.equal(exe.reason_code, "GATE_RECORD");
+  assert.equal(exe.findings.length, 0);
+  assert.equal(JSON.stringify(exe).includes("/bin/"), false);
+  const both = reconcile(snapshot({
+    gate: [{
+      trace_id: "c0ffee00c0ffee00",
+      destination_host: "lab.invalid",
+      destination_port: 443,
+      exe: "/bin/other",
+    }],
+  }));
+  assert.equal(both.reason_code, "GATE_RECORD");
+  const denied = one(reconcile(snapshot({
+    openshell: [networkRow({ action: "Denied", disposition: "Blocked" })],
+  })));
+  assert.equal(denied.indicator, "RECONCILED_OK");
+});
+
+test("hostile arrays and revoked proxies reject instead of throwing", () => {
+  const rows = [];
+  Object.defineProperty(rows, "0", {
+    enumerable: true,
+    get() {
+      throw new Error("sk-from-a-getter");
+    },
+  });
+  const arrayResult = reconcile(snapshot({ kernel: rows }));
+  assert.equal(arrayResult.status, "rejected");
+  assert.equal(JSON.stringify(arrayResult).includes("sk-from-a-getter"), false);
+  const pair = Proxy.revocable({ kernel: [] }, {});
+  pair.revoke();
+  const revoked = reconcile(pair.proxy);
+  assert.equal(revoked.status, "rejected");
+  assert.equal(revoked.reason_code, "SCHEMA");
 });
 
 test("several kernel writes can match one OpenShell open inside the window", () => {

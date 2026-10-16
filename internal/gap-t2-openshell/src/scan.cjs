@@ -94,12 +94,20 @@ function copyPlain(value, path, depth, seen) {
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    if (value.length > MAX_RECORDS) {
+    const length = value.length;
+    if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0) {
+      return problem("SCHEMA", path || "root");
+    }
+    if (length > MAX_RECORDS) {
       return problem("LIMIT_EXCEEDED", path || "root");
     }
     const copy = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const child = copyPlain(value[index], joinPath(path, index), depth + 1, seen);
+    for (let index = 0; index < length; index += 1) {
+      const description = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!description || description.get || description.set) {
+        return problem("SCHEMA", joinPath(path, index));
+      }
+      const child = copyPlain(description.value, joinPath(path, index), depth + 1, seen);
       if (!child.ok) {
         return child;
       }

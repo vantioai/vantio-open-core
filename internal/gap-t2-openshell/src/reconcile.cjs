@@ -245,6 +245,14 @@ function failRows(reasonCode, detail) {
 }
 
 function reconcile(input) {
+  try {
+    return reconcileSnapshot(input);
+  } catch {
+    return rejected("SCHEMA", "input");
+  }
+}
+
+function reconcileSnapshot(input) {
   if (input == null || typeof input !== "object") {
     return rejected("SCHEMA", "input");
   }
