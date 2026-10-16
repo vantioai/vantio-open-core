@@ -1,7 +1,18 @@
 # Injected onto PYTHONPATH by `vantio run python …`.
 # When vantio-agent-sdk is installed, this records supported outbound calls
 # for this interpreter. Missing SDK is a warning, not a crash.
+# MCP awareness uses the same Node library as `vantio run node`. It does not
+# replace the SDK and it does not listen.
 import sys
+
+try:
+    import mcp_awareness
+
+    mcp_awareness.install()
+except Exception as exc:
+    sys.stderr.write(
+        f"[ ∅ VANTIO ] Python MCP awareness did not install ({type(exc).__name__}); agent continues.\n"
+    )
 
 try:
     from vantio._process_wrap import install_process_wrap

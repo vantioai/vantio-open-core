@@ -20,7 +20,7 @@ For `node`, `npx`, `tsx`, and `ts-node`, `vantio run` adds `--import` of `packag
 
 `--mcp-enforce` does not win over `VANTIO_MCP_AWARENESS=off`. A mode other than `enforce` stays observe. A value other than `block` stays log.
 
-Python `vantio run` does not load this library.
+Python `vantio run` loads the same library for a copy of each complete line on a child stdin pipe. The python process still owns that pipe.
 
 ## No proxy hop
 
@@ -50,9 +50,9 @@ Records are the library's `vantio.mcp_observation.v1` objects. Argument values, 
 | Result | Label |
 | --- | --- |
 | Observe forwards a stdio tool call, enforce withholds it on the pair gate and on a stdin-only pipe, HTTP observe sends the request, HTTP enforce does not, and the canary is absent from the log and from stderr. Tests: `packages/vantio-cli/test/mcp-awareness-run.test.js` | Verified |
+| A packed `@vantio/cli` tarball run outside the monorepo loads `bin/mcp-awareness` and records a tool call without the canary. Python `vantio run` forwards in observe and withholds in enforce. Tests: `packages/vantio-cli/test/mcp-awareness-pack.test.js` | Verified |
 | Phantom Engine host copy and host enforce | Roadmap |
-| A packed `@vantio/cli` tarball that does not contain this private package. The import fails closed to "do not change the workload" | Roadmap |
-| Python `vantio run`, `spawnSync`, `fork`, and a stream HTTP body | Roadmap |
+| `spawnSync`, `fork`, a stream HTTP body, and `stdio: "inherit"` | Roadmap |
 
 No result here is called unbreakable. No result is called audited.
 
