@@ -1,0 +1,18 @@
+{
+  "name": "@vantio/mcp-awareness",
+  "version": "0.0.0",
+  "private": true,
+  "description": "In-process MCP frame parser and operator policy for gap track T4. Not Phantom Engine. Not a shipped product claim.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "proof": "node scripts/proof.mjs"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  }
+}
