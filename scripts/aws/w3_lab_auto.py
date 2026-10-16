@@ -395,6 +395,9 @@ def plan_launch(spec: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         # Termination protection stays off. The sweeper role cannot clear
         # disableApiTermination, and the soak tag is what keeps the sweeper
         # from deleting the host. Stop protection still blocks StopInstances.
+        # RunInstances is the only setter, and only when this value is true.
+        # Collect, the guest hourly unit, and user-data never call
+        # ModifyInstanceAttribute, so nothing here turns the flag back on.
         "disable_api_termination": False,
         "disable_api_stop": soak,
         "auto_stop": not soak,
