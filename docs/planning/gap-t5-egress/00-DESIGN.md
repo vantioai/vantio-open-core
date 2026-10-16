@@ -18,6 +18,8 @@ Producer classification: `T5_EGRESS_DRILL_DESIGN_READY_FOR_COUNCIL`
 
 This document is the phase-1 design. It contains no product claim that the kernel path is loaded. The local drills that follow this design are labeled **Lab-only**. Kernel attachment is labeled **Roadmap**.
 
+Lane K, founder Q11 and Q12 on 2026-10-16, authorizes the later port in `04-KERNEL-PORT.md`. That port compiles a program and keeps entropy in userspace. It does not load the program. The sentences below that say this track does not compile eBPF are the phase-1 record.
+
 ## 1. Threat model
 
 Phantom Engine covers supported AI workloads on enrolled Linux machines. This track hardens the egress and side-channel surface those workloads can use to leave the machine or to reach a host service they were not granted.

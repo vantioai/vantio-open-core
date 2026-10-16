@@ -29,6 +29,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+*.bpf.o
 
 # Local soak / test artifacts — never commit
 passwd.txt

@@ -3,6 +3,8 @@
   "suite": "clean-host",
   "label": "Lab-only",
   "kernel_attach": "Roadmap",
+  "kernel_program": "packages/t5-egress-kernel/bpf/t5_egress.bpf.c",
+  "entropy": "userspace",
   "cloud_run": false,
   "proof": "python3 scripts/clean-host/t5/proof.py",
   "policy": "scripts/clean-host/t5/policy.json",

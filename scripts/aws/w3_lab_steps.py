@@ -49,6 +49,11 @@ DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "e
 DEFAULT_DESCENDANT_GUEST = Path(__file__).resolve().with_name("lab-guests") / "descendant_b1.py"
 DEFAULT_REDTEAM_ROWS = Path(__file__).resolve().parents[1] / "gcp" / "lab-guests" / "redteam_rows.py"
 DEFAULT_REDTEAM_PACKET = Path(__file__).resolve().parents[1] / "gcp" / "redteam_packet.py"
+_T5_DIR = Path(__file__).resolve().parents[1] / "clean-host" / "t5"
+if str(_T5_DIR) not in sys.path:
+    sys.path.insert(0, str(_T5_DIR))
+import t5_battery  # noqa: E402
+
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
 SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
@@ -1418,10 +1423,10 @@ def execute_enterprise_rows(
             "lsm-guard",
             "soak-hourly",
         }
-        if battery not in {"enterprise", "descendant-b1", "reboot-check", "self-service", *phase_batteries}:
+        if battery not in {"enterprise", "descendant-b1", "reboot-check", "self-service", t5_battery.BATTERY_ID, *phase_batteries}:
             raise lab.GuardAbort("battery")
         payload["battery"] = battery
-        if battery == "self-service" and os.environ.get("W3_BRAIN_DIR", "").strip():
+        if battery in {"self-service", t5_battery.BATTERY_ID} and os.environ.get("W3_BRAIN_DIR", "").strip():
             raise lab.GuardAbort("battery")
         cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
         bundle_dir = Path(os.environ.get("W3_BUNDLE_DIR", ""))
@@ -1430,6 +1435,11 @@ def execute_enterprise_rows(
             if seal != enterprise_bundle.POLICY_ALLOW_SEAL:
                 raise lab.GuardAbort("bundle_wrong_seal")
             _scan_self_service(staged)
+        elif battery == t5_battery.BATTERY_ID:
+            if seal != t5_battery.LANE_SEAL or seal == enterprise_bundle.PUBLIC_INSTALLER_PIN:
+                raise lab.GuardAbort("bundle_wrong_seal")
+            payload["kernel_attach"] = "Roadmap"
+            payload["label"] = "Lab-only"
         else:
             if not bundle_dir.is_dir():
                 raise lab.GuardAbort("bundle_layout")
@@ -1543,8 +1553,9 @@ def execute_enterprise_rows(
             if owned.returncode != 0:
                 _ssh_failure(owned)
             if battery != "self-service":
-                copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
-                copy_to(bundle_dir / "contract.tar", "contract.tar")
+                if battery != t5_battery.BATTERY_ID:
+                    copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
+                    copy_to(bundle_dir / "contract.tar", "contract.tar")
             debs_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
             if debs_env:
                 debs_dir = Path(debs_env)
@@ -1627,6 +1638,13 @@ def execute_enterprise_rows(
                         copy_to(ca_bundle, "ca-certificates.crt")
                 copy_to(staged / "self-service.tar", "self-service.tar")
                 ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE)], "")
+            elif battery == t5_battery.BATTERY_ID:
+                repo = Path(__file__).resolve().parents[2]
+                tar_path = directory / "t5-egress.tar"
+                t5_battery.pack_tree(repo, tar_path)
+                copy_to(tar_path, "t5-egress.tar")
+                copy_to(t5_battery.GUEST_SCRIPT, "t5-egress.sh")
+                ran = remote(["bash", f"{GUEST_BUNDLE}/t5-egress.sh", GUEST_BUNDLE, LAB_ROWS_REMOTE], "")
             elif battery in phase_batteries:
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
@@ -1872,6 +1890,13 @@ def execute_enterprise_rows(
                     payload.update({"reason": exc.reason, "status": "FAILED"})
                     raise
                 payload["status"] = "REBOOT_CHECKED"
+            elif battery == t5_battery.BATTERY_ID:
+                if not isinstance(parsed, dict) or parsed.get("battery") != t5_battery.BATTERY_ID or parsed.get("result") != "pass":
+                    payload.update({"reason": "guest", "status": "FAILED"})
+                    raise lab.GuardAbort("guest")
+                payload["status"] = "T5_EGRESS"
+                payload["label"] = "Lab-only"
+                payload["kernel_attach"] = "Roadmap"
             elif battery == "enterprise":
                 payload["status"] = "ENTERPRISE_ROWS"
             elif battery == "soak-hourly":
