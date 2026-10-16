@@ -414,6 +414,7 @@ authorized_uninstall() {
   local image="$1"
   local require_row="${2:-no}"
   local probe_pid="${3:-0}"
+  local record="${4:-yes}"
   export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
   record_uninstall() {
     # guest_rows.py runs as root and owns this file. The lab user cannot
@@ -452,7 +453,10 @@ PY
     fi
     sudo chmod a+r /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/vantio-uninstall.out 2>/dev/null || true
   }
-  trap record_uninstall RETURN
+  # A cleanup before the next battery must not rewrite that battery's rows.
+  if [ "$record" = "yes" ]; then
+    trap record_uninstall RETURN
+  fi
   # A previous battery can leave this file. The loader truncates it only
   # when it runs, and the shell markers below have to be in it too. The
   # recorder reads this file, not the script's stderr. The shell redirect
@@ -540,6 +544,18 @@ PY
   fi
 }
 
+# Descendant leaves cgroup_skb_egress_enforce loaded after its container is
+# gone. guest_rows grades that list before the final uninstall, so a sequenced
+# host fails programs_not_removed even when the loader later prints
+# UNINSTALL_VERIFIED. Clear the lab programs first. The final uninstall is
+# still required; a failed cleanup uninstall does not hide a program that is
+# still loaded.
+release_loaded_lab_programs() {
+  stop_loader_containers
+  authorized_uninstall "$image" no 0 no || true
+  sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/release_lab_programs.py"
+}
+
 # phase2 and descendant write the durable file. Mirror it to /tmp for
 # the same-boot shell checks. The runner does not read that mirror.
 publish_current_rows() {
@@ -590,6 +606,15 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   stamp_host_evidence
   if ! publish_durable_rows; then
+    exit 1
+  fi
+  # Drop the programs this phase loaded before the reboot timer, and before
+  # the next battery reads bpftool.
+  if ! release_loaded_lab_programs; then
+    sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/release_lab_programs.py" --record /tmp/enterprise-pe-rows.json --guest-rc 1 || true
+    if ! publish_durable_rows; then
+      exit 1
+    fi
     exit 1
   fi
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
@@ -673,6 +698,17 @@ case "$mode" in
 esac
 set +e
 sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
+if ! release_loaded_lab_programs; then
+  echo "programs_not_removed" >&2
+  python3 -c 'open("/tmp/enterprise-pe-rows.json","w").write("{}\n")'
+  sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/release_lab_programs.py" --record /tmp/enterprise-pe-rows.json --guest-rc 1 || true
+  stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
+  exit 1
+fi
+sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
@@ -683,8 +719,17 @@ if ! authorized_uninstall "$image" no 0; then
   fi
   exit 1
 fi
+# Grade the program list after uninstall. A regression that already held, with
+# the program gone now, is not programs_not_removed.
+if ! sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/release_lab_programs.py" --record /tmp/enterprise-pe-rows.json --guest-rc "$rc"; then
+  stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
+  exit 1
+fi
 stamp_host_evidence
 if ! publish_durable_rows; then
   exit 1
 fi
-exit "$rc"
+exit 0

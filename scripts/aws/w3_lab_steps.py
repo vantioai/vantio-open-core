@@ -1653,6 +1653,7 @@ def execute_enterprise_rows(
                 copy_to(script_path, "enterprise-rows.sh")
                 copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
+                copy_to(script_path.with_name("release_lab_programs.py"), "release_lab_programs.py")
                 descendant = Path(os.environ.get("W3_DESCENDANT_SCRIPT", str(DEFAULT_DESCENDANT_GUEST)))
                 copy_to(descendant, "descendant_b1.py")
                 probe_c = descendant.with_name("descendant_probe.c")
@@ -1741,6 +1742,7 @@ def execute_enterprise_rows(
                 copy_to(script_path, "enterprise-rows.sh")
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("release_lab_programs.py"), "release_lab_programs.py")
                 ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             try:

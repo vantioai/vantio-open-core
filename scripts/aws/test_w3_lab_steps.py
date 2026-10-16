@@ -2391,5 +2391,101 @@ class RebootWaitTests(unittest.TestCase):
         )
 
 
+class LabProgramReleaseTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        sys.path.insert(0, str(ROOT / "scripts" / "aws" / "lab-guests"))
+
+    def test_guest_releases_programs_before_the_next_battery_reads_them(self) -> None:
+        text = (ROOT / "scripts/aws/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        b1_at = text.index('if [ "$mode" = "descendant-b1" ]; then')
+        b1 = text[b1_at : text.index('case "$mode" in', b1_at)]
+        self.assertLess(
+            b1.index("release_loaded_lab_programs"),
+            b1.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then'),
+        )
+        final = text[text.index("esac\nset +e") :]
+        self.assertLess(final.index("release_loaded_lab_programs"), final.index('python3 "$stage/guest_rows.py"'))
+        self.assertLess(
+            final.index('authorized_uninstall "$image" no 0'),
+            final.index('--guest-rc "$rc"'),
+        )
+        self.assertIn('local record="${4:-yes}"', text)
+        self.assertIn('if [ "$record" = "yes" ]; then', text)
+        source = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count('copy_to(script_path.with_name("release_lab_programs.py")'), 2)
+
+    def test_detach_is_only_the_lab_program_on_a_cgroup_path(self) -> None:
+        from release_lab_programs import detach_commands, pin_paths
+
+        commands = detach_commands(
+            [
+                {
+                    "cgroup": "/sys/fs/cgroup/vantio-pe-lab",
+                    "programs": [
+                        {"id": 12, "attach_type": "cgroup_inet_egress", "name": "cgroup_skb_egress_enforce"},
+                        {"id": 13, "attach_type": "egress", "name": "not_ours"},
+                    ],
+                },
+                {
+                    "cgroup": "/etc/passwd",
+                    "programs": [{"id": 14, "attach_type": "egress", "name": "cgroup_skb_egress_enforce"}],
+                },
+            ]
+        )
+        self.assertEqual(
+            commands,
+            [["bpftool", "cgroup", "detach", "/sys/fs/cgroup/vantio-pe-lab", "egress", "id", "12"]],
+        )
+        self.assertEqual(
+            pin_paths(
+                [
+                    {"name": "cgroup_skb_egress_enforce", "pinned": ["/sys/fs/bpf/vantio_prog"]},
+                    {"name": "cgroup_skb_egress_enforce", "pinned": ["/tmp/nope", "/sys/fs/bpf/../etc/passwd"]},
+                    {"name": "sshd", "pinned": ["/sys/fs/bpf/other"]},
+                ]
+            ),
+            ["/sys/fs/bpf/vantio_prog"],
+        )
+
+    def test_a_clean_list_after_uninstall_keeps_a_held_regression(self) -> None:
+        from release_lab_programs import finish_code, names_in_prog_show, regression_still_holds
+
+        self.assertEqual(
+            names_in_prog_show([{"name": "cgroup_skb_egre"}], ""),
+            ["cgroup_skb_egress_enforce"],
+        )
+        rows = {
+            "grant_loader": {
+                "rc": 0,
+                "audit": True,
+                "scoped": False,
+                "path_deny": False,
+                "path_observe": True,
+                "phantom_deny": False,
+            },
+            "grant_probe": {"nobody_errno": 0},
+            "grant_allow_event": {"ActionTaken": "POLICY_ALLOW", "Uid": 65534},
+            "unchanged": {
+                "unsigned_changed": False,
+                "replay_changed": False,
+                "conflict_changed": False,
+                "conflict_reason": "VERSION_CONFLICT",
+                "generation": 2,
+                "generation_before": 2,
+            },
+            "unchanged_probe": {"nobody_errno": 0},
+            "freeze": {"widen_changed": False, "widen_reason": "FROZEN"},
+            "unreachable": {"changed": False, "reason": "ENTERPRISE_UNREACHABLE"},
+            "revoke": {"probe": {"nobody_errno": 13}, "block_event": {"ActionTaken": "DENIED"}},
+        }
+        self.assertTrue(regression_still_holds(rows))
+        self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=rows), 0)
+        self.assertEqual(finish_code(verified_removed=False, guest_rc=1, rows=rows), 1)
+        broken = json.loads(json.dumps(rows))
+        broken["grant_loader"]["rc"] = 1
+        self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=broken), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
