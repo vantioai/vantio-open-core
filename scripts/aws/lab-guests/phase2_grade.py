@@ -274,17 +274,28 @@ def grade_container_exit(
     egress_errno: int | None,
     program_listed: bool | None,
     egress_anchor: int = 0,
+    while_up_file_errno: int | None = None,
 ) -> dict[str, Any]:
     """After the loader container exits, before uninstall.
 
-    This records whether the secret open and one egress still deny. It does
-    not detach a program and it does not turn a fail-open into a pass.
+    fail_open is only the case where the secret was denied while the loader
+    was up and the same open is allowed after the container exits. An open
+    that was already allowed while the container was up is not that result.
     """
     body = _base("r15-container-exit")
     body["file_errno"] = file_errno
     body["egress_errno"] = egress_errno
     body["program_listed"] = program_listed
+    body["while_up_file_errno"] = while_up_file_errno
     body["measured_before_uninstall"] = True
+    if while_up_file_errno != 13:
+        body["classification"] = "deny_not_engaged"
+        body["reason"] = "deny_not_engaged_while_up"
+        body["host_result"] = "NOT_GRADED"
+        body["expectation_met"] = False
+        body["file_open"] = "not_denied_while_up"
+        body["egress"] = "not_graded"
+        return body
     file_denied = file_errno == 13
     file_allowed = file_errno == 0
     egress_denied = egress_errno in (1, 13, 111) or _recorded_egress_block(egress_errno, egress_anchor)
