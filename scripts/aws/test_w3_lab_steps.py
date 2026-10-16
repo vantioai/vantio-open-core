@@ -7,7 +7,6 @@ import base64
 import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -1262,11 +1261,6 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn("normalize_loaded_image", text)
         self.assertIn("accept_loaded_image", text)
         self.assertNotIn('test "$image" = "$image_name"', text)
-        tag = re.compile(r"^vantio-phantom-engine:(egress-2e6ab54|[0-9a-f]{7,40})$")
-        self.assertIsNotNone(tag.fullmatch("vantio-phantom-engine:egress-2e6ab54"))
-        self.assertIsNotNone(tag.fullmatch("vantio-phantom-engine:deb6faa3"))
-        self.assertIsNone(tag.fullmatch("vantio-phantom-engine:latest"))
-        self.assertIsNone(tag.fullmatch("other:deb6faa3"))
         auto_text = (ROOT / "scripts/aws/w3_lab_auto.py").read_text(encoding="utf-8")
         steps_text = (ROOT / "scripts/aws/w3_lab_steps.py").read_text(encoding="utf-8")
         self.assertIn('BRAIN_GUEST_DIR = "/var/lib/vantio-lab/brain"', auto_text)
@@ -1278,6 +1272,70 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         fetch = ROOT / "scripts/aws/fetch_offline_debs.sh"
         fetch_run = subprocess.run(["bash", "-n", str(fetch)], capture_output=True, text=True)
         self.assertEqual(fetch_run.returncode, 0, fetch_run.stderr)
+
+    def test_loaded_image_rule_is_the_guest_shell(self) -> None:
+        script = ROOT / "scripts/aws/lab-guests/enterprise-rows.sh"
+        text = script.read_text(encoding="utf-8")
+        start = text.index("normalize_loaded_image()")
+        end = text.index("\nload=$(sudo docker load")
+        funcs = text[start:end]
+        self.assertIn("loaded_image_refused", funcs)
+        self.assertIn("^vantio-phantom-engine:[0-9a-f]{7,40}$", funcs)
+        rows = Path("/tmp/enterprise-pe-rows.json")
+        saved = rows.read_bytes() if rows.is_file() else None
+        program = (
+            "set -u\n"
+            "image_name=vantio-phantom-engine:egress-2e6ab54\n"
+            f"{funcs}\n"
+            'if [ "$1" = accept ]; then accept_loaded_image "$2"; else normalize_loaded_image "$2"; fi\n'
+        )
+
+        def run(mode: str, payload: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["bash", "-c", program, "image-rule", mode, payload],
+                capture_output=True,
+                text=True,
+            )
+
+        try:
+            rows.unlink(missing_ok=True)
+            accepted = run("accept", "Loaded image: vantio-phantom-engine:deb6faa3\n")
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertEqual(accepted.stdout.strip(), "vantio-phantom-engine:deb6faa3")
+            historical = run(
+                "accept",
+                "Loaded image: docker.io/library/vantio-phantom-engine:egress-2e6ab54\r\n",
+            )
+            self.assertEqual(historical.returncode, 0, historical.stderr)
+            self.assertEqual(historical.stdout.strip(), "vantio-phantom-engine:egress-2e6ab54")
+            seven = "a" * 7
+            short_ok = run("name", f"vantio-phantom-engine:{seven}")
+            self.assertEqual(short_ok.returncode, 0, short_ok.stderr)
+            self.assertEqual(short_ok.stdout.strip(), f"vantio-phantom-engine:{seven}")
+            forty = "b" * 40
+            long_ok = run("name", f"vantio-phantom-engine:{forty}")
+            self.assertEqual(long_ok.returncode, 0, long_ok.stderr)
+            self.assertEqual(long_ok.stdout.strip(), f"vantio-phantom-engine:{forty}")
+            for bad in (
+                "Loaded image: vantio-phantom-engine:latest\n",
+                "Loaded image: vantio-phantom-engine:" + ("c" * 6) + "\n",
+                "Loaded image: vantio-phantom-engine:" + ("d" * 41) + "\n",
+                "Loaded image: other:deb6faa3\n",
+                "Loaded image: vantio-phantom-engine:DEB6FAA3\n",
+                "\n",
+            ):
+                rows.unlink(missing_ok=True)
+                refused = run("accept", bad)
+                self.assertEqual(refused.returncode, 6, refused.stderr)
+                body = json.loads(rows.read_text(encoding="utf-8"))
+                self.assertEqual(body["reason"], "loaded_image_refused")
+                self.assertIs(body["lab_pass"], False)
+                self.assertIs(body["reboot_requested"], False)
+        finally:
+            if saved is None:
+                rows.unlink(missing_ok=True)
+            else:
+                rows.write_bytes(saved)
 
 
 if __name__ == "__main__":
