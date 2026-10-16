@@ -34,7 +34,7 @@ Attach sections, one program each, no tail calls:
 
 The loader in `t5_kernel/loader.py` refuses the syscall unless every gate passes, and even then the default path does not issue it. Gates: host class `vantio-owned`, project `vantio-lab-oct08`, cgroup leaf under `/sys/fs/cgroup/vantio-t5-lab.slice/`, not `vantio-enrolled.slice`, not a Navera name, lane seal if a seal is supplied, and `entropy_userspace == 1`.
 
-Entropy is not in the program. A left-hand name long enough for the userspace score sets `entropy_deferred` and is still allowed when the other checks pass. `t5_egress.entropy.shannon_bits` remains the entropy decision. The two can disagree. That disagreement is R-T5-K1.
+The program does not call the userspace entropy function. A left-hand name at least `entropy_min_length` long is dropped when its distinct byte count times 4 exceeds that length (`dns_label_entropy`, classified). A repeated character stays allowed. The userspace score is still the drill measurement. The two can disagree (R-T5-K11). The old fail-open on a high-diversity label (R-T5-K1) is closed for that case.
 
 ## What the program decides
 

@@ -83,15 +83,20 @@ class DecisionTests(unittest.TestCase):
         self.assertFalse(decision.entropy_deferred)
         self.assertTrue(decision.transmit)
 
-    def test_high_entropy_label_stays_allowed_in_the_kernel(self) -> None:
+    def test_high_diversity_label_is_denied_and_a_repeated_label_is_not(self) -> None:
         label = "q7w8e9r0t1y2u3i4o5pq"
         blob = label.encode("ascii")
         self.assertGreater(shannon_bits(blob), 3.5)
-        self.assertGreaterEqual(len(label), 12)
-        decision = kernel_packet(dns_packet(f"{label}.allowed.example"), maps(), "enforce", FixedWindow(), 1)
-        self.assertEqual(decision.reason, "policy_permits")
-        self.assertTrue(decision.entropy_deferred)
-        self.assertTrue(decision.transmit)
+        self.assertGreater(len(set(label)) * 4, len(label))
+        denied = kernel_packet(dns_packet(f"{label}.allowed.example"), maps(), "enforce", FixedWindow(), 1)
+        observe = kernel_packet(dns_packet(f"{label}.allowed.example"), maps(), "observe", FixedWindow(), 2)
+        repeated = kernel_packet(dns_packet(("a" * 20) + ".allowed.example"), maps(), "enforce", FixedWindow(), 3)
+        self.assertEqual(denied.reason, "dns_label_entropy")
+        self.assertFalse(denied.transmit)
+        self.assertFalse(denied.entropy_deferred)
+        self.assertTrue(observe.transmit)
+        self.assertEqual(repeated.reason, "policy_permits")
+        self.assertTrue(repeated.transmit)
 
     def test_unlisted_name_transmits_only_in_observe(self) -> None:
         packet = dns_packet("other.example")

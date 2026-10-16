@@ -7,8 +7,8 @@
  * One program per attach. No tail calls.
  *
  * The userspace entropy function is not called here. There is no floating-point logarithm and no histogram.
- * A left-hand label long enough to score is marked entropy_deferred and
- * left for userspace. That flag is not a drop.
+ * A left-hand name whose distinct bytes are high for its length is dropped.
+ * That is a coarse stand-in. It is not the userspace score.
  *
  * Label: the object may compile on a runner. Loading it is Roadmap until
  * a Vantio-owned host accepts it. The loader refuses every other host.
@@ -33,6 +33,7 @@
  * reason:get_method_not_visible
  * reason:case_not_applicable
  * reason:address_not_canonical
+ * reason:dns_label_entropy
  */
 
 typedef unsigned char __u8;
@@ -78,6 +79,7 @@ enum t5_reason {
 	T5_GET_METHOD_NOT_VISIBLE = 17,
 	T5_CASE_NOT_APPLICABLE = 18,
 	T5_ADDRESS_NOT_CANONICAL = 19,
+	T5_DNS_LABEL_ENTROPY = 20,
 };
 
 /* Field order is the loader's struct format '<Q10I'. */
@@ -446,8 +448,30 @@ static __always_inline int name_verdict(struct t5_cfg *cfg, __u8 *name, __u32 na
 		}
 		if (left > cfg->max_label)
 			return T5_DNS_LABEL_TOO_LONG;
-		if (left >= cfg->entropy_min_length && cfg->entropy_min_length > 0)
-			*entropy = 1;
+		if (left >= cfg->entropy_min_length && cfg->entropy_min_length > 0) {
+			__u8 seen[32] = {};
+			__u32 distinct = 0;
+
+			for (pos = 0; pos < 95; pos++) {
+				__u8 ch;
+				__u32 idx;
+				__u8 mask;
+
+				if (pos >= left_end)
+					break;
+				ch = name[pos];
+				if (ch == '.')
+					continue;
+				idx = ch >> 3;
+				mask = (__u8)(1u << (ch & 7));
+				if (idx < 32 && (seen[idx] & mask) == 0) {
+					seen[idx] |= mask;
+					distinct++;
+				}
+			}
+			if (distinct * 4 > left)
+				return T5_DNS_LABEL_ENTROPY;
+		}
 	}
 	return T5_POLICY_PERMITS;
 }
@@ -559,7 +583,7 @@ static __always_inline int dns_udp(struct t5_skb *skb, struct t5_cfg *cfg, __u32
 		return finish(cfg, T5_RESOLVER_NOT_ALLOWED, T5_CLASSIFIED, 0, dport, 17);
 	reason = (__u32)name_verdict(cfg, name, name_len, &entropy);
 	if (reason != T5_POLICY_PERMITS) {
-		__u32 kind = reason == T5_DNS_NAME_NOT_ALLOWED || reason == T5_DNS_LABEL_TOO_LONG ? T5_CLASSIFIED : T5_EVAL;
+		__u32 kind = reason == T5_DNS_NAME_NOT_ALLOWED || reason == T5_DNS_LABEL_TOO_LONG || reason == T5_DNS_LABEL_ENTROPY ? T5_CLASSIFIED : T5_EVAL;
 
 		return finish(cfg, reason, kind, 0, dport, 17);
 	}

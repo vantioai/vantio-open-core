@@ -12,6 +12,7 @@ REASONS = (
     "resolver_not_allowed",
     "dns_name_not_allowed",
     "dns_label_too_long",
+    "dns_label_entropy",
     "dns_label_not_ldh",
     "dns_unparsable",
     "dns_parse_budget",
