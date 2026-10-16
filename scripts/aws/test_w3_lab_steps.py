@@ -863,6 +863,42 @@ class ArmCollectTests(unittest.TestCase):
             self.assertEqual(len(row["console_sha256"]), 64)
             self.assertNotEqual(rows[INSTANCE]["console_sha256"], rows[second]["console_sha256"])
 
+    def test_ssh_failure_keeps_the_console_hash_on_the_row(self) -> None:
+        def runner(args: list[str]) -> subprocess.CompletedProcess[str]:
+            text = " ".join(args)
+            if "--dry-run" in args:
+                return completed(code=254, stderr="An error occurred (DryRunOperation) when calling the operation")
+            if "get-caller-identity" in text:
+                return completed({"Account": lab.ACCOUNT_ID})
+            if "describe-instances" in text and "--instance-ids" in args:
+                body = instance()
+                body["LaunchTime"] = "2026-09-30T12:00:00Z"
+                return completed({"Reservations": [{"Instances": [body]}]})
+            if "describe-instances" in text:
+                body = instance()
+                body["LaunchTime"] = "2026-09-30T12:00:00Z"
+                return completed({"Reservations": [{"Instances": [body]}]})
+            if "get-console-output" in text:
+                raw = base64.b64encode(b"boot\nvantio-lab-marker seal=" + SEAL.encode() + b" pin=" + PIN.encode() + b"\n").decode()
+                return completed({"Output": raw})
+            return completed({})
+
+        def ssh(_args: list[str], _script: str) -> subprocess.CompletedProcess[str]:
+            return completed(code=255, stderr="Connection refused")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "collect.json")
+            os.environ["W3_STAMP"] = str(Path(tmp) / "stamp.json")
+            os.environ["W3_RUNNER_CIDR"] = "1.1.1.1/32"
+            os.environ.pop("INSTANCE_ID", None)
+            os.environ.pop("W3_CONSOLE_PATH", None)
+            result = steps.execute_collect_due(runner, NOW, ssh_runner=ssh)
+            row = result["instances"][0]
+            console = (Path(tmp) / row["console_file"]).read_bytes()
+        self.assertEqual(row["reason"], "ssh")
+        self.assertEqual(row["console_sha256"], hashlib.sha256(console).hexdigest())
+        self.assertNotIn("PRIVATE KEY", console.decode("utf-8"))
+
     def test_verify_removed_when_the_owned_host_is_terminated(self) -> None:
         runner = FakeAws()
         runner.state = "terminated"

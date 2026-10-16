@@ -719,6 +719,10 @@ def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner 
                 one = {
                     "checks": extra.get("checks") or [],
                     "cloudtrail": extra.get("cloudtrail"),
+                    "console_bytes": extra.get("console_bytes"),
+                    "console_file": extra.get("console_file"),
+                    "console_redacted": extra.get("console_redacted") is True,
+                    "console_sha256": extra.get("console_sha256"),
                     "instance_id": instance_id,
                     "instance_state": extra.get("instance_state"),
                     "reason": exc.reason,
@@ -736,6 +740,7 @@ def execute_collect_due(runner: Runner, now: datetime, *, ssh_runner: SshRunner 
                     "console_sha256": one.get("console_sha256"),
                     "instance_id": instance_id,
                     "instance_state": one.get("instance_state"),
+                    "reason": one.get("reason"),
                     "soak_active": one.get("soak_active") is True,
                     "status": one.get("status"),
                 }
