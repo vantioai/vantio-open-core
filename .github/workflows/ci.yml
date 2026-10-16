@@ -115,6 +115,7 @@ jobs:
           python3 scripts/gcp/test_redteam_packet.py -v
           python3 scripts/gcp/test_redteam_brain.py -v
           python3 scripts/ci/test_founder_approval_guard.py -v
+          python3 tests/planning/test_r15_lifecycle.py -v
 
   candidate-artifacts:
     name: Build release candidates (no registry write)
