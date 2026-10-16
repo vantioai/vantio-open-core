@@ -1,0 +1,21 @@
+{
+  "bytes_matching_digest": [],
+  "cargo_toml_present": false,
+  "comparison_aliases_working": true,
+  "constants_moved": false,
+  "digest_role_on_main": "WORKING_SEAL",
+  "digest_under_recheck": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403",
+  "previous_working_seal": "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d",
+  "engine_dockerfile_present": false,
+  "engine_seal_label": "Lab-only",
+  "engine_seal_rebuilt": false,
+  "formal_reproducibility": "NOT_CLAIMED",
+  "lane_prefix": "6d3ce580",
+  "observe_dockerfile_present": true,
+  "open_core_manifest_label": "Verified",
+  "open_core_manifest_passes_agree": true,
+  "open_core_manifest_sha256": "91851bec5686314ddae099c831af33e5cbad0a15d39d5891599f01e41fc556b5",
+  "public_installer_pin": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
+  "seal_oci_tar_present": false,
+  "working_seal_constant": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
+}
