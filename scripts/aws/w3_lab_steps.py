@@ -1212,28 +1212,49 @@ def _store_serial_log(runner: Runner, instance_id: str, payload: dict[str, Any])
     payload["console_redacted"] = redacted
 
 
-def _json_record(text: str, *, battery: str) -> dict[str, Any] | None:
-    """The guest record. Reboot-check may be one JSON line inside the script log."""
+LAB_ROWS_REMOTE = "/var/lib/vantio-lab/enterprise-pe-rows.json"
+
+
+def _read_lab_rows(text: str) -> dict[str, Any]:
+    """The durable guest record. A log line is not that record."""
     try:
         loaded = json.loads(text)
-    except json.JSONDecodeError:
-        loaded = None
-    if isinstance(loaded, dict):
-        return loaded
-    if battery != "reboot-check":
-        return None
-    found: dict[str, Any] | None = None
-    for line in text.splitlines():
-        candidate = line.strip()
-        if not candidate.startswith("{"):
-            continue
-        try:
-            item = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(item, dict) and item.get("battery") == "reboot-check":
-            found = item
-    return found
+    except json.JSONDecodeError as exc:
+        raise lab.GuardAbort("rows_malformed") from exc
+    if not isinstance(loaded, dict):
+        raise lab.GuardAbort("rows_malformed")
+    return loaded
+
+
+def _pull_lab_rows(
+    runner: Runner,
+    connect: list[str],
+    public: str,
+    ssh_runner: SshRunner,
+    base: list[str],
+    ssh_user: str,
+    host: str,
+    rows_local: Path,
+) -> tuple[str, dict[str, Any]]:
+    """Copy the durable rows. /tmp is not a substitute."""
+    # Instance Connect keys last 60 seconds. The guest script can run longer.
+    # A new scp is a new connection, so send the key again before the pull.
+    if rows_local.exists():
+        rows_local.unlink()
+    pulled = _run_with_fresh_key(
+        runner,
+        connect,
+        public,
+        ssh_runner,
+        ["scp", *base[:-1], f"{ssh_user}@{host}:{LAB_ROWS_REMOTE}", str(rows_local)],
+        "",
+    )
+    if pulled.returncode != 0 or not rows_local.is_file() or rows_local.stat().st_size == 0:
+        raise lab.GuardAbort("rows_missing")
+    text = rows_local.read_text(encoding="utf-8", errors="replace")
+    if not text.strip():
+        raise lab.GuardAbort("rows_missing")
+    return text, _read_lab_rows(text)
 
 
 def _reboot_log_tail(remote: Callable[[list[str], str], subprocess.CompletedProcess[str]]) -> str:
@@ -1308,7 +1329,7 @@ def _self_service_shell(root: str, rows_path: str) -> str:
     """One remote command. It does not pass --artifact-trust or --fixture-host."""
     if not re.fullmatch(r"/[A-Za-z0-9_./-]{1,160}", root):
         raise lab.GuardAbort("self_service_layout")
-    if not re.fullmatch(r"/tmp/[A-Za-z0-9_./-]{1,80}", rows_path):
+    if rows_path != LAB_ROWS_REMOTE and not re.fullmatch(r"/tmp/[A-Za-z0-9_./-]{1,80}", rows_path):
         raise lab.GuardAbort("self_service_layout")
     script = (
         "set -euo pipefail; "
@@ -1601,7 +1622,7 @@ def execute_enterprise_rows(
                     if ca_bundle.is_file():
                         copy_to(ca_bundle, "ca-certificates.crt")
                 copy_to(staged / "self-service.tar", "self-service.tar")
-                ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, "/tmp/enterprise-pe-rows.json")], "")
+                ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE)], "")
             elif battery in phase_batteries:
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
@@ -1666,23 +1687,25 @@ def execute_enterprise_rows(
                         payload["guest_rc"] = pre.returncode
                         payload["mutated"] = True
                         rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
-                        # Instance Connect keys last 60 seconds. The guest script can run longer.
-                        # A new scp is a new connection, so send the key again before the pull.
-                        pulled_pre = _run_with_fresh_key(
-                            runner,
-                            connect,
-                            public,
-                            ssh_runner,
-                            ["scp", *base[:-1], f"{ssh_user}@{host}:/tmp/enterprise-pe-rows.json", str(rows_local)],
-                            "",
-                        )
-                        if pulled_pre.returncode == 0 and rows_local.is_file():
-                            pre_text = rows_local.read_text(encoding="utf-8", errors="replace")
+                        try:
+                            pre_text, _pre_body = _pull_lab_rows(
+                                runner,
+                                connect,
+                                public,
+                                ssh_runner,
+                                base,
+                                ssh_user,
+                                host,
+                                rows_local,
+                            )
+                        except lab.GuardAbort as rows_exc:
+                            if rows_exc.reason not in {"rows_missing", "rows_malformed"}:
+                                raise
+                            payload["rows_reason"] = rows_exc.reason
                         else:
-                            pre_text = (pre.stdout or "") + (pre.stderr or "")
-                        _store_guest_rows(rows_local, pre_text)
-                        payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
-                        raise
+                            _store_guest_rows(rows_local, pre_text)
+                            payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
+                        raise exc
                     ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "post"], "")
             elif battery == "reboot-check":
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
@@ -1720,32 +1743,29 @@ def execute_enterprise_rows(
                 copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
                 ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
-            # Instance Connect keys last 60 seconds. The guest script can run longer.
-            # A new scp is a new connection, so send the key again before the pull.
-            # Reboot-check also keeps the record under /var/lib. /tmp is tmpfs
-            # on this image, so it is gone after the boot the step just waited for.
-            remote_rows = ["/tmp/enterprise-pe-rows.json"]
-            if battery == "reboot-check":
-                remote_rows.append("/var/lib/vantio-lab/enterprise-pe-rows.json")
-            guest_text = ""
-            for remote_row in remote_rows:
-                if rows_local.exists():
-                    rows_local.unlink()
-                pulled = _run_with_fresh_key(
+            try:
+                guest_text, parsed = _pull_lab_rows(
                     runner,
                     connect,
                     public,
                     ssh_runner,
-                    ["scp", *base[:-1], f"{ssh_user}@{host}:{remote_row}", str(rows_local)],
-                    "",
+                    base,
+                    ssh_user,
+                    host,
+                    rows_local,
                 )
-                if pulled.returncode == 0 and rows_local.is_file() and rows_local.stat().st_size > 0:
-                    guest_text = rows_local.read_text(encoding="utf-8", errors="replace")
-                    if guest_text.strip():
-                        break
-                    guest_text = ""
-            if not guest_text:
-                guest_text = (ran.stdout or "") + (ran.stderr or "")
+            except lab.GuardAbort as exc:
+                if exc.reason not in {"rows_missing", "rows_malformed"}:
+                    raise
+                payload.update(
+                    {
+                        "reason": exc.reason,
+                        "status": "FAILED",
+                        "guest_rc": ran.returncode,
+                        "mutated": True,
+                    }
+                )
+                raise
             _store_guest_rows(rows_local, guest_text)
             payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
             redteam_local = Path(os.environ.get("W3_REDTEAM_PATH", "w3-lab-redteam-rows.json"))
@@ -1763,7 +1783,6 @@ def execute_enterprise_rows(
             live_boot = _remote_boot_id(remote)
             if live_boot:
                 payload["boot_id"] = live_boot
-            parsed = _json_record(guest_text, battery=battery)
             # reboot-check writes the boot id before the timer fires. A later
             # live boot is the result of that schedule, not a stale file.
             if battery != "reboot-check" and parsed is not None and _rows_disagree_with_boot(parsed, live_boot):

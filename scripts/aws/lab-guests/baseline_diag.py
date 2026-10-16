@@ -1700,11 +1700,11 @@ def lsm_row_paths() -> tuple[Path, Path]:
 
 
 def write_lsm_rows(body: dict) -> dict:
-    """Write this boot's LSM result where the runner reads it first.
+    """Write this boot's LSM result to the durable file and the /tmp mirror.
 
-    The pre-reboot guard leaves /var/lib/vantio-lab/enterprise-pe-rows.json
-    in place. A second boot that only refreshes /tmp is reported as the
-    first boot.
+    The runner reads /var/lib/vantio-lab/enterprise-pe-rows.json. A second
+    boot that only refreshes /tmp would leave the previous boot's file
+    in place, so this writes that durable path too.
     """
     stamped = dict(body)
     boot = stamped.get("boot_id")

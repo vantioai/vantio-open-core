@@ -106,6 +106,26 @@ schedule_forced_reboot() {
   echo "reboot_scheduled unit=${unit} delay=45s slice=system.slice"
 }
 
+# The runner reads /var/lib/vantio-lab/enterprise-pe-rows.json. /tmp is
+# tmpfs on this image, so a file left only there is gone after the reboot.
+# Copy the newest body. A missing body is rows_missing, not a guess.
+publish_durable_rows() {
+  sudo mkdir -p /var/lib/vantio-lab
+  sudo chmod 755 /var/lib/vantio-lab
+  local src=/tmp/enterprise-pe-rows.json
+  if [ ! -s "$src" ] && [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
+    src=/var/lib/vantio-lab/enterprise-pe-rows.json
+  fi
+  if [ ! -s "$src" ]; then
+    echo "rows_missing" >&2
+    return 1
+  fi
+  if [ "$src" != /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
+    sudo cp -f "$src" /var/lib/vantio-lab/enterprise-pe-rows.json
+  fi
+  sudo chmod a+r /var/lib/vantio-lab/enterprise-pe-rows.json
+}
+
 # A second boot already has bpf in the LSM list. Confirm that and return
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "${2:-}" = "lsm-guard" ]; then
@@ -119,13 +139,11 @@ raise SystemExit(baseline_diag.write_lsm_status())
 PY
   st=$?
   set -e
-  if [ "$st" -eq 0 ]; then
-    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
-    exit 0
-  fi
-  if [ "$st" -eq 2 ]; then
-    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
-    exit 2
+  if [ "$st" -eq 0 ] || [ "$st" -eq 2 ]; then
+    if ! publish_durable_rows; then
+      exit 1
+    fi
+    exit "$st"
   fi
 fi
 # The rows file is root-owned. Record the live lockdown mode and the exact
@@ -134,7 +152,7 @@ stamp_host_evidence() {
   if [ ! -f "$here/baseline_diag.py" ]; then
     return 0
   fi
-  sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here" << 'PY' || true
+  if ! sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here" << 'PY'
 import json
 import sys
 from pathlib import Path
@@ -151,9 +169,9 @@ if not rows.is_file():
 try:
     body = json.loads(rows.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError):
-    body = {}
+    raise SystemExit(1)
 if not isinstance(body, dict):
-    body = {}
+    raise SystemExit(1)
 changed = False
 if lockdown:
     body["lockdown"] = lockdown
@@ -164,6 +182,9 @@ if image_name:
 if changed:
     write_replacing(rows, json.dumps(body) + "\n")
 PY
+  then
+    echo "rows_malformed" >&2
+  fi
   sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
 }
 
@@ -172,8 +193,8 @@ PY
 # A fresh host has never run the LSM guard, so the sealed script is absent.
 # Install the stock reboot script first. Leave a sealed script in place.
 # A previous battery leaves the rows file owned by root. Remove it before
-# this run writes, and write as root. If the timer is armed and the record
-# cannot be written, stop the timer so the host does not reboot unwatched.
+# this run writes, and write as root. The durable record is in place before
+# the timer is armed. A failed schedule rewrites that record and stops the timer.
 if [ "${2:-}" = "reboot-check" ]; then
   sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
   boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
@@ -182,11 +203,9 @@ if [ "${2:-}" = "reboot-check" ]; then
     reason=reboot_script_missing
   elif [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
     reason=reboot_script_missing
-  elif ! schedule_forced_reboot; then
-    reason=reboot_not_scheduled
-    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
   fi
-  if ! sudo python3 - "$boot_id" "$reason" <<'PY'
+  write_reboot_check_rows() {
+    sudo python3 - "$boot_id" "$reason" <<'PY'
 import json
 import sys
 
@@ -204,22 +223,29 @@ with open("/tmp/enterprise-pe-rows.json", "w", encoding="utf-8") as handle:
     handle.write(text)
 print(text, end="")
 PY
-  then
-    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+  }
+  if ! write_reboot_check_rows; then
     exit 1
   fi
   sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
   stamp_host_evidence
-  # Noble mounts /tmp as tmpfs. The reboot clears it, and the runner comes
-  # back to an empty file. Keep this record on the root filesystem.
-  sudo mkdir -p /var/lib/vantio-lab
-  sudo chmod 755 /var/lib/vantio-lab
-  if ! sudo cp -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json; then
-    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+  if ! publish_durable_rows; then
     exit 1
   fi
-  sudo chmod a+r /var/lib/vantio-lab/enterprise-pe-rows.json
   if [ -n "$reason" ]; then
+    exit 1
+  fi
+  if ! schedule_forced_reboot; then
+    reason=reboot_not_scheduled
+    sudo systemctl stop vantio-lab-lsm-reboot.timer vantio-lab-lsm-reboot.service >/dev/null 2>&1 || true
+    if ! write_reboot_check_rows; then
+      exit 1
+    fi
+    sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+    stamp_host_evidence
+    if ! publish_durable_rows; then
+      exit 1
+    fi
     exit 1
   fi
   exit 0
@@ -319,6 +345,9 @@ with open("/tmp/enterprise-pe-rows.json", "w", encoding="utf-8") as handle:
 print(text, end="")
 PY
   chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
+  if ! publish_durable_rows; then
+    exit 1
+  fi
   exit 6
 }
 
@@ -390,7 +419,7 @@ authorized_uninstall() {
     # guest_rows.py runs as root and owns this file. The lab user cannot
     # truncate it, so the tail has to be written as root or the runner
     # uploads the pre-uninstall body.
-    sudo python3 - "$here/sticky_write.py" << 'PY' || true
+    if ! sudo python3 - "$here/sticky_write.py" << 'PY'
 import json
 import sys
 from pathlib import Path
@@ -399,13 +428,16 @@ sys.path.insert(0, str(Path(sys.argv[1]).resolve().parent))
 from sticky_write import write_replacing
 
 rows = Path("/tmp/enterprise-pe-rows.json")
-try:
-    body = json.loads(rows.read_text(encoding="utf-8"))
-except (OSError, json.JSONDecodeError):
+if rows.is_file():
+    try:
+        body = json.loads(rows.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise SystemExit(1)
+    if not isinstance(body, dict):
+        raise SystemExit(1)
+else:
     body = {}
-if not isinstance(body, dict):
-    body = {}
-out = Path("/tmp/vantio-uninstall.out")
+out = Path("/var/lib/vantio-lab/vantio-uninstall.out")
 body["uninstall_tail"] = out.read_text(encoding="utf-8", errors="replace")[-1200:] if out.is_file() else ""
 try:
     boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
@@ -415,16 +447,20 @@ if boot and "\n" not in boot and len(boot) <= 80:
     body["boot_id"] = boot
 write_replacing(rows, json.dumps(body))
 PY
-    sudo chmod a+r /tmp/enterprise-pe-rows.json /tmp/vantio-uninstall.out 2>/dev/null || true
+    then
+      echo "rows_malformed" >&2
+    fi
+    sudo chmod a+r /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/vantio-uninstall.out 2>/dev/null || true
   }
   trap record_uninstall RETURN
   # A previous battery can leave this file. The loader truncates it only
   # when it runs, and the shell markers below have to be in it too. The
   # recorder reads this file, not the script's stderr. The shell redirect
   # owns the file. tee as root is refused in sticky /tmp.
-  sudo rm -f /tmp/vantio-uninstall.out
+  sudo mkdir -p /var/lib/vantio-lab
+  sudo rm -f /var/lib/vantio-lab/vantio-uninstall.out
   if ! ensure_working_bpftool; then
-    echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /tmp/vantio-uninstall.out >&2
+    echo "UNINSTALL_RESIDUAL bpftool missing" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2
     return 1
   fi
   stop_loader_containers
@@ -450,23 +486,23 @@ PY
   sudo docker rm "$cid" >/dev/null
   sudo chmod 755 /var/lib/vantio/vantio-loader
   set +e
-  sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/tmp/vantio-uninstall.out 2>&1
+  sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/var/lib/vantio-lab/vantio-uninstall.out 2>&1
   local urc=$?
   set -e
-  cat /tmp/vantio-uninstall.out
-  if ! grep -qx 'UNINSTALL_VERIFIED' /tmp/vantio-uninstall.out; then
-    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /tmp/vantio-uninstall.out >&2
+  cat /var/lib/vantio-lab/vantio-uninstall.out
+  if ! grep -qx 'UNINSTALL_VERIFIED' /var/lib/vantio-lab/vantio-uninstall.out; then
+    echo "UNINSTALL_NOT_VERIFIED rc=$urc" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2
     return 1
   fi
   if find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null | grep -q .; then
     {
       echo "UNINSTALL_RESIDUAL bpffs"
       find /sys/fs/bpf -maxdepth 2 -name 'vantio*' -print 2>/dev/null || true
-    } | tee -a /tmp/vantio-uninstall.out >&2
+    } | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2
     return 1
   fi
   if [ "$require_row" = "yes" ]; then
-    python3 - "$probe_pid" /tmp/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
+    python3 - "$probe_pid" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
 import json, sys
 want = int(sys.argv[1])
 found = False
@@ -504,8 +540,8 @@ PY
   fi
 }
 
-# The runner reads /tmp. phase2 and descendant publish under /var/lib,
-# and a reboot does not clear a recent /tmp file.
+# phase2 and descendant write the durable file. Mirror it to /tmp for
+# the same-boot shell checks. The runner does not read that mirror.
 publish_current_rows() {
   if [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
     sudo cp -f /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
@@ -552,20 +588,21 @@ if [ "$mode" = "descendant-b1" ]; then
     printf 'REDTEAM_RC=%s\n' "$rt"
   fi
   printf 'PY_RC=%s\n' "$rc"
+  stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
     # A fresh host has no sealed reboot script. Install the stock one
     # when it is missing, and leave a script the LSM guard already wrote.
     if ! ensure_stock_reboot_script; then
-      stamp_host_evidence
       exit 1
     fi
     if ! schedule_forced_reboot; then
-      stamp_host_evidence
       exit 1
     fi
   fi
-  stamp_host_evidence
   exit "$rc"
 fi
 case "$mode" in
@@ -586,12 +623,14 @@ case "$mode" in
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/checks.ndjson 2>/dev/null || true
     printf 'PY_RC=%s\n' "$rc"
     stamp_host_evidence
+    if ! publish_durable_rows; then
+      exit 1
+    fi
     exit "$rc"
     ;;
   2c-upgrade-rollback|2d-crash-recovery|2e-performance|2f-tamper|2g-distro|lsm-guard)
-    # A previous battery leaves both copies. The runner reads /tmp, and
-    # phase2 publishes under /var/lib. Delete both, then copy the file
-    # this phase writes.
+    # A previous battery leaves both copies. Delete both, then this phase
+    # writes the durable file the runner reads.
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
     set +e
     sudo env VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
@@ -600,33 +639,35 @@ case "$mode" in
     cat /tmp/phase2-host.out
     chmod a+r /tmp/phase2-host.out /tmp/enterprise-pe-rows.json 2>/dev/null || true
     publish_current_rows
-    if [ ! -s /tmp/enterprise-pe-rows.json ]; then
-      cp /tmp/phase2-host.out /tmp/enterprise-pe-rows.json
-    fi
     printf 'PY_RC=%s\n' "$rc"
     require_row=no
     probe_pid=0
     if [ "$mode" = "2f-tamper" ]; then
       require_row=yes
-      if [ -s /tmp/enterprise-pe-rows.json ]; then
-        probe_pid=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); e=d.get("enrolled_after") or {}; p=e.get("pid") or 0; print(p if isinstance(p, int) else 0)')
+      if [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
+        probe_pid=$(python3 -c 'import json; d=json.load(open("/var/lib/vantio-lab/enterprise-pe-rows.json")); e=d.get("enrolled_after") or {}; p=e.get("pid") or 0; print(p if isinstance(p, int) else 0)')
       fi
     fi
     if ! authorized_uninstall "$image" "$require_row" "$probe_pid"; then
       stamp_host_evidence
+      if ! publish_durable_rows; then
+        exit 1
+      fi
       exit 1
     fi
-    if [ "$mode" = "lsm-guard" ] && [ -s /tmp/enterprise-pe-rows.json ]; then
-      want=$(python3 -c 'import json; d=json.load(open("/tmp/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
+    stamp_host_evidence
+    if ! publish_durable_rows; then
+      exit 1
+    fi
+    if [ "$mode" = "lsm-guard" ]; then
+      want=$(python3 -c 'import json; d=json.load(open("/var/lib/vantio-lab/enterprise-pe-rows.json")); print("yes" if d.get("reboot_requested") is True and d.get("host_result")=="GUARD_PROVED" else "no")')
       if [ "$want" = "yes" ]; then
         sync
         if ! schedule_forced_reboot; then
-          stamp_host_evidence
           exit 1
         fi
       fi
     fi
-    stamp_host_evidence
     exit "$rc"
     ;;
 esac
@@ -637,7 +678,13 @@ rc=$?
 set -e
 if ! authorized_uninstall "$image" no 0; then
   stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
   exit 1
 fi
 stamp_host_evidence
+if ! publish_durable_rows; then
+  exit 1
+fi
 exit "$rc"

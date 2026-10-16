@@ -482,10 +482,8 @@ def _scp_to(project: str, name: str, sources: Sequence[Path]) -> None:
 
 SCP_FROM_REMOTES = frozenset(
     {
-        "/tmp/enterprise-pe-rows.json",
         "/tmp/gcp-kernel-facts.json",
         "/tmp/gcp-plumb.json",
-        "/tmp/self-service-rows.json",
         "/tmp/redteam-rows.json",
         ROWS_JSON,
     }
@@ -899,12 +897,9 @@ def _guest_payload(text: str) -> dict[str, Any] | None:
 
 
 def _with_descendant_cases(pulled: dict[str, Any] | None, text: str) -> dict[str, Any] | None:
-    if _descendant_cases(pulled):
-        return pulled
-    parsed = _guest_payload(text)
-    if _descendant_cases(parsed):
-        return parsed
-    return pulled if isinstance(pulled, dict) else parsed
+    """The durable rows file. A transcript is not a second copy of that file."""
+    del text
+    return pulled if isinstance(pulled, dict) else None
 
 
 def _pre_held(cases: list[dict[str, Any]]) -> bool:
@@ -1097,14 +1092,22 @@ def _read_copied_rows(local: Path) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _pull_guest_json(project: str, name: str) -> dict[str, Any] | None:
+def _pull_guest_json(project: str, name: str) -> dict[str, Any]:
+    """The durable rows file. Missing and malformed are different failures."""
     local = Path(tempfile.mkdtemp(prefix="vantio-guest-")) / "rows.json"
     try:
-        if not _scp_from(project, name, ROWS_JSON, local) and not _scp_from(
-            project, name, "/tmp/enterprise-pe-rows.json", local
-        ):
-            return None
-        return _read_copied_rows(local)
+        if not _scp_from(project, name, ROWS_JSON, local):
+            raise SystemExit("rows_missing")
+        text = local.read_text(encoding="utf-8")
+        if not text.strip():
+            raise SystemExit("rows_missing")
+        try:
+            loaded = json.loads(text)
+        except json.JSONDecodeError:
+            raise SystemExit("rows_malformed")
+        if not isinstance(loaded, dict):
+            raise SystemExit("rows_malformed")
+        return loaded
     finally:
         shutil.rmtree(local.parent, ignore_errors=True)
 
@@ -1122,12 +1125,10 @@ def _pull_remote_json(project: str, name: str, remote: str) -> dict[str, Any] | 
 def _loader_case(project: str, name: str, seal: str, mode: str) -> dict[str, Any]:
     completed = _ssh_case(project, name, guest_command(seal, mode))
     text = (completed.stdout or "") + (completed.stderr or "")
-    body = _pull_guest_json(project, name)
-    if body is None:
-        parsed = _last_object(text)
-        body = parsed if isinstance(parsed, dict) else {}
     if _transport_failure(completed) and _py_rc(text) is None:
-        body = {"infra_retry": True}
+        body: dict[str, Any] = {"infra_retry": True}
+    else:
+        body = _pull_guest_json(project, name)
     word = "infra_retry" if body.get("infra_retry") is True else _loader_word(mode, body)
     sample = body.get("enrolled_after") if mode == "2d-crash-recovery" else body.get("deny_after")
     pid = sample.get("pid") if isinstance(sample, dict) else 0
