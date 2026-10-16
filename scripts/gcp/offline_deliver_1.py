@@ -223,6 +223,7 @@ EVIDENCE_FILES = frozenset(
         "instance.json",
         "prepare-bundle.json",
         "guest-evidence.json",
+        "lsm-guard.json",
         "redteam-packet.json",
         "teardown.json",
     }
@@ -402,6 +403,15 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             kept[key] = value
             continue
         if key == "lsm_guard" and isinstance(value, str) and re.fullmatch(r"[a-z0-9_]{1,40}", value):
+            kept[key] = value
+            continue
+        if key == "host_result" and isinstance(value, str) and value in {
+            "",
+            "FAIL",
+            "GUARD_PROVED",
+            "LSM_ALREADY_ACTIVE",
+            "LSM_ENABLED",
+        }:
             kept[key] = value
             continue
         if key in {

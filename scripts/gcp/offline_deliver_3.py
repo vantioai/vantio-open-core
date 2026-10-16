@@ -448,7 +448,12 @@ def next_serial_start(text: str) -> int | None:
 
 
 def serial_console_text(blob: str) -> str:
-    """The full serial log. The last 200000 characters of run 38800477282 hid the earlier boot."""
+    """Keep the serial text gcloud returned and drop its --start instruction.
+
+    The GCE serial ring drops older bytes, so this is the retained window from
+    the call. Run 38800477282's last 200000 characters hid the earlier boot
+    because that capture waited until after the batteries.
+    """
     kept: list[str] = []
     for line in blob.replace("\x00", "").splitlines(keepends=True):
         if "Specify --start=" in line and "get-serial-port-output" in line:
@@ -567,21 +572,25 @@ LATER_BOOT_PROBE = (
 )
 
 
-def read_serial_log(project: str, name: str) -> tuple[int, str, int]:
+def read_serial_log(project: str, name: str) -> tuple[int, str, int, str]:
     """Read the retained serial window.
 
     gcloud's --start hint is the next byte after this response. When the
     response already held the buffer, the next call only returns bytes written
     after it. Bytes the ring has already dropped do not come back. A timeout
-    on a later page keeps the pages already read.
+    on a later page keeps the pages already read. The error name is empty when
+    the walk finished on a non-empty window.
     """
     chunks: list[str] = []
     start: int | None = None
     seen: set[int] = set()
     rc = 0
+    error = ""
+    finished = False
     for _page in range(4):
         key = -1 if start is None else start
         if key in seen:
+            finished = True
             break
         seen.add(key)
         try:
@@ -591,7 +600,11 @@ def read_serial_log(project: str, name: str) -> tuple[int, str, int]:
                 text=True,
                 timeout=180,
             )
-        except (OSError, subprocess.TimeoutExpired):
+        except subprocess.TimeoutExpired:
+            error = "page_timeout"
+            break
+        except OSError:
+            error = "page_error"
             break
         rc = proc.returncode
         raw = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
@@ -601,16 +614,29 @@ def read_serial_log(project: str, name: str) -> tuple[int, str, int]:
             chunks.append(page)
         nxt = next_serial_start(raw)
         if nxt is None or not page.strip() or (start is not None and nxt <= start) or (previous and page == previous):
+            finished = True
             break
         start = nxt
-    return rc, "".join(chunks), len(chunks)
+    blob = "".join(chunks)
+    if not error and not blob.strip():
+        error = "empty"
+    elif not error and not finished:
+        error = "truncated"
+    elif not error and rc != 0:
+        error = "nonzero"
+    return rc, blob, len(chunks), error
 
 
 def _log_serial(project: str, name: str, boot_id: str = "") -> None:
-    """Print the serial log now, before later guest output can fill the buffer."""
-    rc, blob, pages = read_serial_log(project, name)
+    """Print the retained serial window before later guest output can fill it.
+
+    A page error, an empty window, or a four-page cap is named on the
+    SERIAL_ERROR line. The deliver step still returns success.
+    """
+    rc, blob, pages, error = read_serial_log(project, name)
+    marker = f" SERIAL_ERROR={error}" if error else ""
     print(
-        f"SERIAL_RC={rc} SERIAL_BYTES={len(blob)} SERIAL_PAGES={pages} SERIAL_BOOT={boot_id}",
+        f"SERIAL_RC={rc} SERIAL_BYTES={len(blob)} SERIAL_PAGES={pages} SERIAL_BOOT={boot_id}{marker}",
         flush=True,
     )
     print(blob, flush=True)
@@ -795,6 +821,13 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
             write_evidence(evidence / "lsm-guard.json", record)
             raise SystemExit("lsm")
     record["lsm_guard"] = "lsm_enabled_follow_up" if followed_up else "lsm_enabled"
+    confirmed_result = confirm_body.get("host_result") if isinstance(confirm_body.get("host_result"), str) else ""
+    if confirmed_result in {"LSM_ENABLED", "LSM_ALREADY_ACTIVE"}:
+        record["host_result"] = confirmed_result
+    confirmed_lsm = confirm_body.get("stock_lsm") if isinstance(confirm_body.get("stock_lsm"), str) else ""
+    if confirmed_lsm:
+        record["stock_lsm"] = confirmed_lsm
+    record["stock_bpf_lsm"] = True
     write_evidence(evidence / "lsm-guard.json", record)
     return record
 
