@@ -1595,8 +1595,19 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn('if [ "${2:-}" = "reboot-check" ]; then', text)
         check = text[text.index('if [ "${2:-}" = "reboot-check" ]; then') : text.index('sudo rm -rf "$stage"')]
         self.assertLess(check.index("sudo rm -f /tmp/enterprise-pe-rows.json"), check.index("schedule_forced_reboot"))
-        self.assertLess(check.index("install_stock_reboot_script"), check.index("reboot_script_missing"))
+        self.assertLess(check.index("ensure_stock_reboot_script"), check.index("reboot_script_missing"))
         self.assertLess(check.index("reboot_script_missing"), check.index("schedule_forced_reboot"))
+        ensure = text[text.index("ensure_stock_reboot_script() {") : text.index("stage_reboot_guest_files() {")]
+        self.assertIn("install_stock_reboot_script", ensure)
+        self.assertIn("[ -x /var/lib/vantio-lab/reboot-with-grub.sh ]", ensure)
+        schedule = text[text.index("schedule_forced_reboot() {") : text.index("# A second boot already has bpf")]
+        self.assertLess(schedule.index("stage_reboot_guest_files"), schedule.index("systemd-run"))
+        self.assertNotIn("install_stock_reboot_script", schedule)
+        staged = text[text.index("stage_reboot_guest_files() {") : text.index("schedule_forced_reboot() {")]
+        self.assertIn("/var/lib/vantio-lab/guest/baseline_diag.py", staged)
+        descendant_at = text.index('if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then')
+        descendant = text[descendant_at : text.index('stamp_host_evidence\n  exit "$rc"', descendant_at)]
+        self.assertLess(descendant.index("ensure_stock_reboot_script"), descendant.index("schedule_forced_reboot"))
         self.assertIn("sudo python3", check)
         self.assertIn("systemctl stop vantio-lab-lsm-reboot.timer", check)
         self.assertNotIn("schedule_forced_reboot vantio-lab", text)

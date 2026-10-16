@@ -16,6 +16,13 @@
       "version": "0.1.0"
     },
     {
+      "name": "@vantio/openshell-rogue-reconciliation",
+      "purl": "pkg:npm/%40vantio/openshell-rogue-reconciliation@0.0.0-unstable-pre-1.0",
+      "scope": "workspace-manifest",
+      "type": "library",
+      "version": "0.0.0-unstable-pre-1.0"
+    },
+    {
       "name": "vantio-open-core",
       "purl": "pkg:npm/vantio-open-core@0.0.0",
       "scope": "root",

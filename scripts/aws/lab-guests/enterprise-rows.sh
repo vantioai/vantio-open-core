@@ -62,12 +62,39 @@ PY
 # --system --slice=system.slice puts the timer in the system manager.
 # The SSH session scope is not that slice, and the user manager is not
 # this bus. The runner drops its session before the 45s timer fires.
+# A fresh host has no sealed script. reboot-check and descendant install
+# the stock one. lsm-guard writes the sealed one itself and must not have
+# a stock script substituted for it. The sealed script reads
+# /var/lib/vantio-lab/guest/baseline_diag.py when it re-seals or records
+# boot evidence. The runner copies that file into the bundle, not guest/.
+ensure_stock_reboot_script() {
+  if [ -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
+    return 0
+  fi
+  sudo python3 - "$here" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+baseline_diag.install_stock_reboot_script()
+PY
+}
+
+stage_reboot_guest_files() {
+  if [ ! -f "$here/baseline_diag.py" ]; then
+    return 0
+  fi
+  sudo mkdir -p /var/lib/vantio-lab/guest
+  sudo cp -f "$here/baseline_diag.py" /var/lib/vantio-lab/guest/baseline_diag.py
+  sudo chmod 644 /var/lib/vantio-lab/guest/baseline_diag.py
+}
+
 schedule_forced_reboot() {
   local unit=vantio-lab-lsm-reboot
   local reboot_cmd=/var/lib/vantio-lab/reboot-with-grub.sh
   sudo systemctl mask --now google-shutdown-scripts.service >/dev/null 2>&1 || true
   sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
   sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
+  stage_reboot_guest_files
   if [ ! -x "$reboot_cmd" ]; then
     echo "reboot_script_missing" >&2
     return 1
@@ -151,13 +178,7 @@ if [ "${2:-}" = "reboot-check" ]; then
   sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
   boot_id=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
   reason=""
-  if ! sudo python3 - "$here" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[1])
-import baseline_diag
-baseline_diag.install_stock_reboot_script()
-PY
-  then
+  if ! ensure_stock_reboot_script; then
     reason=reboot_script_missing
   elif [ ! -x /var/lib/vantio-lab/reboot-with-grub.sh ]; then
     reason=reboot_script_missing
@@ -524,6 +545,12 @@ if [ "$mode" = "descendant-b1" ]; then
   printf 'PY_RC=%s\n' "$rc"
   if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
     sync
+    # A fresh host has no sealed reboot script. Install the stock one
+    # when it is missing, and leave a script the LSM guard already wrote.
+    if ! ensure_stock_reboot_script; then
+      stamp_host_evidence
+      exit 1
+    fi
     if ! schedule_forced_reboot; then
       stamp_host_evidence
       exit 1

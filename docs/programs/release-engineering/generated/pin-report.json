@@ -104,6 +104,18 @@
     },
     {
       "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
       "file": ".github/workflows/docs-release-governance.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
@@ -398,6 +410,18 @@
     },
     {
       "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
       "file": ".github/workflows/vantio-prove-example.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
@@ -413,6 +437,12 @@
       "file": ".github/workflows/w3-lab-auto-arm.yml",
       "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -716,7 +746,7 @@
       "version": "0.0.0-unstable-pre-1.0"
     }
   ],
-  "workflow_count": 24,
+  "workflow_count": 25,
   "workflow_triggers_push": {
     "ci.yml": true,
     "enterprise-slsa-provenance.yml": true,
