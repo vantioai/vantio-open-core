@@ -2,7 +2,7 @@
 
 `vantio-install` plans and applies a Vantio node from a bundle that is already on the machine. It checks the host and the artifact hashes before it changes anything.
 
-The default mode is observe-only. Enforcement stays off. When Phantom Engine is started, traffic control stays audit-only.
+The default mode is observe-only. Enforcement stays off. When Phantom Engine is started, traffic control stays audit-only. When the host has no `bpf` LSM token, `docs/HOST-PREP.md` is the procedure that writes `lsm=` and reboots. The installer leaves the bootloader alone.
 
 This package is separate from `@vantio/cli` 0.3.24. Installing a node does not modify that CLI package. The Agent SDK pins stay npm 0.2.4 and Python 3.1.0.
 

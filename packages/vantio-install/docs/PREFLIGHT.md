@@ -28,4 +28,6 @@ Raw `docker`, raw `sudo docker`, and a direct call on `docker.sock` are forbidde
 
 `PF-OCI-LOAD` reads the sealed Phantom Engine OCI tar. It passes when the archive is not an OCI layout, when every layer's media type already matches its bytes, or when a mismatch can be corrected at apply. The correction writes a temporary load archive. The sealed file stays the file you hashed. Docker keeps the storage driver Ubuntu installed. The check blocks when the file is an OCI layout the installer cannot correct, for example a missing layer blob. Restore the sealed archive in that case.
 
+`PF-LSM` is `BLOCKED` when `/sys/kernel/security/lsm` has no `bpf` token of its own. The remediation stored on that check is: Reboot so /sys/kernel/security/lsm lists bpf, then rerun preflight. A host without that token is not healthy and is not protected. `docs/HOST-PREP.md` is the procedure that writes `lsm=` and reboots. `vantio-install` leaves the bootloader alone.
+
 `proof_state` stays `NOT_PROVED`. The proof ceiling stays `INTERNAL_CLEAN_HOST_PROOF`.

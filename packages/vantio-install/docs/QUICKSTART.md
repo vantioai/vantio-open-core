@@ -46,7 +46,7 @@ Use the wheel commands above. A sealed sdist installs the same two scripts only 
 
 `--no-index` without `--no-build-isolation` still builds in an isolated environment, looks up hatchling there, and fails with `No matching distribution found for hatchling`. When hatchling is absent, install the wheel.
 
-The product bundle is a separate sealed directory that is already on the host. `INSTALL.md` is the next step. The bundle pins stay Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0. This package does not change those versions. The installer reads the bundle. It does not fetch it. Before plan or apply, place the sealed bytes per `ARTIFACT-PATH.md` and verify `SHA256SUMS`.
+The product bundle is a separate sealed directory that is already on the host. When `/sys/kernel/security/lsm` has no `bpf` token, `HOST-PREP.md` comes before plan. `INSTALL.md` is the next step. The bundle pins stay Optics CLI 0.3.24, Agent SDK npm 0.2.4, and Agent SDK Python 3.1.0. This package does not change those versions. The installer reads the bundle. It does not fetch it. Before plan or apply, place the sealed bytes per `ARTIFACT-PATH.md` and verify `SHA256SUMS`.
 
 The following are forbidden on this path:
 
