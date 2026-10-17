@@ -4,9 +4,9 @@ This heading exists so a documentation release can require a changelog entry for
 
 ## 0.3.25
 
-CANDIDATE_ONLY_NOT_FOR_PUBLICATION. Source version only. Not an npm release.
+Founder approved publication of this source version to npm on 2026-10-16. This heading is the release record. It does not by itself upload a tarball.
 
-This heading stages the source version label and the docs checks that read it. It does not change CLI behavior. Removal of Gate-era enforcement is a separate change.
+The CLI reads its version from package.json. This record does not change CLI behavior. Removal of Gate-era enforcement is a separate change.
 
 ## 0.3.24
 
