@@ -24,7 +24,20 @@ There is no curl installer at `https://vantio.ai/install.sh`. [vantio.ai/install
 npm install -g @vantio/cli
 ```
 
-That's the only install step. Works on macOS, Linux, and Windows (WSL).
+If that fails with `EACCES`, the global prefix is not writable:
+
+```bash
+npm install -g @vantio/cli --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Python needs a second install. The CLI package does not include it:
+
+```bash
+pip install vantio-agent-sdk
+```
+
+Works on macOS, Linux, and Windows (WSL).
 
 ### Step 2 — Run your agent
 
@@ -38,9 +51,15 @@ node agent.js
 vantio run node agent.js
 ```
 
-Python: install `vantio-agent-sdk` first, then `vantio run python agent.py`. Prefixing `vantio run python` does not intercept by itself.
+Python, after the pip install:
 
-Local `vantio prove`, `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover` read `~/.vantio/runs` on this machine after a run.
+```bash
+vantio run python3 agent.py
+```
+
+Use `vantio run python agent.py` when the `python` command exists. `vantio run` accepts `python`, `python3`, and `python3.N`. It does not start a shell, so a glob is not expanded. The prefix does not intercept Python until `vantio-agent-sdk` is installed.
+
+Local `vantio prove`, `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover` read `~/.vantio/runs` on this machine. That directory is `$VANTIO_HOME/runs` when `VANTIO_HOME` is set. A Node run writes a file there on exit, including a run with no LLM call, and prints a summary only when a supported call was recorded. A Python run writes a file only when the SDK recorded a supported call. `vantio run pnpm` and `vantio run bash` do not write a run log. A program that does not expand `~` needs `$HOME/.vantio/runs`.
 
 ---
 
@@ -72,7 +91,7 @@ Python is not wrapped by this interceptor. Install [`vantio-agent-sdk`](https://
 
 ```bash
 pip install vantio-agent-sdk
-vantio run python agent.py
+vantio run python3 agent.py
 ```
 
 With the SDK installed, `vantio run python` injects the wrap (`sitecustomize` on `PYTHONPATH`) so you do not have to edit the script. Without the SDK, the prefix does not intercept. `shield()` is the in-process alternative when you want a trace id inside the process.
@@ -229,7 +248,7 @@ Telemetry is disabled by default. Set VANTIO_TELEMETRY=1 to opt in. VANTIO_TELEM
 
 Auto-intercepts LLM calls when running **Node.js** processes (`node`, `tsx`, `ts-node`, `npx`) — Node `fetch`, `undici.fetch`, `undici.request`, `undici.stream` / `pipeline` / `dispatch` / `connect` / `upgrade` (including tunnel bytes after upgrade), Node `http`/`https` including `ClientRequest`, Node `http2`, Node `net`/`tls`, `WebSocket` outbound frame size, and Node-spawned `curl` and `wget` (including `env` / `timeout` / `nice`, `curl -K` `url=`, `curl -F` size from stat, stdin size when stdin is a file, `wget -i` URL lists, `sh -c`, and file-body size from `--post-file` / `@file`). Spawned httpie and aria2c argv URLs are included in the same local record. The running version is `vantio --version`.
 
-Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk`) and then `vantio run python agent.py` or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
+Python, Ruby, and other runtimes are spawned without this Node interceptor. For Python, install the [Python SDK](https://pypi.org/project/vantio-agent-sdk) (`vantio-agent-sdk`) and then `vantio run python3 agent.py` (or `vantio run python agent.py` when `python` exists) or `shield()` — urllib / http.client / requests / httpx / aiohttp / urllib3 / pycurl / socket.connect / subprocess curl and wget.
 
 ---
 

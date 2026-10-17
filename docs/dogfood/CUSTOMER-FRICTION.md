@@ -19,6 +19,8 @@ vantio run python agent.py
 
 The workflows do only that, plus a copy of `~/.vantio/runs` so the job can upload a log. They do not call repository scripts, and they do not run the CLI from a source checkout.
 
+Entries 1, 3, 4, 5, 6, and 8 are the docs changes for the install prefix, `python` versus `python3`, the separate pip install, and run-log behavior. The observations below stay as the record of what the pages said on 2026-10-17.
+
 ## Entries
 
 ### 1. `npm install -g` is not the whole install on Linux
