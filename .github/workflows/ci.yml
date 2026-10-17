@@ -55,6 +55,26 @@ jobs:
       - name: Build @vantio/agent-sdk (verify dist output is producible)
         run: pnpm --filter @vantio/agent-sdk run build
 
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: lint-and-test-js
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-lint-and-test-js
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
+
   test-python:
     name: Test Python SDK (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -77,6 +97,26 @@ jobs:
       - name: Run tests (stdlib unittest — the SDK itself has no install dependencies)
         working-directory: packages/vantio-agent-sdk-py
         run: python -m unittest discover -s tests -t . -v
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: test-python
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-test-python-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
 
   release-governance:
     name: Release governance contract
@@ -118,6 +158,27 @@ jobs:
           python3 scripts/gcp/test_redteam_brain.py -v
           python3 scripts/ci/test_founder_approval_guard.py -v
           python3 tests/planning/test_r15_lifecycle.py -v
+          python3 scripts/ci/test_optics_observe_ci.py -v
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: release-governance
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-release-governance
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
 
   candidate-artifacts:
     name: Build release candidates (no registry write)
@@ -163,6 +224,26 @@ jobs:
             ${{ runner.temp }}/candidates-py
           if-no-files-found: error
 
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: candidate-artifacts
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-candidate-artifacts
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
+
   test-vantio-install:
     name: Test vantio-install (Stage A fixtures)
     runs-on: ubuntu-latest
@@ -185,6 +266,26 @@ jobs:
       - name: Test Optics docker observe example
         run: python -m unittest deploy/docker/test_observe_example.py -v
 
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: test-vantio-install
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-test-vantio-install
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
+
   test-openshell-reconciliation:
     name: Test OpenShell reconciliation fixtures
     runs-on: ubuntu-latest
@@ -202,6 +303,26 @@ jobs:
           node --test internal/gap-t2-openshell/test/*.test.cjs
           node internal/gap-t2-openshell/proof/prove-bypass.cjs
 
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: test-openshell-reconciliation
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-test-openshell-reconciliation
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
+
   test-optics-agent-inventory:
     name: Test Optics agent inventory fixtures
     runs-on: ubuntu-latest
@@ -216,6 +337,26 @@ jobs:
 
       - name: Fixture tests
         run: python3 -m unittest discover -s tests/optics-agent-inventory -t tests/optics-agent-inventory -v
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: test-optics-agent-inventory
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-test-optics-agent-inventory
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
 
   test-t5-kernel:
     name: Test T5 kernel model and battery id
@@ -241,3 +382,23 @@ jobs:
           gcc -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/t5_load" scripts/clean-host/t5/t5_load.c -lbpf -lelf -lz
           "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill
           if "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-enrolled.slice; then exit 1; fi
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
+          OPTICS_OBSERVE_JOB: test-t5-kernel
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-test-t5-kernel
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn

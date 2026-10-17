@@ -28,3 +28,23 @@ jobs:
 
       - name: Re-run the proof against the committed evidence
         run: python3 scripts/gap/t0_proof.py --check
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/t0-own-stack-hygiene.yml
+          OPTICS_OBSERVE_JOB: hygiene
+          OPTICS_OBSERVE_POLICY: replay
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-hygiene
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
