@@ -14,7 +14,7 @@ The catalog is `REQUIREMENTS.json`. The evaluator in `scripts/release/ws11/evalu
 | R6 | SBOM where appropriate | Gap. A workspace CycloneDX file exists and is not bound to sealed bytes. | Gap. No SBOM was fetched. | Satisfied as not applicable. The test double has no dependency graph. |
 | R7 | Vulnerability and license scan | Gap. Sealed bytes were not scanned. The manifest license scan is a separate tree report with findings. | Gap. | Gap. |
 | R8 | Clean-environment install | Gap. Not run. | Gap. Not run. | Gap. Not run. |
-| R9 | Upgrade and rollback verification | Gap. Python names 3.0.14 to 3.1.0 and leaves the previous hash null. | Gap. | Gap. |
+| R9 | Upgrade and rollback verification | Gap. Python names 3.0.14 to 3.1.1 and leaves the previous hash null. | Gap. | Gap. |
 | R10 | Registry-byte verification | Gap. `NOT_FETCHED`, including Python, whose historical register label is only a citation. | Gap. | Gap. |
 | R11 | Ordinary-client proof | Gap. Not run. | Gap. | Gap. |
 | R12 | Evidence retention | Gap. Class and location are named. `demonstrated` is false. | Gap. Class `phantom-private`. | Gap. Class `private-customer`. |

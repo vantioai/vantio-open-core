@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the sealed vantio-agent-sdk 3.1.0 upload directory.
+"""Stage the sealed vantio-agent-sdk 3.1.1 upload directory.
 
 This module never builds and never uploads. The governed production upload
 client is pypa/gh-action-pypi-publish in .github/workflows/pypi-publish.yml.
@@ -25,13 +25,13 @@ from typing import NoReturn
 from zipfile import ZipFile
 
 PACKAGE = "vantio-agent-sdk"
-VERSION = "3.1.0"
-WHEEL_NAME = "vantio_agent_sdk-3.1.0-py3-none-any.whl"
-SDIST_NAME = "vantio_agent_sdk-3.1.0.tar.gz"
-WHEEL_SHA256 = "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb"
-SDIST_SHA256 = "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f"
-WHEEL_BYTES = 39235
-SDIST_BYTES = 59669
+VERSION = "3.1.1"
+WHEEL_NAME = "vantio_agent_sdk-3.1.1-py3-none-any.whl"
+SDIST_NAME = "vantio_agent_sdk-3.1.1.tar.gz"
+WHEEL_SHA256 = "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
+SDIST_SHA256 = "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799"
+WHEEL_BYTES = 33997
+SDIST_BYTES = 57039
 UPLOAD_DIR_NAME = "pypi-sealed-upload"
 WHEEL_METADATA = f"vantio_agent_sdk-{VERSION}.dist-info/METADATA"
 SDIST_METADATA = f"vantio_agent_sdk-{VERSION}/PKG-INFO"
@@ -190,7 +190,7 @@ def header_values(text: str) -> dict[str, list[str]]:
 def require_identity(text: str) -> None:
     headers = header_values(text)
     if headers.get("Name") != [PACKAGE] or headers.get("Version") != [VERSION]:
-        fail("ARTIFACT_IDENTITY_MISMATCH", "distribution is not vantio-agent-sdk 3.1.0")
+        fail("ARTIFACT_IDENTITY_MISMATCH", f"distribution is not {PACKAGE} {VERSION}")
 
 
 def assert_wheel_identity(data: bytes) -> None:
@@ -333,7 +333,7 @@ def resolve_metadata_url(override: str) -> str:
         fail("REGISTRY_URL_REJECTED", "metadata URL must not carry credentials or a query")
     suffix = f"/{PACKAGE}/{VERSION}/json"
     if not parsed.path.endswith(suffix):
-        fail("REGISTRY_URL_REJECTED", "metadata URL must name vantio-agent-sdk 3.1.0")
+        fail("REGISTRY_URL_REJECTED", f"metadata URL must name {PACKAGE} {VERSION}")
     return override
 
 
@@ -368,7 +368,7 @@ def fetch_status(url: str) -> int:
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Stage sealed vantio-agent-sdk 3.1.0 distributions")
+    parser = argparse.ArgumentParser(description="Stage sealed vantio-agent-sdk 3.1.1 distributions")
     parser.add_argument("--source")
     parser.add_argument("--upload-dir")
     parser.add_argument("--reject-existing-version", action="store_true")

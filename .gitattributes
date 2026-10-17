@@ -6,3 +6,5 @@
 *.jpeg binary
 *.gif binary
 *.svg text eol=lf
+artifacts/sealed/*.whl binary
+artifacts/sealed/*.tar.gz binary
