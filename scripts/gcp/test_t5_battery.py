@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -39,17 +40,38 @@ class GcpT5PlanTests(unittest.TestCase):
         self.assertIn("static_key", keyed["reasons"])
         self.assertFalse(keyed["dispatch"])
 
+    def test_import_does_not_load_the_t5_package(self) -> None:
+        script = (
+            "import sys\n"
+            f"sys.path.insert(0, {str(ROOT / 'scripts' / 'gcp')!r})\n"
+            "import offline_deliver\n"
+            "raise SystemExit('t5_loaded' if 't5_battery' in offline_deliver.__dict__ else 0)\n"
+        )
+        completed = subprocess.run([sys.executable, "-c", script], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        source = (ROOT / "scripts/gcp/offline_deliver_1.py").read_text(encoding="utf-8")
+        preamble = source.split("def ", 1)[0]
+        self.assertNotIn("import t5_battery", preamble)
+        loader = source.split("def load_t5_battery", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("import t5_battery", loader)
+        dispatch = source.split("def assert_t5_dispatch", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("load_t5_battery()", dispatch)
+        egress = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        run = egress.split("def run_t5_egress", 1)[1]
+        self.assertIn("load_t5_battery()", run)
+
     def test_dispatch_guard_accepts_only_the_lane_seal(self) -> None:
+        battery = od.load_t5_battery()
         env = {
             "T5_EGRESS": "true",
             "GCP_LAB_PROJECT": "vantio-lab-oct08",
-            "EXPECTED_SEAL": od.t5_battery.LANE_SEAL,
+            "EXPECTED_SEAL": battery.LANE_SEAL,
             "RUN_BATTERIES": "false",
             "SELF_SERVICE": "false",
         }
-        self.assertEqual(od.assert_t5_dispatch(env), od.t5_battery.LANE_SEAL)
+        self.assertEqual(od.assert_t5_dispatch(env), battery.LANE_SEAL)
         public = dict(env)
-        public["EXPECTED_SEAL"] = od.t5_battery.PUBLIC_PIN
+        public["EXPECTED_SEAL"] = battery.PUBLIC_PIN
         with self.assertRaises(SystemExit):
             od.assert_t5_dispatch(public)
         mixed = dict(env)

@@ -1,6 +1,6 @@
 # Post-soak queue
 
-UTC: 2026-10-16T23:05:00Z
+UTC: 2026-10-17T00:05:00Z
 
 Working seal: `6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403` (Zachary, 2026-10-16 5:15 PM ET). The previous working seal was `bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d`.
 
@@ -20,7 +20,7 @@ Each battery was read for the files it copies, the units it starts, anything it 
 | `2d-crash-recovery` | Same-boot scratch under `/tmp` for the lab listener. The rows file is already `/var/lib/vantio-lab/enterprise-pe-rows.json`. No reboot. | No harness change. A file that opens with errno 0 after the loader is killed stays a product result. |
 | `2e-performance` | Same-boot. The 100-open timing was recorded. Revoke-to-deny time was not. | `revoke_convergence_ms`, `revoke_errno`, and `revoke_fail_open` are recorded. The 100-open bound is unchanged. |
 | `2f-tamper` | Same-boot scratch. No reboot. | No harness change. Fail-open stays a product result. |
-| `2g-distro` | The grade compared the rows seal with the old working seal, so a `6d3ce580` host would fail `seal`. Ubuntu 22.04 and AL2023 were rejected before launch. Debian 12 was already accepted by the harness. A Debian launch on 2026-10-10 was `AccessDenied` for `ec2:RunInstances`. | The grade uses the seal tar hash against `6d3ce580`. Jammy (Canonical, `ubuntu-jammy-22.04-amd64-server`) and AL2023 (owner `137112412989`, `al2023-ami-2023…x86_64`) are accepted by the allowlist. SSH uses `ubuntu`, `admin`, or `ec2-user` from the image. IAM is not changed. A denied launch stays a named residual. |
+| `2g-distro` | The grade compared the rows seal with the old working seal, so a `6d3ce580` host would fail `seal`. Ubuntu 22.04 and AL2023 were rejected before launch. Debian 12 was already accepted by the harness. A Debian launch on 2026-10-10 was `AccessDenied` for `ec2:RunInstances`. | The grade compares the seal tar hash with `VANTIO_WORKING_SEAL` when that value is 64 hex and is not the public pin. An empty or public-pin value still compares with `6d3ce580`. Jammy (Canonical, `ubuntu-jammy-22.04-amd64-server`) and AL2023 (owner `137112412989`, `al2023-ami-2023…x86_64`) are accepted by the allowlist. SSH uses `ubuntu`, `admin`, or `ec2-user` from the image. IAM is not changed. A denied launch stays a named residual. |
 | `2b-simulate` | Open-core has no host battery for simulate parity. | This queue does not invent a host pass. The row below stays fixture-only. |
 | 36-hour soak | Holds `vantio-lab-slot`. `disable_api_termination` is already false, and the launch adds `--disable-api-termination` only when that flag is true. | No launch from this change. The soak stays last. Termination protection stays off. |
 
@@ -32,7 +32,7 @@ Phase rows stay on `/var/lib/vantio-lab/enterprise-pe-rows.json`. The runner rea
 
 | # | Battery | Result | Evidence |
 | --- | --- | --- | --- |
-| 1 | `r15-container-exit` | NOT a pass. Classification `fail_open` was stored because both the while-up open and the after-exit open were errno 0. After `docker stop` and `docker rm`, `cgroup_skb_egress_enforce` was not listed. That was not a deny that opened on exit. `detached_by_lab` is false. Uninstall printed `UNINSTALL_VERIFIED`. `lab_pass` is false. | Run `38971792328` on `i-0e2d9a8c2e009e9f5`, main `64d9ac78`, seal `6d3ce580`. https://github.com/vantioai/vantio-open-core/actions/runs/38971792328 Boot `99318de7-bdd6-484f-b9cb-ad1eddf2a855`. Image `ubuntu-noble-24.04-amd64-server-20260923`. |
+| 1 | `r15-container-exit` | NOT a pass. Classification `fail_open` was stored because both the while-up open and the after-exit open were errno 0. After `docker stop` and `docker rm`, `cgroup_skb_egress_enforce` was not listed. That was not a deny that opened on exit. `detached_by_lab` is false. Uninstall printed `UNINSTALL_VERIFIED`. `lab_pass` is false. This run did not disprove `6d3ce580` on a boot where bpf was in the active LSM list. See the root-cause note below. | Run `38971792328` on `i-0e2d9a8c2e009e9f5`, main `64d9ac78`, seal `6d3ce580`. https://github.com/vantioai/vantio-open-core/actions/runs/38971792328 Boot `99318de7-bdd6-484f-b9cb-ad1eddf2a855`. Image `ubuntu-noble-24.04-amd64-server-20260923`. |
 | 2 | Red-team loader kill | not a kill result. On the same boot, after that uninstall, the enforce loader did not print `SCOPED (drop enrolled)` or the open/openat pin lines within 120s. Audit did print. Run `38972783768` exited on the missing banner. `pe.tamper.loader_kill` was `loader_pid_absent` because the kill ran after that failure. | https://github.com/vantioai/vantio-open-core/actions/runs/38972783768 |
 | 3 | `2c-upgrade-rollback` | not run | |
 | 4 | `2d-crash-recovery` | not run | |
@@ -42,9 +42,21 @@ Phase rows stay on `/var/lib/vantio-lab/enterprise-pe-rows.json`. The runner rea
 | 8 | `2b-simulate` | no host battery in open-core | |
 | 9 | 36-hour soak on `6d3ce580` | not run | |
 
+## What run 38971792328 can say about bpf
+
+Host `i-0e2d9a8c2e009e9f5` was launched by provision `38971280144` from `ami-0fa99aa8f97f9e30b`, image `ubuntu-noble-24.04-amd64-server-20260923`. The next battery on that host was `r15-container-exit` run `38971792328`. No lsm-guard arm ran on that boot before the open.
+
+The saved row does not contain `/sys/kernel/security/lsm`. It records lockdown `[none] integrity confidentiality`. That string is also present on a stock boot whose LSM list does not include `bpf`, so it is not evidence that bpf was active.
+
+The same AMI, measured later the same day on `i-0c6fc2669bb5ceff4` before any lsm-guard (run `38982739737`), had stock LSM list `lockdown,capability,landlock,yama,apparmor,ima,evm`. The command line had no `lsm=`. The loader printed `not enforcing` and `bpf is not in the active LSM list`. That arm did not reboot. `reboot_requested` was false because the classifier still required `INSTALL_ENFORCEMENT_READINESS_BLOCKED` and `NOT ENFORCING`, and the plain loader does not print `status=present`.
+
+Run `38971792328` was a stock Noble boot that had not been through lsm-guard. On that image, `bpf` is not in the active LSM list until the consented reboot. Errno 0 on that run did not disprove seal `6d3ce580` on a boot where bpf LSM was active. The morning enterprise arm `38960187559`, after reboot-check and lsm-guard, still recorded errno 13 on the enrolled secret while the loader was up.
+
+Loading path deny before the cgroup egress program is hardening for a slow verifier on a boot where `bpf` is in the active LSM list. It is not a correction for a deny that was measured open on an enforcing boot.
+
 ## Residuals named before any launch
 
-- `2c` is on main as `d8b37f60`. It stages both tars. That battery has not been run. It runs after the enforce re-proof, and before the soak.
+- `2c` is on main as `d8b37f60`. It stages both tars. `2c` and `2g` compare the tar hash with `VANTIO_WORKING_SEAL` when that value is 64 hex and is not the public pin `e0b19d55`. Otherwise they still compare with `6d3ce580`. Those batteries have not been run. They run after the enforce re-proof, and before the soak.
 - `2b` has no host battery here.
 - `2g` may still fail `RunInstances` for a non-Noble AMI. That is the earlier Debian denial. This change does not edit IAM.
 - The soak launches only after batteries 1–8, with termination protection off.

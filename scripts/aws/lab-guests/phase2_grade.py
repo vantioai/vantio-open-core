@@ -9,6 +9,8 @@ INTERNAL_CLEAN_HOST_PROOF.
 from __future__ import annotations
 
 import ipaddress
+import os
+import re
 from typing import Any
 
 # Zachary, 2026-10-16: the comparison digest is the working seal.
@@ -16,7 +18,21 @@ from typing import Any
 WORKING_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
 PREVIOUS_WORKING_SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
 PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+_SEAL_RE = re.compile(r"[0-9a-f]{64}")
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
+
+
+def working_seal() -> str:
+    """The seal this arm was given, or the recorded default.
+
+    VANTIO_WORKING_SEAL is the digest the workflow passed as the guest's
+    first argument. The public installer pin is never a working seal. An
+    empty or malformed value keeps the default.
+    """
+    raw = os.environ.get("VANTIO_WORKING_SEAL", "").strip().lower()
+    if _SEAL_RE.fullmatch(raw) and raw != PUBLIC_INSTALLER_PIN:
+        return raw
+    return WORKING_SEAL
 PHASES = (
     "r15-container-exit",
     "2c-upgrade-rollback",
@@ -96,7 +112,7 @@ def _base(battery: str) -> dict[str, Any]:
         "docker_child_pass": False,
         "lab_pass": False,
         "published": False,
-        "seal": WORKING_SEAL,
+        "seal": working_seal(),
     }
 
 
@@ -335,7 +351,7 @@ def grade_rollback_gap(*, from_pin: str, to_seal: str, rollback_image_present: b
         body["reason"] = "public_pin_mismatch"
         body["host_result"] = "FAIL"
         return body
-    if to_seal != WORKING_SEAL:
+    if to_seal != working_seal():
         body["action"] = "HOLD"
         body["reason"] = "seal"
         body["host_result"] = "FAIL"
@@ -363,7 +379,8 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
     """
     body = _base("2c-upgrade-rollback")
     body["from_pin"] = PUBLIC_INSTALLER_PIN
-    body["to_seal"] = WORKING_SEAL
+    expected_seal = working_seal()
+    body["to_seal"] = expected_seal
     body["public_pin_unchanged"] = True
     body["host_rollback"] = "NOT_RUN"
     body["upgrade_pass"] = False
@@ -376,9 +393,9 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
         return body
     expected = {
         "baseline": PUBLIC_INSTALLER_PIN,
-        "upgrade": WORKING_SEAL,
+        "upgrade": expected_seal,
         "rollback": PUBLIC_INSTALLER_PIN,
-        "reupgrade": WORKING_SEAL,
+        "reupgrade": expected_seal,
     }
     pin_ids: list[str] = []
     seal_ids: list[str] = []
@@ -434,7 +451,7 @@ def grade_upgrade(
 ) -> dict[str, Any]:
     """Same seal loaded twice is not an upgrade. A process restart is separate."""
     body = _base("2c-upgrade-rollback")
-    same_bytes = seal_sha256 == WORKING_SEAL
+    same_bytes = seal_sha256 == working_seal()
     same_image = bool(image_before) and image_before == image_after
     restart_held = deny_before == 13 and deny_after == 13
     if attributed_before is False or attributed_after is False:
@@ -629,7 +646,7 @@ def grade_distro(facts: dict[str, Any]) -> dict[str, Any]:
         body["missing"] = missing
         body["host_result"] = "HOLD"
         return body
-    if facts.get("seal") != WORKING_SEAL:
+    if facts.get("seal") != working_seal():
         body["result"] = "NOT_PROVED"
         body["reason"] = "seal"
         body["host_result"] = "FAIL"

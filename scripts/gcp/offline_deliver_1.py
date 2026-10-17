@@ -37,11 +37,6 @@ import redteam_brain as rtbrain
 import redteam_campaign
 import redteam_packet
 
-_T5_DIR = Path(__file__).resolve().parents[1] / "clean-host" / "t5"
-if str(_T5_DIR) not in sys.path:
-    sys.path.insert(0, str(_T5_DIR))
-import t5_battery  # noqa: E402
-
 CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 LAB_PROJECT = "vantio-lab-oct08"
 BUCKET = "vantio-lab-oct08-handoff"
@@ -876,6 +871,23 @@ def t5_requested(env: Mapping[str, str]) -> bool:
     return raw == "true"
 
 
+def load_t5_battery():
+    """Fetch and verify do not check out the t5 package.
+
+    Those steps import this module. Load the battery only when a t5 arm runs.
+    """
+    loaded = globals().get("t5_battery")
+    if loaded is not None:
+        return loaded
+    t5_dir = Path(__file__).resolve().parents[1] / "clean-host" / "t5"
+    if str(t5_dir) not in sys.path:
+        sys.path.insert(0, str(t5_dir))
+    import t5_battery as loaded  # noqa: E402
+
+    globals()["t5_battery"] = loaded
+    return loaded
+
+
 def assert_t5_dispatch(env: Mapping[str, str]) -> str:
     """t5-egress is one battery. It does not run the enterprise set."""
     if not t5_requested(env):
@@ -886,7 +898,7 @@ def assert_t5_dispatch(env: Mapping[str, str]) -> str:
     if "navera" in project.lower():
         raise SystemExit("navera")
     seal = expected_seal(env)
-    if seal != t5_battery.LANE_SEAL:
+    if seal != load_t5_battery().LANE_SEAL:
         raise SystemExit("seal")
     return seal
 

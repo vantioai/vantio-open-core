@@ -1669,11 +1669,11 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertIn("stamp_host_evidence", text)
         self.assertIn('sudo env VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" python3 - "$here"', text)
         self.assertIn(
-            'VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py"',
+            'VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" VANTIO_WORKING_SEAL="$seal" python3 "$here/phase2_host.py"',
             text,
         )
         self.assertIn(
-            'VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" bash /var/lib/vantio-lab/bin/soak-hourly.sh',
+            'VANTIO_IMAGE_NAME="${VANTIO_IMAGE_NAME:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" VANTIO_WORKING_SEAL="$seal" bash /var/lib/vantio-lab/bin/soak-hourly.sh',
             text,
         )
         diag = (ROOT / "scripts/aws/lab-guests/baseline_diag.py").read_text(encoding="utf-8")
