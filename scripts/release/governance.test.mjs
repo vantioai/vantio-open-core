@@ -620,6 +620,37 @@ test("custody fetch refuses a non-custody tag and a glob asset name", async () =
   assert.doesNotMatch(ok.stdout, /gh release download v/);
 });
 
+test("sealed CLI 0.3.25 tarball matches a second pack", () => {
+  const pins = JSON.parse(readFileSync(join(ROOT, "docs/programs/release-engineering/SEALED-RELEASE-PINS.json"), "utf8"));
+  assert.equal(pins.cli.version, "0.3.24");
+  assert.equal(pins.cli.tag, "v0.3.24");
+  assert.equal(pins.cli.tag_commit, "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4");
+  const sealed = pins.cli.sealed_candidate;
+  assert.equal(sealed.package, "@vantio/cli");
+  assert.equal(sealed.version, "0.3.25");
+  assert.equal(sealed.state, "SEALED_BYTES_RECORDED_NOT_PUBLISHED");
+  assert.equal(sealed.tag_created, false);
+  assert.equal(sealed.packed_from, "6fff440d467545937861e4c1910e1066e5b0b2dd");
+  const stored = readFileSync(join(ROOT, sealed.path));
+  assert.equal(stored.length, sealed.bytes);
+  assert.equal(sha256(stored), sealed.sha256);
+  const installer = readFileSync(join(ROOT, "packages/vantio-install/vantio_install/constants.py"), "utf8");
+  assert.match(installer, /e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e/);
+  const npmVersion = spawnSync("npm", ["--version"], { encoding: "utf8" });
+  assert.equal(npmVersion.stdout.trim(), sealed.npm);
+  const dest = tempDir("cli-pack-");
+  const packed = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", dest], {
+    cwd: join(ROOT, "packages/vantio-cli"),
+    env: { ...process.env, SOURCE_DATE_EPOCH: sealed.source_date_epoch, TZ: "UTC" },
+    encoding: "utf8",
+  });
+  assert.equal(packed.status, 0, packed.stderr);
+  const rebuilt = readFileSync(join(dest, sealed.filename));
+  assert.equal(rebuilt.length, sealed.bytes);
+  assert.equal(sha256(rebuilt), sealed.sha256);
+  rmSync(dest, { recursive: true, force: true });
+});
+
 function runPy(script, args) {
   return new Promise((resolve) => {
     const child = spawn("python3", [script, ...args], { stdio: ["ignore", "pipe", "pipe"] });
