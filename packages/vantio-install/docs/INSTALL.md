@@ -12,6 +12,8 @@ Exit 0 means the transaction reached `PLANNED`. A blocked or unsupported host re
 
 Apply asks for `--yes` so a plan is not executed by accident. The default mode is observe-only, and enforcement stays `NOT_ENABLED`.
 
+When `/sys/kernel/security/lsm` has no `bpf` token, `PF-LSM` is `BLOCKED`. `docs/HOST-PREP.md` is how you write `lsm=` and reboot. `vantio-install` leaves the bootloader alone.
+
 A customer apply uses both live gates and the plan hash. `--yes` alone has no live grant. That ungated form is forbidden for customer operators. `--fixture-host` loads an internal JSON host fixture, skips the live grant, and is forbidden for customer operators. The same two rules cover `rollback` and `uninstall`. Customer commands do not pass `--fixture-host`.
 
 The install principal must already match a privilege mode in `PREFLIGHT.md` (`root` as effective uid 0, `sudo`, or `docker_group`). The installer runs Docker from its allowlisted argv list. Raw `docker` and raw `sudo docker` are forbidden.

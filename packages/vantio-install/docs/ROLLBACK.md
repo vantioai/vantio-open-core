@@ -6,7 +6,7 @@ A customer rollback uses both live gates and the plan hash. `--fixture-host` is 
 
 `VANTIO_INSTALL_ALLOW_LIVE=1 vantio-install rollback --transaction-id <id> --yes --plan <PLAN.json> --plan-sha256 <hex> --i-accept-live-mutations --json`
 
-The command is bound to that transaction. It does not accept a different plan hash, and it does not enable enforcement.
+The command is bound to that transaction. It does not accept a different plan hash, and it does not enable enforcement. It leaves `/etc/default/grub.d/99-vantio-lsm.cfg` in place. That file is the operator edit in `HOST-PREP.md`. The installer does not write it.
 
 The plan's `live_operations` list must match this installer. That comparison runs before the tracefs fact is read. A list that is present but different, including a plan written before the `vantio-pe-observe` load and unload operations, is refused. The refusal names that mismatch. Roll that plan back with the installer that wrote it. An empty or absent list is still reported as a missing live operation list. This installer does not rewrite an older plan into the current list.
 
