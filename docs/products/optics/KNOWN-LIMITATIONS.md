@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). These source labels are staged here and are not a behavior change.
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.25 and published Python `vantio-agent-sdk` 3.1.1. `@vantio/agent-sdk` stays 0.2.4. This page does not change CLI or SDK behavior.
 
 ## Absent on purpose in the current products
 
@@ -29,12 +29,12 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 
 - Node writes a file for zero calls. Python writes only when at least one call was stored. "No file" means different things.
 - CLI readers ignore `VANTIO_HOME`. Writers and the MCP reader honor it.
-- Node provider labels are substring guesses. Published Python labels are `"other"`.
+- Node provider labels are substring guesses. Python 3.1.1 fills `provider` from the host catalog when the hostname is in that map, and stores `other` when it is not.
 - The same trace id overwrites one file. Prefix search can hit the wrong file.
 - A crash during the single write can leave a partial file. Write errors are swallowed.
 - `SIGKILL` skips the flush.
 - Query strings are dropped. Path segments are stored and can hold secrets.
-- Published Python 3.0.14 urllib records an HTTP error status with `error` `network_error`. The return path in that source can store `ok` true on a 4xx or 5xx. Display uses the status code.
+- Python 3.1.1 stores HTTP 400–599 with `ok` false. An HTTP status is an application outcome, not `network_error`. DNS, connection, TLS, and timeout errors stay `network_error`. A machine still running Python 3.0.14 can store `ok` true on a returned 4xx or 5xx, and urllib on that older package stored `error` `network_error` for an HTTP error status.
 - Python files contain `"workflow": "sight_loop"`. That string is not current product terminology.
 - The published PyPI summary and the MCP package description still contain that older phrase. This manual does not adopt it.
 - `vantio prove` HTML and MCP Markdown do not show the same columns.
@@ -44,7 +44,7 @@ Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. Th
 
 ## Telemetry gap between published packages
 
-CLI 0.3.24 is opt-in. Published Python 3.0.14 `shield()` sends unless disabled with `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. Unpublished 3.1.0 source is opt-in. Describe the package the person installed. See [TELEMETRY.md](TELEMETRY.md).
+CLI 0.3.25 is opt-in. Python 3.1.1 `shield()` sends only when `VANTIO_TELEMETRY=1`. `VANTIO_TELEMETRY_DISABLED=1` and `DO_NOT_TRACK=1` keep both off. Python 3.0.14 `shield()` sends unless one of those two disable variables is set. Describe the package the person installed. [TELEMETRY.md](TELEMETRY.md) still records the 0.3.24 and 3.0.14 rows.
 
 The telemetry field `hosts` means customer LLM endpoint hostnames. On the CLI ping it is the first recorded call's hostname. On the Python `shield()` ping it is empty.
 
@@ -54,6 +54,6 @@ Repository tests exercise CLI commands, the Node interceptor on supported client
 
 Not covered by those tests as a product guarantee: SQLite, retention, cross-process locking, symlink confinement of `runs/`, disk-full evidence, `SIGKILL` flush, monotonic duration, automatic exclusion of demo files, or identical Node and Python envelopes.
 
-## Unpublished source is not the product
+## The installed package is the product
 
-Reading `packages/vantio-agent-sdk-py` at this commit shows version 3.1.0. The PyPI project JSON on 2026-09-27 reported latest version 3.0.14, and `pip install --target … vantio-agent-sdk==3.0.14` printed `3.0.14`. This manual did not upload a package. Features that exist only in 3.1.0 source are documented as unpublished. They are not in the manual's install instructions.
+`packages/vantio-cli` in this tree is 0.3.25. `packages/vantio-agent-sdk-py` in this tree is 3.1.1. Those are the versions a fresh npm and PyPI install returns after this publication. `@vantio/agent-sdk` stays 0.2.4. Confirm with `npm view @vantio/cli version` and `pip index versions vantio-agent-sdk` before you describe a machine that may still have an older install. This page did not upload a package.
