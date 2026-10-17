@@ -24,3 +24,29 @@ jobs:
 
       - name: Check documentation release manifests
         run: node --test docs/scripts/check-docs-release.test.mjs tests/disclosure-governance-cleanup/direct.test.mjs tests/disclosure-governance-cleanup/adversarial.test.mjs
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          vantio run node --test docs/scripts/check-docs-release.test.mjs tests/disclosure-governance-cleanup/direct.test.mjs tests/disclosure-governance-cleanup/adversarial.test.mjs
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-docs-release-governance
+          path: optics-observe-log
+          if-no-files-found: warn

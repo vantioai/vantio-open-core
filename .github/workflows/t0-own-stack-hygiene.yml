@@ -28,3 +28,28 @@ jobs:
 
       - name: Re-run the proof against the committed evidence
         run: python3 scripts/gap/t0_proof.py --check
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-hygiene
+          path: optics-observe-log
+          if-no-files-found: warn
