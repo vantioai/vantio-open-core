@@ -8,11 +8,28 @@ Workflow: **[Sight Loop](./sight-loop.md)** (wrap → capture → inspect → re
 
 ## Step 1 — Install
 
+Node:
+
 ```bash
 npm install -g @vantio/cli
 ```
 
-That's the only install step. Works on macOS, Linux, and Windows (WSL).
+If that command fails with `EACCES`, the global npm prefix is not writable. Install into a directory you own and put its `bin` directory on `PATH`:
+
+```bash
+npm install -g @vantio/cli --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Python needs a second package. The CLI install does not install it. Without this package, `vantio run python` and `vantio run python3` do not intercept:
+
+```bash
+pip install vantio-agent-sdk
+```
+
+If the system site-packages directory is not writable, `pip` installs into your user site. That is still this install.
+
+These commands work on macOS, Linux, and Windows (WSL).
 
 ---
 
@@ -28,7 +45,13 @@ node agent.js
 vantio run node agent.js
 ```
 
-Python: install `vantio-agent-sdk` first, then `vantio run python agent.py`. Prefixing `vantio run python` does not intercept by itself.
+Python, after the pip install above:
+
+```bash
+vantio run python3 agent.py
+```
+
+Use `vantio run python agent.py` on a machine where the `python` command exists. `vantio run` accepts `python`, `python3`, and `python3.N`. It does not start a shell, so a glob in that command is not expanded. Prefixing `vantio run` does not intercept a Python process until `vantio-agent-sdk` is installed.
 
 ---
 
@@ -45,7 +68,7 @@ The first time you run it, you'll see every outbound AI call intercepted in real
   → Optics observes only. Upgrade to Vantio Phantom Engine to enforce policy.
 ```
 
-A summary prints automatically when your agent finishes. You can also request it explicitly:
+A summary prints when the run recorded at least one supported call. You can also request it explicitly. An empty run does not get a summary:
 
 ```bash
 vantio run --summary node agent.js
@@ -63,9 +86,17 @@ vantio run --summary node agent.js
 
 ## Step 4 — Local commands
 
-Free Optics needs **no account and no API key**. Local `vantio prove`,
-`vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local`
-work immediately after a run.
+Free Optics needs **no account and no API key**.
+
+Run logs are files under `~/.vantio/runs/`. `VANTIO_HOME` changes the parent directory. The default parent is `~/.vantio`, so the log directory is `$VANTIO_HOME/runs` when that variable is set, and `~/.vantio/runs` when it is not. The files are not written into the project directory. A tool that does not expand `~` needs the absolute path, such as `$HOME/.vantio/runs`.
+
+A Node run (`node`, `npx`, `tsx`, or `ts-node`) writes one JSON file there when the process exits, including a run that made no LLM call. The terminal always prints a trace line. The summary prints only when at least one supported call was recorded.
+
+A Python run writes a file there only after `vantio-agent-sdk` recorded at least one supported call. A Python process that exits with no such call leaves no file. `vantio prove` then says there is no local run log.
+
+`vantio run pnpm …` and `vantio run bash …` start those programs and do not write a run log. The Node interceptor is applied to `node`, `npx`, `tsx`, and `ts-node`. The Python wrap is applied to `python`, `python3`, and `python3.N` after the SDK install.
+
+When a log file exists, `vantio prove`, `vantio search`, `vantio tail`, `vantio diff`, and `vantio discover --local` read it on this machine.
 
 ---
 
@@ -124,7 +155,7 @@ Works with any framework that makes HTTP calls:
 
 LangChain · AutoGen · CrewAI · OpenAI SDK · Anthropic SDK · AWS Bedrock · Google Vertex · Cohere · Groq · Together AI · Perplexity · any `fetch`-based agent
 
-**Python agents:** `pip install vantio-agent-sdk`, then `vantio run python agent.py` or `@shield` — prefixing `vantio run python` does not intercept by itself. See [vantio.ai/optics](https://vantio.ai/optics).
+**Python agents:** `pip install vantio-agent-sdk`, then `vantio run python3 agent.py` (or `vantio run python agent.py` where `python` exists) or `@shield`. The prefix does not intercept until the SDK is installed. See [vantio.ai/optics](https://vantio.ai/optics).
 
 ---
 
@@ -169,10 +200,13 @@ Run `vantio discover --local` to see what Optics can observe on your machine. Re
 ## Common questions
 
 **My agent uses Python, not Node.js.**
-Install `vantio-agent-sdk` on that interpreter, then `vantio run python agent.py` or use the `@shield` decorator. Prefixing `vantio run python` does not intercept by itself — the SDK has to be installed. `vantio run` only injects the Node interceptor (`NODE_OPTIONS --require`) for `node` / `npx` / `tsx` / `ts-node`.
+Install `vantio-agent-sdk` on that interpreter, then `vantio run python3 agent.py` or use the `@shield` decorator. Use `python` instead of `python3` only when that command exists. The prefix does not intercept until the SDK is installed. `vantio run` injects the Node interceptor (`NODE_OPTIONS --require`) for `node`, `npx`, `tsx`, and `ts-node`.
 
 **Nothing is appearing in my terminal.**
-For Node, use `node`, `npx`, `tsx`, or `ts-node` under `vantio run`. For Python, install `vantio-agent-sdk` first, then `vantio run python agent.py` or `@shield`. Without the SDK, `vantio run python` prints a one-line notice and does not intercept.
+For Node, use `node`, `npx`, `tsx`, or `ts-node` under `vantio run`. A Node run with no supported call still writes `~/.vantio/runs/` and prints a trace line, and it does not print a summary. For Python, install `vantio-agent-sdk` first, then `vantio run python3 agent.py` or `@shield`. Without the SDK, the prefix prints a one-line notice and does not intercept. A Python run with no supported call does not write a run log.
+
+**`npm install -g` says EACCES.**
+The global prefix is not writable. Repeat the install with `--prefix "$HOME/.local"` and add `$HOME/.local/bin` to `PATH`, as in Step 1.
 
 ---
 
