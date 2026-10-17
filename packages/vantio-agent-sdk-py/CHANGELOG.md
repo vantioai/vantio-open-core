@@ -2,9 +2,9 @@
 
 ## 3.1.1
 
-CANDIDATE_ONLY_NOT_FOR_PUBLICATION. This heading is source. It is not a PyPI release.
+Founder approved publication of this source version to PyPI on 2026-10-16. This heading is the release record. It does not by itself upload a wheel or sdist.
 
-This heading stages the source version label. It does not change SDK behavior. The sealed publisher stays on 3.1.0. Enforcement removal and the http.client status fix are separate changes.
+This record does not change SDK behavior. Enforcement removal and the http.client status fix are separate changes.
 
 ## 3.1.0
 
