@@ -182,6 +182,12 @@
     },
     {
       "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
       "file": ".github/workflows/founder-approval-guard.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
@@ -392,15 +398,9 @@
     },
     {
       "digest_pinned": true,
-      "file": ".github/workflows/npm-publish.yml",
+      "file": ".github/workflows/mcp-registry-publish.yml",
       "pin_kind": "digest",
-      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
-    },
-    {
-      "digest_pinned": true,
-      "file": ".github/workflows/npm-publish.yml",
-      "pin_kind": "digest",
-      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -422,6 +422,30 @@
     },
     {
       "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
       "file": ".github/workflows/pypi-publish.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
@@ -431,6 +455,12 @@
       "file": ".github/workflows/pypi-publish.yml",
       "pin_kind": "digest",
       "uses": "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,

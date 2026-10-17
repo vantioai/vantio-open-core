@@ -74,6 +74,7 @@ jobs:
           sparse-checkout: |
             scripts/release/fetch_custody_release.py
             scripts/release/stage_sealed_pypi.py
+            scripts/ci/optics_observe.py
           sparse-checkout-cone-mode: false
 
       - name: Require the trusted-publisher workflow identity
@@ -149,3 +150,24 @@ jobs:
           environment=pypi
           upload_client=pypa/gh-action-pypi-publish@release/v1
           EOF
+
+      # Lab-only. This step does not publish, tag, or release. Failure is ignored.
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/pypi-publish.yml
+          OPTICS_OBSERVE_JOB: publish
+          OPTICS_OBSERVE_POLICY: release
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-pypi-publish
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn

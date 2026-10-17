@@ -68,6 +68,30 @@ jobs:
             --expected-sha256 "$INPUT_SHA256" \
             --repo-root "$GITHUB_WORKSPACE"
 
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/npm-publish.yml
+          OPTICS_OBSERVE_JOB: validate
+          OPTICS_OBSERVE_POLICY: release
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
+          OPTICS_OBSERVE_INPUT_PACKAGE: ${{ inputs.package }}
+          OPTICS_OBSERVE_INPUT_VERSION: ${{ inputs.version }}
+          OPTICS_OBSERVE_INPUT_COMMIT: ${{ inputs.source_commit }}
+          OPTICS_OBSERVE_INPUT_SHA256: ${{ inputs.artifact_sha256 }}
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-validate
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
+
   record-approval:
     name: Record founder approval
     needs: validate
@@ -153,3 +177,27 @@ jobs:
             echo "actor=$RELEASE_ACTOR"
             echo "registry_write=not_performed_by_this_workflow"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/npm-publish.yml
+          OPTICS_OBSERVE_JOB: record-approval
+          OPTICS_OBSERVE_POLICY: release
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
+          OPTICS_OBSERVE_INPUT_PACKAGE: ${{ inputs.package }}
+          OPTICS_OBSERVE_INPUT_VERSION: ${{ inputs.version }}
+          OPTICS_OBSERVE_INPUT_COMMIT: ${{ inputs.source_commit }}
+          OPTICS_OBSERVE_INPUT_SHA256: ${{ inputs.artifact_sha256 }}
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-record-approval
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn

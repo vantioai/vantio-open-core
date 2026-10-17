@@ -82,3 +82,23 @@ jobs:
           if [ -n "${{ steps.attest.outputs.bundle-path }}" ]; then
             echo "bundle-path=${{ steps.attest.outputs.bundle-path }}"
           fi
+
+      - name: Optics observe (Lab-only)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          OPTICS_OBSERVE_WORKFLOW: .github/workflows/enterprise-slsa-provenance.yml
+          OPTICS_OBSERVE_JOB: build-and-attest
+          OPTICS_OBSERVE_POLICY: release
+          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
+        run: python3 scripts/ci/optics_observe.py
+
+      - name: Upload Optics observation log (Lab-only)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-provenance
+          path: ${{ runner.temp }}/optics-observe-artifact
+          if-no-files-found: warn
