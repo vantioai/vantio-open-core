@@ -58,13 +58,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: lint-and-test-js
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -72,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-lint-and-test-js
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   test-python:
@@ -101,13 +106,19 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: test-python
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 20
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          ( cd packages/vantio-agent-sdk-py && vantio run python -m unittest discover -s tests -t . -v )
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -115,7 +126,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-test-python-${{ matrix.python-version }}
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   release-governance:
@@ -163,13 +174,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: release-governance
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -177,7 +193,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-release-governance
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   candidate-artifacts:
@@ -227,13 +243,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: candidate-artifacts
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -241,7 +262,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-candidate-artifacts
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   test-vantio-install:
@@ -269,13 +290,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: test-vantio-install
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -283,7 +309,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-test-vantio-install
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   test-openshell-reconciliation:
@@ -306,13 +332,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: test-openshell-reconciliation
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -320,7 +351,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-test-openshell-reconciliation
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   test-optics-agent-inventory:
@@ -341,13 +372,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: test-optics-agent-inventory
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -355,7 +391,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-test-optics-agent-inventory
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   test-t5-kernel:
@@ -386,13 +422,18 @@ jobs:
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
-        timeout-minutes: 45
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/ci.yml
-          OPTICS_OBSERVE_JOB: test-t5-kernel
-          OPTICS_OBSERVE_POLICY: replay
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "900"
-        run: python3 scripts/ci/optics_observe.py
+        timeout-minutes: 15
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -400,5 +441,5 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-test-t5-kernel
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
