@@ -156,6 +156,8 @@ class WorkflowContractTests(unittest.TestCase):
                 "Verify sealed bytes and stage the upload directory",
                 "Publish sealed distributions to PyPI",
                 "Record publication coordinates",
+                "Optics observe (Lab-only)",
+                "Upload Optics observation log (Lab-only)",
             ],
         )
         checkout = self.steps[0]
@@ -185,6 +187,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(names.index("Download sealed custody assets"), names.index("Publish sealed distributions to PyPI"))
         self.assertLess(names.index("Stop when 3.1.0 is already on PyPI"), names.index("Verify sealed bytes and stage the upload directory"))
         self.assertEqual(names.index("Publish sealed distributions to PyPI"), names.index("Verify sealed bytes and stage the upload directory") + 1)
+        self.assertEqual(names[-2], "Optics observe (Lab-only)")
+        self.assertEqual(names[-1], "Upload Optics observation log (Lab-only)")
+        observe = self.steps[-2]
+        upload = self.steps[-1]
+        self.assertIs(observe["continue-on-error"], True)
+        self.assertEqual(observe["if"], "always()")
+        self.assertNotIn("permissions", observe)
+        self.assertNotIn("env", observe)
+        self.assertIn("npm install -g @vantio/cli", observe["run"])
+        self.assertIn("pip install vantio-agent-sdk", observe["run"])
+        self.assertNotIn("optics_observe.py", observe["run"])
+        self.assertNotIn("--mcp-enforce", observe["run"])
+        self.assertEqual(upload["with"]["path"], "optics-observe-log")
+        self.assertIs(upload["continue-on-error"], True)
+        self.assertEqual(upload["if"], "always()")
+        self.assertNotIn("permissions", upload)
 
     def test_publish_action_is_oidc_and_explicit(self) -> None:
         publish = self.steps[5]
