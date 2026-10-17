@@ -170,8 +170,6 @@ class WorkflowContractTests(unittest.TestCase):
             [
                 "scripts/release/fetch_custody_release.py",
                 "scripts/release/stage_sealed_pypi.py",
-                "scripts/ci/optics_observe.py",
-                ".github/workflows/pypi-publish.yml",
             ],
         )
         self.assertIs(checkout["with"]["sparse-checkout-cone-mode"], False)
@@ -196,8 +194,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIs(observe["continue-on-error"], True)
         self.assertEqual(observe["if"], "always()")
         self.assertNotIn("permissions", observe)
-        self.assertEqual(observe["env"]["OPTICS_OBSERVE_POLICY"], "release")
+        self.assertNotIn("env", observe)
+        self.assertIn("npm install -g @vantio/cli", observe["run"])
+        self.assertIn("pip install vantio-agent-sdk", observe["run"])
+        self.assertNotIn("optics_observe.py", observe["run"])
         self.assertNotIn("--mcp-enforce", observe["run"])
+        self.assertEqual(upload["with"]["path"], "optics-observe-log")
         self.assertIs(upload["continue-on-error"], True)
         self.assertEqual(upload["if"], "always()")
         self.assertNotIn("permissions", upload)

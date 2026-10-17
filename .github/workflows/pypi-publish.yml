@@ -74,8 +74,6 @@ jobs:
           sparse-checkout: |
             scripts/release/fetch_custody_release.py
             scripts/release/stage_sealed_pypi.py
-            scripts/ci/optics_observe.py
-            .github/workflows/pypi-publish.yml
           sparse-checkout-cone-mode: false
 
       - name: Require the trusted-publisher workflow identity
@@ -152,17 +150,21 @@ jobs:
           upload_client=pypa/gh-action-pypi-publish@release/v1
           EOF
 
-      # Lab-only. This step does not publish, tag, or release. Failure is ignored.
       - name: Optics observe (Lab-only)
         if: always()
         continue-on-error: true
         timeout-minutes: 10
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/pypi-publish.yml
-          OPTICS_OBSERVE_JOB: publish
-          OPTICS_OBSERVE_POLICY: release
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
-        run: python3 scripts/ci/optics_observe.py
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -170,5 +172,5 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-pypi-publish
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn

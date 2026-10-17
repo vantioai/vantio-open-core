@@ -72,16 +72,17 @@ jobs:
         if: always()
         continue-on-error: true
         timeout-minutes: 10
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/npm-publish.yml
-          OPTICS_OBSERVE_JOB: validate
-          OPTICS_OBSERVE_POLICY: release
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
-          OPTICS_OBSERVE_INPUT_PACKAGE: ${{ inputs.package }}
-          OPTICS_OBSERVE_INPUT_VERSION: ${{ inputs.version }}
-          OPTICS_OBSERVE_INPUT_COMMIT: ${{ inputs.source_commit }}
-          OPTICS_OBSERVE_INPUT_SHA256: ${{ inputs.artifact_sha256 }}
-        run: python3 scripts/ci/optics_observe.py
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -89,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-validate
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
 
   record-approval:
@@ -182,16 +183,17 @@ jobs:
         if: always()
         continue-on-error: true
         timeout-minutes: 10
-        env:
-          OPTICS_OBSERVE_WORKFLOW: .github/workflows/npm-publish.yml
-          OPTICS_OBSERVE_JOB: record-approval
-          OPTICS_OBSERVE_POLICY: release
-          OPTICS_OBSERVE_COMMAND_TIMEOUT: "120"
-          OPTICS_OBSERVE_INPUT_PACKAGE: ${{ inputs.package }}
-          OPTICS_OBSERVE_INPUT_VERSION: ${{ inputs.version }}
-          OPTICS_OBSERVE_INPUT_COMMIT: ${{ inputs.source_commit }}
-          OPTICS_OBSERVE_INPUT_SHA256: ${{ inputs.artifact_sha256 }}
-        run: python3 scripts/ci/optics_observe.py
+        run: |
+          set +e
+          npm install -g @vantio/cli
+          pip install vantio-agent-sdk
+          vantio run node -e 'process.exit(0)'
+          vantio run python -c 'raise SystemExit(0)'
+          mkdir -p optics-observe-log
+          if [ -d "$HOME/.vantio/runs" ]; then
+            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          fi
+          exit 0
 
       - name: Upload Optics observation log (Lab-only)
         if: always()
@@ -199,5 +201,5 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-record-approval
-          path: ${{ runner.temp }}/optics-observe-artifact
+          path: optics-observe-log
           if-no-files-found: warn
