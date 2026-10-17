@@ -171,6 +171,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "scripts/release/fetch_custody_release.py",
                 "scripts/release/stage_sealed_pypi.py",
                 "scripts/ci/optics_observe.py",
+                ".github/workflows/pypi-publish.yml",
             ],
         )
         self.assertIs(checkout["with"]["sparse-checkout-cone-mode"], False)
