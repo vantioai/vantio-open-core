@@ -53,8 +53,8 @@ class HostPrepGuideTest(unittest.TestCase):
         self.assertIn("observe-only", guide)
         self.assertIn("NOT_ENABLED", guide)
         self.assertIn("leaves the bootloader alone", guide)
-        self.assertIn("40-force-partuuid.cfg", guide)
-        self.assertIn("50-cloudimg-settings.cfg", guide)
+        self.assertIn("`40-force-partuuid.cfg` sets `GRUB_FORCE_PARTUUID`", guide)
+        self.assertIn("`50-cloudimg-settings.cfg` assigns `GRUB_CMDLINE_LINUX_DEFAULT`", guide)
 
     def test_customer_pages_point_at_the_guide(self) -> None:
         docs = PACKAGE / "docs"

@@ -38,7 +38,7 @@ if [ -d /etc/default/grub.d ]; then sudo cp -a /etc/default/grub.d /etc/default/
 
 ## Write the drop-in
 
-Ubuntu cloud images assign `GRUB_CMDLINE_LINUX` in later files, including `40-force-partuuid.cfg` and `50-cloudimg-settings.cfg`. A line that exists only in `/etc/default/grub` can be overwritten by those files. `/etc/default/grub.d/99-vantio-lsm.cfg` is sourced after them. The script removes any existing `lsm=` token from `GRUB_CMDLINE_LINUX_DEFAULT` and from `GRUB_CMDLINE_LINUX`, then appends the same `lsm=` value to both.
+Ubuntu cloud images source `40-force-partuuid.cfg` and `50-cloudimg-settings.cfg` from `/etc/default/grub.d` after `/etc/default/grub`. `40-force-partuuid.cfg` sets `GRUB_FORCE_PARTUUID`. `50-cloudimg-settings.cfg` assigns `GRUB_CMDLINE_LINUX_DEFAULT`. The tokens the image boots often live on `GRUB_CMDLINE_LINUX` as well. A line that exists only in `/etc/default/grub` can be overwritten. `/etc/default/grub.d/99-vantio-lsm.cfg` is sourced after those files. The script removes any existing `lsm=` token from `GRUB_CMDLINE_LINUX_DEFAULT` and from `GRUB_CMDLINE_LINUX`, then appends the same `lsm=` value to both.
 
 The file has to be executable. `grub-mkconfig` skips a drop-in that is not executable.
 
