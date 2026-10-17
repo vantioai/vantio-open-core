@@ -26,19 +26,19 @@ The prior program snapshot that recorded WS11 as `NOT_RETRIEVED` is not in this 
 | --- | --- | --- |
 | `@vantio/cli` | `0.3.24` | No. `docs/programs/release-engineering/SEALED-RELEASE-PINS.json` records tag `v0.3.24` at `1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4`. The tag selector is not an integrity pin. |
 | `@vantio/agent-sdk` | `0.2.4` | No |
-| `vantio-agent-sdk` | `3.1.0` | No. Sealed hashes below are copied from `scripts/release/stage_sealed_pypi.py`. |
+| `vantio-agent-sdk` | `3.1.1` | No. Sealed hashes below are copied from `scripts/release/stage_sealed_pypi.py`. |
 | `@vantio/optics-mcp` | `0.1.2` | No |
 | `@vantio/gate-mcp` | `0.1.0` | No |
 | `vantio-optics` | `0.1.0` | No |
 | `@vantio/optics-evidence-contract` | `0.0.0-unstable-pre-1.0` | Unpublished private source |
 
-Python wheel `vantio_agent_sdk-3.1.0-py3-none-any.whl` is pinned at 39235 bytes, SHA-256 `dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb`. The sdist `vantio_agent_sdk-3.1.0.tar.gz` is pinned at 59669 bytes, SHA-256 `9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f`. The sealed release pins record the current row state as `RELEASE_CLOSED_REGISTRY_VERIFIED`. Its earlier observation remains `PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED`. The Optics dossier keeps registry status `NOT_FETCHED` and `this_force_refetched: false`. The historical label stays a citation. This refresh did not fetch registry bytes.
+Python wheel `vantio_agent_sdk-3.1.1-py3-none-any.whl` is pinned at 33997 bytes, SHA-256 `6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8`. The sdist `vantio_agent_sdk-3.1.1.tar.gz` is pinned at 57039 bytes, SHA-256 `8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799`. The sealed release pins record the current row state as `SEALED_BYTES_RECORDED_NOT_PUBLISHED`. Its earlier observation remains `PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED`. The custody tag `custody-py-3.1.1` is not created by this record. The Optics dossier keeps registry status `NOT_FETCHED` and `this_force_refetched: false`. The historical label stays a citation. This refresh did not fetch registry bytes.
 
 ## Pins this tree actually has
 
 - Root `packageManager` names pnpm `11.13.0` and carries a `sha512` integrity string.
 - `pnpm-lock.yaml` is present. Its SHA-256 is in the pin report. Lockfile importers record resolved versions for the workspace dependency ranges.
-- `scripts/release/stage_sealed_pypi.py` pins the Python 3.1.0 filenames, byte lengths, and SHA-256 values. Dispatch inputs cannot replace them.
+- `scripts/release/stage_sealed_pypi.py` pins the Python 3.1.1 filenames, byte lengths, and SHA-256 values. Dispatch inputs cannot replace them.
 - Workflow files under `.github/workflows/` and the local composite `.github/actions/vantio-prove/action.yml` pin third-party actions to commit SHAs with tag comments. The pin report records those as `owner/name@sha # tag` with `digest_pinned: true`.
 - `packages/vantio-agent-sdk-py/pyproject.toml` requires `hatchling` with no version comparator.
 - CI and the provenance workflow install with `pnpm install --frozen-lockfile`. That binds the install to the lockfile. The Python build backend stays unpinned.

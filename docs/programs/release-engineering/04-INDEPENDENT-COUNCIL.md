@@ -36,4 +36,4 @@ The producer wrote this packet and the verifier. The revision producer does not 
 
 ## Questions already answered by the packet
 
-The current tree is characterized. `release_success` is false. Formal provenance level, formal conformance mark, formal byte-identity, and hardware provenance stay `NOT_CLAIMED`. CLI `0.3.24` and Python `3.1.0` bytes were not republished. The Phantom Engine row was not re-fetched. The customer row is the test double.
+The current tree is characterized. `release_success` is false. Formal provenance level, formal conformance mark, formal byte-identity, and hardware provenance stay `NOT_CLAIMED`. CLI `0.3.24` was not republished. Python `3.1.1` bytes are recorded and were not uploaded. Python `3.1.0` was not republished. The Phantom Engine row was not re-fetched. The customer row is the test double.
