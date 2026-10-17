@@ -14,6 +14,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lab-guests"))
 
@@ -367,6 +368,7 @@ class Phase2GradeTests(unittest.TestCase):
         guard = text.split("def run_lsm_guard", 1)[1].split("RUNNERS", 1)[0]
         self.assertLess(guard.index("bpf_pins"), guard.index("apply_consented_lsm"))
         self.assertLess(guard.index("egress_present"), guard.index("apply_consented_lsm"))
+        self.assertIn("egress_ready_for_reboot", guard)
         enforce = text.split("def _enforce_generation_log", 1)[1].split("def apply_consented_lsm", 1)[0]
         self.assertLess(enforce.index("ensure_lab_iface()"), enforce.index("start_loader"))
         prepared = text.split("def prepare_enforce", 1)[1].split("def _pin_fd", 1)[0]
@@ -540,6 +542,74 @@ class Phase2GradeTests(unittest.TestCase):
         )
         self.assertEqual(rejected["reason"], "descendant_or_docker_child")
 
+    def test_distro_and_cycle_take_the_arm_seal(self) -> None:
+        candidate = "eac53556ab35066a6849c35180aa83e49fe23748f108e61c6e97b18be47b3e07"
+        facts = {
+            "live_probe": True,
+            "distro": "Debian 12",
+            "kernel": "6.1",
+            "btf": True,
+            "lsm": "lockdown,capability,landlock,yama,apparmor,bpf",
+            "seal": candidate,
+            "enrolled_errno": 13,
+            "unenrolled_errno": 0,
+            "removed": True,
+        }
+        with mock.patch.dict(os.environ, {"VANTIO_WORKING_SEAL": candidate}):
+            self.assertEqual(grade.working_seal(), candidate)
+            accepted = grade.grade_distro(facts)
+            self.assertEqual(accepted["reason"], "live_probe_present")
+            self.assertFalse(accepted["lab_pass"])
+            foreign = dict(facts)
+            foreign["seal"] = "ab" * 32
+            refused = grade.grade_distro(foreign)
+            self.assertEqual(refused["reason"], "seal")
+            pin = "sha256:" + "a" * 64
+            seal_image = "sha256:" + "b" * 64
+            held = grade.grade_image_cycle(
+                [
+                    {
+                        "archive_sha256": grade.PUBLIC_INSTALLER_PIN,
+                        "attributed": True,
+                        "file_errno": 13,
+                        "image_id": pin,
+                        "name": "baseline",
+                        "uninstall": {"tail": "UNINSTALL_VERIFIED\n", "verified_removed": True},
+                    },
+                    {
+                        "archive_sha256": candidate,
+                        "attributed": True,
+                        "file_errno": 13,
+                        "image_id": seal_image,
+                        "name": "upgrade",
+                        "uninstall": {"tail": "UNINSTALL_VERIFIED\n", "verified_removed": True},
+                    },
+                    {
+                        "archive_sha256": grade.PUBLIC_INSTALLER_PIN,
+                        "attributed": True,
+                        "file_errno": 13,
+                        "image_id": pin,
+                        "name": "rollback",
+                        "uninstall": {"tail": "UNINSTALL_VERIFIED\n", "verified_removed": True},
+                    },
+                    {
+                        "archive_sha256": candidate,
+                        "attributed": True,
+                        "file_errno": 13,
+                        "image_id": seal_image,
+                        "name": "reupgrade",
+                        "uninstall": {"tail": "UNINSTALL_VERIFIED\n", "verified_removed": True},
+                    },
+                ]
+            )
+            self.assertEqual(held["reason"], "upgrade_rollback_reupgrade")
+            self.assertEqual(held["to_seal"], candidate)
+            self.assertFalse(held["lab_pass"])
+        with mock.patch.dict(os.environ, {"VANTIO_WORKING_SEAL": grade.PUBLIC_INSTALLER_PIN}):
+            self.assertEqual(grade.working_seal(), grade.WORKING_SEAL)
+        aws = Path(__file__).resolve().parent.joinpath("lab-guests", "enterprise-rows.sh").read_text(encoding="utf-8")
+        self.assertIn('VANTIO_WORKING_SEAL="$seal"', aws)
+
 
 class BaselineDiagTests(unittest.TestCase):
     def test_cause_names(self) -> None:
@@ -612,6 +682,26 @@ class BaselineDiagTests(unittest.TestCase):
         )
         self.assertFalse(claimed["blocked"])
         self.assertTrue(claimed["reports_enforcing"])
+        plain = (
+            "Vantio Phantom Engine\n"
+            "not enforcing\n"
+            "bpf is not in the active LSM list. Add lsm=...,bpf and reboot. "
+            "The installer writes that line only after explicit operator consent.\n"
+        )
+        plain_verdict = baseline_diag.classify_readiness_log(plain)
+        self.assertTrue(plain_verdict["blocked"])
+        self.assertTrue(plain_verdict["not_enforcing"])
+        self.assertFalse(plain_verdict["reports_enforcing"])
+        self.assertFalse(baseline_diag.classify_readiness_log(plain + "  tc enforce : SCOPED (drop enrolled)\n")["blocked"])
+        self.assertFalse(baseline_diag.classify_readiness_log("not enforcing\n")["blocked"])
+        self.assertTrue(baseline_diag.egress_ready_for_reboot(plain, True))
+        self.assertFalse(baseline_diag.egress_ready_for_reboot(plain, False))
+        self.assertTrue(
+            baseline_diag.egress_ready_for_reboot(
+                "egress interface: vlab-host status=present reason=egress_iface_present\n" + plain,
+                False,
+            )
+        )
         planned = baseline_diag.plan_grub_lsm(
             'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"\nGRUB_CMDLINE_LINUX=""\n',
             ['GRUB_CMDLINE_LINUX_DEFAULT="lsm=capability,apparmor"\n'],

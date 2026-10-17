@@ -327,16 +327,34 @@ def lsm_list_with_bpf(current: str) -> str:
 
 
 def classify_readiness_log(text: str) -> dict:
-    """The enforce generation refused, and it did not claim tc enforce."""
-    status = READINESS_BLOCKED in text and f"reason={READINESS_REASON}" in text
-    not_enforcing = "NOT ENFORCING" in text
+    """The enforce generation refused, and it did not claim tc enforce.
+
+    The older loader prints INSTALL_ENFORCEMENT_READINESS_BLOCKED and
+    NOT ENFORCING. The plain loader prints "not enforcing" and
+    "bpf is not in the active LSM list", then exits. Both are a blocked
+    stock boot. A log that also prints "tc enforce :" is not blocked.
+    """
+    folded = text.casefold()
+    token_status = READINESS_BLOCKED in text and f"reason={READINESS_REASON}" in text
+    token_not_enforcing = "NOT ENFORCING" in text
+    plain_refused = "bpf is not in the active lsm list" in folded and "not enforcing" in folded
     reports = "tc enforce :" in text
+    refused = (token_status and token_not_enforcing) or plain_refused
     return {
-        "blocked": status and not_enforcing and not reports,
-        "status_present": status,
-        "not_enforcing": not_enforcing,
+        "blocked": refused and not reports,
+        "status_present": token_status or plain_refused,
+        "not_enforcing": token_not_enforcing or plain_refused,
         "reports_enforcing": reports,
     }
+
+
+def egress_ready_for_reboot(log: str, iface_up: bool) -> bool:
+    """The verbose loader prints status=present. Plain mode does not.
+
+    On a stock boot the plain loader returns before that line. The lab
+    iface in the host network namespace is the same fact.
+    """
+    return "status=present" in log or iface_up is True
 
 
 def _rewrite_grub_text(text: str, lsm_value: str, *, own_the_value: bool) -> tuple[str, str | None]:

@@ -518,6 +518,13 @@ def ensure_lab_iface() -> None:
         raise SystemExit("lab_iface_up")
 
 
+def _host_lab_iface_up() -> bool:
+    """True when vlab-host exists and is up in the host network namespace."""
+    show = _docker_host_ip(["link", "show", "vlab-host"])
+    text = f"{show.stdout or ''}\n{show.stderr or ''}"
+    return show.returncode == 0 and "state UP" in text
+
+
 def vantio_bpf_pins() -> list[str]:
     """Pinned map and program names the loader left under bpffs."""
     root = Path("/sys/fs/bpf")
@@ -1308,14 +1315,15 @@ def run_2c() -> dict:
     seal_tar = HERE / "seal.oci.tar"
     pin_sha = _sha256_file(pin_tar) if pin_tar.is_file() else ""
     seal_sha = _sha256_file(seal_tar) if seal_tar.is_file() else ""
-    if pin_sha != grade.PUBLIC_INSTALLER_PIN or seal_sha != grade.WORKING_SEAL:
+    expected_seal = grade.working_seal()
+    if pin_sha != grade.PUBLIC_INSTALLER_PIN or seal_sha != expected_seal:
         graded = grade.grade_image_cycle([])
         graded["loaded_seal"] = seal_sha
         graded["public_pin_sha256"] = pin_sha
-        graded["working_seal_match"] = seal_sha == grade.WORKING_SEAL
+        graded["working_seal_match"] = seal_sha == expected_seal
         if pin_sha != grade.PUBLIC_INSTALLER_PIN:
             graded["reason"] = "public_pin_absent" if not pin_sha else "public_pin_digest"
-        elif seal_sha != grade.WORKING_SEAL:
+        elif seal_sha != expected_seal:
             graded["reason"] = "seal_absent" if not seal_sha else "seal"
         graded["host_result"] = "FAIL"
         graded["action"] = "FAIL"
@@ -1906,7 +1914,7 @@ def run_lsm_guard() -> dict:
     verdict = baseline_diag.classify_readiness_log(log)
     body["readiness"] = verdict
     body["loader_log_tail"] = log[-2000:]
-    body["egress_present"] = "status=present" in log
+    body["egress_present"] = baseline_diag.egress_ready_for_reboot(log, _host_lab_iface_up())
     body["bpf_pins"] = vantio_bpf_pins()
     rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
     if not verdict["blocked"]:
