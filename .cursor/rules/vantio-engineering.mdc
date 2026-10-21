@@ -37,7 +37,7 @@ This repo is `vantio-open-core`. Read the file named in a rule before changing t
 ## Lab evidence
 
 - A lab `PASS` requires rows from a new boot. `grade_reboot` in `scripts/gap/t1-stranger-host/grade.py` records `boot_id_unchanged` when the post-boot id equals the pre-boot id. `confirm_matches_boot` in `scripts/gcp/offline_deliver_3.py` requires the rows `boot_id` to equal the boot just waited for. `_rows_disagree_with_boot` in `scripts/aws/w3_lab_steps.py` rejects a file whose boot is not the live boot.
-- `scripts/aws/lab-guests/phase2_grade.py` keeps `lab_pass` false. The ceiling stays `INTERNAL_CLEAN_HOST_PROOF`. `grade_evidence` sets `host_proof` false even when every step is `PASS`.
+- `scripts/aws/lab-guests/phase2_grade.py` keeps `lab_pass` false. The ceiling stays `INTERNAL_CLEAN_HOST_PROOF`. `grade_evidence` in `scripts/gap/t1-stranger-host/grade.py` sets `host_proof` false even when every step is `PASS`.
 
 ## Pins, words, secrets
 
