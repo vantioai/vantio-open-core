@@ -798,6 +798,84 @@ describe("live destination, follow, proc, and grpc", () => {
     }
   });
 
+  test("a stuck export batch does not drop journal lines that have not been read", async () => {
+    const home = mkdtempSync(join(tmpdir(), "vantio-follow-hold-"));
+    const path = join(home, "live.jsonl");
+    const line = (destination) => `${JSON.stringify({
+      schema: "vantio.optics.live.v1",
+      kind: "observation",
+      time: "2026-10-21T18:02:07.000Z",
+      program: "curl",
+      destination,
+      flag: null,
+    })}\n`;
+    writeFileSync(path, line("queued.example"));
+    let hits = 0;
+    const server = await listenHttp((req, res) => {
+      hits += 1;
+      res.writeHead(200);
+      res.end("ok");
+    });
+    const port = server.address().port;
+    const state = {
+      path,
+      offset: 0,
+      buffer: features.createFollowBuffer(2),
+      pending: [{ destination: "held.example", program: "curl", kind: "observation" }],
+      attempt: 0,
+      dropped: 0,
+      deliverOptions: { completed: new Set(), webhook: "http://127.0.0.1:1/hook" },
+      readError: null,
+      badLine: false,
+      lastError: null,
+    };
+    try {
+      const held = await features.stepFollowExport(state);
+      assert.equal(held, "retry");
+      assert.equal(state.offset, 0);
+      assert.equal(state.pending[0].destination, "held.example");
+      assert.equal(state.buffer.size(), 0);
+      state.deliverOptions.webhook = `http://127.0.0.1:${port}/hook`;
+      const sent = await features.stepFollowExport(state);
+      assert.equal(sent, "sent");
+      assert.equal(hits, 1);
+      assert.equal(state.offset, 0);
+      const next = await features.stepFollowExport(state);
+      assert.equal(next, "sent");
+      assert.ok(state.offset > 0);
+      assert.equal(hits, 2);
+    } finally {
+      server.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("an older run still covers a live process outside the coverage window", () => {
+    const root = mkdtempSync(join(tmpdir(), "vantio-proc-window-"));
+    mkdirSync(join(root, "net"), { recursive: true });
+    mkdirSync(join(root, "321", "fd"), { recursive: true });
+    writeFileSync(join(root, "net", "tcp"), "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:3039 327100CB:01BB 01 00000000:00000000 00:00000000 00000000     0        0 4242 1 0000000000000000 100 0 0 10 0\n");
+    writeFileSync(join(root, "321", "cmdline"), "node\0agent.js\0");
+    symlinkSync("socket:[4242]", join(root, "321", "fd", "3"));
+    writeFileSync(join(root, "hosts"), "203.0.113.50 api.openai.com\n");
+    const options = {
+      procRoot: root,
+      hostsPath: join(root, "hosts"),
+      selfPid: 1,
+      isAiHost: (host) => host === "api.openai.com",
+    };
+    const old = { pid: 321, program: "agent.js", kind: "connection", destination: "api.openai.com" };
+    try {
+      const windowed = features.procGapsForCoverage({ observations: [], allObservations: [old] }, options);
+      assert.deepEqual(windowed.processes, []);
+      const missed = features.procGapsForCoverage({ observations: [old], allObservations: [] }, options);
+      assert.equal(missed.processes.length, 1);
+      assert.equal(missed.processes[0].pid, 321);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("the process table marks an unwrapped AI socket not covered", () => {
     const root = mkdtempSync(join(tmpdir(), "vantio-proc-"));
     mkdirSync(join(root, "net"), { recursive: true });
@@ -879,6 +957,41 @@ describe("live destination, follow, proc, and grpc", () => {
         grpc.TRACE_PATH,
       ].sort());
       assert.ok(bodies.every((body) => body.length > 5 && body[0] === 0));
+    } finally {
+      server.close();
+    }
+  });
+
+  test("OTLP gRPC uses grpc-status from trailers and does not treat a missing status as success", async () => {
+    const server = http2.createServer();
+    server.on("stream", (stream) => {
+      stream.on("data", () => {});
+      stream.respond({
+        ":status": 200,
+        "content-type": "application/grpc",
+      }, { waitForTrailers: true });
+      stream.on("wantTrailers", () => {
+        stream.sendTrailers({ "grpc-status": "13" });
+      });
+      stream.end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    try {
+      const payloads = features.otlpPayloads([{
+        schema: "vantio.optics.export.v1",
+        kind: "observation",
+        time: "2026-10-21T18:02:07.000Z",
+        program: "agent.js",
+        destination: "billing.internal.example",
+        bytes: 1,
+        optics_status: "OBSERVED",
+        authority: "outside_authority",
+      }], { hostname: "box", platform: "linux" });
+      await assert.rejects(
+        () => grpc.deliverOtlpGrpc(`grpc://127.0.0.1:${port}`, payloads),
+        /otlp grpc traces: otlp grpc returned 13/,
+      );
     } finally {
       server.close();
     }

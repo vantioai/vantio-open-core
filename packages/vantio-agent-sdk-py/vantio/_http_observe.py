@@ -347,6 +347,18 @@ def _clock_local(moment: datetime) -> str:
     return moment.astimezone().strftime("%H:%M:%S")
 
 
+def _clock_from_ts(value: object) -> str:
+    if isinstance(value, str) and value.strip():
+        text = value.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            return _clock_local(parsed)
+    return _clock_local(datetime.now().astimezone())
+
+
 def _allowlist_suppresses(destination: str, allowlist: dict[str, Any]) -> bool:
     host = destination.lower()
     for raw in allowlist.get("destinations") or []:
@@ -428,13 +440,12 @@ def _note_live(rec: dict[str, Any]) -> None:
                     handle.write("\n")
                 os.chmod(temporary, 0o600)
                 os.replace(temporary, seen_path)
-            moment = datetime.now().astimezone()
             event = {
                 "schema": "vantio.optics.live.v1",
                 "kind": "new_destination" if fresh else "observation",
                 "flag": "new_destination" if fresh else None,
                 "flag_label": "New destination" if fresh else None,
-                "clock": _clock_local(moment),
+                "clock": _clock_from_ts(rec.get("ts")),
                 "time": rec.get("ts"),
                 "program": program,
                 "destination": host,

@@ -216,13 +216,23 @@ function grpcCall(origin, path, message) {
     const takeStatus = (headers) => {
       if (headers && headers["grpc-status"] != null) status = String(headers["grpc-status"]);
     };
+    const finishStatus = () => {
+      if (status == null) finish(new Error("otlp grpc returned no grpc-status"));
+      else if (status === "0") finish();
+      else finish(new Error(`otlp grpc returned ${status}`));
+    };
     req.on("response", takeStatus);
-    req.on("trailers", takeStatus);
+    req.on("trailers", (headers) => {
+      takeStatus(headers);
+      finishStatus();
+    });
     req.on("data", () => {});
     req.on("error", finish);
     req.on("end", () => {
-      if (status == null || status === "0") finish();
-      else finish(new Error(`otlp grpc returned ${status}`));
+      if (status != null) finishStatus();
+    });
+    req.on("close", () => {
+      if (!settled) finishStatus();
     });
     req.end(frame);
   });

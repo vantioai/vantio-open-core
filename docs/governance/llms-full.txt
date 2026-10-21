@@ -175,7 +175,7 @@ With the SDK installed, `vantio run python` injects the wrap (`sitecustomize` on
 
 Your code doesn't change. Your agent runs normally. Observed calls are recorded on this machine.
 
-`vantio run` writes a run record for every command, including commands that are not `node`, `npx`, `tsx`, or `ts-node`. On Linux it reads `/proc` while that process and the processes it starts are alive, and records the process tree and the outbound sockets it sees. A socket is attributed to the process that held it, and that process is listed on `vantio coverage`. For a command that is not Node or Python, the first sampled socket to a destination prints a New destination line while the command is still running. Node and Python print that line from the interceptor when a supported call is recorded. The read does not change the process and does not query DNS. A socket that opens and closes between samples can be missed. Those records are included in `vantio coverage` and `vantio destinations`.
+`vantio run` writes a run record for every command, including commands that are not `node`, `npx`, `tsx`, or `ts-node`. On Linux it reads `/proc` while that process and the processes it starts are alive, and records the process tree and the outbound sockets it sees. A socket is attributed to the process that held it, and that process is listed on `vantio coverage`. For a command that is not Node or Python, the first sampled socket to a destination prints a New destination line while the command is still running. Node and Python print that line when the supported call starts, before the response returns. The read does not change the process and does not query DNS. A socket that opens and closes between samples can be missed. Those records are included in `vantio coverage` and `vantio destinations`.
 
 ---
 
@@ -334,7 +334,7 @@ vantio export --webhook=https://collector.example/optics
 
 Plaintext `http` and `grpc` are accepted only for loopback. Other hosts need `https` or `grpcs`. Optics does not start a collector. A one-shot export exits non-zero when a destination does not accept the batch and does not update the seen-destination file. An empty record set prints `No events.` and does not send.
 
-`vantio export --follow` reads `live.jsonl` as events are appended and sends them to the same destinations. A failed send is retried with backoff. The buffer holds at most 1000 events and drops the oldest when it is full. `VANTIO_EXPORT_OTLP`, `VANTIO_EXPORT_OTLP_GRPC`, `VANTIO_EXPORT_JSONL`, `VANTIO_EXPORT_SYSLOG`, and `VANTIO_EXPORT_WEBHOOK` supply those destinations when the matching flag is omitted, so `vantio export --follow` can stay running.
+`vantio export --follow` reads `live.jsonl` as events are appended and sends them to the same destinations. A failed send is retried with backoff. While that batch is still waiting, newer lines stay in the journal. The buffer holds at most 1000 events and drops the oldest when it is full. `VANTIO_EXPORT_OTLP`, `VANTIO_EXPORT_OTLP_GRPC`, `VANTIO_EXPORT_JSONL`, `VANTIO_EXPORT_SYSLOG`, and `VANTIO_EXPORT_WEBHOOK` supply those destinations when the matching flag is omitted, so `vantio export --follow` can stay running.
 
 `vantio tail --follow` prints a New destination line when the call happens. The clock time is local `HH:MM:SS`. The line is also written on the wrapped process's stderr at that moment.
 
@@ -1032,7 +1032,7 @@ Without vantio-agent-sdk, prefixing vantio run python does not intercept.
 
 `vantio run` injects the Node interceptor only for `node`, `npx`, `tsx`, and `ts-node`.
 
-On Linux, `vantio run` still writes a run file for every command. That file records the process tree and the outbound sockets sampled from the local process table. A socket that opens and closes between samples is not in the file. Commands other than Node and Python print a New destination line while they run when a sampled socket is new. Node and Python print that line from the interceptor when a supported call is recorded.
+On Linux, `vantio run` still writes a run file for every command. That file records the process tree and the outbound sockets sampled from the local process table. A socket that opens and closes between samples is not in the file. Commands other than Node and Python print a New destination line while they run when a sampled socket is new. Node and Python print that line when the supported call starts, before the response returns.
 
 Optics does not block actions or retain prompts or completions.
 

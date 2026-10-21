@@ -8,7 +8,7 @@ Without vantio-agent-sdk, prefixing vantio run python does not intercept.
 
 `vantio run` injects the Node interceptor only for `node`, `npx`, `tsx`, and `ts-node`.
 
-On Linux, `vantio run` still writes a run file for every command. That file records the process tree and the outbound sockets sampled from the local process table. A socket that opens and closes between samples is not in the file. Commands other than Node and Python print a New destination line while they run when a sampled socket is new. Node and Python print that line from the interceptor when a supported call is recorded.
+On Linux, `vantio run` still writes a run file for every command. That file records the process tree and the outbound sockets sampled from the local process table. A socket that opens and closes between samples is not in the file. Commands other than Node and Python print a New destination line while they run when a sampled socket is new. Node and Python print that line when the supported call starts, before the response returns.
 
 Optics does not block actions or retain prompts or completions.
 

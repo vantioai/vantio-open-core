@@ -1601,7 +1601,7 @@ function coverageCommand(args) {
   }
   const bundle = loadBundle(values.since, values.allowlist, Date.now());
   if (bundle.error) fail("coverage", bundle.error);
-  const proc = readProcGaps(bundle.observations);
+  const proc = procGapsForCoverage(bundle);
   const coverage = buildCoverage({
     observations: bundle.observations,
     allowlist: bundle.allowlist,
@@ -1895,13 +1895,15 @@ function recordWrappedRun(input) {
   return { path, log };
 }
 
-function readProcGaps(observations) {
+function readProcGaps(observations, options) {
   const covered = [];
   for (const observation of observations || []) {
     if (observation.pid == null || !observation.program) continue;
     covered.push({ pid: observation.pid, program: observation.program });
   }
-  if (process.platform !== "linux") {
+  const opts = options || {};
+  const procRoot = opts.procRoot || (process.platform === "linux" ? "/proc" : null);
+  if (!procRoot) {
     return {
       readable: false,
       reason: "This system has no local process table to read.",
@@ -1909,12 +1911,19 @@ function readProcGaps(observations) {
     };
   }
   return discoverUncovered({
-    procRoot: "/proc",
-    hostsPath: "/etc/hosts",
+    procRoot,
+    hostsPath: opts.hostsPath || "/etc/hosts",
     covered,
-    selfPid: process.pid,
-    isAiHost: (host, port) => catalogInScope(host, port, LLM_HOSTS),
+    selfPid: opts.selfPid != null ? opts.selfPid : process.pid,
+    isAiHost: opts.isAiHost || ((host, port) => catalogInScope(host, port, LLM_HOSTS)),
   });
+}
+
+function procGapsForCoverage(bundle, options) {
+  const source = bundle && Array.isArray(bundle.allObservations)
+    ? bundle.allObservations
+    : (bundle && bundle.observations) || [];
+  return readProcGaps(source, options);
 }
 
 function localClock(value) {
@@ -2171,6 +2180,36 @@ function watchLiveJournal(onEvent) {
   return () => clearInterval(timer);
 }
 
+async function stepFollowExport(state) {
+  if (state.pending.length === 0) state.pending = state.buffer.drain(100);
+  if (state.pending.length === 0) {
+    const chunk = readLiveChunk(state.path, state.offset);
+    state.offset = chunk.offset;
+    state.readError = chunk.error || null;
+    if (!chunk.error) {
+      for (const event of chunk.events) {
+        if (event.error) {
+          state.badLine = true;
+          continue;
+        }
+        state.dropped = state.buffer.push(liveToExportEvent(event));
+      }
+    }
+    state.pending = state.buffer.drain(100);
+  }
+  if (state.pending.length === 0) return "idle";
+  try {
+    await deliverExport(state.pending, state.deliverOptions);
+    state.pending = [];
+    state.deliverOptions.completed = new Set();
+    state.attempt = 0;
+    return "sent";
+  } catch (err) {
+    state.lastError = err;
+    return "retry";
+  }
+}
+
 async function runFollowExport(sinks) {
   const buffer = createFollowBuffer(LIVE_BUFFER_MAX);
   const resource = {
@@ -2186,9 +2225,18 @@ async function runFollowExport(sinks) {
   } catch {
     offset = 0;
   }
-  let pending = [];
-  let completed = new Set();
-  let attempt = 0;
+  const state = {
+    path,
+    offset,
+    buffer,
+    pending: [],
+    attempt: 0,
+    dropped: 0,
+    deliverOptions: Object.assign({ webhookToken: token, resource, completed: new Set() }, sinks),
+    readError: null,
+    badLine: false,
+    lastError: null,
+  };
   let announced = 0;
   let stopped = false;
   const stop = () => { stopped = true; };
@@ -2196,46 +2244,41 @@ async function runFollowExport(sinks) {
   process.on("SIGTERM", stop);
   process.stderr.write("[ ∅ VANTIO ] Following live events (Ctrl+C to stop)…\n");
   while (!stopped) {
-    const chunk = readLiveChunk(path, offset);
-    offset = chunk.offset;
-    if (chunk.error) {
-      process.stderr.write(`vantio export: could not read live events: ${detailOf(chunk.error)}\n`);
+    const outcome = await stepFollowExport(state);
+    if (state.readError) {
+      process.stderr.write(`vantio export: could not read live events: ${detailOf(state.readError)}\n`);
+      state.readError = null;
     }
-    for (const event of chunk.events) {
-      if (event.error) {
-        process.stderr.write("vantio export: skipped a live line that is not JSON\n");
-        continue;
-      }
-      const dropped = buffer.push(liveToExportEvent(event));
-      if (dropped > announced) {
-        process.stderr.write(`vantio export: buffer full, dropped ${dropped - announced}\n`);
-        announced = dropped;
-      }
+    if (state.badLine) {
+      process.stderr.write("vantio export: skipped a live line that is not JSON\n");
+      state.badLine = false;
     }
-    if (pending.length === 0) pending = buffer.drain(100);
-    if (pending.length === 0) {
+    if (state.dropped > announced) {
+      process.stderr.write(`vantio export: buffer full, dropped ${droppedDelta(announced, state.dropped)}\n`);
+      announced = state.dropped;
+    }
+    if (outcome === "idle") {
       await new Promise((resolve) => setTimeout(resolve, 200));
       continue;
     }
-    try {
-      await deliverExport(pending, Object.assign({ webhookToken: token, resource, completed }, sinks));
-      pending = [];
-      completed = new Set();
-      attempt = 0;
-    } catch (err) {
-      const wait = backoffMs(attempt);
-      attempt += 1;
-      process.stderr.write(`vantio export: ${detailOf(err)}. Retrying in ${wait}ms\n`);
+    if (outcome === "retry") {
+      const wait = backoffMs(state.attempt);
+      state.attempt += 1;
+      process.stderr.write(`vantio export: ${detailOf(state.lastError)}. Retrying in ${wait}ms\n`);
       await new Promise((resolve) => setTimeout(resolve, wait));
     }
   }
-  if (pending.length) {
+  if (state.pending.length) {
     try {
-      await deliverExport(pending, Object.assign({ webhookToken: token, resource, completed }, sinks));
+      await deliverExport(state.pending, state.deliverOptions);
     } catch (err) {
       fail("export", detailOf(err));
     }
   }
+}
+
+function droppedDelta(announced, dropped) {
+  return dropped - announced;
 }
 
 module.exports = {
@@ -2271,7 +2314,9 @@ module.exports = {
   parseSyslogTarget,
   programLabelFromArgv,
   publicExportEvent,
+  procGapsForCoverage,
   recordWrappedRun,
+  stepFollowExport,
   validateWebhookToken,
   watchLiveJournal,
 };

@@ -172,6 +172,30 @@ const USD_PER_BYTE = (5 / 1_000_000) / 4;
 let spentUsd = 0;
 const _calls = [];
 const _pushCall = _calls.push.bind(_calls);
+const LIVE_NOTED = Symbol.for("vantio.liveNoted");
+
+function announceLiveDestination(call) {
+  try {
+    const event = noteLiveCall(call, {
+      program: programLabelFromArgv(process.argv),
+      trace_id: RUN_TRACE_ID,
+      pid: process.pid,
+      system_hostname: hostname(),
+    });
+    if (event && event.flag === "new_destination") log(formatLiveAlert(event));
+    return Boolean(event);
+  } catch (err) {
+    const detail = err && err.message ? String(err.message).split("\n")[0] : "failed";
+    log(`[ ∅ VANTIO ] could not record the live destination: ${detail}`);
+    return false;
+  }
+}
+
+function markLiveNoted(record, noted) {
+  if (noted && record && typeof record === "object") record[LIVE_NOTED] = true;
+  return record;
+}
+
 _calls.push = function vantioRecordCall(...items) {
   const result = _pushCall(...items);
   try {
@@ -181,21 +205,8 @@ _calls.push = function vantioRecordCall(...items) {
   } catch {
     // Telemetry must never affect the agent.
   }
-  try {
-    const last = items.length ? items[items.length - 1] : null;
-    if (last && typeof last === "object") {
-      const event = noteLiveCall(last, {
-        program: programLabelFromArgv(process.argv),
-        trace_id: RUN_TRACE_ID,
-        pid: process.pid,
-        system_hostname: hostname(),
-      });
-      if (event && event.flag === "new_destination") log(formatLiveAlert(event));
-    }
-  } catch (err) {
-    const detail = err && err.message ? String(err.message).split("\n")[0] : "failed";
-    log(`[ ∅ VANTIO ] could not record the live destination: ${detail}`);
-  }
+  const last = items.length ? items[items.length - 1] : null;
+  if (last && typeof last === "object" && !last[LIVE_NOTED]) announceLiveDestination(last);
   return result;
 };
 const _startMs = Date.now();
@@ -345,13 +356,20 @@ async function wrapFetch(backend, input, init) {
   const reqMeta = extractRequestMeta(input, init);
   const provider = guessProvider(hostname, port);
   const t0 = Date.now();
+  const liveNoted = announceLiveDestination({
+    hostname,
+    method: reqMeta.method,
+    path: reqMeta.path,
+    ts: new Date().toISOString(),
+    mediation: "node_fetch",
+  });
   let response;
   try {
     response = await launchUndiciBackend(() => backend.call(globalThis, input, init));
   } catch (err) {
     const ts = new Date().toISOString();
     const duration_ms = Date.now() - t0;
-    _calls.push({
+    _calls.push(markLiveNoted({
       hostname,
       provider,
       method: reqMeta.method,
@@ -367,7 +385,7 @@ async function wrapFetch(backend, input, init) {
       action: "OBSERVED",
       error_class: err && err.name ? String(err.name) : "Error",
       error: "network_error",
-    });
+    }, liveNoted));
     logFreeObservation({
       httpStatus: null,
       host: hostname,
@@ -383,7 +401,7 @@ async function wrapFetch(backend, input, init) {
   const resp = responseMeta(response);
   const duration_ms = Date.now() - t0;
   const ts = new Date().toISOString();
-  _calls.push({
+  _calls.push(markLiveNoted({
     hostname,
     provider,
     method: reqMeta.method,
@@ -397,7 +415,7 @@ async function wrapFetch(backend, input, init) {
     duration_ms,
     ts,
     action: "OBSERVED",
-  });
+  }, liveNoted));
   logFreeObservation({
     httpStatus: resp.status,
     host: hostname,
@@ -510,23 +528,30 @@ globalThis.fetch = function vantioFetch(input, init) {
     const reqMeta = extractRequestMeta(href, init);
     const provider = guessProvider(hostname, port);
     const t0 = Date.now();
+    const liveNoted = announceLiveDestination({
+      hostname,
+      method: reqMeta.method,
+      path: reqMeta.path,
+      ts: new Date().toISOString(),
+      mediation: "undici_request",
+    });
     let result;
     try {
       result = await launchUndiciBackend(() => launch(opts));
     } catch (err) {
       const duration_ms = Date.now() - t0;
-      _calls.push({
+      _calls.push(markLiveNoted({
         hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
         request_bytes: reqMeta.request_bytes, bytes: null, status: null, ok: false,
         content_type: null, duration_ms, ts: new Date().toISOString(), action: "OBSERVED",
         error_class: err && err.name ? String(err.name) : "Error", error: "network_error",
         mediation: "undici_request",
-      });
+      }, liveNoted));
       throw err;
     }
     const duration_ms = Date.now() - t0;
     const cl = headerGet(result && result.headers, "content-length");
-    _calls.push({
+    _calls.push(markLiveNoted({
       hostname, provider, method: reqMeta.method, path: reqMeta.path, scheme: reqMeta.scheme,
       request_bytes: reqMeta.request_bytes,
       bytes: cl != null && cl !== "" ? (parseInt(cl, 10) || 0) : 0,
@@ -535,7 +560,7 @@ globalThis.fetch = function vantioFetch(input, init) {
       content_type: headerGet(result && result.headers, "content-type"),
       duration_ms, ts: new Date().toISOString(), action: "OBSERVED",
       mediation: "undici_request",
-    });
+    }, liveNoted));
     return result;
   }
 

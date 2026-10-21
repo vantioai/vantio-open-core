@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from vantio import _http_observe
@@ -34,7 +35,11 @@ class LiveDestinationTest(unittest.TestCase):
             first = json.loads(lines[0])
             second = json.loads(lines[1])
             self.assertEqual(first["flag"], "new_destination")
-            self.assertRegex(first["clock"], r"^\d{2}:\d{2}:\d{2}$")
+            first_clock = datetime.fromisoformat("2026-10-21T18:02:07+00:00").astimezone().strftime("%H:%M:%S")
+            second_clock = datetime.fromisoformat("2026-10-21T18:03:07+00:00").astimezone().strftime("%H:%M:%S")
+            self.assertEqual(first["clock"], first_clock)
+            self.assertEqual(second["clock"], second_clock)
+            self.assertEqual(first["time"], "2026-10-21T18:02:07+00:00")
             self.assertEqual(first["path"], "/v1/tools")
             self.assertEqual(second["flag"], None)
             self.assertNotIn("PROMPT-CANARY", "\n".join(lines))
