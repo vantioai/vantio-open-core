@@ -8,19 +8,40 @@ import sys
 from pathlib import Path
 
 from vantio_install import constants
+from vantio_install.enforce_apply import apply_enforce_enrolled
 from vantio_install.engine import apply, plan, rollback, status, uninstall, verify_removal
 from vantio_install.errors import InstallError
+from vantio_install.gates import command_payload
 from vantio_install.one_command import run_one_command
+from vantio_install.self_serve import run_enroll, run_fetch, run_host_prep, run_unenroll
 from vantio_install.util import now_et
+
+
+def _apply(ctx: dict) -> tuple[int, dict]:
+    if ctx.get("exec_preset") and not ctx.get("enforce_enrolled"):
+        return constants.EXIT_BLOCKED, command_payload(
+            "apply",
+            "FAILED_SAFE",
+            "Pass --enforce-enrolled with --exec-preset.",
+            reason="EXEC_PRESET_REQUIRES_ENFORCE",
+            transaction_id=ctx.get("transaction_id"),
+        )
+    if ctx.get("enforce_enrolled"):
+        return apply_enforce_enrolled(ctx)
+    return apply(ctx)
 
 _COMMANDS = {
     "plan": plan,
-    "apply": apply,
+    "apply": _apply,
     "status": status,
     "rollback": rollback,
     "uninstall": uninstall,
     "verify-removal": verify_removal,
     "install": run_one_command,
+    "fetch": run_fetch,
+    "host-prep": run_host_prep,
+    "enroll": run_enroll,
+    "unenroll": run_unenroll,
 }
 
 
@@ -46,6 +67,14 @@ def _parser() -> argparse.ArgumentParser:
     parent.add_argument("--requested-protection", default="OBSERVE", choices=["OBSERVE", "PROTECTED"])
     parent.add_argument("--policy-file", default=None)
     parent.add_argument("--artifact-trust", default=None)
+    parent.add_argument("--license", default=None)
+    parent.add_argument("--endpoint", default=constants.FETCH_DEFAULT_ENDPOINT)
+    parent.add_argument("--bundle-dir", default=None)
+    parent.add_argument("--write-lsm", action="store_true")
+    parent.add_argument("--i-accept-reboot", action="store_true")
+    parent.add_argument("--enforce-enrolled", action="store_true")
+    parent.add_argument("--exec-preset", default=None)
+    parent.add_argument("--unit", default=None)
     parser = argparse.ArgumentParser(prog="vantio-install")
     sub = parser.add_subparsers(dest="command", required=True)
     for name in _COMMANDS:
@@ -75,6 +104,14 @@ def _ctx(args: argparse.Namespace) -> dict:
         "requested_protection": args.requested_protection,
         "policy_file": Path(args.policy_file) if args.policy_file else None,
         "artifact_trust": Path(args.artifact_trust) if args.artifact_trust else None,
+        "license": args.license,
+        "endpoint": args.endpoint,
+        "bundle_dir": args.bundle_dir,
+        "write_lsm": bool(args.write_lsm),
+        "accept_reboot": bool(args.i_accept_reboot),
+        "enforce_enrolled": bool(args.enforce_enrolled),
+        "exec_preset": args.exec_preset,
+        "unit": args.unit,
     }
 
 

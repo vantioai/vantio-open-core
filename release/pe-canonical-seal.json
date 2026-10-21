@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "public_pin": {
+    "archive_sha256": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
+    "source_commit": "06696d5020700693b0154c59d0e072a24f648378",
+    "manifest_digest": "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19",
+    "archive_basename": "vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar"
+  },
+  "lane_seal": {
+    "sha256": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403",
+    "note": "Lane lab seal, distinct from public_pin. The launch goal is that public_pin.archive_sha256 and lane_seal.sha256 both become one seal S. Switching both roles is a later edit of those two strings in this file."
+  },
+  "signer_kid": null,
+  "updated": "2026-10-21"
+}

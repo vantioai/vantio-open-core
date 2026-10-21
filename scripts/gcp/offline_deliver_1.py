@@ -67,12 +67,12 @@ SNAPSHOT_LINES = (
     "deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates main universe",
     "deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-security main universe",
 )
-POLICY_ALLOW_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
 TRUST_SHA256 = "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876"
 TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
-PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
-TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
+POLICY_ALLOW_SEAL = redteam_packet.POLICY_ALLOW_SEAL
+PUBLIC_INSTALLER_PIN = redteam_packet.PUBLIC_PIN
+TRACKING_2A_SEAL = redteam_packet.TRACKING_SEAL
 IMAGE_NAME = "vantio-phantom-engine:egress-2e6ab54"
 GUEST_DIR = "/var/lib/vantio-lab/guest"
 ROWS_JSON = "/var/lib/vantio-lab/enterprise-pe-rows.json"

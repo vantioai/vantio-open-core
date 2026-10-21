@@ -8,14 +8,38 @@ INTERNAL_CLEAN_HOST_PROOF.
 
 from __future__ import annotations
 
+import importlib.util
 import ipaddress
+import sys
+from pathlib import Path
 from typing import Any
 
+
+def _load_seal():
+    origin = Path(__file__).resolve().parent
+    for parent in (origin, *origin.parents):
+        for candidate in (parent / "pe_canonical_seal.py", parent / "scripts" / "release" / "pe_canonical_seal.py"):
+            if not candidate.is_file():
+                continue
+            cached = sys.modules.get("pe_canonical_seal")
+            if cached is not None:
+                return cached
+            spec = importlib.util.spec_from_file_location("pe_canonical_seal", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["pe_canonical_seal"] = module
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("pe_canonical_seal.py")
+
+
+_SEAL = _load_seal()
 # Zachary, 2026-10-16: the comparison digest is the working seal.
-# The previous working seal was bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d.
-WORKING_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
-PREVIOUS_WORKING_SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
-PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+# The previous working seal prefix is bbb1025d. The full digest is in release/pe-seal-history.json.
+WORKING_SEAL = _SEAL.lane_seal()
+PREVIOUS_WORKING_SEAL = _SEAL.previous_working_seal()
+PUBLIC_INSTALLER_PIN = _SEAL.public_pin()
 CLAIM_CEILING = "INTERNAL_CLEAN_HOST_PROOF"
 PHASES = (
     "r15-container-exit",

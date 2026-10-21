@@ -6,20 +6,45 @@ refuse them. This module does not load a private key.
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
+from pathlib import Path
+
+
+def _load_seal():
+    origin = Path(__file__).resolve().parent
+    for parent in (origin, *origin.parents):
+        for candidate in (parent / "pe_canonical_seal.py", parent / "scripts" / "release" / "pe_canonical_seal.py"):
+            if not candidate.is_file():
+                continue
+            cached = sys.modules.get("pe_canonical_seal")
+            if cached is not None:
+                return cached
+            spec = importlib.util.spec_from_file_location("pe_canonical_seal", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["pe_canonical_seal"] = module
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("pe_canonical_seal.py")
+
+
+_SEAL = _load_seal()
 
 SCHEMA = "vantio.stranger-host-evidence/v1"
 PROOF_SCHEMA = "vantio.t1-package-proof/v1"
 TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_SHA256 = "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
-PUBLIC_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+PUBLIC_PIN = _SEAL.public_pin()
 # Zachary, 2026-10-16. The comparison digest is the working seal.
 # The previous working seal stays named so step 2 can show it is no longer current.
-WORKING_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
-PREVIOUS_WORKING_SEAL = "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d"
-PLUMBING_ONLY_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
-TRACKING_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
+WORKING_SEAL = _SEAL.lane_seal()
+PREVIOUS_WORKING_SEAL = _SEAL.previous_working_seal()
+PLUMBING_ONLY_SEAL = _SEAL.plumbing_only_seal()
+TRACKING_SEAL = _SEAL.tracking_seal()
 COMPARISON_SEAL = WORKING_SEAL
 BASE_SHA = "69671e97fa359b685232ec7dd4e9fb4badc7be57"
 CEILING_PATH = "/var/lib/vantio-pe-clean-host/d/secret"

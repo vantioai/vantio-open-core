@@ -31,15 +31,15 @@ import stage_sealed_pypi as stage  # noqa: E402
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "pypi-publish.yml"
 STAGE_PATH = ROOT / "scripts" / "release" / "stage_sealed_pypi.py"
 FETCH_PATH = ROOT / "scripts" / "release" / "fetch_custody_release.py"
-WHEEL_SHA256 = "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
-SDIST_SHA256 = "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799"
-WHEEL_BYTES = 33997
-SDIST_BYTES = 57039
-WHEEL_NAME = "vantio_agent_sdk-3.1.1-py3-none-any.whl"
-SDIST_NAME = "vantio_agent_sdk-3.1.1.tar.gz"
+WHEEL_SHA256 = "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68"
+SDIST_SHA256 = "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb"
+WHEEL_BYTES = 35551
+SDIST_BYTES = 59493
+WHEEL_NAME = "vantio_agent_sdk-3.1.2-py3-none-any.whl"
+SDIST_NAME = "vantio_agent_sdk-3.1.2.tar.gz"
 PIN_ENV = {
     "SEALED_PACKAGE": "vantio-agent-sdk",
-    "SEALED_VERSION": "3.1.1",
+    "SEALED_VERSION": "3.1.2",
     "SEALED_WHEEL_NAME": WHEEL_NAME,
     "SEALED_SDIST_NAME": SDIST_NAME,
     "SEALED_WHEEL_SHA256": WHEEL_SHA256,
@@ -76,11 +76,11 @@ def _pair(directory: Path, wheel: bytes, sdist: bytes) -> None:
     (directory / SDIST_NAME).write_bytes(sdist)
 
 
-def _metadata(name: str = "vantio-agent-sdk", version: str = "3.1.1") -> bytes:
+def _metadata(name: str = "vantio-agent-sdk", version: str = "3.1.2") -> bytes:
     return f"Metadata-Version: 2.4\nName: {name}\nVersion: {version}\n\nbody\n".encode()
 
 
-def _wheel(name: str = "vantio-agent-sdk", version: str = "3.1.1", *, link: bool = False, traversal: bool = False) -> bytes:
+def _wheel(name: str = "vantio-agent-sdk", version: str = "3.1.2", *, link: bool = False, traversal: bool = False) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         info = zipfile.ZipInfo(f"vantio_agent_sdk-{version}.dist-info/METADATA")
@@ -94,7 +94,7 @@ def _wheel(name: str = "vantio-agent-sdk", version: str = "3.1.1", *, link: bool
     return buffer.getvalue()
 
 
-def _sdist(name: str = "vantio-agent-sdk", version: str = "3.1.1", *, link: bool = False) -> bytes:
+def _sdist(name: str = "vantio-agent-sdk", version: str = "3.1.2", *, link: bool = False) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         payload = _metadata(name, version)
@@ -138,7 +138,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(self.job["permissions"], {"contents": "read", "id-token": "write"})
         self.assertEqual(self.raw.count("id-token: write"), 1)
         self.assertNotIn("contents: write", self.raw)
-        self.assertEqual(self.doc["concurrency"]["group"], "pypi-vantio-agent-sdk-3.1.1")
+        self.assertEqual(self.doc["concurrency"]["group"], "pypi-vantio-agent-sdk-3.1.2")
         self.assertIs(self.doc["concurrency"]["cancel-in-progress"], False)
         self.assertEqual(self.job["timeout-minutes"], 20)
         self.assertIn("not treat the tag as immutable", self.raw)
@@ -153,7 +153,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "Require the trusted-publisher workflow identity",
                 "Setup Node.js 22",
                 "Install Optics observe CLI",
-                "Stop when 3.1.1 is already on PyPI",
+                "Stop when 3.1.2 is already on PyPI",
                 "Download sealed custody assets",
                 "Verify sealed bytes and stage the upload directory",
                 "Publish sealed distributions to PyPI",
@@ -187,7 +187,7 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(banned, identity)
         self.assertLess(names.index("Download sealed custody assets"), names.index("Publish sealed distributions to PyPI"))
-        self.assertLess(names.index("Stop when 3.1.1 is already on PyPI"), names.index("Verify sealed bytes and stage the upload directory"))
+        self.assertLess(names.index("Stop when 3.1.2 is already on PyPI"), names.index("Verify sealed bytes and stage the upload directory"))
         self.assertEqual(names.index("Publish sealed distributions to PyPI"), names.index("Verify sealed bytes and stage the upload directory") + 1)
         self.assertEqual(names[-2], "Collect Optics observation log")
         self.assertEqual(names[-1], "Upload Optics observation log")
@@ -253,12 +253,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("--metadata-url", staged["run"])
         download = next(step for step in self.steps if step["name"] == "Download sealed custody assets")
         self.assertEqual(download["env"], {"GH_TOKEN": "${{ github.token }}"})
-        self.assertIn("--tag custody-py-3.1.1", download["run"])
+        self.assertIn("--tag custody-py-3.1.2", download["run"])
         self.assertIn(f"--wheel-name {WHEEL_NAME}", download["run"])
         self.assertIn(f"--sdist-name {SDIST_NAME}", download["run"])
-        self.assertIn("--version 3.1.1", download["run"])
+        self.assertIn("--version 3.1.2", download["run"])
         self.assertNotIn("*", download["run"])
-        reject = next(step for step in self.steps if step["name"] == "Stop when 3.1.1 is already on PyPI")
+        reject = next(step for step in self.steps if step["name"] == "Stop when 3.1.2 is already on PyPI")
         self.assertIn("--reject-existing-version", reject["run"])
         self.assertNotIn("--metadata-url", reject["run"])
         self.assertNotIn("test.pypi", reject["run"])
@@ -267,7 +267,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(stage.WHEEL_BYTES, WHEEL_BYTES)
         self.assertEqual(stage.SDIST_BYTES, SDIST_BYTES)
         self.assertEqual(stage.PIN_ENV, PIN_ENV)
-        self.assertEqual(stage.PRODUCTION_METADATA_URL, "https://pypi.org/pypi/vantio-agent-sdk/3.1.1/json")
+        self.assertEqual(stage.PRODUCTION_METADATA_URL, "https://pypi.org/pypi/vantio-agent-sdk/3.1.2/json")
 
     def test_other_workflows_do_not_publish_python(self) -> None:
         for path in (ROOT / ".github" / "workflows").glob("*.yml"):
@@ -282,7 +282,7 @@ class WorkflowContractTests(unittest.TestCase):
         init = (ROOT / "packages/vantio-agent-sdk-py/vantio/__init__.py").read_text(encoding="utf-8")
         self.assertIn('version = "3.1.2"', pyproject)
         self.assertIn('__version__ = "3.1.2"', init)
-        self.assertEqual(stage.VERSION, "3.1.1")
+        self.assertEqual(stage.VERSION, "3.1.2")
         self.assertEqual(stage.WHEEL_NAME, WHEEL_NAME)
         self.assertEqual(stage.SDIST_NAME, SDIST_NAME)
 
@@ -452,7 +452,7 @@ class SealedGateTests(unittest.TestCase):
             server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
-            url = f"http://127.0.0.1:{server.server_address[1]}/pypi/vantio-agent-sdk/3.1.1/json"
+            url = f"http://127.0.0.1:{server.server_address[1]}/pypi/vantio-agent-sdk/3.1.2/json"
             try:
                 absent = _run(
                     ["--reject-existing-version", "--metadata-url", url],
@@ -483,7 +483,7 @@ class SealedGateTests(unittest.TestCase):
         )
         self.assertEqual(_status(rejected), "REGISTRY_URL_REJECTED")
         blocked = _run(
-            ["--reject-existing-version", "--metadata-url", "http://127.0.0.1/pypi/vantio-agent-sdk/3.1.1/json"],
+            ["--reject-existing-version", "--metadata-url", "http://127.0.0.1/pypi/vantio-agent-sdk/3.1.2/json"],
             pins=False,
         )
         self.assertEqual(_status(blocked), "REGISTRY_URL_REJECTED")
@@ -519,9 +519,9 @@ class SealedGateTests(unittest.TestCase):
                 sys.executable,
                 str(FETCH_PATH),
                 "--tag",
-                "custody-py-3.1.1",
+                "custody-py-3.1.2",
                 "--version",
-                "3.1.1",
+                "3.1.2",
                 "--wheel-name",
                 WHEEL_NAME,
                 "--sdist-name",
@@ -535,7 +535,7 @@ class SealedGateTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("custody-py-3.1.1", result.stdout)
+        self.assertIn("custody-py-3.1.2", result.stdout)
         self.assertIn(WHEEL_NAME, result.stdout)
         self.assertIn(SDIST_NAME, result.stdout)
         self.assertIn("vantioai/vantio-open-core", result.stdout)
@@ -589,27 +589,27 @@ class SealedGateTests(unittest.TestCase):
 
 class SealedByteTests(unittest.TestCase):
     def test_prepare_script_prints_the_tag_command_and_does_not_create_it(self) -> None:
-        script = ROOT / "scripts" / "release" / "prepare_custody_py_3_1_1.py"
+        script = ROOT / "scripts" / "release" / "prepare_custody_py_3_1_2.py"
         source = script.read_text(encoding="utf-8")
         self.assertNotIn("subprocess", source)
         self.assertNotIn("git tag -a", source)
         refused = subprocess.run([sys.executable, str(script), "--apply"], check=False, capture_output=True, text=True)
         self.assertEqual(refused.returncode, 2, refused.stderr)
-        self.assertIn("does not create custody-py-3.1.1", refused.stderr)
+        self.assertIn("does not create custody-py-3.1.2", refused.stderr)
         result = subprocess.run([sys.executable, str(script)], check=False, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("TAG_CREATED false", result.stdout)
-        self.assertIn("custody-py-3.1.1", result.stdout)
+        self.assertIn("custody-py-3.1.2", result.stdout)
         self.assertIn(WHEEL_NAME, result.stdout)
         self.assertIn(SDIST_NAME, result.stdout)
         self.assertIn("gh release create", result.stdout)
-        listed = subprocess.run(["git", "tag", "--list", "custody-py-3.1.1"], check=False, capture_output=True, text=True, cwd=ROOT)
+        listed = subprocess.run(["git", "tag", "--list", "custody-py-3.1.2"], check=False, capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(listed.stdout.strip(), "")
 
-    def test_sealed_3_1_1_files_stay_the_recorded_bytes(self) -> None:
+    def test_sealed_3_1_2_files_stay_the_recorded_bytes(self) -> None:
         pins = json.loads((ROOT / "docs/programs/release-engineering/SEALED-RELEASE-PINS.json").read_text(encoding="utf-8"))
         row = pins["python"]
-        self.assertEqual(row["version"], "3.1.1")
+        self.assertEqual(row["version"], "3.1.2")
         self.assertEqual(row["state"], "SEALED_BYTES_RECORDED_NOT_PUBLISHED")
         self.assertIs(row["custody_tag_created"], False)
         self.assertEqual(row["publisher_commit"], "63df79c8f81cc90a03bea559838c0989d0e35ebc")
@@ -627,7 +627,13 @@ class SealedByteTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(data).hexdigest(), digest, name)
         candidate = row["source_candidate"]
         self.assertEqual(candidate["version"], "3.1.2")
-        self.assertNotEqual(candidate["wheel_sha256"], row["wheel_sha256"])
+        self.assertEqual(candidate["wheel_sha256"], row["wheel_sha256"])
+        self.assertEqual(candidate["sdist_sha256"], row["sdist_sha256"])
+        closed = row["previous_closed"]
+        self.assertEqual(closed["version"], "3.1.1")
+        self.assertEqual(closed["state"], "RELEASE_CLOSED_REGISTRY_VERIFIED")
+        self.assertEqual(closed["wheel_sha256"], "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8")
+        self.assertEqual(closed["sdist_sha256"], "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799")
 
     def test_second_build_matches_the_sealed_files(self) -> None:
         pins = json.loads((ROOT / "docs/programs/release-engineering/SEALED-RELEASE-PINS.json").read_text(encoding="utf-8"))

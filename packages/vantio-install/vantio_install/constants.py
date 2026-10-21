@@ -6,6 +6,9 @@ disclosure denylist the preflight gate compares artifacts against.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 INSTALLER_VERSION = "0.1.0-stage-a"
 CONTRACT_VERSION = "1.0.0-stage-a"
 MANIFEST_VERSION = "1.0.0-stage-a"
@@ -124,6 +127,78 @@ EXIT_FAILED_SAFE = 4
 EXIT_INTERRUPTED = 5
 EXIT_USAGE = 10
 EXIT_CRASH = 20
+EXIT_LICENSE_UNAUTHORIZED = 41
+EXIT_LICENSE_FORBIDDEN = 43
+EXIT_DOWNLOAD_GONE = 44
+EXIT_RATE_LIMITED = 45
+
+# License-gated bundle download. The public pin table above is not a seal change.
+FETCH_MAX_BYTES = 2 * 1024 * 1024 * 1024
+FETCH_DEFAULT_ENDPOINT = "https://vantio.ai/api/pe/download"
+FETCH_ENDPOINT_HOSTS = frozenset({"vantio.ai", "www.vantio.ai"})
+FETCH_REDIRECT_HOSTS = frozenset(
+    {"objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+)
+FETCH_LAB_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+GRUB_DROPIN_RELATIVE = "etc/default/grub.d/99-vantio-lsm.cfg"
+LICENSE_RELATIVE = "etc/vantio/license"
+ENROLL_DROPIN_NAME = "10-vantio-enrolled.conf"
+ENROLLED_SLICE = "vantio-enrolled.slice"
+
+_HEX = frozenset("0123456789abcdef")
+
+
+def _canonical_seal() -> dict[str, object]:
+    """Read release/pe-canonical-seal.json. A copy beside this module must match."""
+    here = Path(__file__).resolve()
+    found: list[Path] = []
+    sibling = here.with_name("pe-canonical-seal.json")
+    if sibling.is_file():
+        found.append(sibling)
+    for parent in here.parents:
+        candidate = parent / "release" / "pe-canonical-seal.json"
+        if candidate.is_file():
+            found.append(candidate)
+            break
+    if not found:
+        raise FileNotFoundError("release/pe-canonical-seal.json")
+    texts = [path.read_text(encoding="utf-8") for path in found]
+    if any(text != texts[0] for text in texts[1:]):
+        raise RuntimeError("pe-canonical-seal.json copies disagree")
+    body = json.loads(texts[0])
+    if not isinstance(body, dict):
+        raise ValueError("pe-canonical-seal.json")
+    return body
+
+
+def _seal_text(value: object, size: int, label: str) -> str:
+    if not isinstance(value, str) or len(value) != size or any(char not in _HEX for char in value):
+        raise ValueError(label)
+    return value
+
+
+def _public_pin_fields() -> dict[str, str]:
+    body = _canonical_seal()
+    public = body.get("public_pin")
+    if not isinstance(public, dict):
+        raise ValueError("public_pin")
+    manifest = public.get("manifest_digest")
+    if not isinstance(manifest, str) or not manifest.startswith("sha256:"):
+        raise ValueError("manifest_digest")
+    _seal_text(manifest.removeprefix("sha256:"), 64, "manifest_digest")
+    basename = public.get("archive_basename")
+    if not isinstance(basename, str) or "/" in basename or not basename.endswith(".oci.tar"):
+        raise ValueError("archive_basename")
+    return {
+        "archive_sha256": _seal_text(public.get("archive_sha256"), 64, "archive_sha256"),
+        "source_commit": _seal_text(public.get("source_commit"), 40, "source_commit"),
+        "manifest_digest": manifest,
+        "archive_basename": basename,
+    }
+
+
+_PUBLIC_PIN = _public_pin_fields()
 
 FROZEN_PINS = {
     "optics_cli_package": "@vantio/cli",
@@ -140,11 +215,11 @@ FROZEN_PINS = {
     "agent_sdk_py_wheel_sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
     "agent_sdk_py_sdist": "vantio_agent_sdk-3.1.0.tar.gz",
     "agent_sdk_py_sdist_sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
-    "pe_source_commit": "06696d5020700693b0154c59d0e072a24f648378",
+    "pe_source_commit": _PUBLIC_PIN["source_commit"],
     "pe_prior_candidate_commit": "fab81efc08110506ff90847495197e7051a253b5",
-    "pe_archive_name": "vantio-phantom-engine-pe-residuals-06696d5-linux-amd64.oci.tar",
-    "pe_archive_sha256": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
-    "pe_manifest_digest": "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19",
+    "pe_archive_name": _PUBLIC_PIN["archive_basename"],
+    "pe_archive_sha256": _PUBLIC_PIN["archive_sha256"],
+    "pe_manifest_digest": _PUBLIC_PIN["manifest_digest"],
     "pe_config_digest": "sha256:1c7bbbd08a87639334b18e841e6b2be67e6de4c9864deaf768dfae723ea517b0",
     "pe_loader_sha256": "f19b43f26a4b42671bb8d4f0aeb4b97bac7f52ae78442241f6e30d8ef385694f",
     "pe_layer_digests": [
@@ -159,9 +234,9 @@ FROZEN_PINS = {
 # Sealed identity the live gate compares to the pin table at call time.
 # Archive file bytes are compared to FROZEN_PINS["pe_archive_sha256"].
 LIVE_CANONICAL_IDENTITY = {
-    "pe_source_commit": "06696d5020700693b0154c59d0e072a24f648378",
-    "pe_archive_sha256": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
-    "pe_manifest_digest": "sha256:8b40aec5c125043ec4278a14170677474c9ca31a7ae78e8496c40dffa69d0e19",
+    "pe_source_commit": _PUBLIC_PIN["source_commit"],
+    "pe_archive_sha256": _PUBLIC_PIN["archive_sha256"],
+    "pe_manifest_digest": _PUBLIC_PIN["manifest_digest"],
 }
 
 # Observe-only PE container profile. docker-default denies /sys/fs/bpf pin writes.

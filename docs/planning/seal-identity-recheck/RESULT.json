@@ -14,7 +14,7 @@
   "observe_dockerfile_present": true,
   "open_core_manifest_label": "Verified",
   "open_core_manifest_passes_agree": true,
-  "open_core_manifest_sha256": "042704f3348c8c98060b6f312deb20eb9d63d553a95b9c71daa870798fee35d3",
+  "open_core_manifest_sha256": "54d76d69d336b307a81a8b52411fe5f9eb2bb7c742670f882da5d33469f59bc6",
   "public_installer_pin": "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e",
   "seal_oci_tar_present": false,
   "working_seal_constant": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"

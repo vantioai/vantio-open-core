@@ -10,14 +10,12 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { laneSeal } from "./pe_canonical_seal.mjs";
 
 const ENGINE_REMOTE = "https://github.com/vantioai/vantio-phantom-engine.git";
 
 export function workingSeal(root) {
-  const text = readFileSync(join(root, "scripts/gap/t1-stranger-host/constants.py"), "utf8");
-  const found = text.match(/^WORKING_SEAL\s*=\s*"([0-9a-f]{64})"/m);
-  if (!found) throw new Error("WORKING_SEAL missing");
-  return found[1];
+  return laneSeal(root);
 }
 
 export function classify(seal, probe) {

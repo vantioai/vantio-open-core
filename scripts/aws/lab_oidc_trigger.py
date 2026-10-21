@@ -131,7 +131,7 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
             raise TriggerError("enterprise_rows")
         if key == "bundle_tag" and re.fullmatch(r"lab-bundle/[A-Za-z0-9._-]{1,64}", value) is None:
             raise TriggerError("bundle_tag")
-        if key == "battery" and value not in ("enterprise", "reboot-check", "descendant-b1", "self-service"):
+        if key == "battery" and value not in ("enterprise", "reboot-check", "descendant-b1", "self-service", "webshell"):
             raise TriggerError("battery")
         if key == "redteam_brain" and value not in ("true", "false"):
             raise TriggerError("redteam_brain")
@@ -152,6 +152,10 @@ def validate_fields(step: str, fields: Mapping[str, str]) -> None:
     if step == "arm" and fields.get("battery") == "self-service" and fields.get("enterprise_rows") == "true":
         raise TriggerError("battery")
     if step == "arm" and fields.get("battery") == "self-service" and fields.get("redteam_brain") == "true":
+        raise TriggerError("battery")
+    if step == "arm" and fields.get("battery") == "webshell" and fields.get("enterprise_rows") == "true":
+        raise TriggerError("battery")
+    if step == "arm" and fields.get("battery") == "webshell" and fields.get("redteam_brain") == "true":
         raise TriggerError("battery")
     if step == "launch" and fields.get("instance_type") == "m7i-flex.large":
         raw = fields.get("stop_after_minutes", "")

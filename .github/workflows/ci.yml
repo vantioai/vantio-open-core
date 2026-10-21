@@ -153,6 +153,9 @@ jobs:
           node --test scripts/release/ws11/ws11.test.mjs
           node --test scripts/release/seal-identity-recheck.test.mjs
           node --test scripts/release/engine-archive-rebuild.test.mjs
+          node --test scripts/release/pe-canonical-seal.test.mjs
+          python3 scripts/release/test_pe_canonical_seal.py -v
+          python3 scripts/aws/test_webshell_grade.py -v
           python3 scripts/release/test_promote_pypi.py -v
           python3 scripts/release/test_pypi_publish_workflow.py -v
           python3 scripts/release/test_optics_release_observe.py -v

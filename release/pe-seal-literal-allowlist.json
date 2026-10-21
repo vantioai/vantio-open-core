@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "note": "Paths that may still quote a known seal digest. Runtime readers are not on this list. archive/ and evidence/ paths are history. Mirror docs are checked against release/pe-canonical-seal.json.",
+  "mirror_docs": [
+    "packages/vantio-install/docs/ARTIFACT-PATH.md",
+    "packages/vantio-install/docs/STAGE-B-ARTIFACT-PATH.md",
+    "packages/vantio-install/docs/NETWORK-TRANSFER-ALLOWLIST.md"
+  ],
+  "historical_records": [
+    "docs/planning/engine-archive-rebuild/RESULT.json",
+    "docs/planning/gap-t5-egress/04-KERNEL-PORT.md",
+    "docs/planning/boot-hold/FD-REBOOT-1-LAB-PROCEDURE.md",
+    "docs/planning/boot-hold/PE-COMPANION.md",
+    "docs/planning/seal-identity-recheck/RESULT.json",
+    "docs/gap/t1-stranger-host/00-DESIGN.md",
+    "docs/gap/t1-stranger-host/RISK-REGISTER.md",
+    "docs/gap/t1-stranger-host/STRANGER_HOST_STANDARD.md",
+    "docs/gap/t1-stranger-host/POST-SOAK-QUEUE.md",
+    "docs/gap/t1-stranger-host/PENTEST-SCOPE.md",
+    "scripts/ci/test_optics_observe_ci.py",
+    "scripts/release/test_optics_release_observe.py",
+    "packages/vantio-install/tests/test_lab_scope.py",
+    "packages/vantio-install/tests/test_seal_recipe.py",
+    "packages/vantio-install/tests/test_stage_a.py",
+    "packages/vantio-install/tests/test_npm_preflight.py",
+    "packages/vantio-install/tests/test_network_transfer_docs.py",
+    "packages/vantio-install/artifacts/IMPLEMENTATION-REPORT.json",
+    ".cursor/rules/vantio-engineering.mdc"
+  ]
+}

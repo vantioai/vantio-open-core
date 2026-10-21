@@ -34,6 +34,9 @@ _SHA = set("0123456789abcdef")
 _MAX_BYTES = 64 * 1024 * 1024
 _PACKAGED_ARTIFACT = Path(__file__).resolve().parent / "trust" / "artifact-public-keys.json"
 _ARTIFACT_OVERRIDE: dict[str, bytes] | None = None
+_PACKAGED_PATH_OVERRIDE: Path | None = None
+PRODUCTION_KEY_CLASS = "production"
+PRODUCTION_KEY_PREFIX = "prod-artifact-"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -115,12 +118,62 @@ def fetch_to_file(url: str, destination: Path, *, timeout_s: float = 5) -> dict:
 
 def packaged_artifact_trust() -> dict[str, bytes]:
     """Return the keys shipped in this package. The file is empty until a Founder pins one."""
-    if not _PACKAGED_ARTIFACT.is_file():
+    path = _PACKAGED_ARTIFACT
+    if not path.is_file():
         return {}
     try:
-        return load_artifact_trust(_PACKAGED_ARTIFACT)
+        return load_artifact_trust(path)
     except (OSError, ValueError, json.JSONDecodeError):
         return {}
+
+
+def packaged_production_trust() -> dict[str, bytes]:
+    """Production artifact keys from the packaged trust file only.
+
+    A test override of the key dict cannot supply these. The shipped file is
+    empty, so this returns nothing until a production public key is added there.
+    """
+    path = _PACKAGED_PATH_OVERRIDE if _PACKAGED_PATH_OVERRIDE is not None else _PACKAGED_ARTIFACT
+    if not path.is_file():
+        return {}
+    try:
+        return load_production_trust(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+@contextmanager
+def packaged_artifact_path_override(path: Path) -> Iterator[None]:
+    """Test-only stand-in for the packaged trust file. Not a command-line flag."""
+    global _PACKAGED_PATH_OVERRIDE
+    previous = _PACKAGED_PATH_OVERRIDE
+    _PACKAGED_PATH_OVERRIDE = path
+    try:
+        yield
+    finally:
+        _PACKAGED_PATH_OVERRIDE = previous
+
+
+def load_production_trust(path: Path) -> dict[str, bytes]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("keys"), list):
+        raise ValueError("trust")
+    keys: dict[str, bytes] = {}
+    for item in payload["keys"]:
+        if not isinstance(item, dict):
+            continue
+        key_id = item.get("key_id")
+        if (
+            not isinstance(key_id, str)
+            or not key_id.startswith(PRODUCTION_KEY_PREFIX)
+            or item.get("key_class") != PRODUCTION_KEY_CLASS
+            or item.get("alg") not in {None, "Ed25519"}
+        ):
+            continue
+        raw = base64.b64decode(str(item.get("public_key_b64")), validate=True)
+        if len(raw) == 32:
+            keys[key_id] = raw
+    return keys
 
 
 LAB_SCOPE = "lab-nonprod"

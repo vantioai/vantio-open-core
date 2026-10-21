@@ -75,6 +75,10 @@ def seal(outdir: Path) -> list[Path]:
     with tempfile.TemporaryDirectory(prefix="vantio-install-seal-") as tmp:
         copy = Path(tmp) / "vantio-install"
         shutil.copytree(root, copy, ignore=_ignore)
+        seal_json = root.parents[1] / "release" / "pe-canonical-seal.json"
+        if not seal_json.is_file():
+            raise ValueError("release/pe-canonical-seal.json")
+        shutil.copyfile(seal_json, copy / "vantio_install" / "pe-canonical-seal.json")
         pyproject_path = copy / "pyproject.toml"
         pyproject_path.write_text(seal_version_text(pyproject_path.read_text(encoding="utf-8")), encoding="utf-8")
         source_pin_intact(root)

@@ -250,6 +250,42 @@ PY
   fi
   exit 0
 fi
+# Web-shell battery. The sealed bundle must contain lab_webshell_battery.py.
+# Pre runs the default kill and --reboot-step pre, then this same reboot
+# timer. Post runs after the new boot. enterprise rows stay off.
+if [ "${2:-}" = "webshell" ]; then
+  phase=${3:-pre}
+  if [ "$phase" != "pre" ] && [ "$phase" != "post" ]; then
+    echo "phase" >&2
+    exit 2
+  fi
+  if [ "$phase" = "pre" ]; then
+    sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json /var/lib/vantio-lab/webshell-pre.json
+  else
+    sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
+  fi
+  set +e
+  sudo env VANTIO_LAB_WEBSHELL=1 python3 "$here/webshell_guest.py" "$here" "$phase" "$seal" > /tmp/webshell.out 2>&1
+  rc=$?
+  set -e
+  cat /tmp/webshell.out
+  chmod a+r /tmp/webshell.out 2>/dev/null || true
+  printf 'PY_RC=%s\n' "$rc"
+  stamp_host_evidence
+  if ! publish_durable_rows; then
+    exit 1
+  fi
+  if [ "$phase" = "pre" ] && [ "$rc" -eq 0 ]; then
+    sync
+    if ! ensure_stock_reboot_script; then
+      exit 1
+    fi
+    if ! schedule_forced_reboot; then
+      exit 1
+    fi
+  fi
+  exit "${rc}"
+fi
 sudo rm -rf "$stage"
 sudo mkdir -p "$stage"
 sudo tar -xzf "$here/contract.tar" -C "$stage"
@@ -622,6 +658,9 @@ if [ "$mode" = "descendant-b1" ]; then
   # /tmp does not survive the reboot. The durable file does.
   if [ "$phase" = "pre" ] && [ -f "$here/redteam_rows.py" ] && [ -f "$here/redteam_packet.py" ]; then
     cp "$here/redteam_packet.py" "$stage/redteam_packet.py"
+    cp "$here/pe_canonical_seal.py" "$stage/pe_canonical_seal.py"
+    cp "$here/pe-canonical-seal.json" "$stage/pe-canonical-seal.json"
+    cp "$here/pe-seal-history.json" "$stage/pe-seal-history.json"
     brain=/var/lib/vantio-lab/brain
     if [ ! -s "$brain/qwen2.5-3b-instruct-q4_k_m.gguf" ] || [ ! -x "$brain/llama-b11540/llama-server" ]; then
       echo "brain_not_landed $brain" >&2
@@ -658,6 +697,7 @@ case "$mode" in
     sudo install -d /var/lib/vantio-lab/bin
     sudo cp "$here/soak_check.py" "$here/soak-hourly.sh" "$here/record-check.sh" \
       "$here/phase2_host.py" "$here/phase2_grade.py" "$here/baseline_diag.py" "$here/sticky_write.py" \
+      "$here/pe_canonical_seal.py" "$here/pe-canonical-seal.json" "$here/pe-seal-history.json" \
       /var/lib/vantio-lab/bin/
     sudo chmod 755 /var/lib/vantio-lab/bin/soak-hourly.sh /var/lib/vantio-lab/bin/record-check.sh
     sudo bash /var/lib/vantio-lab/bin/soak-hourly.sh install

@@ -549,15 +549,19 @@ def run_preflight(
 
     mode = str(config.get("install_mode", ""))
     enforcement = str(config.get("enforcement", ""))
-    enf_ok = mode == "observe-only" and enforcement == "NOT_ENABLED"
+    observe_ok = mode == "observe-only" and enforcement == "NOT_ENABLED"
+    enrolled_ok = mode == "enforce-enrolled" and enforcement == "ENROLLED"
+    enf_ok = observe_ok or enrolled_ok
+    expected_mode = "enforce-enrolled" if enrolled_ok else "observe-only"
+    expected_enforcement = "ENROLLED" if enrolled_ok else "NOT_ENABLED"
     checks.append(
         _check(
             "PF-ENFORCEMENT-DEFAULT",
-            "enforcement is NOT_ENABLED / observe-only",
+            "enforcement is observe-only, or a consented enrolled mode",
             "PASS" if enf_ok else "BLOCKED",
             {"install_mode": mode, "enforcement": enforcement},
-            {"install_mode": "observe-only", "enforcement": "NOT_ENABLED"},
-            "Keep install_mode observe-only and enforcement NOT_ENABLED.",
+            {"install_mode": expected_mode, "enforcement": expected_enforcement},
+            "Keep install_mode observe-only and enforcement NOT_ENABLED, or use the consented enrolled mode.",
         )
     )
 

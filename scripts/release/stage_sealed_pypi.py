@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the sealed vantio-agent-sdk 3.1.1 upload directory.
+"""Stage the sealed vantio-agent-sdk 3.1.2 upload directory.
 
 This module never builds and never uploads. The governed production upload
 client is pypa/gh-action-pypi-publish in .github/workflows/pypi-publish.yml.
@@ -25,13 +25,13 @@ from typing import NoReturn
 from zipfile import ZipFile
 
 PACKAGE = "vantio-agent-sdk"
-VERSION = "3.1.1"
-WHEEL_NAME = "vantio_agent_sdk-3.1.1-py3-none-any.whl"
-SDIST_NAME = "vantio_agent_sdk-3.1.1.tar.gz"
-WHEEL_SHA256 = "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
-SDIST_SHA256 = "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799"
-WHEEL_BYTES = 33997
-SDIST_BYTES = 57039
+VERSION = "3.1.2"
+WHEEL_NAME = "vantio_agent_sdk-3.1.2-py3-none-any.whl"
+SDIST_NAME = "vantio_agent_sdk-3.1.2.tar.gz"
+WHEEL_SHA256 = "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68"
+SDIST_SHA256 = "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb"
+WHEEL_BYTES = 35551
+SDIST_BYTES = 59493
 UPLOAD_DIR_NAME = "pypi-sealed-upload"
 WHEEL_METADATA = f"vantio_agent_sdk-{VERSION}.dist-info/METADATA"
 SDIST_METADATA = f"vantio_agent_sdk-{VERSION}/PKG-INFO"
@@ -368,7 +368,7 @@ def fetch_status(url: str) -> int:
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Stage sealed vantio-agent-sdk 3.1.1 distributions")
+    parser = argparse.ArgumentParser(description="Stage sealed vantio-agent-sdk 3.1.2 distributions")
     parser.add_argument("--source")
     parser.add_argument("--upload-dir")
     parser.add_argument("--reject-existing-version", action="store_true")

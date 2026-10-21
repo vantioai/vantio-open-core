@@ -1054,19 +1054,19 @@
     "python_prior_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
     "python_publisher_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
     "python_state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
-    "python_version": "3.1.1"
+    "python_version": "3.1.2"
   },
   "release_success": false,
   "schema": "vantio.ws11.pin-report/v1",
   "sealed_pypi": {
     "package": "vantio-agent-sdk",
-    "sdist_bytes": 57039,
-    "sdist_name": "vantio_agent_sdk-3.1.1.tar.gz",
-    "sdist_sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
-    "version": "3.1.1",
-    "wheel_bytes": 33997,
-    "wheel_name": "vantio_agent_sdk-3.1.1-py3-none-any.whl",
-    "wheel_sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
+    "sdist_bytes": 59493,
+    "sdist_name": "vantio_agent_sdk-3.1.2.tar.gz",
+    "sdist_sha256": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb",
+    "version": "3.1.2",
+    "wheel_bytes": 35551,
+    "wheel_name": "vantio_agent_sdk-3.1.2-py3-none-any.whl",
+    "wheel_sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68"
   },
   "versions": [
     {
