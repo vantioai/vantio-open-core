@@ -1,18 +1,15 @@
-"""Lab-only checks for the customer-shaped release observe step.
+"""Checks that release workflows observe the commands they actually run.
 
-The published bytes stay identical because this step does not run the commands
-that write them. It installs the registry packages and runs the documented
-`vantio run` commands.
+The PyPI upload action and the unchanged producer steps keep their bytes.
+The install step fails when the CLI cannot be installed.
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
-import stat
 import subprocess
 import tempfile
-import textwrap
 import unittest
 from pathlib import Path
 
@@ -28,17 +25,25 @@ PRODUCER_SHA256 = {
     ("enterprise-slsa-provenance.yml", "Bundle artifacts"): "eb280f9cefaa61d99e67b401446bd879eb5ab2976f229613a16d58c01efb81c6",
     ("enterprise-slsa-provenance.yml", "Attest build provenance"): "82121f5399143347205160e628c7df09dd0166706dddd45d22dcd35d27047db3",
     ("enterprise-slsa-provenance.yml", "Provenance honesty note"): "f1f0f1e9d24c20091c777368567fcfed8073a80d72e7f306b01d9ae619b6ddc5",
-    ("pypi-publish.yml", "Download sealed custody assets"): "d64b02da2f84948674f9ab1808f5d36cf8479ca26901ae3c28525e615df1b709",
-    ("pypi-publish.yml", "Verify sealed bytes and stage the upload directory"): "d316efdfcd9cace74f01e8ebd4a12fc7bf35ca814b7838fdbd81a810b9d19e5a",
     ("pypi-publish.yml", "Publish sealed distributions to PyPI"): "0459cdda21c6bf996a19be5802438df922fa862ddd37efcfae930583db310b14",
     ("pypi-publish.yml", "Record publication coordinates"): "8abd0d4439e616b72fc4a37a264518e79b6adda58c50b452785c7a84340522cf",
-    ("npm-publish.yml", "Write approval record"): "bbf7098db8fb4e1851b5eae258f1aa76ce17175955512439a71c20272e3060dd",
     ("npm-publish.yml", "Write release summary"): "9f8e6f04644efac14448c037dea7042c9539a2d8436666ce756d3f77eff94f19",
     ("mcp-registry-publish.yml", "Install mcp-publisher"): "e0854fdc1a007af84889ced22beba7a0ccebca9254fcea86ebd97e7939d59f9c",
-    ("mcp-registry-publish.yml", "Authenticate (GitHub OIDC)"): "3b60b308ad6a4b73add4a00eb3f66f2ecf0285e51776038b5b94d88fc7932711",
-    ("mcp-registry-publish.yml", "Wait for npm package version"): "43d8361b4cc61b070ad382149fc301f227e1233b3a9f2caeb725577b9047024e",
-    ("mcp-registry-publish.yml", "Publish to MCP Registry"): "1f84a1c9c4ca761a7cadf1c5b89e70951452f21a89a75955d73b0c518c4dd2d1",
 }
+WRAPPED = {
+    ("pypi-publish.yml", "Stop when 3.1.1 is already on PyPI"): "vantio run python3 scripts/release/stage_sealed_pypi.py --reject-existing-version",
+    ("pypi-publish.yml", "Download sealed custody assets"): "vantio run python3 scripts/release/fetch_custody_release.py",
+    ("pypi-publish.yml", "Verify sealed bytes and stage the upload directory"): "vantio run python3 scripts/release/stage_sealed_pypi.py",
+    ("npm-publish.yml", "Gate sealed request"): "vantio run node scripts/release/promote_npm.mjs --gate",
+    ("npm-publish.yml", "Re-check coordinates after approval"): "vantio run node scripts/release/promote_npm.mjs --gate",
+    ("npm-publish.yml", "Write approval record"): "vantio run python3 - <<'PY'",
+    ("mcp-registry-publish.yml", "Authenticate (GitHub OIDC)"): "vantio run mcp-publisher login github-oidc",
+    ("mcp-registry-publish.yml", "Publish to MCP Registry"): "vantio run mcp-publisher publish",
+}
+RUNNER = (
+    "${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && "
+    "'[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}"
+)
 
 PERMISSIONS = {
     "npm-publish.yml": {"contents": "read"},
@@ -99,6 +104,13 @@ def observe_steps(job: dict) -> tuple[dict, dict]:
     return observe[0], upload[0]
 
 
+def step_named(job: dict, name: str) -> dict:
+    found = [step for step in job.get("steps") or [] if step.get("name") == name]
+    if len(found) != 1:
+        raise AssertionError(name)
+    return found[0]
+
+
 class ReleaseWiringTests(unittest.TestCase):
     def test_customer_install_and_unchanged_permissions(self) -> None:
         for name, permissions in PERMISSIONS.items():
@@ -109,33 +121,65 @@ class ReleaseWiringTests(unittest.TestCase):
                 self.assertNotIn("\n  push:", "\n" + text.split("jobs:", 1)[0])
             for job_id, job in doc["jobs"].items():
                 self.assertEqual(job.get("permissions"), JOB_PERMISSIONS[(name, job_id)])
-                observe, upload = observe_steps(job)
-                self.assertEqual(job["steps"][-2]["name"], observe["name"])
-                self.assertEqual(job["steps"][-1]["name"], upload["name"])
-                self.assertIs(observe["continue-on-error"], True)
-                self.assertEqual(observe["if"], "always()")
-                self.assertEqual(observe["timeout-minutes"], 10)
-                self.assertNotIn("permissions", observe)
-                self.assertNotIn("env", observe)
-                script = observe["run"]
-                self.assertIn("npm install -g @vantio/cli", script)
-                self.assertIn("pip install vantio-agent-sdk", script)
-                self.assertIn("vantio run node -e 'process.exit(0)'", script)
-                self.assertIn("vantio run python -c 'raise SystemExit(0)'", script)
-                self.assertIn('cp -a "$HOME/.vantio/runs/." optics-observe-log/', script)
-                for banned in BANNED:
-                    self.assertNotIn(banned, script, f"{name} {job_id} {banned}")
-                self.assertIs(upload["continue-on-error"], True)
-                self.assertEqual(upload["if"], "always()")
-                self.assertEqual(upload["uses"], UPLOAD)
-                self.assertEqual(upload["with"]["name"], ARTIFACTS[(name, job_id)])
-                self.assertEqual(upload["with"]["path"], "optics-observe-log")
-                self.assertEqual(upload["with"]["if-no-files-found"], "warn")
-                self.assertNotIn("permissions", upload)
+                if name == "enterprise-slsa-provenance.yml":
+                    self.assert_legacy_noop(job, ARTIFACTS[(name, job_id)])
+                    continue
+                self.assertEqual(job["runs-on"], RUNNER)
+                self.assert_real_observe(job, ARTIFACTS[(name, job_id)])
             if name == "pypi-publish.yml":
                 self.assertEqual(text.count("id-token: write"), 1)
                 self.assertNotIn("contents: write", text)
                 self.assertNotIn("optics_observe.py", text)
+                self.assertIn("pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1", text)
+
+    def assert_legacy_noop(self, job: dict, artifact: str) -> None:
+        observe, upload = observe_steps(job)
+        self.assertEqual(job["steps"][-2]["name"], observe["name"])
+        self.assertEqual(job["steps"][-1]["name"], upload["name"])
+        self.assertIs(observe["continue-on-error"], True)
+        self.assertIn("vantio run node -e 'process.exit(0)'", observe["run"])
+        self.assertIs(upload["continue-on-error"], True)
+        self.assertEqual(upload["with"]["name"], artifact)
+
+    def assert_real_observe(self, job: dict, artifact: str) -> None:
+        install = step_named(job, "Install Optics observe CLI")
+        collect = step_named(job, "Collect Optics observation log")
+        upload = step_named(job, "Upload Optics observation log")
+        self.assertEqual(job["steps"][-2]["name"], collect["name"])
+        self.assertEqual(job["steps"][-1]["name"], upload["name"])
+        self.assertNotIn("continue-on-error", install)
+        self.assertNotIn("continue-on-error", collect)
+        self.assertNotIn("continue-on-error", upload)
+        self.assertEqual(install["timeout-minutes"], 5)
+        self.assertEqual(collect["if"], "always()")
+        self.assertEqual(upload["if"], "always()")
+        script = install["run"]
+        self.assertIn("set -euo pipefail", script)
+        self.assertIn("npm install -g --prefix", script)
+        self.assertIn("@vantio/cli", script)
+        self.assertIn("python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk", script)
+        self.assertIn("vantio CLI install failed:", script)
+        self.assertNotIn("set +e", script)
+        self.assertNotIn("exit 0", script)
+        self.assertNotIn("process.exit(0)", script)
+        for banned in BANNED:
+            self.assertNotIn(banned, script, banned)
+        self.assertIn('cp -a "${HOME}/.vantio/runs/." optics-observe-log/', collect["run"])
+        self.assertNotIn("permissions", install)
+        self.assertNotIn("env", install)
+        self.assertEqual(upload["uses"], UPLOAD)
+        self.assertEqual(upload["with"]["name"], artifact)
+        self.assertEqual(upload["with"]["path"], "optics-observe-log")
+        node_wrapped = any("vantio run node " in (step.get("run") or "") for step in job["steps"])
+        if "steps.npm-wait.outcome" in collect["run"]:
+            self.assertEqual(upload["with"]["if-no-files-found"], "warn")
+            self.assertIn("exit 1", collect["run"])
+        elif node_wrapped:
+            self.assertEqual(upload["with"]["if-no-files-found"], "error")
+            self.assertIn("exit 1", collect["run"])
+        else:
+            self.assertEqual(upload["with"]["if-no-files-found"], "warn")
+        self.assertNotIn("permissions", upload)
 
     def test_producer_steps_keep_their_bytes(self) -> None:
         for (name, step_name), digest in PRODUCER_SHA256.items():
@@ -148,62 +192,43 @@ class ReleaseWiringTests(unittest.TestCase):
             self.assertIsNotNone(found, step_name)
             self.assertEqual(hashlib.sha256(step_blob(found)).hexdigest(), digest)
 
+    def test_real_commands_are_wrapped(self) -> None:
+        for (name, step_name), snippet in WRAPPED.items():
+            doc = yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
+            found = None
+            for job in doc["jobs"].values():
+                for step in job["steps"]:
+                    if step.get("name") == step_name:
+                        found = step
+            self.assertIsNotNone(found, step_name)
+            self.assertIn(snippet, found["run"])
+            self.assertNotIn("process.exit(0)", found["run"])
+            self.assertNotIn("continue-on-error", found)
+
 
 class ByteIdentityTests(unittest.TestCase):
-    def test_customer_shell_does_not_change_published_files(self) -> None:
-        doc = yaml.safe_load((ROOT / ".github/workflows/enterprise-slsa-provenance.yml").read_text(encoding="utf-8"))
-        script = observe_steps(doc["jobs"]["build-and-attest"])[0]["run"]
+    def test_install_failure_is_loud_and_does_not_touch_release_files(self) -> None:
+        doc = yaml.safe_load((ROOT / ".github/workflows/pypi-publish.yml").read_text(encoding="utf-8"))
+        script = step_named(doc["jobs"]["publish"], "Install Optics observe CLI")["run"]
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw)
             home = root / "home"
             home.mkdir()
-            files = {
-                "vantio-artifacts.tar.gz": b"tar-bytes",
-                "vantio-artifacts.sha256": b"sha-bytes\n",
-                "release-approval.json": b'{"approved":true}\n',
-                "pypi-sealed-upload/pkg.whl": b"wheel",
-                "packages/vantio-agent-sdk/dist/index.js": b"dist",
-            }
-            for rel, data in files.items():
-                path = root / rel
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)
-            before = {rel: sha256(root / rel) for rel in files}
-            bindir = root / "bin"
-            bindir.mkdir()
-            self.write_tool(bindir / "npm", "exit 0\n")
-            self.write_tool(bindir / "pip", "exit 0\n")
-            self.write_tool(
-                bindir / "vantio",
-                textwrap.dedent(
-                    """\
-                    #!/bin/sh
-                    case "$*" in
-                      *publish*|*pack*|*stage_sealed*|*custody*|*mcp-publisher*|*tar*)
-                        echo changed > "$HOME/CORRUPT"
-                        exit 9
-                        ;;
-                    esac
-                    mkdir -p "$HOME/.vantio/runs"
-                    printf '%s\\n' '{"plane":"optics"}' > "$HOME/.vantio/runs/run.json"
-                    exit 0
-                    """
-                ),
-            )
+            sealed = root / "pypi-sealed-upload" / "pkg.whl"
+            sealed.parent.mkdir()
+            sealed.write_bytes(b"wheel")
+            before = sha256(sealed)
             env = os.environ.copy()
             env["HOME"] = str(home)
-            env["PATH"] = str(bindir) + os.pathsep + env.get("PATH", "")
+            env["PATH"] = "/bin"
+            env["RUNNER_TEMP"] = str(root / "runner")
+            env["GITHUB_PATH"] = str(root / "github-path")
             env["GITHUB_WORKSPACE"] = str(root)
-            result = subprocess.run(["bash", "-lc", script], cwd=root, env=env, check=False, capture_output=True, text=True)
-            after = {rel: sha256(root / rel) for rel in files}
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertFalse((home / "CORRUPT").exists(), result.stderr)
-            self.assertEqual(before, after)
-            self.assertTrue((root / "optics-observe-log" / "run.json").is_file())
-
-    def write_tool(self, path: Path, body: str) -> None:
-        path.write_text(body, encoding="utf-8")
-        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+            result = subprocess.run(["bash", "-c", script], cwd=root, env=env, check=False, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("vantio CLI install failed: npm is not on PATH", result.stderr)
+            self.assertEqual(sha256(sealed), before)
+            self.assertFalse((home / "CORRUPT").exists())
 
 
 class PinTests(unittest.TestCase):
