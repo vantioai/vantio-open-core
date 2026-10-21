@@ -16,6 +16,12 @@ from pathlib import Path
 
 import yaml
 
+
+def _partner_markers() -> list[str]:
+    """Deployment-partner substrings from VANTIO_PARTNER_MARKERS. Unset means none."""
+    raw = os.environ.get("VANTIO_PARTNER_MARKERS", "")
+    return [item.strip().lower() for item in raw.split(",") if item.strip()]
+
 ROOT = Path(__file__).resolve().parents[2]
 PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 UPLOAD = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
@@ -244,7 +250,8 @@ class PinTests(unittest.TestCase):
         text = (ROOT / "docs/dogfood/CUSTOMER-FRICTION.md").read_text(encoding="utf-8")
         self.assertIn("Lab-only", text)
         self.assertIn("npm install -g @vantio/cli", text)
-        self.assertNotIn("navera", text.lower())
+        for marker in _partner_markers():
+            self.assertNotIn(marker, text.lower())
         self.assertNotIn("price", text.lower())
 
 

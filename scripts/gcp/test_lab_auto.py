@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
+from unittest import mock
 from decimal import Decimal
 
 import lab_auto as lab
@@ -15,7 +17,7 @@ def _passing_gate() -> dict:
         {
             "lab_project_id": "vantio-lab-oct08",
             "billing_account_open": True,
-            "navera_identity_present": False,
+            "partner_identity_present": False,
             "credit_remaining_usd": "100.00",
             "budget_present": True,
             "budget_project_ids": ["vantio-lab-oct08"],
@@ -36,7 +38,7 @@ class LabAutoTest(unittest.TestCase):
         for name in lab.WORKFLOWS:
             self.assertIn(lab.workflow_ref(name), text)
         self.assertNotIn("*", text)
-        self.assertNotIn("navera", text)
+        self.assertFalse(lab.names_partner(text))
 
     def test_cost_gate_passes_only_under_the_ceiling(self) -> None:
         decision = _passing_gate()
@@ -44,11 +46,11 @@ class LabAutoTest(unittest.TestCase):
         self.assertFalse(decision["abort"])
         self.assertFalse(decision["pe_installed"])
 
-    def test_cost_gate_refuses_navera_and_missing_credit(self) -> None:
+    def test_cost_gate_refuses_partner_identity_and_missing_credit(self) -> None:
         payload = {
             "lab_project_id": "vantio-lab-oct08",
             "billing_account_open": True,
-            "navera_identity_present": True,
+            "partner_identity_present": True,
             "credit_remaining_usd": None,
             "budget_present": True,
             "budget_project_ids": ["vantio-lab-oct08"],
@@ -60,14 +62,14 @@ class LabAutoTest(unittest.TestCase):
         }
         decision = lab.evaluate_cost_gate(payload)
         self.assertEqual(decision["expected_oop_usd"], "UNKNOWN")
-        self.assertIn("navera_identity", decision["reasons"])
+        self.assertIn("partner_identity", decision["reasons"])
         self.assertIn("credits_unreadable", decision["reasons"])
 
     def test_budget_must_be_the_lab_project_only(self) -> None:
         payload = {
             "lab_project_id": "vantio-lab-oct08",
             "billing_account_open": True,
-            "navera_identity_present": False,
+            "partner_identity_present": False,
             "credit_remaining_usd": "100",
             "budget_present": True,
             "budget_project_ids": ["vantio-lab-oct08", "other-project"],
@@ -85,7 +87,7 @@ class LabAutoTest(unittest.TestCase):
         payload = {
             "lab_project_id": "vantio-lab-oct08",
             "billing_account_open": True,
-            "navera_identity_present": False,
+            "partner_identity_present": False,
             "credit_remaining_usd": "100",
             "budget_present": True,
             "budget_project_ids": ["vantio-lab-oct08"],
@@ -140,7 +142,7 @@ class LabAutoTest(unittest.TestCase):
         self.assertIn("--no-scopes", argv)
         self.assertIn("--shielded-secure-boot", argv)
         joined = " ".join(argv)
-        self.assertNotIn("navera", joined)
+        self.assertFalse(lab.names_partner(joined))
         self.assertNotIn("private_key", joined)
         script = lab.startup_script(30)
         self.assertIn("PE_INSTALLED=false", script)
@@ -158,7 +160,7 @@ class LabAutoTest(unittest.TestCase):
         }
         self.assertEqual(lab.sweeper_action(owned, 1800000000), "delete")
         self.assertEqual(lab.sweeper_action(owned, 1799999999), "keep")
-        foreign = {"name": "navera-vm", "labels": {"vantio-lab": "gcp", "vantio-owner": "gha"}}
+        foreign = {"name": "partner-vm", "labels": {"vantio-lab": "gcp", "vantio-owner": "gha"}}
         self.assertEqual(lab.sweeper_action(foreign, 1900000000), "skip_not_owned")
         self.assertEqual(lab.apply_sweeper("delete", {"sweeper_enabled": False}), "would_delete")
         self.assertEqual(lab.apply_sweeper("delete", {"sweeper_enabled": True}), "delete")
@@ -190,12 +192,15 @@ class LabAutoTest(unittest.TestCase):
         )
 
     def test_iam_and_budget_parsers(self) -> None:
-        self.assertTrue(
-            lab.iam_has_navera(
-                {"bindings": [{"role": "roles/owner", "members": ["user:support@navera.io"]}]}
+        partner_policy = {"bindings": [{"role": "roles/owner", "members": ["user:support@partner-x.example"]}]}
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": "partner-x.example"}):
+            self.assertTrue(lab.iam_has_partner_identity(partner_policy))
+            self.assertFalse(lab.valid_lab_project("vantio-lab-partner-x.example"))
+            self.assertFalse(
+                lab.iam_has_partner_identity({"bindings": [{"role": "roles/owner", "members": ["user:a@vantio.ai"]}]})
             )
-        )
-        self.assertFalse(lab.iam_has_navera({"bindings": [{"role": "roles/owner", "members": ["user:a@vantio.ai"]}]}))
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": ""}):
+            self.assertFalse(lab.iam_has_partner_identity(partner_policy))
         amount = lab.budget_amount_usd(
             {"amount": {"specifiedAmount": {"units": "5", "nanos": 0}}, "budgetFilter": {"projects": ["projects/vantio-lab-oct08"]}}
         )
@@ -223,7 +228,7 @@ class LabAutoTest(unittest.TestCase):
         )
         self.assertEqual(payload["budget_project_ids"], ["vantio-lab-oct08"])
         self.assertTrue(payload["cap_armed"])
-        self.assertIs(payload["navera_identity_present"], False)
+        self.assertIs(payload["partner_identity_present"], False)
         decision = lab.evaluate_cost_gate(payload)
         self.assertEqual(decision["expected_oop_usd"], "0")
 

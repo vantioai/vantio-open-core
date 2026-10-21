@@ -3,7 +3,7 @@
 
 The sealed bundle moves through gs://vantio-lab-oct08-handoff and then over
 IAP. It is never a GitHub Actions artifact. This module does not call GCP
-unless GCP_LAB_EXECUTE=1. It refuses the Navera project and any external
+unless GCP_LAB_EXECUTE=1. It refuses a deployment-partner project and any external
 address.
 
 Audience: INTERNAL_CLEAN_HOST_PROOF
@@ -108,7 +108,7 @@ USAGE = (
 def require_lab_project(project: str) -> str:
     if (
         not isinstance(project, str)
-        or "navera" in project.lower()
+        or lab.names_partner(project)
         or project != LAB_PROJECT
         or not lab.valid_lab_project(project)
     ):
@@ -891,8 +891,8 @@ def assert_t5_dispatch(env: Mapping[str, str]) -> str:
     if batteries_requested(env) or env.get("SELF_SERVICE", "false").strip().lower() == "true" or brain_requested(env):
         raise SystemExit("t5_egress")
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
-    if "navera" in project.lower():
-        raise SystemExit("navera")
+    if lab.names_partner(project):
+        raise SystemExit("partner")
     seal = expected_seal(env)
     if seal != _load_t5_battery(env).LANE_SEAL:
         raise SystemExit("seal")
@@ -992,7 +992,7 @@ def offline_create_argv(plan: Mapping[str, Any], script_path: str) -> list[str]:
         f"--labels={label_arg}",
     ]
     joined = " ".join(argv)
-    if "navera" in joined.lower() or "--address=" in joined:
+    if lab.names_partner(joined) or "--address=" in joined:
         raise SystemExit("address")
     return argv
 

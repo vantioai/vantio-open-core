@@ -25,10 +25,20 @@ function rejected(detail) {
   };
 }
 
+// VANTIO_PARTNER_MARKERS: comma-separated deployment-partner substrings. Unset means none.
+function namesPartner(text) {
+  const lower = String(text).toLowerCase();
+  return String(process.env.VANTIO_PARTNER_MARKERS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .some((marker) => lower.includes(marker));
+}
+
 function readBounded(file) {
   const textPath = String(file);
-  if (textPath.toLowerCase().includes("navera")) {
-    return { ok: false, reason_code: "SCHEMA", detail: "navera" };
+  if (namesPartner(textPath)) {
+    return { ok: false, reason_code: "SCHEMA", detail: "partner" };
   }
   let stat;
   try {

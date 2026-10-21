@@ -8,6 +8,7 @@ project is refused before that call.
 from __future__ import annotations
 
 import importlib.util
+import os
 import struct
 import sys
 from dataclasses import dataclass
@@ -82,16 +83,20 @@ def pack_cfg(maps: KernelMaps) -> bytes:
     )
 
 
+def _partner_markers() -> tuple[str, ...]:
+    """VANTIO_PARTNER_MARKERS lists deployment-partner substrings. Unset means none."""
+    raw = os.environ.get("VANTIO_PARTNER_MARKERS", "")
+    return tuple(item.strip().lower() for item in raw.split(",") if item.strip())
+
+
 def _dirty(*values: str) -> bool:
-    for value in values:
-        if "navera" in value.lower():
-            return True
-    return False
+    markers = _partner_markers()
+    return any(marker in value.lower() for value in values for marker in markers)
 
 
 def refusal(request: AttachRequest) -> str | None:
     if _dirty(request.host_class, request.project, request.cgroup, request.hostname, request.seal):
-        return "navera"
+        return "partner"
     if request.host_class != HOST_CLASS:
         return "host_class"
     if request.project != LAB_PROJECT:

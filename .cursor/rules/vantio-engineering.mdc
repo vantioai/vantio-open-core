@@ -45,7 +45,7 @@ This repo is `vantio-open-core`. Read the file named in a rule before changing t
 - Do not put prices or currency amounts in release artifacts, evidence JSON, or customer docs.
 - Do not write `audited`, `unbreakable`, or `Shipped`.
 - Do not print secrets. The promote scripts redact `GITHUB_TOKEN`, `GH_TOKEN`, `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `TWINE_PASSWORD`, `TWINE_API_KEY`, and `PYPI_TOKEN` before output.
-- Do not target or edit Navera. `scripts/gcp/offline_deliver_1.py` exits when the project string contains `navera`.
+- Do not target or edit a deployment partner's project or hosts. `scripts/gcp/offline_deliver_1.py` exits when the project string contains any substring listed in `VANTIO_PARTNER_MARKERS`.
 
 ## Approvals and automation
 

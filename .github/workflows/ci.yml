@@ -6,6 +6,10 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
+env:
+  # Deployment-partner name substrings for the leak guards, comma-separated. Set as a repo variable, never in code.
+  VANTIO_PARTNER_MARKERS: ${{ vars.VANTIO_PARTNER_MARKERS }}
+
 jobs:
   lint-and-test-js:
     name: Lint, typecheck, and test (CLI + Node SDK)
@@ -422,6 +426,7 @@ jobs:
           gcc -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/t5_load" scripts/clean-host/t5/t5_load.c -lbpf -lelf -lz
           "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill
           if "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-enrolled.slice; then exit 1; fi
+          if VANTIO_PARTNER_MARKERS=" T5-Drill " "$RUNNER_TEMP/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill; then exit 1; fi
 
       - name: Optics observe (Lab-only)
         if: always()

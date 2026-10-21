@@ -54,12 +54,42 @@ struct port_slot {
 	unsigned int set;
 };
 
+/* VANTIO_PARTNER_MARKERS: comma-separated deployment-partner substrings. Unset means none. */
+static int names_partner(const char *path)
+{
+	const char *raw = getenv("VANTIO_PARTNER_MARKERS");
+	char token[128];
+	size_t len = 0;
+
+	if (raw == NULL)
+		return 0;
+	for (;; raw++) {
+		if (*raw == ',' || *raw == '\0') {
+			while (len > 0 && token[len - 1] == ' ')
+				len--;
+			token[len] = '\0';
+			if (len > 0 && strstr(path, token) != NULL)
+				return 1;
+			len = 0;
+			if (*raw == '\0')
+				return 0;
+			continue;
+		}
+		if (len == 0 && *raw == ' ')
+			continue;
+		if (len < sizeof(token) - 1) {
+			char c = *raw;
+			token[len++] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+		}
+	}
+}
+
 static int cgroup_ok(const char *path)
 {
 	const char *leaf;
 	size_t prefix = sizeof(CGROUP_PREFIX) - 1;
 
-	if (path == NULL || strstr(path, "navera") != NULL || strstr(path, "vantio-enrolled") != NULL)
+	if (path == NULL || names_partner(path) || strstr(path, "vantio-enrolled") != NULL)
 		return 0;
 	if (strncmp(path, CGROUP_PREFIX, prefix) != 0)
 		return 0;
