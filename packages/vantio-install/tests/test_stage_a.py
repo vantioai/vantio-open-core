@@ -145,7 +145,7 @@ class StageAInstallerTests(unittest.TestCase):
         sdk = json.loads((REPO / "packages" / "vantio-agent-sdk" / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(sdk["version"], "0.2.4")
         pyproject = (REPO / "packages" / "vantio-agent-sdk-py" / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "3.1.1"', pyproject)
+        self.assertIn('version = "3.1.2"', pyproject)
 
     def test_preflight_is_read_only(self) -> None:
         harness = self.make()

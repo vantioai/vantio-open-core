@@ -249,7 +249,7 @@ test("workspace SBOM and license scan stay bounded to what the tree shows", () =
   assert.equal(sbom.specVersion, "1.5");
   assert.ok(sbom.components.length > 20);
   assert.ok(sbom.components.some((item) => item.name === "@vantio/cli" && item.version === "0.3.26"));
-  assert.ok(sbom.components.some((item) => item.purl === "pkg:pypi/vantio-agent-sdk@3.1.1"));
+  assert.ok(sbom.components.some((item) => item.purl === "pkg:pypi/vantio-agent-sdk@3.1.2"));
   assert.ok(sbom.components.some((item) => item.name === "undici" && item.hashes));
   const completeness = sbom.properties.find((item) => item.name === "vantio:completeness");
   assert.equal(completeness.value, "pnpm-lockfile-packages-section-plus-workspace-manifests");
@@ -335,7 +335,7 @@ test("version-matched docs gate and the customer test double agree with the tree
   const cli = JSON.parse(readFileSync(join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
   const pyproject = readFileSync(join(ROOT, "packages/vantio-agent-sdk-py/pyproject.toml"), "utf8");
   assert.equal(cli.version, "0.3.26");
-  assert.match(pyproject, /version = "3.1.1"/);
+  assert.match(pyproject, /version = "3.1.2"/);
   assert.equal(readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8").includes("scripts/release/ws11/ws11.test.mjs"), true);
 });
 
