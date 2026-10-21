@@ -9,10 +9,14 @@ Short loop to prove **Vantio Optics** on your machine — observe only, no API k
 
 ```bash
 npm install -g @vantio/cli
+pip install vantio-agent-sdk
 vantio run node agent.js
+vantio run python3 agent.py
 ```
 
-No API key. Free Observe writes metadata to `~/.vantio/runs/` (never prompts/completions).
+If `npm install -g` fails with `EACCES`, the global prefix is not writable. Use `npm install -g @vantio/cli --prefix "$HOME/.local"` and add `$HOME/.local/bin` to `PATH`. Use `vantio run python agent.py` when the `python` command exists. The pip install is required before a Python wrap intercepts.
+
+No API key. A Node run writes metadata to `~/.vantio/runs/` even when it made no LLM call, and prints a summary only when a supported call was recorded. A Python run writes a file there only when the SDK recorded a supported call. `vantio run pnpm` and `vantio run bash` do not write a run log. Prompts and completions are never stored. A tool that does not expand `~` needs `$HOME/.vantio/runs`.
 
 ## 2. Export & inspect
 

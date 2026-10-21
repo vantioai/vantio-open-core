@@ -14,8 +14,10 @@ Prefixing `vantio run python` without this SDK does not intercept. Python suppor
 
 ```bash
 pip install vantio-agent-sdk
-vantio run python agent.py
+vantio run python3 agent.py
 ```
+
+Use `vantio run python agent.py` when the `python` command exists. `vantio run` accepts `python`, `python3`, and `python3.N`. Run logs are `~/.vantio/runs/` (`$VANTIO_HOME/runs` when `VANTIO_HOME` is set). Python writes a file there only when at least one supported call was recorded. A process that exits without one leaves no file, and `vantio prove` then reports that there is no local run log.
 
 Optics: [vantio.ai/optics](https://vantio.ai/optics) · Pricing: [vantio.ai/pricing](https://vantio.ai/pricing) · Docs: [vantio.ai/docs](https://vantio.ai/docs)
 

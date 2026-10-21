@@ -20,7 +20,7 @@ vantio.ai/docs.
 
 ## Supported runtimes
 
-That's the only install step. Works on macOS, Linux, and Windows (WSL).
+Node install is `npm install -g @vantio/cli`. If that fails with `EACCES`, the global prefix is not writable: `npm install -g @vantio/cli --prefix "$HOME/.local"` and add `$HOME/.local/bin` to `PATH`. Python also needs `pip install vantio-agent-sdk`. Where `python` is not installed, run `vantio run python3 agent.py`. Run logs are `~/.vantio/runs/` (`$VANTIO_HOME/runs` when `VANTIO_HOME` is set). A Node run writes a file even with no LLM call and prints a summary only when a supported call was recorded. A Python run writes a file only when the SDK recorded a supported call. `vantio run pnpm` and `vantio run bash` do not write one. Works on macOS, Linux, and Windows (WSL).
 
 On Node: fetch, undici, http/https, http2, net/tls, WebSocket, and spawned curl or wget.
 
