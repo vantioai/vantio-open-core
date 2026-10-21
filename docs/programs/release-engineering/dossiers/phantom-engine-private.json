@@ -56,7 +56,7 @@
     "body_class": "absent",
     "channel": "private",
     "customer_body_in_public_repo": false,
-    "prior_record": "docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md",
+    "prior_record": "release/phantom-provenance-tip.txt",
     "public_distribution": false,
     "recorded_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
     "this_force_refetched": false

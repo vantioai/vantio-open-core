@@ -105,6 +105,5 @@ vantio discover --local
 
 ## See also
 
-- [Sight Loop](./sight-loop.md) — the Optics workflow (wrap → capture → inspect)
 - [Getting started](./getting-started-tier01.md)
 - [Proof artifacts](./prove.md)

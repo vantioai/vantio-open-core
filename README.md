@@ -6,7 +6,7 @@ This repository contains Vantio Optics, the Phantom Engine installer, and the Py
 
 ## Vantio Optics (Open Core)
 
-Free, local-first observability for AI agent egress. Optics is the free Observe tier. It records the destination, the process, the size, and the timing of a supported outbound call. Does not block actions or retain prompts or completions.
+Free, local-first observability for AI egress. Optics is the free Observe tier. It records the destination, the process, the size, and the timing of a supported outbound call. Does not block actions or retain prompts or completions.
 
 The Optics home is moving to [github.com/vantioai/vantio-optics](https://github.com/vantioai/vantio-optics). Publishing still runs from this repository. The editor extension stays at [extensions/vantio-optics](extensions/vantio-optics). Commands and local install notes are in [extensions/vantio-optics/README.md](extensions/vantio-optics/README.md).
 

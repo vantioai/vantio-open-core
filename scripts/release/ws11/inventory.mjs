@@ -251,7 +251,7 @@ export function buildInventory(root) {
   for (const file of ["npm-publish.yml", "pypi-publish.yml", "mcp-registry-publish.yml", "ci.yml", "enterprise-slsa-provenance.yml"]) {
     publish[file] = triggerHasPush(readText(root, `.github/workflows/${file}`));
   }
-  const architecture = readText(root, "architecture_state.md");
+  const architecture = readText(root, "release/architecture-state-level-phrase.txt");
   const sealed = readSealedPypi(root);
   const pins = JSON.parse(readText(root, "docs/programs/release-engineering/SEALED-RELEASE-PINS.json"));
   const py = pins.python;

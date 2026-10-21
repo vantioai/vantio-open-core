@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { evaluateDossier } from "./evaluate.mjs";
 import { buildInventory, buildSbom, privateManualPaths, scanManifestLicenses, sha256File } from "./inventory.mjs";
 
-const PLANNING_DOC = "docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md";
+const PLANNING_DOC = "release/phantom-provenance-tip.txt";
 const PLANNING_TIP = "631e435315cd780d83d3259e111893c1d0569bc3";
 const FIXTURE = "docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md";
 const FIXTURE_VERSION = "0.0.0-test";
