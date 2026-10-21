@@ -27,6 +27,9 @@ PHASES = (
     "lsm-guard",
 )
 MAX_PERF_SECONDS = 900
+CGROUP_SKB_PROGRAM = "cgroup_skb_egress_enforce"
+# bpftool prog show prints at most 15 characters of the kernel name.
+CGROUP_SKB_BPFTOOL_PREFIX = "cgroup_skb_egre"
 # Lab listener on the host's own address. Not a privileged port.
 DEFAULT_EGRESS_PORT = 4879
 # RFC 5737. These are not routed on AWS or GCP, so a battery must not use them.
@@ -268,6 +271,30 @@ def ungraded_egress(battery: str, reason: str) -> dict[str, Any]:
     return body
 
 
+def stderr_has_cgroup_pin(text: str) -> bool:
+    """The pin succeeded. A load or pin failure mentions the same name in a longer line."""
+    return any(line.strip() == CGROUP_SKB_PROGRAM for line in text.splitlines())
+
+
+def enforce_banner_ready(text: str) -> bool:
+    """SCOPED has been printed and the cgroup program pin line is on stderr.
+
+    Open and openat pin lines are printed before that program is loaded.
+    Those lines alone are not a start.
+    """
+    return "SCOPED (drop enrolled)" in text and stderr_has_cgroup_pin(text)
+
+
+def cgroup_skb_listed(names: object) -> bool:
+    """True when a bpftool name is this program, including the 15-character prefix."""
+    if not isinstance(names, list):
+        return False
+    for name in names:
+        if isinstance(name, str) and (name == CGROUP_SKB_PROGRAM or name.startswith(CGROUP_SKB_BPFTOOL_PREFIX)):
+            return True
+    return False
+
+
 def grade_container_exit(
     *,
     file_errno: int | None,
@@ -281,11 +308,14 @@ def grade_container_exit(
     fail_open is only the case where the secret was denied while the loader
     was up and the same open is allowed after the container exits. An open
     that was already allowed while the container was up is not that result.
+    A listing that does not show cgroup_skb_egress_enforce after the stop is
+    not that result either. The program is pinned and should still be listed.
     """
     body = _base("r15-container-exit")
     body["file_errno"] = file_errno
     body["egress_errno"] = egress_errno
     body["program_listed"] = program_listed
+    body["cgroup_program_held"] = program_listed if isinstance(program_listed, bool) else None
     body["while_up_file_errno"] = while_up_file_errno
     body["measured_before_uninstall"] = True
     if while_up_file_errno != 13:
@@ -294,6 +324,14 @@ def grade_container_exit(
         body["host_result"] = "NOT_GRADED"
         body["expectation_met"] = False
         body["file_open"] = "not_denied_while_up"
+        body["egress"] = "not_graded"
+        return body
+    if program_listed is False:
+        body["classification"] = "program_not_listed"
+        body["reason"] = "cgroup_program_absent_after_stop"
+        body["host_result"] = "RECORDED"
+        body["expectation_met"] = False
+        body["file_open"] = "denied" if file_errno == 13 else "allowed" if file_errno == 0 else "other"
         body["egress"] = "not_graded"
         return body
     file_denied = file_errno == 13

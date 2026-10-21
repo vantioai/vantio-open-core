@@ -132,6 +132,15 @@ class Phase2GradeTests(unittest.TestCase):
             file_errno=None, egress_errno=0, program_listed=None, while_up_file_errno=13
         )
         self.assertEqual(missing["classification"], "unmeasured")
+        absent = grade.grade_container_exit(
+            file_errno=0, egress_errno=0, program_listed=False, while_up_file_errno=13
+        )
+        self.assertEqual(absent["classification"], "program_not_listed")
+        self.assertEqual(absent["reason"], "cgroup_program_absent_after_stop")
+        self.assertEqual(absent["host_result"], "RECORDED")
+        self.assertFalse(absent["cgroup_program_held"])
+        self.assertNotEqual(absent["classification"], "fail_open")
+        self.assertTrue(absent["measured_before_uninstall"])
         host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
         body = host.split("def run_r15", 1)[1].split("\ndef run_2g", 1)[0]
         self.assertNotIn("cgroup detach", body)
@@ -139,7 +148,40 @@ class Phase2GradeTests(unittest.TestCase):
         self.assertNotIn("rmdir", body)
         self.assertIn('["docker", "stop"', body)
         self.assertLess(body.index('file_errno") != 13'), body.index('["docker", "stop"'))
+        self.assertLess(body.index('["docker", "stop"'), body.index("engine_programs_listed()"))
+        self.assertNotIn("authorized_uninstall", body)
+        self.assertNotIn('"--uninstall"', body)
         self.assertIn("detached_by_lab", body)
+
+    def test_banner_waits_for_the_exact_cgroup_pin_line(self) -> None:
+        pins = (
+            "Path DENY pinned: kprobe_open_deny -> __x64_sys_open\n"
+            "Path DENY pinned: kprobe_openat_deny -> __x64_sys_openat\n"
+        )
+        self.assertFalse(grade.enforce_banner_ready(pins))
+        scoped = "tc enforce : SCOPED (drop enrolled)\n"
+        self.assertFalse(grade.enforce_banner_ready(scoped))
+        self.assertFalse(grade.enforce_banner_ready(pins + scoped))
+        failed = scoped + "cgroup_skb_egress_enforce not loaded (verifier). Egress deny is not on cgroup_skb.\n"
+        self.assertFalse(grade.enforce_banner_ready(failed))
+        self.assertFalse(grade.stderr_has_cgroup_pin("name cgroup_skb_egress_enforce tag abc\n"))
+        ready = pins + scoped + "cgroup_skb_egress_enforce\n"
+        self.assertTrue(grade.stderr_has_cgroup_pin(ready))
+        self.assertTrue(grade.enforce_banner_ready(ready))
+        host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        banner = host.split("def _banner_ready", 1)[1].split("\ndef _wait_scoped_banner", 1)[0]
+        self.assertIn("grade.enforce_banner_ready", banner)
+        self.assertNotIn("kprobe_open_deny", banner)
+
+    def test_bpftool_prefix_still_counts_as_the_cgroup_program(self) -> None:
+        self.assertTrue(grade.cgroup_skb_listed(["cgroup_skb_egre", "sshd"]))
+        self.assertTrue(grade.cgroup_skb_listed(["cgroup_skb_egress_enforce"]))
+        self.assertFalse(grade.cgroup_skb_listed(["sshd"]))
+        self.assertFalse(grade.cgroup_skb_listed("cgroup_skb_egre"))
+        host = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_host.py").read_text(encoding="utf-8")
+        listed = host.split("def engine_programs_listed", 1)[1].split("\ndef run_r15", 1)[0]
+        self.assertIn("grade.cgroup_skb_listed", listed)
+        self.assertIn("cgroup_skb_egre", listed)
 
     def test_upgrade_cycle_checks_enforcement_and_uninstall(self) -> None:
         pin = "sha256:" + "a" * 64
