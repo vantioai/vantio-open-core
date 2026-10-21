@@ -83,7 +83,8 @@ concurrency:
 jobs:
   arm:
     name: Arm one owned lab
-    runs-on: ubuntu-latest
+    # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: w3-lab-auto
     timeout-minutes: 60
     steps:
@@ -149,11 +150,52 @@ jobs:
             scripts/aws/stage_redteam_brain.py
           sparse-checkout-cone-mode: false
 
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
       - name: Read the SSH switch
         id: cap
         env:
           EVIDENCE_PATH: w3-lab-arm.json
-        run: python3 scripts/aws/w3_lab_steps.py preflight-arm
+        run: vantio run python3 scripts/aws/w3_lab_steps.py preflight-arm
 
       - name: Prepare the private bundle
         id: bundle
@@ -166,16 +208,16 @@ jobs:
           W3_BATTERY: ${{ inputs.battery }}
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_PATH: w3-lab-bundle.json
-        run: python3 scripts/aws/w3_lab_steps.py prepare-bundle
+        run: vantio run python3 scripts/aws/w3_lab_steps.py prepare-bundle
 
       - name: Fetch offline packages
         if: (inputs.enterprise_rows && steps.bundle.outputs.ready == 'true') || inputs.battery == 'self-service' || inputs.battery == '2g-distro'
         run: |
           set -euo pipefail
           if [ "${{ inputs.battery }}" = "2g-distro" ]; then
-            bash scripts/gcp/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
+            vantio run bash scripts/gcp/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
           else
-            bash scripts/aws/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
+            vantio run bash scripts/aws/fetch_offline_debs.sh "${{ runner.temp }}/offline-debs"
           fi
 
       - name: Stage the lab installer and a non-production trust key
@@ -190,15 +232,15 @@ jobs:
           mkdir -p "$dest" "$pinned"
           cp scripts/aws/lab-guests/self_service.py "$dest/self_service.py"
           cp -a packages/vantio-install/vantio_install "$dest/vantio_install"
-          python3 scripts/lab/stage_lab_trust.py fetch "$pinned"
-          python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
+          vantio run python3 scripts/lab/stage_lab_trust.py fetch "$pinned"
+          vantio run python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
           test -f "$dest/self-service.tar"
           test -f "$dest/lab-artifact-trust.json"
-          python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
+          vantio run python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
 
       - name: Fetch the pinned local brain
         if: inputs.redteam_brain && inputs.enterprise_rows && steps.bundle.outputs.ready == 'true'
-        run: python3 scripts/aws/stage_redteam_brain.py "${{ runner.temp }}/redteam-brain"
+        run: vantio run python3 scripts/aws/stage_redteam_brain.py "${{ runner.temp }}/redteam-brain"
 
       - name: Assume vantio-w3-lab-provision
         id: assume
@@ -219,7 +261,7 @@ jobs:
         if: success() && steps.cap.outputs.proceed == 'true' && (inputs.enterprise_rows == false || steps.bundle.outputs.ready == 'true')
         run: |
           set -euo pipefail
-          ip=$(curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+          ip=$(vantio run curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
           echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
 
       - name: Arm the guest marker
@@ -231,7 +273,7 @@ jobs:
           W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           EVIDENCE_PATH: w3-lab-arm.json
-        run: python3 scripts/aws/w3_lab_steps.py arm
+        run: vantio run python3 scripts/aws/w3_lab_steps.py arm
 
       - name: Run the self-service installer
         if: success() && steps.cap.outputs.proceed == 'true' && inputs.battery == 'self-service'
@@ -246,7 +288,7 @@ jobs:
           W3_OFFLINE_DEBS: ${{ runner.temp }}/offline-debs
           W3_BATTERY: self-service
           EVIDENCE_PATH: w3-lab-arm.json
-        run: python3 scripts/aws/w3_lab_steps.py arm-self-service
+        run: vantio run python3 scripts/aws/w3_lab_steps.py arm-self-service
 
       - name: Run the Enterprise rows
         if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == true
@@ -263,13 +305,13 @@ jobs:
           W3_BRAIN_DIR: ${{ inputs.redteam_brain && format('{0}/redteam-brain', runner.temp) || '' }}
           W3_BATTERY: ${{ inputs.battery }}
           EVIDENCE_PATH: w3-lab-arm.json
-        run: python3 scripts/aws/w3_lab_steps.py arm-enterprise
+        run: vantio run python3 scripts/aws/w3_lab_steps.py arm-enterprise
 
       - name: Close the runner SSH rule
         if: always() && steps.assume.outcome == 'success'
         env:
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
-        run: python3 scripts/aws/w3_lab_steps.py close-ssh
+        run: vantio run python3 scripts/aws/w3_lab_steps.py close-ssh
 
       - name: Upload arm evidence
         if: always()
@@ -310,4 +352,42 @@ jobs:
         with:
           name: w3-lab-console-${{ github.run_id }}
           path: w3-lab-console-*.txt
+          if-no-files-found: warn
+
+      - name: Collect Optics observation log
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.optics-install.outcome }}" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
+          fi
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+          fi
+
+      - name: Upload Optics observation log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-w3-lab-auto-arm-arm
+          path: optics-observe-log
           if-no-files-found: warn
