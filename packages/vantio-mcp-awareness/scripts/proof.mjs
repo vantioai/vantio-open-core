@@ -3,17 +3,16 @@
  * Writes an evidence file that contains assertion results and labels, not payloads.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { createRuntimeWithKey } from "../src/test-key.js";
 import { createFramer, parseJson } from "../src/parse.js";
 import { descriptionPin, schemaPin } from "../src/catalog.js";
 import { ACTIONS, MAX_FRAME } from "../src/bounds.js";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const EVIDENCE = resolve(HERE, "../../../docs/programs/gap-t4-mcp-awareness/evidence/t4-proof.json");
+const EVIDENCE = resolve(tmpdir(), "vantio-t4-proof.json");
 const KEY = Buffer.alloc(32, 9);
 const CANARY = "CANARY_SECRET_t4_9f3a";
 const SEED = 0x54440004;
@@ -305,7 +304,6 @@ const evidence = {
   },
   verification: "proof script assertions on this workspace",
 };
-mkdirSync(dirname(EVIDENCE), { recursive: true });
 writeFileSync(EVIDENCE, `${JSON.stringify(evidence, null, 2)}\n`);
 console.log(`t4 proof ${failed.length === 0 ? "ok" : "failed"} ${evidence.at} assertions=${assertions.length} failed=${failed.length}`);
 if (failed.length) process.exit(1);

@@ -3,7 +3,7 @@
   "readme": "README.md",
   "required_phrases": [
     "Vantio Optics (Open Core)",
-    "Free, local-first observability for AI agent egress",
+    "Free, local-first observability for AI egress",
     "npm install -g @vantio/cli",
     "vantio run node agent.js",
     "pip install vantio-agent-sdk",

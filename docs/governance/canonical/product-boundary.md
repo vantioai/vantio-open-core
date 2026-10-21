@@ -1,6 +1,6 @@
 # Product boundary
 
-Vantio Optics (Open Core) is free, local-first observability for AI agent egress. Optics is the free Observe tier. It does not block actions or retain prompts or completions.
+Vantio Optics (Open Core) is free, local-first observability for AI egress. Optics is the free Observe tier. It does not block actions or retain prompts or completions.
 
 Install the CLI with `npm install -g @vantio/cli` and run `vantio run node agent.js`. That command injects the Node interceptor with `NODE_OPTIONS --require` for `node`, `npx`, `tsx`, and `ts-node`.
 

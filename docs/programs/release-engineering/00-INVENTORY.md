@@ -15,7 +15,7 @@ This inventory is the tree this force read. The machine-readable copy is `genera
 | Surface | Where this force looked | Distribution in the dossier |
 | --- | --- | --- |
 | Optics public packages and private source packages | `docs/governance/VERSION-METADATA.json`, package manifests, `scripts/release/`, `.github/workflows/` | `mixed` |
-| Phantom Engine | `docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md` | `private` |
+| Phantom Engine | `release/phantom-provenance-tip.txt` | `private` |
 | Private customer package | `docs/governance/PE-CUSTOMER-BUNDLE.json` and the test double at `docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md` | `private` |
 
 The prior program snapshot that recorded WS11 as `NOT_RETRIEVED` is not in this public tree.
@@ -49,13 +49,13 @@ Python wheel `vantio_agent_sdk-3.1.1-py3-none-any.whl` is pinned at 33997 bytes,
 
 `.github/workflows/enterprise-slsa-provenance.yml` requests `actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2` for a tarball of `packages/vantio-agent-sdk/dist` and `packages/vantio-cli/bin`. The workflow comment withholds an in-repo verification. This force did not copy an attestation bundle into the tree.
 
-`architecture_state.md` Phase VIII is a historical log. The pin report sets `historical_log_contains_level_assertion` from that log. The same log names `apps/web` and `packages/edge-proxy`. Both paths are absent. The workflow file on this commit attests a smaller bundle. WS11 claim tokens stay `NOT_CLAIMED`.
+`release/architecture-state-level-phrase.txt` is what the pin report reads for `historical_log_contains_level_assertion`. `apps/web` and `packages/edge-proxy` are absent. The workflow file on this commit attests a smaller bundle. WS11 claim tokens stay `NOT_CLAIMED`.
 
 `pypi-publish.yml` leaves the publish action's attestation input unset and says a real publication can generate PEP 740 attestations. This force records that as capability. It records no PEP 740 bundle.
 
 ## Phantom Engine
 
-The planning note at tip `631e435315cd780d83d3259e111893c1d0569bc3` records a chart pin, floating image tags, an undated Rust nightly channel, floating Docker tags, and an unversioned `bpf-linker` install. This force did not re-fetch `vantio-phantom-engine` and did not query a registry. The dossier kind for those inputs is `prior-record-unverified`.
+The recorded planning tip is `631e435315cd780d83d3259e111893c1d0569bc3` in `release/phantom-provenance-tip.txt`. This force did not re-fetch `vantio-phantom-engine` and did not query a registry. The dossier kind for those inputs is `prior-record-unverified`.
 
 ## Private customer package
 
