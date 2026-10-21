@@ -93,7 +93,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn(f"uses: {CHECKOUT_USES} # v4", self.raw)
         self.assertIs(checkout["with"]["persist-credentials"], False)
         self.assertIn("scripts/aws/verify_w3_lab_teardown.py", checkout["with"]["sparse-checkout"])
-        upload = self.steps[-1]
+        upload = next(step for step in self.steps if step.get("name") == "Upload verification artifact")
+        self.assertEqual(self.steps[-1]["name"], "Upload Optics observation log")
+        self.assertNotIn("continue-on-error", self.steps[-1])
         self.assertEqual(upload["uses"], UPLOAD_USES)
         self.assertIn(f"uses: {UPLOAD_USES} # v4", self.raw)
         self.assertEqual(upload["if"], "always()")
