@@ -2,7 +2,7 @@
 
 A customer cannot use enforcement without a way to enroll the workload.
 ``enroll --unit`` writes ``Slice=vantio-enrolled.slice``. ``unenroll`` removes
-that drop-in. Units named ``vantio-*``, ``docker``, ``containerd``, ``sshd``,
+that drop-in. Units named ``vantio-*``, ``docker``, ``containerd``, ``sshd``, ``ssh``,
 or ``systemd-*`` are refused.
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 from vantio_install import constants
 
 _UNIT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_.@+\-]{0,200}$")
-_EXACT = frozenset({"docker", "containerd", "sshd"})
+_EXACT = frozenset({"docker", "containerd", "sshd", "ssh"})
 _PREFIXES = ("vantio-", "systemd-")
 
 

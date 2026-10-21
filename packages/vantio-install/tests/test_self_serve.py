@@ -551,6 +551,12 @@ class EnforceFlowTests(unittest.TestCase):
         self.assertIsNone(refusal_reason("nginx"))
         self.assertEqual(refusal_reason("vantio-loader"), "UNIT_REFUSED")
 
+    def test_ssh_units_are_refused(self) -> None:
+        # Ubuntu 24.04 names the OpenSSH unit ssh.service. sshd.service is an alias.
+        for unit in ("ssh", "ssh.service", "sshd", "sshd.service"):
+            self.assertEqual(refusal_reason(unit), "UNIT_REFUSED", unit)
+        self.assertIsNone(refusal_reason("sshfs-mount"))
+
     def test_policy_that_does_not_allow_enforcement_is_refused(self) -> None:
         harness = self.make()
         harness.run("plan")

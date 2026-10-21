@@ -77,7 +77,7 @@ Set `VANTIO_INSTALL_ALLOW_LIVE=1` for every command that changes the Linux serve
 
 `VANTIO_INSTALL_ALLOW_LIVE=1 vantio-install apply --enforce-enrolled --yes --i-accept-live-mutations --transaction-id <id> --policy-file <signed-policy> --json`
 
-5. Enroll the workload unit. The drop-in sets `Slice=vantio-enrolled.slice`. Names `vantio-*`, `docker`, `containerd`, `sshd`, and `systemd-*` are refused.
+5. Enroll the workload unit. The drop-in sets `Slice=vantio-enrolled.slice`. Names `vantio-*`, `docker`, `containerd`, `sshd`, `ssh`, and `systemd-*` are refused.
 
 `VANTIO_INSTALL_ALLOW_LIVE=1 vantio-install enroll --unit lab-workload --i-accept-live-mutations --transaction-id <id> --json`
 
