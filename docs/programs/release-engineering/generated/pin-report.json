@@ -1,1 +1,1129 @@
-PLACEHOLDER
+{
+  "actions": [
+    {
+      "digest_pinned": true,
+      "file": ".github/actions/vantio-prove/action.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/actions/vantio-prove/action.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/ci.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/docs-release-governance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/docs-release-governance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/docs-release-governance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/enterprise-slsa-provenance.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/founder-approval-guard.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "same_repo_refs_heads_main",
+      "uses": "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/mcp-registry-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/mcp-registry-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/mcp-registry-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/npm-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
+      "uses": "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/vantio-prove-example.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "same_repo_refs_heads_main",
+      "uses": "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": false,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "same_repo_refs_heads_main",
+      "uses": "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    }
+  ],
+  "audience": "INTERNAL_RESTRICTED",
+  "formal_certification": "NOT_CLAIMED",
+  "formal_reproducibility": "NOT_CLAIMED",
+  "formal_slsa_level": "NOT_CLAIMED",
+  "hardware_backed_provenance": "NOT_CLAIMED",
+  "lockfile": {
+    "lockfile_version": "9.0",
+    "path": "pnpm-lock.yaml",
+    "sha256": "0c1d17ac6188dec7c5754634ef6cd0dee4ed1fd56f84b7bbcdffdc6f6bc307ad"
+  },
+  "manual_paths": [
+    "docs/scripts/fixtures/pe-customer-bundle/PRIVATE-MANUAL.md"
+  ],
+  "package_manager": {
+    "integrity": "sha512.88d94724d8f2e6c186744a5584c6e59ecac869ec7ba15e9cb4cd628e8dc7066820b2481d8ee3b51ea8da323a7378068aa58c556a3720d32b7c20a051d088363a",
+    "name": "pnpm",
+    "raw": "pnpm@11.13.0+sha512.88d94724d8f2e6c186744a5584c6e59ecac869ec7ba15e9cb4cd628e8dc7066820b2481d8ee3b51ea8da323a7378068aa58c556a3720d32b7c20a051d088363a",
+    "version": "11.13.0"
+  },
+  "provenance_workflow": {
+    "apps_web_present": false,
+    "attest_action": "actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2",
+    "edge_proxy_present": false,
+    "formal_slsa_level": "NOT_CLAIMED",
+    "historical_log_contains_level_assertion": true,
+    "path": ".github/workflows/enterprise-slsa-provenance.yml",
+    "runs_on_push": true
+  },
+  "python_build_requires": [
+    "hatchling"
+  ],
+  "python_build_requires_pinned": false,
+  "release_register": {
+    "cli_tag": "v0.3.24",
+    "cli_tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
+    "cli_version": "0.3.24",
+    "python_prior_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
+    "python_publisher_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
+    "python_state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+    "python_version": "3.1.1"
+  },
+  "release_success": false,
+  "schema": "vantio.ws11.pin-report/v1",
+  "sealed_pypi": {
+    "package": "vantio-agent-sdk",
+    "sdist_bytes": 57039,
+    "sdist_name": "vantio_agent_sdk-3.1.1.tar.gz",
+    "sdist_sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
+    "version": "3.1.1",
+    "wheel_bytes": 33997,
+    "wheel_name": "vantio_agent_sdk-3.1.1-py3-none-any.whl",
+    "wheel_sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
+  },
+  "versions": [
+    {
+      "id": "cli",
+      "manifest": "packages/vantio-cli/package.json",
+      "name": "@vantio/cli",
+      "version": "0.3.25"
+    },
+    {
+      "id": "node-sdk",
+      "manifest": "packages/vantio-agent-sdk/package.json",
+      "name": "@vantio/agent-sdk",
+      "version": "0.2.4"
+    },
+    {
+      "id": "python-sdk",
+      "manifest": "packages/vantio-agent-sdk-py/pyproject.toml",
+      "name": "vantio-agent-sdk",
+      "version": "3.1.1"
+    },
+    {
+      "id": "optics-mcp",
+      "manifest": "packages/vantio-optics-mcp/package.json",
+      "name": "@vantio/optics-mcp",
+      "version": "0.1.2"
+    },
+    {
+      "id": "gate-mcp",
+      "manifest": "packages/vantio-gate-mcp/package.json",
+      "name": "@vantio/gate-mcp",
+      "version": "0.1.1"
+    },
+    {
+      "id": "vscode",
+      "manifest": "extensions/vantio-optics/package.json",
+      "name": "vantio-optics",
+      "version": "0.1.0"
+    },
+    {
+      "id": "evidence-contract",
+      "manifest": "packages/optics-evidence-contract/package.json",
+      "name": "@vantio/optics-evidence-contract",
+      "version": "0.0.0-unstable-pre-1.0"
+    }
+  ],
+  "workflow_count": 25,
+  "workflow_triggers_push": {
+    "ci.yml": true,
+    "enterprise-slsa-provenance.yml": true,
+    "mcp-registry-publish.yml": false,
+    "npm-publish.yml": false,
+    "pypi-publish.yml": false
+  }
+}
