@@ -1,6 +1,6 @@
 # Optics fields and OpenTelemetry GenAI terms
 
-This page maps Vantio Optics display fields to OpenTelemetry GenAI semantic conventions. It is documentation only. Optics does not export OTLP, and it does not start a collector, listener, or exporter.
+This page maps Vantio Optics display fields to OpenTelemetry GenAI semantic conventions. `vantio export --otlp` sends OTLP/HTTP JSON for traces, a byte gauge, and logs. Optics does not start a collector or listener, and it does not speak OTLP/gRPC.
 
 JSON from the CLI includes `"schema_status": "unstable-pre-1.0"`. Names and values below may change without notice.
 
@@ -36,13 +36,13 @@ Prompts and completions are never stored. Do not map Optics records onto `gen_ai
 | `method` `POST` and path `/v1/chat/completions` | `gen_ai.operation.name` = `chat`, `http.request.method`, `url.path` | Path is metadata, not a prompt |
 | `hostname` | `server.address` | |
 | `httpStatus` | `http.response.status_code` | Present only when a numeric HTTP status was stored |
-| `bytes` | none | Byte counts are not token counts. Do not invent `gen_ai.usage.input_tokens` |
-| `trace_id` | none | An Optics trace id is not a W3C `trace_id` |
+| `bytes` | `vantio.optics.bytes` on export | Byte counts are not token counts. Do not invent `gen_ai.usage.input_tokens`. The export gauge is the batch sum for that destination and program. |
+| `trace_id` | `vantio.trace_id` | An Optics trace id is not a W3C `trace_id`. Export also sets the OTLP `traceId` to a 32-hex digest of the Optics id. |
 | `duration_ms` | span duration | The in-process demo uses a fixed duration of 0 |
 
 ## What this page does not add
 
-- No OTLP exporter
-- No listener, proxy, or daemon
+- No collector, listener, proxy, or daemon
+- No OTLP/gRPC
 - No prompt or completion capture
 - No change to the paid control-plane path

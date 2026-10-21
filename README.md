@@ -38,6 +38,8 @@ Optics records connection and process metadata from supported wrapped agent path
 
 Vantio records *that* a call was made, *when*, *to which provider*, and *how many bytes* — nothing more.
 
+`vantio coverage` prints the processes and connections recorded on this system, and which of those paths are on a local allowlist. `vantio destinations` flags the first time a recorded program connects to a destination that is not on that list. `vantio export` sends those events as OTLP/HTTP JSON, syslog or JSON lines, or a webhook. Optics does not stop the call. Prompts and completions are never stored.
+
 ---
 
 ## What is never recorded

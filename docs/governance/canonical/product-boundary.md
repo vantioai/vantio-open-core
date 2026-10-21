@@ -12,4 +12,4 @@ Phantom Engine is Enforce + Control on enrolled Linux hosts. Contact Vantio. Ent
 
 Telemetry is disabled by default. Set `VANTIO_TELEMETRY=1` to opt in. `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` override that opt-in.
 
-There is no OTLP exporter.
+`vantio coverage` shows recorded processes and connections on this system, and which paths are on a local allowlist. `vantio destinations` flags a destination the first time a program connects to it. `vantio export` sends those events as OTLP/HTTP JSON, syslog or JSON lines, or a webhook. Optics does not stop the call.

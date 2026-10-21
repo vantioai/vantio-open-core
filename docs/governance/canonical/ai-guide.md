@@ -20,7 +20,7 @@ Use this guide when editing Vantio Optics documentation in this repository. Pack
 
 Vantio Optics is the free Observe tier: local metadata for supported wrapped calls. It does not retain prompts or completions. Phantom Engine is Enforce + Control on enrolled Linux hosts. Enterprise is the governance layer. Free Optics needs no account and no API key.
 
-There is no OTLP exporter. Browser paths stay outside this wrap.
+`vantio export` sends OTLP/HTTP JSON when given a URL. Optics does not start a collector and does not speak OTLP/gRPC. Browser paths stay outside this wrap.
 
 ## What to treat as current
 

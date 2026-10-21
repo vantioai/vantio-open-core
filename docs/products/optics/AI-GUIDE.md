@@ -23,7 +23,7 @@ Describe a command only when it appears in this manual or in `vantio --help` for
 
 `vantio logout` exists and is omitted from help. It deletes `~/.vantio/config.json` only. It does not delete run logs.
 
-Do not invent `vantio ui`, `vantio doctor`, a daemon, a prune command, an import command, or an OTLP export command.
+Do not invent `vantio ui`, `vantio doctor`, a daemon, a prune command, or an import command. `vantio coverage`, `vantio destinations`, and `vantio export` are in this source tree. They are not in published npm CLI 0.3.24.
 
 ## What Optics does
 
@@ -55,7 +55,7 @@ When you mention the payload field `hosts`, say it lists customer LLM endpoint h
 
 Do not claim Optics stores prompts, completions, or request bodies on the free path. Query strings are dropped. Path segments can still contain secrets if the application put them there.
 
-Do not claim SQLite, alerting, a stable schema, PKG-02, or an OTLP exporter.
+Do not claim SQLite, a stable schema, or PKG-02. Do not claim OTLP/gRPC or a collector started by Optics. Coverage, new-destination, and export commands in this source tree are absent from published npm CLI 0.3.24.
 
 Python files may contain `"workflow": "sight_loop"`. That stored string is not current product terminology. The product name is Vantio Optics. Do not explain the product as Sight Loop.
 

@@ -20,7 +20,7 @@
 
 const { randomUUID } = require("node:crypto");
 const { mkdirSync, writeFileSync, statSync, fstatSync, readFileSync, openSync, readSync, closeSync } = require("node:fs");
-const { homedir } = require("node:os");
+const { homedir, hostname } = require("node:os");
 const { join, basename } = require("node:path");
 const { AsyncLocalStorage } = require("node:async_hooks");
 const {
@@ -35,6 +35,7 @@ const {
   humanStatus,
   rollupCalls,
 } = require("./optics-cx.cjs");
+const { programLabelFromArgv } = require("./optics-features.cjs");
 
 const USE_COLOR = process.stderr.isTTY === true;
 const c = {
@@ -1985,6 +1986,8 @@ process.on("exit", () => {
       plane: "optics",
       data_note: "Developer egress data log — metadata only; never prompts or completions.",
       trace_id:    RUN_TRACE_ID,
+      program:     programLabelFromArgv(process.argv),
+      system_hostname: hostname(),
       pid:         process.pid,
       ppid:        typeof process.ppid === "number" ? process.ppid : null,
       node_version: process.version,
@@ -2009,6 +2012,7 @@ process.on("exit", () => {
         duration_ms:   call.duration_ms != null ? call.duration_ms : null,
         action:        call.action,
         ts:            call.ts || null,
+        mediation:     call.mediation || null,
         redactions:    call.redactions || 0,
         error:         call.error || null,
         error_class:   call.error_class || null,

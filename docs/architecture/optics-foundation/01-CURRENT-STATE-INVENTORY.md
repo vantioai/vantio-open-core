@@ -408,7 +408,7 @@ Roadmap IDs are the 52 numbered requirements in `TRACEABILITY-MATRIX.json`. Sect
 ### Finding 21.1 — Export is prove; import is not a store operation
 
 - File: `vantio.js` `proveCommand` lines 784–789 and 832–854
-- Current behavior: `--from` reads a path and renders it when the JSON value is an object. That path does not require `vantio_run_log` on the render path (the marker check is in `loadRunLog`, which `--from` does not call). Nothing copies the file into `runs/` with an imported origin. There is no JSONL export, no tabular export, and no OTLP exporter. `docs/optics-otel-mapping.md` line 3 states Optics does not export OTLP.
+- Current behavior: `--from` reads a path and renders it when the JSON value is an object. That path does not require `vantio_run_log` on the render path (the marker check is in `loadRunLog`, which `--from` does not call). Nothing copies the file into `runs/` with an imported origin. `vantio prove` still does not write JSON lines. `vantio export` in this source tree sends JSON lines, OTLP/HTTP JSON, syslog, and a webhook. `docs/optics-otel-mapping.md` describes that export.
 - Evidence: `proveCommand` control flow after `readJsonFile`.
 - Confidence: HIGH
 - Limitation: a caller can render a JSON object that was not produced by Optics. The rendering can be shared as a proof artifact without an origin stamp.

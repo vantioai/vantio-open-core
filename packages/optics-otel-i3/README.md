@@ -8,7 +8,7 @@ WS7 I3. This package is a default-disabled OTLP/HTTP JSON traces adapter. It rea
 
 Calling the package does not export. A send happens only when that call passes `enabled: true`, `adapter: "otlp_traces"`, and a customer http(s) endpoint whose path is `/` or `/v1/traces`.
 
-The adapter does not read environment variables, does not load the live CLI or SDKs, and does not accept credential headers. Public docs still say Optics does not export OTLP.
+The adapter does not read environment variables, does not load the live CLI or SDKs, and does not accept credential headers. Public export is `vantio export` in `@vantio/cli`. This package is not that command.
 
 `schema_status` is `unstable-pre-1.0`. `mapping_version` is `0`. There is no schema URL.
 

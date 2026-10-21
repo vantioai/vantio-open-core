@@ -1940,6 +1940,29 @@ def _uninstall_pycurl() -> None:
     _orig_pycurl_curl = None
 
 
+def _program_label(argv: Optional[list[str]] = None) -> str:
+    args = list(sys.argv if argv is None else argv)
+    skip_value = {"-e", "--eval", "-c", "--command"}
+    index = 1
+    while index < len(args):
+        text = str(args[index] or "")
+        if text in ("-m", "--module") and index + 1 < len(args):
+            return os.path.basename(str(args[index + 1])) or "python"
+        if text in skip_value:
+            index += 2
+            continue
+        if not text or text.startswith("-"):
+            index += 1
+            continue
+        base = os.path.basename(text)
+        if base:
+            return base
+        index += 1
+    if args:
+        return os.path.basename(str(args[0])) or "python"
+    return "python"
+
+
 def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
@@ -1966,6 +1989,8 @@ def _write_run_log() -> None:
                 "providerResponse": "Provider response",
             },
             "trace_id": _trace_id,
+            "program": _program_label(),
+            "system_hostname": socket.gethostname(),
             "runtime": "python",
             "mediation": ",".join(mediations),
             "started_at": datetime.fromtimestamp(_started_ms, timezone.utc).isoformat() if _started_ms else now.isoformat(),

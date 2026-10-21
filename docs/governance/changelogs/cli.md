@@ -6,7 +6,7 @@ This heading exists so a documentation release can require a changelog entry for
 
 Founder approved publication of this source version to npm on 2026-10-16. This heading is the release record. It does not by itself upload a tarball.
 
-The CLI reads its version from package.json. This record does not change CLI behavior. Removal of Gate-era enforcement is a separate change.
+The CLI reads its version from package.json. The version string is unchanged. This source tree includes `vantio coverage`, `vantio destinations`, and `vantio export`. This heading does not publish a package. Removal of Gate-era enforcement is a separate change.
 
 ## 0.3.24
 

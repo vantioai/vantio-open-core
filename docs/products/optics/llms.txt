@@ -34,6 +34,6 @@ Installable behavior is CLI 0.3.24 and Python 3.0.14. Do not describe unpublishe
 - Do not infer coverage. A missing record is `NOT_OBSERVED`.
 - Preserve `UNKNOWN`, `UNAVAILABLE`, `PARTIAL`, `NOT_OBSERVED`, and the other status tokens.
 - Point enforcement questions to Phantom Engine docs. Do not write those docs from this tree.
-- Do not document SQLite, a UI, alerting, OTLP, a stable schema, or PKG-02 as present.
+- Do not document SQLite, a UI, a stable schema, or PKG-02 as present. Coverage, new-destination, and export commands in this source tree are described in the user manual. Published npm CLI 0.3.24 does not include them.
 - Do not use Sight Loop as the product name. A stored `workflow` string `sight_loop` is leftover.
 - Examples marked illustrative are not transcripts.

@@ -9,6 +9,7 @@ Free Optics runs with no account and no API key. Telemetry stays off unless `VAN
 | `VANTIO_API_KEY` | Control-plane key for Phantom Engine / Enterprise policy and ingest. Not required for free Optics. |
 | `VANTIO_AUDIT_MODE` | Set to `1` to flag events as audit mode. |
 | `VANTIO_CLOUD_INGEST` | Set to `true` or `1` before `reportAnomaly` / `report_anomaly` will send. |
+| `VANTIO_EXPORT_WEBHOOK_TOKEN` | Optional bearer token for `vantio export --webhook`. The CLI does not print it. Unset sends the webhook with no authorization header. |
 | `VANTIO_EXTRA_LLM_HOSTS` | Comma-separated extra hostnames added to the in-scope set. |
 | `VANTIO_HOME` | Local data directory. Default `~/.vantio`. |
 | `VANTIO_IDENTITY` | Older alias read by `@vantio/agent-sdk` when `VANTIO_API_KEY` is unset. |

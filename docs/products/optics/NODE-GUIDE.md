@@ -74,6 +74,16 @@ vantio diff 0xabc 0xdef
 
 Exit status for these commands: 0 when the command finished, including an empty result. 1 for bad arguments, or for a file that exists but cannot be read or parsed.
 
+## Coverage, destinations, and export
+
+These commands are in the CLI source in this repository. They are not in the published npm package `@vantio/cli@0.3.24`.
+
+`vantio coverage` reads local run logs and MCP observation lines and prints processes, connections, paths on the allowlist, and paths outside it. `--json` prints that view as JSON.
+
+`vantio destinations` flags the first recorded connection from a program to a destination that is not on the allowlist. The memory is `~/.vantio/seen-destinations.json`.
+
+`vantio export` sends projected events. `--otlp` is an OTLP/HTTP JSON base URL. `--jsonl` and `--syslog` write JSON lines or RFC 5424 lines. `--webhook` POSTs JSON. Plaintext HTTP is limited to loopback. Prompts and completions are not fields in the export.
+
 ## Real-time lines
 
 Intercepted calls can print to the terminal while the process runs. The run file is still the exit write. A crash before exit can leave the terminal line without a finished file.

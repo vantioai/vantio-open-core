@@ -4,7 +4,7 @@ import { parseArgs }     from "node:util";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, existsSync, watch } from "node:fs";
 import { randomUUID }    from "node:crypto";
 
@@ -19,6 +19,11 @@ const {
   telemetryPosture,
   withSchema,
 } = require("./optics-cx.cjs");
+const {
+  coverageCommand,
+  destinationsCommand,
+  exportCommand,
+} = require("./optics-features.cjs");
 
 const USAGE = `\
 Vantio Optics | Free Observability for AI Agents
@@ -34,6 +39,9 @@ Usage:
   vantio search [query]       Search local run logs (host, path, action, free text)
   vantio tail [options]       Show the latest calls from a captured run
   vantio diff <a> <b>         Compare two local runs (hosts, counts, bytes)
+  vantio coverage [options]   Show recorded processes and which paths are on the allowlist
+  vantio destinations         Flag a destination the first time a program connects to it
+  vantio export [options]     Send recorded events to OTLP, syslog or JSON lines, or a webhook
 
 Flags (run):
   --summary, -s   Print a run summary on exit.
@@ -58,6 +66,10 @@ Examples:
   vantio tail -n 0
   vantio tail --all
   vantio diff 0xabc 0xdef
+  vantio coverage
+  vantio coverage --json
+  vantio destinations
+  vantio export --otlp=http://127.0.0.1:4318
 `;
 
 const DISCOVER_HELP = `\
@@ -1452,6 +1464,8 @@ function demoCommand(args) {
     schema_version: 2,
     plane: "optics",
     trace_id: traceId,
+    program: "vantio-demo",
+    system_hostname: hostname(),
     started_at: stamp,
     generated_at: stamp,
     duration_ms: DEMO_DURATION_MS,
@@ -1685,6 +1699,15 @@ switch (command) {
     break;
   case "diff":
     await diffCommand(rest);
+    break;
+  case "coverage":
+    coverageCommand(rest);
+    break;
+  case "destinations":
+    destinationsCommand(rest);
+    break;
+  case "export":
+    await exportCommand(rest);
     break;
   default:
     process.stderr.write(`vantio: unknown command '${command}'\n\n${USAGE}`);

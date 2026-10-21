@@ -16,7 +16,7 @@ The installable versions this text describes are `@vantio/cli@0.3.24` and `vanti
 
 **Support.** Start with `vantio --version` and the Python version print in [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Status tokens are in [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md).
 
-**Evaluator.** The capability below is the whole free product: local metadata on supported paths, plus local commands over those files. SQLite, a UI, alerting, OTLP, and a stable schema are not included. [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
+**Evaluator.** Published npm CLI 0.3.24 is local metadata on supported paths, plus local commands over those files. This source tree also has `vantio coverage`, `vantio destinations`, and `vantio export`. SQLite, a UI, and a stable schema are not included. [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
 
 **Upgrade from v2 or from Python 3.0.x.** [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md) and [PYTHON-GUIDE.md](PYTHON-GUIDE.md).
 
@@ -106,12 +106,12 @@ CLI 0.3.24 does not send the ping unless `VANTIO_TELEMETRY=1`. Published Python 
 
 `@vantio/optics-mcp@0.1.2` lists and renders local logs over the Model Context Protocol. It does not block or redact. Its tools are `optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_explain`, and `optics_upgrade_path`. The last tool points at Phantom Engine. This manual does not document Phantom Engine.
 
-The MCP reader follows `VANTIO_HOME`. The CLI reader does not.
+The MCP reader follows `VANTIO_HOME`. `vantio discover`, `search`, `tail`, `diff`, and `prove` read `~/.vantio` only. `vantio coverage`, `vantio destinations`, and `vantio export` read both, and they keep the allowlist and seen-destination file under `VANTIO_HOME` when that variable is set.
 
 ## Limits that belong in every evaluation
 
 - Only wrapped processes and in-scope hosts produce rows.
-- No database, no UI, no alerts, no OTLP exporter, no stable schema.
+- No database and no UI. JSON records stay `unstable-pre-1.0`. This source tree's `vantio destinations` flags a new destination, and `vantio export` can send OTLP/HTTP JSON, syslog or JSON lines, and a webhook. Published npm CLI 0.3.24 does not include those commands.
 - No retention command. Disk grows until you delete files.
 - No cross-process lock. The same trace id overwrites one file.
 - Write failures are silent.

@@ -30,6 +30,10 @@
       "audience": "public"
     },
     {
+      "name": "VANTIO_EXPORT_WEBHOOK_TOKEN",
+      "audience": "public"
+    },
+    {
       "name": "VANTIO_EXTRA_LLM_HOSTS",
       "audience": "public"
     },
