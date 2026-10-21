@@ -1,57 +1,54 @@
-# Vantio AI — Contributing
+# Contributing
 
-## What's in this repo
+Issues and pull requests are welcome for the public packages in this repository.
 
-Open-core packages (this repo is **Vantio Optics**):
+## Packages
 
-- `packages/vantio-cli` — CLI runner (`@vantio/cli`). Install the current release from npm: `npm install -g @vantio/cli`
-- `packages/vantio-agent-sdk-py` — Python agent SDK (`vantio-agent-sdk`). Install the current release from PyPI: `pip install vantio-agent-sdk`
-- `packages/vantio-agent-sdk` — Node.js agent SDK (`@vantio/agent-sdk`). Install the current release from npm.
-- `packages/vantio-optics-mcp` — Optics MCP (`@vantio/optics-mcp`) — observe only
-
-Phantom Engine (Linux host protection) lives outside this repository. Do not add it here. The product page is https://vantio.ai/phantom.
+- `packages/vantio-cli` — `@vantio/cli`, the Optics command line
+- `packages/vantio-agent-sdk` — `@vantio/agent-sdk`, the Node SDK
+- `packages/vantio-agent-sdk-py` — `vantio-agent-sdk`, the Python SDK
+- `packages/vantio-optics-mcp` — `@vantio/optics-mcp`
+- `packages/vantio-install` — Phantom Engine installer. It is not published on npm or PyPI.
+- `extensions/vantio-optics` — editor extension. Publishing still runs from this repository. The Optics home is moving to [github.com/vantioai/vantio-optics](https://github.com/vantioai/vantio-optics).
 
 ## Development
 
+CI uses Node.js 22. The CLI accepts Node.js `>=18.3.0`. The Python SDK accepts Python `>=3.10`. CI runs the Python SDK on 3.10, 3.11, and 3.12.
+
+pnpm is the package manager. The version is the `packageManager` field in `package.json`.
+
 ```bash
-# Install dependencies (pnpm only — see Dependency Governance below)
-pnpm install
-
-# Build all packages
-pnpm build
-
-# Run CLI directly from source
-node packages/vantio-cli/bin/vantio.js
-
-# Type-check the Node SDK
-cd packages/vantio-agent-sdk && pnpm exec tsc --noEmit
+pnpm install --frozen-lockfile
+pnpm --filter @vantio/cli run lint
+pnpm --filter @vantio/cli run test
+pnpm --filter @vantio/agent-sdk run typecheck
+pnpm --filter @vantio/agent-sdk run typecheck:test
+pnpm --filter @vantio/agent-sdk run test
+pnpm --filter @vantio/agent-sdk run build
+pnpm --filter @vantio/gate-mcp test
+node --test packages/vantio-mcp-awareness/test/*.test.js
 ```
 
-## Engineering Directives
+Python SDK tests, from `packages/vantio-agent-sdk-py`:
 
-**Type Safety**
-The `any` keyword is banned across the entire TypeScript codebase. Use `unknown` with strict type guards. PRs containing `any` will not be merged.
+```bash
+python -m unittest discover -s tests -t .
+```
 
-**Payload Quarantine**
-No raw user prompts, LLM responses, or PII may be passed to the SDK telemetry payload. Strip all linguistic content at the API boundary before ingestion.
+Run the CLI from source:
 
-**Dependency Governance**
-`pnpm` is the only authorized package manager. `npm install` and `yarn` are banned to prevent phantom dependency vectors. Do not commit `package-lock.json` or `yarn.lock`.
+```bash
+node packages/vantio-cli/bin/vantio.js
+```
 
-## Architectural Boundaries
+## Records
 
-**This repository is strictly Ring-3 user-space.** Do not submit PRs that introduce:
+Keep prompts, completions, and API keys out of Optics records and out of telemetry. Telemetry stays off unless `VANTIO_TELEMETRY=1`.
 
-- eBPF programs, kernel probes, or any Ring-0 logic
-- References to `/sys/fs/bpf/`, `bpf_*` helpers, or `aya-ebpf`
-- Imports from or dependencies on the proprietary `vantio-phantom-engine` repository
+## Security
 
-Violations are automatically rejected by CI.
+Use [SECURITY.md](SECURITY.md) for a suspected vulnerability. A public issue is the wrong place for an unfixed vulnerability.
 
-## What belongs here
+## Conduct
 
-| ✅ In scope | ❌ Out of scope |
-|---|---|
-| `@vantio/agent-sdk` improvements | eBPF / kernel code |
-| `vantio` CLI enhancements | Modifications to the Phantom Engine loader |
-| Python SDK improvements | Raw syscall hooks or IDS-style telemetry |
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
