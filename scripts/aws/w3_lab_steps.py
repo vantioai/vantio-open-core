@@ -1146,6 +1146,8 @@ def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
             return "uninstall_residual"
         if "UNINSTALL_NOT_VERIFIED" in tail or "uninstall refused" in tail:
             return "uninstall_not_verified"
+        if "UNINSTALL_GRUB_LSM" in tail:
+            return "uninstall_grub_lsm"
     return "guest"
 
 
@@ -1168,6 +1170,14 @@ def _remote_line(remote: Callable[[list[str], str], subprocess.CompletedProcess[
     if not text or "\n" in text or len(text) > limit:
         return ""
     return text
+
+
+def _post_boot_bpf_active(post: dict[str, Any]) -> bool:
+    """True when this boot's LSM list and cmdline both name bpf as its own token."""
+    diag = _baseline_diag()
+    lsm = post.get("lsm") if isinstance(post.get("lsm"), str) else ""
+    cmdline = post.get("cmdline") if isinstance(post.get("cmdline"), str) else ""
+    return diag.bpf_lsm_active(lsm) and diag.cmdline_has_bpf_lsm(cmdline)
 
 
 def _post_boot_evidence(
@@ -1892,6 +1902,9 @@ def execute_enterprise_rows(
                 if missing:
                     payload.update({"reason": "post_boot_incomplete", "status": "FAILED", "post_boot_missing": missing})
                     raise lab.GuardAbort("post_boot_incomplete")
+                if not _post_boot_bpf_active(post):
+                    payload.update({"reason": "bpf_still_absent", "status": "FAILED"})
+                    raise lab.GuardAbort("bpf_still_absent")
                 try:
                     _store_serial_log(runner, instance_id, payload)
                 except lab.GuardAbort as exc:

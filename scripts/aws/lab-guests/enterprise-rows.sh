@@ -538,6 +538,50 @@ if not found:
     raise SystemExit("post_kill_row_missing")
 PY
   fi
+  if ! clear_lab_grub_lsm; then
+    echo "UNINSTALL_GRUB_LSM" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2
+    return 1
+  fi
+}
+
+# The guard writes 99-vantio-lsm.cfg and uninstalls on the same boot.
+# A proved guard keeps the drop-in for the reboot it just requested.
+# Any other uninstall removes the drop-in and regenerates grub.
+clear_lab_grub_lsm() {
+  local keep=no
+  if [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then
+    keep=$(sudo python3 - "$here" << 'PY'
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+
+path = Path("/var/lib/vantio-lab/enterprise-pe-rows.json")
+try:
+    body = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    print("no")
+    raise SystemExit(0)
+if not isinstance(body, dict):
+    print("no")
+    raise SystemExit(0)
+print("yes" if baseline_diag.uninstall_keeps_boot_token(body) else "no")
+PY
+)
+  fi
+  if [ "$keep" = "yes" ]; then
+    return 0
+  fi
+  sudo python3 - "$here" << 'PY'
+import sys
+
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+
+raise SystemExit(baseline_diag.remove_consented_lsm_live())
+PY
 }
 
 # phase2 and descendant write the durable file. Mirror it to /tmp for
