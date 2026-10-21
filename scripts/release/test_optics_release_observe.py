@@ -26,12 +26,12 @@ PRODUCER_SHA256 = {
     ("enterprise-slsa-provenance.yml", "Attest build provenance"): "82121f5399143347205160e628c7df09dd0166706dddd45d22dcd35d27047db3",
     ("enterprise-slsa-provenance.yml", "Provenance honesty note"): "f1f0f1e9d24c20091c777368567fcfed8073a80d72e7f306b01d9ae619b6ddc5",
     ("pypi-publish.yml", "Publish sealed distributions to PyPI"): "0459cdda21c6bf996a19be5802438df922fa862ddd37efcfae930583db310b14",
-    ("pypi-publish.yml", "Record publication coordinates"): "8abd0d4439e616b72fc4a37a264518e79b6adda58c50b452785c7a84340522cf",
+    ("pypi-publish.yml", "Record publication coordinates"): "86a89301eab696b3aacc08a00e6e3a4d102a0d4310f5268c775f94b275ff25bf",
     ("npm-publish.yml", "Write release summary"): "9f8e6f04644efac14448c037dea7042c9539a2d8436666ce756d3f77eff94f19",
     ("mcp-registry-publish.yml", "Install mcp-publisher"): "e0854fdc1a007af84889ced22beba7a0ccebca9254fcea86ebd97e7939d59f9c",
 }
 WRAPPED = {
-    ("pypi-publish.yml", "Stop when 3.1.1 is already on PyPI"): "vantio run python3 scripts/release/stage_sealed_pypi.py --reject-existing-version",
+    ("pypi-publish.yml", "Stop when 3.1.2 is already on PyPI"): "vantio run python3 scripts/release/stage_sealed_pypi.py --reject-existing-version",
     ("pypi-publish.yml", "Download sealed custody assets"): "vantio run python3 scripts/release/fetch_custody_release.py",
     ("pypi-publish.yml", "Verify sealed bytes and stage the upload directory"): "vantio run python3 scripts/release/stage_sealed_pypi.py",
     ("npm-publish.yml", "Gate sealed request"): "vantio run node scripts/release/promote_npm.mjs --gate",

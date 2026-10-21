@@ -41,14 +41,14 @@
       "kind": "integrity-hash",
       "name": "python-wheel",
       "required_for_publish": true,
-      "value": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
+      "value": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68"
     },
     {
       "accepted_as_pin": true,
       "kind": "integrity-hash",
       "name": "python-sdist",
       "required_for_publish": true,
-      "value": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799"
+      "value": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb"
     },
     {
       "accepted_as_pin": false,
@@ -245,38 +245,38 @@
     {
       "artifacts": [
         {
-          "byte_length": 33997,
+          "byte_length": 35551,
           "custody": {
             "hash_status": "RECORDED",
             "selector": {
               "kind": "sha256",
-              "value": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8"
+              "value": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68"
             },
             "selector_is_integrity": true
           },
           "distribution": "public",
-          "filename": "vantio_agent_sdk-3.1.1-py3-none-any.whl",
+          "filename": "vantio_agent_sdk-3.1.2-py3-none-any.whl",
           "hash_status": "RECORDED",
           "role": "wheel",
-          "sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8",
+          "sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68",
           "source_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
           "version": "3.1.2"
         },
         {
-          "byte_length": 57039,
+          "byte_length": 59493,
           "custody": {
             "hash_status": "RECORDED",
             "selector": {
               "kind": "sha256",
-              "value": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799"
+              "value": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb"
             },
             "selector_is_integrity": true
           },
           "distribution": "public",
-          "filename": "vantio_agent_sdk-3.1.1.tar.gz",
+          "filename": "vantio_agent_sdk-3.1.2.tar.gz",
           "hash_status": "RECORDED",
           "role": "sdist",
-          "sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
+          "sha256": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb",
           "source_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
           "version": "3.1.2"
         }
@@ -303,7 +303,7 @@
         "from_sha256": null,
         "from_version": "3.0.14",
         "rollback_sha256": null,
-        "to_sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8",
+        "to_sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68",
         "to_version": "3.1.2",
         "verified": false
       },

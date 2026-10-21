@@ -34,19 +34,19 @@
     }
   },
   "python": {
-    "version": "3.1.1",
+    "version": "3.1.2",
     "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
     "prior_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
     "publisher_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
-    "wheel_sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8",
-    "sdist_sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
-    "wheel_bytes": 33997,
-    "sdist_bytes": 57039,
-    "wheel_name": "vantio_agent_sdk-3.1.1-py3-none-any.whl",
-    "sdist_name": "vantio_agent_sdk-3.1.1.tar.gz",
-    "wheel_path": "artifacts/sealed/vantio_agent_sdk-3.1.1-py3-none-any.whl",
-    "sdist_path": "artifacts/sealed/vantio_agent_sdk-3.1.1.tar.gz",
-    "custody_tag": "custody-py-3.1.1",
+    "wheel_sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68",
+    "sdist_sha256": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb",
+    "wheel_bytes": 35551,
+    "sdist_bytes": 59493,
+    "wheel_name": "vantio_agent_sdk-3.1.2-py3-none-any.whl",
+    "sdist_name": "vantio_agent_sdk-3.1.2.tar.gz",
+    "wheel_path": "artifacts/sealed/vantio_agent_sdk-3.1.2-py3-none-any.whl",
+    "sdist_path": "artifacts/sealed/vantio_agent_sdk-3.1.2.tar.gz",
+    "custody_tag": "custody-py-3.1.2",
     "custody_tag_created": false,
     "source_date_epoch": "1792198920",
     "build_command": "python3 -m build --no-isolation",
@@ -86,13 +86,13 @@
       "packed_from": "31877bbe3fa1195895aaab8fab1f9baa5746bd3e"
     },
     "previous_closed": {
-      "version": "3.1.0",
+      "version": "3.1.1",
       "state": "RELEASE_CLOSED_REGISTRY_VERIFIED",
-      "publisher_commit": "764361d7adfbd7eb6c5d4baac71cf32901a7eed0",
-      "wheel_sha256": "dcf84cb3c4f144ece21032001657bfd9c91067faeffbefd0fb2ae19d6109dbeb",
-      "sdist_sha256": "9f991291d5e44a23e17a9b0d7db24f6e7048d4c76cf0a9c37e35ccbcfe999c4f",
-      "wheel_bytes": 39235,
-      "sdist_bytes": 59669
+      "publisher_commit": "c64ffd11158c4306bc61cd593fd0fe8aead51287",
+      "wheel_sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8",
+      "sdist_sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
+      "wheel_bytes": 33997,
+      "sdist_bytes": 57039
     }
   }
 }
