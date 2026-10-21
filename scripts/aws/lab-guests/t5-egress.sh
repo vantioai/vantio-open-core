@@ -7,12 +7,16 @@ bundle="${1:-/var/lib/vantio-lab/enterprise-bundle}"
 rows="${2:-/var/lib/vantio-lab/enterprise-pe-rows.json}"
 cgroup="/sys/fs/cgroup/vantio-t5-lab.slice/t5-drill"
 
-case "${bundle}${rows}${cgroup}" in
-  *navera*|*Navera*)
-    echo "navera" >&2
+# VANTIO_PARTNER_MARKERS: comma-separated deployment-partner substrings. Unset means none.
+joined="$(printf '%s' "${bundle}${rows}${cgroup}" | tr '[:upper:]' '[:lower:]')"
+IFS=',' read -r -a partner_markers <<< "${VANTIO_PARTNER_MARKERS:-}"
+for marker in "${partner_markers[@]}"; do
+  marker="$(printf '%s' "$marker" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  if [[ -n "$marker" && "$joined" == *"$marker"* ]]; then
+    echo "partner" >&2
     exit 2
-    ;;
-esac
+  fi
+done
 case "$bundle" in
   /var/lib/vantio-lab/enterprise-bundle|/var/lib/vantio-lab/guest) ;;
   *)

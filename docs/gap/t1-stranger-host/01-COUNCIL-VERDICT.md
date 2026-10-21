@@ -17,7 +17,7 @@ Scope of this verdict: the design, before code. This session produced the design
 - Preflight fail-closed order matches the comparison plan and adds the unreadable-lockdown, bpffs, and exact-image stops so the two gaps in that comparison (lockdown file not recorded, exact image not recorded) cannot pass silently.
 - Signatures accept the pinned TEST document only for `AWAITING_OUTSIDE_REVIEW`. The public pin is refused as a seal and is not a signing key. Fixture signatures cannot flip the host-proof bit.
 - The pen-test scope defines the target build and stops at the vendor gate.
-- No price, no production root, no Navera access, no cloud run.
+- No price, no production root, no deployment-partner access, no cloud run.
 
 ## Conditions the code has to meet
 

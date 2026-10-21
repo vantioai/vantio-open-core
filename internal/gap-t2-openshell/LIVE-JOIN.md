@@ -42,7 +42,7 @@ OpenShell export is best-effort. A full 1,024-line queue drops new lines. A miss
 
 ## Host gate
 
-`hostClass` must be `vantio-owned`. Any path containing `navera` is rejected. The harness still does not prove the machine is that host. The check is the caller's declaration plus the path refusal.
+`hostClass` must be `vantio-owned`. Any path containing a substring listed in `VANTIO_PARTNER_MARKERS` (deployment-partner names) is rejected. The harness still does not prove the machine is that host. The check is the caller's declaration plus the path refusal.
 
 ## What this does not do
 

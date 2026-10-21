@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,11 +31,13 @@ class GcpT5PlanTests(unittest.TestCase):
         self.assertFalse(quiet["attached"])
         self.assertIn("not_dispatched", quiet["reasons"])
         self.assertNotIn("workflow_has_no_t5_input", quiet["reasons"])
-        self.assertNotIn("navera", quiet["reasons"])
+        self.assertNotIn("partner", quiet["reasons"])
 
-    def test_navera_and_static_keys_are_refused(self) -> None:
-        foreign = t5_lab_plan.plan({"GCP_LAB_PROJECT": "vantio-lab-navera"})
-        self.assertIn("navera", foreign["reasons"])
+    def test_partner_and_static_keys_are_refused(self) -> None:
+        foreign = t5_lab_plan.plan(
+            {"GCP_LAB_PROJECT": "vantio-lab-partner-x", "VANTIO_PARTNER_MARKERS": "partner-x"}
+        )
+        self.assertIn("partner", foreign["reasons"])
         self.assertFalse(foreign["dispatch"])
         keyed = t5_lab_plan.plan(
             {"GCP_LAB_PROJECT": "vantio-lab-oct08", "GOOGLE_APPLICATION_CREDENTIALS": "/tmp/key.json"}
@@ -59,9 +63,10 @@ class GcpT5PlanTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             od.assert_t5_dispatch(mixed)
         foreign = dict(env)
-        foreign["GCP_LAB_PROJECT"] = "vantio-lab-navera"
-        with self.assertRaises(SystemExit):
-            od.assert_t5_dispatch(foreign)
+        foreign["GCP_LAB_PROJECT"] = "vantio-lab-partner-x"
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": "partner-x"}):
+            with self.assertRaises(SystemExit):
+                od.assert_t5_dispatch(foreign)
 
     def test_t5_evidence_keeps_the_lab_cgroup_only(self) -> None:
         kept = od.allow_battery(

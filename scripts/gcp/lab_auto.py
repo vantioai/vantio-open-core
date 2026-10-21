@@ -46,6 +46,20 @@ LABEL_LIFE = "vantio-max-life-min"
 LABEL_CREDIT = "vantio-credit-cents"
 OWNED_LABELS = {LABEL_LAB: "gcp", LABEL_OWNER: "gha"}
 LAB_PROJECT_RE = re.compile(r"^vantio-lab-[a-z][a-z0-9-]{2,18}$")
+PARTNER_MARKERS_ENV = "VANTIO_PARTNER_MARKERS"
+
+
+def partner_markers(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """Lowercase substrings that name a deployment partner. Unset means none."""
+    raw = (os.environ if env is None else env).get(PARTNER_MARKERS_ENV, "")
+    return tuple(item.strip().lower() for item in raw.split(",") if item.strip())
+
+
+def names_partner(*values: object, env: Mapping[str, str] | None = None) -> bool:
+    markers = partner_markers(env)
+    return any(marker in str(value).lower() for value in values for marker in markers)
+
+
 HERE = Path(__file__).resolve().parent
 CAPABILITIES_PATH = HERE / "lab_capabilities.json"
 
@@ -93,7 +107,7 @@ def valid_lab_project(project_id: Any) -> bool:
     return (
         isinstance(project_id, str)
         and LAB_PROJECT_RE.fullmatch(project_id) is not None
-        and "navera" not in project_id
+        and not names_partner(project_id)
     )
 
 
@@ -121,14 +135,14 @@ def budget_project_ids(budget: Mapping[str, Any]) -> list[str]:
     return found
 
 
-def iam_has_navera(policy: Mapping[str, Any] | None) -> bool:
+def iam_has_partner_identity(policy: Mapping[str, Any] | None) -> bool:
     if not isinstance(policy, Mapping):
         return False
     for binding in policy.get("bindings") or []:
         if not isinstance(binding, Mapping):
             continue
         for member in binding.get("members") or []:
-            if isinstance(member, str) and "navera.io" in member.lower():
+            if isinstance(member, str) and names_partner(member):
                 return True
     return False
 
@@ -145,7 +159,7 @@ def credit_usd_from_labels(labels: Mapping[str, Any] | None) -> Decimal | None:
 def evaluate_cost_gate(payload: Mapping[str, Any]) -> dict[str, Any]:
     """expected_oop_usd is 0 only when the lab cap can cover a $1 ceiling.
 
-    A missing credit, a Navera identity, a budget that is not the lab project,
+    A missing credit, a deployment-partner identity, a budget that is not the lab project,
     or an unarmed cap returns UNKNOWN. This does not invent an out-of-pocket
     dollar figure.
     """
@@ -155,8 +169,8 @@ def evaluate_cost_gate(payload: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("lab_project")
     if payload.get("billing_account_open") is not True:
         reasons.append("billing_closed")
-    if payload.get("navera_identity_present") is not False:
-        reasons.append("navera_identity")
+    if payload.get("partner_identity_present") is not False:
+        reasons.append("partner_identity")
     if payload.get("cap_armed") is not True:
         reasons.append("cap_not_armed")
     if payload.get("budget_present") is not True:
@@ -447,7 +461,7 @@ def payload_from_project_reads(
     return {
         "lab_project_id": project_id,
         "billing_account_open": billing.get("billingEnabled") is True,
-        "navera_identity_present": iam_has_navera(policy),
+        "partner_identity_present": iam_has_partner_identity(policy),
         "credit_remaining_usd": format(credit, "f") if credit is not None else None,
         "budget_present": budget is not None,
         "budget_project_ids": [project_id] if budget is not None and valid_lab_project(project_id) else [],

@@ -26,12 +26,19 @@ STATIC_KEY_NAMES = (
 )
 
 
+def partner_named(env: Mapping[str, str], *values: str) -> bool:
+    """VANTIO_PARTNER_MARKERS lists partner substrings. Unset means none."""
+    raw = env.get("VANTIO_PARTNER_MARKERS", os.environ.get("VANTIO_PARTNER_MARKERS", ""))
+    markers = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    return any(marker in value.lower() for value in values for marker in markers)
+
+
 def plan(env: Mapping[str, str]) -> dict[str, object]:
     project = env.get("GCP_LAB_PROJECT", "")
     hostname = env.get("GCP_LAB_INSTANCE", "")
     reasons: list[str] = []
-    if "navera" in f"{project} {hostname}".lower():
-        reasons.append("navera")
+    if partner_named(env, project, hostname):
+        reasons.append("partner")
     if project != t5.LAB_PROJECT:
         reasons.append("project")
     if any(env.get(name) for name in STATIC_KEY_NAMES):

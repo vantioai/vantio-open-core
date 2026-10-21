@@ -69,7 +69,7 @@ test("a monotonic kernel clock stays unattributed until an offset makes it a byp
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("the harness refuses another host class and a Navera path", () => {
+test("the harness refuses another host class and a partner-named path", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "t2-refuse-"));
   writeNdjson(dir, "kernel.ndjson", FIXTURE.kernel);
   writeNdjson(dir, "openshell.ndjson", FIXTURE.openshell);
@@ -77,11 +77,19 @@ test("the harness refuses another host class and a Navera path", () => {
   const foreign = joinFiles(options(dir, { hostClass: "customer" }));
   assert.equal(foreign.status, "rejected");
   assert.equal(foreign.detail, "host_class");
-  const named = path.join(dir, "navera-kernel.ndjson");
+  const named = path.join(dir, "partner-x-kernel.ndjson");
   fs.writeFileSync(named, "{}\n");
-  const blocked = joinFiles(options(dir, { kernelPath: named }));
+  const saved = process.env.VANTIO_PARTNER_MARKERS;
+  process.env.VANTIO_PARTNER_MARKERS = "partner-x";
+  let blocked;
+  try {
+    blocked = joinFiles(options(dir, { kernelPath: named }));
+  } finally {
+    if (saved === undefined) delete process.env.VANTIO_PARTNER_MARKERS;
+    else process.env.VANTIO_PARTNER_MARKERS = saved;
+  }
   assert.equal(blocked.status, "rejected");
-  assert.equal(blocked.detail, "navera");
+  assert.equal(blocked.detail, "partner");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

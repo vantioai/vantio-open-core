@@ -2,9 +2,11 @@ name: GCP lab collect
 
 # Copy the guest probe off the VM over the serial console.
 # The result is a GitHub artifact named gcp-lab-collect-*. Nothing is written
-# to the AWS lab or to a Navera project. Phantom Engine is not installed.
+# to the AWS lab or to a deployment partner's project. Phantom Engine is not installed.
 
 env:
+  # Deployment-partner name substrings, comma-separated. Set as a repo variable, never in code.
+  VANTIO_PARTNER_MARKERS: ${{ vars.VANTIO_PARTNER_MARKERS }}
   GCP_LAB_PROJECT: vantio-lab-oct08
   GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
   GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com

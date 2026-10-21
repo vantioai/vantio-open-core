@@ -32,7 +32,7 @@ Attach sections, one program each, no tail calls:
 - `cgroup/connect4`
 - `cgroup/connect6`
 
-The loader in `t5_kernel/loader.py` refuses the syscall unless every gate passes, and even then the default path does not issue it. Gates: host class `vantio-owned`, project `vantio-lab-oct08`, cgroup leaf under `/sys/fs/cgroup/vantio-t5-lab.slice/`, not `vantio-enrolled.slice`, not a Navera name, lane seal if a seal is supplied, and `entropy_userspace == 1`.
+The loader in `t5_kernel/loader.py` refuses the syscall unless every gate passes, and even then the default path does not issue it. Gates: host class `vantio-owned`, project `vantio-lab-oct08`, cgroup leaf under `/sys/fs/cgroup/vantio-t5-lab.slice/`, not `vantio-enrolled.slice`, not a deployment-partner name (substrings from `VANTIO_PARTNER_MARKERS`), lane seal if a seal is supplied, and `entropy_userspace == 1`.
 
 The program does not call the userspace entropy function. A left-hand name at least `entropy_min_length` long is dropped when its distinct byte count times 4 exceeds that length (`dns_label_entropy`, classified). A repeated character stays allowed. The userspace score is still the drill measurement. The two can disagree (R-T5-K11). The old fail-open on a high-diversity label (R-T5-K1) is closed for that case.
 
@@ -50,7 +50,7 @@ A fixed window can allow about twice the cap across a boundary. The userspace dr
 
 ## Battery
 
-Battery id `t5-egress` is on the allow-list in `scripts/aws/w3_lab_steps.py`. The guest script runs the userspace proof and this model. It does not attach. It refuses a Navera path and does not mention `vantio-enrolled.slice` as an attach target.
+Battery id `t5-egress` is on the allow-list in `scripts/aws/w3_lab_steps.py`. The guest script runs the userspace proof and this model. It does not attach. It refuses a deployment-partner path and does not mention `vantio-enrolled.slice` as an attach target.
 
 GCP `scripts/gcp/t5_lab_plan.py` records the same id and returns `dispatch: false`. The default GCP schedule is still enterprise, then descendant-b1, twice. The workflow file on main has no input for this battery. Workload identity for provision still requires that file on main. This change does not edit workflow permissions and does not dispatch.
 

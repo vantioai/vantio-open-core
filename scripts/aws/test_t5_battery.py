@@ -18,6 +18,12 @@ import t5_battery  # noqa: E402
 import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
+
+def _partner_markers() -> list[str]:
+    """Deployment-partner substrings from VANTIO_PARTNER_MARKERS. Unset means none."""
+    raw = os.environ.get("VANTIO_PARTNER_MARKERS", "")
+    return [item.strip().lower() for item in raw.split(",") if item.strip()]
+
 LANE = t5_battery.LANE_SEAL
 PIN = t5_battery.PUBLIC_PIN
 INSTANCE = "i-0123456789abcdef0"
@@ -87,10 +93,10 @@ class T5BatteryTests(unittest.TestCase):
                 steps.execute_enterprise_rows(runner)  # type: ignore[arg-type]
         self.assertEqual(caught.exception.reason, "battery")
 
-    def test_guest_script_refuses_navera_and_does_not_attach(self) -> None:
+    def test_guest_script_refuses_partner_markers_and_does_not_attach(self) -> None:
         text = t5_battery.GUEST_SCRIPT.read_text(encoding="utf-8")
         self.assertIn("t5-egress", text)
-        self.assertIn("navera", text)
+        self.assertIn("VANTIO_PARTNER_MARKERS", text)
         self.assertIn("vantio-enrolled.slice", text)
         self.assertNotIn("bpf(", text)
         self.assertNotIn("enterprise-rows.sh", text)
@@ -103,7 +109,8 @@ class T5BatteryTests(unittest.TestCase):
                 names = archive.getnames()
         self.assertIn("packages/t5-egress-kernel/bpf/t5_egress.bpf.c", names)
         self.assertIn("scripts/clean-host/t5/proof.py", names)
-        self.assertTrue(all("navera" not in name for name in names))
+        for marker in _partner_markers():
+            self.assertTrue(all(marker not in name.lower() for name in names))
 
 
 if __name__ == "__main__":

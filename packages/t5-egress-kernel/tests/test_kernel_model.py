@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import struct
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -24,6 +26,12 @@ from t5_kernel.loader import (  # noqa: E402
     pack_cfg,
 )
 from t5_kernel.reasons import REASONS  # noqa: E402
+
+
+def _partner_markers() -> list[str]:
+    """Deployment-partner substrings from VANTIO_PARTNER_MARKERS. Unset means none."""
+    raw = os.environ.get("VANTIO_PARTNER_MARKERS", "")
+    return [item.strip().lower() for item in raw.split(",") if item.strip()]
 
 SOURCE = ROOT / "packages" / "t5-egress-kernel" / "bpf" / "t5_egress.bpf.c"
 
@@ -196,7 +204,8 @@ class ProgramSourceTests(unittest.TestCase):
         self.assertIn("cgroup/connect4", text)
         self.assertIn("cgroup/connect6", text)
         self.assertIn("GPL-2.0-only", text)
-        self.assertNotIn("navera", text.lower())
+        for marker in _partner_markers():
+            self.assertNotIn(marker, text.lower())
 
     def test_clang_compiles_without_loading(self) -> None:
         destination = ROOT / "packages" / "t5-egress-kernel" / "bpf" / "t5_egress.bpf.o"
@@ -231,20 +240,29 @@ class LoaderGateTests(unittest.TestCase):
             calls.append("called")
             return {"loaded": True}
 
-        for request in (
-            self._request(project="vantio-lab-navera"),
-            self._request(hostname="navera-vm"),
+        requests = (
+            self._request(project="vantio-lab-partner-x"),
+            self._request(hostname="partner-x-vm"),
             self._request(cgroup="/sys/fs/cgroup/vantio-enrolled.slice"),
             self._request(cgroup="/sys/fs/cgroup/vantio-t5-lab.slice"),
             self._request(host_class="customer"),
             self._request(project="other"),
             self._request(seal=PUBLIC_PIN),
             self._request(maps=maps(entropy_userspace=0)),
-        ):
-            decision = attach_decision(request, boom)
-            self.assertFalse(decision["attached"])
-            self.assertEqual(decision["bpf_calls"], 0)
+        )
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": "partner-x"}):
+            for request in requests:
+                decision = attach_decision(request, boom)
+                self.assertFalse(decision["attached"])
+                self.assertEqual(decision["bpf_calls"], 0)
         self.assertEqual(calls, [])
+
+    def test_partner_markers_come_only_from_the_environment(self) -> None:
+        request = self._request(hostname="partner-x-vm")
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": " Partner-X , other "}):
+            self.assertEqual(attach_decision(request)["reason"], "partner")
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": ""}):
+            self.assertNotEqual(attach_decision(request)["reason"], "partner")
 
     def test_open_gate_still_does_not_issue_a_syscall_by_default(self) -> None:
         decision = attach_decision(self._request(execute=True))

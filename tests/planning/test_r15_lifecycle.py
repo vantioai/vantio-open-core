@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 from pathlib import Path
 
@@ -21,8 +22,11 @@ class R15DesignTests(unittest.TestCase):
         self.assertIn("does not choose an option", text)
         self.assertIn("The loader is not modified", text)
         self.assertNotIn("$", text)
-        for banned in ("unbreakable", "audited", "Navera", "navera"):
+        for banned in ("unbreakable", "audited"):
             self.assertNotIn(banned, text)
+        raw = os.environ.get("VANTIO_PARTNER_MARKERS", "")
+        for marker in (item.strip().lower() for item in raw.split(",") if item.strip()):
+            self.assertNotIn(marker, text.lower())
 
     def test_no_loader_edit_in_this_commit_tree(self) -> None:
         text = DOC.read_text(encoding="utf-8")

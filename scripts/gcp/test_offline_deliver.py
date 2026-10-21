@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -59,9 +60,10 @@ class OfflineDeliverTest(unittest.TestCase):
 
     def test_project_and_run_id_stay_on_the_lab(self) -> None:
         self.assertEqual(od.require_lab_project("vantio-lab-oct08"), "vantio-lab-oct08")
-        for project in ("vantio-lab-navera", "other-project", "vantio-lab-other"):
-            with self.assertRaises(SystemExit):
-                od.require_lab_project(project)
+        with mock.patch.dict(os.environ, {"VANTIO_PARTNER_MARKERS": "partner-x"}):
+            for project in ("vantio-lab-partner-x", "other-project", "vantio-lab-other"):
+                with self.assertRaises(SystemExit):
+                    od.require_lab_project(project)
         with self.assertRaises(SystemExit):
             od.object_names("../1")
         self.assertEqual(od.object_names("12"), ("12/seal.oci.tar", "12/contract.tar"))
@@ -130,7 +132,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("--shielded-secure-boot", argv)
         self.assertNotIn("--address=", joined)
         self.assertNotIn("debian-cloud", joined)
-        self.assertNotIn("navera", joined.lower())
+        self.assertFalse(lab.names_partner(joined))
         startup = od.offline_startup(120)
         self.assertNotIn("apt-get", startup)
         self.assertIn("shutdown -h +120", startup)
@@ -145,7 +147,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertIn("--boot-disk-size=30GB", brain_argv)
         self.assertIn("--no-address", brain_argv)
         self.assertNotIn("--address=", brain_joined)
-        self.assertNotIn("navera", brain_joined.lower())
+        self.assertFalse(lab.names_partner(brain_joined))
         refused = dict(brain_plan)
         refused["machine_type"] = "n2-standard-4"
         with self.assertRaises(SystemExit):
@@ -1025,7 +1027,7 @@ print("ok")
         self.assertEqual(text.count("secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN"), 1)
         self.assertNotIn("aws-actions", text)
         self.assertNotIn("ReleaseAddress", text)
-        self.assertNotIn("navera", text.lower())
+        self.assertFalse(lab.names_partner(text))
         self.assertNotIn("contents: write", text)
         lines = text.splitlines()
         blocks = []

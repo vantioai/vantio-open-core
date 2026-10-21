@@ -4,6 +4,8 @@ name: GCP lab verify removed
 # and no disk name still contains it. This does not delete anything.
 
 env:
+  # Deployment-partner name substrings, comma-separated. Set as a repo variable, never in code.
+  VANTIO_PARTNER_MARKERS: ${{ vars.VANTIO_PARTNER_MARKERS }}
   GCP_LAB_PROJECT: vantio-lab-oct08
   GCP_LAB_WIF_PROVIDER: projects/910881070503/locations/global/workloadIdentityPools/github-actions/providers/github
   GCP_LAB_SERVICE_ACCOUNT: vantio-lab-gha@vantio-lab-oct08.iam.gserviceaccount.com
