@@ -15,6 +15,7 @@ from pathlib import Path
 
 from vantio_install import bpf_pins, constants
 from vantio_install.errors import InstallError
+from vantio_install.observe_health import apply_enforce_overall, container_after_enforce, enforcement_view
 from vantio_install.agent_sdk import agent_sdk_residual_items
 from vantio_install.optics_cli import optics_cli_residual_items
 from vantio_install.paths import assert_safe_root
@@ -60,7 +61,8 @@ def _recompute_health(snapshot: dict, config: dict, limitations: list) -> str:
         components["optics_cli"] = "NOT_INSTALLED"
     else:
         components["optics_cli"] = "FAIL"
-    components["enforcement"] = "NOT_ENABLED" if str(config.get("enforcement")) == "NOT_ENABLED" else "FAIL"
+    view = enforcement_view(snapshot, config)
+    components["enforcement"] = view["component"]
     components["path_deny"] = "NOT_ENABLED" if str(config.get("path_deny", "disabled")) == "disabled" else "FAIL"
     components["otlp"] = "NOT_ENABLED" if str(config.get("otlp", "DISABLED")) == "DISABLED" else "FAIL"
     containers = [row for row in snapshot.get("containers") or [] if row.get("role") == "phantom_engine"]
@@ -75,6 +77,7 @@ def _recompute_health(snapshot: dict, config: dict, limitations: list) -> str:
         cmd = running[0].get("cmd") or []
         enforced = "--enforce" in cmd or snapshot.get("enforce_flag") is True or running[0].get("enforce") is True
         components["pe_container"] = "FAIL" if enforced else "PASS"
+    components["pe_container"] = container_after_enforce(components["pe_container"], snapshot, view)
     if "process" in probes:
         components["pe_loader_process"] = "UNKNOWN"
     elif "vantio-loader" in (snapshot.get("processes") or []):
@@ -117,8 +120,8 @@ def _recompute_health(snapshot: dict, config: dict, limitations: list) -> str:
     if any(value in {"NOT_INSTALLED", "NOT_TESTED"} for value in required):
         return "FAIL"
     if limitations:
-        return "PASS_WITH_LIMITATIONS"
-    return "PASS"
+        return apply_enforce_overall("PASS_WITH_LIMITATIONS", components)
+    return apply_enforce_overall("PASS", components)
 
 
 def _claim_hits(value: object, hits: list[str]) -> None:

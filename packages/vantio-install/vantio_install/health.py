@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from vantio_install import constants
+from vantio_install.observe_health import apply_enforce_overall, container_after_enforce, enforcement_view
 
 
 def component_template(status: str) -> dict[str, str]:
@@ -36,7 +37,8 @@ def derive(snapshot: dict, config: dict, *, limitations: list | None = None) -> 
         components["optics_cli"] = "FAIL"
 
     enforcement = str(config.get("enforcement", "NOT_ENABLED"))
-    components["enforcement"] = "NOT_ENABLED" if enforcement == "NOT_ENABLED" else "FAIL"
+    view = enforcement_view(snapshot, config)
+    components["enforcement"] = view["component"]
     path_deny = str(config.get("path_deny", "disabled"))
     components["path_deny"] = "NOT_ENABLED" if path_deny == "disabled" else "FAIL"
     otlp = str(config.get("otlp", "DISABLED"))
@@ -59,6 +61,7 @@ def derive(snapshot: dict, config: dict, *, limitations: list | None = None) -> 
         cmd = running[0].get("cmd") or []
         enforced = "--enforce" in cmd or snapshot.get("enforce_flag") is True or running[0].get("enforce") is True
         components["pe_container"] = "FAIL" if enforced else "PASS"
+    components["pe_container"] = container_after_enforce(components["pe_container"], snapshot, view)
 
     if "process" in probes:
         components["pe_loader_process"] = "UNKNOWN"
@@ -107,10 +110,15 @@ def derive(snapshot: dict, config: dict, *, limitations: list | None = None) -> 
         overall = "PASS"
         if limitations:
             overall = "PASS_WITH_LIMITATIONS"
+    overall = apply_enforce_overall(overall, components)
 
-    return {
-        "install_mode": config.get("install_mode", "observe-only"),
-        "enforcement": enforcement,
+    body = {
+        "install_mode": "enforce-enrolled" if view["requested"] else config.get("install_mode", "observe-only"),
+        "enforcement": "ENROLLED" if view["requested"] else enforcement,
         "components": components,
         "overall": overall,
+        "protection_state": view["protection_state"],
     }
+    if view["reason"]:
+        body["degraded_reason"] = view["reason"]
+    return body

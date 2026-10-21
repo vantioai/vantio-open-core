@@ -1,6 +1,6 @@
 # Install
 
-`vantio-install` and `vantio-verify` come from the sealed wheel in `QUICKSTART.md`. Both commands are on `PATH` before you use this page. The product bundle is already on the host. The installer reads that directory. It does not fetch it.
+`vantio-install` and `vantio-verify` come from the sealed wheel in `QUICKSTART.md`. Both commands are on `PATH` before you use this page. The product bundle is the sealed directory for that Linux server. `QUICKSTART.md` shows `vantio-install fetch` for a license-gated download. This page is the observe install after that directory is in place.
 
 `NETWORK-TRANSFER-ALLOWLIST.md` describes the temporary copy of the sealed Phantom Engine archive onto that host.
 

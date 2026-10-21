@@ -49,7 +49,7 @@ on:
         default: lab-bundle/enterprise-pe-2026-10-08
         type: string
       battery:
-        description: enterprise keeps the grant and revoke rows. reboot-check schedules the LSM reboot and confirms the boot id changed. descendant-b1 runs the moved-child deny and repeats it after that same reboot. self-service runs the public one-command installer. Phase names run one clean-host battery on the working seal.
+        description: enterprise keeps the grant and revoke rows. reboot-check schedules the LSM reboot and confirms the boot id changed. descendant-b1 runs the moved-child deny and repeats it after that same reboot. self-service runs the public one-command installer. self-service-enforce runs observe, host-prep, a workflow reboot, and enforce. Phase names run one clean-host battery on the working seal.
         required: false
         default: enterprise
         type: choice
@@ -58,6 +58,7 @@ on:
           - reboot-check
           - descendant-b1
           - self-service
+          - self-service-enforce
           - r15-container-exit
           - 2c-upgrade-rollback
           - 2d-crash-recovery
@@ -95,13 +96,15 @@ jobs:
           test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
           test "$GITHUB_REF" = "refs/heads/main"
           test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/w3-lab-auto-arm.yml@refs/heads/main"
-          if [ "${{ inputs.battery }}" = "self-service" ] && [ "${{ inputs.enterprise_rows }}" = "true" ]; then
-            echo "self-service does not run the enterprise rows" >&2
-            exit 1
-          fi
-          if [ "${{ inputs.battery }}" = "self-service" ] && [ "${{ inputs.redteam_brain }}" = "true" ]; then
-            echo "self-service does not run the red-team brain" >&2
-            exit 1
+          if [ "${{ inputs.battery }}" = "self-service" ] || [ "${{ inputs.battery }}" = "self-service-enforce" ]; then
+            if [ "${{ inputs.enterprise_rows }}" = "true" ]; then
+              echo "self-service does not run the enterprise rows" >&2
+              exit 1
+            fi
+            if [ "${{ inputs.redteam_brain }}" = "true" ]; then
+              echo "self-service does not run the red-team brain" >&2
+              exit 1
+            fi
           fi
 
       - name: Refuse static AWS keys
@@ -140,6 +143,7 @@ jobs:
             scripts/aws/lab-guests/record-check.sh
             scripts/aws/fetch_offline_debs.sh
             scripts/aws/lab-guests/self_service.py
+            scripts/aws/lab-guests/self_service_enforce.py
             scripts/lab/stage_lab_trust.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
@@ -211,7 +215,7 @@ jobs:
         run: vantio run python3 scripts/aws/w3_lab_steps.py prepare-bundle
 
       - name: Fetch offline packages
-        if: (inputs.enterprise_rows && steps.bundle.outputs.ready == 'true') || inputs.battery == 'self-service' || inputs.battery == '2g-distro'
+        if: (inputs.enterprise_rows && steps.bundle.outputs.ready == 'true') || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce' || inputs.battery == '2g-distro'
         run: |
           set -euo pipefail
           if [ "${{ inputs.battery }}" = "2g-distro" ]; then
@@ -237,6 +241,27 @@ jobs:
           test -f "$dest/self-service.tar"
           test -f "$dest/lab-artifact-trust.json"
           vantio run python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
+
+      - name: Stage the enforce installer and a workflow-minted test license
+        if: inputs.battery == 'self-service-enforce'
+        env:
+          PYTHONPATH: packages/vantio-install
+        run: |
+          set -euo pipefail
+          python3 -m pip install --require-hashes --disable-pip-version-check -r packages/vantio-install/requirements/dev-hashes.txt
+          dest="${{ runner.temp }}/self-service"
+          pinned="${{ runner.temp }}/pinned-artifacts"
+          mkdir -p "$dest" "$pinned"
+          cp scripts/aws/lab-guests/self_service_enforce.py "$dest/self_service_enforce.py"
+          cp -a packages/vantio-install/vantio_install "$dest/vantio_install"
+          summary="$(PYTHONPATH=packages/vantio-install python3 scripts/aws/lab-guests/self_service_enforce.py mint "$dest")"
+          python3 -c 'import json,sys; body=json.loads(sys.argv[1]); text=json.dumps(body); assert "vl1." not in text and "PRIVATE" not in text' "$summary"
+          vantio run python3 scripts/lab/stage_lab_trust.py fetch "$pinned"
+          vantio run python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
+          test -f "$dest/self-service.tar"
+          test -f "$dest/license.token"
+          test -f "$dest/lab-license-public.json"
+          python3 -c 'import pathlib,re,sys; root=pathlib.Path(sys.argv[1]); pat=re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----"); bad=[str(p) for p in root.rglob("*") if p.is_file() and p.suffix not in {".tar",".whl",".tgz"} and pat.search(p.read_bytes())]; assert not bad' "$dest"
 
       - name: Fetch the pinned local brain
         if: inputs.redteam_brain && inputs.enterprise_rows && steps.bundle.outputs.ready == 'true'
@@ -265,7 +290,7 @@ jobs:
           echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
 
       - name: Arm the guest marker
-        if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == false && inputs.battery != 'self-service'
+        if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == false && inputs.battery != 'self-service' && inputs.battery != 'self-service-enforce'
         env:
           INSTANCE_ID: ${{ inputs.instance_id }}
           SEAL: ${{ inputs.seal }}
@@ -289,6 +314,21 @@ jobs:
           W3_BATTERY: self-service
           EVIDENCE_PATH: w3-lab-arm.json
         run: vantio run python3 scripts/aws/w3_lab_steps.py arm-self-service
+
+      - name: Run the self-service enforce installer
+        if: success() && steps.cap.outputs.proceed == 'true' && inputs.battery == 'self-service-enforce'
+        env:
+          INSTANCE_ID: ${{ inputs.instance_id }}
+          SEAL: ${{ inputs.seal }}
+          PUBLIC_PIN: ${{ inputs.public_pin }}
+          W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+          W3_SELF_SERVICE_DIR: ${{ runner.temp }}/self-service
+          W3_ROWS_PATH: w3-lab-enterprise-rows.json
+          W3_OFFLINE_DEBS: ${{ runner.temp }}/offline-debs
+          W3_BATTERY: self-service-enforce
+          EVIDENCE_PATH: w3-lab-arm.json
+        run: vantio run python3 scripts/aws/w3_lab_steps.py arm-self-service-enforce
 
       - name: Run the Enterprise rows
         if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == true
@@ -324,7 +364,7 @@ jobs:
           if-no-files-found: error
 
       - name: Stage enterprise row evidence
-        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service')
+        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce')
         run: |
           set -euo pipefail
           mkdir -p row-evidence
@@ -339,7 +379,7 @@ jobs:
           done
 
       - name: Upload enterprise row evidence
-        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service')
+        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: w3-lab-enterprise-rows-${{ github.run_id }}

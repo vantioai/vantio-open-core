@@ -15,7 +15,13 @@ Run the commands from the host that will keep the node:
 - `vantio-install status` reads the saved transaction.
 - `vantio-install rollback` on a customer host is the dual-gated command in `docs/ROLLBACK.md`.
 - `vantio-install uninstall` on a customer host is the dual-gated command in `docs/UNINSTALL.md`.
-- `vantio-install verify-removal` checks whether that scope is actually gone, including the known pin names on `/sys/fs/bpf` for a Phantom Engine scope.
+- `vantio-install verify-removal` checks whether that scope is actually gone, including the known pin names on `/sys/fs/bpf` for a Phantom Engine scope. It also fails while the grub drop-in, `/etc/vantio/license`, or an enroll drop-in remains.
+- `vantio-install fetch` downloads a sealed bundle with a license token. `QUICKSTART.md` has the command.
+- `vantio-install host-prep --write-lsm --i-accept-reboot` records a boot entry when `bpf` is missing from the LSM list. It does not reboot.
+- `vantio-install apply --enforce-enrolled` starts enforcement after observe-only apply. It is off unless that flag is present.
+- `vantio-install enroll` and `vantio-install unenroll` place a systemd unit in `vantio-enrolled.slice`.
+
+The customer path is Ubuntu 24.04 LTS x86_64. uid 0 and processes outside the enrolled slice stay observe-only. Tamper resistance is not claimed. `proof_state` stays `NOT_PROVED` until the `self-service-enforce` lab passes on the canonical seal.
 
 `vantio-boot-hold` is the early-boot hold for enrolled workloads. It is on unless a root admin opts out. Read `docs/BOOT-HOLD.md`. The command prints the same JSON envelope, and the reboot exposure row stays `NOT_PROVED` until a later host reproof.
 
