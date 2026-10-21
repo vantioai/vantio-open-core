@@ -37,7 +37,8 @@ permissions:
 jobs:
   validate:
     name: Validate release coordinates
-    runs-on: ubuntu-latest
+    # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     steps:
       - name: Checkout source commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -50,6 +51,42 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
       - name: Gate sealed request
         env:
           INPUT_PACKAGE: ${{ inputs.package }}
@@ -60,7 +97,7 @@ jobs:
         run: |
           set -eu
           test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
-          node scripts/release/promote_npm.mjs --gate \
+          vantio run node scripts/release/promote_npm.mjs --gate \
             --package "$INPUT_PACKAGE" \
             --version "$INPUT_VERSION" \
             --source-commit "$INPUT_COMMIT" \
@@ -68,35 +105,50 @@ jobs:
             --expected-sha256 "$INPUT_SHA256" \
             --repo-root "$GITHUB_WORKSPACE"
 
-      - name: Optics observe (Lab-only)
+      - name: Collect Optics observation log
         if: always()
-        continue-on-error: true
-        timeout-minutes: 10
         run: |
-          set +e
-          npm install -g @vantio/cli
-          pip install vantio-agent-sdk
-          vantio run node -e 'process.exit(0)'
-          vantio run python -c 'raise SystemExit(0)'
-          mkdir -p optics-observe-log
-          if [ -d "$HOME/.vantio/runs" ]; then
-            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          set -euo pipefail
+          if [ "${{ steps.optics-install.outcome }}" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
           fi
-          exit 0
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+            exit 1
+          fi
 
-      - name: Upload Optics observation log (Lab-only)
+      - name: Upload Optics observation log
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-validate
           path: optics-observe-log
-          if-no-files-found: warn
+          if-no-files-found: error
 
   record-approval:
     name: Record founder approval
     needs: validate
-    runs-on: ubuntu-latest
+    # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: npm-publish
     permissions:
       contents: read
@@ -113,6 +165,42 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
       - name: Re-check coordinates after approval
         env:
           INPUT_PACKAGE: ${{ inputs.package }}
@@ -123,7 +211,7 @@ jobs:
         run: |
           set -eu
           test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
-          node scripts/release/promote_npm.mjs --gate \
+          vantio run node scripts/release/promote_npm.mjs --gate \
             --package "$INPUT_PACKAGE" \
             --version "$INPUT_VERSION" \
             --source-commit "$INPUT_COMMIT" \
@@ -140,7 +228,7 @@ jobs:
           RELEASE_ACTOR: ${{ github.actor }}
           RELEASE_ENVIRONMENT: npm-publish
         run: |
-          python3 - <<'PY'
+          vantio run python3 - <<'PY'
           import json, os
           from pathlib import Path
           Path("release-approval.json").write_text(json.dumps({
@@ -179,27 +267,41 @@ jobs:
             echo "registry_write=not_performed_by_this_workflow"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Optics observe (Lab-only)
+      - name: Collect Optics observation log
         if: always()
-        continue-on-error: true
-        timeout-minutes: 10
         run: |
-          set +e
-          npm install -g @vantio/cli
-          pip install vantio-agent-sdk
-          vantio run node -e 'process.exit(0)'
-          vantio run python -c 'raise SystemExit(0)'
-          mkdir -p optics-observe-log
-          if [ -d "$HOME/.vantio/runs" ]; then
-            cp -a "$HOME/.vantio/runs/." optics-observe-log/
+          set -euo pipefail
+          if [ "${{ steps.optics-install.outcome }}" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
           fi
-          exit 0
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+            exit 1
+          fi
 
-      - name: Upload Optics observation log (Lab-only)
+      - name: Upload Optics observation log
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optics-observe-record-approval
           path: optics-observe-log
-          if-no-files-found: warn
+          if-no-files-found: error

@@ -1029,8 +1029,13 @@ print("ok")
             if "actions/upload-artifact@" in line:
                 blocks.append("\n".join(lines[index : index + 12]))
         self.assertGreaterEqual(len(blocks), 3)
-        for block in blocks:
+        optics_blocks = [block for block in blocks if "optics-observe" in block]
+        evidence_blocks = [block for block in blocks if block not in optics_blocks]
+        self.assertGreaterEqual(len(evidence_blocks), 3)
+        self.assertGreaterEqual(len(optics_blocks), 3)
+        for block in evidence_blocks:
             self.assertIn("gcp-lab-evidence", block)
+        for block in blocks:
             self.assertNotIn("seal.oci.tar", block)
             self.assertNotIn("contract.tar", block)
             self.assertNotIn(".deb", block)
