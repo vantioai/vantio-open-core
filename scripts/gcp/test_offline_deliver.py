@@ -471,6 +471,98 @@ class OfflineDeliverTest(unittest.TestCase):
             od.write_evidence = original_write
         self.assertEqual(calls, [("12/seal.oci.tar", "12/contract.tar")])
 
+    def test_teardown_runs_with_t5_disabled(self) -> None:
+        deliver = (ROOT / "scripts/gcp/offline_deliver_1.py").read_text(encoding="utf-8")
+        preamble = deliver.split("def ", 1)[0]
+        self.assertNotIn("import t5_battery", preamble)
+        start = deliver.index("def _load_t5_battery")
+        chunk = deliver[start:deliver.index("\ndef ", start + 1)]
+        self.assertLess(chunk.index("t5_requested"), chunk.index("import t5_battery"))
+        teardown = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        body_start = teardown.index("def teardown_if_present")
+        body_end = teardown.index("def _loader_libs")
+        self.assertNotIn("import t5_battery", teardown[body_start:body_end])
+        probe = r"""
+import sys
+from pathlib import Path
+
+class _BlockT5:
+    def find_spec(self, fullname, path, target=None):
+        if fullname == "t5_battery" or fullname.startswith("t5_battery."):
+            raise ModuleNotFoundError("No module named 't5_battery'", name=fullname)
+        return None
+
+sys.meta_path.insert(0, _BlockT5())
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "scripts" / "gcp"))
+import offline_deliver as od
+
+if "t5_battery" in sys.modules:
+    raise SystemExit("t5 loaded at import")
+
+calls = []
+
+def boom(_project):
+    raise SystemExit("instances")
+
+def record(names, *, missing_ok):
+    calls.append(tuple(names))
+    if missing_ok is not True:
+        raise SystemExit("missing_ok")
+
+od._list_instances = boom
+od.delete_objects = record
+od._creation_epoch = lambda _project, _name: None
+od.write_evidence = lambda *_args, **_kwargs: None
+try:
+    od.teardown_if_present(
+        {
+            "GCP_LAB_EXECUTE": "1",
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "GITHUB_RUN_ID": "12",
+            "EVIDENCE_DIR": sys.argv[2],
+            "T5_EGRESS": "false",
+            "REDTEAM_BRAIN": "false",
+        }
+    )
+except SystemExit as exc:
+    if exc.code != "instances":
+        raise SystemExit(f"unexpected {exc.code!r}")
+else:
+    raise SystemExit("teardown returned")
+if calls != [("12/seal.oci.tar", "12/contract.tar")]:
+    raise SystemExit(f"calls {calls!r}")
+if "t5_battery" in sys.modules:
+    raise SystemExit("t5 loaded during teardown")
+try:
+    od._load_t5_battery({"T5_EGRESS": "false"})
+except SystemExit as exc:
+    if exc.code != "t5_egress":
+        raise SystemExit(f"disabled load {exc.code!r}")
+else:
+    raise SystemExit("disabled load returned")
+if "t5_battery" in sys.modules:
+    raise SystemExit("t5 loaded while disabled")
+try:
+    od._load_t5_battery({"T5_EGRESS": "true"})
+except ModuleNotFoundError as exc:
+    if exc.name != "t5_battery":
+        raise SystemExit(f"enabled load {exc!r}")
+else:
+    raise SystemExit("enabled load returned")
+print("ok")
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = subprocess.run(
+                [sys.executable, "-c", probe, str(ROOT), tmp],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        self.assertEqual(completed.stdout.strip(), "ok")
+
     def test_a_run_id_containing_404_is_not_a_missing_object(self) -> None:
         quoted = "ERROR: 403 Permission denied gs://vantio-lab-oct08-handoff/14042/seal.oci.tar"
         self.assertFalse(od._missing_object(quoted))

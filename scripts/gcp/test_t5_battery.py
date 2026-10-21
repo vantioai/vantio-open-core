@@ -8,8 +8,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "gcp"))
+sys.path.insert(0, str(ROOT / "scripts" / "clean-host" / "t5"))
 
 import offline_deliver as od  # noqa: E402
+import t5_battery  # noqa: E402
 import t5_lab_plan  # noqa: E402
 
 
@@ -43,13 +45,13 @@ class GcpT5PlanTests(unittest.TestCase):
         env = {
             "T5_EGRESS": "true",
             "GCP_LAB_PROJECT": "vantio-lab-oct08",
-            "EXPECTED_SEAL": od.t5_battery.LANE_SEAL,
+            "EXPECTED_SEAL": t5_battery.LANE_SEAL,
             "RUN_BATTERIES": "false",
             "SELF_SERVICE": "false",
         }
-        self.assertEqual(od.assert_t5_dispatch(env), od.t5_battery.LANE_SEAL)
+        self.assertEqual(od.assert_t5_dispatch(env), t5_battery.LANE_SEAL)
         public = dict(env)
-        public["EXPECTED_SEAL"] = od.t5_battery.PUBLIC_PIN
+        public["EXPECTED_SEAL"] = t5_battery.PUBLIC_PIN
         with self.assertRaises(SystemExit):
             od.assert_t5_dispatch(public)
         mixed = dict(env)

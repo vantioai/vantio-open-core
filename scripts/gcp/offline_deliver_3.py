@@ -1338,7 +1338,8 @@ def run_t5_egress(env: Mapping[str, str]) -> int:
     repo = Path(env.get("T5_REPO") or Path(__file__).resolve().parents[2])
     loader = Path(env.get("T5_LOADER", ""))
     obj = Path(env.get("T5_OBJECT", ""))
-    script = Path(env.get("T5_GUEST_SCRIPT") or t5_battery.GUEST_SCRIPT)
+    battery = _load_t5_battery(env)
+    script = Path(env.get("T5_GUEST_SCRIPT") or battery.GUEST_SCRIPT)
     if not loader.is_file() or not obj.is_file() or not script.is_file():
         raise SystemExit("t5_files")
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "t5-guest-payload"
@@ -1346,7 +1347,7 @@ def run_t5_egress(env: Mapping[str, str]) -> int:
         shutil.rmtree(payload_dir)
     payload_dir.mkdir(parents=True)
     try:
-        t5_battery.pack_tree(repo, payload_dir / "t5-egress.tar")
+        battery.pack_tree(repo, payload_dir / "t5-egress.tar")
         shutil.copy2(loader, payload_dir / "t5_load")
         shutil.copy2(obj, payload_dir / "t5_egress.bpf.o")
         shutil.copy2(script, payload_dir / "t5-egress.sh")
