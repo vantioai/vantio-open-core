@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the custody-py-3.1.1 release command.
+"""Print the custody-py-3.1.2 release command.
 
 This script checks the sealed wheel and sdist, then prints the operator
 command. It does not create a git tag, and it does not create a GitHub release.
@@ -13,11 +13,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TAG = "custody-py-3.1.1"
-WHEEL = "vantio_agent_sdk-3.1.1-py3-none-any.whl"
-SDIST = "vantio_agent_sdk-3.1.1.tar.gz"
+TAG = "custody-py-3.1.2"
+WHEEL = "vantio_agent_sdk-3.1.2-py3-none-any.whl"
+SDIST = "vantio_agent_sdk-3.1.2.tar.gz"
 PINS = ROOT / "docs/programs/release-engineering/SEALED-RELEASE-PINS.json"
-REFUSED = "REFUSED: this script does not create custody-py-3.1.1"
+REFUSED = "REFUSED: this script does not create custody-py-3.1.2"
 
 
 def fail(message: str, code: int = 1) -> None:
@@ -31,7 +31,7 @@ def main() -> None:
     pins = json.loads(PINS.read_text(encoding="utf-8"))
     row = pins["python"]
     if row.get("custody_tag") != TAG or row.get("custody_tag_created") is not False:
-        fail("REFUSED: custody tag pin is not an uncreated 3.1.1 record")
+        fail("REFUSED: custody tag pin is not an uncreated 3.1.2 record")
     if row.get("state") != "SEALED_BYTES_RECORDED_NOT_PUBLISHED":
         fail("REFUSED: python pin state is not sealed bytes recorded and unpublished")
     expected = {
@@ -46,13 +46,13 @@ def main() -> None:
     sys.stdout.write("TAG_CREATED false\n")
     sys.stdout.write("git tag is not created by this script\n")
     sys.stdout.write(
-        "gh release create custody-py-3.1.1 "
+        "gh release create custody-py-3.1.2 "
         "--repo vantioai/vantio-open-core "
-        "--title custody-py-3.1.1 "
-        "--notes 'Sealed vantio-agent-sdk 3.1.1 wheel and sdist. "
+        "--title custody-py-3.1.2 "
+        "--notes 'Sealed vantio-agent-sdk 3.1.2 wheel and sdist. "
         "The tag is a selector. SHA-256 in scripts/release/stage_sealed_pypi.py is the integrity gate.' "
-        "artifacts/sealed/vantio_agent_sdk-3.1.1-py3-none-any.whl "
-        "artifacts/sealed/vantio_agent_sdk-3.1.1.tar.gz\n"
+        "artifacts/sealed/vantio_agent_sdk-3.1.2-py3-none-any.whl "
+        "artifacts/sealed/vantio_agent_sdk-3.1.2.tar.gz\n"
     )
 
 

@@ -1,6 +1,6 @@
 name: Publish to PyPI
 
-# Governed production path for vantio-agent-sdk 3.1.1 Trusted Publishing.
+# Governed production path for vantio-agent-sdk 3.1.2 Trusted Publishing.
 #
 # Trigger: workflow_dispatch only. Dispatch inputs are absent. Package name,
 # version, filenames, byte lengths, SHA-256, and the custody tag are pinned
@@ -13,10 +13,10 @@ name: Publish to PyPI
 # The id-token write permission is required for that exchange. It is not, by itself, the
 # upload client. This job sets neither user nor password.
 #
-# Custody: gh release download of tag custody-py-3.1.1 in
+# Custody: gh release download of tag custody-py-3.1.2 in
 # vantioai/vantio-open-core, via scripts/release/fetch_custody_release.py.
 # This workflow does not create that tag and does not upload the release assets.
-# scripts/release/prepare_custody_py_3_1_1.py prints the operator command and refuses to run it.
+# scripts/release/prepare_custody_py_3_1_2.py prints the operator command and refuses to run it.
 # That tag is a GitHub Release selector. Release assets can be replaced and
 # the tag can be moved by a principal with contents write. This workflow does
 # not treat the tag as immutable. The pinned SHA-256 and byte length are the
@@ -30,7 +30,7 @@ name: Publish to PyPI
 # The version lookup runs before that directory is created. The upload action
 # is the next step after staging.
 #
-# skip-existing is false. PyPI 3.1.1 already existing stops the job before
+# skip-existing is false. PyPI 3.1.2 already existing stops the job before
 # the upload action. The action is also configured with skip-existing false,
 # so a race that publishes first still fails the upload.
 #
@@ -55,12 +55,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: pypi-vantio-agent-sdk-3.1.1
+  group: pypi-vantio-agent-sdk-3.1.2
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish sealed vantio-agent-sdk 3.1.1
+    name: Publish sealed vantio-agent-sdk 3.1.2
     # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment:
@@ -134,7 +134,7 @@ jobs:
             exit 1
           fi
 
-      - name: Stop when 3.1.1 is already on PyPI
+      - name: Stop when 3.1.2 is already on PyPI
         env:
           VANTIO_STAGE_ENFORCE_ACTIONS_CONTEXT: "1"
         run: |
@@ -147,22 +147,22 @@ jobs:
         run: |
           set -euo pipefail
           vantio run python3 scripts/release/fetch_custody_release.py \
-            --tag custody-py-3.1.1 \
-            --version 3.1.1 \
-            --wheel-name vantio_agent_sdk-3.1.1-py3-none-any.whl \
-            --sdist-name vantio_agent_sdk-3.1.1.tar.gz \
+            --tag custody-py-3.1.2 \
+            --version 3.1.2 \
+            --wheel-name vantio_agent_sdk-3.1.2-py3-none-any.whl \
+            --sdist-name vantio_agent_sdk-3.1.2.tar.gz \
             --dest "$RUNNER_TEMP/sealed-custody"
 
       - name: Verify sealed bytes and stage the upload directory
         env:
           SEALED_PACKAGE: vantio-agent-sdk
-          SEALED_VERSION: "3.1.1"
-          SEALED_WHEEL_NAME: vantio_agent_sdk-3.1.1-py3-none-any.whl
-          SEALED_SDIST_NAME: vantio_agent_sdk-3.1.1.tar.gz
-          SEALED_WHEEL_SHA256: 6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8
-          SEALED_SDIST_SHA256: 8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799
-          SEALED_WHEEL_BYTES: "33997"
-          SEALED_SDIST_BYTES: "57039"
+          SEALED_VERSION: "3.1.2"
+          SEALED_WHEEL_NAME: vantio_agent_sdk-3.1.2-py3-none-any.whl
+          SEALED_SDIST_NAME: vantio_agent_sdk-3.1.2.tar.gz
+          SEALED_WHEEL_SHA256: 872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68
+          SEALED_SDIST_SHA256: 5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb
+          SEALED_WHEEL_BYTES: "35551"
+          SEALED_SDIST_BYTES: "59493"
           VANTIO_STAGE_ENFORCE_ACTIONS_CONTEXT: "1"
         run: |
           set -euo pipefail
@@ -183,13 +183,13 @@ jobs:
           set -euo pipefail
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           package=vantio-agent-sdk
-          version=3.1.1
-          wheel=vantio_agent_sdk-3.1.1-py3-none-any.whl
-          wheel_bytes=33997
-          wheel_sha256=6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8
-          sdist=vantio_agent_sdk-3.1.1.tar.gz
-          sdist_bytes=57039
-          sdist_sha256=8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799
+          version=3.1.2
+          wheel=vantio_agent_sdk-3.1.2-py3-none-any.whl
+          wheel_bytes=35551
+          wheel_sha256=872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68
+          sdist=vantio_agent_sdk-3.1.2.tar.gz
+          sdist_bytes=59493
+          sdist_sha256=5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb
           environment=pypi
           upload_client=pypa/gh-action-pypi-publish@release/v1
           EOF

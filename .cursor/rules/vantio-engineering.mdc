@@ -31,7 +31,7 @@ This repo is `vantio-open-core`. Read the file named in a rule before changing t
 ## Sealed releases
 
 - `scripts/release/promote_npm.mjs` never packs or rebuilds. The tarball SHA-256 must equal `artifact_sha256` or the process exits `ARTIFACT_HASH_MISMATCH`. `.github/workflows/npm-publish.yml` is `workflow_dispatch` only and does not publish.
-- `.github/workflows/pypi-publish.yml` and `scripts/release/stage_sealed_pypi.py` do not build. They check the pinned SHA-256 and byte length for `vantio-agent-sdk` 3.1.1. `scripts/release/prepare_custody_py_3_1_1.py` refuses to create the custody tag. A tag is not the integrity check.
+- `.github/workflows/pypi-publish.yml` and `scripts/release/stage_sealed_pypi.py` do not build. They check the pinned SHA-256 and byte length for `vantio-agent-sdk` 3.1.2. `scripts/release/prepare_custody_py_3_1_2.py` refuses to create the custody tag. A tag is not the integrity check.
 - Do not rebuild, retag, or bypass a mismatch. Do not pass `--allow-local-approval` to skip the release-gate run.
 
 ## Lab evidence

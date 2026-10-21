@@ -176,10 +176,10 @@ test("workflow files do not publish on an ordinary push", () => {
   assert.doesNotMatch(pypi, /twine|password:|PYPI_TOKEN|TWINE_PASSWORD|inputs\./);
   assert.match(pypi, /id-token: write/);
   assert.match(pypi, /pypa\/gh-action-pypi-publish@release\/v1/);
-  assert.match(pypi, /6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8/);
-  assert.match(pypi, /8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799/);
-  assert.match(pypi, /33997/);
-  assert.match(pypi, /57039/);
+  assert.match(pypi, /872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68/);
+  assert.match(pypi, /5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb/);
+  assert.match(pypi, /35551/);
+  assert.match(pypi, /59493/);
   assert.match(mcp, /VERSION_ALREADY_EXISTS/);
   assert.match(mcp, /environment: mcp-registry-publish/);
   assert.doesNotMatch(mcp, /expected on re-runs/);
