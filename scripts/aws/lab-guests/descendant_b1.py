@@ -592,21 +592,27 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
 SCOPED_NEEDLE = "SCOPED (drop enrolled)"
 OPEN_PIN = "Path DENY pinned: kprobe_open_deny"
 OPENAT_PIN = "Path DENY pinned: kprobe_openat_deny"
+CGROUP_PIN_LINE = "cgroup_skb_egress_enforce"
 BANNER_STATUS = "not_checked"
+
+
+def _cgroup_pin_logged(banner: str) -> bool:
+    """The pin line is exact. A failure line that contains the name does not count."""
+    return any(line.strip() == CGROUP_PIN_LINE for line in banner.splitlines())
 
 
 def scoped_start_decision(banner: str, running: bool) -> str:
     """How far the enforce loader got.
 
-    The scoped line is printed after the open and openat pins. On a slow
-    kernel those later attaches can still be running when a 30 second wait
-    ends. The deny cases can start once both open pins are logged and the
-    process is up. A missing pin is still a stop.
+    Open and openat pin lines print before cgroup_skb_egress_enforce is
+    loaded. Those lines alone are not a start. The re-arm waits until stderr
+    contains SCOPED (drop enrolled) and a line that is exactly
+    cgroup_skb_egress_enforce.
     """
-    if SCOPED_NEEDLE in banner:
+    if SCOPED_NEEDLE in banner and _cgroup_pin_logged(banner):
         return "scoped"
-    if running and OPEN_PIN in banner and OPENAT_PIN in banner:
-        return "open_pins_before_scoped_line"
+    if running and (SCOPED_NEEDLE in banner or (OPEN_PIN in banner and OPENAT_PIN in banner)):
+        return "waiting_for_cgroup_pin"
     return "missing"
 
 
@@ -636,14 +642,13 @@ def require_scoped_start() -> None:
         if decision == "scoped":
             BANNER_STATUS = "scoped"
             break
-        if decision == "open_pins_before_scoped_line":
-            BANNER_STATUS = decision
-            return
         time.sleep(2)
     else:
         BANNER_STATUS = "missing"
         tail = " ".join(banner.split())[-800:]
-        raise SystemExit(f"loader banner missing: {SCOPED_NEEDLE} tail={tail}")
+        raise SystemExit(
+            f"loader banner missing: {SCOPED_NEEDLE} and {CGROUP_PIN_LINE} tail={tail}"
+        )
     for _ in range(15):
         for item in events():
             if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":

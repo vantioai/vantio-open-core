@@ -565,7 +565,10 @@ def prepare_enforce(*, time_revoke: bool = False) -> tuple[PeHostAdapter, str]:
     banner = _wait_scoped_banner()
     if not _banner_ready(banner):
         tail = " ".join(banner.split())[-800:]
-        raise SystemExit(f"loader banner missing: SCOPED (drop enrolled) tail={tail}")
+        raise SystemExit(
+            "loader banner missing: SCOPED (drop enrolled) and cgroup_skb_egress_enforce"
+            f" tail={tail}"
+        )
     # Enroll the lab cgroup and clear a mode-0 stand-in before any probe.
     # The 2D battery asserts the anchor is non-zero before its first open.
     anchor_before_first_open()
@@ -756,19 +759,13 @@ def deny_event_for(pid: int) -> dict | None:
 
 
 def _banner_ready(text: str) -> bool:
-    """Path deny has attached. Map load alone is earlier and is not a deny.
+    """The cgroup program is pinned. Open pins print before that load.
 
-    The plain banner says "enforcing" and does not repeat the verbose SCOPED
-    line. The pin lines are on stderr as soon as open and openat attach.
+    stderr must contain SCOPED (drop enrolled) and a line that is exactly
+    cgroup_skb_egress_enforce. The open and openat pin lines are earlier
+    and are not enough.
     """
-    pins = (
-        "Path DENY pinned: kprobe_open_deny" in text
-        and "Path DENY pinned: kprobe_openat_deny" in text
-    )
-    scoped = "SCOPED (drop enrolled)" in text and (
-        "Path DENY pinned" in text or "Path DENY attached" in text
-    )
-    return pins or scoped
+    return grade.enforce_banner_ready(text)
 
 
 def _wait_scoped_banner(timeout: float = 120) -> str:
@@ -1584,7 +1581,9 @@ def engine_programs_listed() -> dict:
     if proc.returncode != 0:
         listed = None
     else:
-        listed = any(name == "cgroup_skb_egress_enforce" or name.startswith("cgroup_skb_egre") for name in names)
+        # bpftool truncates the kernel name to cgroup_skb_egre. That prefix
+        # is this program. A missing full 26-character name is not absence.
+        listed = grade.cgroup_skb_listed(names)
     return {"bpftool_rc": proc.returncode, "names": names, "program_listed": listed}
 
 
@@ -1614,6 +1613,7 @@ def run_r15() -> dict:
     removed = rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
     cgroup_present = Path(str(rows.ANCHOR)).is_dir()
     after = child_open(True)
+    # bpftool after docker stop. The shell uninstall has not run.
     listing = engine_programs_listed()
     pid = after.get("pid") if isinstance(after.get("pid"), int) else 0
     graded = grade.grade_container_exit(

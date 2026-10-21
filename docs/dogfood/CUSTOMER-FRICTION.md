@@ -92,3 +92,11 @@ Fix belongs in the docs. The install still succeeded with the documented command
 What happened: `vantio run python` exits 1 when `python` is missing. A job that should stay green has to set `continue-on-error` on that step. The product pages do not mention GitHub Actions.
 
 Fix belongs in the docs. The exit code is the wrapper reporting that it could not start the program.
+
+### 13. The observe step was not watching the commands the job ran
+
+What happened: npm, PyPI, MCP registry, hygiene, and the lab workflows either ran a no-op `vantio run node -e 'process.exit(0)'` or did not prefix the real command. `continue-on-error` kept a missing CLI from failing the job.
+
+The workflows now prefix the real `node` and `python3` commands with `vantio run`. The install step exits 1 and prints `vantio CLI install failed` when `npm` or `python3` is missing, when `npm install -g` fails, or when `import vantio` fails. That step does not set `continue-on-error`.
+
+A Python process still writes `~/.vantio/runs` only after an in-scope call. A `uses:` step, including the PyPI trusted publisher and the cloud auth actions, is not a `vantio run` command. `vantio run` loads the Node interceptor for `node`, `npx`, `tsx`, and `ts-node` only.

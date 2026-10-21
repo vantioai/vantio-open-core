@@ -242,12 +242,6 @@
     },
     {
       "digest_pinned": true,
-      "file": ".github/workflows/founder-approval-guard.yml",
-      "pin_kind": "digest",
-      "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
-    },
-    {
-      "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-collect.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
@@ -263,6 +257,18 @@
       "file": ".github/workflows/gcp-lab-collect.yml",
       "pin_kind": "digest",
       "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -292,6 +298,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-cost-gate.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-cost-gate.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -304,6 +322,12 @@
       "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-provision.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
       "uses": "google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10"
     },
     {
@@ -311,6 +335,12 @@
       "file": ".github/workflows/gcp-lab-provision.yml",
       "pin_kind": "digest",
       "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -346,6 +376,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-provision.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -370,6 +412,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-provision.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-provision.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -394,6 +448,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/gcp-lab-sweeper.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-sweeper.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -413,6 +479,18 @@
       "file": ".github/workflows/gcp-lab-teardown.yml",
       "pin_kind": "digest",
       "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -437,6 +515,18 @@
       "file": ".github/workflows/gcp-lab-verify-removed.yml",
       "pin_kind": "digest",
       "uses": "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/gcp-lab-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -449,6 +539,12 @@
       "file": ".github/workflows/mcp-registry-publish.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/mcp-registry-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
@@ -503,6 +599,12 @@
       "file": ".github/workflows/pypi-publish.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/pypi-publish.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
     },
     {
       "digest_pinned": true,
@@ -532,6 +634,12 @@
       "digest_pinned": true,
       "file": ".github/workflows/t0-own-stack-hygiene.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/t0-own-stack-hygiene.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -550,7 +658,19 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-auto-arm.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-arm.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -586,6 +706,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-auto-collect.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-collect.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -599,6 +731,18 @@
       "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
       "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-cost-gate.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -617,6 +761,18 @@
       "file": ".github/workflows/w3-lab-auto-eip-release.yml",
       "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-eip-release.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -629,6 +785,18 @@
       "file": ".github/workflows/w3-lab-auto-long-soak.yml",
       "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -658,6 +826,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-auto-long-soak.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-long-soak.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -682,6 +862,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-auto-provision.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-provision.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -695,6 +887,18 @@
       "file": ".github/workflows/w3-lab-auto-sweeper.yml",
       "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-sweeper.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -718,6 +922,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-auto-teardown.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-teardown.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -736,6 +952,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-auto-verify-removed.yml",
+      "pin_kind": "digest",
       "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
@@ -748,6 +976,18 @@
       "digest_pinned": true,
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
       "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
       "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4"
     },
     {
@@ -755,6 +995,18 @@
       "file": ".github/workflows/w3-lab-teardown-verify.yml",
       "pin_kind": "digest",
       "uses": "aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4"
+    },
+    {
+      "digest_pinned": true,
+      "file": ".github/workflows/w3-lab-teardown-verify.yml",
+      "pin_kind": "digest",
+      "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4"
     },
     {
       "digest_pinned": true,
@@ -860,7 +1112,7 @@
       "version": "0.0.0-unstable-pre-1.0"
     }
   ],
-  "workflow_count": 25,
+  "workflow_count": 24,
   "workflow_triggers_push": {
     "ci.yml": true,
     "enterprise-slsa-provenance.yml": true,

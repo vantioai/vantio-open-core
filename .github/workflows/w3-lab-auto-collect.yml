@@ -13,6 +13,7 @@ name: W3 lab auto collect
 on:
   schedule:
     - cron: "*/15 * * * *"
+
   workflow_dispatch:
     inputs:
       instance_id:
@@ -32,7 +33,8 @@ concurrency:
 jobs:
   collect:
     name: Collect one owned lab
-    runs-on: ubuntu-latest
+    # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: w3-lab-auto
     timeout-minutes: 20
     steps:
@@ -79,13 +81,54 @@ jobs:
           use-existing-credentials: false
           output-credentials: false
 
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install Optics observe CLI
+        id: optics-install
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          prefix="${RUNNER_TEMP}/vantio-npm"
+          mkdir -p "$prefix"
+          if ! command -v npm >/dev/null 2>&1; then
+            echo "vantio CLI install failed: npm is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "vantio CLI install failed: python3 is not on PATH. Optics cannot observe this job." >&2
+            exit 1
+          fi
+          if ! npm install -g --prefix "$prefix" @vantio/cli; then
+            echo "vantio CLI install failed: npm install -g --prefix ${prefix} @vantio/cli" >&2
+            exit 1
+          fi
+          if ! "$prefix/bin/vantio" --version >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not runnable at ${prefix}/bin/vantio." >&2
+            exit 1
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          if ! python3 -m pip install --disable-pip-version-check --user vantio-agent-sdk; then
+            echo "vantio CLI install: pip --user failed. Retrying with --break-system-packages." >&2
+            if ! python3 -m pip install --disable-pip-version-check --user --break-system-packages vantio-agent-sdk; then
+              echo "vantio CLI install failed: python3 -m pip install --user vantio-agent-sdk" >&2
+              exit 1
+            fi
+          fi
+          if ! python3 -c 'import vantio'; then
+            echo "vantio CLI install failed: python3 cannot import vantio after pip install vantio-agent-sdk." >&2
+            exit 1
+          fi
+
       - name: Read the runner address when SSH is enabled
         id: runner
         run: |
           set -euo pipefail
-          enabled=$(python3 -c 'import json; print("true" if json.load(open("scripts/aws/lab_iam_capabilities.json")).get("ssh_instance_connect") is True else "false")')
+          enabled=$(vantio run python3 -c 'import json; print("true" if json.load(open("scripts/aws/lab_iam_capabilities.json")).get("ssh_instance_connect") is True else "false")')
           if [ "$enabled" = "true" ]; then
-            ip=$(curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+            ip=$(vantio run curl -4 -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
             echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
           else
             echo "cidr=" >> "$GITHUB_OUTPUT"
@@ -100,16 +143,16 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${INSTANCE_ID}" ]; then
-            python3 scripts/aws/w3_lab_steps.py collect
+            vantio run python3 scripts/aws/w3_lab_steps.py collect
           else
-            python3 scripts/aws/w3_lab_steps.py collect-due
+            vantio run python3 scripts/aws/w3_lab_steps.py collect-due
           fi
 
       - name: Close the runner SSH rule
         if: always() && steps.assume.outcome == 'success'
         env:
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
-        run: python3 scripts/aws/w3_lab_steps.py close-ssh
+        run: vantio run python3 scripts/aws/w3_lab_steps.py close-ssh
 
       - name: Upload collect evidence
         if: always()
@@ -121,3 +164,41 @@ jobs:
             w3-lab-collect.json.sha256
             w3-lab-console-*.txt
           if-no-files-found: error
+
+      - name: Collect Optics observation log
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.optics-install.outcome }}" != "success" ]; then
+            echo "vantio CLI install failed: Optics observe CLI was not installed, so this job cannot record an observation." >&2
+            exit 1
+          fi
+          if ! command -v vantio >/dev/null 2>&1; then
+            echo "vantio CLI install failed: vantio is not on PATH while collecting Optics logs." >&2
+            exit 1
+          fi
+          mkdir -p optics-observe-log
+          if [ -d "${HOME}/.vantio/runs" ]; then
+            cp -a "${HOME}/.vantio/runs/." optics-observe-log/
+          fi
+          found=0
+          shopt -s nullglob
+          for run_file in optics-observe-log/*; do
+            if [ -e "$run_file" ]; then
+              found=1
+              break
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "Optics wrote no run file under ${HOME}/.vantio/runs." >&2
+            echo "A Node process wrapped with vantio run writes a file when that process exits." >&2
+            echo "A Python process writes a file only after an in-scope call. Registry, cloud, and GitHub calls are outside that set." >&2
+          fi
+
+      - name: Upload Optics observation log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: optics-observe-w3-lab-auto-collect-collect
+          path: optics-observe-log
+          if-no-files-found: warn

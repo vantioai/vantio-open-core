@@ -63,15 +63,51 @@ class WorkflowWiringTests(unittest.TestCase):
         )
         hygiene = yaml.safe_load((ROOT / ".github/workflows/t0-own-stack-hygiene.yml").read_text(encoding="utf-8"))
         self.assertEqual(hygiene["permissions"], {"contents": "read"})
-        self.assert_customer_tail(hygiene["jobs"]["hygiene"], "optics-observe-hygiene", 15)
+        job = hygiene["jobs"]["hygiene"]
+        install = next(step for step in job["steps"] if step["name"] == "Install Optics observe CLI")
+        upload = job["steps"][-1]
+        self.assertNotIn("continue-on-error", install)
+        self.assertNotIn("continue-on-error", upload)
+        self.assertIn("vantio CLI install failed:", install["run"])
+        self.assertIn("npm install -g --prefix", install["run"])
+        checker = next(step for step in job["steps"] if step["name"] == "Test the checker")
+        proof = next(step for step in job["steps"] if step["name"] == "Re-run the proof against the committed evidence")
+        self.assertIn("vantio run python3 tests/gap/test_t0_openclaw_hygiene.py -v", checker["run"])
+        self.assertIn("vantio run python3 scripts/gap/t0_proof.py --check", proof["run"])
+        self.assertNotIn("process.exit(0)", install["run"])
+        self.assertEqual(upload["with"]["name"], "optics-observe-hygiene")
+        self.assertEqual(upload["with"]["if-no-files-found"], "warn")
+        self.assertEqual(
+            job["runs-on"],
+            "${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}",
+        )
 
-    def test_founder_guard_and_lab_workflows_are_not_instrumented(self) -> None:
-        guard = (ROOT / ".github/workflows/founder-approval-guard.yml").read_text(encoding="utf-8")
-        self.assertNotIn("npm install -g @vantio/cli", guard)
-        self.assertNotIn("Optics observe (Lab-only)", guard)
-        for path in (ROOT / ".github/workflows").glob("*.yml"):
-            if path.name.startswith(("gcp-lab", "w3-lab")):
-                self.assertNotIn("npm install -g @vantio/cli", path.read_text(encoding="utf-8"))
+    def test_lab_workflows_wrap_real_commands(self) -> None:
+        # The founder-approval guard workflow was retired on 2026-10-21 by Founder direction.
+        self.assertFalse((ROOT / ".github/workflows/founder-approval-guard.yml").exists())
+        runner = (
+            "${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && "
+            "'[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}"
+        )
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            if not path.name.startswith(("gcp-lab", "w3-lab")):
+                continue
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            for job in doc["jobs"].values():
+                if "runs-on" in job:
+                    self.assertEqual(job["runs-on"], runner, path.name)
+                steps = job.get("steps") or []
+                if not steps:
+                    continue
+                install = next(step for step in steps if step.get("name") == "Install Optics observe CLI")
+                upload = steps[-1]
+                self.assertEqual(upload["name"], "Upload Optics observation log", path.name)
+                self.assertNotIn("continue-on-error", install)
+                self.assertNotIn("continue-on-error", upload)
+                self.assertIn("vantio CLI install failed:", install["run"])
+                wrapped = "\n".join(step.get("run") or "" for step in steps)
+                self.assertIn("vantio run ", wrapped, path.name)
+                self.assertNotIn("process.exit(0)", wrapped)
 
     def assert_customer_tail(self, job: dict, artifact: str, minutes: int) -> None:
         observe, upload = job["steps"][-2], job["steps"][-1]

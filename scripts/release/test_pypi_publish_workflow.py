@@ -151,13 +151,15 @@ class WorkflowContractTests(unittest.TestCase):
             [
                 "Checkout release scripts",
                 "Require the trusted-publisher workflow identity",
+                "Setup Node.js 22",
+                "Install Optics observe CLI",
                 "Stop when 3.1.1 is already on PyPI",
                 "Download sealed custody assets",
                 "Verify sealed bytes and stage the upload directory",
                 "Publish sealed distributions to PyPI",
                 "Record publication coordinates",
-                "Optics observe (Lab-only)",
-                "Upload Optics observation log (Lab-only)",
+                "Collect Optics observation log",
+                "Upload Optics observation log",
             ],
         )
         checkout = self.steps[0]
@@ -187,25 +189,27 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(names.index("Download sealed custody assets"), names.index("Publish sealed distributions to PyPI"))
         self.assertLess(names.index("Stop when 3.1.1 is already on PyPI"), names.index("Verify sealed bytes and stage the upload directory"))
         self.assertEqual(names.index("Publish sealed distributions to PyPI"), names.index("Verify sealed bytes and stage the upload directory") + 1)
-        self.assertEqual(names[-2], "Optics observe (Lab-only)")
-        self.assertEqual(names[-1], "Upload Optics observation log (Lab-only)")
-        observe = self.steps[-2]
+        self.assertEqual(names[-2], "Collect Optics observation log")
+        self.assertEqual(names[-1], "Upload Optics observation log")
+        install = next(step for step in self.steps if step["name"] == "Install Optics observe CLI")
         upload = self.steps[-1]
-        self.assertIs(observe["continue-on-error"], True)
-        self.assertEqual(observe["if"], "always()")
-        self.assertNotIn("permissions", observe)
-        self.assertNotIn("env", observe)
-        self.assertIn("npm install -g @vantio/cli", observe["run"])
-        self.assertIn("pip install vantio-agent-sdk", observe["run"])
-        self.assertNotIn("optics_observe.py", observe["run"])
-        self.assertNotIn("--mcp-enforce", observe["run"])
+        self.assertNotIn("continue-on-error", install)
+        self.assertNotIn("continue-on-error", upload)
+        self.assertIn("set -euo pipefail", install["run"])
+        self.assertIn("npm install -g --prefix", install["run"])
+        self.assertIn("vantio-agent-sdk", install["run"])
+        self.assertIn("vantio CLI install failed:", install["run"])
+        self.assertNotIn("optics_observe.py", install["run"])
+        self.assertNotIn("--mcp-enforce", install["run"])
+        self.assertNotIn("process.exit(0)", install["run"])
         self.assertEqual(upload["with"]["path"], "optics-observe-log")
-        self.assertIs(upload["continue-on-error"], True)
         self.assertEqual(upload["if"], "always()")
         self.assertNotIn("permissions", upload)
+        verify = next(step for step in self.steps if step["name"] == "Verify sealed bytes and stage the upload directory")
+        self.assertIn("vantio run python3 scripts/release/stage_sealed_pypi.py", verify["run"])
 
     def test_publish_action_is_oidc_and_explicit(self) -> None:
-        publish = self.steps[5]
+        publish = next(step for step in self.steps if step["name"] == "Publish sealed distributions to PyPI")
         publish_uses = "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
         self.assertEqual(publish["uses"], publish_uses)
         self.assertIn(f"uses: {publish_uses} # release/v1", self.raw)
@@ -242,19 +246,19 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn("twine", script)
 
     def test_pins_match_the_sealed_constants(self) -> None:
-        staged = self.steps[4]
+        staged = next(step for step in self.steps if step["name"] == "Verify sealed bytes and stage the upload directory")
         self.assertEqual(staged["env"], {**PIN_ENV, "VANTIO_STAGE_ENFORCE_ACTIONS_CONTEXT": "1"})
         self.assertIn("stage_sealed_pypi.py", staged["run"])
         self.assertIn("$GITHUB_WORKSPACE/pypi-sealed-upload", staged["run"])
         self.assertNotIn("--metadata-url", staged["run"])
-        download = self.steps[3]
+        download = next(step for step in self.steps if step["name"] == "Download sealed custody assets")
         self.assertEqual(download["env"], {"GH_TOKEN": "${{ github.token }}"})
         self.assertIn("--tag custody-py-3.1.1", download["run"])
         self.assertIn(f"--wheel-name {WHEEL_NAME}", download["run"])
         self.assertIn(f"--sdist-name {SDIST_NAME}", download["run"])
         self.assertIn("--version 3.1.1", download["run"])
         self.assertNotIn("*", download["run"])
-        reject = self.steps[2]
+        reject = next(step for step in self.steps if step["name"] == "Stop when 3.1.1 is already on PyPI")
         self.assertIn("--reject-existing-version", reject["run"])
         self.assertNotIn("--metadata-url", reject["run"])
         self.assertNotIn("test.pypi", reject["run"])
