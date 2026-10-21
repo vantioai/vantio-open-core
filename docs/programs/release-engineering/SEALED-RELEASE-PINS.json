@@ -6,6 +6,20 @@
     "tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
     "sealed_candidate": {
       "package": "@vantio/cli",
+      "version": "0.3.26",
+      "filename": "vantio-cli-0.3.26.tgz",
+      "path": "artifacts/sealed/vantio-cli-0.3.26.tgz",
+      "sha256": "10587861ab181d2d184dc06a20525ec42877fed362c81f9337d81475968e3306",
+      "bytes": 97488,
+      "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+      "tag_created": false,
+      "source_date_epoch": "1792198920",
+      "npm": "10.9.9",
+      "pack": "npm pack --ignore-scripts",
+      "packed_from": "c4ac774f505de2da0ed09cdb4973307a18a3a1dd"
+    },
+    "prior_sealed_candidate": {
+      "package": "@vantio/cli",
       "version": "0.3.25",
       "filename": "vantio-cli-0.3.25.tgz",
       "path": "artifacts/sealed/vantio-cli-0.3.25.tgz",
