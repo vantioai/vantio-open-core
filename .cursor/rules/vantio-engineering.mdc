@@ -1,0 +1,58 @@
+---
+description: Checkable engineering rules for vantio-open-core agents
+alwaysApply: true
+---
+
+# Open-core engineering
+
+This repo is `vantio-open-core`. Read the file named in a rule before changing that behavior.
+
+## Languages and toolchain
+
+- CI is `.github/workflows/ci.yml` on Node.js 22. pnpm comes from `packageManager` in `package.json`. Do not set a second pnpm version in the workflow. Install with `pnpm install --frozen-lockfile`.
+- `@vantio/cli` (`packages/vantio-cli`) is Node ESM/CJS with no compile step. `pnpm --filter @vantio/cli run lint` is `node --check`. `pnpm --filter @vantio/cli run test` is `node --test`. Engines field is `>=18.3.0`.
+- `@vantio/agent-sdk` (`packages/vantio-agent-sdk`) is TypeScript. Run `typecheck`, `typecheck:test`, `test` (`node --experimental-strip-types --test`), and `build` (`tsc` plus `scripts/postbuild.mjs`).
+- `vantio-agent-sdk` (`packages/vantio-agent-sdk-py`) is Python `>=3.10`. The CI matrix is 3.10, 3.11, and 3.12. From that directory: `python -m unittest discover -s tests -t .`. The SDK has no install dependencies.
+- The same CI job runs `pnpm --filter @vantio/gate-mcp test` and `node --test packages/vantio-mcp-awareness/test/*.test.js`.
+- Lab C (`scripts/clean-host/t5/t5_load.c`, `packages/t5-egress-kernel/bpf/t5_egress.bpf.c`, `scripts/aws/lab-guests/descendant_probe.c`) is outside that job.
+- Docs gate: `node docs/scripts/check-docs-release.mjs`. `legacy_scan` in `docs/governance/MANIFEST.json` covers new `.md` and the other listed extensions. A new `Sight Loop` or `Shadow AI` hit fails the frozen inventory in `docs/governance/LEGACY-STALE-NAMES.json`.
+
+## Optics
+
+- Egress observe is `packages/vantio-cli/bin/interceptor.cjs`. In-scope hosts are stored as `OBSERVED` with host, method, path, status, byte count, and duration. Prompts and completions are never stored. The call record has no prompt or completion field.
+- MCP observe is `packages/vantio-mcp-awareness`, schema `vantio.mcp_observation.v1`. `retention.payload` and `retention.values` stay false. A record may keep the tool name and argument shape, not argument values or prompt text.
+- `bin/telemetry.cjs` sends only its whitelist, and only when `VANTIO_TELEMETRY=1`. It does not send prompts, completions, API keys, or emails.
+
+## Errors
+
+- A failed command names the failure and exits non-zero. The CLI writes `vantio <cmd>: ...` to stderr and calls `process.exit(1)` (`failUnreadable` in `bin/vantio.js`). Release code calls `fail(status, message)` in `scripts/release/promote_npm.mjs` and `scripts/release/promote_pypi.py`, which prints `vantio-release:` and `RELEASE_RESULT`, then exits.
+- Do not catch a gate, install, or lab error and continue. The swallow in `telemetry.cjs` is only the opt-in ping. Do not copy it into a gate.
+
+## Sealed releases
+
+- `scripts/release/promote_npm.mjs` never packs or rebuilds. The tarball SHA-256 must equal `artifact_sha256` or the process exits `ARTIFACT_HASH_MISMATCH`. `.github/workflows/npm-publish.yml` is `workflow_dispatch` only and does not publish.
+- `.github/workflows/pypi-publish.yml` and `scripts/release/stage_sealed_pypi.py` do not build. They check the pinned SHA-256 and byte length for `vantio-agent-sdk` 3.1.1. `scripts/release/prepare_custody_py_3_1_1.py` refuses to create the custody tag. A tag is not the integrity check.
+- Do not rebuild, retag, or bypass a mismatch. Do not pass `--allow-local-approval` to skip the release-gate run.
+
+## Lab evidence
+
+- A lab `PASS` requires rows from a new boot. `grade_reboot` in `scripts/gap/t1-stranger-host/grade.py` records `boot_id_unchanged` when the post-boot id equals the pre-boot id. `confirm_matches_boot` in `scripts/gcp/offline_deliver_3.py` requires the rows `boot_id` to equal the boot just waited for. `_rows_disagree_with_boot` in `scripts/aws/w3_lab_steps.py` rejects a file whose boot is not the live boot.
+- `scripts/aws/lab-guests/phase2_grade.py` keeps `lab_pass` false. The ceiling stays `INTERNAL_CLEAN_HOST_PROOF`. `grade_evidence` in `scripts/gap/t1-stranger-host/grade.py` sets `host_proof` false even when every step is `PASS`.
+
+## Pins, words, secrets
+
+- Public pin `pe_archive_sha256` stays `e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e` in `FROZEN_PINS` and `LIVE_CANONICAL_IDENTITY` inside `packages/vantio-install/vantio_install/constants.py`. Only the Founder changes it. That file is listed in `.github/founder-approval-paths.txt`. `scripts/release/seal-identity-recheck.mjs` fails with `working_is_public_pin` if the working seal equals this pin.
+- Do not put prices or currency amounts in release artifacts, evidence JSON, or customer docs.
+- Do not write `audited`, `unbreakable`, or `Shipped`.
+- Do not print secrets. The promote scripts redact `GITHUB_TOKEN`, `GH_TOKEN`, `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `TWINE_PASSWORD`, `TWINE_API_KEY`, and `PYPI_TOKEN` before output.
+- Do not target or edit Navera. `scripts/gcp/offline_deliver_1.py` exits when the project string contains `navera`.
+
+## Approvals and automation
+
+- Do not apply `founder-approved` and do not merge. `.github/workflows/founder-approval-guard.yml` accepts that label only from a repo admin after the latest push, and only for paths in `.github/founder-approval-paths.txt`. A later push removes the label. This file and `AGENTS.md` are not on that list. The docs gate does not require the label.
+- Do not create git tags, GitHub Releases, or GHCR pushes. `PF-GHCR-DEFAULT` blocks GHCR as a Phantom Engine source. Publish workflows are `workflow_dispatch` and need Founder approval.
+- Consequential automation runs only on an enrolled execution plane. The npm workflow records approval and does not publish; an enrolled runtime promotes the sealed tarball after the gate. Live install mutations stay stopped unless `VANTIO_INSTALL_ALLOW_LIVE=1` and `--i-accept-live-mutations` are both set. Cloud lab workflows are `workflow_dispatch`. A consequential tool call is a hold (`docs/gap-program/T10-live-human-approval.md`), not an approval.
+
+## Model
+
+- The default model is Grok 4.7, reasoning `xhigh`, fast off. Do not switch to a third-party model. Public manifests omit the model name (`OMITTED_FROM_PUBLIC_TIP` in `docs/planning/enterprise-governance/GOVERNANCE-MANIFEST.json`).
