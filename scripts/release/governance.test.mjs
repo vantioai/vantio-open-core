@@ -634,9 +634,9 @@ function assertPublishedCliTag(pins) {
   assert.match(installer, /pe-canonical-seal\.json/);
 }
 
-function assertStoredSeal(sealed) {
+function assertStoredSeal(sealed, state = "SEALED_BYTES_RECORDED_NOT_PUBLISHED") {
   assert.equal(sealed.package, "@vantio/cli");
-  assert.equal(sealed.state, "SEALED_BYTES_RECORDED_NOT_PUBLISHED");
+  assert.equal(sealed.state, state);
   assert.equal(sealed.tag_created, false);
   assert.equal(sealed.filename, `vantio-cli-${sealed.version}.tgz`);
   assert.equal(sealed.path, `artifacts/sealed/${sealed.filename}`);
@@ -686,7 +686,9 @@ test("sealed CLI 0.3.26 tarball matches a second pack", () => {
   assert.equal(sealed.packed_from, "c4ac774f505de2da0ed09cdb4973307a18a3a1dd");
   const pkg = JSON.parse(readFileSync(join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
   assert.equal(pkg.version, sealed.version);
-  assertStoredSeal(sealed);
+  assertStoredSeal(sealed, "PUBLISHED_REGISTRY_BYTES_VERIFIED");
+  assert.equal(sealed.registry.registry_sha256, sealed.sha256);
+  assert.equal(sealed.registry.dist_tag_latest, "0.3.26");
   assertSecondPack(sealed);
 });
 

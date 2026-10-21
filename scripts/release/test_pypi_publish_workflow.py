@@ -588,7 +588,7 @@ class SealedGateTests(unittest.TestCase):
 
 
 class SealedByteTests(unittest.TestCase):
-    def test_prepare_script_prints_the_tag_command_and_does_not_create_it(self) -> None:
+    def test_prepare_script_refuses_after_publication(self) -> None:
         script = ROOT / "scripts" / "release" / "prepare_custody_py_3_1_2.py"
         source = script.read_text(encoding="utf-8")
         self.assertNotIn("subprocess", source)
@@ -596,22 +596,20 @@ class SealedByteTests(unittest.TestCase):
         refused = subprocess.run([sys.executable, str(script), "--apply"], check=False, capture_output=True, text=True)
         self.assertEqual(refused.returncode, 2, refused.stderr)
         self.assertIn("does not create custody-py-3.1.2", refused.stderr)
+        # custody-py-3.1.2 exists and 3.1.2 is published, so the one-shot prepare step now refuses.
         result = subprocess.run([sys.executable, str(script)], check=False, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("TAG_CREATED false", result.stdout)
-        self.assertIn("custody-py-3.1.2", result.stdout)
-        self.assertIn(WHEEL_NAME, result.stdout)
-        self.assertIn(SDIST_NAME, result.stdout)
-        self.assertIn("gh release create", result.stdout)
-        listed = subprocess.run(["git", "tag", "--list", "custody-py-3.1.2"], check=False, capture_output=True, text=True, cwd=ROOT)
-        self.assertEqual(listed.stdout.strip(), "")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("REFUSED", result.stderr)
+        self.assertNotIn("gh release create", result.stdout)
 
     def test_sealed_3_1_2_files_stay_the_recorded_bytes(self) -> None:
         pins = json.loads((ROOT / "docs/programs/release-engineering/SEALED-RELEASE-PINS.json").read_text(encoding="utf-8"))
         row = pins["python"]
         self.assertEqual(row["version"], "3.1.2")
-        self.assertEqual(row["state"], "SEALED_BYTES_RECORDED_NOT_PUBLISHED")
-        self.assertIs(row["custody_tag_created"], False)
+        self.assertEqual(row["state"], "PUBLISHED_REGISTRY_BYTES_VERIFIED")
+        self.assertIs(row["custody_tag_created"], True)
+        self.assertEqual(row["registry"]["wheel_registry_sha256"], WHEEL_SHA256)
+        self.assertEqual(row["registry"]["sdist_registry_sha256"], SDIST_SHA256)
         self.assertEqual(row["publisher_commit"], "63df79c8f81cc90a03bea559838c0989d0e35ebc")
         self.assertEqual(row["prior_state"], "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED")
         self.assertEqual(row["wheel_sha256"], WHEEL_SHA256)
@@ -640,7 +638,7 @@ class SealedByteTests(unittest.TestCase):
         row = pins["python"]
         candidate = row["source_candidate"]
         self.assertEqual(candidate["version"], "3.1.2")
-        self.assertEqual(candidate["state"], "SEALED_BYTES_RECORDED_NOT_PUBLISHED")
+        self.assertEqual(candidate["state"], "PUBLISHED_REGISTRY_BYTES_VERIFIED")
         self.assertIs(candidate["tag_created"], False)
         self.assertEqual(candidate["pack"], "python3 -m build --no-isolation")
         self.assertEqual(candidate["source_date_epoch"], row["source_date_epoch"])
