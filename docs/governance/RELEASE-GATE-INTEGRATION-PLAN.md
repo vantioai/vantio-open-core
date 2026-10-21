@@ -66,7 +66,7 @@ Report: `node docs/scripts/check-docs-release.mjs`
 | `private-packages-stay-private` | `@vantio/optics-evidence-contract` stays `"private": true`. |
 | `pe-customer-bundle-includes-matching-manual` | The bundle design is non-public and the test fixture manual version matches the bundle version. |
 | `stale-product-names-rejected` | Canonical docs contain none of the retired-name patterns. |
-| `roadmap-features-not-current` | Canonical docs do not present unimplemented roadmap items as current. A line may say there is no OTLP exporter. |
+| `roadmap-features-not-current` | Canonical docs do not present unimplemented roadmap items as current. `vantio export` sends OTLP/HTTP JSON, so that path is not on the absent list. |
 | `legacy-stale-name-inventory-frozen` | Non-canonical matches stay exactly the committed debt inventory, including `.txt`. Optics intentional leftovers stay on their own list. New matches fail. Canonical paths cannot be listed as debt or as leftovers. |
 | `collision-test-inventory-reviewed` | `tests/shared-health-vocabulary/collision.test.cjs` stays visible frozen debt. One `reviewed_updates` entry uses disposition `FROZEN_DEBT`, `hits` carries the same count, and the live scan still sees the file. Hiding that path in `exclude_prefixes`, or listing it as an intentional leftover, fails. |
 

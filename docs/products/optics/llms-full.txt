@@ -136,7 +136,7 @@ No PDF is produced with this manual. This repository has no reviewed, determinis
 - The published Python 3.0.14 `shield()` usage ping is sent unless `VANTIO_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1`. CLI 0.3.24 and unpublished Python 3.1.0 source stay off unless `VANTIO_TELEMETRY=1`. See [TELEMETRY.md](TELEMETRY.md).
 - Any sentence about the telemetry field `hosts` means customer LLM endpoint hostnames. See [TELEMETRY.md](TELEMETRY.md).
 - Published Python run files still contain the string `sight_loop` in `workflow`. That string is leftover storage. It is not the product name. The product name is Vantio Optics.
-- SQLite, a `vantio ui` interface, alerting, an OTLP exporter, a stable schema, and PKG-02 are absent. See [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
+- SQLite, a `vantio ui` interface, a stable schema, and PKG-02 are absent. `vantio coverage`, `vantio destinations`, and `vantio export` are in this source tree and are absent from published npm CLI 0.3.24. See [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
 - This tree is ready for a separate docs council. Classification token: `OPTICS_PUBLIC_DOCS_READY_FOR_COUNCIL`.
 
 
@@ -162,7 +162,7 @@ The installable versions this text describes are `@vantio/cli@0.3.24` and `vanti
 
 **Support.** Start with `vantio --version` and the Python version print in [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Status tokens are in [STATUS-AND-OUTCOMES.md](STATUS-AND-OUTCOMES.md).
 
-**Evaluator.** The capability below is the whole free product: local metadata on supported paths, plus local commands over those files. SQLite, a UI, alerting, OTLP, and a stable schema are not included. [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
+**Evaluator.** Published npm CLI 0.3.24 is local metadata on supported paths, plus local commands over those files. This source tree also has `vantio coverage`, `vantio destinations`, and `vantio export`. SQLite, a UI, and a stable schema are not included. [KNOWN-LIMITATIONS.md](KNOWN-LIMITATIONS.md).
 
 **Upgrade from v2 or from Python 3.0.x.** [UPGRADE-ROLLBACK-UNINSTALL.md](UPGRADE-ROLLBACK-UNINSTALL.md) and [PYTHON-GUIDE.md](PYTHON-GUIDE.md).
 
@@ -252,12 +252,12 @@ CLI 0.3.24 does not send the ping unless `VANTIO_TELEMETRY=1`. Published Python 
 
 `@vantio/optics-mcp@0.1.2` lists and renders local logs over the Model Context Protocol. It does not block or redact. Its tools are `optics_list_runs`, `optics_get_run`, `optics_prove`, `optics_discover_local`, `optics_explain`, and `optics_upgrade_path`. The last tool points at Phantom Engine. This manual does not document Phantom Engine.
 
-The MCP reader follows `VANTIO_HOME`. The CLI reader does not.
+The MCP reader follows `VANTIO_HOME`. `vantio discover`, `search`, `tail`, `diff`, and `prove` read `~/.vantio` only. `vantio coverage`, `vantio destinations`, and `vantio export` read both, and they keep the allowlist and seen-destination file under `VANTIO_HOME` when that variable is set.
 
 ## Limits that belong in every evaluation
 
 - Only wrapped processes and in-scope hosts produce rows.
-- No database, no UI, no alerts, no OTLP exporter, no stable schema.
+- No database and no UI. JSON records stay `unstable-pre-1.0`. This source tree's `vantio destinations` flags a new destination, and `vantio export` can send OTLP/HTTP JSON, syslog or JSON lines, and a webhook. Published npm CLI 0.3.24 does not include those commands.
 - No retention command. Disk grows until you delete files.
 - No cross-process lock. The same trace id overwrites one file.
 - Write failures are silent.
@@ -819,7 +819,7 @@ Node writes on every exit hook, including zero calls. Python returns without wri
 
 `vantio prove --from <file>` renders a JSON object from that path. It does not require `vantio_run_log` on that render path, and it does not copy the file into `runs/`.
 
-There is no import command, no JSONL export, and no OTLP exporter. `vantio prove` is the export: HTML (default, file `vantio-proof-<id>.html` in the current directory), Markdown (`--format=md`), or `--json` with `schema_status` `unstable-pre-1.0`.
+There is no import command. `vantio prove` writes HTML (default, file `vantio-proof-<id>.html` in the current directory), Markdown (`--format=md`), or `--json` with `schema_status` `unstable-pre-1.0`. This source tree's `vantio export` appends JSON lines, sends OTLP/HTTP JSON, or POSTs a webhook. Published npm CLI 0.3.24 does not include `vantio export`.
 
 Search, tail, and diff behavior: [NODE-GUIDE.md](NODE-GUIDE.md).
 
@@ -1355,8 +1355,8 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | Enforcement, blocking, redaction, spend caps | Phantom Engine. Free Optics records `OBSERVED` and does not apply those controls. |
 | SQLite or any other database | Absent. One JSON file per trace id. |
 | `vantio ui`, `vantio doctor`, a resident daemon | Absent. |
-| Alerting | Absent. |
-| OTLP export | Absent. A mapping sketch may exist elsewhere in the repository. Optics does not export OTLP. |
+| New-destination flag | `vantio destinations` in this source tree flags the first connection from a program to a destination that is not on the allowlist. It does not stop the call and it does not page a person. Published npm CLI 0.3.24 does not include the command. |
+| OTLP export | `vantio export --otlp` sends OTLP/HTTP JSON. `vantio export --otlp-grpc` sends the same fields as unary gRPC over HTTP/2. Optics does not start a collector. Published npm CLI 0.3.24 does not include the command. |
 | Stable schema | Absent. Contract is `unstable-pre-1.0`. |
 | PKG-02 and any shared record vocabulary shipped as a runtime | Future work. Not in the CLI or the published SDK. |
 | Retention, prune, max size | Absent. Files stay until you delete them. |
@@ -1367,7 +1367,7 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | Lifecycle `INTERRUPTED` / `ABANDONED` / `RECOVERED` | Absent. |
 | Monotonic clock | Durations use the wall clock. |
 | Windows ACL | Not set. Unix modes `0700` / `0600` only, and only when the writer creates the path. |
-| Fleet inventory | `discover` is this machine's run logs. |
+| Fleet inventory | `discover` and `vantio coverage` read records on this system. They do not connect to other machines. |
 
 Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. They are not protected by Optics.
 
@@ -1434,7 +1434,7 @@ Describe a command only when it appears in this manual or in `vantio --help` for
 
 `vantio logout` exists and is omitted from help. It deletes `~/.vantio/config.json` only. It does not delete run logs.
 
-Do not invent `vantio ui`, `vantio doctor`, a daemon, a prune command, an import command, or an OTLP export command.
+Do not invent `vantio ui`, `vantio doctor`, a daemon, a prune command, or an import command. `vantio coverage`, `vantio destinations`, and `vantio export` are in this source tree. They are not in published npm CLI 0.3.24.
 
 ## What Optics does
 
@@ -1466,7 +1466,7 @@ When you mention the payload field `hosts`, say it lists customer LLM endpoint h
 
 Do not claim Optics stores prompts, completions, or request bodies on the free path. Query strings are dropped. Path segments can still contain secrets if the application put them there.
 
-Do not claim SQLite, alerting, a stable schema, PKG-02, or an OTLP exporter.
+Do not claim SQLite, a stable schema, or PKG-02. Do not claim OTLP/gRPC or a collector started by Optics. Coverage, new-destination, and export commands in this source tree are absent from published npm CLI 0.3.24.
 
 Python files may contain `"workflow": "sight_loop"`. That stored string is not current product terminology. The product name is Vantio Optics. Do not explain the product as Sight Loop.
 

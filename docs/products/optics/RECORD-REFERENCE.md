@@ -41,7 +41,7 @@ Node writes on every exit hook, including zero calls. Python returns without wri
 
 `vantio prove --from <file>` renders a JSON object from that path. It does not require `vantio_run_log` on that render path, and it does not copy the file into `runs/`.
 
-There is no import command, no JSONL export, and no OTLP exporter. `vantio prove` is the export: HTML (default, file `vantio-proof-<id>.html` in the current directory), Markdown (`--format=md`), or `--json` with `schema_status` `unstable-pre-1.0`.
+There is no import command. `vantio prove` writes HTML (default, file `vantio-proof-<id>.html` in the current directory), Markdown (`--format=md`), or `--json` with `schema_status` `unstable-pre-1.0`. This source tree's `vantio export` appends JSON lines, sends OTLP/HTTP JSON, or POSTs a webhook. Published npm CLI 0.3.24 does not include `vantio export`.
 
 Search, tail, and diff behavior: [NODE-GUIDE.md](NODE-GUIDE.md).
 

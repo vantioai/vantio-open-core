@@ -11,7 +11,7 @@ import http2 from "node:http2";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -2339,6 +2339,42 @@ describe("callCount is completed in-scope calls", { timeout: 20000 }, () => {
       assert.equal(code, 0);
       assert.equal(telemetry.length, 0);
     } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("live destination during fetch", () => {
+  test("a new destination is recorded before the response is sent", async () => {
+    const home = mkdtempSync(join(tmpdir(), "vantio-live-fetch-"));
+    const vantioHome = join(home, "vantio");
+    const journal = join(vantioHome, "live.jsonl");
+    let duringRequest = "";
+    const server = http.createServer((req, res) => {
+      duringRequest = existsSync(journal) ? readFileSync(journal, "utf8") : "";
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const target = `http://127.0.0.1:${server.address().port}/v1/chat/completions`;
+    try {
+      const { code, stderr } = await runAgent({
+        HOME: home,
+        TARGET_URL: target,
+        VANTIO_HOME: vantioHome,
+        VANTIO_EXTRA_LLM_HOSTS: "127.0.0.1",
+        VANTIO_TELEMETRY_DISABLED: "1",
+      }, FETCH_ONCE_SCRIPT);
+      assert.equal(code, 0, stderr);
+      assert.match(duringRequest, /"flag":"new_destination"/);
+      assert.match(duringRequest, /127\.0\.0\.1/);
+      assert.doesNotMatch(duringRequest, /shouldnotleak/);
+      const lines = readFileSync(journal, "utf8").trim().split("\n");
+      assert.equal(lines.length, 1);
+      assert.match(stderr, /New destination/);
+    } finally {
+      if (typeof server.closeAllConnections === "function") server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
       rmSync(home, { recursive: true, force: true });
     }
   });

@@ -5,9 +5,9 @@ Use this guide when editing Vantio Optics documentation in this repository. Pack
 ```json
 {
   "ai_guide_versions": {
-    "@vantio/cli": "0.3.25",
+    "@vantio/cli": "0.3.26",
     "@vantio/agent-sdk": "0.2.4",
-    "vantio-agent-sdk": "3.1.1",
+    "vantio-agent-sdk": "3.1.2",
     "@vantio/optics-mcp": "0.1.2",
     "@vantio/gate-mcp": "0.1.1",
     "vantio-optics": "0.1.0",
@@ -20,7 +20,7 @@ Use this guide when editing Vantio Optics documentation in this repository. Pack
 
 Vantio Optics is the free Observe tier: local metadata for supported wrapped calls. It does not retain prompts or completions. Phantom Engine is Enforce + Control on enrolled Linux hosts. Enterprise is the governance layer. Free Optics needs no account and no API key.
 
-There is no OTLP exporter. Browser paths stay outside this wrap.
+`vantio export` sends OTLP/HTTP JSON or unary OTLP/gRPC when given a URL. Optics does not start a collector. Browser paths stay outside this wrap.
 
 ## What to treat as current
 

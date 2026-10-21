@@ -30,6 +30,30 @@
       "audience": "public"
     },
     {
+      "name": "VANTIO_EXPORT_JSONL",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_EXPORT_OTLP",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_EXPORT_OTLP_GRPC",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_EXPORT_SYSLOG",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_EXPORT_WEBHOOK",
+      "audience": "public"
+    },
+    {
+      "name": "VANTIO_EXPORT_WEBHOOK_TOKEN",
+      "audience": "public"
+    },
+    {
       "name": "VANTIO_EXTRA_LLM_HOSTS",
       "audience": "public"
     },

@@ -1,6 +1,6 @@
 {
   "name": "@vantio/cli",
-  "version": "0.3.25",
+  "version": "0.3.26",
   "description": "Vantio Optics | Free Observability for AI Agents. Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.",
   "license": "MIT",
   "author": "Vantio AI, Inc.",
@@ -38,7 +38,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "lint": "node --check bin/vantio.js && node --check bin/mcp-awareness-register.js && node --check bin/mcp-awareness-paths.js && node --check bin/mcp-awareness-frame.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs && node --check bin/optics-cx.cjs && node --check bin/ingest-url.cjs",
+    "lint": "node --check bin/vantio.js && node --check bin/mcp-awareness-register.js && node --check bin/mcp-awareness-paths.js && node --check bin/mcp-awareness-frame.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs && node --check bin/optics-cx.cjs && node --check bin/optics-features.cjs && node --check bin/optics-proc.cjs && node --check bin/optics-otlp-grpc.cjs && node --check bin/ingest-url.cjs",
     "test": "node --test"
   },
   "engines": {

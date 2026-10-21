@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). These source labels are staged here and are not a behavior change.
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.26 (not an npm release), published Python 3.0.14, source candidate Python 3.1.2 (not a PyPI release). The version labels are not an npm or PyPI publish. Coverage, new-destination, and export commands in this source tree are described below.
 
 ## Absent on purpose in the current products
 
@@ -9,8 +9,8 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | Enforcement, blocking, redaction, spend caps | Phantom Engine. Free Optics records `OBSERVED` and does not apply those controls. |
 | SQLite or any other database | Absent. One JSON file per trace id. |
 | `vantio ui`, `vantio doctor`, a resident daemon | Absent. |
-| Alerting | Absent. |
-| OTLP export | Absent. A mapping sketch may exist elsewhere in the repository. Optics does not export OTLP. |
+| New-destination flag | `vantio destinations` in this source tree flags the first connection from a program to a destination that is not on the allowlist. It does not stop the call and it does not page a person. Published npm CLI 0.3.24 does not include the command. |
+| OTLP export | `vantio export --otlp` sends OTLP/HTTP JSON. `vantio export --otlp-grpc` sends the same fields as unary gRPC over HTTP/2. Optics does not start a collector. Published npm CLI 0.3.24 does not include the command. |
 | Stable schema | Absent. Contract is `unstable-pre-1.0`. |
 | PKG-02 and any shared record vocabulary shipped as a runtime | Future work. Not in the CLI or the published SDK. |
 | Retention, prune, max size | Absent. Files stay until you delete them. |
@@ -21,7 +21,7 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | Lifecycle `INTERRUPTED` / `ABANDONED` / `RECOVERED` | Absent. |
 | Monotonic clock | Durations use the wall clock. |
 | Windows ACL | Not set. Unix modes `0700` / `0600` only, and only when the writer creates the path. |
-| Fleet inventory | `discover` is this machine's run logs. |
+| Fleet inventory | `discover` and `vantio coverage` read records on this system. They do not connect to other machines. |
 
 Unsupported paths in [SUPPORTED-PATHS.md](SUPPORTED-PATHS.md) are unobserved. They are not protected by Optics.
 

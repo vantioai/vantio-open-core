@@ -620,22 +620,33 @@ test("custody fetch refuses a non-custody tag and a glob asset name", async () =
   assert.doesNotMatch(ok.stdout, /gh release download v/);
 });
 
-test("sealed CLI 0.3.25 tarball matches a second pack", () => {
-  const pins = JSON.parse(readFileSync(join(ROOT, "docs/programs/release-engineering/SEALED-RELEASE-PINS.json"), "utf8"));
+function readReleasePins() {
+  return JSON.parse(readFileSync(join(ROOT, "docs/programs/release-engineering/SEALED-RELEASE-PINS.json"), "utf8"));
+}
+
+function assertPublishedCliTag(pins) {
   assert.equal(pins.cli.version, "0.3.24");
   assert.equal(pins.cli.tag, "v0.3.24");
   assert.equal(pins.cli.tag_commit, "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4");
-  const sealed = pins.cli.sealed_candidate;
+  const installer = readFileSync(join(ROOT, "packages/vantio-install/vantio_install/constants.py"), "utf8");
+  assert.match(installer, /e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e/);
+}
+
+function assertStoredSeal(sealed) {
   assert.equal(sealed.package, "@vantio/cli");
-  assert.equal(sealed.version, "0.3.25");
   assert.equal(sealed.state, "SEALED_BYTES_RECORDED_NOT_PUBLISHED");
   assert.equal(sealed.tag_created, false);
-  assert.equal(sealed.packed_from, "6fff440d467545937861e4c1910e1066e5b0b2dd");
+  assert.equal(sealed.filename, `vantio-cli-${sealed.version}.tgz`);
+  assert.equal(sealed.path, `artifacts/sealed/${sealed.filename}`);
+  assert.equal(sealed.pack, "npm pack --ignore-scripts");
+  assert.equal(sealed.npm, "10.9.9");
+  assert.equal(sealed.source_date_epoch, "1792198920");
   const stored = readFileSync(join(ROOT, sealed.path));
   assert.equal(stored.length, sealed.bytes);
   assert.equal(sha256(stored), sealed.sha256);
-  const installer = readFileSync(join(ROOT, "packages/vantio-install/vantio_install/constants.py"), "utf8");
-  assert.match(installer, /e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e/);
+}
+
+function assertSecondPack(sealed) {
   const npmVersion = spawnSync("npm", ["--version"], { encoding: "utf8" });
   assert.equal(npmVersion.stdout.trim(), sealed.npm);
   const dest = tempDir("cli-pack-");
@@ -649,6 +660,32 @@ test("sealed CLI 0.3.25 tarball matches a second pack", () => {
   assert.equal(rebuilt.length, sealed.bytes);
   assert.equal(sha256(rebuilt), sealed.sha256);
   rmSync(dest, { recursive: true, force: true });
+}
+
+test("sealed CLI 0.3.25 tarball stays the recorded bytes", () => {
+  const pins = readReleasePins();
+  assertPublishedCliTag(pins);
+  const sealed = pins.cli.prior_sealed_candidate;
+  assert.equal(sealed.version, "0.3.25");
+  assert.equal(sealed.bytes, 69797);
+  assert.equal(sealed.sha256, "970f01628a98a47f694c313faf8bfb635e214a19696a964d29eb43b01089d875");
+  assert.equal(sealed.packed_from, "6fff440d467545937861e4c1910e1066e5b0b2dd");
+  assertStoredSeal(sealed);
+  assert.notEqual(pins.cli.sealed_candidate.sha256, sealed.sha256);
+});
+
+test("sealed CLI 0.3.26 tarball matches a second pack", () => {
+  const pins = readReleasePins();
+  assertPublishedCliTag(pins);
+  const sealed = pins.cli.sealed_candidate;
+  assert.equal(sealed.version, "0.3.26");
+  assert.equal(sealed.bytes, 97488);
+  assert.equal(sealed.sha256, "10587861ab181d2d184dc06a20525ec42877fed362c81f9337d81475968e3306");
+  assert.equal(sealed.packed_from, "c4ac774f505de2da0ed09cdb4973307a18a3a1dd");
+  const pkg = JSON.parse(readFileSync(join(ROOT, "packages/vantio-cli/package.json"), "utf8"));
+  assert.equal(pkg.version, sealed.version);
+  assertStoredSeal(sealed);
+  assertSecondPack(sealed);
 });
 
 function runPy(script, args) {

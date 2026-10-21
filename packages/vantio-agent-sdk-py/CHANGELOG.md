@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.2
+
+Source version for the live destination record. This heading records the version in `pyproject.toml`. It does not upload a wheel or sdist and it does not create a tag.
+
+A recorded call appends a live event when the call is stored. The first connection from a program to a destination that is not on the allowlist is flagged. The clock is taken from the call timestamp. Prompts and query strings stay out of that event.
+
 ## 3.1.1
 
 Founder approved publication of this source version to PyPI on 2026-10-16. This heading is the release record. It does not by itself upload a wheel or sdist.

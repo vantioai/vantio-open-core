@@ -340,6 +340,141 @@ def _host_port_from_url(url: Any) -> tuple[str, Optional[str], str]:
 def _append(rec: dict[str, Any]) -> None:
     with _lock:
         _calls.append(rec)
+    _note_live(rec)
+
+
+def _clock_local(moment: datetime) -> str:
+    return moment.astimezone().strftime("%H:%M:%S")
+
+
+def _clock_from_ts(value: object) -> str:
+    if isinstance(value, str) and value.strip():
+        text = value.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            return _clock_local(parsed)
+    return _clock_local(datetime.now().astimezone())
+
+
+def _allowlist_suppresses(destination: str, allowlist: dict[str, Any]) -> bool:
+    host = destination.lower()
+    for raw in allowlist.get("destinations") or []:
+        pattern = raw if isinstance(raw, str) else ""
+        if isinstance(raw, dict):
+            pattern = str(raw.get("destination") or "")
+            alert = raw.get("alert")
+        else:
+            alert = None
+        pattern = pattern.lower()
+        matched = False
+        if pattern.startswith("*."):
+            suffix = pattern[1:]
+            label = host[: -len(suffix)] if host.endswith(suffix) else ""
+            matched = bool(label) and "." not in label
+        elif pattern == host:
+            matched = True
+        if not matched:
+            continue
+        if isinstance(alert, bool):
+            return not alert
+        return allowlist.get("alert_on_allowlist") is not True
+    return False
+
+
+def _note_live(rec: dict[str, Any]) -> None:
+    """Record the destination while the call is happening. Does not stop the call."""
+    try:
+        host = str(rec.get("hostname") or "").strip().lower()
+        if not host or "/" in host or " " in host:
+            return
+        home = os.environ.get("VANTIO_HOME") or os.path.join(os.path.expanduser("~"), ".vantio")
+        os.makedirs(home, mode=0o700, exist_ok=True)
+        lock = os.path.join(home, "seen.lock")
+        started = time.time()
+        while True:
+            try:
+                os.mkdir(lock, 0o700)
+                break
+            except FileExistsError:
+                if time.time() - started > 2:
+                    raise TimeoutError("seen destination file is busy")
+        try:
+            allow_path = os.path.join(home, "allowlist.json")
+            allowlist: dict[str, Any] = {}
+            if os.path.isfile(allow_path):
+                with open(allow_path, encoding="utf-8") as handle:
+                    parsed = json.load(handle)
+                if isinstance(parsed, dict):
+                    allowlist = parsed
+            seen_path = os.path.join(home, "seen-destinations.json")
+            pairs: list[dict[str, Any]] = []
+            if os.path.isfile(seen_path):
+                with open(seen_path, encoding="utf-8") as handle:
+                    parsed = json.load(handle)
+                if isinstance(parsed, dict) and isinstance(parsed.get("pairs"), list):
+                    pairs = list(parsed["pairs"])
+            program = _program_label()
+            key = ("connection", program, host)
+            known = {
+                (str(pair.get("kind") or "connection"), str(pair.get("program") or ""), str(pair.get("destination") or ""))
+                for pair in pairs
+                if isinstance(pair, dict)
+            }
+            fresh = key not in known and not _allowlist_suppresses(host, allowlist)
+            if key not in known:
+                pairs.append({
+                    "kind": "connection",
+                    "program": program,
+                    "destination": host,
+                    "display": host,
+                    "first_ts": rec.get("ts"),
+                    "trace_id": _trace_id or None,
+                    "alerted": fresh,
+                })
+                temporary = seen_path + ".tmp"
+                with open(temporary, "w", encoding="utf-8") as handle:
+                    json.dump({"schema": "vantio.optics.seen_destinations.v1", "pairs": pairs}, handle)
+                    handle.write("\n")
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, seen_path)
+            event = {
+                "schema": "vantio.optics.live.v1",
+                "kind": "new_destination" if fresh else "observation",
+                "flag": "new_destination" if fresh else None,
+                "flag_label": "New destination" if fresh else None,
+                "clock": _clock_from_ts(rec.get("ts")),
+                "time": rec.get("ts"),
+                "program": program,
+                "destination": host,
+                "trace_id": _trace_id or None,
+                "method": rec.get("method"),
+                "path": str(rec.get("path") or "").split("?", 1)[0] or None,
+                "bytes": rec.get("bytes") if isinstance(rec.get("bytes"), int) else rec.get("bytes_observed"),
+            }
+            journal = os.path.join(home, "live.jsonl")
+            with open(journal, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event) + "\n")
+            try:
+                os.chmod(journal, 0o600)
+            except OSError:
+                pass
+            if fresh:
+                sys.stderr.write(
+                    "New destination\n"
+                    f"  First connection: {event['clock']}\n"
+                    f"  Destination: {host}\n"
+                    f"  Program: {program}\n\n"
+                )
+        finally:
+            try:
+                os.rmdir(lock)
+            except OSError:
+                pass
+    except Exception as exc:
+        sys.stderr.write(f"[ ∅ VANTIO ] could not record the live destination: {exc}\n")
 
 
 # Machine-token gloss. Customer observed-outcome lines are chosen in _outcome
@@ -1940,6 +2075,29 @@ def _uninstall_pycurl() -> None:
     _orig_pycurl_curl = None
 
 
+def _program_label(argv: Optional[list[str]] = None) -> str:
+    args = list(sys.argv if argv is None else argv)
+    skip_value = {"-e", "--eval", "-c", "--command"}
+    index = 1
+    while index < len(args):
+        text = str(args[index] or "")
+        if text in ("-m", "--module") and index + 1 < len(args):
+            return os.path.basename(str(args[index + 1])) or "python"
+        if text in skip_value:
+            index += 2
+            continue
+        if not text or text.startswith("-"):
+            index += 1
+            continue
+        base = os.path.basename(text)
+        if base:
+            return base
+        index += 1
+    if args:
+        return os.path.basename(str(args[0])) or "python"
+    return "python"
+
+
 def _write_run_log() -> None:
     if not _calls or not _trace_id:
         return
@@ -1966,6 +2124,8 @@ def _write_run_log() -> None:
                 "providerResponse": "Provider response",
             },
             "trace_id": _trace_id,
+            "program": _program_label(),
+            "system_hostname": socket.gethostname(),
             "runtime": "python",
             "mediation": ",".join(mediations),
             "started_at": datetime.fromtimestamp(_started_ms, timezone.utc).isoformat() if _started_ms else now.isoformat(),

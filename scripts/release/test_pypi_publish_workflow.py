@@ -280,8 +280,11 @@ class WorkflowContractTests(unittest.TestCase):
     def test_python_version_pin_remains(self) -> None:
         pyproject = (ROOT / "packages/vantio-agent-sdk-py/pyproject.toml").read_text(encoding="utf-8")
         init = (ROOT / "packages/vantio-agent-sdk-py/vantio/__init__.py").read_text(encoding="utf-8")
-        self.assertIn('version = "3.1.1"', pyproject)
-        self.assertIn('__version__ = "3.1.1"', init)
+        self.assertIn('version = "3.1.2"', pyproject)
+        self.assertIn('__version__ = "3.1.2"', init)
+        self.assertEqual(stage.VERSION, "3.1.1")
+        self.assertEqual(stage.WHEEL_NAME, WHEEL_NAME)
+        self.assertEqual(stage.SDIST_NAME, SDIST_NAME)
 
 
 class SealedGateTests(unittest.TestCase):
@@ -603,21 +606,49 @@ class SealedByteTests(unittest.TestCase):
         listed = subprocess.run(["git", "tag", "--list", "custody-py-3.1.1"], check=False, capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(listed.stdout.strip(), "")
 
-    def test_second_build_matches_the_sealed_files(self) -> None:
+    def test_sealed_3_1_1_files_stay_the_recorded_bytes(self) -> None:
         pins = json.loads((ROOT / "docs/programs/release-engineering/SEALED-RELEASE-PINS.json").read_text(encoding="utf-8"))
         row = pins["python"]
+        self.assertEqual(row["version"], "3.1.1")
         self.assertEqual(row["state"], "SEALED_BYTES_RECORDED_NOT_PUBLISHED")
         self.assertIs(row["custody_tag_created"], False)
         self.assertEqual(row["publisher_commit"], "63df79c8f81cc90a03bea559838c0989d0e35ebc")
         self.assertEqual(row["prior_state"], "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED")
-        stored = {}
+        self.assertEqual(row["wheel_sha256"], WHEEL_SHA256)
+        self.assertEqual(row["sdist_sha256"], SDIST_SHA256)
+        self.assertEqual(row["wheel_bytes"], WHEEL_BYTES)
+        self.assertEqual(row["sdist_bytes"], SDIST_BYTES)
         for name, rel, digest, size in (
             (WHEEL_NAME, row["wheel_path"], WHEEL_SHA256, WHEEL_BYTES),
             (SDIST_NAME, row["sdist_path"], SDIST_SHA256, SDIST_BYTES),
         ):
             data = (ROOT / rel).read_bytes()
-            self.assertEqual(len(data), size)
-            self.assertEqual(hashlib.sha256(data).hexdigest(), digest)
+            self.assertEqual(len(data), size, name)
+            self.assertEqual(hashlib.sha256(data).hexdigest(), digest, name)
+        candidate = row["source_candidate"]
+        self.assertEqual(candidate["version"], "3.1.2")
+        self.assertNotEqual(candidate["wheel_sha256"], row["wheel_sha256"])
+
+    def test_second_build_matches_the_sealed_files(self) -> None:
+        pins = json.loads((ROOT / "docs/programs/release-engineering/SEALED-RELEASE-PINS.json").read_text(encoding="utf-8"))
+        row = pins["python"]
+        candidate = row["source_candidate"]
+        self.assertEqual(candidate["version"], "3.1.2")
+        self.assertEqual(candidate["state"], "SEALED_BYTES_RECORDED_NOT_PUBLISHED")
+        self.assertIs(candidate["tag_created"], False)
+        self.assertEqual(candidate["pack"], "python3 -m build --no-isolation")
+        self.assertEqual(candidate["source_date_epoch"], row["source_date_epoch"])
+        self.assertEqual(candidate["build_requires"], row["build_requires"])
+        pyproject = (ROOT / "packages/vantio-agent-sdk-py/pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('version = "3.1.2"', pyproject)
+        stored = {}
+        for name, rel, digest, size in (
+            (candidate["wheel_name"], candidate["wheel_path"], candidate["wheel_sha256"], candidate["wheel_bytes"]),
+            (candidate["sdist_name"], candidate["sdist_path"], candidate["sdist_sha256"], candidate["sdist_bytes"]),
+        ):
+            data = (ROOT / rel).read_bytes()
+            self.assertEqual(len(data), size, name)
+            self.assertEqual(hashlib.sha256(data).hexdigest(), digest, name)
             stored[name] = data
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
@@ -631,7 +662,7 @@ class SealedByteTests(unittest.TestCase):
                     "--disable-pip-version-check",
                     "--target",
                     str(tools),
-                    *row["build_requires"],
+                    *candidate["build_requires"],
                 ],
                 check=False,
                 capture_output=True,
@@ -640,7 +671,7 @@ class SealedByteTests(unittest.TestCase):
             self.assertEqual(install.returncode, 0, install.stderr)
             env = os.environ.copy()
             env["PYTHONPATH"] = str(tools)
-            env["SOURCE_DATE_EPOCH"] = row["source_date_epoch"]
+            env["SOURCE_DATE_EPOCH"] = candidate["source_date_epoch"]
             env["PYTHONHASHSEED"] = "0"
             env["TZ"] = "UTC"
             env.pop("PYTHONSAFEPATH", None)

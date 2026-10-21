@@ -158,12 +158,12 @@
             "selector_is_integrity": false
           },
           "distribution": "public",
-          "filename": "@vantio-cli-0.3.25.source",
+          "filename": "@vantio-cli-0.3.26.source",
           "hash_status": "UNRECORDED",
           "role": "source-tree",
           "sha256": null,
           "source_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
-          "version": "0.3.25"
+          "version": "0.3.26"
         }
       ],
       "clean_env": {
@@ -171,8 +171,8 @@
       },
       "distribution": "public",
       "docs_gate": {
-        "docs_version": "0.3.25",
-        "manifest_version": "0.3.25",
+        "docs_version": "0.3.26",
+        "manifest_version": "0.3.26",
         "status": "MATCH"
       },
       "ordinary_client": {
@@ -189,10 +189,10 @@
         "from_version": null,
         "rollback_sha256": null,
         "to_sha256": null,
-        "to_version": "0.3.25",
+        "to_version": "0.3.26",
         "verified": false
       },
-      "version": "0.3.25"
+      "version": "0.3.26"
     },
     {
       "artifacts": [
@@ -260,7 +260,7 @@
           "role": "wheel",
           "sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8",
           "source_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
-          "version": "3.1.1"
+          "version": "3.1.2"
         },
         {
           "byte_length": 57039,
@@ -278,7 +278,7 @@
           "role": "sdist",
           "sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
           "source_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
-          "version": "3.1.1"
+          "version": "3.1.2"
         }
       ],
       "clean_env": {
@@ -286,8 +286,8 @@
       },
       "distribution": "public",
       "docs_gate": {
-        "docs_version": "3.1.1",
-        "manifest_version": "3.1.1",
+        "docs_version": "3.1.2",
+        "manifest_version": "3.1.2",
         "status": "MATCH"
       },
       "ordinary_client": {
@@ -304,10 +304,10 @@
         "from_version": "3.0.14",
         "rollback_sha256": null,
         "to_sha256": "6a0e4aff4c3d520df0016ae2d56c97fd2c5a7a09e184edd63c59044f558685b8",
-        "to_version": "3.1.1",
+        "to_version": "3.1.2",
         "verified": false
       },
-      "version": "3.1.1"
+      "version": "3.1.2"
     },
     {
       "artifacts": [

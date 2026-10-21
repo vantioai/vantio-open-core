@@ -51,12 +51,6 @@
       "id": "siem",
       "forbidden": "\\bSIEM\\b",
       "reason": "docs/surfaces.md lists SIEM export as earmarked, not shipping."
-    },
-    {
-      "id": "otlp-exporter",
-      "forbidden": "OTLP exporter",
-      "allowed_line": "no OTLP exporter",
-      "reason": "The CLI README states there is no OTLP exporter."
     }
   ]
 }

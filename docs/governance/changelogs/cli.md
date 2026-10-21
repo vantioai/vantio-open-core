@@ -2,6 +2,12 @@
 
 This heading exists so a documentation release can require a changelog entry for the version already in `packages/vantio-cli/package.json`. It does not bump that version.
 
+## 0.3.26
+
+Source version for coverage, new-destination flags, and monitoring export. This heading records the version in `packages/vantio-cli/package.json`. It does not upload a tarball and it does not create a tag.
+
+`vantio coverage` lists recorded processes and connections. `vantio destinations` flags a destination the first time a program connects to it. `vantio export` sends those events to OTLP/HTTP JSON, unary OTLP/gRPC, syslog or JSON lines, or a webhook. `vantio run` writes a run file for the wrapped command, including commands that are not the Node interceptor. Prompts and completions stay out of the record.
+
 ## 0.3.25
 
 Founder approved publication of this source version to npm on 2026-10-16. This heading is the release record. It does not by itself upload a tarball.

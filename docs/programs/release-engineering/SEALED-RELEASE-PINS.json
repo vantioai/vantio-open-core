@@ -6,6 +6,20 @@
     "tag_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
     "sealed_candidate": {
       "package": "@vantio/cli",
+      "version": "0.3.26",
+      "filename": "vantio-cli-0.3.26.tgz",
+      "path": "artifacts/sealed/vantio-cli-0.3.26.tgz",
+      "sha256": "10587861ab181d2d184dc06a20525ec42877fed362c81f9337d81475968e3306",
+      "bytes": 97488,
+      "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+      "tag_created": false,
+      "source_date_epoch": "1792198920",
+      "npm": "10.9.9",
+      "pack": "npm pack --ignore-scripts",
+      "packed_from": "c4ac774f505de2da0ed09cdb4973307a18a3a1dd"
+    },
+    "prior_sealed_candidate": {
+      "package": "@vantio/cli",
       "version": "0.3.25",
       "filename": "vantio-cli-0.3.25.tgz",
       "path": "artifacts/sealed/vantio-cli-0.3.25.tgz",
@@ -45,6 +59,32 @@
       "pyproject_hooks==1.3.3",
       "trove-classifiers==2026.9.21.13"
     ],
+    "source_candidate": {
+      "package": "vantio-agent-sdk",
+      "version": "3.1.2",
+      "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+      "tag_created": false,
+      "wheel_name": "vantio_agent_sdk-3.1.2-py3-none-any.whl",
+      "sdist_name": "vantio_agent_sdk-3.1.2.tar.gz",
+      "wheel_path": "artifacts/sealed/vantio_agent_sdk-3.1.2-py3-none-any.whl",
+      "sdist_path": "artifacts/sealed/vantio_agent_sdk-3.1.2.tar.gz",
+      "wheel_sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68",
+      "sdist_sha256": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb",
+      "wheel_bytes": 35551,
+      "sdist_bytes": 59493,
+      "source_date_epoch": "1792198920",
+      "pack": "python3 -m build --no-isolation",
+      "build_requires": [
+        "build==1.3.0",
+        "hatchling==1.27.0",
+        "packaging==26.3",
+        "pathspec==1.1.1",
+        "pluggy==1.7.0",
+        "pyproject_hooks==1.3.3",
+        "trove-classifiers==2026.9.21.13"
+      ],
+      "packed_from": "31877bbe3fa1195895aaab8fab1f9baa5746bd3e"
+    },
     "previous_closed": {
       "version": "3.1.0",
       "state": "RELEASE_CLOSED_REGISTRY_VERIFIED",

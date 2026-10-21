@@ -55,6 +55,9 @@ vantio prove          # generate a proof artifact from a local run log
 vantio search [query] # search local run logs by host, path, action, or free text
 vantio tail           # show the latest calls from a captured run
 vantio diff <a> <b>   # compare two local runs — hosts, counts, bytes
+vantio coverage       # processes and connections on this system, and which paths are on the allowlist
+vantio destinations   # flag a destination the first time a program connects to it
+vantio export         # send recorded events to OTLP/HTTP JSON, syslog or JSON lines, or a webhook
 ```
 
 ---
@@ -79,6 +82,8 @@ With the SDK installed, `vantio run python` injects the wrap (`sitecustomize` on
 
 Your code doesn't change. Your agent runs normally. Observed calls are recorded on this machine.
 
+`vantio run` writes a run record for every command, including commands that are not `node`, `npx`, `tsx`, or `ts-node`. On Linux it reads `/proc` while that process and the processes it starts are alive, and records the process tree and the outbound sockets it sees. A socket is attributed to the process that held it, and that process is listed on `vantio coverage`. For a command that is not Node or Python, the first sampled socket to a destination prints a New destination line while the command is still running. Node and Python print that line when the supported call starts, before the response returns. The read does not change the process and does not query DNS. A socket that opens and closes between samples can be missed. Those records are included in `vantio coverage` and `vantio destinations`.
+
 ---
 
 ## Flags
@@ -91,7 +96,7 @@ vantio run --mcp-enforce node agent.js
 
 `vantio run` loads in-process MCP awareness for Node, and the same library for Python child-process stdio. The default is observe, and injection and rug-pull stay on log. `--mcp-enforce` withholds inside that process. `VANTIO_MCP_AWARENESS=off` does not load it. The path does not add a proxy process. Payload text is not stored. This is not Phantom Engine. Host attachment remains a later step.
 
-**`--json`** on `run`, `demo`, `status`, `discover`, `prove`, `search`, `tail`, and `diff` prints `"schema_status": "unstable-pre-1.0"`. That shape may change without notice. Field mapping to OpenTelemetry GenAI terms is documented in the open-core repo at `docs/optics-otel-mapping.md`. There is no OTLP exporter.
+**`--json`** on `run`, `demo`, `status`, `discover`, `prove`, `search`, `tail`, `diff`, `coverage`, `destinations`, and `export` prints `"schema_status": "unstable-pre-1.0"`. That shape may change without notice. Field mapping to OpenTelemetry GenAI terms is documented in the open-core repo at `docs/optics-otel-mapping.md`. `vantio export --otlp` sends OTLP/HTTP JSON. `vantio export --otlp-grpc` sends the same fields as unary OTLP/gRPC over HTTP/2. Optics does not start a collector.
 
 **`--summary`** — prints a summary when the process exits:
 
@@ -172,6 +177,80 @@ Run `vantio discover --help` for the same bounds.
 
 ---
 
+## Coverage map
+
+```bash
+vantio coverage
+vantio coverage --json
+vantio coverage --since=7d --allowlist=./allowlist.json
+```
+
+`vantio coverage` reads run logs and `mcp-observations.jsonl` on this system. It prints every recorded process and connection, then splits paths into two lists:
+
+- **Under authority** — the destination or MCP tool name is on the allowlist.
+- **Outside authority** — it was seen, and it is not on that list.
+
+The text view and `--json` are the same map. JSON uses `schema` `vantio.optics.coverage.v1` and `schema_status` `unstable-pre-1.0`. A curl or wget spawn recorded on a call is shown as that program, from the parent. On Linux, `vantio coverage` also reads `/proc` and the TCP socket tables. A live process outside the wrap is marked **not covered** when its command looks like an AI program and it has a connection, or when `/etc/hosts` names that socket as an in-scope AI host. The read does not change the process and does not query DNS. Browser paths and calls that never hit the interceptor stay named under **Not covered**.
+
+The command reads this system. A record that stored another hostname is listed under that name. It does not connect to other machines. `vantio coverage`, `vantio destinations`, and `vantio export` read `~/.vantio` and, when `VANTIO_HOME` is a different directory, that directory too. `vantio discover`, `search`, `tail`, `diff`, and `prove` still read only `~/.vantio`.
+
+The allowlist and `seen-destinations.json` are stored under `VANTIO_HOME` when that variable is set, otherwise under `~/.vantio`. If `VANTIO_HOME` has no allowlist file, `~/.vantio/allowlist.json` is used when it exists. An explicit `--allowlist` path must exist. A missing default file means nothing is under authority.
+
+```json
+{
+  "schema": "vantio.optics.allowlist.v1",
+  "destinations": ["billing.internal.example", "*.openai.example"],
+  "mcp_tools": ["tools/read"],
+  "alert_on_allowlist": false
+}
+```
+
+`*.example.com` matches one DNS label. An entry may be an object with `"alert": true` or `"alert": false`. Prompts and completions are never stored. Query strings are not shown.
+
+---
+
+## New destination
+
+```bash
+vantio destinations
+vantio destinations --json
+vantio destinations --dry-run
+```
+
+`vantio destinations` walks local records in time order. The first connection from a program to a destination it has not used is flagged **New destination**, with the program, the destination, and the first connection time. The same pair is not flagged again. `--since` chooses which of those new flags to print. It does not forget a connection that happened before the window. The memory is `seen-destinations.json` in the directory described above. The first full run therefore flags every destination that is not on the allowlist.
+
+A destination on the allowlist is not flagged unless `alert_on_allowlist` is true, or that entry sets `"alert": true`. The flag does not stop the call.
+
+---
+
+## Monitoring export
+
+```bash
+vantio export --otlp=http://127.0.0.1:4318
+vantio export --jsonl=./optics.jsonl
+vantio export --syslog=udp://127.0.0.1:514
+vantio export --webhook=https://collector.example/optics
+```
+
+`vantio export` sends the recorded events. Use one or more of `--otlp`, `--jsonl`, `--syslog`, and `--webhook`.
+
+- `--otlp` is a base URL. The command POSTs OTLP/HTTP JSON to `/v1/traces`, `/v1/metrics`, and `/v1/logs`. The metric is a gauge, `vantio.optics.bytes`, summed for that batch. It is not a token count. The Optics trace id is attribute `vantio.trace_id`. The OTLP `traceId` is a 32-hex digest of that id, because an Optics trace id is not a W3C trace id.
+- `--jsonl` appends one JSON object per line. `-` writes to stdout.
+- `--syslog` appends RFC 5424 lines whose message is the same JSON. A file path, `-`, `udp://host:port`, or `tcp://host:port` are accepted.
+- `--webhook` POSTs `{"schema":"vantio.optics.export.v1","events":[...]}`.
+
+Plaintext `http` and `grpc` are accepted only for loopback. Other hosts need `https` or `grpcs`. Optics does not start a collector. A one-shot export exits non-zero when a destination does not accept the batch and does not update the seen-destination file. An empty record set prints `No events.` and does not send.
+
+`vantio export --follow` reads `live.jsonl` as events are appended and sends them to the same destinations. A failed send is retried with backoff. While that batch is still waiting, newer lines stay in the journal. The buffer holds at most 1000 events and drops the oldest when it is full. `VANTIO_EXPORT_OTLP`, `VANTIO_EXPORT_OTLP_GRPC`, `VANTIO_EXPORT_JSONL`, `VANTIO_EXPORT_SYSLOG`, and `VANTIO_EXPORT_WEBHOOK` supply those destinations when the matching flag is omitted, so `vantio export --follow` can stay running.
+
+`vantio tail --follow` prints a New destination line when the call happens. The clock time is local `HH:MM:SS`. The line is also written on the wrapped process's stderr at that moment.
+
+`VANTIO_EXPORT_WEBHOOK_TOKEN`, when set, is sent as a bearer token on the webhook only. The CLI does not print it. New-destination flags in the batch follow the same rules as `vantio destinations`.
+
+Prompts, completions, header values, and query strings are not export fields.
+
+---
+
 ## Environment variables
 
 | Variable | Description |
@@ -179,6 +258,12 @@ Run `vantio discover --help` for the same bounds.
 | `VANTIO_TELEMETRY` | Set to `1` to opt **in** to usage telemetry (disabled by default) |
 | `VANTIO_TELEMETRY_DISABLED` | Set to `1` to explicitly disable telemetry (overrides `VANTIO_TELEMETRY=1`) |
 | `DO_NOT_TRACK` | Set to `1` to disable telemetry (overrides `VANTIO_TELEMETRY=1`) |
+| `VANTIO_EXPORT_JSONL` | JSON-lines path used by `vantio export` when `--jsonl` is omitted. |
+| `VANTIO_EXPORT_OTLP` | OTLP/HTTP base URL used when `--otlp` is omitted. |
+| `VANTIO_EXPORT_OTLP_GRPC` | OTLP/gRPC URL used when `--otlp-grpc` is omitted. |
+| `VANTIO_EXPORT_SYSLOG` | Syslog target used when `--syslog` is omitted. |
+| `VANTIO_EXPORT_WEBHOOK` | Webhook URL used when `--webhook` is omitted. |
+| `VANTIO_EXPORT_WEBHOOK_TOKEN` | Optional bearer token for `vantio export --webhook`. Not printed. |
 
 ---
 
