@@ -11,12 +11,25 @@
       "path": "artifacts/sealed/vantio-cli-0.3.26.tgz",
       "sha256": "10587861ab181d2d184dc06a20525ec42877fed362c81f9337d81475968e3306",
       "bytes": 97488,
-      "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+      "state": "PUBLISHED_REGISTRY_BYTES_VERIFIED",
       "tag_created": false,
       "source_date_epoch": "1792198920",
       "npm": "10.9.9",
       "pack": "npm pack --ignore-scripts",
-      "packed_from": "c4ac774f505de2da0ed09cdb4973307a18a3a1dd"
+      "packed_from": "c4ac774f505de2da0ed09cdb4973307a18a3a1dd",
+      "registry": {
+        "registry": "https://registry.npmjs.org/",
+        "url": "https://www.npmjs.com/package/@vantio/cli/v/0.3.26",
+        "tarball": "https://registry.npmjs.org/@vantio/cli/-/cli-0.3.26.tgz",
+        "registry_sha256": "10587861ab181d2d184dc06a20525ec42877fed362c81f9337d81475968e3306",
+        "dist_shasum": "535a57650d4b9aca98595d98ca4e1f681f4a1926",
+        "integrity": "sha512-FgYaOh5leSan8h8bSaqze710Mnka2MTZhdyz1vJD3dOJktuilD7ebA55672SHlKcVoMYu+0a6aVYBE8Zn04ttw==",
+        "published_at": "2026-10-21T22:43:41.535Z",
+        "dist_tag_latest": "0.3.26",
+        "approval_run_id": "39657412891",
+        "source_commit": "75f32310d03a3020b56fd565109ae1f2a19a23bc",
+        "promoted_by": "scripts/release/promote_npm.mjs --publish (PUBLISHED_VERIFIED)"
+      }
     },
     "prior_sealed_candidate": {
       "package": "@vantio/cli",
@@ -35,7 +48,7 @@
   },
   "python": {
     "version": "3.1.2",
-    "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+    "state": "PUBLISHED_REGISTRY_BYTES_VERIFIED",
     "prior_state": "PUBLISHED_REGISTRY_BYTES_VERIFIED_CLIENT_PROVED",
     "publisher_commit": "63df79c8f81cc90a03bea559838c0989d0e35ebc",
     "wheel_sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68",
@@ -47,7 +60,7 @@
     "wheel_path": "artifacts/sealed/vantio_agent_sdk-3.1.2-py3-none-any.whl",
     "sdist_path": "artifacts/sealed/vantio_agent_sdk-3.1.2.tar.gz",
     "custody_tag": "custody-py-3.1.2",
-    "custody_tag_created": false,
+    "custody_tag_created": true,
     "source_date_epoch": "1792198920",
     "build_command": "python3 -m build --no-isolation",
     "build_requires": [
@@ -62,7 +75,7 @@
     "source_candidate": {
       "package": "vantio-agent-sdk",
       "version": "3.1.2",
-      "state": "SEALED_BYTES_RECORDED_NOT_PUBLISHED",
+      "state": "PUBLISHED_REGISTRY_BYTES_VERIFIED",
       "tag_created": false,
       "wheel_name": "vantio_agent_sdk-3.1.2-py3-none-any.whl",
       "sdist_name": "vantio_agent_sdk-3.1.2.tar.gz",
@@ -93,6 +106,17 @@
       "sdist_sha256": "8a03682afd2058788bd044fbd3784d3b837067bf5ff189d6be5b09434ec96799",
       "wheel_bytes": 33997,
       "sdist_bytes": 57039
+    },
+    "custody_tag_commit": "c9e672d7ac08dac74c08c45b0a770410aaae9c92",
+    "registry": {
+      "url": "https://pypi.org/project/vantio-agent-sdk/3.1.2/",
+      "json": "https://pypi.org/pypi/vantio-agent-sdk/3.1.2/json",
+      "wheel_registry_sha256": "872517cb65bb2e07a56e06430975d01f919f788c5bb75a51ac95c5049afc5e68",
+      "sdist_registry_sha256": "5852dd63ef2f94399a6c90dffab9b0fda10e737fc9d2ecd111830835992e37fb",
+      "uploaded_at": "2026-10-21T22:37:53Z",
+      "publish_run_id": "39658445559",
+      "publish_run_head": "c9e672d7ac08dac74c08c45b0a770410aaae9c92",
+      "publisher": "Trusted Publishing (pypi-publish.yml, environment pypi)"
     }
   }
 }
