@@ -1,14 +1,9 @@
-# Security Policy
+# Security policy
 
-This repository follows the Vantio organization security policy for public Optics surfaces.
+Report a suspected vulnerability in this repository by email to **security@vantio.ai**. A private GitHub Security Advisory on this repository is also appropriate when that feature is enabled.
 
-Report a suspected vulnerability here:
-
-- Email **security@vantio.ai** (preferred)
-- Or open a **private** GitHub Security Advisory on this repository, if that is enabled
-
-Do not open a public issue for an unfixed vulnerability. Do not attach secrets, customer data, or prompts and completions.
+Keep unfixed vulnerability details out of public issues. Leave secrets, customer data, prompts, and completions out of the report.
 
 We acknowledge reports when we can. We do not promise a response time.
 
-Phantom Engine source is private. Do not use this repository to disclose or contribute host-control issues. The product page is [vantio.ai/phantom](https://vantio.ai/phantom).
+Phantom Engine enforcement source is private. Send those reports to security@vantio.ai as well. The product page is [vantio.ai/phantom-engine](https://vantio.ai/phantom-engine).
