@@ -9,17 +9,40 @@ A row that did not run stays GAP.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
-PUBLIC_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
-TRACKING_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
-POLICY_ALLOW_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
+
+def _load_seal():
+    origin = Path(__file__).resolve().parent
+    for parent in (origin, *origin.parents):
+        for candidate in (parent / "pe_canonical_seal.py", parent / "scripts" / "release" / "pe_canonical_seal.py"):
+            if not candidate.is_file():
+                continue
+            cached = sys.modules.get("pe_canonical_seal")
+            if cached is not None:
+                return cached
+            spec = importlib.util.spec_from_file_location("pe_canonical_seal", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["pe_canonical_seal"] = module
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("pe_canonical_seal.py")
+
+
+_SEAL = _load_seal()
+PUBLIC_PIN = _SEAL.public_pin()
+TRACKING_SEAL = _SEAL.tracking_seal()
+POLICY_ALLOW_SEAL = _SEAL.plumbing_only_seal()
 CLAIM_CAP = "INTERNAL_CLEAN_HOST_PROOF"
 OUTCOMES = frozenset({"HELD", "FAIL_GAP", "GAP", "INCONCLUSIVE", "REFUSED_UNSAFE"})
 ID_RE = re.compile(r"^[a-z0-9_.]{1,64}$")

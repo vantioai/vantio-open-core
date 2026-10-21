@@ -29,7 +29,6 @@ from vantio_install.cli import main
 from vantio_install.signed_policy import dev_trust
 
 PACKAGE = Path(__file__).resolve().parents[1]
-PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
 TX = "vantio-tx-22222222-2222-4222-8222-222222222222"
 
 
@@ -52,9 +51,17 @@ def _signature(payload: bytes, filename: str, private: Ed25519PrivateKey) -> dic
 
 class OneCommandTests(unittest.TestCase):
     def test_public_pin_source_is_unchanged(self) -> None:
+        seal_path = PACKAGE.parents[1] / "release" / "pe-canonical-seal.json"
+        body = json.loads(seal_path.read_text(encoding="utf-8"))
+        pin = body["public_pin"]["archive_sha256"]
         text = (PACKAGE / "vantio_install" / "constants.py").read_text(encoding="utf-8")
-        self.assertIn(PIN, text)
-        self.assertEqual(constants.FROZEN_PINS["pe_archive_sha256"], PIN)
+        self.assertNotIn(pin, text)
+        self.assertIn("pe-canonical-seal.json", text)
+        self.assertEqual(constants.FROZEN_PINS["pe_archive_sha256"], pin)
+        self.assertEqual(constants.LIVE_CANONICAL_IDENTITY["pe_archive_sha256"], pin)
+        self.assertEqual(constants.FROZEN_PINS["pe_source_commit"], body["public_pin"]["source_commit"])
+        self.assertEqual(constants.FROZEN_PINS["pe_manifest_digest"], body["public_pin"]["manifest_digest"])
+        self.assertEqual(constants.FROZEN_PINS["pe_archive_name"], body["public_pin"]["archive_basename"])
 
     def test_signature_hashes_the_file_and_refuses_a_production_key(self) -> None:
         private = Ed25519PrivateKey.generate()

@@ -39,7 +39,9 @@ from vantio_install.signed_policy import DevPublicKey, dev_trust, sign_policy
 from vantio_install.util import redact_text
 from vantio_install.verifier import _recompute_health
 
-PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+PIN = json.loads(
+    (Path(__file__).resolve().parents[3] / "release" / "pe-canonical-seal.json").read_text(encoding="utf-8")
+)["public_pin"]["archive_sha256"]
 
 
 def _public(private: Ed25519PrivateKey) -> bytes:

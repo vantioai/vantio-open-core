@@ -21,6 +21,8 @@ import lab_auto as lab
 import offline_deliver as od
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "scripts" / "aws"))
+import enterprise_bundle  # noqa: E402
 
 
 def _trust_tar(directory: Path, body: bytes, *, extra: bytes | None = None, name: str = od.TRUST_MEMBER) -> Path:
@@ -71,7 +73,9 @@ class OfflineDeliverTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             od.guest_command(od.PUBLIC_INSTALLER_PIN, "enterprise")
         bundle = (ROOT / "scripts/aws/enterprise_bundle.py").read_text(encoding="utf-8")
-        self.assertIn(od.POLICY_ALLOW_SEAL, bundle)
+        self.assertEqual(enterprise_bundle.PLUMBING_ONLY_SEAL, od.POLICY_ALLOW_SEAL)
+        self.assertNotEqual(enterprise_bundle.POLICY_ALLOW_SEAL, od.PUBLIC_INSTALLER_PIN)
+        self.assertNotIn(od.POLICY_ALLOW_SEAL, bundle)
         self.assertIn(od.TRUST_SHA256, bundle)
 
     def test_contract_trust_accepts_only_the_nonprod_key(self) -> None:

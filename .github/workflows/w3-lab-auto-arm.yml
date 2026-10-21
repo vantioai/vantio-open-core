@@ -24,9 +24,9 @@ on:
         required: true
         type: string
       seal:
-        description: Seal sha256, 64 hex characters. The downloaded manifest must carry this digest.
-        required: true
-        default: 6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403
+        description: Seal sha256, 64 hex characters. Empty uses release/pe-canonical-seal.json lane_seal.sha256. The downloaded manifest must carry this digest.
+        required: false
+        default: ""
         type: string
       bundle_commit:
         description: Private lab bundle commit, 40 hex characters. Empty uses the commit already pinned in the bundle checker.
@@ -34,9 +34,9 @@ on:
         default: ""
         type: string
       public_pin:
-        description: Public installer pin, 64 hex characters.
-        required: true
-        default: e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e
+        description: Public installer pin, 64 hex characters. Empty uses release/pe-canonical-seal.json public_pin.archive_sha256.
+        required: false
+        default: ""
         type: string
       enterprise_rows:
         description: Run the Enterprise row proof on this owned host. Default is the marker only.
@@ -49,7 +49,7 @@ on:
         default: lab-bundle/enterprise-pe-2026-10-08
         type: string
       battery:
-        description: enterprise keeps the grant and revoke rows. reboot-check schedules the LSM reboot and confirms the boot id changed. descendant-b1 runs the moved-child deny and repeats it after that same reboot. self-service runs the public one-command installer. self-service-enforce runs observe, host-prep, a workflow reboot, and enforce. Phase names run one clean-host battery on the working seal.
+        description: enterprise keeps the grant and revoke rows. reboot-check schedules the LSM reboot and confirms the boot id changed. descendant-b1 runs the moved-child deny and repeats it after that same reboot. self-service runs the public one-command installer. self-service-enforce runs observe, host-prep, a workflow reboot, and enforce. webshell runs the sealed web-shell battery with enterprise rows and the red-team brain left off. Phase names run one clean-host battery on the working seal. Teardown and verify-removed stay the existing dispatch workflows.
         required: false
         default: enterprise
         type: choice
@@ -59,6 +59,7 @@ on:
           - descendant-b1
           - self-service
           - self-service-enforce
+          - webshell
           - r15-container-exit
           - 2c-upgrade-rollback
           - 2d-crash-recovery
@@ -106,6 +107,14 @@ jobs:
               exit 1
             fi
           fi
+          if [ "${{ inputs.battery }}" = "webshell" ] && [ "${{ inputs.enterprise_rows }}" = "true" ]; then
+            echo "webshell does not run the enterprise rows" >&2
+            exit 1
+          fi
+          if [ "${{ inputs.battery }}" = "webshell" ] && [ "${{ inputs.redteam_brain }}" = "true" ]; then
+            echo "webshell does not run the red-team brain" >&2
+            exit 1
+          fi
 
       - name: Refuse static AWS keys
         run: |
@@ -144,6 +153,11 @@ jobs:
             scripts/aws/fetch_offline_debs.sh
             scripts/aws/lab-guests/self_service.py
             scripts/aws/lab-guests/self_service_enforce.py
+            scripts/aws/lab-guests/webshell_guest.py
+            scripts/aws/lab-guests/webshell_grade.py
+            scripts/release/pe_canonical_seal.py
+            release/pe-canonical-seal.json
+            release/pe-seal-history.json
             scripts/lab/stage_lab_trust.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
@@ -153,6 +167,31 @@ jobs:
             scripts/gcp/redteam_brain.py
             scripts/aws/stage_redteam_brain.py
           sparse-checkout-cone-mode: false
+
+      - name: Read the canonical seal
+        id: canonical
+        env:
+          INPUT_SEAL: ${{ inputs.seal }}
+          INPUT_PUBLIC_PIN: ${{ inputs.public_pin }}
+        run: |
+          set -euo pipefail
+          test -f release/pe-canonical-seal.json
+          lane=$(jq -r '.lane_seal.sha256' release/pe-canonical-seal.json)
+          pin=$(jq -r '.public_pin.archive_sha256' release/pe-canonical-seal.json)
+          printf '%s\n' "$lane" | grep -Eq '^[0-9a-f]{64}$'
+          printf '%s\n' "$pin" | grep -Eq '^[0-9a-f]{64}$'
+          seal="${INPUT_SEAL:-}"
+          public="${INPUT_PUBLIC_PIN:-}"
+          if [ -z "$seal" ]; then
+            seal="$lane"
+          fi
+          if [ -z "$public" ]; then
+            public="$pin"
+          fi
+          printf '%s\n' "$seal" | grep -Eq '^[0-9a-f]{64}$'
+          printf '%s\n' "$public" | grep -Eq '^[0-9a-f]{64}$'
+          echo "seal=$seal" >> "$GITHUB_OUTPUT"
+          echo "public_pin=$public" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -203,12 +242,12 @@ jobs:
 
       - name: Prepare the private bundle
         id: bundle
-        if: inputs.enterprise_rows
+        if: inputs.enterprise_rows || inputs.battery == 'webshell'
         env:
           W3_LAB_PRIVATE_BUNDLE_TOKEN: ${{ secrets.W3_LAB_PRIVATE_BUNDLE_TOKEN }}
           W3_BUNDLE_TAG: ${{ inputs.bundle_tag }}
           W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}
-          W3_EXPECTED_SEAL: ${{ inputs.seal }}
+          W3_EXPECTED_SEAL: ${{ steps.canonical.outputs.seal }}
           W3_BATTERY: ${{ inputs.battery }}
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
           EVIDENCE_PATH: w3-lab-bundle.json
@@ -290,11 +329,11 @@ jobs:
           echo "cidr=${ip}/32" >> "$GITHUB_OUTPUT"
 
       - name: Arm the guest marker
-        if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == false && inputs.battery != 'self-service' && inputs.battery != 'self-service-enforce'
+        if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == false && inputs.battery != 'self-service' && inputs.battery != 'self-service-enforce' && inputs.battery != 'webshell'
         env:
           INSTANCE_ID: ${{ inputs.instance_id }}
-          SEAL: ${{ inputs.seal }}
-          PUBLIC_PIN: ${{ inputs.public_pin }}
+          SEAL: ${{ steps.canonical.outputs.seal }}
+          PUBLIC_PIN: ${{ steps.canonical.outputs.public_pin }}
           W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           EVIDENCE_PATH: w3-lab-arm.json
@@ -304,8 +343,8 @@ jobs:
         if: success() && steps.cap.outputs.proceed == 'true' && inputs.battery == 'self-service'
         env:
           INSTANCE_ID: ${{ inputs.instance_id }}
-          SEAL: ${{ inputs.seal }}
-          PUBLIC_PIN: ${{ inputs.public_pin }}
+          SEAL: ${{ steps.canonical.outputs.seal }}
+          PUBLIC_PIN: ${{ steps.canonical.outputs.public_pin }}
           W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           W3_SELF_SERVICE_DIR: ${{ runner.temp }}/self-service
@@ -319,8 +358,8 @@ jobs:
         if: success() && steps.cap.outputs.proceed == 'true' && inputs.battery == 'self-service-enforce'
         env:
           INSTANCE_ID: ${{ inputs.instance_id }}
-          SEAL: ${{ inputs.seal }}
-          PUBLIC_PIN: ${{ inputs.public_pin }}
+          SEAL: ${{ steps.canonical.outputs.seal }}
+          PUBLIC_PIN: ${{ steps.canonical.outputs.public_pin }}
           W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           W3_SELF_SERVICE_DIR: ${{ runner.temp }}/self-service
@@ -330,12 +369,26 @@ jobs:
           EVIDENCE_PATH: w3-lab-arm.json
         run: vantio run python3 scripts/aws/w3_lab_steps.py arm-self-service-enforce
 
+      - name: Run the webshell battery
+        if: success() && steps.cap.outputs.proceed == 'true' && inputs.battery == 'webshell' && steps.bundle.outputs.ready == 'true'
+        env:
+          INSTANCE_ID: ${{ inputs.instance_id }}
+          SEAL: ${{ steps.canonical.outputs.seal }}
+          PUBLIC_PIN: ${{ steps.canonical.outputs.public_pin }}
+          W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
+          W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
+          W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
+          W3_ROWS_PATH: w3-lab-enterprise-rows.json
+          W3_BATTERY: webshell
+          EVIDENCE_PATH: w3-lab-arm.json
+        run: vantio run python3 scripts/aws/w3_lab_steps.py arm-webshell
+
       - name: Run the Enterprise rows
         if: success() && steps.cap.outputs.proceed == 'true' && inputs.enterprise_rows == true
         env:
           INSTANCE_ID: ${{ inputs.instance_id }}
-          SEAL: ${{ inputs.seal }}
-          PUBLIC_PIN: ${{ inputs.public_pin }}
+          SEAL: ${{ steps.canonical.outputs.seal }}
+          PUBLIC_PIN: ${{ steps.canonical.outputs.public_pin }}
           W3_RUNNER_CIDR: ${{ steps.runner.outputs.cidr }}
           W3_STAMP: ${{ runner.temp }}/ssh-stamp.json
           W3_BUNDLE_DIR: ${{ runner.temp }}/enterprise-bundle
@@ -364,7 +417,7 @@ jobs:
           if-no-files-found: error
 
       - name: Stage enterprise row evidence
-        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce')
+        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce' || inputs.battery == 'webshell')
         run: |
           set -euo pipefail
           mkdir -p row-evidence
@@ -379,7 +432,7 @@ jobs:
           done
 
       - name: Upload enterprise row evidence
-        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce')
+        if: always() && (inputs.enterprise_rows || inputs.battery == 'self-service' || inputs.battery == 'self-service-enforce' || inputs.battery == 'webshell')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: w3-lab-enterprise-rows-${{ github.run_id }}

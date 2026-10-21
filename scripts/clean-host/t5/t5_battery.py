@@ -2,12 +2,36 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 import tarfile
 from pathlib import Path
 
 BATTERY_ID = "t5-egress"
-LANE_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
-PUBLIC_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+
+
+def _load_seal():
+    origin = Path(__file__).resolve().parent
+    for parent in (origin, *origin.parents):
+        for candidate in (parent / "pe_canonical_seal.py", parent / "scripts" / "release" / "pe_canonical_seal.py"):
+            if not candidate.is_file():
+                continue
+            cached = sys.modules.get("pe_canonical_seal")
+            if cached is not None:
+                return cached
+            spec = importlib.util.spec_from_file_location("pe_canonical_seal", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["pe_canonical_seal"] = module
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("pe_canonical_seal.py")
+
+
+_SEAL = _load_seal()
+LANE_SEAL = _SEAL.lane_seal()
+PUBLIC_PIN = _SEAL.public_pin()
 LAB_PROJECT = "vantio-lab-oct08"
 GUEST_SCRIPT = Path(__file__).resolve().parents[2] / "aws" / "lab-guests" / "t5-egress.sh"
 PACK_ROOTS = (
@@ -15,11 +39,20 @@ PACK_ROOTS = (
     "packages/t5-egress-drills",
     "packages/t5-egress-kernel",
 )
+PACK_FILES = (
+    "scripts/release/pe_canonical_seal.py",
+    "release/pe-canonical-seal.json",
+    "release/pe-seal-history.json",
+)
 
 
 def pack_tree(repo: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(dest, "w") as archive:
+        for rel in PACK_FILES:
+            path = repo / rel
+            if path.is_file():
+                archive.add(path, arcname=rel)
         for rel in PACK_ROOTS:
             root = repo / rel
             for path in sorted(root.rglob("*")):

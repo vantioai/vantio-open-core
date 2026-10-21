@@ -3,7 +3,7 @@ name: GCP lab provision
 # Offline Phantom Engine delivery for t311u item 2, updated by t313u.
 # One Ubuntu 24.04 e2-micro on vantio-lab-offline, no public IP, over IAP.
 # The expected seal digest and bundle commit are workflow inputs.
-# run_batteries is refused for f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753.
+# run_batteries is refused for f882dd81. The full digest is release/pe-seal-history.json.
 # The guest accepts the loaded image vantio-phantom-engine:egress-2e6ab54.
 # The sealed bundle goes to gs://vantio-lab-oct08-handoff and is deleted
 # after the deliver job re-checks it. It is never a workflow artifact.
@@ -30,7 +30,7 @@ on:
         default: 75b6a94c1a50f07d3cc419a904ee08260c9c32ff
         type: string
       run_batteries:
-        description: Run portable PE batteries after the digest check. Refused for f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753.
+        description: Run portable PE batteries after the digest check. Refused for f882dd81.
         required: false
         default: false
         type: boolean

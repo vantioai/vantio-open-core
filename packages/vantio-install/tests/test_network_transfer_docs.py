@@ -6,6 +6,8 @@ import re
 import unittest
 from pathlib import Path
 
+from vantio_install import constants
+
 PACKAGE = Path(__file__).resolve().parents[1]
 DOC_PATH = PACKAGE / "docs" / "NETWORK-TRANSFER-ALLOWLIST.md"
 
@@ -120,10 +122,12 @@ class NetworkTransferDocsTest(unittest.TestCase):
         self.assertIn("GAP-CB-DEP-013", self.doc)
         self.assertIn("This note does not record a LIVE_TRANSFER PASS.", self.doc)
         self.assertNotIn(SUPERSEDED_BASENAME, self.doc)
-        constants = (PACKAGE / "vantio_install" / "constants.py").read_text(encoding="utf-8")
-        self.assertIn(SHA256, constants)
-        self.assertIn(SOURCE_COMMIT, constants)
-        self.assertIn(MANIFEST_DIGEST, constants)
+        source = (PACKAGE / "vantio_install" / "constants.py").read_text(encoding="utf-8")
+        self.assertNotIn(SHA256, source)
+        self.assertIn("pe-canonical-seal.json", source)
+        self.assertEqual(constants.FROZEN_PINS["pe_archive_sha256"], SHA256)
+        self.assertEqual(constants.FROZEN_PINS["pe_source_commit"], SOURCE_COMMIT)
+        self.assertEqual(constants.FROZEN_PINS["pe_manifest_digest"], MANIFEST_DIGEST)
         pyproject = (PACKAGE / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('version = "0.1.0-stage-a"', pyproject)
 

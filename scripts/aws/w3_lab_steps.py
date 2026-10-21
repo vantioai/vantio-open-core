@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import ipaddress
 import json
 import os
@@ -49,6 +50,20 @@ DEFAULT_ENTERPRISE_GUEST = Path(__file__).resolve().with_name("lab-guests") / "e
 DEFAULT_DESCENDANT_GUEST = Path(__file__).resolve().with_name("lab-guests") / "descendant_b1.py"
 DEFAULT_REDTEAM_ROWS = Path(__file__).resolve().parents[1] / "gcp" / "lab-guests" / "redteam_rows.py"
 DEFAULT_REDTEAM_PACKET = Path(__file__).resolve().parents[1] / "gcp" / "redteam_packet.py"
+DEFAULT_WEBSHELL_GUEST = Path(__file__).resolve().with_name("lab-guests") / "webshell_guest.py"
+
+def _load_webshell_grade():
+    path = Path(__file__).resolve().with_name("lab-guests") / "webshell_grade.py"
+    spec = importlib.util.spec_from_file_location("webshell_grade", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["webshell_grade"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+webshell_grade = _load_webshell_grade()
 
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
@@ -1133,7 +1148,24 @@ def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
     """Name the uninstall line the guest recorded. A missing tail stays guest."""
     if not isinstance(body, Mapping):
         return "guest"
-    if body.get("reason") in {"reboot_script_missing", "reboot_not_scheduled"}:
+    if body.get("reason") in {
+        "reboot_script_missing",
+        "reboot_not_scheduled",
+        "SEAL_LACKS_WEBSHELL",
+        "pe_rows_unreadable",
+        "exec_missing",
+        "exec_not_eacces",
+        "exec_not_enforce",
+        "lineage_missing",
+        "file_write_allowed",
+        "child_evasion_allowed",
+        "child_evasion_missing",
+        "kill_not_persistent",
+        "kill_other_boot",
+        "loader_not_restarted",
+        "reboot_not_denied",
+        "reboot_boot_unchanged",
+    }:
         return str(body["reason"])
     removal = body.get("removal")
     if isinstance(removal, Mapping) and removal.get("verified_removed") is False:
@@ -1450,6 +1482,14 @@ def _scan_self_service_enforce(directory: Path) -> None:
             raise lab.GuardAbort("token_in_evidence")
 
 
+def _copy_canonical_seal(copy_to: Callable[[Path, str], None]) -> None:
+    """Put the seal reader next to a guest script that imports it."""
+    root = Path(__file__).resolve().parents[2]
+    copy_to(root / "scripts" / "release" / "pe_canonical_seal.py", "pe_canonical_seal.py")
+    copy_to(root / "release" / "pe-canonical-seal.json", "pe-canonical-seal.json")
+    copy_to(root / "release" / "pe-seal-history.json", "pe-seal-history.json")
+
+
 def execute_enterprise_rows(
     runner: Runner,
     *,
@@ -1499,12 +1539,13 @@ def execute_enterprise_rows(
             "reboot-check",
             "self-service",
             "self-service-enforce",
+            "webshell",
             t5_battery.BATTERY_ID,
             *phase_batteries,
         }:
             raise lab.GuardAbort("battery")
         payload["battery"] = battery
-        if battery in {"self-service", "self-service-enforce", t5_battery.BATTERY_ID} and os.environ.get("W3_BRAIN_DIR", "").strip():
+        if battery in {"self-service", "self-service-enforce", "webshell", t5_battery.BATTERY_ID} and os.environ.get("W3_BRAIN_DIR", "").strip():
             raise lab.GuardAbort("battery")
         cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
         bundle_dir = Path(os.environ.get("W3_BUNDLE_DIR", ""))
@@ -1774,6 +1815,7 @@ def execute_enterprise_rows(
                     copy_to(guest_dir / "soak_check.py", "soak_check.py")
                     copy_to(guest_dir / "soak-hourly.sh", "soak-hourly.sh")
                     copy_to(guest_dir / "record-check.sh", "record-check.sh")
+                _copy_canonical_seal(copy_to)
                 ran = remote(
                     [
                         "env",
@@ -1787,6 +1829,36 @@ def execute_enterprise_rows(
                     ],
                     "",
                 )
+            elif battery == "webshell":
+                script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
+                copy_to(script_path, "enterprise-rows.sh")
+                copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
+                copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
+                copy_to(DEFAULT_WEBSHELL_GUEST, "webshell_guest.py")
+                copy_to(DEFAULT_WEBSHELL_GUEST.with_name("webshell_grade.py"), "webshell_grade.py")
+                pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "webshell", "pre"], "")
+                ran = pre
+                if pre.returncode == 0:
+                    try:
+                        payload["boot_id"] = _wait_for_reboot(
+                            runner,
+                            instance_id,
+                            remote,
+                            connect + [public],
+                            release=release_ssh,
+                            reopen=reopen_ssh,
+                            note=reboot_note,
+                        )
+                    except lab.GuardAbort as exc:
+                        if exc.reason != "reboot_timeout":
+                            raise
+                        tail = _reboot_log_tail(remote)
+                        if tail:
+                            payload["reboot_log_tail"] = tail
+                        payload["guest_rc"] = pre.returncode
+                        payload["mutated"] = True
+                        raise
+                    ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "webshell", "post"], "")
             elif battery == "descendant-b1":
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
                 copy_to(script_path, "enterprise-rows.sh")
@@ -1804,6 +1876,7 @@ def execute_enterprise_rows(
                 if rows_py.is_file() and packet_py.is_file():
                     copy_to(rows_py, "redteam_rows.py")
                     copy_to(packet_py, "redteam_packet.py")
+                    _copy_canonical_seal(copy_to)
                 pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
                 ran = pre
                 if pre.returncode == 0:
@@ -1968,6 +2041,22 @@ def execute_enterprise_rows(
                     raise lab.GuardAbort("self_service_enforce")
                 payload["status"] = "SELF_SERVICE_ENFORCE"
                 payload["enterprise_rows"] = False
+            elif battery == "webshell":
+                graded = webshell_grade.grade_webshell(parsed if isinstance(parsed, dict) else None)
+                post_body = parsed.get("reboot") if isinstance(parsed, dict) and isinstance(parsed.get("reboot"), dict) else {}
+                before_boot = post_body.get("boot_id_before")
+                after_boot = post_body.get("boot_id_after")
+                if (
+                    graded["result"] != "PASS"
+                    or not isinstance(before_boot, str)
+                    or not isinstance(after_boot, str)
+                    or not before_boot
+                    or before_boot == after_boot
+                    or (live_boot and after_boot != live_boot)
+                ):
+                    payload.update({"reason": graded["reason"], "status": "FAILED"})
+                    raise lab.GuardAbort(str(graded["reason"]))
+                payload["status"] = "WEBSHELL"
             elif battery == "descendant-b1":
                 post_body = parsed.get("post") if isinstance(parsed, dict) and isinstance(parsed.get("post"), dict) else {}
                 pre_body = parsed.get("pre") if isinstance(parsed, dict) and isinstance(parsed.get("pre"), dict) else {}
@@ -2075,7 +2164,7 @@ def close_ssh(runner: Runner) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
-            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|arm-self-service|arm-self-service-enforce|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
+            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|arm-self-service|arm-self-service-enforce|arm-webshell|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
             file=sys.stderr,
         )
         return 1
@@ -2105,6 +2194,12 @@ def main(argv: list[str]) -> int:
             return 0
         if command == "arm-self-service-enforce":
             os.environ["W3_BATTERY"] = "self-service-enforce"
+            execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
+            return 0
+        if command == "arm-webshell":
+            os.environ["W3_BATTERY"] = "webshell"
+            if os.environ.get("W3_BRAIN_DIR", "").strip():
+                raise lab.GuardAbort("battery")
             execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
             return 0
         if command == "close-ssh":

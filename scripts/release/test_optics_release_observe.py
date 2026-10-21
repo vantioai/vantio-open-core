@@ -7,6 +7,7 @@ The install step fails when the CLI cannot be installed.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import tempfile
@@ -233,8 +234,11 @@ class ByteIdentityTests(unittest.TestCase):
 
 class PinTests(unittest.TestCase):
     def test_public_installer_pin_is_unchanged(self) -> None:
+        seal = json.loads((ROOT / "release" / "pe-canonical-seal.json").read_text(encoding="utf-8"))
         text = (ROOT / "packages/vantio-install/vantio_install/constants.py").read_text(encoding="utf-8")
-        self.assertGreaterEqual(text.count(PIN), 2)
+        self.assertEqual(seal["public_pin"]["archive_sha256"], PIN)
+        self.assertNotIn(PIN, text)
+        self.assertIn("pe-canonical-seal.json", text)
 
     def test_friction_log_is_present(self) -> None:
         text = (ROOT / "docs/dogfood/CUSTOMER-FRICTION.md").read_text(encoding="utf-8")

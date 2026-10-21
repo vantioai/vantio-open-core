@@ -11,22 +11,46 @@ Audience: INTERNAL_RESTRICTED
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 from typing import Callable
 
 import w3_lab_auto as lab
 
-# Batteries do not run on this older image. GCP still treats it as plumbing-only.
-PLUMBING_ONLY_SEAL = "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753"
-# Zachary, 2026-10-16. Previous working seal: bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d.
-POLICY_ALLOW_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
-PUBLIC_INSTALLER_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
-TRACKING_2A_SEAL = "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
+
+def _load_seal():
+    origin = Path(__file__).resolve().parent
+    for parent in (origin, *origin.parents):
+        for candidate in (parent / "pe_canonical_seal.py", parent / "scripts" / "release" / "pe_canonical_seal.py"):
+            if not candidate.is_file():
+                continue
+            cached = sys.modules.get("pe_canonical_seal")
+            if cached is not None:
+                return cached
+            spec = importlib.util.spec_from_file_location("pe_canonical_seal", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["pe_canonical_seal"] = module
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("pe_canonical_seal.py")
+
+
+_SEAL = _load_seal()
+
+# Batteries do not run on the older plumbing-only image. GCP still treats it that way.
+PLUMBING_ONLY_SEAL = _SEAL.plumbing_only_seal()
+# Zachary, 2026-10-16. Previous working seal prefix: bbb1025d.
+POLICY_ALLOW_SEAL = _SEAL.lane_seal()
+PUBLIC_INSTALLER_PIN = _SEAL.public_pin()
+TRACKING_2A_SEAL = _SEAL.tracking_seal()
 TRUST_BUNDLE_SHA256 = "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876"
 TRUST_KEY_ID = "test-nonprod-ed25519-2026-10-02"
 TRUST_MEMBER = "vantio_enterprise_protocol/trust/test_nonprod_2026_10_02.json"
