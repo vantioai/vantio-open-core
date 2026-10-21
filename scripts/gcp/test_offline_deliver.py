@@ -506,7 +506,8 @@ class OfflineDeliverTest(unittest.TestCase):
             directory = Path(tmp)
             (directory / "handoff.json").write_text("not-json", encoding="utf-8")
             (directory / "handoff.json.sha256").write_text("-----BEGIN PRIVATE KEY-----\n", encoding="utf-8")
-            (directory / "gcp-plumb.json").write_text("{}\n", encoding="utf-8")
+            (directory / "gcp-plumb.json").write_text("{}
+", encoding="utf-8")
             od.prune_evidence(directory)
             self.assertFalse((directory / "handoff.json").exists())
             self.assertFalse((directory / "handoff.json.sha256").exists())
@@ -567,7 +568,8 @@ class OfflineDeliverTest(unittest.TestCase):
             outside = root / "secret.txt"
             outside.write_text("keep-me", encoding="utf-8")
             path = evidence / "handoff.json"
-            path.write_text("{}\n", encoding="utf-8")
+            path.write_text("{}
+", encoding="utf-8")
             sidecar = evidence / "handoff.json.sha256"
             sidecar.symlink_to(outside)
             od.write_evidence(path, {"seal_sha256": od.POLICY_ALLOW_SEAL})
@@ -626,7 +628,8 @@ class OfflineDeliverTest(unittest.TestCase):
             directory = Path(tmp)
             for name in od.RAW_GUEST_NAMES:
                 (directory / name).write_text('{"token": "ghp_' + "a" * 20 + '"}\n', encoding="utf-8")
-            (directory / "gcp-lab-rows.json").write_text("{}\n", encoding="utf-8")
+            (directory / "gcp-lab-rows.json").write_text("{}
+", encoding="utf-8")
             od.drop_guest_copies(directory)
             self.assertTrue((directory / "gcp-lab-rows.json").is_file())
             for name in od.RAW_GUEST_NAMES:
@@ -937,8 +940,13 @@ class OfflineDeliverTest(unittest.TestCase):
             if "actions/upload-artifact@" in line:
                 blocks.append("\n".join(lines[index : index + 12]))
         self.assertGreaterEqual(len(blocks), 3)
-        for block in blocks:
+        optics_blocks = [block for block in blocks if "optics-observe" in block]
+        evidence_blocks = [block for block in blocks if block not in optics_blocks]
+        self.assertGreaterEqual(len(evidence_blocks), 3)
+        self.assertGreaterEqual(len(optics_blocks), 3)
+        for block in evidence_blocks:
             self.assertIn("gcp-lab-evidence", block)
+        for block in blocks:
             self.assertNotIn("seal.oci.tar", block)
             self.assertNotIn("contract.tar", block)
             self.assertNotIn(".deb", block)
@@ -1080,7 +1088,8 @@ class OfflineDeliverTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (directory / "not-evidence.json").write_text("{}\n", encoding="utf-8")
+            (directory / "not-evidence.json").write_text("{}
+", encoding="utf-8")
             od.prune_evidence(directory)
             self.assertFalse((directory / "not-evidence.json").exists())
             body = json.loads((directory / "lsm-guard.json").read_text(encoding="utf-8"))
