@@ -82,11 +82,9 @@ class WorkflowWiringTests(unittest.TestCase):
             "${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}",
         )
 
-    def test_founder_guard_stays_plain_and_lab_workflows_wrap_real_commands(self) -> None:
-        guard = (ROOT / ".github/workflows/founder-approval-guard.yml").read_text(encoding="utf-8")
-        self.assertNotIn("npm install -g @vantio/cli", guard)
-        self.assertNotIn("Optics observe (Lab-only)", guard)
-        self.assertNotIn("vantio-enrolled", guard)
+    def test_lab_workflows_wrap_real_commands(self) -> None:
+        # The founder-approval guard workflow was retired on 2026-10-21 by Founder direction.
+        self.assertFalse((ROOT / ".github/workflows/founder-approval-guard.yml").exists())
         runner = (
             "${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && "
             "'[\"self-hosted\", \"vantio-enrolled\"]' || '\"ubuntu-latest\"') }}"
