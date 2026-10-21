@@ -95,6 +95,40 @@ describe("vantio CLI — basic dispatch", () => {
     }
   });
 
+  test("run writes a run record for a command that is not node", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "vantio-test-bash-"));
+    try {
+      const { code, stderr } = await runCli(
+        ["run", "bash", "-c", "echo wrapped-ok"],
+        { HOME: homeDir },
+      );
+      assert.equal(code, 0, stderr);
+      assert.match(stderr, /run trace_id=/);
+      const runsPath = join(homeDir, ".vantio", "runs");
+      const logs = readdirSync(runsPath).filter((file) => file.endsWith(".json"));
+      assert.equal(logs.length, 1);
+      const log = JSON.parse(readFileSync(join(runsPath, logs[0]), "utf8"));
+      assert.equal(log.vantio_run_log, "1");
+      assert.equal(log.program, "bash");
+      assert.equal(typeof log.pid, "number");
+      assert.ok(Array.isArray(log.processes));
+      assert.ok(log.processes.some((proc) => proc.program === "bash"));
+      assert.ok(Array.isArray(log.calls));
+      assert.equal(log.socket_observation, "read_only_proc");
+      assert.equal(log.prompt, undefined);
+      assert.equal(log.completion, undefined);
+      const coverage = await runCli(["coverage", "--json"], { HOME: homeDir });
+      assert.equal(coverage.code, 0, coverage.stderr);
+      const body = JSON.parse(coverage.stdout);
+      const recorded = (body.processes || []).filter((row) => row.source !== "proc");
+      assert.ok(recorded.some((row) => row.program === "bash" && row.covered === true));
+      const destinations = await runCli(["destinations", "--json"], { HOME: homeDir });
+      assert.equal(destinations.code, 0, destinations.stderr);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
   test("discover rejects an invalid --since value", async () => {
     const { code, stderr } = await runCli(["discover", "--since=3w"]);
     assert.equal(code, 1);

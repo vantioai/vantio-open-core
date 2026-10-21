@@ -7,10 +7,16 @@ const { createHash } = require("node:crypto");
 const { homedir, hostname: osHostname, platform: osPlatform } = require("node:os");
 const {
   appendFileSync,
+  closeSync,
+  existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
+  readSync,
   renameSync,
+  rmSync,
+  statSync,
   writeFileSync,
 } = require("node:fs");
 const { dirname, join } = require("node:path");
@@ -21,12 +27,17 @@ const net = require("node:net");
 const { parseArgs } = require("node:util");
 
 const { SCHEMA_STATUS, normalizeHttpStatus, withSchema } = require("./optics-cx.cjs");
+const { LLM_HOSTS, catalogInScope } = require("./llm-hosts.cjs");
+const { discoverUncovered } = require("./optics-proc.cjs");
+const { deliverOtlpGrpc } = require("./optics-otlp-grpc.cjs");
 
 const COVERAGE_SCHEMA = "vantio.optics.coverage.v1";
 const ALLOWLIST_SCHEMA = "vantio.optics.allowlist.v1";
 const SEEN_SCHEMA = "vantio.optics.seen_destinations.v1";
 const EXPORT_SCHEMA = "vantio.optics.export.v1";
 const ALERT_SCHEMA = "vantio.optics.new_destination.v1";
+const LIVE_SCHEMA = "vantio.optics.live.v1";
+const LIVE_BUFFER_MAX = 1000;
 
 const SINCE_VALUES = new Set(["all", "24h", "7d", "30d"]);
 const ALLOWLIST_KEYS = new Set(["schema", "destinations", "mcp_tools", "alert_on_allowlist"]);
@@ -44,7 +55,7 @@ const SPAWN_TOOLS = Object.freeze({
 const NOT_COVERED = Object.freeze([
   {
     id: "unwrapped_process",
-    summary: "A process that was not started with vantio run is not in this map.",
+    summary: "A process outside the wrap is marked not covered when the local process table shows it.",
   },
   {
     id: "browser",
@@ -52,7 +63,7 @@ const NOT_COVERED = Object.freeze([
   },
   {
     id: "not_intercepted",
-    summary: "A call that never hits the interceptor is not recorded.",
+    summary: "A socket missed between samples, and a call on a process outside this wrap, is not recorded.",
   },
   {
     id: "other_machines",
@@ -66,10 +77,12 @@ vantio coverage — processes and connections recorded on this system
 Prints every AI process and connection in the local Optics records, and
 whether each path is on the allowlist a person wrote. Paths on that list
 are under authority. Paths that were seen and are not on the list are
-outside authority. Processes that never entered the wrap are not invented.
+outside authority. On Linux, the local process table and sockets are read
+and a process outside the wrap is marked not covered. The read is local
+and does not change the process.
 
 The map is this system. A record that stored another hostname is shown
-under that name. This command does not scan other machines.
+under that name. This command does not connect to other machines.
 
 Prompts and completions are never stored.
 
@@ -131,12 +144,16 @@ vantio export — send recorded events to a tool you already run
 Sends projected Optics events. Choose one or more destinations:
 
   --otlp=<base>            OTLP/HTTP JSON. POSTs /v1/traces, /v1/metrics, and /v1/logs
+  --otlp-grpc=<url>        OTLP unary gRPC over HTTP/2. grpc:// is plaintext loopback
   --jsonl=<file|->         One JSON object per line
   --syslog=<file|-|url>    RFC 5424 lines. url is udp://host:port or tcp://host:port
   --webhook=<url>          POST a JSON envelope
+  --follow                 Stream live events as they are recorded. Retries with backoff.
 
-Plaintext http is accepted only for loopback. https is used for other hosts.
-Optics does not start a collector and does not speak OTLP/gRPC.
+Plaintext http and grpc are accepted only for loopback. https and grpcs are
+used for other hosts. Optics does not start a collector. --follow keeps a
+bounded buffer and retries a failed send. A one-shot export still exits
+non-zero when a destination does not accept the batch.
 
 The Optics trace id is kept on the event. The OTLP traceId is a 32-hex digest
 of that id, because an Optics trace id is not a W3C trace id.
@@ -485,12 +502,18 @@ function listMcpRecords(roots) {
 function observationFromCall(log, call, seq, localHost) {
   const destination = normalizeHost(call && call.hostname);
   const time = cleanToken(call && call.ts, 64) || cleanToken(log.generated_at, 64) || cleanToken(log.started_at, 64);
+  const callPid = Number.isInteger(call && call.pid) ? call.pid : null;
+  const program = cleanToken(call && call.program, 256) || programFromLog(log);
+  const pid = callPid != null ? callPid : (Number.isInteger(log.pid) ? log.pid : null);
+  const ppid = callPid != null
+    ? (Number.isInteger(call && call.ppid) ? call.ppid : null)
+    : (Number.isInteger(log.ppid) ? log.ppid : null);
   return {
     seq,
     kind: "connection",
-    program: programFromLog(log),
-    pid: Number.isInteger(log.pid) ? log.pid : null,
-    ppid: Number.isInteger(log.ppid) ? log.ppid : null,
+    program,
+    pid,
+    ppid,
     trace_id: cleanToken(log.trace_id, 128),
     started_at: cleanToken(log.started_at, 64),
     system_hostname: cleanToken(log.system_hostname, 253) || localHost,
@@ -534,19 +557,66 @@ function observationFromMcp(record, seq, localHost) {
   };
 }
 
+function treeRows(log, localHost) {
+  const listed = Array.isArray(log.processes)
+    ? log.processes.filter((proc) => proc && typeof proc === "object")
+    : [];
+  if (!listed.length) return [];
+  const byPid = new Map();
+  for (const proc of listed) {
+    if (Number.isInteger(proc.pid)) byPid.set(proc.pid, proc);
+  }
+  return listed.map((proc) => {
+    const parent = Number.isInteger(proc.ppid) ? byPid.get(proc.ppid) : null;
+    return {
+      kind: "process",
+      program: cleanToken(proc.program, 256) || programFromLog(log),
+      pid: Number.isInteger(proc.pid) ? proc.pid : null,
+      ppid: Number.isInteger(proc.ppid) ? proc.ppid : null,
+      parent_program: parent ? cleanToken(parent.program, 256) : null,
+      trace_id: cleanToken(log.trace_id, 128),
+      started_at: cleanToken(log.started_at, 64),
+      system_hostname: cleanToken(log.system_hostname, 253) || localHost,
+      host_recorded: Boolean(cleanToken(log.system_hostname, 253)),
+      runtime: cleanToken(log.runtime, 32) || (log.node_version ? "node" : null),
+      destination: "",
+      display: "",
+      method: null,
+      path: null,
+      bytes: null,
+      http_status: null,
+      time: cleanToken(log.started_at, 64) || cleanToken(log.generated_at, 64),
+      mediation: null,
+      provider: null,
+    };
+  });
+}
+
 function collectObservations(logs, mcpRecords, localHost, cutoff) {
   const observations = [];
   let seq = 0;
   let undatedExcluded = 0;
   for (const log of logs) {
     const calls = Array.isArray(log.calls) ? log.calls : [];
-    if (calls.length === 0 && inWindow(log.started_at || log.generated_at, cutoff)) {
+    const tree = treeRows(log, localHost);
+    if (tree.length) {
+      for (const row of tree) {
+        row.seq = seq;
+        seq += 1;
+        if (!inWindow(row.time, cutoff)) {
+          if (!row.time) undatedExcluded += 1;
+          continue;
+        }
+        observations.push(row);
+      }
+    } else if (calls.length === 0 && inWindow(log.started_at || log.generated_at, cutoff)) {
       observations.push({
         seq,
         kind: "process",
         program: programFromLog(log),
         pid: Number.isInteger(log.pid) ? log.pid : null,
         ppid: Number.isInteger(log.ppid) ? log.ppid : null,
+        parent_program: null,
         trace_id: cleanToken(log.trace_id, 128),
         started_at: cleanToken(log.started_at, 64),
         system_hostname: cleanToken(log.system_hostname, 253) || localHost,
@@ -620,7 +690,8 @@ function buildCoverage(input) {
   }
 
   function addProcess(bucket, row) {
-    const key = [bucket.hostname, row.program, row.pid, row.trace_id, row.parent_program || ""].join("\n");
+    const base = [bucket.hostname, row.program, row.pid == null ? "" : row.pid, row.trace_id || ""].join("\n");
+    const key = row.pid == null ? `${base}\n${row.parent_program || ""}` : base;
     if (processKeys.has(key)) return;
     processKeys.add(key);
     bucket.processes.push(row);
@@ -639,7 +710,7 @@ function buildCoverage(input) {
         trace_id: observation.trace_id,
         started_at: observation.started_at || observation.time,
         runtime: observation.runtime,
-        parent_program: null,
+        parent_program: observation.parent_program || null,
         covered: true,
         source: "run_log",
       });
@@ -688,6 +759,7 @@ function buildCoverage(input) {
         bytes: 0,
         first_time: observation.time,
         bytes_known: false,
+        source: "record",
       });
     }
     const path = pathBuckets.get(pathKey);
@@ -715,6 +787,65 @@ function buildCoverage(input) {
     }
   }
 
+  for (const gap of input.procGaps || []) {
+    const bucket = systemBucket(input.localHost, false);
+    const observation = {
+      kind: "connection",
+      program: gap.program,
+      destination: gap.destination,
+      display: gap.destination,
+    };
+    const authority = authorityFor(observation, allowlist);
+    const connection = {
+      program: gap.program,
+      pid: gap.pid,
+      trace_id: null,
+      destination: gap.destination,
+      kind: "connection",
+      method: null,
+      path: null,
+      bytes: null,
+      time: null,
+      authority,
+      mediation: null,
+      system_hostname: bucket.hostname,
+      source: "proc",
+      covered: false,
+      reason: gap.reason,
+    };
+    connections.push(connection);
+    bucket.connections.push(connection);
+    const pathKey = `${bucket.hostname}\nproc\n${gap.destination}`;
+    if (!pathBuckets.has(pathKey)) {
+      pathBuckets.set(pathKey, {
+        system_hostname: bucket.hostname,
+        destination: gap.destination,
+        kind: "connection",
+        authority,
+        programs: [],
+        calls: 0,
+        bytes: 0,
+        first_time: null,
+        bytes_known: false,
+        source: "proc",
+      });
+    }
+    const path = pathBuckets.get(pathKey);
+    path.calls += 1;
+    if (gap.program && !path.programs.includes(gap.program)) path.programs.push(gap.program);
+    addProcess(bucket, {
+      program: gap.program,
+      pid: gap.pid,
+      ppid: null,
+      trace_id: null,
+      started_at: null,
+      runtime: null,
+      parent_program: null,
+      covered: false,
+      source: "proc",
+    });
+  }
+
   for (const path of pathBuckets.values()) {
     const row = {
       destination: path.destination,
@@ -723,6 +854,7 @@ function buildCoverage(input) {
       calls: path.calls,
       bytes: path.bytes_known ? path.bytes : null,
       first_time: path.first_time,
+      source: path.source || "record",
     };
     const bucket = systems.get(path.system_hostname);
     if (path.authority === "under_authority") bucket.under_authority.push(row);
@@ -754,7 +886,8 @@ function buildCoverage(input) {
     systems: systemList,
     processes,
     connections,
-    not_covered: NOT_COVERED.map((row) => ({ id: row.id, summary: row.summary })),
+    not_covered: NOT_COVERED.map((row) => ({ id: row.id, summary: row.summary })).concat(input.procNote ? [input.procNote] : []),
+    proc: input.proc || { readable: false },
     undated_excluded: input.undatedExcluded || 0,
     counts: {
       processes: processes.length,
@@ -815,7 +948,8 @@ function formatCoverageText(coverage) {
     for (const processRow of system.processes) {
       const parent = processRow.parent_program ? `, from ${processRow.parent_program}` : "";
       const pid = processRow.pid == null ? "pid not recorded" : `pid ${processRow.pid}`;
-      lines.push(`  ${processRow.program}${parent}  ${pid}  ${processRow.started_at || "time not recorded"}`);
+      const covered = processRow.covered === false ? "  not covered" : "";
+      lines.push(`  ${processRow.program}${parent}  ${pid}  ${processRow.started_at || "time not recorded"}${covered}`);
     }
     lines.push("");
   }
@@ -1342,13 +1476,28 @@ function writeSyslog(target, text) {
   return sendTcp(target.host, target.port, text);
 }
 
+function sinkDone(completed, name) {
+  return completed instanceof Set && completed.has(name);
+}
+
+function sinkMark(completed, name) {
+  if (completed instanceof Set) completed.add(name);
+}
+
 async function deliverExport(events, options) {
   const sinks = [];
+  const completed = options.completed;
   const syslogText = options.syslog
     ? formatSyslogLines(events, { hostname: options.resource && options.resource.hostname })
     : "";
   const syslogTarget = options.syslog ? parseSyslogTarget(options.syslog) : null;
-  if (options.otlp) {
+  if (options.otlpGrpc && !sinkDone(completed, "otlp-grpc")) {
+    const payloads = otlpPayloads(events, options.resource);
+    await deliverOtlpGrpc(options.otlpGrpc, payloads, completed);
+    sinkMark(completed, "otlp-grpc");
+    sinks.push("otlp-grpc");
+  }
+  if (options.otlp && !sinkDone(completed, "otlp")) {
     assertExportUrl(options.otlp, "otlp");
     const payloads = otlpPayloads(events, options.resource);
     const signals = [
@@ -1357,14 +1506,18 @@ async function deliverExport(events, options) {
       ["logs", payloads.logs],
     ];
     for (const [signal, body] of signals) {
+      const key = `otlp:${signal}`;
+      if (sinkDone(completed, key)) continue;
       const response = await postJson(joinUrl(options.otlp, `/v1/${signal}`), body);
       if (response.status < 200 || response.status > 299) {
         throw new Error(`otlp ${signal} returned ${response.status}`);
       }
+      sinkMark(completed, key);
     }
+    sinkMark(completed, "otlp");
     sinks.push("otlp");
   }
-  if (options.webhook) {
+  if (options.webhook && !sinkDone(completed, "webhook")) {
     assertExportUrl(options.webhook, "webhook");
     const headers = {};
     if (options.webhookToken) headers.authorization = `Bearer ${options.webhookToken}`;
@@ -1376,18 +1529,22 @@ async function deliverExport(events, options) {
     if (response.status < 200 || response.status > 299) {
       throw new Error(`webhook returned ${response.status}`);
     }
+    sinkMark(completed, "webhook");
     sinks.push("webhook");
   }
-  if (syslogTarget && (syslogTarget.kind === "udp" || syslogTarget.kind === "tcp")) {
+  if (syslogTarget && (syslogTarget.kind === "udp" || syslogTarget.kind === "tcp") && !sinkDone(completed, "syslog")) {
     await writeSyslog(syslogTarget, syslogText);
+    sinkMark(completed, "syslog");
     sinks.push("syslog");
   }
-  if (options.jsonl) {
+  if (options.jsonl && !sinkDone(completed, "jsonl")) {
     writeLines(options.jsonl, formatJsonLines(events));
+    sinkMark(completed, "jsonl");
     sinks.push("jsonl");
   }
-  if (syslogTarget && syslogTarget.kind !== "udp" && syslogTarget.kind !== "tcp") {
+  if (syslogTarget && syslogTarget.kind !== "udp" && syslogTarget.kind !== "tcp" && !sinkDone(completed, "syslog")) {
     writeSyslog(syslogTarget, syslogText);
+    sinkMark(completed, "syslog");
     sinks.push("syslog");
   }
   return sinks;
@@ -1444,6 +1601,7 @@ function coverageCommand(args) {
   }
   const bundle = loadBundle(values.since, values.allowlist, Date.now());
   if (bundle.error) fail("coverage", bundle.error);
+  const proc = readProcGaps(bundle.observations);
   const coverage = buildCoverage({
     observations: bundle.observations,
     allowlist: bundle.allowlist,
@@ -1453,6 +1611,9 @@ function coverageCommand(args) {
     machineId: bundle.machineId,
     since: bundle.since,
     undatedExcluded: bundle.undatedExcluded,
+    procGaps: proc.processes,
+    proc: { readable: proc.readable },
+    procNote: proc.readable ? null : { id: "proc_unreadable", summary: proc.reason },
   });
   if (values.json) {
     process.stdout.write(`${JSON.stringify(withSchema(Object.assign({ command: "coverage" }, coverage)), null, 2)}\n`);
@@ -1534,11 +1695,13 @@ async function exportCommand(args) {
     args,
     options: {
       otlp: { type: "string" },
+      "otlp-grpc": { type: "string" },
       jsonl: { type: "string" },
       syslog: { type: "string" },
       webhook: { type: "string" },
       since: { type: "string", default: "all" },
       allowlist: { type: "string" },
+      follow: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -1549,15 +1712,22 @@ async function exportCommand(args) {
     process.stdout.write(EXPORT_HELP);
     return;
   }
-  const sinksRequested = ["otlp", "jsonl", "syslog", "webhook"].filter((name) => values[name]);
+  const sinks = resolveExportSinks(values);
+  const sinksRequested = Object.keys(sinks);
   if (sinksRequested.length === 0) {
-    fail("export", "no destination. Set --otlp, --jsonl, --syslog, or --webhook.");
+    fail("export", "no destination. Set --otlp, --otlp-grpc, --jsonl, --syslog, or --webhook.");
   }
+  if (values.follow && values["dry-run"]) fail("export", "--follow cannot be combined with --dry-run");
+  if (values.follow && values.json) fail("export", "--follow cannot be combined with --json");
   if (values.json && (values.jsonl === "-" || values.syslog === "-")) {
     fail("export", "--json cannot be combined with stdout --jsonl or --syslog");
   }
   if (values.jsonl === "-" && values.syslog === "-") {
     fail("export", "--jsonl=- and --syslog=- both write to stdout");
+  }
+  if (values.follow) {
+    await runFollowExport(sinks);
+    return;
   }
   const bundle = loadBundle(values.since, values.allowlist, Date.now());
   if (bundle.error) fail("export", bundle.error);
@@ -1589,14 +1759,10 @@ async function exportCommand(args) {
   }
   let delivered;
   try {
-    delivered = await deliverExport(events, {
-      otlp: values.otlp,
-      jsonl: values.jsonl,
-      syslog: values.syslog,
-      webhook: values.webhook,
-      webhookToken: values.webhook ? webhookToken() : "",
+    delivered = await deliverExport(events, Object.assign({
+      webhookToken: sinks.webhook ? webhookToken() : "",
       resource,
-    });
+    }, sinks));
   } catch (err) {
     fail("export", detailOf(err));
   }
@@ -1618,6 +1784,460 @@ async function exportCommand(args) {
   else process.stdout.write(`Exported ${events.length} event(s) to ${delivered.join(", ")}.\n`);
 }
 
+function connectionDepth(conn, byPid) {
+  let depth = 0;
+  let current = conn && Number.isInteger(conn.pid) ? conn.pid : null;
+  const seen = new Set();
+  while (current != null && !seen.has(current)) {
+    seen.add(current);
+    depth += 1;
+    const proc = byPid.get(current);
+    const parent = proc && Number.isInteger(proc.ppid) ? proc.ppid : null;
+    if (parent == null || !byPid.has(parent)) break;
+    current = parent;
+  }
+  return depth;
+}
+
+function runLogFile(traceId) {
+  const safe = String(traceId || "unknown").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  return join(primaryHome(), "runs", `${safe}.json`);
+}
+
+function recordWrappedRun(input) {
+  const traceId = input.traceId;
+  const path = runLogFile(traceId);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  let existing = null;
+  if (existsSync(path)) {
+    const loaded = readJsonObject(path);
+    if (loaded.error) throw new Error(`could not read ${path}: ${detailOf(loaded.error)}`);
+    if (loaded.json && loaded.json.vantio_run_log === "1") existing = loaded.json;
+  }
+  const calls = existing && Array.isArray(existing.calls) ? existing.calls.map((call) => ({ ...call })) : [];
+  const seenDest = new Set(calls.map((call) => normalizeHost(call.hostname)).filter(Boolean));
+  const byPid = new Map();
+  for (const proc of input.processes || []) {
+    if (proc && Number.isInteger(proc.pid)) byPid.set(proc.pid, proc);
+  }
+  const ordered = (input.connections || []).slice().sort((left, right) => (
+    connectionDepth(right, byPid) - connectionDepth(left, byPid)
+  ));
+  const stamp = new Date().toISOString();
+  for (const conn of ordered) {
+    const destination = normalizeHost(conn.destination) || cleanToken(conn.destination, 253);
+    if (!destination || seenDest.has(destination)) continue;
+    seenDest.add(destination);
+    calls.push({
+      hostname: destination,
+      provider: null,
+      method: null,
+      path: null,
+      scheme: null,
+      request_bytes: null,
+      bytes: 0,
+      status: null,
+      ok: null,
+      content_type: null,
+      duration_ms: null,
+      action: "OBSERVED",
+      ts: stamp,
+      mediation: "proc_socket",
+      port: Number.isInteger(conn.port) ? conn.port : null,
+      pid: Number.isInteger(conn.pid) ? conn.pid : null,
+      ppid: Number.isInteger(conn.ppid) ? conn.ppid : null,
+      program: cleanToken(conn.program, 256),
+    });
+  }
+  const processes = [];
+  const seenPid = new Set();
+  const root = {
+    pid: Number.isInteger(input.pid) ? input.pid : null,
+    ppid: Number.isInteger(input.ppid) ? input.ppid : null,
+    program: cleanToken(input.program, 256) || "unknown",
+  };
+  if (root.pid != null) {
+    processes.push(root);
+    seenPid.add(root.pid);
+  }
+  for (const proc of input.processes || []) {
+    if (proc.pid == null || seenPid.has(proc.pid)) continue;
+    seenPid.add(proc.pid);
+    processes.push({
+      pid: proc.pid,
+      ppid: Number.isInteger(proc.ppid) ? proc.ppid : null,
+      program: cleanToken(proc.program, 256) || "unknown",
+    });
+  }
+  const hosts = [...seenDest];
+  const log = Object.assign({}, existing || {}, {
+    vantio_run_log: "1",
+    schema_version: existing && existing.schema_version ? existing.schema_version : 2,
+    plane: "optics",
+    data_note: "Metadata only. Prompts and completions are never stored.",
+    trace_id: traceId,
+    program: (existing && existing.program) || root.program,
+    pid: (existing && existing.pid) || root.pid,
+    ppid: existing && existing.ppid != null ? existing.ppid : root.ppid,
+    system_hostname: (existing && existing.system_hostname) || osHostname(),
+    platform: (existing && existing.platform) || osPlatform(),
+    started_at: (existing && existing.started_at) || input.startedAt || stamp,
+    generated_at: stamp,
+    calls,
+    processes,
+    summary: Object.assign({}, existing && existing.summary, {
+      total_calls: calls.length,
+      hosts,
+    }),
+    socket_observation: "read_only_proc",
+  });
+  writeJsonAtomic(path, log);
+  return { path, log };
+}
+
+function readProcGaps(observations) {
+  const covered = [];
+  for (const observation of observations || []) {
+    if (observation.pid == null || !observation.program) continue;
+    covered.push({ pid: observation.pid, program: observation.program });
+  }
+  if (process.platform !== "linux") {
+    return {
+      readable: false,
+      reason: "This system has no local process table to read.",
+      processes: [],
+    };
+  }
+  return discoverUncovered({
+    procRoot: "/proc",
+    hostsPath: "/etc/hosts",
+    covered,
+    selfPid: process.pid,
+    isAiHost: (host, port) => catalogInScope(host, port, LLM_HOSTS),
+  });
+}
+
+function localClock(value) {
+  const date = value instanceof Date ? value : new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return null;
+  const part = (number) => String(number).padStart(2, "0");
+  return `${part(date.getHours())}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
+}
+
+function formatLiveAlert(event) {
+  return [
+    "New destination",
+    `  First connection: ${event.clock || "time not recorded"}`,
+    `  Destination: ${event.destination}`,
+    `  Program: ${event.program}`,
+    "",
+  ].join("\n");
+}
+
+function liveJournalPath() {
+  return join(primaryHome(), "live.jsonl");
+}
+
+function withSeenLock(fn) {
+  const lock = join(primaryHome(), "seen.lock");
+  mkdirSync(primaryHome(), { recursive: true, mode: 0o700 });
+  const started = Date.now();
+  while (true) {
+    try {
+      mkdirSync(lock);
+      break;
+    } catch (err) {
+      if (!err || err.code !== "EEXIST") throw err;
+      if (Date.now() - started > 2000) throw new Error("seen destination file is busy");
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    try { rmSync(lock, { recursive: true }); } catch { /* lock already gone */ }
+  }
+}
+
+function noteLiveCall(call, meta) {
+  if (!call || typeof call !== "object") return null;
+  const host = normalizeHost(call.hostname);
+  if (!host) return null;
+  const source = meta || {};
+  return withSeenLock(() => {
+    const allow = loadAllowlist(null);
+    if (allow.error) throw new Error(allow.error);
+    const seen = loadSeen();
+    if (seen.error) throw new Error(seen.error);
+    const when = call.ts || new Date().toISOString();
+    const observation = {
+      seq: 0,
+      kind: "connection",
+      program: source.program || "unknown",
+      destination: host,
+      display: host,
+      time: when,
+      trace_id: source.trace_id || null,
+      pid: Number.isInteger(source.pid) ? source.pid : null,
+      method: cleanToken(call.method, 16),
+      path: stripPath(call.path),
+      bytes: callBytes(call),
+      http_status: normalizeHttpStatus(call.status != null ? call.status : call.httpStatus),
+      mediation: cleanToken(call.mediation, 64),
+      provider: cleanToken(call.provider, 64),
+      system_hostname: cleanToken(source.system_hostname, 253),
+    };
+    const evaluated = evaluateNewDestinations([observation], seen.pairs, allow.allowlist);
+    writeJsonAtomic(seenPath(), { schema: SEEN_SCHEMA, pairs: evaluated.pairs });
+    const alert = evaluated.alerts[0] || null;
+    const event = {
+      schema: LIVE_SCHEMA,
+      kind: alert ? "new_destination" : "observation",
+      flag: alert ? "new_destination" : null,
+      flag_label: alert ? "New destination" : null,
+      clock: localClock(when),
+      time: when,
+      program: observation.program,
+      destination: observation.display,
+      trace_id: observation.trace_id,
+      pid: observation.pid,
+      method: observation.method,
+      path: observation.path,
+      bytes: observation.bytes,
+      http_status: observation.http_status,
+      authority: alert ? alert.authority : authorityFor(observation, allow.allowlist),
+      system_hostname: observation.system_hostname,
+    };
+    const path = liveJournalPath();
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    appendFileSync(path, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    return event;
+  });
+}
+
+function noteWrappedSocket(conn, meta) {
+  if (!conn || typeof conn !== "object") return null;
+  const destination = normalizeHost(conn.destination) || cleanToken(conn.destination, 253);
+  if (!destination) return null;
+  return noteLiveCall({
+    hostname: destination,
+    bytes: 0,
+    ts: new Date().toISOString(),
+    mediation: "proc_socket",
+  }, {
+    program: cleanToken(conn.program, 256) || "unknown",
+    trace_id: meta && meta.trace_id,
+    pid: Number.isInteger(conn.pid) ? conn.pid : null,
+    system_hostname: meta && meta.system_hostname,
+  });
+}
+
+function envText(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function resolveExportSinks(values) {
+  const sinks = {};
+  const otlp = values.otlp || envText(process.env.VANTIO_EXPORT_OTLP);
+  const otlpGrpc = values["otlp-grpc"] || envText(process.env.VANTIO_EXPORT_OTLP_GRPC);
+  const jsonl = values.jsonl || envText(process.env.VANTIO_EXPORT_JSONL);
+  const syslog = values.syslog || envText(process.env.VANTIO_EXPORT_SYSLOG);
+  const webhook = values.webhook || envText(process.env.VANTIO_EXPORT_WEBHOOK);
+  if (otlp) sinks.otlp = otlp;
+  if (otlpGrpc) sinks.otlpGrpc = otlpGrpc;
+  if (jsonl) sinks.jsonl = jsonl;
+  if (syslog) sinks.syslog = syslog;
+  if (webhook) sinks.webhook = webhook;
+  return sinks;
+}
+
+function backoffMs(attempt) {
+  const step = Number.isFinite(attempt) && attempt > 0 ? attempt : 0;
+  return Math.min(10000, 250 * (2 ** step));
+}
+
+function createFollowBuffer(max) {
+  const limit = max || LIVE_BUFFER_MAX;
+  const items = [];
+  let dropped = 0;
+  return {
+    push(event) {
+      items.push(event);
+      while (items.length > limit) {
+        items.shift();
+        dropped += 1;
+      }
+      return dropped;
+    },
+    drain(count) {
+      return items.splice(0, count || items.length);
+    },
+    size() {
+      return items.length;
+    },
+    dropped() {
+      return dropped;
+    },
+  };
+}
+
+function liveToExportEvent(event) {
+  const trace = event.trace_id || `${event.program}\n${event.destination}`;
+  return {
+    schema: EXPORT_SCHEMA,
+    kind: event.kind === "new_destination" ? "new_destination" : "observation",
+    time: event.time,
+    program: event.program,
+    destination: event.destination,
+    method: event.method || null,
+    path: event.path || null,
+    bytes: event.bytes == null ? null : event.bytes,
+    http_status: event.http_status == null ? null : event.http_status,
+    optics_status: "OBSERVED",
+    authority: event.authority || "outside_authority",
+    trace_id: event.trace_id || null,
+    otel_trace_id: otelHex(trace, 32),
+    otel_span_id: otelHex(`${trace}\n${event.time || ""}\n${event.destination}`, 16),
+    flag: event.flag || null,
+    flag_label: event.flag_label || null,
+    mediation: null,
+    pid: event.pid == null ? null : event.pid,
+    provider: null,
+    system_hostname: event.system_hostname || null,
+  };
+}
+
+function readLiveChunk(path, offset) {
+  if (!existsSync(path)) return { events: [], offset, error: null };
+  let size = offset;
+  try {
+    size = statSync(path).size;
+  } catch (err) {
+    return { events: [], offset, error: err };
+  }
+  if (size < offset) offset = 0;
+  if (size === offset) return { events: [], offset, error: null };
+  let text = "";
+  let fd;
+  try {
+    fd = openSync(path, "r");
+    const length = size - offset;
+    const buf = Buffer.alloc(length);
+    readSync(fd, buf, 0, length, offset);
+    text = buf.toString("utf8");
+  } catch (err) {
+    return { events: [], offset, error: err };
+  } finally {
+    if (fd != null) {
+      try { closeSync(fd); } catch { /* already closed */ }
+    }
+  }
+  const events = [];
+  let rest = text;
+  let newline = rest.indexOf("\n");
+  let consumed = 0;
+  while (newline >= 0) {
+    const line = rest.slice(0, newline).trim();
+    consumed += newline + 1;
+    rest = rest.slice(newline + 1);
+    newline = rest.indexOf("\n");
+    if (!line) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch (err) {
+      events.push({ error: err, raw: line.slice(0, 80) });
+    }
+  }
+  return { events, offset: offset + consumed, error: null };
+}
+
+function watchLiveJournal(onEvent) {
+  const path = liveJournalPath();
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  let offset = 0;
+  try {
+    if (existsSync(path)) offset = statSync(path).size;
+  } catch {
+    offset = 0;
+  }
+  const timer = setInterval(() => {
+    const chunk = readLiveChunk(path, offset);
+    offset = chunk.offset;
+    if (chunk.error) {
+      onEvent({ error: chunk.error });
+      return;
+    }
+    for (const event of chunk.events) onEvent(event);
+  }, 200);
+  return () => clearInterval(timer);
+}
+
+async function runFollowExport(sinks) {
+  const buffer = createFollowBuffer(LIVE_BUFFER_MAX);
+  const resource = {
+    hostname: osHostname(),
+    platform: osPlatform(),
+    machineId: readMachineId(),
+  };
+  const token = sinks.webhook ? webhookToken() : "";
+  let offset = 0;
+  const path = liveJournalPath();
+  try {
+    if (existsSync(path)) offset = statSync(path).size;
+  } catch {
+    offset = 0;
+  }
+  let pending = [];
+  let completed = new Set();
+  let attempt = 0;
+  let announced = 0;
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+  process.stderr.write("[ ∅ VANTIO ] Following live events (Ctrl+C to stop)…\n");
+  while (!stopped) {
+    const chunk = readLiveChunk(path, offset);
+    offset = chunk.offset;
+    if (chunk.error) {
+      process.stderr.write(`vantio export: could not read live events: ${detailOf(chunk.error)}\n`);
+    }
+    for (const event of chunk.events) {
+      if (event.error) {
+        process.stderr.write("vantio export: skipped a live line that is not JSON\n");
+        continue;
+      }
+      const dropped = buffer.push(liveToExportEvent(event));
+      if (dropped > announced) {
+        process.stderr.write(`vantio export: buffer full, dropped ${dropped - announced}\n`);
+        announced = dropped;
+      }
+    }
+    if (pending.length === 0) pending = buffer.drain(100);
+    if (pending.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      continue;
+    }
+    try {
+      await deliverExport(pending, Object.assign({ webhookToken: token, resource, completed }, sinks));
+      pending = [];
+      completed = new Set();
+      attempt = 0;
+    } catch (err) {
+      const wait = backoffMs(attempt);
+      attempt += 1;
+      process.stderr.write(`vantio export: ${detailOf(err)}. Retrying in ${wait}ms\n`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+  if (pending.length) {
+    try {
+      await deliverExport(pending, Object.assign({ webhookToken: token, resource, completed }, sinks));
+    } catch (err) {
+      fail("export", detailOf(err));
+    }
+  }
+}
+
 module.exports = {
   ALLOWLIST_SCHEMA,
   COVERAGE_HELP,
@@ -1635,14 +2255,23 @@ module.exports = {
   destinationsCommand,
   evaluateNewDestinations,
   exportCommand,
+  backoffMs,
+  createFollowBuffer,
   formatCoverageText,
   formatDestinationText,
   formatJsonLines,
+  formatLiveAlert,
   formatSyslogLines,
+  liveJournalPath,
+  localClock,
+  noteLiveCall,
+  noteWrappedSocket,
   otlpPayloads,
   parseAllowlist,
   parseSyslogTarget,
   programLabelFromArgv,
   publicExportEvent,
+  recordWrappedRun,
   validateWebhookToken,
+  watchLiveJournal,
 };

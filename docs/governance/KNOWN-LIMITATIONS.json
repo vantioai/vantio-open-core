@@ -6,9 +6,9 @@
     "Browser paths stay outside this wrap.",
     "Without vantio-agent-sdk, prefixing vantio run python does not intercept.",
     "JSON records use schema_status unstable-pre-1.0.",
-    "A process that was not started with vantio run is not in the coverage map.",
+    "A process outside the wrap is marked not covered when the local process table shows it.",
     "It does not stop the call.",
-    "OTLP export is OTLP/HTTP JSON to a URL you set. Optics does not start a collector and does not speak OTLP/gRPC.",
+    "OTLP/gRPC is a unary HTTP/2 export of the same fields. Optics does not start a collector.",
     "http.client and pycurl do not store an HTTP status on the success path.",
     "Free Optics needs no account and no API key."
   ]

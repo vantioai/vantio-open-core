@@ -35,7 +35,7 @@ const {
   humanStatus,
   rollupCalls,
 } = require("./optics-cx.cjs");
-const { programLabelFromArgv } = require("./optics-features.cjs");
+const { formatLiveAlert, noteLiveCall, programLabelFromArgv } = require("./optics-features.cjs");
 
 const USE_COLOR = process.stderr.isTTY === true;
 const c = {
@@ -180,6 +180,21 @@ _calls.push = function vantioRecordCall(...items) {
     sendRunTelemetryOnce(host);
   } catch {
     // Telemetry must never affect the agent.
+  }
+  try {
+    const last = items.length ? items[items.length - 1] : null;
+    if (last && typeof last === "object") {
+      const event = noteLiveCall(last, {
+        program: programLabelFromArgv(process.argv),
+        trace_id: RUN_TRACE_ID,
+        pid: process.pid,
+        system_hostname: hostname(),
+      });
+      if (event && event.flag === "new_destination") log(formatLiveAlert(event));
+    }
+  } catch (err) {
+    const detail = err && err.message ? String(err.message).split("\n")[0] : "failed";
+    log(`[ ∅ VANTIO ] could not record the live destination: ${detail}`);
   }
   return result;
 };

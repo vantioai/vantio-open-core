@@ -10,7 +10,7 @@ This page lists what Optics does not do, and the gaps that are easy to over-read
 | SQLite or any other database | Absent. One JSON file per trace id. |
 | `vantio ui`, `vantio doctor`, a resident daemon | Absent. |
 | New-destination flag | `vantio destinations` in this source tree flags the first connection from a program to a destination that is not on the allowlist. It does not stop the call and it does not page a person. Published npm CLI 0.3.24 does not include the command. |
-| OTLP export | `vantio export --otlp` in this source tree sends OTLP/HTTP JSON for traces, a byte gauge, and logs. Optics does not start a collector and does not speak OTLP/gRPC. Published npm CLI 0.3.24 does not include the command. |
+| OTLP export | `vantio export --otlp` sends OTLP/HTTP JSON. `vantio export --otlp-grpc` sends the same fields as unary gRPC over HTTP/2. Optics does not start a collector. Published npm CLI 0.3.24 does not include the command. |
 | Stable schema | Absent. Contract is `unstable-pre-1.0`. |
 | PKG-02 and any shared record vocabulary shipped as a runtime | Future work. Not in the CLI or the published SDK. |
 | Retention, prune, max size | Absent. Files stay until you delete them. |

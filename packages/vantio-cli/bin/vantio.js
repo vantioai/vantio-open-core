@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { parseArgs }     from "node:util";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { homedir, hostname } from "node:os";
 import { mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, existsSync, watch } from "node:fs";
 import { randomUUID }    from "node:crypto";
@@ -23,7 +23,12 @@ const {
   coverageCommand,
   destinationsCommand,
   exportCommand,
+  formatLiveAlert,
+  noteWrappedSocket,
+  recordWrappedRun,
+  watchLiveJournal,
 } = require("./optics-features.cjs");
+const { createWrapSampler } = require("./optics-proc.cjs");
 
 const USAGE = `\
 Vantio Optics | Free Observability for AI Agents
@@ -174,15 +179,16 @@ Options:
   --run=<trace-id>    Run to read (default: most recent local run)
   -n, --lines=<n>     Number of calls to show (default: 20). 0 shows zero calls.
   --all               Show every call in the run
-  -f, --follow        Keep watching the run log for new calls
+  -f, --follow        Keep watching. New destination lines print as the call happens
   --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   -h, --help          Show this help
 
 --json and --follow cannot be combined.
 --all and --lines cannot be combined.
 
-A run log is written when the wrapped agent exits, so --follow stays quiet
-during a run that is still going and prints the calls once it finishes.
+A new destination is written when the call happens. --follow prints that
+line with the local clock time HH:MM:SS. The run log is still written when
+the wrapped agent exits.
 
 Examples:
   vantio tail
@@ -394,15 +400,55 @@ function runCommand(rest) {
 
   process.stderr.write(`[ ∅ VANTIO ] run trace_id=${runTraceId}\n`);
 
+  const startedAt = new Date().toISOString();
   const child = spawn(program, programArgs, { stdio: "inherit", env: childEnv, shell: false });
+  const sampler = child.pid && process.platform === "linux"
+    ? createWrapSampler({
+      procRoot: "/proc",
+      rootPid: child.pid,
+      intervalMs: 20,
+      onConnection: nodeRuntime || pythonRuntime ? null : (conn) => {
+        try {
+          const event = noteWrappedSocket(conn, {
+            trace_id: runTraceId,
+            system_hostname: hostname(),
+          });
+          if (event && event.flag === "new_destination") process.stderr.write(formatLiveAlert(event));
+        } catch (err) {
+          const detail = err && err.message ? String(err.message).split("\n")[0] : "failed";
+          process.stderr.write(`vantio run: could not record the live destination: ${detail}\n`);
+        }
+      },
+    })
+    : null;
+
+  function saveWrappedRun() {
+    const sampled = sampler ? sampler.stop() : { processes: [], connections: [] };
+    try {
+      recordWrappedRun({
+        traceId: runTraceId,
+        program: basename(program),
+        pid: child.pid || null,
+        ppid: process.pid,
+        startedAt,
+        processes: sampled.processes,
+        connections: sampled.connections,
+      });
+    } catch (err) {
+      const detail = err && err.message ? String(err.message).split("\n")[0] : "failed";
+      process.stderr.write(`vantio run: could not write the run record: ${detail}\n`);
+    }
+  }
 
   child.on("error", (err) => {
     process.stderr.write(`vantio: failed to start '${program}': ${err.message}\n`);
+    saveWrappedRun();
     writeRunJson(1, null);
     process.exit(1);
   });
 
   child.on("exit", (code, signal) => {
+    saveWrappedRun();
     if (signal !== null) {
       writeRunJson(null, signal);
       process.kill(process.pid, signal);
@@ -1263,25 +1309,40 @@ async function tailCommand(args) {
 
   const dir = runsDir();
   const found = resolveRunPath(dir, values.run, "tail");
-  if (!found.path) {
+  let logPath = null;
+  let log = null;
+  if (!found.path && !values.follow) {
     const which = values.run ? `'${values.run}'` : "the local run directory";
     process.stdout.write(`No run log matched ${which}.\nNext: vantio run node agent.js\n`);
     return;
   }
-  const logPath = found.path;
-  let log = loadRunLog(logPath, "tail");
-  if (!values.run) {
-    process.stderr.write(`[ ∅ VANTIO ] Tailing most recent run: ${log.trace_id || "local run"}\n`);
+  if (found.path) {
+    logPath = found.path;
+    log = loadRunLog(logPath, "tail");
+    if (!values.run) {
+      process.stderr.write(`[ ∅ VANTIO ] Tailing most recent run: ${log.trace_id || "local run"}\n`);
+    }
+    printTailCalls(log, n, values.json, values.all);
   }
-
-  printTailCalls(log, n, values.json, values.all);
 
   if (!values.follow) return;
 
-  process.stderr.write("[ ∅ VANTIO ] Following run log (Ctrl+C to stop)…\n");
-  let lastCount = readCallsFromLog(log).length;
+  process.stderr.write("[ ∅ VANTIO ] Following live records (Ctrl+C to stop)…\n");
+  let lastCount = log ? readCallsFromLog(log).length : 0;
+  const traceFilter = values.run && log ? log.trace_id : null;
+  const stopLive = watchLiveJournal((event) => {
+    if (!event || event.error) {
+      const detail = event && event.error && event.error.message ? event.error.message.split("\n")[0] : "failed";
+      process.stderr.write(`vantio tail: could not read a live record: ${detail}\n`);
+      return;
+    }
+    if (event.flag !== "new_destination") return;
+    if (traceFilter && event.trace_id !== traceFilter) return;
+    process.stdout.write(formatLiveAlert(event));
+  });
 
   const refresh = () => {
+    if (!logPath) return;
     const next = tryLoadRunLog(logPath);
     if (!next) return;
     const calls = readCallsFromLog(next);
@@ -1294,13 +1355,18 @@ async function tailCommand(args) {
   };
 
   try {
-    const watcher = watch(logPath, { persistent: true }, () => refresh());
+    const watcher = logPath ? watch(logPath, { persistent: true }, () => refresh()) : null;
     await new Promise((resolve) => {
-      const stop = () => { try { watcher.close(); } catch { /* */ } resolve(); };
+      const stop = () => {
+        stopLive();
+        try { if (watcher) watcher.close(); } catch { /* already closed */ }
+        resolve();
+      };
       process.on("SIGINT", stop);
       process.on("SIGTERM", stop);
     });
   } catch (err) {
+    stopLive();
     process.stderr.write(`vantio tail: cannot follow: ${err.message}\n`);
     process.exit(1);
   }

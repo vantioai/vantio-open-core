@@ -3,14 +3,17 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import http from "node:http";
+import http2 from "node:http2";
 import dgram from "node:dgram";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync } from "node:fs";
 import { tmpdir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const features = require("../bin/optics-features.cjs");
+const proc = require("../bin/optics-proc.cjs");
+const grpc = require("../bin/optics-otlp-grpc.cjs");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI = join(__dirname, "..", "bin", "vantio.js");
 const CANARY = "PROMPT-CANARY";
@@ -319,8 +322,9 @@ describe("vantio coverage, destinations, and export", () => {
     assert.equal(body.system.scope, "this_system");
     assert.equal(body.system.hostname, hostname());
     const system = body.systems.find((row) => row.hostname === hostname());
-    const under = system.under_authority.map((row) => row.destination).sort();
-    const outside = system.outside_authority.map((row) => row.destination).sort();
+    const recorded = (rows) => rows.filter((row) => row.source !== "proc").map((row) => row.destination).sort();
+    const under = recorded(system.under_authority);
+    const outside = recorded(system.outside_authority);
     assert.deepEqual(under, ["api.openai.example", "billing.internal.example", "mcp tools/read"]);
     assert.deepEqual(outside, ["203.0.113.50", "a.b.openai.example", "mcp (tool name not retained)", "mcp tools/write"]);
     assert.ok(body.not_covered.some((row) => row.id === "browser"));
@@ -517,8 +521,9 @@ describe("vantio coverage, destinations, and export", () => {
       const coverage = await runCli(["coverage", "--json"], { HOME: home, VANTIO_HOME: vantioHome });
       assert.equal(coverage.code, 0, coverage.stderr);
       const body = JSON.parse(coverage.stdout);
-      assert.equal(body.counts.connections, 1);
-      assert.equal(body.connections[0].authority, "under_authority");
+      const recorded = body.connections.filter((row) => row.source !== "proc");
+      assert.equal(recorded.length, 1);
+      assert.equal(recorded[0].authority, "under_authority");
       const flagged = await runCli(["destinations", "--json"], { HOME: home, VANTIO_HOME: vantioHome });
       assert.equal(flagged.code, 0, flagged.stderr);
       assert.deepEqual(JSON.parse(flagged.stdout).alerts, []);
@@ -542,6 +547,399 @@ describe("vantio coverage, destinations, and export", () => {
       assert.match(missing.stderr, /allowlist file not found/);
     } finally {
       rmSync(fresh, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("live destination, follow, proc, and grpc", () => {
+  test("the clock is local HH:MM:SS and a live call flags once", () => {
+    assert.equal(features.localClock(new Date(2026, 9, 21, 14, 2, 7)), "14:02:07");
+    const home = mkdtempSync(join(tmpdir(), "vantio-live-"));
+    const previous = process.env.VANTIO_HOME;
+    process.env.VANTIO_HOME = home;
+    try {
+      const first = features.noteLiveCall({
+        hostname: "billing.internal.example",
+        method: "POST",
+        path: `/v1/tools?token=${SECRET}`,
+        bytes: 1840,
+        status: 200,
+        ts: "2026-10-21T18:02:07.000Z",
+        prompt: CANARY,
+      }, { program: "agent.js", trace_id: "0xa1b2c3d4e5f60718", pid: 42 });
+      assert.equal(first.flag, "new_destination");
+      assert.match(first.clock, /^\d{2}:\d{2}:\d{2}$/);
+      assert.match(features.formatLiveAlert(first), /New destination/);
+      assert.match(features.formatLiveAlert(first), /First connection: \d{2}:\d{2}:\d{2}/);
+      assert.match(features.formatLiveAlert(first), /billing\.internal\.example/);
+      assert.match(features.formatLiveAlert(first), /agent\.js/);
+      const second = features.noteLiveCall({
+        hostname: "billing.internal.example",
+        method: "POST",
+        path: "/v1/tools",
+        ts: "2026-10-21T18:03:07.000Z",
+      }, { program: "agent.js", trace_id: "0xa1b2c3d4e5f60718", pid: 42 });
+      assert.equal(second.flag, null);
+      const journal = readFileSync(features.liveJournalPath(), "utf8");
+      assert.doesNotMatch(journal, new RegExp(CANARY));
+      assert.doesNotMatch(journal, new RegExp(SECRET));
+      const buffer = features.createFollowBuffer(2);
+      assert.equal(buffer.push({ n: 1 }), 0);
+      assert.equal(buffer.push({ n: 2 }), 0);
+      assert.equal(buffer.push({ n: 3 }), 1);
+      assert.deepEqual(buffer.drain(), [{ n: 2 }, { n: 3 }]);
+      assert.equal(features.backoffMs(0), 250);
+      assert.equal(features.backoffMs(10), 10000);
+    } finally {
+      if (previous == null) delete process.env.VANTIO_HOME;
+      else process.env.VANTIO_HOME = previous;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("a wrapped process tree records outbound sockets for new-destination checks", () => {
+    const root = mkdtempSync(join(tmpdir(), "vantio-wrap-proc-"));
+    const previous = process.env.VANTIO_HOME;
+    const home = mkdtempSync(join(tmpdir(), "vantio-wrap-home-"));
+    process.env.VANTIO_HOME = home;
+    try {
+      mkdirSync(join(root, "net"), { recursive: true });
+      mkdirSync(join(root, "11", "fd"), { recursive: true });
+      mkdirSync(join(root, "12", "fd"), { recursive: true });
+      writeFileSync(join(root, "11", "stat"), "11 (bash) S 1 0 0\n");
+      writeFileSync(join(root, "11", "cmdline"), "bash\0-c\0curl\0");
+      writeFileSync(join(root, "12", "stat"), "12 (curl) S 11 0 0\n");
+      writeFileSync(join(root, "12", "cmdline"), "curl\0");
+      writeFileSync(join(root, "net", "tcp"), "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:3039 327100CB:01BB 01 00000000:00000000 00:00000000 00000000     0        0 4242 1 0000000000000000 100 0 0 10 0\n");
+      symlinkSync("socket:[4242]", join(root, "12", "fd", "3"));
+      writeFileSync(join(root, "hosts"), "203.0.113.50 example.test\n");
+      const snap = proc.sampleWrappedTree(root, 11, readFileSync(join(root, "hosts"), "utf8"));
+      assert.deepEqual(snap.processes.map((item) => item.program).sort(), ["bash", "curl"]);
+      assert.equal(snap.connections.length, 1);
+      assert.equal(snap.connections[0].destination, "example.test");
+      assert.equal(snap.connections[0].program, "curl");
+      snap.connections.push({
+        pid: 11,
+        ppid: 1,
+        program: "bash",
+        destination: "example.test",
+        port: 443,
+      });
+      snap.connections.push({
+        pid: 11,
+        ppid: 1,
+        program: "bash",
+        destination: "other.test",
+        port: 80,
+      });
+      const noted = [];
+      const sampler = proc.createWrapSampler({
+        procRoot: root,
+        rootPid: 11,
+        hostsPath: join(root, "hosts"),
+        intervalMs: 0,
+        onConnection: (conn) => noted.push(conn.program),
+      });
+      const stopped = sampler.stop();
+      assert.deepEqual(noted, ["curl"]);
+      assert.equal(stopped.connections.length, 1);
+      assert.doesNotThrow(() => {
+        proc.createWrapSampler({
+          procRoot: root,
+          rootPid: 11,
+          hostsPath: join(root, "hosts"),
+          intervalMs: 0,
+          onConnection: () => { throw new Error("boom"); },
+        }).stop();
+      });
+      const live = features.noteWrappedSocket(snap.connections[0], {
+        trace_id: "0xwraptree",
+        system_hostname: "box",
+      });
+      assert.equal(live.flag, "new_destination");
+      assert.equal(live.program, "curl");
+      assert.equal(live.destination, "example.test");
+      assert.match(features.formatLiveAlert(live), /New destination/);
+      assert.match(features.formatLiveAlert(live), /example\.test/);
+      const repeat = features.noteWrappedSocket(snap.connections[0], {
+        trace_id: "0xwraptree",
+        system_hostname: "box",
+      });
+      assert.equal(repeat.flag, null);
+      const journal = readFileSync(features.liveJournalPath(), "utf8");
+      assert.doesNotMatch(journal, /prompt|completion|authorization/i);
+      const written = features.recordWrappedRun({
+        traceId: "0xwraptree",
+        program: "bash",
+        pid: 11,
+        ppid: 1,
+        startedAt: "2026-10-21T14:02:01.000Z",
+        processes: snap.processes,
+        connections: snap.connections,
+      });
+      assert.equal(written.log.vantio_run_log, "1");
+      const curlCall = written.log.calls.find((call) => call.hostname === "example.test");
+      assert.equal(curlCall.mediation, "proc_socket");
+      assert.equal(curlCall.program, "curl");
+      assert.equal(curlCall.pid, 12);
+      assert.equal(written.log.calls.some((call) => call.hostname === "other.test" && call.program === "bash"), true);
+      const observations = features.collectObservations([written.log], [], "box", null).observations;
+      const flags = features.evaluateNewDestinations(observations, [], features.parseAllowlist({}).allowlist);
+      const byDest = new Map(flags.alerts.map((alert) => [alert.destination, alert.program]));
+      assert.equal(byDest.get("example.test"), "curl");
+      assert.equal(byDest.get("other.test"), "bash");
+      const coverage = features.buildCoverage({
+        observations,
+        allowlist: features.parseAllowlist({}).allowlist,
+        localHost: "box",
+        platform: "linux",
+      });
+      assert.ok(coverage.processes.some((row) => row.program === "bash" && row.covered === true && row.pid === 11));
+      assert.ok(coverage.processes.some((row) => row.program === "curl" && row.parent_program === "bash" && row.covered === true && row.pid === 12));
+      assert.ok(coverage.connections.some((row) => row.destination === "example.test" && row.program === "curl" && row.pid === 12));
+      const again = features.recordWrappedRun({
+        traceId: "0xwraptree",
+        program: "bash",
+        pid: 11,
+        ppid: 1,
+        startedAt: "2026-10-21T14:02:01.000Z",
+        processes: snap.processes,
+        connections: snap.connections,
+      });
+      assert.equal(again.log.calls.length, 2);
+      mkdirSync(join(home, "runs"), { recursive: true });
+      writeFileSync(join(home, "runs", "0xmerge.json"), `${JSON.stringify({
+        vantio_run_log: "1",
+        trace_id: "0xmerge",
+        program: "agent.js",
+        pid: 11,
+        calls: [{
+          hostname: "example.test",
+          mediation: "node_http",
+          method: "POST",
+          path: "/v1",
+          bytes: 4,
+          status: 200,
+          ts: "2026-10-21T14:02:07.000Z",
+        }],
+      })}\n`);
+      const merged = features.recordWrappedRun({
+        traceId: "0xmerge",
+        program: "bash",
+        pid: 11,
+        ppid: 1,
+        startedAt: "2026-10-21T14:02:01.000Z",
+        processes: snap.processes,
+        connections: snap.connections,
+      });
+      assert.equal(merged.log.program, "agent.js");
+      assert.equal(merged.log.calls.length, 2);
+      assert.equal(merged.log.calls.find((call) => call.hostname === "example.test").mediation, "node_http");
+      assert.equal(merged.log.calls.some((call) => call.hostname === "other.test" && call.mediation === "proc_socket"), true);
+    } finally {
+      if (previous == null) delete process.env.VANTIO_HOME;
+      else process.env.VANTIO_HOME = previous;
+      rmSync(root, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("a failed later sink does not send an earlier sink again", async () => {
+    let hits = 0;
+    const server = await listenHttp((req, res) => {
+      hits += 1;
+      res.writeHead(200);
+      res.end("ok");
+    });
+    const port = server.address().port;
+    const dir = mkdtempSync(join(tmpdir(), "vantio-export-retry-"));
+    const completed = new Set();
+    const events = [{
+      schema: "vantio.optics.export.v1",
+      kind: "observation",
+      time: "2026-10-21T18:02:07.000Z",
+      program: "curl",
+      destination: "example.test",
+      optics_status: "OBSERVED",
+      authority: "outside_authority",
+    }];
+    try {
+      await assert.rejects(
+        () => features.deliverExport(events, {
+          webhook: `http://127.0.0.1:${port}/hook`,
+          jsonl: dir,
+          completed,
+        }),
+        /EISDIR|directory/i,
+      );
+      assert.equal(hits, 1);
+      assert.equal(completed.has("webhook"), true);
+      await assert.rejects(
+        () => features.deliverExport(events, {
+          webhook: `http://127.0.0.1:${port}/hook`,
+          jsonl: dir,
+          completed,
+        }),
+        /EISDIR|directory/i,
+      );
+      assert.equal(hits, 1);
+      const file = join(dir, "out.jsonl");
+      const delivered = await features.deliverExport(events, {
+        webhook: `http://127.0.0.1:${port}/hook`,
+        jsonl: file,
+        completed,
+      });
+      assert.equal(hits, 1);
+      assert.deepEqual(delivered, ["jsonl"]);
+      assert.equal(readFileSync(file, "utf8").trim().split("\n").length, 1);
+    } finally {
+      server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the process table marks an unwrapped AI socket not covered", () => {
+    const root = mkdtempSync(join(tmpdir(), "vantio-proc-"));
+    mkdirSync(join(root, "net"), { recursive: true });
+    mkdirSync(join(root, "321", "fd"), { recursive: true });
+    mkdirSync(join(root, "322", "fd"), { recursive: true });
+    const remote = "327100CB:01BB";
+    writeFileSync(join(root, "net", "tcp"), `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:3039 ${remote} 01 00000000:00000000 00:00000000 00000000     0        0 4242 1 0000000000000000 100 0 0 10 0\n`);
+    writeFileSync(join(root, "321", "cmdline"), "node\0agent.js\0");
+    symlinkSync("socket:[4242]", join(root, "321", "fd", "3"));
+    writeFileSync(join(root, "322", "cmdline"), "nginx\0");
+    symlinkSync("socket:[1]", join(root, "322", "fd", "4"));
+    writeFileSync(join(root, "hosts"), "203.0.113.50 api.openai.com\n");
+    const found = proc.discoverUncovered({
+      procRoot: root,
+      hostsPath: join(root, "hosts"),
+      covered: [{ pid: 999, program: "other.js" }],
+      isAiHost: (host) => host === "api.openai.com",
+    });
+    assert.equal(found.readable, true);
+    assert.equal(found.processes.length, 1);
+    assert.equal(found.processes[0].pid, 321);
+    assert.equal(found.processes[0].program, "agent.js");
+    assert.equal(found.processes[0].destination, "api.openai.com");
+    assert.equal(found.processes[0].covered, false);
+    const hidden = proc.discoverUncovered({
+      procRoot: root,
+      hostsPath: join(root, "hosts"),
+      covered: [{ pid: 321, program: "agent.js" }],
+      isAiHost: (host) => host === "api.openai.com",
+    });
+    assert.deepEqual(hidden.processes, []);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("OTLP gRPC sends traces, metrics, and logs over HTTP/2", async () => {
+    const paths = [];
+    const bodies = [];
+    const server = http2.createServer();
+    server.on("stream", (stream, headers) => {
+      const chunks = [];
+      paths.push(headers[":path"]);
+      stream.on("data", (chunk) => chunks.push(chunk));
+      stream.on("end", () => {
+        bodies.push(Buffer.concat(chunks));
+        stream.respond({ ":status": 200, "content-type": "application/grpc", "grpc-status": "0" });
+        stream.end();
+      });
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = server.address().port;
+    try {
+      const events = [{
+        schema: "vantio.optics.export.v1",
+        kind: "observation",
+        time: "2026-10-21T18:02:07.000Z",
+        program: "agent.js",
+        destination: "billing.internal.example",
+        method: "POST",
+        path: "/v1/tools",
+        bytes: 1840,
+        http_status: 200,
+        optics_status: "OBSERVED",
+        authority: "outside_authority",
+        trace_id: "0xa1b2c3d4e5f60718",
+        otel_trace_id: "ab".repeat(16),
+        otel_span_id: "cd".repeat(8),
+        flag: "new_destination",
+        flag_label: "New destination",
+        pid: 42,
+      }];
+      const payloads = features.otlpPayloads(events, { hostname: "box", platform: "linux" });
+      const encoded = grpc.encodeOtlpGrpc(payloads);
+      assert.ok(encoded.traces.includes(Buffer.from("ab".repeat(16), "hex")));
+      assert.doesNotMatch(encoded.traces.toString("utf8"), new RegExp(CANARY));
+      await grpc.deliverOtlpGrpc(`grpc://127.0.0.1:${port}`, payloads);
+      assert.deepEqual(paths.sort(), [
+        grpc.LOGS_PATH,
+        grpc.METRICS_PATH,
+        grpc.TRACE_PATH,
+      ].sort());
+      assert.ok(bodies.every((body) => body.length > 5 && body[0] === 0));
+    } finally {
+      server.close();
+    }
+  });
+
+  test("tail and export follow print and send a destination as it is recorded", async () => {
+    const home = mkdtempSync(join(tmpdir(), "vantio-follow-"));
+    mkdirSync(join(home, ".vantio"), { recursive: true });
+    const hits = [];
+    const server = await listenHttp((req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(chunk));
+      req.on("end", () => {
+        hits.push(Buffer.concat(chunks).toString("utf8"));
+        res.writeHead(200);
+        res.end("ok");
+      });
+    });
+    const port = server.address().port;
+    const tail = spawn(process.execPath, [CLI, "tail", "--follow"], {
+      env: { PATH: process.env.PATH, HOME: home },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const exporter = spawn(process.execPath, [CLI, "export", "--follow", `--webhook=http://127.0.0.1:${port}/hook`], {
+      env: { PATH: process.env.PATH, HOME: home },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let tailOut = "";
+    tail.stdout.on("data", (chunk) => { tailOut += chunk; });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const event = {
+        schema: "vantio.optics.live.v1",
+        kind: "new_destination",
+        flag: "new_destination",
+        flag_label: "New destination",
+        clock: "14:02:07",
+        time: "2026-10-21T18:02:07.000Z",
+        program: "agent.js",
+        destination: "billing.internal.example",
+        trace_id: "0xa1b2c3d4e5f60718",
+        path: "/v1/tools",
+        bytes: 1840,
+      };
+      writeFileSync(join(home, ".vantio", "live.jsonl"), `${JSON.stringify(event)}\n`);
+      const deadline = Date.now() + 2000;
+      while ((!tailOut.includes("14:02:07") || hits.length < 1) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert.match(tailOut, /New destination/);
+      assert.match(tailOut, /First connection: 14:02:07/);
+      assert.match(tailOut, /agent\.js/);
+      assert.ok(hits.length >= 1);
+      assert.match(hits[0], /billing\.internal\.example/);
+      assert.doesNotMatch(hits[0], new RegExp(CANARY));
+    } finally {
+      tail.kill("SIGTERM");
+      exporter.kill("SIGTERM");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      server.close();
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

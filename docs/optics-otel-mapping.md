@@ -1,6 +1,6 @@
 # Optics fields and OpenTelemetry GenAI terms
 
-This page maps Vantio Optics display fields to OpenTelemetry GenAI semantic conventions. `vantio export --otlp` sends OTLP/HTTP JSON for traces, a byte gauge, and logs. Optics does not start a collector or listener, and it does not speak OTLP/gRPC.
+This page maps Vantio Optics display fields to OpenTelemetry GenAI semantic conventions. `vantio export --otlp` sends OTLP/HTTP JSON for traces, a byte gauge, and logs. `vantio export --otlp-grpc` sends those same fields as unary gRPC over HTTP/2. Optics does not start a collector or listener.
 
 JSON from the CLI includes `"schema_status": "unstable-pre-1.0"`. Names and values below may change without notice.
 
@@ -43,6 +43,5 @@ Prompts and completions are never stored. Do not map Optics records onto `gen_ai
 ## What this page does not add
 
 - No collector, listener, proxy, or daemon
-- No OTLP/gRPC
 - No prompt or completion capture
 - No change to the paid control-plane path

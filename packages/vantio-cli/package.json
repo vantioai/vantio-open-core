@@ -38,7 +38,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "lint": "node --check bin/vantio.js && node --check bin/mcp-awareness-register.js && node --check bin/mcp-awareness-paths.js && node --check bin/mcp-awareness-frame.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs && node --check bin/optics-cx.cjs && node --check bin/optics-features.cjs && node --check bin/ingest-url.cjs",
+    "lint": "node --check bin/vantio.js && node --check bin/mcp-awareness-register.js && node --check bin/mcp-awareness-paths.js && node --check bin/mcp-awareness-frame.js && node --check bin/interceptor.cjs && node --check bin/telemetry.cjs && node --check bin/llm-hosts.cjs && node --check bin/optics-cx.cjs && node --check bin/optics-features.cjs && node --check bin/optics-proc.cjs && node --check bin/optics-otlp-grpc.cjs && node --check bin/ingest-url.cjs",
     "test": "node --test"
   },
   "engines": {
