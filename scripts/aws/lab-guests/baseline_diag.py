@@ -1641,6 +1641,39 @@ def boot_lines_carry_lsm(text: str, lsm_value: str) -> bool:
     return any(needle in line.split() for line in linux_lines(text))
 
 
+def strip_lsm_assignments(text: str, lsm_value: str) -> str:
+    """Drop one lab lsm= word from GRUB_CMDLINE assignments. Other lines stay."""
+    needle = f"lsm={lsm_value}"
+    lines: list[str] = []
+    for raw in text.splitlines():
+        matched = re.match(r"^(\s*)(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)(\s*=\s*)(.*)$", raw)
+        if matched is None:
+            lines.append(raw)
+            continue
+        quoted = matched.group(4).strip()
+        quote = '"'
+        if len(quoted) >= 2 and quoted[0] == quoted[-1] and quoted[0] in {'"', "'"}:
+            value = quoted[1:-1]
+            quote = quoted[0]
+        else:
+            value = quoted
+        tokens = [part for part in value.split() if part != needle]
+        lines.append(f"{matched.group(1)}{matched.group(2)}={quote}{' '.join(tokens)}{quote}")
+    body = "\n".join(lines)
+    if text.endswith("\n") or not text:
+        body += "\n"
+    return body
+
+
+def _grub_cfg_paths(root: Path) -> list[Path]:
+    found: list[Path] = []
+    for base in ("boot/grub", "boot/efi"):
+        folder = root / base
+        if folder.is_dir():
+            found.extend(sorted(path for path in folder.rglob("grub.cfg") if path.is_file()))
+    return found
+
+
 def uninstall_keeps_boot_token(body: dict) -> bool:
     """The guard proved the refusal and the next boot still needs the drop-in."""
     return (
@@ -1651,33 +1684,61 @@ def uninstall_keeps_boot_token(body: dict) -> bool:
 
 
 def remove_consented_lsm(root: Path, updater) -> dict:
-    """Remove 99-vantio-lsm.cfg and regenerate grub.
+    """Remove the lab lsm= token from grub and regenerate.
 
-    No drop-in is a no-op. A failed regenerate, or a boot line that still
-    carries the lab token, restores the drop-in and fails closed.
+    apply_consented_lsm writes the token into /etc/default/grub, into
+    grub.d snippets such as 50-cloudimg-settings.cfg, and into
+    99-vantio-lsm.cfg. Deleting only the drop-in leaves the token in the
+    files update-grub sources. This strips that word, deletes the drop-in,
+    regenerates, and checks every grub.cfg under /boot/grub and /boot/efi.
+    No drop-in is a no-op. A failed regenerate or a boot line that still
+    carries the token restores the edited files and fails closed.
     """
     dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
     if not dropin.is_file():
         return {"ok": True, "removed": False, "error": ""}
-    prior = dropin.read_text(encoding="utf-8")
-    token = lsm_value_from_dropin(prior)
+    prior_dropin = dropin.read_text(encoding="utf-8")
+    token = lsm_value_from_dropin(prior_dropin)
     if not token:
         return {"ok": False, "removed": False, "error": "lsm_value"}
-    cfg = root / "boot/grub/grub.cfg"
+    edited: list[tuple[Path, str]] = []
+    main = root / "etc/default/grub"
+    if main.is_file():
+        edited.append((main, main.read_text(encoding="utf-8")))
+    extra_dir = root / "etc/default/grub.d"
+    if extra_dir.is_dir():
+        for path in sorted(extra_dir.glob("*.cfg")):
+            if path == dropin:
+                continue
+            edited.append((path, path.read_text(encoding="utf-8")))
+    for path, text in edited:
+        path.write_text(strip_lsm_assignments(text, token), encoding="utf-8")
     dropin.unlink()
+
+    def restore() -> None:
+        for path, text in edited:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        dropin.parent.mkdir(parents=True, exist_ok=True)
+        dropin.write_text(prior_dropin, encoding="utf-8")
+        dropin.chmod(0o755)
+
     try:
         rc = int(updater())
     except (OSError, TypeError, ValueError):
         rc = 1
-    text = cfg.read_text(encoding="utf-8", errors="replace") if cfg.is_file() else ""
-    remains = bool(text) and boot_lines_carry_lsm(text, token)
-    if rc != 0 or remains or not cfg.is_file():
-        dropin.parent.mkdir(parents=True, exist_ok=True)
-        dropin.write_text(prior, encoding="utf-8")
-        dropin.chmod(0o755)
+    configs = _grub_cfg_paths(root)
+    remains = False
+    for path in configs:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if boot_lines_carry_lsm(text, token):
+            remains = True
+            break
+    if rc != 0 or remains or not configs:
+        restore()
         if rc != 0:
             error = "update_grub"
-        elif not cfg.is_file():
+        elif not configs:
             error = "grub_cfg_missing"
         else:
             error = "grub_cfg_still_has_lsm"
@@ -1686,11 +1747,21 @@ def remove_consented_lsm(root: Path, updater) -> dict:
 
 
 def remove_consented_lsm_live() -> int:
-    """0 when the lab drop-in is absent or grub.cfg no longer carries its token."""
+    """0 when the lab token is gone from the generated grub menus."""
 
     def updater() -> int:
         try:
             proc = subprocess.run(["update-grub"], capture_output=True, text=True)
+        except OSError:
+            return 1
+        if proc.returncode == 0:
+            return 0
+        try:
+            proc = subprocess.run(
+                ["grub-mkconfig", "-o", "/boot/grub/grub.cfg"],
+                capture_output=True,
+                text=True,
+            )
         except OSError:
             return 1
         return proc.returncode

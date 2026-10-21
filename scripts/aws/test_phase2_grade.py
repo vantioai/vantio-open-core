@@ -878,6 +878,62 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertEqual(dropin.read_text(encoding="utf-8"), baseline_diag.lsm_dropin_text(token))
             self.assertEqual(cfg.read_text(encoding="utf-8"), stale)
 
+    def test_uninstall_strips_lsm_from_grub_and_the_cloudimg_file(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        needle = f"lsm={token}"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = root / "etc/default/grub"
+            cloud = root / "etc/default/grub.d/50-cloudimg-settings.cfg"
+            dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+            bios = root / "boot/grub/grub.cfg"
+            efi = root / "boot/efi/EFI/ubuntu/grub.cfg"
+            main.parent.mkdir(parents=True)
+            cloud.parent.mkdir(parents=True)
+            bios.parent.mkdir(parents=True)
+            efi.parent.mkdir(parents=True)
+            main.write_text(f'GRUB_CMDLINE_LINUX="console=ttyS0 {needle}"\n', encoding="utf-8")
+            cloud.write_text(
+                'GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0 '
+                f'nvme_core.io_timeout=4294967295 {needle}"\n'
+                f'GRUB_CMDLINE_LINUX="{needle}"\n',
+                encoding="utf-8",
+            )
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            bios.write_text(f"linux /vmlinuz ro {needle} panic=-1\n", encoding="utf-8")
+            efi.write_text(f"linux /vmlinuz ro {needle} panic=-1\n", encoding="utf-8")
+
+            def updater() -> int:
+                sources = main.read_text(encoding="utf-8") + cloud.read_text(encoding="utf-8")
+                line = (
+                    f"linux /vmlinuz ro {needle} panic=-1\n"
+                    if needle in sources
+                    else "linux /vmlinuz ro console=tty1 console=ttyS0 panic=-1\n"
+                )
+                bios.write_text(line, encoding="utf-8")
+                efi.write_text(line, encoding="utf-8")
+                return 0
+
+            removed = baseline_diag.remove_consented_lsm(root, updater)
+            self.assertTrue(removed["ok"], removed)
+            self.assertFalse(dropin.exists())
+            self.assertNotIn(needle, main.read_text(encoding="utf-8"))
+            self.assertNotIn(needle, cloud.read_text(encoding="utf-8"))
+            self.assertIn("console=tty1", cloud.read_text(encoding="utf-8"))
+            self.assertFalse(baseline_diag.boot_lines_carry_lsm(bios.read_text(encoding="utf-8"), token))
+            self.assertFalse(baseline_diag.boot_lines_carry_lsm(efi.read_text(encoding="utf-8"), token))
+
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            main.write_text("GRUB_CMDLINE_LINUX=\"\"\n", encoding="utf-8")
+            cloud.write_text('GRUB_CMDLINE_LINUX_DEFAULT="console=tty1"\n', encoding="utf-8")
+            bios.write_text("linux /vmlinuz ro panic=-1\n", encoding="utf-8")
+            efi.write_text(f"linux /vmlinuz ro {needle} panic=-1\n", encoding="utf-8")
+            left = baseline_diag.remove_consented_lsm(root, lambda: 0)
+            self.assertFalse(left["ok"])
+            self.assertEqual(left["error"], "grub_cfg_still_has_lsm")
+            self.assertTrue(dropin.is_file())
+            self.assertIn(needle, efi.read_text(encoding="utf-8"))
+
     def test_stock_reboot_script_does_not_replace_a_sealed_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "reboot-with-grub.sh"
