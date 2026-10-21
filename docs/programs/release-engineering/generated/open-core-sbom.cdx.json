@@ -171,10 +171,10 @@
         }
       ],
       "name": "@vantio/cli",
-      "purl": "pkg:npm/%40vantio/cli@0.3.25",
+      "purl": "pkg:npm/%40vantio/cli@0.3.26",
       "scope": "workspace-manifest",
       "type": "library",
-      "version": "0.3.25"
+      "version": "0.3.26"
     },
     {
       "licenses": [

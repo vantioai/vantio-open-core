@@ -158,12 +158,12 @@
             "selector_is_integrity": false
           },
           "distribution": "public",
-          "filename": "@vantio-cli-0.3.25.source",
+          "filename": "@vantio-cli-0.3.26.source",
           "hash_status": "UNRECORDED",
           "role": "source-tree",
           "sha256": null,
           "source_commit": "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4",
-          "version": "0.3.25"
+          "version": "0.3.26"
         }
       ],
       "clean_env": {
@@ -171,8 +171,8 @@
       },
       "distribution": "public",
       "docs_gate": {
-        "docs_version": "0.3.25",
-        "manifest_version": "0.3.25",
+        "docs_version": "0.3.26",
+        "manifest_version": "0.3.26",
         "status": "MATCH"
       },
       "ordinary_client": {
@@ -189,10 +189,10 @@
         "from_version": null,
         "rollback_sha256": null,
         "to_sha256": null,
-        "to_version": "0.3.25",
+        "to_version": "0.3.26",
         "verified": false
       },
-      "version": "0.3.25"
+      "version": "0.3.26"
     },
     {
       "artifacts": [

@@ -141,7 +141,7 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertEqual(pins["agent_sdk_npm_version"], "0.2.4")
         self.assertEqual(pins["agent_sdk_py_version"], "3.1.0")
         cli = json.loads((REPO / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(cli["version"], "0.3.25")
+        self.assertEqual(cli["version"], "0.3.26")
         sdk = json.loads((REPO / "packages" / "vantio-agent-sdk" / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(sdk["version"], "0.2.4")
         pyproject = (REPO / "packages" / "vantio-agent-sdk-py" / "pyproject.toml").read_text(encoding="utf-8")

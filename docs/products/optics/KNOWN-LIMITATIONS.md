@@ -1,6 +1,6 @@
 # Known limitations
 
-This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.25 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). The version labels are not an npm or PyPI publish. Coverage, new-destination, and export commands in this source tree are described below.
+This page lists what Optics does not do, and the gaps that are easy to over-read. Versions: published CLI 0.3.24, source candidate CLI 0.3.26 (not an npm release), published Python 3.0.14, source candidate Python 3.1.1 (not a PyPI release). The version labels are not an npm or PyPI publish. Coverage, new-destination, and export commands in this source tree are described below.
 
 ## Absent on purpose in the current products
 

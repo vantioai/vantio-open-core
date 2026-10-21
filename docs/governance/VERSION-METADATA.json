@@ -6,10 +6,10 @@
     {
       "id": "cli",
       "name": "@vantio/cli",
-      "version": "0.3.25",
+      "version": "0.3.26",
       "manifest": "packages/vantio-cli/package.json",
       "changelog": "docs/governance/changelogs/cli.md",
-      "changelog_heading": "## 0.3.25"
+      "changelog_heading": "## 0.3.26"
     },
     {
       "id": "node-sdk",

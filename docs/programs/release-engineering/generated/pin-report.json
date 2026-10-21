@@ -821,7 +821,7 @@
       "id": "cli",
       "manifest": "packages/vantio-cli/package.json",
       "name": "@vantio/cli",
-      "version": "0.3.25"
+      "version": "0.3.26"
     },
     {
       "id": "node-sdk",

@@ -5,7 +5,7 @@ Use this guide when editing Vantio Optics documentation in this repository. Pack
 ```json
 {
   "ai_guide_versions": {
-    "@vantio/cli": "0.3.25",
+    "@vantio/cli": "0.3.26",
     "@vantio/agent-sdk": "0.2.4",
     "vantio-agent-sdk": "3.1.1",
     "@vantio/optics-mcp": "0.1.2",
