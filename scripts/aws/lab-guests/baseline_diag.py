@@ -326,17 +326,100 @@ def lsm_list_with_bpf(current: str) -> str:
     return ",".join(tokens)
 
 
+def _loader_needs_bpf_lsm(text: str) -> bool:
+    """True when the loader refused because bpf is not an active LSM."""
+    return "bpf is not in the active lsm list" in text.lower()
+
+
 def classify_readiness_log(text: str) -> dict:
-    """The enforce generation refused, and it did not claim tc enforce."""
-    status = READINESS_BLOCKED in text and f"reason={READINESS_REASON}" in text
-    not_enforcing = "NOT ENFORCING" in text
+    """The enforce generation refused, and it did not claim tc enforce.
+
+    A stock loader logs that bpf is not in the active LSM list instead of
+    INSTALL_ENFORCEMENT_READINESS_BLOCKED. That sentence is a block when
+    enforcement needs the BPF LSM. A later `tc enforce :` line is the loader
+    claiming it enforced anyway, and that claim is not this block.
+    """
+    legacy = READINESS_BLOCKED in text and f"reason={READINESS_REASON}" in text
+    inactive = _loader_needs_bpf_lsm(text)
+    not_enforcing = "not enforcing" in text.lower()
     reports = "tc enforce :" in text
+    blocked = not reports and ((legacy and not_enforcing) or inactive)
+    if inactive and blocked:
+        reason = "lsm_bpf_inactive"
+    elif blocked:
+        reason = READINESS_REASON
+    else:
+        reason = ""
     return {
-        "blocked": status and not_enforcing and not reports,
-        "status_present": status,
+        "blocked": blocked,
+        "status_present": legacy or inactive,
         "not_enforcing": not_enforcing,
         "reports_enforcing": reports,
+        "reason": reason,
     }
+
+
+def lsm_guard_action(
+    verdict: dict,
+    *,
+    stock_lsm: str,
+    bpf_pins: list[str],
+    egress_present: bool,
+) -> dict:
+    """Decide whether lsm-guard writes the consented cmdline.
+
+    The stock loader exits on the inactive BPF LSM before it can report the
+    lab iface. That report is not required for this refusal. Pins left behind
+    still stop the write. The caller sets reboot_requested only after the
+    generated menu contains the token.
+    """
+    if bpf_lsm_active(stock_lsm):
+        return {
+            "write_grub": False,
+            "host_result": "LSM_ALREADY_ACTIVE",
+            "reason": "stock_bpf_lsm",
+            "lsm_value": "",
+        }
+    if not verdict.get("blocked"):
+        return {
+            "write_grub": False,
+            "host_result": "FAIL",
+            "reason": "readiness_not_blocked",
+            "lsm_value": "",
+        }
+    if bpf_pins:
+        return {
+            "write_grub": False,
+            "host_result": "FAIL",
+            "reason": "pins_left",
+            "lsm_value": "",
+        }
+    reason = verdict.get("reason") if isinstance(verdict.get("reason"), str) else ""
+    if not egress_present and reason not in {"lsm_bpf_inactive", READINESS_REASON}:
+        return {
+            "write_grub": False,
+            "host_result": "FAIL",
+            "reason": "egress_iface_missing",
+            "lsm_value": "",
+        }
+    return {
+        "write_grub": True,
+        "host_result": "",
+        "reason": reason or "lsm_bpf_inactive",
+        "lsm_value": lsm_list_with_bpf(stock_lsm),
+    }
+
+
+def reboot_after_grub(action: dict, grub_updated: bool) -> bool:
+    """True only after the generated menu was checked and the write is allowed."""
+    lsm_value = action.get("lsm_value") if isinstance(action, dict) else ""
+    return (
+        isinstance(action, dict)
+        and action.get("write_grub") is True
+        and grub_updated is True
+        and isinstance(lsm_value, str)
+        and bpf_lsm_active(lsm_value)
+    )
 
 
 def _rewrite_grub_text(text: str, lsm_value: str, *, own_the_value: bool) -> tuple[str, str | None]:
@@ -439,17 +522,17 @@ def last_lsm_token(line: str) -> str:
 
 
 def grub_cfg_has_lsm(text: str, lsm_value: str) -> bool:
-    """True when every boot line's last lsm= word is this list.
+    """True when every boot line keeps this lsm= list and panic=-1 last.
 
     /etc/grub.d/10_linux, when GRUB_FORCE_PARTUUID is set, writes the line
     that boots as `ro ${args} panic=-1`. The cloud-image args come from
     GRUB_CMDLINE_LINUX and GRUB_CMDLINE_LINUX_DEFAULT. panic=-1 stays the
     last word. Run 38669912999 appended lsm= after that word and the kernel
     still recorded the stock else branch, with panic=-1 last and no lsm=.
+    A last lsm= token that sits after panic=-1 is not this list.
     """
     lines = boot_linux_lines(text)
-    expected = f"lsm={lsm_value}"
-    return bool(lines) and all(last_lsm_token(line) == expected for line in lines)
+    return bool(lines) and all(firmware_cmdline_ok(line, lsm_value) for line in lines)
 
 
 def rewrite_linux_lines(text: str, lsm_value: str) -> str:
@@ -1317,12 +1400,20 @@ has_panic() {{
 }}
 line_ok() {{
   last=""
+  end=""
+  saw_panic=0
   for part in $1; do
+    end=$part
     case "$part" in
       lsm=*) last=$part ;;
+      panic=-1) saw_panic=1 ;;
     esac
   done
-  [ "$last" = "$token" ]
+  [ "$last" = "$token" ] || return 1
+  if [ "$saw_panic" -eq 1 ] && [ "$end" != "panic=-1" ]; then
+    return 1
+  fi
+  return 0
 }}
 verify() {{
   path="$1"
@@ -1487,6 +1578,196 @@ def plan_grub_lsm(main: str, extras: list[str], lsm_value: str) -> dict:
             return {"error": err}
         new_extras.append(rewritten)
     return {"main": new_main, "extras": new_extras}
+
+
+def render_cloudimg_linux_line(main: str, cloud: str, lsm_value: str) -> str:
+    """Linux line after /etc/default/grub, 50-cloudimg-settings.cfg, and the lab drop-in.
+
+    The cloud file is sourced later and can clear GRUB_CMDLINE_LINUX. The
+    drop-in is sourced last, twice, because a package trigger sources grub.d
+    again. The emitted line is the one 10_linux writes: variable args, then
+    panic=-1.
+    """
+    planned = plan_grub_lsm(main, [cloud], lsm_value)
+    if planned.get("error"):
+        raise ValueError(str(planned["error"]))
+    extras = planned.get("extras")
+    if not isinstance(extras, list) or len(extras) != 1 or not isinstance(planned.get("main"), str):
+        raise ValueError("grub_plan")
+    written_cloud = assignments_with_lsm(extras[0], lsm_value)
+    dropin = lsm_dropin_text(lsm_value)
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        main_path = root / "grub"
+        cloud_path = root / "50-cloudimg-settings.cfg"
+        drop_path = root / "99-vantio-lsm.cfg"
+        main_path.write_text(planned["main"], encoding="utf-8")
+        cloud_path.write_text(written_cloud, encoding="utf-8")
+        drop_path.write_text(dropin, encoding="utf-8")
+        emit = (
+            "linux /vmlinuz-7.0.0-1013-aws "
+            "root=PARTUUID=1feb5770-cc6a-4240-8c18-3b802f140518 "
+            "ro $GRUB_CMDLINE_LINUX $GRUB_CMDLINE_LINUX_DEFAULT panic=-1"
+        )
+        script = "\n".join(
+            [
+                "set -eu",
+                f'. "{main_path}"',
+                f'. "{cloud_path}"',
+                f'. "{drop_path}"',
+                f'. "{drop_path}"',
+                f'printf "%s\\n" "{emit}"',
+            ]
+        )
+        ran = subprocess.run(["dash", "-c", script], capture_output=True, text=True)
+    if ran.returncode != 0:
+        raise RuntimeError((ran.stderr or "dash").strip())
+    return (ran.stdout or "").strip()
+
+
+def lsm_value_from_dropin(text: str) -> str:
+    """The bpf lsm= list named by the lab drop-in, or empty."""
+    found = ""
+    for match in re.finditer(r"lsm=([A-Za-z0-9_,.-]+)", text):
+        value = match.group(1)
+        if bpf_lsm_active(value):
+            found = value
+    return found
+
+
+def boot_lines_carry_lsm(text: str, lsm_value: str) -> bool:
+    """True when any generated linux line still has this lsm= word."""
+    needle = f"lsm={lsm_value}"
+    return any(needle in line.split() for line in linux_lines(text))
+
+
+def strip_lsm_assignments(text: str, lsm_value: str) -> str:
+    """Drop one lab lsm= word from GRUB_CMDLINE assignments. Other lines stay."""
+    needle = f"lsm={lsm_value}"
+    lines: list[str] = []
+    for raw in text.splitlines():
+        matched = re.match(r"^(\s*)(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)(\s*=\s*)(.*)$", raw)
+        if matched is None:
+            lines.append(raw)
+            continue
+        quoted = matched.group(4).strip()
+        quote = '"'
+        if len(quoted) >= 2 and quoted[0] == quoted[-1] and quoted[0] in {'"', "'"}:
+            value = quoted[1:-1]
+            quote = quoted[0]
+        else:
+            value = quoted
+        tokens = [part for part in value.split() if part != needle]
+        lines.append(f"{matched.group(1)}{matched.group(2)}={quote}{' '.join(tokens)}{quote}")
+    body = "\n".join(lines)
+    if text.endswith("\n") or not text:
+        body += "\n"
+    return body
+
+
+def _grub_cfg_paths(root: Path) -> list[Path]:
+    found: list[Path] = []
+    for base in ("boot/grub", "boot/efi"):
+        folder = root / base
+        if folder.is_dir():
+            found.extend(sorted(path for path in folder.rglob("grub.cfg") if path.is_file()))
+    return found
+
+
+def uninstall_keeps_boot_token(body: dict) -> bool:
+    """The guard proved the refusal and the next boot still needs the drop-in."""
+    return (
+        isinstance(body, dict)
+        and body.get("host_result") == "GUARD_PROVED"
+        and body.get("reboot_requested") is True
+    )
+
+
+def remove_consented_lsm(root: Path, updater) -> dict:
+    """Remove the lab lsm= token from grub and regenerate.
+
+    apply_consented_lsm writes the token into /etc/default/grub, into
+    grub.d snippets such as 50-cloudimg-settings.cfg, and into
+    99-vantio-lsm.cfg. Deleting only the drop-in leaves the token in the
+    files update-grub sources. This strips that word, deletes the drop-in,
+    regenerates, and checks every grub.cfg under /boot/grub and /boot/efi.
+    No drop-in is a no-op. A failed regenerate or a boot line that still
+    carries the token restores the edited files and fails closed.
+    """
+    dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+    if not dropin.is_file():
+        return {"ok": True, "removed": False, "error": ""}
+    prior_dropin = dropin.read_text(encoding="utf-8")
+    token = lsm_value_from_dropin(prior_dropin)
+    if not token:
+        return {"ok": False, "removed": False, "error": "lsm_value"}
+    edited: list[tuple[Path, str]] = []
+    main = root / "etc/default/grub"
+    if main.is_file():
+        edited.append((main, main.read_text(encoding="utf-8")))
+    extra_dir = root / "etc/default/grub.d"
+    if extra_dir.is_dir():
+        for path in sorted(extra_dir.glob("*.cfg")):
+            if path == dropin:
+                continue
+            edited.append((path, path.read_text(encoding="utf-8")))
+    for path, text in edited:
+        path.write_text(strip_lsm_assignments(text, token), encoding="utf-8")
+    dropin.unlink()
+
+    def restore() -> None:
+        for path, text in edited:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        dropin.parent.mkdir(parents=True, exist_ok=True)
+        dropin.write_text(prior_dropin, encoding="utf-8")
+        dropin.chmod(0o755)
+
+    try:
+        rc = int(updater())
+    except (OSError, TypeError, ValueError):
+        rc = 1
+    configs = _grub_cfg_paths(root)
+    remains = False
+    for path in configs:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if boot_lines_carry_lsm(text, token):
+            remains = True
+            break
+    if rc != 0 or remains or not configs:
+        restore()
+        if rc != 0:
+            error = "update_grub"
+        elif not configs:
+            error = "grub_cfg_missing"
+        else:
+            error = "grub_cfg_still_has_lsm"
+        return {"ok": False, "removed": False, "error": error}
+    return {"ok": True, "removed": True, "error": ""}
+
+
+def remove_consented_lsm_live() -> int:
+    """0 when the lab token is gone from the generated grub menus."""
+
+    def updater() -> int:
+        try:
+            proc = subprocess.run(["update-grub"], capture_output=True, text=True)
+        except OSError:
+            return 1
+        if proc.returncode == 0:
+            return 0
+        try:
+            proc = subprocess.run(
+                ["grub-mkconfig", "-o", "/boot/grub/grub.cfg"],
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return 1
+        return proc.returncode
+
+    result = remove_consented_lsm(Path("/"), updater)
+    return 0 if result.get("ok") is True else 1
 
 
 LOCKDOWN_PATH = Path("/sys/kernel/security/lockdown")

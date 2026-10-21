@@ -1798,6 +1798,10 @@ class EnterpriseRowSessionTests(unittest.TestCase):
                     checker=lambda _path: {"seal_sha256": SEAL},
                 )
         self.assertEqual(caught.exception.reason, "uninstall_not_verified")
+        self.assertEqual(
+            steps._guest_failure_reason({"uninstall_tail": "UNINSTALL_VERIFIED\nUNINSTALL_GRUB_LSM\n"}),
+            "uninstall_grub_lsm",
+        )
 
     def test_a_rows_file_from_another_boot_fails_closed(self) -> None:
         runner = FakeAws()
@@ -1853,9 +1857,11 @@ class EnterpriseRowSessionTests(unittest.TestCase):
             if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
                 return completed(stdout="boot-new\n")
             if args[0] == "ssh" and args[-1] == "/proc/cmdline":
-                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+                return completed(
+                    stdout="root=PARTUUID ro console=ttyS0 lsm=lockdown,capability,landlock,yama,apparmor,bpf\n"
+                )
             if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
-                return completed(stdout="lockdown,capability,landlock,yama,apparmor\n")
+                return completed(stdout="lockdown,capability,landlock,yama,apparmor,bpf\n")
             if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
                 return completed(stdout="[none] integrity confidentiality\n")
             return completed(stdout="")
@@ -1890,8 +1896,11 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(released["n"], 1)
         post = result["post_boot"]
         self.assertEqual(post["boot_id"], "boot-new")
-        self.assertEqual(post["cmdline"], "root=PARTUUID ro console=ttyS0")
-        self.assertEqual(post["lsm"], "lockdown,capability,landlock,yama,apparmor")
+        self.assertEqual(
+            post["cmdline"],
+            "root=PARTUUID ro console=ttyS0 lsm=lockdown,capability,landlock,yama,apparmor,bpf",
+        )
+        self.assertEqual(post["lsm"], "lockdown,capability,landlock,yama,apparmor,bpf")
         self.assertEqual(post["lockdown"], "[none] integrity confidentiality")
         self.assertEqual(post["image_name"], "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260901")
         self.assertTrue(result["console_file"].startswith("w3-lab-console-"))
@@ -1928,9 +1937,9 @@ class EnterpriseRowSessionTests(unittest.TestCase):
             if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
                 return completed(stdout="boot-new\n")
             if args[0] == "ssh" and args[-1] == "/proc/cmdline":
-                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+                return completed(stdout="root=PARTUUID ro console=ttyS0 lsm=lockdown,capability,apparmor,bpf\n")
             if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
-                return completed(stdout="lockdown,capability,apparmor\n")
+                return completed(stdout="lockdown,capability,apparmor,bpf\n")
             if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
                 return completed(stdout="[none] integrity confidentiality\n")
             return completed(stdout="")
@@ -2187,6 +2196,70 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "post_boot_incomplete")
         self.assertFalse(any("get-console-output" in call for call in runner.calls))
 
+    def test_reboot_check_fails_when_the_new_boot_is_still_stock(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        runner.console = b"stock console\n"
+        stock_lsm = "lockdown,capability,landlock,yama,apparmor,ima,evm"
+        stock_cmdline = (
+            "BOOT_IMAGE=/vmlinuz-7.0.0-1013-aws "
+            "root=PARTUUID=1feb5770-cc6a-4240-8c18-3b802f140518 "
+            "ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 panic=-1"
+        )
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "reboot-check",
+                            "boot_id": "boot-old",
+                            "reboot_requested": True,
+                            "unit": "vantio-lab-lsm-reboot",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and args[-1] == "/proc/cmdline":
+                return completed(stdout=stock_cmdline + "\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
+                return completed(stdout=stock_lsm + "\n")
+            if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
+                return completed(stdout="[none] integrity confidentiality\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "reboot-check"
+                with self.assertRaises(lab.GuardAbort) as caught:
+                    steps.execute_enterprise_rows(
+                        runner,
+                        keygen=self._keygen,
+                        ssh_runner=ssh,
+                        checker=lambda _path: {"seal_sha256": SEAL},
+                    )
+                body = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8"))
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(caught.exception.reason, "bpf_still_absent")
+        self.assertEqual(body["status"], "FAILED")
+        self.assertNotEqual(body["status"], "REBOOT_CHECKED")
+        self.assertEqual(body["post_boot"]["lsm"], stock_lsm)
+        self.assertEqual(body["post_boot"]["cmdline"], stock_cmdline)
+        self.assertFalse(any("get-console-output" in call for call in runner.calls))
+
     def test_reboot_check_fails_when_the_serial_log_is_empty(self) -> None:
         runner = FakeAws()
         runner.dry_run = "allowed"
@@ -2214,9 +2287,9 @@ class EnterpriseRowSessionTests(unittest.TestCase):
             if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
                 return completed(stdout="boot-new\n")
             if args[0] == "ssh" and args[-1] == "/proc/cmdline":
-                return completed(stdout="root=PARTUUID ro console=ttyS0\n")
+                return completed(stdout="root=PARTUUID ro console=ttyS0 lsm=lockdown,capability,apparmor,bpf\n")
             if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lsm":
-                return completed(stdout="lockdown,capability,apparmor\n")
+                return completed(stdout="lockdown,capability,apparmor,bpf\n")
             if args[0] == "ssh" and args[-1] == "/sys/kernel/security/lockdown":
                 return completed(stdout="[none] integrity confidentiality\n")
             return completed(stdout="")

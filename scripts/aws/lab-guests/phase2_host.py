@@ -1677,7 +1677,11 @@ def _wait_readiness_log(timeout: float = 45) -> str:
     while time.time() < deadline:
         proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
         last = (proc.stdout or "") + (proc.stderr or "")
-        if "INSTALL_ENFORCEMENT_READINESS_BLOCKED" in last or "tc enforce :" in last:
+        if (
+            "INSTALL_ENFORCEMENT_READINESS_BLOCKED" in last
+            or "tc enforce :" in last
+            or "bpf is not in the active lsm list" in last.lower()
+        ):
             time.sleep(1)
             proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
             return (proc.stdout or "") + (proc.stderr or "")
@@ -1909,19 +1913,17 @@ def run_lsm_guard() -> dict:
     body["egress_present"] = "status=present" in log
     body["bpf_pins"] = vantio_bpf_pins()
     rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
-    if not verdict["blocked"]:
-        body["host_result"] = "FAIL"
-        body["reason"] = "readiness_not_blocked"
+    action = baseline_diag.lsm_guard_action(
+        verdict,
+        stock_lsm=stock,
+        bpf_pins=body["bpf_pins"],
+        egress_present=body["egress_present"],
+    )
+    if not action["write_grub"]:
+        body["host_result"] = action["host_result"]
+        body["reason"] = action["reason"]
         return body
-    if body["bpf_pins"]:
-        body["host_result"] = "FAIL"
-        body["reason"] = "pins_left"
-        return body
-    if not body["egress_present"]:
-        body["host_result"] = "FAIL"
-        body["reason"] = "egress_iface_missing"
-        return body
-    lsm_value = baseline_diag.lsm_list_with_bpf(stock)
+    lsm_value = action["lsm_value"]
     applied = apply_consented_lsm(lsm_value)
     applied["boot_files"] = baseline_diag.boot_file_manifest(Path("/"))
     body["lsm_value"] = lsm_value
@@ -1943,6 +1945,12 @@ def run_lsm_guard() -> dict:
         body["host_result"] = "FAIL"
         body["reason"] = applied.get("error") or "update_grub"
         return body
+    requested = baseline_diag.reboot_after_grub(action, True)
+    if not requested:
+        body["host_result"] = "FAIL"
+        body["reason"] = "grub_cfg_missing_lsm"
+        body["reboot_requested"] = False
+        return body
     stock_path = baseline_diag.LSM_STOCK_PATH
     stock_path.parent.mkdir(parents=True, exist_ok=True)
     record = {
@@ -1963,9 +1971,9 @@ def run_lsm_guard() -> dict:
         baseline_diag.LSM_BOOT_MARK.write_text(record_text, encoding="utf-8")
     except OSError:
         pass
-    body["reboot_requested"] = True
+    body["reboot_requested"] = requested
     body["host_result"] = "GUARD_PROVED"
-    body["reason"] = "bpf_lsm_inactive"
+    body["reason"] = action["reason"]
     return body
 
 

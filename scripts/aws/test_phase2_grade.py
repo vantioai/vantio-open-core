@@ -656,7 +656,7 @@ class BaselineDiagTests(unittest.TestCase):
         self.assertTrue(buried.strip().endswith("panic=-1"))
         self.assertTrue(baseline_diag.grub_cfg_has_lsm(buried, "lockdown,capability,apparmor,bpf"))
         forced = baseline_diag.rewrite_linux_lines(stock_entry, "lockdown,capability,apparmor,bpf")
-        self.assertTrue(baseline_diag.grub_cfg_has_lsm(forced, "lockdown,capability,apparmor,bpf"))
+        self.assertFalse(baseline_diag.grub_cfg_has_lsm(forced, "lockdown,capability,apparmor,bpf"))
         self.assertIn("panic=-1 lsm=lockdown,capability,apparmor,bpf", forced)
         regen = baseline_diag.reboot_with_grub_script("lockdown,capability,apparmor,bpf")
         self.assertNotIn("grub-mkconfig -o", regen)
@@ -724,6 +724,215 @@ class BaselineDiagTests(unittest.TestCase):
         stock = baseline_diag.lsm_status_body("capability,bpf", "root=PARTUUID", None)
         self.assertEqual(stock["host_result"], "LSM_ALREADY_ACTIVE")
         self.assertTrue(stock["stock_bpf_lsm"])
+
+    def test_stock_aws_loader_log_requests_the_bpf_reboot(self) -> None:
+        stock_lsm = "lockdown,capability,landlock,yama,apparmor,ima,evm"
+        log = (
+            "Vantio Phantom Engine\n"
+            "not enforcing\n"
+            "bpf is not in the active LSM list. Add lsm=...,bpf and reboot. "
+            "The installer writes that line only after explicit operator consent.\n"
+        )
+        verdict = baseline_diag.classify_readiness_log(log)
+        self.assertTrue(verdict["blocked"])
+        self.assertEqual(verdict["reason"], "lsm_bpf_inactive")
+        self.assertTrue(verdict["not_enforcing"])
+        self.assertFalse(verdict["reports_enforcing"])
+        self.assertFalse(baseline_diag.bpf_lsm_active(stock_lsm))
+        action = baseline_diag.lsm_guard_action(
+            verdict,
+            stock_lsm=stock_lsm,
+            bpf_pins=[],
+            egress_present=False,
+        )
+        self.assertTrue(action["write_grub"])
+        self.assertEqual(action["lsm_value"], stock_lsm + ",bpf")
+        self.assertEqual(action["reason"], "lsm_bpf_inactive")
+        self.assertFalse(baseline_diag.reboot_after_grub(action, False))
+        self.assertTrue(baseline_diag.reboot_after_grub(action, True))
+        pinned = baseline_diag.lsm_guard_action(
+            verdict,
+            stock_lsm=stock_lsm,
+            bpf_pins=["vantio_enforce"],
+            egress_present=False,
+        )
+        self.assertFalse(pinned["write_grub"])
+        self.assertEqual(pinned["reason"], "pins_left")
+        self.assertFalse(baseline_diag.reboot_after_grub(pinned, True))
+        claimed = baseline_diag.classify_readiness_log(log + "tc enforce : SCOPED (drop enrolled)\n")
+        self.assertFalse(claimed["blocked"])
+        self.assertTrue(claimed["reports_enforcing"])
+
+    def test_cloudimg_override_keeps_lsm_before_panic(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        main = f'GRUB_CMDLINE_LINUX_DEFAULT="quiet"\nGRUB_CMDLINE_LINUX="lsm={token}"\n'
+        cloud = (
+            "GRUB_RECORDFAIL_TIMEOUT=0\n"
+            "GRUB_TIMEOUT=0\n"
+            'GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295"\n'
+            'GRUB_CMDLINE_LINUX=""\n'
+            "GRUB_TERMINAL=console\n"
+        )
+        line = baseline_diag.render_cloudimg_linux_line(main, cloud, token)
+        self.assertTrue(line.endswith("panic=-1"), line)
+        self.assertIn("console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295", line)
+        self.assertTrue(baseline_diag.grub_cfg_has_lsm(line, token))
+        self.assertEqual(baseline_diag.last_lsm_token(line), f"lsm={token}")
+        self.assertEqual(baseline_diag.render_cloudimg_linux_line(main, cloud, token), line)
+        late = line.replace(f" lsm={token} panic=-1", f" panic=-1 lsm={token}")
+        self.assertTrue(late.endswith(f"lsm={token}"), late)
+        self.assertFalse(baseline_diag.grub_cfg_has_lsm(late, token))
+
+    def test_reboot_script_refuses_lsm_after_panic_on_the_cloud_line(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        script = baseline_diag.reboot_with_grub_script(token)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg = root / "grub.cfg"
+            efi = root / "efi"
+            efi.mkdir()
+            (efi / "grub.cfg").write_text("set prefix=stub\n", encoding="utf-8")
+            bad = (
+                "linux /vmlinuz-7.0.0-1013-aws root=PARTUUID=1feb5770-cc6a-4240-8c18-3b802f140518 "
+                "ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 "
+                f"panic=-1 lsm={token}\n"
+            )
+            cfg.write_text(bad, encoding="utf-8")
+            dropin = root / "99-vantio-lsm.cfg"
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            updater = root / "update-grub"
+            updater.write_text(f"#!/bin/sh\nprintf '%s' '{bad}' > '{cfg}'\n", encoding="utf-8")
+            updater.chmod(0o755)
+            sandboxed = script.replace("updater=update-grub", f"updater={updater}")
+            sandboxed = sandboxed.replace("/boot/grub/grub.cfg", str(cfg)).replace("/boot/efi", str(efi))
+            sandboxed = sandboxed.replace("dropin=/etc/default/grub.d/99-vantio-lsm.cfg", f"dropin={dropin}")
+            sandboxed = sandboxed.replace("log=/var/lib/vantio-lab/grub-mkconfig.txt", f"log={root / 'log.txt'}")
+            sandboxed = sandboxed.replace("mkdir -p /var/lib/vantio-lab\n", f"mkdir -p {root}\n")
+            sandboxed = sandboxed.replace("systemctl reboot --force", "echo REBOOT_SHOULD_NOT")
+            ran = subprocess.run(["bash", "-c", sandboxed], capture_output=True, text=True)
+            self.assertEqual(ran.returncode, 1, ran.stderr + ran.stdout)
+            self.assertNotIn("REBOOT", ran.stdout)
+            self.assertIn("refusing reboot", (root / "log.txt").read_text(encoding="utf-8"))
+
+    def test_uninstall_removes_the_dropin_unless_reboot_is_pending(self) -> None:
+        self.assertTrue(
+            baseline_diag.uninstall_keeps_boot_token(
+                {"host_result": "GUARD_PROVED", "reboot_requested": True}
+            )
+        )
+        self.assertFalse(
+            baseline_diag.uninstall_keeps_boot_token(
+                {"host_result": "FAIL", "reboot_requested": False, "reason": "readiness_not_blocked"}
+            )
+        )
+        shell = Path(__file__).resolve().parent.joinpath("lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        uninstall = shell[shell.index("authorized_uninstall()"): shell.index("\nmode=${2:-enterprise}")]
+        self.assertLess(uninstall.index("UNINSTALL_VERIFIED"), uninstall.index("clear_lab_grub_lsm"))
+        self.assertIn("remove_consented_lsm_live", uninstall)
+        self.assertIn("UNINSTALL_GRUB_LSM", uninstall)
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+            dropin.parent.mkdir(parents=True)
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            cfg = root / "boot/grub/grub.cfg"
+            cfg.parent.mkdir(parents=True)
+            cfg.write_text(
+                "linux /vmlinuz ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 "
+                f"lsm={token} panic=-1\n",
+                encoding="utf-8",
+            )
+
+            def updater() -> int:
+                cfg.write_text(
+                    "linux /vmlinuz ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 panic=-1\n",
+                    encoding="utf-8",
+                )
+                return 0
+
+            removed = baseline_diag.remove_consented_lsm(root, updater)
+            self.assertTrue(removed["ok"], removed)
+            self.assertTrue(removed["removed"])
+            self.assertFalse(dropin.exists())
+            self.assertFalse(baseline_diag.boot_lines_carry_lsm(cfg.read_text(encoding="utf-8"), token))
+            again = baseline_diag.remove_consented_lsm(root, updater)
+            self.assertTrue(again["ok"])
+            self.assertFalse(again["removed"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+            dropin.parent.mkdir(parents=True)
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            cfg = root / "boot/grub/grub.cfg"
+            cfg.parent.mkdir(parents=True)
+            stale = (
+                "linux /vmlinuz ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 "
+                f"lsm={token} panic=-1\n"
+            )
+            cfg.write_text(stale, encoding="utf-8")
+            kept = baseline_diag.remove_consented_lsm(root, lambda: 0)
+            self.assertFalse(kept["ok"])
+            self.assertEqual(kept["error"], "grub_cfg_still_has_lsm")
+            self.assertEqual(dropin.read_text(encoding="utf-8"), baseline_diag.lsm_dropin_text(token))
+            self.assertEqual(cfg.read_text(encoding="utf-8"), stale)
+
+    def test_uninstall_strips_lsm_from_grub_and_the_cloudimg_file(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        needle = f"lsm={token}"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main = root / "etc/default/grub"
+            cloud = root / "etc/default/grub.d/50-cloudimg-settings.cfg"
+            dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+            bios = root / "boot/grub/grub.cfg"
+            efi = root / "boot/efi/EFI/ubuntu/grub.cfg"
+            main.parent.mkdir(parents=True)
+            cloud.parent.mkdir(parents=True)
+            bios.parent.mkdir(parents=True)
+            efi.parent.mkdir(parents=True)
+            main.write_text(f'GRUB_CMDLINE_LINUX="console=ttyS0 {needle}"\n', encoding="utf-8")
+            cloud.write_text(
+                'GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0 '
+                f'nvme_core.io_timeout=4294967295 {needle}"\n'
+                f'GRUB_CMDLINE_LINUX="{needle}"\n',
+                encoding="utf-8",
+            )
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            bios.write_text(f"linux /vmlinuz ro {needle} panic=-1\n", encoding="utf-8")
+            efi.write_text(f"linux /vmlinuz ro {needle} panic=-1\n", encoding="utf-8")
+
+            def updater() -> int:
+                sources = main.read_text(encoding="utf-8") + cloud.read_text(encoding="utf-8")
+                line = (
+                    f"linux /vmlinuz ro {needle} panic=-1\n"
+                    if needle in sources
+                    else "linux /vmlinuz ro console=tty1 console=ttyS0 panic=-1\n"
+                )
+                bios.write_text(line, encoding="utf-8")
+                efi.write_text(line, encoding="utf-8")
+                return 0
+
+            removed = baseline_diag.remove_consented_lsm(root, updater)
+            self.assertTrue(removed["ok"], removed)
+            self.assertFalse(dropin.exists())
+            self.assertNotIn(needle, main.read_text(encoding="utf-8"))
+            self.assertNotIn(needle, cloud.read_text(encoding="utf-8"))
+            self.assertIn("console=tty1", cloud.read_text(encoding="utf-8"))
+            self.assertFalse(baseline_diag.boot_lines_carry_lsm(bios.read_text(encoding="utf-8"), token))
+            self.assertFalse(baseline_diag.boot_lines_carry_lsm(efi.read_text(encoding="utf-8"), token))
+
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            main.write_text("GRUB_CMDLINE_LINUX=\"\"\n", encoding="utf-8")
+            cloud.write_text('GRUB_CMDLINE_LINUX_DEFAULT="console=tty1"\n', encoding="utf-8")
+            bios.write_text("linux /vmlinuz ro panic=-1\n", encoding="utf-8")
+            efi.write_text(f"linux /vmlinuz ro {needle} panic=-1\n", encoding="utf-8")
+            left = baseline_diag.remove_consented_lsm(root, lambda: 0)
+            self.assertFalse(left["ok"])
+            self.assertEqual(left["error"], "grub_cfg_still_has_lsm")
+            self.assertTrue(dropin.is_file())
+            self.assertIn(needle, efi.read_text(encoding="utf-8"))
 
     def test_stock_reboot_script_does_not_replace_a_sealed_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
