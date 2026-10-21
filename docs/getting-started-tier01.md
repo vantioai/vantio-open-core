@@ -1,8 +1,7 @@
 # Getting Started with Vantio Optics
 ### Open Core · Free · Observe only
 
-**Time to first event: under 60 seconds.**  
-Workflow: **[Sight Loop](./sight-loop.md)** (wrap → capture → inspect → residual)
+**Time to first event: under 60 seconds.**
 
 ---
 

@@ -1,0 +1,191 @@
+{
+  "document": "COVERAGE-MATRIX",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_classification": "PHANTOM_WAVE1_PACKAGING_HEALTH_PLAN_READY_FOR_COUNCIL",
+  "this_force_executed_live": false,
+  "private_tip": "631e435315cd780d83d3259e111893c1d0569bc3",
+  "architecture_blob": "84d53654894180cbf351d62231f90e564504162c",
+  "rows": [
+    {
+      "id": "host-crates-compile",
+      "repository_claim": "compile-verified in earlier sessions",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "ebpf-elf-build",
+      "repository_claim": "bpfel ELF build recorded in the architecture matrix",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "kernel-verifier-wsl2",
+      "repository_claim": "verifier accepted the then-shipping suite on privileged WSL2; post-roadmap suite called out for re-verify",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "WSL2_PRIVILEGED",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "scoped-tc-drop-wsl2",
+      "repository_claim": "enrolled-only TC drop recorded on WSL2",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "WSL2_PRIVILEGED",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "uprobe-e2e-wsl2",
+      "repository_claim": "TLS uprobe observe with byte counts recorded on WSL2",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "WSL2_PRIVILEGED",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "fork-inheritance-wsl2",
+      "repository_claim": "architecture matrix calls the WSL2 evidence strong and not an isolated fork-only test",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "WSL2_PRIVILEGED",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "cidr-v4-boundary-wsl2",
+      "repository_claim": "IPv4 LpmTrie prefix boundary recorded on WSL2",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "WSL2_PRIVILEGED",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "cidr-v6-live",
+      "repository_claim": "IPv6 CIDR implemented; live dual-stack test not recorded",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "vlan-qinq-live",
+      "repository_claim": "parser present; tagged frames not exercised",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "forwarded-traffic-caveat",
+      "repository_claim": "cgroup id 0 designed to pass; caveat not recorded as exercised",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "enroll-watch-kind",
+      "repository_claim": "local kind watch recorded after bpffs mount; product spec keeps managed cloud as TARGET_DESIGN",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "KIND_LOCAL",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "TARGET_DESIGN",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "maps-and-uprobes-in-kind-pod",
+      "repository_claim": "pin and attach inside a kind pod recorded; cross-pod different base image untested",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "KIND_LOCAL",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "TARGET_DESIGN",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "pid-offset-path-rofs",
+      "repository_claim": "VANTIO_PID_OFFSET_PATH pointed at /run/vantio/pid_offset; architecture file says not re-verified live",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "cgroup-skb-k8s-watch-attach",
+      "repository_claim": "program exists; enroll-watch does not auto-attach it to pod cgroups",
+      "evidence_class": "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "minimal-caps-live",
+      "repository_claim": "manifest specifies BPF, NET_ADMIN, SYS_ADMIN; live sufficiency row still open in the matrix",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "spanner-live-insert",
+      "repository_claim": "schema aligned in git; live insert TARGET_DESIGN",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "TARGET_DESIGN",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "managed-k8s-gke-eks-aks",
+      "repository_claim": "cloud checklist rows unchecked; register F-15 BLOCKED",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "MANAGED_CLOUD",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "stranger-host",
+      "repository_claim": "register F-14 and F-17 BLOCKED; protection state sets stranger_host_present false",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "STRANGER_HOST",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "image-tag-0-1-0-in-registry",
+      "repository_claim": "chart and raw manifest pin tag 0.1.0; registry presence not queried",
+      "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+      "platform_scope": "REPOSITORY_ONLY",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    },
+    {
+      "id": "reference-host-prerequisite-script",
+      "repository_claim": "script exists in vantio-enterprise; this force did not run it",
+      "evidence_class": "NOT_EXECUTED_IN_THIS_PASS",
+      "platform_scope": "REFERENCE_HOST",
+      "this_force": "NOT_EXECUTED",
+      "managed_cloud": "UNVERIFIED",
+      "stranger_host": "UNVERIFIED"
+    }
+  ]
+}

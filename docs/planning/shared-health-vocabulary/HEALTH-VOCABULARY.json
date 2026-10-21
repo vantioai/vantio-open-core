@@ -1,0 +1,1578 @@
+{
+  "document": "SHARED-HEALTH-VOCABULARY",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "0.1.0-design",
+  "stable_schema": false,
+  "catalog_id": "WS4",
+  "catalog_version": "0.1.0-design",
+  "producer_classification": "SHARED_HEALTH_VOCABULARY_READY_FOR_COUNCIL",
+  "vocabulary_owner": "WORKSTREAM_4",
+  "vocabulary_status": "WS4_CATALOG_DRAFT",
+  "awaiting": "INDEPENDENT_COUNCIL",
+  "bound_into_pe_packet": false,
+  "pe_packet_vocabulary_status": "PENDING_WS4",
+  "pe_packet_workstream_4": "DEFINITION_NOT_RETRIEVED",
+  "pe_packet_path": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json",
+  "pe_packet_sha256": "a2592a2496f65897c3258106f3bc187d8efb16e9b3d6c53a54c099163e8e3cd1",
+  "record_type": "SHARED_HEALTH_FACT",
+  "subject_extension": "NONE",
+  "subjects": [
+    "ARTIFACT",
+    "HOST_PREREQUISITE",
+    "LOADER",
+    "COVERAGE",
+    "CONTROL_PLANE",
+    "LEDGER"
+  ],
+  "fact_kinds": [
+    "PROTECTION_EVALUATION",
+    "VERIFIER_RUN",
+    "LOADER_LIVENESS",
+    "CONTROL_PLANE_HEARTBEAT",
+    "OPTICS_DISPLAY_READING",
+    "SDK_ACTION",
+    "APPLICATION_STATUS",
+    "LEDGER_ACTION",
+    "PASS_THROUGH_LABEL",
+    "EVIDENCE_LABEL",
+    "OTHER"
+  ],
+  "open_core_base": "4b1b85ad6af41b1bb54dc4c55cde16b711ae7dd4",
+  "citations": {
+    "unit_a_vocabulary_commit": "4debf8cf319a0450246da32b3eae15958b94db61",
+    "unit_a_merge": "587f3b94d47ea958f91d3a99125cd55931d995f1",
+    "unit_f_reader_commit": "2c31764c9c55f6f9c5cd0e0d1ce762ad032867e3",
+    "unit_f_merge": "4b1b85ad6af41b1bb54dc4c55cde16b711ae7dd4",
+    "status_tokens_commit": "355545a25e2daaf1040ef2d9a5aafbba27284ceb",
+    "pe_packet_commit": "b861d4bcaf1f3193d6fbeaf86a3bed283c7b9538",
+    "pe_packet_merge": "601342f08a59798ce207840cfb75293c3c22f45c",
+    "optics_a5_commit": "df55066aa1ab797bcade4a7867590274e2325c09",
+    "status_tokens_path": "docs/governance/STATUS-TOKENS.json",
+    "optics_display_source": "packages/vantio-cli/bin/optics-cx.cjs",
+    "sdk_action_source": "packages/vantio-agent-sdk/src/index.ts",
+    "unit_a_doc": "docs/internal/optics-pkg02-unit-a/VOCABULARY.md",
+    "unit_f_doc": "docs/internal/optics-pkg02-unit-f/DESIGN.md",
+    "optics_a5": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+    "optics_a4": "docs/architecture/optics-foundation/05-CORRELATION-AND-QUERY-CONTRACT.md",
+    "pe_vocabulary_prose": "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md"
+  },
+  "frozen_surfaces": {
+    "cli": {
+      "package": "@vantio/cli",
+      "version": "0.3.24",
+      "path": "packages/vantio-cli/package.json"
+    },
+    "node_sdk": {
+      "package": "@vantio/agent-sdk",
+      "version": "0.2.4",
+      "path": "packages/vantio-agent-sdk/package.json"
+    },
+    "python_sdk": {
+      "package": "vantio-agent-sdk",
+      "version": "3.1.0",
+      "path": "packages/vantio-agent-sdk-py/pyproject.toml"
+    },
+    "unit_d": "NOT_AUTHORIZED",
+    "unit_e": "NOT_AUTHORIZED",
+    "o7": "NOT_AUTHORIZED",
+    "i3": "NOT_AUTHORIZED",
+    "cli_reopen": false,
+    "publish": false,
+    "announcement": false
+  },
+  "hard_stops": {
+    "live_ebpf_load": false,
+    "live_probe": false,
+    "stranger_host_execution": false,
+    "customer_deploy": false,
+    "unit_d_writer": false,
+    "unit_e_writer": false,
+    "optics_store_write": false,
+    "o7": false,
+    "i3_otel_adapter": false,
+    "customer_confidential_bodies_copied": false,
+    "merge_authorized": false,
+    "self_certified_council_pass": false
+  },
+  "fields": {
+    "protection_state": {
+      "layer": "B",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "protected",
+        "observing",
+        "not_enrolled",
+        "protection_stale",
+        "policy_stale",
+        "degraded",
+        "quarantined",
+        "recovery_required",
+        "coverage_unknown"
+      ],
+      "owner_repo": "vantioai/vantio-phantom-engine",
+      "owner_path": "python/pe_protection_state.py",
+      "owner_git_sha": "631e435315cd780d83d3259e111893c1d0569bc3",
+      "owner_blob": "a1b49fe6e431cdb574f0d285f7976236945519c7",
+      "this_force_read": "ACCESS_GAP",
+      "values_source": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json"
+    },
+    "verifier_result": {
+      "layer": "C",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "PASS",
+        "FAIL",
+        "NOT_APPLICABLE",
+        "OPTIONAL_COMPONENT_ABSENT",
+        "REQUIRED_DEPENDENCY_MISSING",
+        "NOT_TESTED",
+        "BLOCKED"
+      ],
+      "owner_repo": "vantioai/vantio-phantom-engine",
+      "owner_path": "docs/internal/VERIFIER_CONTRACT.md",
+      "owner_git_sha": "631e435315cd780d83d3259e111893c1d0569bc3",
+      "owner_blob": "4c215cb2ebdff63a85c29094adb8dfbe2bb30dc7",
+      "this_force_read": "ACCESS_GAP",
+      "values_source": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json"
+    },
+    "optics_display": {
+      "layer": "A",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "OBSERVED",
+        "NOT_OBSERVED",
+        "UNSUPPORTED",
+        "UNAVAILABLE",
+        "APPLICATION_ERROR",
+        "OPTICS_ERROR",
+        "PARTIAL",
+        "SUCCESS"
+      ],
+      "owner_path": "docs/governance/STATUS-TOKENS.json",
+      "this_force_read": "OPEN_CORE",
+      "values_source": "docs/governance/STATUS-TOKENS.json#display_tokens"
+    },
+    "sdk_action": {
+      "layer": "A",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "OBSERVED",
+        "ALLOWED",
+        "REDACTED",
+        "BLOCKED_HOST",
+        "BLOCKED_SIZE",
+        "BLOCKED_SPEND",
+        "ENFORCEMENT_GAP",
+        "DRY_RUN_BLOCKED_HOST",
+        "DRY_RUN_BLOCKED_SIZE",
+        "DRY_RUN_BLOCKED_SPEND"
+      ],
+      "owner_path": "docs/governance/STATUS-TOKENS.json",
+      "this_force_read": "OPEN_CORE",
+      "values_source": "docs/governance/STATUS-TOKENS.json#action_tokens"
+    },
+    "application_status": {
+      "layer": "A",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "SUCCESS",
+        "APPLICATION_ERROR",
+        "UNAVAILABLE"
+      ],
+      "owner_path": "docs/governance/canonical/status-tokens.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "evidence_class": {
+      "layer": "D",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "EXECUTED_IN_THIS_REMEDIATION",
+        "OBSERVED_FROM_REPOSITORY_EVIDENCE",
+        "NOT_INDEPENDENTLY_VERIFIED",
+        "NOT_EXECUTED_IN_THIS_PASS"
+      ],
+      "values_source": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json",
+      "this_force_read": "OPEN_CORE"
+    },
+    "platform_scope": {
+      "layer": "D",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "REPOSITORY_ONLY",
+        "WSL2_PRIVILEGED",
+        "KIND_LOCAL",
+        "REFERENCE_HOST",
+        "MANAGED_CLOUD",
+        "STRANGER_HOST"
+      ],
+      "values_source": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json",
+      "this_force_read": "OPEN_CORE"
+    },
+    "platform_status": {
+      "layer": "D",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "VERIFIED_ON_REFERENCE_HOST",
+        "DOCUMENTED_REQUIREMENT",
+        "UNVERIFIED",
+        "TESTED_LOCAL",
+        "TARGET_DESIGN"
+      ],
+      "values_source": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json",
+      "this_force_read": "OPEN_CORE"
+    },
+    "deployment_profile": {
+      "layer": "E",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "bundled_gate",
+        "no_gate",
+        "unknown"
+      ],
+      "values_source": "docs/planning/phantom-engine-production/HEALTH-VOCABULARY.json",
+      "this_force_read": "OPEN_CORE"
+    },
+    "compatibility_status": {
+      "layer": "D",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": true,
+      "values": [
+        "internally_proven",
+        "not_stranger_proven"
+      ],
+      "values_source": "docs/planning/phantom-engine-production/05-SHARED-HEALTH-VOCABULARY.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "ledger_action_taken": {
+      "layer": "LEDGER",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": false,
+      "values": [
+        "BLOCKED",
+        "OBSERVED"
+      ],
+      "enum_status": "PARTIAL_CITED_SPELLINGS_ONLY",
+      "this_force_read": "ACCESS_GAP"
+    },
+    "pass_through_product_label": {
+      "layer": "PRODUCT_LABEL",
+      "group": "SHARED_HEALTH_FACT",
+      "on_shared_health_fact": true,
+      "values_are_complete": false,
+      "values": [
+        "ALLOWED"
+      ],
+      "enum_status": "PARTIAL_CITED_SPELLINGS_ONLY",
+      "this_force_read": "OPEN_CORE"
+    },
+    "query_completeness": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "COMPLETE",
+        "PARTIAL",
+        "UNKNOWN",
+        "UNAVAILABLE"
+      ],
+      "values_source": "docs/architecture/optics-foundation/05-CORRELATION-AND-QUERY-CONTRACT.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "integrity_state": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "OK",
+        "FAILED",
+        "UNKNOWN"
+      ],
+      "values_source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "sampling_state": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "UNSAMPLED",
+        "SAMPLED",
+        "UNKNOWN"
+      ],
+      "values_source": "docs/architecture/optics-foundation/05-CORRELATION-AND-QUERY-CONTRACT.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "drop_state": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "NO_DROPS",
+        "DROPS_IN_SCOPE",
+        "UNKNOWN"
+      ],
+      "values_source": "docs/architecture/optics-foundation/05-CORRELATION-AND-QUERY-CONTRACT.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "completeness_reason": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "DROPS_IN_SCOPE",
+        "RUN_LIFECYCLE_NOT_COMPLETE",
+        "SAMPLING_NOT_UNSAMPLED",
+        "REQUIRED_EVIDENCE_CORRUPT",
+        "STORE_HEALTH_UNKNOWN",
+        "INTEGRITY_NOT_OK",
+        "COVERAGE_GAP_IN_SCOPE",
+        "EVALUATION_INCOMPLETE",
+        "REQUIRED_EVIDENCE_UNAVAILABLE",
+        "PARENT_CONFLICT",
+        "PRODUCER_SEQUENCE_CONFLICT"
+      ],
+      "values_source": "docs/architecture/optics-foundation/05-CORRELATION-AND-QUERY-CONTRACT.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "run_lifecycle": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "COMPLETE",
+        "PARTIAL",
+        "INTERRUPTED",
+        "ABANDONED",
+        "RECOVERED"
+      ],
+      "implementation_status": "CONTRACT_LABELS_NOT_ON_CURRENT_WRITERS",
+      "values_source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "issue_location": {
+      "layer": "A",
+      "group": "OPTICS_ENVELOPE",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "NONE",
+        "OPTICS",
+        "CUSTOMER_APPLICATION",
+        "PROVIDER_INTERACTION",
+        "NETWORK",
+        "ENVIRONMENT",
+        "CONFIGURATION",
+        "COVERAGE",
+        "UNKNOWN"
+      ],
+      "values_source": "docs/architecture/optics-foundation/08-ARCHITECTURE-DECISION-PACK.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "migration_state": {
+      "layer": "A",
+      "group": "OPTICS_PRODUCT_HEALTH",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "IDLE",
+        "IN_PROGRESS",
+        "FAILED",
+        "NOT_APPLICABLE"
+      ],
+      "values_source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "telemetry_last_result": {
+      "layer": "A",
+      "group": "OPTICS_PRODUCT_HEALTH",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "DISABLED",
+        "SENT",
+        "FAILED",
+        "SKIPPED"
+      ],
+      "values_source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+      "this_force_read": "OPEN_CORE"
+    },
+    "product_health_name": {
+      "layer": "A",
+      "group": "OPTICS_PRODUCT_HEALTH",
+      "on_shared_health_fact": false,
+      "values_are_complete": true,
+      "values": [
+        "hooks_installed",
+        "events_received",
+        "events_persisted",
+        "events_rejected",
+        "events_dropped",
+        "write_latency_ms",
+        "query_latency_ms",
+        "database_size_bytes",
+        "last_successful_write_at",
+        "integrity_state",
+        "session_id_rejected",
+        "producer_sequence_conflict",
+        "parent_conflict",
+        "formatter_failures",
+        "migration_state",
+        "redaction_failures",
+        "schema_version",
+        "privacy_generation",
+        "rejected_context",
+        "telemetry_last_result"
+      ],
+      "values_source": "docs/architecture/optics-foundation/06-SELF-OBSERVABILITY-AND-RELIABILITY.md",
+      "this_force_read": "OPEN_CORE",
+      "note": "Diagnostic names on PRODUCT_HEALTH records. Not protection states."
+    },
+    "coverage_matrix_this_force": {
+      "layer": "D",
+      "group": "COVERAGE_MATRIX",
+      "on_shared_health_fact": false,
+      "values_are_complete": false,
+      "values": [
+        "NOT_EXECUTED"
+      ],
+      "enum_status": "PARTIAL_CITED_SPELLINGS_ONLY",
+      "values_source": "docs/planning/phantom-engine-production/COVERAGE-MATRIX.json",
+      "this_force_read": "OPEN_CORE",
+      "note": "Column this_force on the coverage matrix. Not an evidence_class and not a proved state."
+    }
+  },
+  "freshness": {
+    "rule_id": "FRESHNESS_WINDOW_NOT_SET_EMIT_UNKNOWN",
+    "window": "NOT_SET",
+    "window_seconds": null,
+    "window_reason": "Optics A5 section 7 leaves the freshness window number NOT_SET and forbids emitting CURRENT until a window exists. Workstream 3 left freshness UNKNOWN until Workstream 4 set a window. This catalog sets the window to NOT_SET. The only emitted freshness value is UNKNOWN. heartbeat_age_limit_s 60 is a LOADER liveness fact, not this window.",
+    "emitted_values": [
+      "UNKNOWN"
+    ],
+    "reserved_not_emitted": [
+      "CURRENT",
+      "HISTORICAL",
+      "STALE"
+    ],
+    "heartbeat_is_not_freshness": true
+  },
+  "heartbeat": {
+    "subject": "LOADER",
+    "fact_kind": "LOADER_LIVENESS",
+    "path_in_manifests": "/run/vantio/heartbeat",
+    "age_limit_s": 60,
+    "operations_guide_filename": "UNRESOLVED_DRIFT",
+    "conflict_id": "CONFLICT-HEARTBEAT-PATH",
+    "guide_blob_not_copied": "1b973342b3bf7f6aa6cdad70de49fa6e26db0077"
+  },
+  "control_plane_heartbeat": {
+    "subject": "CONTROL_PLANE",
+    "fact_kind": "CONTROL_PLANE_HEARTBEAT",
+    "interval_s": "NOT_COPIED",
+    "reason": "P24 leaves the control-plane interval in the CUSTOMER_SHIPPED operations guide. This catalog does not copy it and does not reuse the loader 60 second age."
+  },
+  "ledger_plane": {
+    "local_ndjson": "APPEND_ORIENTED",
+    "worm_token": "NOT_A_CATALOG_VALUE",
+    "spanner_insert": "TARGET_DESIGN"
+  },
+  "optics_reader_display": {
+    "kind": "rule",
+    "owner": "PKG-02 Unit F",
+    "commit": "2c31764c9c55f6f9c5cd0e0d1ce762ad032867e3",
+    "merge": "4b1b85ad6af41b1bb54dc4c55cde16b711ae7dd4",
+    "renders_success": false,
+    "stored_success_becomes": "UNAVAILABLE",
+    "does_not_remove_success_from_optics_display": true
+  },
+  "cited_facts_not_states": [
+    {
+      "name": "stranger_host_present",
+      "cited_value": false,
+      "source": "docs/planning/phantom-engine-production/04-P24-HEALTH-AND-COVERAGE.md"
+    },
+    {
+      "name": "dual_control_executor_wired",
+      "cited_value": false,
+      "source": "docs/planning/phantom-engine-production/04-P24-HEALTH-AND-COVERAGE.md"
+    }
+  ],
+  "absent_fields": [
+    "coverage_percent",
+    "customer_validation",
+    "worm"
+  ],
+  "fact_rules": {
+    "field_gates": {
+      "protection_state": {
+        "fact_kind": "PROTECTION_EVALUATION",
+        "subjects": [
+          "COVERAGE",
+          "LOADER"
+        ],
+        "enum_field": "protection_state",
+        "subject_error": "PROTECTION_SUBJECT",
+        "enum_error": "PROTECTION_ENUM",
+        "null_error": "PROTECTION_FACT_KIND"
+      },
+      "verifier_result": {
+        "fact_kind": "VERIFIER_RUN",
+        "enum_field": "verifier_result",
+        "enum_error": "VERIFIER_ENUM",
+        "null_error": "VERIFIER_FACT_KIND"
+      },
+      "heartbeat_age_limit_s": {
+        "fact_kind": "LOADER_LIVENESS",
+        "subjects": [
+          "LOADER"
+        ],
+        "exact": 60,
+        "subject_error": "HEARTBEAT_SUBJECT",
+        "exact_error": "HEARTBEAT_VALUE",
+        "null_error": "HEARTBEAT_NOT_ON_OTHER"
+      },
+      "optics_display": {
+        "fact_kind": "OPTICS_DISPLAY_READING",
+        "enum_field": "optics_display",
+        "enum_error": "OPTICS_ENUM",
+        "null_error": "OPTICS_FACT_KIND"
+      },
+      "sdk_action": {
+        "fact_kind": "SDK_ACTION",
+        "enum_field": "sdk_action",
+        "enum_error": "SDK_ENUM",
+        "null_error": "SDK_FACT_KIND"
+      },
+      "application_status": {
+        "fact_kind": "APPLICATION_STATUS",
+        "enum_field": "application_status",
+        "enum_error": "APPLICATION_ENUM",
+        "null_error": "APPLICATION_FACT_KIND"
+      },
+      "ledger_action_taken": {
+        "fact_kind": "LEDGER_ACTION",
+        "subjects": [
+          "LEDGER"
+        ],
+        "enum_field": "ledger_action_taken",
+        "subject_error": "LEDGER_SUBJECT",
+        "enum_error": "LEDGER_ENUM",
+        "null_error": "LEDGER_FACT_KIND"
+      },
+      "pass_through_product_label": {
+        "fact_kind": "PASS_THROUGH_LABEL",
+        "enum_field": "pass_through_product_label",
+        "enum_error": "PASS_THROUGH_ENUM",
+        "null_error": "PASS_THROUGH_FACT_KIND"
+      }
+    },
+    "optional_enums": {
+      "evidence_class": "EVIDENCE_ENUM",
+      "platform_scope": "PLATFORM_SCOPE_ENUM",
+      "platform_status": "PLATFORM_STATUS_ENUM",
+      "deployment_profile": "DEPLOYMENT_ENUM",
+      "compatibility_status": "COMPATIBILITY_ENUM"
+    },
+    "control_plane": {
+      "fact_kind": "CONTROL_PLANE_HEARTBEAT",
+      "subject": "CONTROL_PLANE",
+      "interval_s": "NOT_COPIED",
+      "subject_error": "CONTROL_PLANE_SUBJECT",
+      "interval_error": "CONTROL_PLANE_INTERVAL",
+      "null_error": "INTERVAL_NOT_ON_OTHER"
+    }
+  },
+  "disjoint_value_sets": [
+    [
+      "protection_state",
+      "optics_display"
+    ],
+    [
+      "protection_state",
+      "verifier_result"
+    ],
+    [
+      "protection_state",
+      "sdk_action"
+    ],
+    [
+      "protection_state",
+      "application_status"
+    ],
+    [
+      "protection_state",
+      "ledger_action_taken"
+    ],
+    [
+      "protection_state",
+      "pass_through_product_label"
+    ]
+  ],
+  "forbidden_crosswalks": [
+    {
+      "from": {
+        "field": "optics_display",
+        "value": "OBSERVED"
+      },
+      "to": {
+        "field": "protection_state",
+        "value": "protected"
+      }
+    },
+    {
+      "from": {
+        "field": "verifier_result",
+        "value": "BLOCKED"
+      },
+      "to": {
+        "field": "ledger_action_taken",
+        "value": "BLOCKED"
+      }
+    },
+    {
+      "from": {
+        "field": "verifier_result",
+        "value": "OPTIONAL_COMPONENT_ABSENT"
+      },
+      "to": {
+        "field": "verifier_result",
+        "value": "PASS"
+      }
+    },
+    {
+      "from": {
+        "field": "platform_scope",
+        "value": "KIND_LOCAL"
+      },
+      "to": {
+        "field": "platform_scope",
+        "value": "MANAGED_CLOUD"
+      }
+    },
+    {
+      "from": {
+        "field": "compatibility_status",
+        "value": "internally_proven"
+      },
+      "to": {
+        "field": "platform_scope",
+        "value": "STRANGER_HOST"
+      }
+    },
+    {
+      "from": {
+        "field": "platform_status",
+        "value": "TESTED_LOCAL"
+      },
+      "to": {
+        "field": "customer_validation"
+      }
+    },
+    {
+      "from": {
+        "field": "freshness",
+        "value": "CURRENT"
+      },
+      "to": {
+        "field": "heartbeat_age_limit_s",
+        "value": 60
+      }
+    },
+    {
+      "from": {
+        "field": "platform_status",
+        "value": "UNVERIFIED"
+      },
+      "to": {
+        "field": "protection_state",
+        "value": "protected"
+      }
+    },
+    {
+      "from": {
+        "field": "evidence_class",
+        "value": "NOT_EXECUTED_IN_THIS_PASS"
+      },
+      "to": {
+        "field": "evidence_class",
+        "value": "EXECUTED_IN_THIS_REMEDIATION"
+      }
+    },
+    {
+      "from": {
+        "field": "platform_scope",
+        "value": "STRANGER_HOST"
+      },
+      "to": {
+        "field": "compatibility_status",
+        "value": "internally_proven"
+      }
+    },
+    {
+      "from": {
+        "field": "optics_display",
+        "value": "SUCCESS"
+      },
+      "to": {
+        "field": "protection_state",
+        "value": "protected"
+      }
+    },
+    {
+      "from": {
+        "field": "optics_display",
+        "value": "PARTIAL"
+      },
+      "to": {
+        "field": "coverage_percent"
+      }
+    },
+    {
+      "from": {
+        "field": "deployment_profile",
+        "value": "unknown"
+      },
+      "to": {
+        "field": "protection_state",
+        "value": "protected"
+      }
+    },
+    {
+      "from": {
+        "field": "protection_state",
+        "value": "coverage_unknown"
+      },
+      "to": {
+        "field": "protection_state",
+        "value": "protected"
+      }
+    },
+    {
+      "from": {
+        "field": "application_status",
+        "value": "SUCCESS"
+      },
+      "to": {
+        "field": "optics_display",
+        "value": "SUCCESS"
+      }
+    }
+  ],
+  "examples": [
+    {
+      "id": "loader-liveness",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LOADER",
+        "fact_kind": "LOADER_LIVENESS",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": 60,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "coverage-unknown",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "coverage_unknown",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+        "platform_scope": "REPOSITORY_ONLY",
+        "platform_status": "UNVERIFIED",
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "loader-not-enrolled",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LOADER",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "not_enrolled",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "verifier-blocked",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "HOST_PREREQUISITE",
+        "fact_kind": "VERIFIER_RUN",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": "BLOCKED",
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "verifier-optional-absent",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "ARTIFACT",
+        "fact_kind": "VERIFIER_RUN",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": "OPTIONAL_COMPONENT_ABSENT",
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "optics-observed-not-protected",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "OPTICS_DISPLAY_READING",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": "OBSERVED",
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "sdk-allowed",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "SDK_ACTION",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": "ALLOWED",
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "application-success",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "APPLICATION_STATUS",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": "SUCCESS",
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "ledger-observed",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LEDGER",
+        "fact_kind": "LEDGER_ACTION",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": "OBSERVED",
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "pass-through-allowed",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LOADER",
+        "fact_kind": "PASS_THROUGH_LABEL",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": "ALLOWED",
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "evidence-stranger-unverified",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "EVIDENCE_LABEL",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": "NOT_INDEPENDENTLY_VERIFIED",
+        "platform_scope": "STRANGER_HOST",
+        "platform_status": "UNVERIFIED",
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "deployment-unknown",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "ARTIFACT",
+        "fact_kind": "EVIDENCE_LABEL",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": "unknown",
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "compatibility-internally-proven",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "HOST_PREREQUISITE",
+        "fact_kind": "EVIDENCE_LABEL",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": "REFERENCE_HOST",
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": "internally_proven",
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "control-plane-heartbeat",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "CONTROL_PLANE",
+        "fact_kind": "CONTROL_PLANE_HEARTBEAT",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": "NOT_COPIED"
+      }
+    },
+    {
+      "id": "other-artifact",
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "ARTIFACT",
+        "fact_kind": "OTHER",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    }
+  ],
+  "rejected_examples": [
+    {
+      "id": "freshness-current",
+      "violates": [
+        "FRESHNESS_EMITTED"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LOADER",
+        "fact_kind": "LOADER_LIVENESS",
+        "freshness": "CURRENT",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": 60,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "protection-observed",
+      "violates": [
+        "PROTECTION_ENUM"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "OBSERVED",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "protection-success",
+      "violates": [
+        "PROTECTION_ENUM"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "SUCCESS",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "protection-partial",
+      "violates": [
+        "PROTECTION_ENUM"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "PARTIAL",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "protection-allowed",
+      "violates": [
+        "PROTECTION_ENUM"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "ALLOWED",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "protection-blocked",
+      "violates": [
+        "PROTECTION_ENUM"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LOADER",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "BLOCKED",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "protection-on-artifact",
+      "violates": [
+        "PROTECTION_SUBJECT"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "ARTIFACT",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "protected",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "verifier-on-other",
+      "violates": [
+        "VERIFIER_FACT_KIND"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "ARTIFACT",
+        "fact_kind": "OTHER",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": "PASS",
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "heartbeat-on-control-plane",
+      "violates": [
+        "HEARTBEAT_NOT_ON_OTHER"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "CONTROL_PLANE",
+        "fact_kind": "CONTROL_PLANE_HEARTBEAT",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": 60,
+        "interval_s": "NOT_COPIED"
+      }
+    },
+    {
+      "id": "heartbeat-on-coverage",
+      "violates": [
+        "HEARTBEAT_NOT_ON_OTHER"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "protected",
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": 60,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "optics-on-protection-fact",
+      "violates": [
+        "OPTICS_FACT_KIND"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "PROTECTION_EVALUATION",
+        "freshness": "UNKNOWN",
+        "protection_state": "protected",
+        "verifier_result": null,
+        "optics_display": "OBSERVED",
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "blocked-on-verifier-and-ledger",
+      "violates": [
+        "LEDGER_FACT_KIND"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "HOST_PREREQUISITE",
+        "fact_kind": "VERIFIER_RUN",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": "BLOCKED",
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": "BLOCKED",
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "evidence-proved-token",
+      "violates": [
+        "PLATFORM_STATUS_ENUM"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "COVERAGE",
+        "fact_kind": "EVIDENCE_LABEL",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": "proved",
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": null
+      }
+    },
+    {
+      "id": "control-plane-subject",
+      "violates": [
+        "CONTROL_PLANE_SUBJECT"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "LOADER",
+        "fact_kind": "CONTROL_PLANE_HEARTBEAT",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": "NOT_COPIED"
+      }
+    },
+    {
+      "id": "control-plane-interval-60",
+      "violates": [
+        "CONTROL_PLANE_INTERVAL"
+      ],
+      "fact": {
+        "record_type": "SHARED_HEALTH_FACT",
+        "subject": "CONTROL_PLANE",
+        "fact_kind": "CONTROL_PLANE_HEARTBEAT",
+        "freshness": "UNKNOWN",
+        "protection_state": null,
+        "verifier_result": null,
+        "optics_display": null,
+        "sdk_action": null,
+        "application_status": null,
+        "evidence_class": null,
+        "platform_scope": null,
+        "platform_status": null,
+        "deployment_profile": null,
+        "compatibility_status": null,
+        "ledger_action_taken": null,
+        "pass_through_product_label": null,
+        "heartbeat_age_limit_s": null,
+        "interval_s": 60
+      }
+    }
+  ],
+  "access_gaps": [
+    {
+      "id": "PE_PROTECTION_STATE_BLOB",
+      "repo": "vantioai/vantio-phantom-engine",
+      "path": "python/pe_protection_state.py",
+      "git_sha": "631e435315cd780d83d3259e111893c1d0569bc3",
+      "blob": "a1b49fe6e431cdb574f0d285f7976236945519c7",
+      "this_force": "ACCESS_GAP",
+      "reason": "GitHub API returned HTTP 404. Local Phantom paths are absent. The token list is the list already cited by the open-core PE packet."
+    },
+    {
+      "id": "PE_VERIFIER_CONTRACT_BLOB",
+      "repo": "vantioai/vantio-phantom-engine",
+      "path": "docs/internal/VERIFIER_CONTRACT.md",
+      "git_sha": "631e435315cd780d83d3259e111893c1d0569bc3",
+      "blob": "4c215cb2ebdff63a85c29094adb8dfbe2bb30dc7",
+      "this_force": "ACCESS_GAP",
+      "reason": "GitHub API returned HTTP 404. The token list is the list already cited by the open-core PE packet."
+    },
+    {
+      "id": "PE_OPERATIONS_GUIDE",
+      "repo": "vantioai/vantio-phantom-engine",
+      "path": "docs/operations-guide.md",
+      "blob": "1b973342b3bf7f6aa6cdad70de49fa6e26db0077",
+      "classification": "CUSTOMER_SHIPPED",
+      "this_force": "ACCESS_GAP",
+      "reason": "Body not copied. Control-plane interval and the alternate heartbeat filename stay unresolved."
+    },
+    {
+      "id": "ENTERPRISE_CLOUD_PLATFORM_READINESS",
+      "repo": "vantioai/vantio-enterprise",
+      "path": "scripts/cloud_platform_readiness.py",
+      "git_sha": "2df2d1f2d2e5a8e65c6d3021b20b94f179e485b7",
+      "blob": "2b7e06901dcf2da2a97131709a215e794452545f",
+      "this_force": "ACCESS_GAP",
+      "reason": "GitHub API returned HTTP 404. platform_status values are the list already cited by the open-core PE packet."
+    },
+    {
+      "id": "LEDGER_ACTION_TAKEN_ENUM",
+      "this_force": "PARTIAL_CITED_SPELLINGS_ONLY",
+      "cited_spellings": [
+        "BLOCKED",
+        "OBSERVED"
+      ],
+      "reason": "The full Phantom ledger ActionTaken enum is not in open-core and the private blob was not read."
+    },
+    {
+      "id": "FOUNDER_MASTER_PROGRAM",
+      "this_force": "NOT_IN_OPEN_CORE",
+      "reason": "No Founder Master Program body is in this repository. The catalog uses Layers A-E already cited on main."
+    }
+  ]
+}

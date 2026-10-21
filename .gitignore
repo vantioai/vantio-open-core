@@ -2,6 +2,8 @@
 node_modules/
 .env
 .env.*
+# ...but DO track the non-secret env template so documented vars are versioned.
+!.env.example
 .DS_Store
 *.pem
 npm-debug.log*

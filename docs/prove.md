@@ -1,6 +1,6 @@
 # vantio prove — Auditor-Ready Proof Artifacts
 
-Part of **Vantio Optics** · [**Sight Loop**](./sight-loop.md) step 3 (inspect / export).
+Part of **Vantio Optics** (inspect / export).
 
 `vantio prove` generates a self-contained proof artifact — HTML or Markdown — from
 a `vantio run` log. The artifact is designed to be shared with auditors, security

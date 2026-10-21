@@ -1,0 +1,224 @@
+{
+  "document": "ARCHITECTURE-MANIFEST",
+  "audience": "INTERNAL_RESTRICTED",
+  "schema_status": "unstable-pre-1.0",
+  "producer_role": "ARCHITECTURE_REVISION_PRODUCER",
+  "producer_identity": "Cursor cloud agent, model Grok 4.7. Narrow architecture revision producer. Not the independent council and not the re-council.",
+  "council_identities": {
+    "agent": "bc-5bb719b6-65bf-522c-a9b9-f3a9a96ef08b",
+    "model": "Grok 4.7",
+    "role": "INDEPENDENT_ARCHITECTURE_RECOUNCIL",
+    "seats": "all 12 filled by this agent",
+    "separate_from_revision_producer": "bc-ed83d59a-1f55-569f-b02b-41135b77b95e",
+    "separate_from_first_council": "bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2",
+    "reviewed_tip": "7db944d17c7f74706f08970b4908e92d0bf2d589"
+  },
+  "council_status": "PASSED",
+  "source_repo": "https://github.com/vantioai/vantio-open-core",
+  "source_main_sha": "d6b74d41808a43f251d6de46e1313625a025d16d",
+  "branch": "architecture/optics-foundation-a0-a7",
+  "branch_tip_sha": null,
+  "branch_tip_sha_note": "The commit SHA that contains this manifest is not written into this file, because writing it would change the commit. Git blob identity of this path remains the manifest identity.",
+  "generated_at_utc": "2026-09-26T16:18:11Z",
+  "generated_at_america_new_york": "2026-09-26T12:18:11-0400",
+  "roadmap_input": "docs/internal/optics-best-in-class-roadmap.md",
+  "roadmap_input_sha256": "909f9eb69fac697dff98d42f29de7bf00a9ee808c2c307af220b4a931f4e952a",
+  "stage_classifications": {
+    "A0": "OPTICS_FOUNDATION_A0_INVENTORY_COMPLETE",
+    "A1": "OPTICS_FOUNDATION_A1_CONTRACT_READY",
+    "A2": "OPTICS_FOUNDATION_A2_DECISION_READY",
+    "A3": "OPTICS_FOUNDATION_A3_CONTRACT_READY",
+    "A4": "OPTICS_FOUNDATION_A4_CONTRACT_READY",
+    "A5": "OPTICS_FOUNDATION_A5_CONTRACT_READY",
+    "A6": "OPTICS_FOUNDATION_A6_READY_FOR_COUNCIL"
+  },
+  "producer_terminal_classification": "OPTICS_FOUNDATION_ARCHITECTURE_REVISION_READY_FOR_RECOUNCIL",
+  "producer_terminal_classification_note": "Producer revision classification only. The fresh council classification is council_force_classification. Gates 2-7 are accepted as architecture. Gate 8 stays closed.",
+  "store_recommendation": "C_EMBEDDED_SQLITE",
+  "portable_proof": "OPTICS_CANONICAL_JSON_V1_PROOF_JSON_PLUS_MANIFEST_JSON_SHA256_NOT_AN_ATTESTATION",
+  "requirement_status_counts": {
+    "ARCHITECTURE_DEFINED": 29,
+    "TARGET_DESIGN": 20,
+    "NEEDS_FOUNDER_DECISION": 3,
+    "ARCHITECTURE_BLOCKED": 0
+  },
+  "requirement_count": 52,
+  "unresolved_founder_decisions": [
+    "Usage and cost metadata (OF-05).",
+    "Alerting delivery mode (OF-45). No daemon selected.",
+    "Numeric NFR targets (OF-32). All NOT_SET.",
+    "At-rest encryption. Not selected.",
+    "Whether an explicit customer promote may stamp LEGACY_UNMARKED as LOCAL_OBSERVATION.",
+    "Whether annotations need a seventh evidence-origin value.",
+    "Windows ACL specifics beyond owner-only intent.",
+    "Node SQLite binding. Not selected.",
+    "Freshness window for the token CURRENT. Not set.",
+    "Optional persisted machine hostname. Not allowlisted.",
+    "OTLP or SIEM export. Not authorized.",
+    "Local UI charter and accessibility. Not opened."
+  ],
+  "attestations": {
+    "no_product_code": true,
+    "no_package_version_change": true,
+    "no_cli_reopen_patch_republish_retag": true,
+    "no_python_seal_or_build": true,
+    "no_pypi_testpypi_twine": true,
+    "no_npm_publish": true,
+    "no_git_tag": true,
+    "no_github_release": true,
+    "no_credentials": true,
+    "no_sqlite_or_store_implementation": true,
+    "no_migration_executed": true,
+    "no_record_conversion": true,
+    "no_vantio_ui_or_doctor": true,
+    "no_daemon": true,
+    "no_otlp_exporter": true,
+    "no_alerting": true,
+    "no_background_update": true,
+    "no_stable_schema_declaration": true,
+    "no_public_copy_or_announcement": true,
+    "no_customer_validation_claim": true,
+    "no_invented_numeric_performance_budget": true,
+    "no_silent_architecture_decision": true,
+    "council_not_performed": false,
+    "a8_not_started": true,
+    "a7_not_performed": false,
+    "roadmap_file_not_modified": true,
+    "a7_council_completed": true,
+    "pr_left_draft": true,
+    "no_merge": true,
+    "no_pr_ready": true
+  },
+  "files_sha256": {
+    "00-PROGRAM-BOUNDARY.md": "291af0a510cbe68f2f5bc67b344d837dde6f99a6e360dc74d5870a93768ba743",
+    "01-CURRENT-STATE-INVENTORY.md": "05c55e947b4743d6214af483492a16c60163a505df2b31381d6b547a2809475e",
+    "02-EVIDENCE-AND-PRIVACY-CONTRACT.md": "7d46d9d924c3ff019559b316d8e77ce1bd6d452530692a640b3fcc8e9a9cd8a2",
+    "03-OPERATIONAL-STORE-AND-PORTABLE-PROOF.md": "91d8b5e697cdcd4e13e7d6bc3a14e43bac27213ac70fe50b3718fd7156cdd003",
+    "04-SCHEMA-MIGRATION-AND-COMPATIBILITY.md": "2e07d3753bd8d9896e7eff6ed000d7d722e09d5ecfc8c55a87c4a4275a30281a",
+    "05-CORRELATION-AND-QUERY-CONTRACT.md": "100cc03788aff2278f33836f2b46afb2335e55995772134985e8b087d2b4ac1b",
+    "06-SELF-OBSERVABILITY-AND-RELIABILITY.md": "79a2580879cb2613d7a0fb3c0b9d9ff3044ea7cf36d93558fb40adffa171d0b0",
+    "07-THREAT-MODEL.md": "7f95c5185addae5d0db6c91fa0b97c8e3d4753aee3266092f408e4f0edb05b95",
+    "08-ARCHITECTURE-DECISION-PACK.md": "165583b45883bd431c956e91a2f181529d61a56f51a86d706b5d6f759c9852fa",
+    "09-IMPLEMENTATION-GATES.md": "250ca7cb58ec6fae52b5974a2de4684cc736a2d3dd60568b5215f677786ea486",
+    "10-INDEPENDENT-COUNCIL-REPORT.md": "ae495efe0e3565180e44598b666ac590c1deaa771850715c61e059ca11367971",
+    "TRACEABILITY-MATRIX.json": "880c9eadcace0bd1659c3cfb8ba2876047e972b70543e85a36fc90165630b93d"
+  },
+  "council_verdict": "PASS",
+  "council_force_classification": "OPTICS_FOUNDATION_ARCHITECTURE_COUNCIL_PASSED",
+  "council_reviewed_tip": "7db944d17c7f74706f08970b4908e92d0bf2d589",
+  "council_reviewed_at_utc": "2026-09-26T16:38:00Z",
+  "council_blocked_requirements": [],
+  "council_reopened_gates": [],
+  "council_seats": [
+    {
+      "seat": 1,
+      "scope": "Observability architecture",
+      "verdict": "PASS"
+    },
+    {
+      "seat": 2,
+      "scope": "Data storage and recovery",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 3,
+      "scope": "Privacy and minimization",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 4,
+      "scope": "Application reliability and fail-open",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 5,
+      "scope": "Distributed tracing and child-process correlation",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 6,
+      "scope": "Query completeness and cardinality",
+      "verdict": "PASS"
+    },
+    {
+      "seat": 7,
+      "scope": "Portable proof and canonicalization",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 8,
+      "scope": "Local security and corrupt-store recovery",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 9,
+      "scope": "Customer diagnostics",
+      "verdict": "PASS"
+    },
+    {
+      "seat": 10,
+      "scope": "Evidence and independent verification",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 11,
+      "scope": "Cross-platform engineering",
+      "verdict": "PASS_WITH_NONBLOCKING_NOTES"
+    },
+    {
+      "seat": 12,
+      "scope": "Scope control and product positioning",
+      "verdict": "PASS"
+    }
+  ],
+  "store_option_c": "FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+  "store_option_c_note": "Architecture only. Does not authorize database creation, Node SQLite binding selection, schema implementation, migration, record conversion, package changes, or production implementation. Not implemented, tested, proved, or customer-validated.",
+  "resolved_founder_decision_1": "STORE_OPTION_C: FOUNDER_RATIFIED_ARCHITECTURE_ONLY",
+  "revision_base_tip": "48bec775d421260e930fbf6e6b8b84acab0524f2",
+  "prior_council_verdict": "NEEDS_REVISION",
+  "prior_council_force_classification": "OPTICS_FOUNDATION_ARCHITECTURE_NEEDS_REVISION",
+  "recouncil_performed_by_this_producer": false,
+  "stage_classifications_note": "A0 is unchanged. The A1-A6 labels are the pre-council document classifications. The fresh council accepted gates 2-7 as architecture. The current producer classification is producer_terminal_classification. The current council classification is council_force_classification.",
+  "council_blocked_requirements_note": "This re-council blocks none. The first council's blocked list is prior_council_blocked_requirements.",
+  "revision_reconciled_requirements": {
+    "OF-27": "ARCHITECTURE_DEFINED",
+    "OF-33": "ARCHITECTURE_DEFINED",
+    "OF-34": "ARCHITECTURE_DEFINED",
+    "OF-43": "ARCHITECTURE_DEFINED"
+  },
+  "prior_council_identity": {
+    "agent": "bc-fd7a995a-0bba-5f0c-955b-f21702e5c6a2",
+    "model": "Grok 4.7",
+    "role": "INDEPENDENT_ARCHITECTURE_COUNCIL",
+    "seats": "all 12 filled by this agent",
+    "separate_from_producer_tip": "8aef23cd6886139d3b8f7de52cfb28c0972628cd"
+  },
+  "prior_council_blocked_requirements": [
+    "OF-27",
+    "OF-33",
+    "OF-34",
+    "OF-43"
+  ],
+  "prior_council_reopened_gates": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "council_accepted_gates": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "council_closed_gates": [
+    8
+  ],
+  "fresh_recouncil_completed": true,
+  "fresh_recouncil_agent": "bc-5bb719b6-65bf-522c-a9b9-f3a9a96ef08b"
+}
