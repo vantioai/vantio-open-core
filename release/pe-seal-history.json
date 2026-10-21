@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "note": "Refused or retired seal digests. Not the canonical seal. Runtime reads these from this file.",
+  "previous_working_seal": "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d",
+  "plumbing_only_seal": "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753",
+  "tracking_seal": "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
+}

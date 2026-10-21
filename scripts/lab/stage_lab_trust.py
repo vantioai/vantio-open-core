@@ -201,7 +201,22 @@ def pack(directory: Path, dest: Path) -> None:
     _refuse_tree(directory)
 
 
+def _ship_canonical_seal(dest: Path) -> None:
+    """The copied installer package reads the seal file from its own directory."""
+    package = dest / "vantio_install"
+    if not package.is_dir():
+        return
+    root = Path(__file__).resolve().parents[2]
+    source = root / "release" / "pe-canonical-seal.json"
+    target = package / "pe-canonical-seal.json"
+    text = source.read_text(encoding="utf-8")
+    if target.is_file() and target.read_text(encoding="utf-8") != text:
+        raise SystemExit("pe-canonical-seal.json copies disagree")
+    target.write_text(text, encoding="utf-8")
+
+
 def stage(dest: Path, pinned_dir: Path | None = None) -> dict[str, object]:
+    _ship_canonical_seal(dest)
     pins = constants.FROZEN_PINS
     artifact = Ed25519PrivateKey.generate()
     dev = Ed25519PrivateKey.generate()

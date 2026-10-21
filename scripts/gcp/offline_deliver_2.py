@@ -1177,6 +1177,10 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     host, grade = _phase_scripts(env)
     shutil.copy2(host, dest / "phase2_host.py")
     shutil.copy2(grade, dest / "phase2_grade.py")
+    repo = Path(__file__).resolve().parents[2]
+    shutil.copy2(repo / "scripts" / "release" / "pe_canonical_seal.py", dest / "pe_canonical_seal.py")
+    shutil.copy2(repo / "release" / "pe-canonical-seal.json", dest / "pe-canonical-seal.json")
+    shutil.copy2(repo / "release" / "pe-seal-history.json", dest / "pe-seal-history.json")
     guest_dir = host.parent
     shutil.copy2(guest_dir / "baseline_diag.py", dest / "baseline_diag.py")
     shutil.copy2(guest_dir / "sticky_write.py", dest / "sticky_write.py")

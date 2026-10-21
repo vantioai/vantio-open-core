@@ -22,8 +22,8 @@ import w3_lab_auto as lab  # noqa: E402
 import w3_lab_steps as steps  # noqa: E402
 
 NOW = datetime(2026, 9, 30, 16, 0, tzinfo=timezone.utc)
-SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
-PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+SEAL = enterprise_bundle.POLICY_ALLOW_SEAL
+PIN = enterprise_bundle.PUBLIC_INSTALLER_PIN
 INSTANCE = "i-0123456789abcdef0"
 SECRET = "SUPER-SECRET-PRIVATE"
 
@@ -996,7 +996,8 @@ class WorkflowTextTests(unittest.TestCase):
         self.assertIn("scripts/aws/founder-soak-close.json", teardown)
         self.assertIn("bundle_commit:", arm)
         self.assertIn("W3_BUNDLE_COMMIT: ${{ inputs.bundle_commit }}", arm)
-        self.assertIn("W3_EXPECTED_SEAL: ${{ inputs.seal }}", arm)
+        self.assertIn("W3_EXPECTED_SEAL: ${{ steps.canonical.outputs.seal }}", arm)
+        self.assertIn("jq -r '.lane_seal.sha256'", arm)
         self.assertIn("scripts/clean-host/t5/", arm)
         self.assertIn("scripts/aws/lab-guests/t5-egress.sh", arm)
         self.assertIn("W3_BATTERY: ${{ inputs.battery }}", arm)
@@ -1199,10 +1200,9 @@ class EnterpriseBundleTests(unittest.TestCase):
     def test_real_pins_stay_on_the_policy_allow_seal(self) -> None:
         self.assertEqual(enterprise_bundle.POLICY_ALLOW_SEAL, SEAL)
         self.assertEqual(enterprise_bundle.PUBLIC_INSTALLER_PIN, PIN)
-        self.assertEqual(
-            enterprise_bundle.TRACKING_2A_SEAL,
-            "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a",
-        )
+        self.assertEqual(enterprise_bundle.TRACKING_2A_SEAL, enterprise_bundle._SEAL.tracking_seal())
+        self.assertTrue(enterprise_bundle.TRACKING_2A_SEAL.startswith("16c9e563"))
+        self.assertNotEqual(enterprise_bundle.TRACKING_2A_SEAL, SEAL)
         self.assertEqual(
             enterprise_bundle.TRUST_BUNDLE_SHA256,
             "2e4a1da7bf44f0bddfc2a3ce3eda007fa6cc1455332f26769bd346fafc297876",

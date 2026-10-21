@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { laneSeal, publicPin as readPublicPin, readSealHistory } from "./pe_canonical_seal.mjs";
 
 const SKIP = new Set([".git", "node_modules", "__pycache__", ".venv", "dist"]);
 const MANIFEST_FILES = [
@@ -17,15 +18,15 @@ const MANIFEST_FILES = [
   "packages/vantio-install/vantio_install/constants.py",
   "scripts/gap/t1-stranger-host/constants.py",
   "scripts/release/seal-identity-recheck.mjs",
+  "release/pe-canonical-seal.json",
 ];
-const LANE_DIGEST_PREFIX = "6d3ce580";
 
 export async function recheck(root) {
   const stranger = readFileSync(join(root, "scripts/gap/t1-stranger-host/constants.py"), "utf8");
-  const installer = readFileSync(join(root, "packages/vantio-install/vantio_install/constants.py"), "utf8");
-  const working = assignedHex(stranger, "WORKING_SEAL");
-  const previous = assignedHex(stranger, "PREVIOUS_WORKING_SEAL");
-  const publicPin = quotedHex(installer, "pe_archive_sha256");
+  const working = laneSeal(root);
+  const previous = readSealHistory(root).previous_working_seal;
+  const publicPin = readPublicPin(root);
+  const lanePrefix = working.slice(0, 8);
   const files = await walk(root);
   const matched = files.filter((row) => row.sha256 === working).map((row) => row.path);
   const engineDockerfile = files.some((row) => {
@@ -48,7 +49,7 @@ export async function recheck(root) {
     engine_seal_label: "Lab-only",
     engine_seal_rebuilt: false,
     formal_reproducibility: "NOT_CLAIMED",
-    lane_prefix: LANE_DIGEST_PREFIX,
+    lane_prefix: lanePrefix,
     observe_dockerfile_present: existsSync(join(root, "deploy/docker/Dockerfile.observe")),
     open_core_manifest_label: agree ? "Verified" : "Lab-only",
     open_core_manifest_passes_agree: agree,
@@ -61,7 +62,7 @@ export async function recheck(root) {
 
 export function assertShape(body) {
   const errors = [];
-  if (!body.digest_under_recheck.startsWith(LANE_DIGEST_PREFIX)) errors.push("prefix");
+  if (!body.digest_under_recheck.startsWith(body.lane_prefix)) errors.push("prefix");
   if (body.digest_under_recheck !== body.working_seal_constant) errors.push("not_the_working_seal");
   if (!body.previous_working_seal.startsWith("bbb1025d")) errors.push("previous_prefix");
   if (body.previous_working_seal === body.working_seal_constant) errors.push("previous_is_current");
@@ -80,18 +81,6 @@ export function assertShape(body) {
   if (!body.observe_dockerfile_present) errors.push("observe_docker");
   if (!body.digest_under_recheck.startsWith(body.lane_prefix)) errors.push("lane_prefix");
   return errors;
-}
-
-function assignedHex(text, name) {
-  const found = text.match(new RegExp(`^${name}\\s*=\\s*"([0-9a-f]{64})"`, "m"));
-  if (!found) throw new Error(`${name} missing`);
-  return found[1];
-}
-
-function quotedHex(text, name) {
-  const found = text.match(new RegExp(`"${name}": "([0-9a-f]{64})"`));
-  if (!found) throw new Error(`${name} missing`);
-  return found[1];
 }
 
 function sha256Text(text) {

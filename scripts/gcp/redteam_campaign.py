@@ -124,6 +124,9 @@ def execute(env: Mapping[str, str], od: Any) -> int:
             payload_dir / "redteam_rows.py",
             payload_dir / "stage_brain.py",
             payload_dir / "redteam_packet.py",
+            payload_dir / "pe_canonical_seal.py",
+            payload_dir / "pe-canonical-seal.json",
+            payload_dir / "pe-seal-history.json",
         ]
         od._scp_to(project, name, sources)
         for local_name in ("seal.oci.tar", "contract.tar"):

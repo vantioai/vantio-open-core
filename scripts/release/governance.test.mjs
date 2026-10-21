@@ -628,8 +628,10 @@ function assertPublishedCliTag(pins) {
   assert.equal(pins.cli.version, "0.3.24");
   assert.equal(pins.cli.tag, "v0.3.24");
   assert.equal(pins.cli.tag_commit, "1fd21a64468ebc6f05fdbf624dae06a2fc8e75c4");
+  const seal = JSON.parse(readFileSync(join(ROOT, "release/pe-canonical-seal.json"), "utf8"));
   const installer = readFileSync(join(ROOT, "packages/vantio-install/vantio_install/constants.py"), "utf8");
-  assert.match(installer, /e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e/);
+  assert.equal(installer.includes(seal.public_pin.archive_sha256), false);
+  assert.match(installer, /pe-canonical-seal\.json/);
 }
 
 function assertStoredSeal(sealed) {

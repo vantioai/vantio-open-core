@@ -7,13 +7,37 @@ project is refused before that call.
 
 from __future__ import annotations
 
+import importlib.util
 import struct
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from t5_kernel.decide import KernelMaps
 
-LANE_SEAL = "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403"
-PUBLIC_PIN = "e0b19d557891b1ee8bbd20e702df11669d175e4083ef5bbe2f7077cf30093b5e"
+
+def _load_seal():
+    origin = Path(__file__).resolve().parent
+    for parent in (origin, *origin.parents):
+        for candidate in (parent / "pe_canonical_seal.py", parent / "scripts" / "release" / "pe_canonical_seal.py"):
+            if not candidate.is_file():
+                continue
+            cached = sys.modules.get("pe_canonical_seal")
+            if cached is not None:
+                return cached
+            spec = importlib.util.spec_from_file_location("pe_canonical_seal", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["pe_canonical_seal"] = module
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("pe_canonical_seal.py")
+
+
+_SEAL = _load_seal()
+LANE_SEAL = _SEAL.lane_seal()
+PUBLIC_PIN = _SEAL.public_pin()
 LAB_PROJECT = "vantio-lab-oct08"
 HOST_CLASS = "vantio-owned"
 CGROUP_PREFIX = "/sys/fs/cgroup/vantio-t5-lab.slice/"
