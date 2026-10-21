@@ -27,6 +27,8 @@ from vantio_install.pe_apparmor import inspect_is_observe_container, parse_obser
 OBSERVE_READY_WAIT_S = 20.0
 OBSERVE_READY_POLL_S = 0.25
 PIN_MTIME_SKEW_S = 2.0
+SCOPED_BANNER = "SCOPED (drop enrolled)"
+ENFORCE_PROGRAM = "cgroup_skb_egress_enforce"
 
 _STOPPED = frozenset({"exited", "dead", "removing"})
 _STARTING = frozenset({"created", "restarting", "paused"})
@@ -150,8 +152,95 @@ def ready_observe_sample() -> dict:
     }
 
 
+def program_listed(programs: object, name: str = ENFORCE_PROGRAM) -> bool:
+    if isinstance(programs, str):
+        return name in programs.split()
+    if isinstance(programs, list):
+        return name in programs
+    return False
+
+
+def enforce_proof(loader_output: object, programs: object) -> tuple[bool, str]:
+    """True when the loader printed the scoped banner and the program is listed."""
+    text = loader_output if isinstance(loader_output, str) else ""
+    scoped = SCOPED_BANNER in text
+    listed = program_listed(programs)
+    if scoped and listed:
+        return True, ""
+    missing: list[str] = []
+    if not scoped:
+        missing.append("loader_missing_scoped_banner")
+    if not listed:
+        missing.append("cgroup_skb_egress_enforce_missing")
+    return False, ",".join(missing)
+
+
+def enforcement_view(snapshot: dict, config: dict) -> dict:
+    """Observe stays NOT_ENABLED. A requested enforce session is PASS or DEGRADED."""
+    enrollment = snapshot.get("enforce_enrollment")
+    requested = isinstance(enrollment, dict) and enrollment.get("requested") is True
+    config_enforcement = str(config.get("enforcement", "NOT_ENABLED"))
+    if not requested:
+        component = "NOT_ENABLED" if config_enforcement == "NOT_ENABLED" else "FAIL"
+        return {
+            "requested": False,
+            "component": component,
+            "protection_state": "OBSERVE",
+            "reason": "",
+            "accept_enforce_container": False,
+        }
+    ok, reason = enforce_proof(enrollment.get("loader_output"), enrollment.get("bpf_programs"))
+    if ok:
+        return {
+            "requested": True,
+            "component": "PASS",
+            "protection_state": "PROTECTED",
+            "reason": "",
+            "accept_enforce_container": True,
+        }
+    return {
+        "requested": True,
+        "component": "DEGRADED",
+        "protection_state": "DEGRADED",
+        "reason": reason or "ENFORCE_NOT_PROVED",
+        "accept_enforce_container": True,
+    }
+
+
+def container_after_enforce(base_status: str, snapshot: dict, view: dict) -> str:
+    """An enforce container is PASS when proved and DEGRADED when it is not."""
+    if not view["accept_enforce_container"] or base_status != "FAIL":
+        return base_status
+    containers = [row for row in snapshot.get("containers") or [] if row.get("role") == "phantom_engine"]
+    running = [row for row in containers if row.get("status") == "running"]
+    if not running:
+        return "DEGRADED"
+    cmd = running[0].get("cmd") or []
+    enforced = "--enforce" in cmd or snapshot.get("enforce_flag") is True or running[0].get("enforce") is True
+    if not enforced:
+        return base_status
+    return "PASS" if view["component"] == "PASS" else "DEGRADED"
+
+
+def apply_enforce_overall(overall: str, components: dict) -> str:
+    if overall in {"UNKNOWN", "FAIL"}:
+        return overall
+    if any(value == "DEGRADED" for value in components.values()):
+        return "DEGRADED"
+    return overall
+
+
 def readiness_gaps(sample: dict) -> list[str]:
     """Named failures for the last sample. An empty list is the ready contract."""
+    if sample.get("mode") == "enforce-enrolled":
+        gaps: list[str] = []
+        life = sample.get("lifecycle")
+        if life != "detached":
+            gaps.append("container-stopped" if life == "stopped" else "container-state-unknown")
+        ok, reason = enforce_proof(sample.get("loader_output"), sample.get("bpf_programs"))
+        if not ok:
+            gaps.append(reason or "enforce-not-proved")
+        return gaps
     life = sample.get("lifecycle")
     if life == "stopped":
         gaps = ["container-stopped"]

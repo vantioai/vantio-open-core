@@ -124,6 +124,24 @@ EXIT_FAILED_SAFE = 4
 EXIT_INTERRUPTED = 5
 EXIT_USAGE = 10
 EXIT_CRASH = 20
+EXIT_LICENSE_UNAUTHORIZED = 41
+EXIT_LICENSE_FORBIDDEN = 43
+EXIT_DOWNLOAD_GONE = 44
+EXIT_RATE_LIMITED = 45
+
+# License-gated bundle download. The public pin table above is not a seal change.
+FETCH_MAX_BYTES = 2 * 1024 * 1024 * 1024
+FETCH_DEFAULT_ENDPOINT = "https://vantio.ai/api/pe/download"
+FETCH_ENDPOINT_HOSTS = frozenset({"vantio.ai", "www.vantio.ai"})
+FETCH_REDIRECT_HOSTS = frozenset(
+    {"objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+)
+FETCH_LAB_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+GRUB_DROPIN_RELATIVE = "etc/default/grub.d/99-vantio-lsm.cfg"
+LICENSE_RELATIVE = "etc/vantio/license"
+ENROLL_DROPIN_NAME = "10-vantio-enrolled.conf"
+ENROLLED_SLICE = "vantio-enrolled.slice"
 
 FROZEN_PINS = {
     "optics_cli_package": "@vantio/cli",

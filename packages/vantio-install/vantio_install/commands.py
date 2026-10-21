@@ -25,7 +25,7 @@ ENFORCE_EVENTS_FILE = "/var/lib/vantio/pe-events/events.ndjson"
 ENFORCE_SLICE = "/sys/fs/cgroup/vantio.slice/vantio-enrolled.slice"
 
 
-def enforce_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
+def enforce_container_argv(*, tag: str, iface: str, name: str, exec_preset: str | None = None) -> list[str]:
     """Enforcement container. Same profile and caps as observe, with the slice visible.
 
     The container stays out of the enrolled slice. The loader enrolls that slice.
@@ -70,6 +70,10 @@ def enforce_container_argv(*, tag: str, iface: str, name: str) -> list[str]:
             ENFORCE_EVENTS_FILE,
         ]
     )
+    if exec_preset is not None:
+        if exec_preset != "web-server":
+            raise ValueError("exec_preset")
+        argv.extend(["--exec-preset", exec_preset])
     return argv
 
 

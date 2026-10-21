@@ -1365,6 +1365,36 @@ def _self_service_shell(root: str, rows_path: str) -> str:
     return script
 
 
+def _self_service_enforce_shell(root: str, rows_path: str, phase: str) -> str:
+    """One remote command for the enforce battery. No caller trust flag."""
+    if phase not in {"pre", "post"}:
+        raise lab.GuardAbort("self_service_layout")
+    if not re.fullmatch(r"/[A-Za-z0-9_./-]{1,160}", root):
+        raise lab.GuardAbort("self_service_layout")
+    if rows_path != LAB_ROWS_REMOTE and not re.fullmatch(r"/tmp/[A-Za-z0-9_./-]{1,80}", rows_path):
+        raise lab.GuardAbort("self_service_layout")
+    script = (
+        "set -euo pipefail; "
+        f"tar -xf {root}/self-service.tar -C {root}; "
+        f"if [ -f {root}/debs.tar ]; then mkdir -p {root}/debs; tar -xf {root}/debs.tar -C {root}/debs; fi; "
+        "sudo env "
+        f"PYTHONPATH={root} "
+        "VANTIO_LAB_SCOPE=lab-nonprod "
+        "VANTIO_INSTALL_ALLOW_LIVE=1 "
+        f"VANTIO_LAB_ROOT={root} "
+        f"VANTIO_INSTALL_BUNDLE={root}/bundle "
+        f"VANTIO_ENFORCE_POLICY={root}/enforce-policy.json "
+        "VANTIO_STATE_DIR=/var/lib/vantio/install "
+        f"VANTIO_SELF_SERVICE_OUT={rows_path} "
+        f"VANTIO_ENFORCE_PHASE={phase} "
+        + ("VANTIO_LAB_SCHEDULE_REBOOT=1 " if phase == "pre" else "")
+        + f"python3 {root}/self_service_enforce.py"
+    )
+    if "--artifact-trust" in script or "--fixture-host" in script:
+        raise lab.GuardAbort("self_service_layout")
+    return script
+
+
 def _scan_self_service(directory: Path) -> None:
     """Refuse a staged tree that carries a private key or the enterprise contract."""
     if not directory.is_dir():
@@ -1384,6 +1414,33 @@ def _scan_self_service(directory: Path) -> None:
             continue
         rel = path.relative_to(directory).as_posix()
         if ".." in rel.split("/") or path.name in {"contract.tar", "private-key.pem"} or path.suffix == ".pem":
+            raise lab.GuardAbort("self_service_layout")
+        try:
+            blob = path.read_bytes()
+        except OSError:
+            raise lab.GuardAbort("self_service_layout") from None
+        if re.search(br"-----BEGIN [A-Z ]*PRIVATE KEY-----", blob):
+            raise lab.GuardAbort("token_in_evidence")
+
+
+def _scan_self_service_enforce(directory: Path) -> None:
+    """Refuse a staged enforce tree that carries a private key."""
+    if not directory.is_dir():
+        raise lab.GuardAbort("self_service_layout")
+    for name in (
+        "self_service_enforce.py",
+        "self-service.tar",
+        "lab-license-public.json",
+        "license.token",
+        "enforce-policy.json",
+        "enforce-dev-public.json",
+    ):
+        if not (directory / name).is_file():
+            raise lab.GuardAbort("self_service_layout")
+    for path in directory.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.name in {"contract.tar", "private-key.pem"} or path.suffix == ".pem":
             raise lab.GuardAbort("self_service_layout")
         try:
             blob = path.read_bytes()
@@ -1436,18 +1493,29 @@ def execute_enterprise_rows(
             "lsm-guard",
             "soak-hourly",
         }
-        if battery not in {"enterprise", "descendant-b1", "reboot-check", "self-service", t5_battery.BATTERY_ID, *phase_batteries}:
+        if battery not in {
+            "enterprise",
+            "descendant-b1",
+            "reboot-check",
+            "self-service",
+            "self-service-enforce",
+            t5_battery.BATTERY_ID,
+            *phase_batteries,
+        }:
             raise lab.GuardAbort("battery")
         payload["battery"] = battery
-        if battery in {"self-service", t5_battery.BATTERY_ID} and os.environ.get("W3_BRAIN_DIR", "").strip():
+        if battery in {"self-service", "self-service-enforce", t5_battery.BATTERY_ID} and os.environ.get("W3_BRAIN_DIR", "").strip():
             raise lab.GuardAbort("battery")
         cidr = require_global_32(os.environ.get("W3_RUNNER_CIDR", "").strip())
         bundle_dir = Path(os.environ.get("W3_BUNDLE_DIR", ""))
         staged = Path(os.environ.get("W3_SELF_SERVICE_DIR", ""))
-        if battery == "self-service":
+        if battery == "self-service" or battery == "self-service-enforce":
             if seal != enterprise_bundle.POLICY_ALLOW_SEAL:
                 raise lab.GuardAbort("bundle_wrong_seal")
-            _scan_self_service(staged)
+            if battery == "self-service-enforce":
+                _scan_self_service_enforce(staged)
+            else:
+                _scan_self_service(staged)
         elif battery == t5_battery.BATTERY_ID:
             if seal != t5_battery.LANE_SEAL or seal == enterprise_bundle.PUBLIC_INSTALLER_PIN:
                 raise lab.GuardAbort("bundle_wrong_seal")
@@ -1566,7 +1634,7 @@ def execute_enterprise_rows(
             if owned.returncode != 0:
                 _ssh_failure(owned)
             if battery != "self-service":
-                if battery != t5_battery.BATTERY_ID:
+                if battery != t5_battery.BATTERY_ID and battery != "self-service-enforce":
                     copy_to(bundle_dir / "seal.oci.tar", "seal.oci.tar")
                     copy_to(bundle_dir / "contract.tar", "contract.tar")
                     if battery == "2c-upgrade-rollback":
@@ -1646,14 +1714,45 @@ def execute_enterprise_rows(
                 sized = remote(["stat", "-c", "%s", f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"], "")
                 if sized.returncode != 0 or (sized.stdout or "").strip() != "2104932768":
                     raise lab.GuardAbort("brain_not_landed")
-            if battery == "self-service":
+            if battery == "self-service" or battery == "self-service-enforce":
                 deb_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
                 if deb_env:
                     ca_bundle = Path(deb_env) / "ca-certificates.crt"
                     if ca_bundle.is_file():
                         copy_to(ca_bundle, "ca-certificates.crt")
                 copy_to(staged / "self-service.tar", "self-service.tar")
-                ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE)], "")
+                if battery == "self-service-enforce":
+                    pre = remote(
+                        ["bash", "-c", _self_service_enforce_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE, "pre")],
+                        "",
+                    )
+                    ran = pre
+                    if pre.returncode == 0:
+                        try:
+                            payload["boot_id"] = _wait_for_reboot(
+                                runner,
+                                instance_id,
+                                remote,
+                                connect + [public],
+                                release=release_ssh,
+                                reopen=reopen_ssh,
+                                note=reboot_note,
+                            )
+                        except lab.GuardAbort as exc:
+                            if exc.reason != "reboot_timeout":
+                                raise
+                            tail = _reboot_log_tail(remote)
+                            if tail:
+                                payload["reboot_log_tail"] = tail
+                            payload["guest_rc"] = pre.returncode
+                            payload["mutated"] = True
+                            raise
+                        ran = remote(
+                            ["bash", "-c", _self_service_enforce_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE, "post")],
+                            "",
+                        )
+                else:
+                    ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE)], "")
             elif battery == t5_battery.BATTERY_ID:
                 repo = Path(__file__).resolve().parents[2]
                 tar_path = directory / "t5-egress.tar"
@@ -1857,6 +1956,18 @@ def execute_enterprise_rows(
                 raise lab.GuardAbort(reason)
             if battery == "self-service":
                 payload["status"] = "SELF_SERVICE"
+            elif battery == "self-service-enforce":
+                passed = (
+                    isinstance(parsed, dict)
+                    and parsed.get("result") == "PASS"
+                    and parsed.get("enterprise_rows") is False
+                    and parsed.get("redteam_brain") is False
+                )
+                if not passed:
+                    payload.update({"reason": "self_service_enforce", "status": "FAILED"})
+                    raise lab.GuardAbort("self_service_enforce")
+                payload["status"] = "SELF_SERVICE_ENFORCE"
+                payload["enterprise_rows"] = False
             elif battery == "descendant-b1":
                 post_body = parsed.get("post") if isinstance(parsed, dict) and isinstance(parsed.get("post"), dict) else {}
                 pre_body = parsed.get("pre") if isinstance(parsed, dict) and isinstance(parsed.get("pre"), dict) else {}
@@ -1964,7 +2075,7 @@ def close_ssh(runner: Runner) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
-            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|arm-self-service|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
+            "usage: w3_lab_steps.py preflight-arm|preflight-long-soak|arm|arm-enterprise|arm-self-service|arm-self-service-enforce|prepare-bundle|close-ssh|collect|collect-due|teardown|verify-removed",
             file=sys.stderr,
         )
         return 1
@@ -1990,6 +2101,10 @@ def main(argv: list[str]) -> int:
             return 0
         if command == "arm-self-service":
             os.environ["W3_BATTERY"] = "self-service"
+            execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
+            return 0
+        if command == "arm-self-service-enforce":
+            os.environ["W3_BATTERY"] = "self-service-enforce"
             execute_enterprise_rows(lab.default_runner, keygen=default_keygen, ssh_runner=default_ssh)
             return 0
         if command == "close-ssh":

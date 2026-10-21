@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -25,7 +26,10 @@ from vantio_install.live_executor import (
 )
 from vantio_install.agent_sdk import agent_sdk_present
 from vantio_install.optics_cli import optics_cli_present
+from vantio_install.enroll import remove_all_dropins
+from vantio_install.host_prep import remove_grub_dropin
 from vantio_install.mutator import FixtureMutator, LiveMutator
+from vantio_install.server_root import server_root
 from vantio_install.paths import assert_safe_root
 from vantio_install.preflight import run_preflight
 from vantio_install.residual import inspect as inspect_residual
@@ -510,6 +514,44 @@ def _live_grant(ctx: dict, tx: dict, tx_dir: Path, config: dict, bundle: Path, h
     )
 
 
+def _enforce_runner(ctx: dict, snapshot: dict):
+    def runner(argv: list[str]) -> int:
+        snapshot.setdefault("recorded_argv", []).append(list(argv))
+        if ctx.get("fixture_host"):
+            return 0
+        if any(part == "reboot" for part in argv):
+            raise InstallError("The installer does not reboot.", exit_code=4, state="FAILED_SAFE")
+        completed = subprocess.run(argv, check=False)
+        return int(completed.returncode)
+
+    return runner
+
+
+def _clear_enforce_side_effects(ctx: dict, snapshot: dict) -> None:
+    """Remove the grub drop-in, the license file, and enroll drop-ins."""
+    root = server_root(ctx)
+    runner = _enforce_runner(ctx, snapshot)
+    grub = remove_grub_dropin(root, runner, require_grub_cfg=not bool(ctx.get("fixture_host")))
+    if not grub["ok"]:
+        raise InstallError(
+            "Could not remove the grub drop-in (" + str(grub.get("error") or "update_grub") + ").",
+            exit_code=constants.EXIT_FAILED_SAFE,
+            state="FAILED_SAFE",
+        )
+    license_path = root / constants.LICENSE_RELATIVE
+    if license_path.is_file():
+        license_path.unlink()
+    units = remove_all_dropins(root, runner)
+    if not units["ok"]:
+        raise InstallError(
+            "Could not remove the enrolled-slice drop-ins.",
+            exit_code=constants.EXIT_FAILED_SAFE,
+            state="FAILED_SAFE",
+        )
+    snapshot.pop("enforce_enrollment", None)
+    snapshot["enforce_flag"] = False
+
+
 def _boot_hold_root(ctx: dict, state_dir: Path) -> str:
     if ctx.get("fixture_host"):
         return str(state_dir / "boot-hold-host")
@@ -676,7 +718,7 @@ def apply(ctx: dict) -> tuple[int, dict]:
                         write_json(tx_dir / "HEALTH.json", health)
                     if health["overall"] == "PASS":
                         _move(tx, "HEALTHY", stamp)
-                    elif health["overall"] == "PASS_WITH_LIMITATIONS":
+                    elif health["overall"] in {"PASS_WITH_LIMITATIONS", "DEGRADED"}:
                         _move(tx, "DEGRADED", stamp)
                     else:
                         _move(tx, "FAILED_SAFE", stamp)
@@ -861,6 +903,7 @@ def rollback(ctx: dict) -> tuple[int, dict]:
                     break
             else:
                 mutator.unpin_remaining(step_ctx)
+                _clear_enforce_side_effects(ctx, snapshot)
                 write_json(tx_dir / "HOST-SNAPSHOT.json", snapshot)
                 _move(tx, "ROLLED_BACK", stamp)
                 tx["last_error"] = None
@@ -937,6 +980,8 @@ def uninstall(ctx: dict) -> tuple[int, dict]:
             mutator.uninstall(scope, step_ctx)
             if scope in {"pe", "all"}:
                 mutator.unpin_remaining(step_ctx)
+            if scope in {"pe", "all"}:
+                _clear_enforce_side_effects(ctx, snapshot)
             write_json(tx_dir / "HOST-SNAPSHOT.json", snapshot)
             health = derive(snapshot, config, limitations=tx.get("limitations") or [])
             health.update(
@@ -1003,6 +1048,7 @@ def verify_removal(ctx: dict) -> tuple[int, dict]:
             stage=stage,
             iface=str(config.get("iface", "")),
             bpffs=bpffs,
+            root=server_root(ctx),
         )
         report["transaction_id"] = tx["transaction_id"]
         report["as_of_et"] = stamp

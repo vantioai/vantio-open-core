@@ -10,6 +10,8 @@ from pathlib import Path
 
 from vantio_install import bpf_pins, constants
 from vantio_install.agent_sdk import agent_sdk_residual_items
+from vantio_install.enroll import residual_dropins
+from vantio_install.host_prep import customer_grub_present
 from vantio_install.optics_cli import optics_cli_residual_items
 
 
@@ -21,6 +23,7 @@ def inspect(
     stage: Path,
     iface: str,
     bpffs: Path | None = None,
+    root: Path | None = None,
 ) -> dict:
     probes = list(snapshot.get("probe_errors") or [])
     if probes:
@@ -60,6 +63,8 @@ def inspect(
         if snapshot.get("agent_sdk_py_version"):
             items.append({"kind": "agent_sdk_py", "version": snapshot.get("agent_sdk_py_version")})
         items.extend(agent_sdk_residual_items(prefix))
+    if root is not None:
+        items.extend(_customer_enforce_items(root))
     if pin_errors:
         return {
             "result": "UNKNOWN",
@@ -69,6 +74,17 @@ def inspect(
         }
     result = "EMPTY" if not items else "RESIDUAL_PRESENT"
     return {"result": result, "scope": scope, "items": items, "probe_errors": []}
+
+
+def _customer_enforce_items(root: Path) -> list[dict]:
+    items: list[dict] = []
+    if customer_grub_present(root):
+        items.append({"kind": "grub_dropin", "path": constants.GRUB_DROPIN_RELATIVE})
+    license_path = root / constants.LICENSE_RELATIVE
+    if license_path.is_file():
+        items.append({"kind": "license", "path": constants.LICENSE_RELATIVE})
+    items.extend(residual_dropins(root))
+    return items
 
 
 def _pin_items(snapshot: dict, bpffs: Path | None) -> tuple[list[dict], list[str]]:
