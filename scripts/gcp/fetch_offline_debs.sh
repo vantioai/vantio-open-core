@@ -18,6 +18,10 @@ export DEBIAN_FRONTEND=noninteractive
 rm -f /etc/apt/apt.conf.d/docker-clean
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates
+# That install came from the live archive and, with docker-clean gone, left its
+# debs (ca-certificates, openssl) in the archive. Purge them so only snapshot
+# packages are fetched below and copied to /out.
+rm -f /var/cache/apt/archives/*.deb
 cat > /etc/apt/sources.list <<'EOF'
 deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble main universe
 deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates main universe

@@ -1535,6 +1535,7 @@ print("ok")
 
 
 DOCKER_CLEAN_RM = "rm -f /etc/apt/apt.conf.d/docker-clean"
+LIVE_PURGE_RM = "rm -f /var/cache/apt/archives/*.deb"
 
 _CA_PIN_STUBS = {
     "apt-cache": 'echo "apt-cache $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_MADISON:-}"\n',
@@ -1635,6 +1636,7 @@ class CaPinBehaviourTest(unittest.TestCase):
         text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
         body = text[text.index("script=$(cat <<'EOS'"):]
         lines = [line.strip() for line in body.splitlines()]
+        self.assertIn(DOCKER_CLEAN_RM, lines, "fetch_offline_debs.sh must remove docker-clean in the container")
         hook = lines.index(DOCKER_CLEAN_RM)
         calls = [
             index
@@ -1693,6 +1695,103 @@ class CaPinBehaviourTest(unittest.TestCase):
     def test_hook_left_in_place_empties_the_archive(self) -> None:
         # Control: the stub hook reproduces the 39857348011 failure.
         self.assertEqual(self._run_with_hook(remove_hook=False), [])
+
+    def test_live_archive_debs_are_purged_before_the_snapshot_fetch(self) -> None:
+        text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
+        lines = [line.strip() for line in text.splitlines()]
+        live = "apt-get install -y --no-install-recommends ca-certificates"
+        snapshot = "apt-get install -y --download-only --no-install-recommends \\"
+        for needle in (live, snapshot, LIVE_PURGE_RM):
+            self.assertIn(needle, lines, f"fetch_offline_debs.sh is missing: {needle}")
+        self.assertLess(lines.index(live), lines.index(LIVE_PURGE_RM))
+        self.assertLess(lines.index(LIVE_PURGE_RM), lines.index(snapshot))
+
+    def _run_container_script(self, purge_live: bool) -> list[str]:
+        """Run the whole container script with fake apt tools and temp paths.
+
+        The fake live install leaves the debs it installed (openssl and the live
+        ca-certificates) in the archive, as apt does once docker-clean is gone.
+        Returns the .deb names that reach /out.
+        """
+        text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
+        start = text.index("script=$(cat <<'EOS'\n") + len("script=$(cat <<'EOS'\n")
+        body = text[start : text.index("\nEOS\n", start)]
+        if not purge_live:
+            self.assertIn(LIVE_PURGE_RM + "\n", body)
+            body = body.replace(LIVE_PURGE_RM + "\n", "", 1)
+        madison = "ca-certificates | 20240203 | https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates/main amd64 Packages\n"
+        stubs_src = {
+            "apt-cache": 'printf "%s" "$STUB_MADISON"\n',
+            "update-ca-certificates": "exit 0\n",
+            "dpkg-query": 'printf "%s" 20240203\n',
+            "apt-get": (
+                'case " $* " in\n'
+                '  *" download "*) v=${2#*=}; : > "ca-certificates_${v}_all.deb" ;;\n'
+                '  *" --download-only "*) for d in docker.io_24.0.7-0ubuntu4.1_amd64 python3-cryptography_41.0.7-4ubuntu0.4_amd64 '
+                'strace_6.8-0ubuntu2_amd64 ca-certificates_20240203_all; do : > "$STUB_ARCHIVES/$d.deb"; done ;;\n'
+                '  *" --allow-downgrades "*) : ;;\n'
+                '  *" install "*) : > "$STUB_ARCHIVES/openssl_3.0.13-0ubuntu3.16_amd64.deb"; '
+                ': > "$STUB_ARCHIVES/ca-certificates_20260816ubuntu0.24.04.1_all.deb" ;;\n'
+                "esac\n"
+            ),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            stubs = base / "bin"
+            stubs.mkdir()
+            for name, src in stubs_src.items():
+                path = stubs / name
+                path.write_text("#!/bin/bash\n" + src, encoding="utf-8")
+                path.chmod(0o755)
+            archives = base / "archives"
+            archives.mkdir()
+            out = base / "out"
+            out.mkdir()
+            etc = base / "etc"
+            (etc / "apt/apt.conf.d").mkdir(parents=True)
+            (etc / "apt/apt.conf.d/docker-clean").write_text("", encoding="utf-8")
+            (etc / "ssl/certs").mkdir(parents=True)
+            (etc / "ssl/certs/ca-certificates.crt").write_text("bundle\n", encoding="utf-8")
+            script = (
+                body.replace("/var/cache/apt/archives", str(archives))
+                .replace("/etc/", f"{etc}/")
+                .replace("/out/", f"{out}/")
+            )
+            # Never let the run touch the real /out, /etc or apt archive.
+            live_lines = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+            for real in (" /out", " /etc/", " /var/"):
+                self.assertFalse([line for line in live_lines if real in line], real)
+            env = dict(os.environ)
+            env.update(
+                {
+                    "PATH": f"{stubs}{os.pathsep}{env.get('PATH', '')}",
+                    "STUB_MADISON": madison,
+                    "STUB_ARCHIVES": str(archives),
+                }
+            )
+            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((out / "ca-certificates.crt").is_file())
+            return sorted(path.name for path in out.glob("*.deb"))
+
+    def test_nothing_from_the_live_install_reaches_out(self) -> None:
+        staged = self._run_container_script(purge_live=True)
+        self.assertNotIn("openssl_3.0.13-0ubuntu3.16_amd64.deb", staged)
+        self.assertNotIn("ca-certificates_20260816ubuntu0.24.04.1_all.deb", staged)
+        self.assertEqual(
+            staged,
+            [
+                "ca-certificates_20240203_all.deb",
+                "docker.io_24.0.7-0ubuntu4.1_amd64.deb",
+                "python3-cryptography_41.0.7-4ubuntu0.4_amd64.deb",
+                "strace_6.8-0ubuntu2_amd64.deb",
+            ],
+        )
+
+    def test_without_the_purge_live_openssl_reaches_out(self) -> None:
+        # Control: this is the leak council flagged on a769757.
+        self.assertIn("openssl_3.0.13-0ubuntu3.16_amd64.deb", self._run_container_script(purge_live=False))
+
 
 class PublicPinHandoffTest(unittest.TestCase):
     """2c-upgrade-rollback needs public-pin.oci.tar beside seal.oci.tar on the GCP guest."""
