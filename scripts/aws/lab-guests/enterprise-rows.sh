@@ -95,6 +95,19 @@ schedule_forced_reboot() {
   sudo systemctl reset-failed "${unit}.service" "${unit}.timer" >/dev/null 2>&1 || true
   sudo systemctl stop "${unit}.timer" "${unit}.service" >/dev/null 2>&1 || true
   stage_reboot_guest_files
+  # A previous battery's uninstall removed the lab drop-in. Put it back
+  # from the proved guard's record so the sealed script can reboot onto
+  # bpf. No guard record leaves a stock host stock.
+  if ! sudo python3 - "$here" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import baseline_diag
+raise SystemExit(baseline_diag.reassert_consented_lsm_live())
+PY
+  then
+    echo "lab_lsm_reassert_failed" >&2
+    return 1
+  fi
   if [ ! -x "$reboot_cmd" ]; then
     echo "reboot_script_missing" >&2
     return 1
@@ -582,7 +595,9 @@ PY
 
 # The guard writes 99-vantio-lsm.cfg and uninstalls on the same boot.
 # A proved guard keeps the drop-in for the reboot it just requested.
-# Any other uninstall removes the drop-in and regenerates grub.
+# Any other uninstall removes the drop-in and regenerates grub, so each
+# battery ends with stock boot config. schedule_forced_reboot puts the
+# drop-in back from the guard record before a later battery reboots.
 clear_lab_grub_lsm() {
   local keep=no
   if [ -s /var/lib/vantio-lab/enterprise-pe-rows.json ]; then

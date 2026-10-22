@@ -52,6 +52,26 @@ def instance(state: str = "running") -> dict:
     }
 
 
+_MODULE_CWD: str | None = None
+_MODULE_TMP: tempfile.TemporaryDirectory | None = None
+
+
+def setUpModule() -> None:
+    """Run from a temp dir so default-path evidence (w3-lab-arm.json,
+    w3-lab-redteam-rows.json and their .sha256) never lands in the repo."""
+    global _MODULE_CWD, _MODULE_TMP
+    _MODULE_CWD = os.getcwd()
+    _MODULE_TMP = tempfile.TemporaryDirectory()
+    os.chdir(_MODULE_TMP.name)
+
+
+def tearDownModule() -> None:
+    if _MODULE_CWD is not None:
+        os.chdir(_MODULE_CWD)
+    if _MODULE_TMP is not None:
+        _MODULE_TMP.cleanup()
+
+
 class FakeAws:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
