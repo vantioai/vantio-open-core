@@ -26,14 +26,30 @@ apt-get install -y --download-only --no-install-recommends \
   linux-tools-common \
   linux-tools-6.8.0-1069-gcp linux-gcp-tools-6.8.0-1069 \
   linux-tools-6.8.0-1070-gcp linux-gcp-tools-6.8.0-1070
-rm -f /var/cache/apt/archives/ca-certificates_*.deb
-# The runner image installed ca-certificates from the live archive, which can
-# be newer than the snapshot. Download the snapshot's own version explicitly;
-# madison lists only repository versions, highest first.
+archives=/var/cache/apt/archives
+rm -f "$archives"/ca-certificates_*.deb
+# BEGIN ca-pin
+# The container installed ca-certificates from the live archive, which can be
+# newer than the snapshot. Download the snapshot's own version explicitly;
+# madison lists only repository versions, highest first. Then install that
+# same version, so the CA bundle copied below is the one the guest's deb
+# builds, not the live archive's. --fresh rebuilds the bundle from scratch so
+# no certificate left over from the newer live version stays in it.
 ca_version=$(apt-cache madison ca-certificates | awk -F'|' 'NR==1 {gsub(/ /, "", $2); print $2}')
-test -n "$ca_version"
-( cd /var/cache/apt/archives && apt-get download "ca-certificates=${ca_version}" )
-cp /var/cache/apt/archives/*.deb /out/
+if [ -z "$ca_version" ]; then
+  echo "the snapshot lists no ca-certificates version" >&2
+  exit 1
+fi
+( cd "$archives" && apt-get download "ca-certificates=${ca_version}" )
+apt-get install -y --allow-downgrades --no-install-recommends "ca-certificates=${ca_version}"
+update-ca-certificates --fresh
+ca_installed=$(dpkg-query -W -f='${Version}' ca-certificates)
+if [ "$ca_installed" != "$ca_version" ]; then
+  echo "installed ca-certificates ${ca_installed} is not the snapshot's ${ca_version}" >&2
+  exit 1
+fi
+# END ca-pin
+cp "$archives"/*.deb /out/
 cp /etc/ssl/certs/ca-certificates.crt /out/ca-certificates.crt
 EOS
 )
