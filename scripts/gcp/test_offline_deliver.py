@@ -2290,5 +2290,336 @@ class DescendantStartFieldsTest(unittest.TestCase):
         self.assertEqual(branch[:run].count("lsm-reassert.json"), 1)
 
 
+class ImageCycleWordTest(unittest.TestCase):
+    """GCP must read phase2_grade.grade_image_cycle(), the body run_2c really returns.
+
+    Provision 39859707484 graded 2C setup_invalid with anchor 0 although the
+    host had run all four steps: the GCP mapper only knew deny_before/deny_after.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        sys.path.insert(0, str(ROOT / "scripts/aws/lab-guests"))
+        import phase2_grade
+
+        cls.grade = phase2_grade
+
+    def _step(self, name: str, *, errno: int = 13, attributed: bool = True, removed: bool = True) -> dict:
+        pin = name in {"baseline", "rollback"}
+        archive = self.grade.PUBLIC_INSTALLER_PIN if pin else self.grade.WORKING_SEAL
+        tail = self.grade.uninstall_attestation(name, {"contract": self.grade.PUBLIC_PIN_UNINSTALL if pin else "seal"})
+        return {
+            "archive_sha256": archive,
+            "attributed": attributed,
+            "file_errno": errno,
+            "image_id": "sha256:" + ("a" if pin else "b") * 32,
+            "name": name,
+            "uninstall": {
+                "bpffs_vantio": [],
+                "bpftool_rc": 0,
+                "contract": self.grade.PUBLIC_PIN_UNINSTALL if pin else "seal",
+                "docker_containers": "",
+                "docker_ps_failed": False,
+                "loader_programs": [],
+                "tail": tail,
+                "verified_removed": removed,
+            },
+        }
+
+    def _cycle(self, **broken: dict) -> dict:
+        steps = [self._step(name, **broken.get(name, {})) for name in od.IMAGE_CYCLE_STEPS]
+        return self.grade.grade_image_cycle(steps)
+
+    def test_run4_shape_is_fail_not_setup_invalid(self) -> None:
+        # Run 4: pin steps had no attributed deny and no pin uninstall attestation.
+        body = self._cycle(
+            baseline={"attributed": False, "removed": False},
+            rollback={"attributed": False, "removed": False},
+        )
+        self.assertEqual(body["host_result"], "FAIL")
+        self.assertEqual(body["reason"], "baseline_enforcement")
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
+        kept = od._loader_capture("loader-restart", {"body": body, "rc": 1, "word": "fail"})
+        self.assertEqual(kept["fail_reasons"][0], "baseline_enforcement")
+        by_name = {row["name"]: row for row in kept["cases"]}
+        self.assertEqual(list(by_name), list(od.IMAGE_CYCLE_STEPS))
+        self.assertFalse(by_name["baseline"]["pass"])
+        self.assertEqual(by_name["baseline"]["reason"], "baseline_enforcement")
+        self.assertTrue(by_name["upgrade"]["pass"])
+        self.assertTrue(by_name["reupgrade"]["pass"])
+        allowed = od._allow_capture(kept)
+        self.assertEqual(allowed["fail_reasons"], kept["fail_reasons"])
+        self.assertEqual([row["name"] for row in allowed["cases"]], list(od.IMAGE_CYCLE_STEPS))
+
+    def test_recorded_cycle_is_held(self) -> None:
+        body = self._cycle()
+        self.assertEqual(body["host_result"], "RECORDED", body.get("reasons"))
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "held")
+        kept = od._loader_capture("loader-restart", {"body": body, "rc": 0, "word": "held"})
+        self.assertTrue(kept["hold"])
+        self.assertNotIn("fail_reasons", kept)
+
+    def test_seal_step_enforcement_miss_is_fail(self) -> None:
+        body = self._cycle(reupgrade={"errno": 0})
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
+
+    def test_missing_archives_stay_setup_invalid(self) -> None:
+        for reason in ("public_pin_absent", "public_pin_digest", "seal_absent", "seal"):
+            body = self.grade.grade_image_cycle([])
+            body["reason"] = reason
+            self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "setup_invalid", reason)
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", self.grade.grade_image_cycle([])), "setup_invalid")
+
+    def test_legacy_deny_shape_unchanged(self) -> None:
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", {"deny_before": {}}), "setup_invalid")
+
+    # #362 (open) grades pin residue as findings[] public_pin_leaves_bpf_residue
+    # instead of a fail. GCP must keep that finding in the capture and the rows.
+    RESIDUE = {
+        "bpffs_vantio": ["/sys/fs/bpf/vantio", "/sys/fs/bpf/vantio/deny_map"],
+        "bpftool_rc": 0,
+        "docker_containers": "",
+        "finding": "public_pin_leaves_bpf_residue",
+        "loader_programs": ["vantio_file_open", "vantio_exec"],
+        "step": "baseline",
+    }
+
+    def _residue_body(self) -> dict:
+        """The #362 grader's body when the pin left programs and pins behind."""
+        if hasattr(self.grade, "public_pin_residue"):
+            steps = [self._step(name) for name in od.IMAGE_CYCLE_STEPS]
+            for step in steps[0::2]:
+                step["uninstall"].update(
+                    {
+                        "bpffs_vantio": list(self.RESIDUE["bpffs_vantio"]),
+                        "loader_programs": list(self.RESIDUE["loader_programs"]),
+                        "verified_removed": False,
+                    }
+                )
+            return self.grade.grade_image_cycle(steps)
+        body = self._cycle()
+        body["findings"] = [dict(self.RESIDUE), dict(self.RESIDUE, step="rollback")]
+        return body
+
+    def test_362_residue_finding_reaches_capture_and_rows(self) -> None:
+        body = self._residue_body()
+        self.assertEqual(body["host_result"], "RECORDED", body.get("reasons"))
+        self.assertEqual([item["step"] for item in body["findings"]], ["baseline", "rollback"])
+        word = od._loader_word("2c-upgrade-rollback", body)
+        self.assertEqual(word, "held")
+        kept = od._allow_capture(od._loader_capture("loader-restart", {"body": body, "rc": 0, "word": word}))
+        expected = [
+            {
+                "bpffs_vantio": self.RESIDUE["bpffs_vantio"],
+                "bpftool_rc": 0,
+                "finding": "public_pin_leaves_bpf_residue",
+                "loader_programs": self.RESIDUE["loader_programs"],
+                "step": step,
+            }
+            for step in ("baseline", "rollback")
+        ]
+        self.assertEqual(kept["findings"], expected)
+        self.assertTrue(kept["hold"])
+        rows = od.allow_record(
+            {
+                "loader_restart": word,
+                "loader_restart_findings": od.allow_cycle_findings(body["findings"]),
+            }
+        )
+        self.assertEqual(rows["loader_restart"], "held")
+        self.assertEqual(rows["loader_restart_findings"], expected)
+
+    def test_findings_kept_on_fail_and_filtered(self) -> None:
+        body = self._cycle(reupgrade={"errno": 0})
+        body["findings"] = [
+            dict(self.RESIDUE),
+            dict(self.RESIDUE, step="elsewhere"),
+            dict(self.RESIDUE, finding="Bad Finding!"),
+            dict(self.RESIDUE, finding="other_finding"),
+            dict(
+                self.RESIDUE,
+                step="rollback",
+                bpffs_vantio=["/sys/fs/bpf/vantio/../../etc", "/etc/passwd", "/sys/fs/bpf/vantio/ok"],
+                loader_programs=["ok_prog", "bad prog;rm"],
+                docker_containers="abc",
+            ),
+            "not-a-dict",
+        ]
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
+        kept = od._allow_capture(od._loader_capture("loader-restart", {"body": body, "rc": 1, "word": "fail"}))
+        self.assertIn("reupgrade_enforcement", kept["fail_reasons"])
+        self.assertEqual([item["step"] for item in kept["findings"]], ["baseline", "rollback"])
+        rollback = kept["findings"][1]
+        self.assertEqual(rollback["bpffs_vantio"], ["/sys/fs/bpf/vantio/ok"])
+        self.assertEqual(rollback["loader_programs"], ["ok_prog"])
+        self.assertNotIn("docker_containers", rollback)
+
+    def _write_rows(self, restart_body: dict) -> dict:
+        """Drive od.run_batteries with every cloud call stubbed and return the written gcp-lab-rows.json."""
+        repeat = {"b1_pass": True, "deny_hold": True, "deny_pid": 41, "desc_deny_pid": 42, "lineage_anchor": 7}
+
+        def loader_case(_project: str, _name: str, _seal: str, mode: str) -> dict:
+            if mode == "2c-upgrade-rollback":
+                return {"body": restart_body, "rc": 0, "word": "held"}
+            return {"body": {}, "rc": 0, "word": "held"}
+
+        ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9\n", stderr="")
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "evidence"
+            stubs = {
+                "_enabled": mock.DEFAULT,
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.DEFAULT,
+                "batteries_requested": mock.Mock(return_value=True),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "refuse_batteries": mock.Mock(return_value="a" * 64),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_stage_payload": mock.Mock(return_value=[]),
+                "_wait_until_running": mock.DEFAULT,
+                "_ssh": mock.Mock(return_value=ok),
+                "_scp_to": mock.DEFAULT,
+                "_prepare_lab_lsm": mock.Mock(return_value={}),
+                "_wait_live_boot": mock.Mock(return_value="boot-2"),
+                "_run_one_battery": mock.Mock(return_value=repeat),
+                "full_set_passes": mock.Mock(return_value=True),
+                "_loader_case": mock.Mock(side_effect=loader_case),
+                "drop_guest_copies": mock.DEFAULT,
+                "remove_os_login_key": mock.DEFAULT,
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
+                rc = od.run_batteries({"RUNNER_TEMP": tmp})
+            self.assertEqual(rc, 0)
+            return json.loads((evidence / "gcp-lab-rows.json").read_text(encoding="utf-8"))
+
+    def test_rows_writer_carries_findings(self) -> None:
+        body = self._residue_body()
+        rows = self._write_rows(body)
+        self.assertEqual(rows["loader_restart"], "held")
+        self.assertEqual(rows["loader_restart_findings"], od.allow_cycle_findings(body["findings"]))
+        self.assertEqual([item["step"] for item in rows["loader_restart_findings"]], ["baseline", "rollback"])
+        self.assertEqual(rows["loader_restart_findings"][0]["finding"], "public_pin_leaves_bpf_residue")
+        self.assertEqual(rows["loader_restart_findings"][0]["loader_programs"], self.RESIDUE["loader_programs"])
+
+    def test_rows_writer_without_findings(self) -> None:
+        # Current behaviour: no host findings -> the key is written as [].
+        for findings in (None, "junk"):
+            body = self._cycle()
+            body["findings"] = findings
+            self.assertEqual(self._write_rows(body)["loader_restart_findings"], [])
+        body = self._cycle()
+        body.pop("findings", None)
+        self.assertEqual(self._write_rows(body)["loader_restart_findings"], [])
+
+    def test_recorded_without_upgrade_pass_is_fail(self) -> None:
+        body = self._cycle()
+        body["upgrade_pass"] = False
+        self.assertEqual(body["host_result"], "RECORDED")
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
+
+    def test_upgrade_pass_with_host_fail_is_fail(self) -> None:
+        body = self._cycle()
+        body["host_result"] = "FAIL"
+        body["reason"] = "baseline_enforcement"
+        self.assertIs(body["upgrade_pass"], True)
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
+
+    def test_raw_findings_through_allow_record(self) -> None:
+        raw = [
+            None,
+            "public_pin_leaves_bpf_residue",
+            ["baseline"],
+            {"finding": None, "step": "baseline"},
+            {"finding": "public_pin_leaves_bpf_residue"},
+            {"finding": "public_pin_leaves_bpf_residue", "step": None},
+            {"finding": "public_pin_leaves_bpf_residue", "step": "BASELINE"},
+            {"finding": "public_pin_leaves_bpf_residue", "step": "../baseline"},
+            {"finding": "unknown_finding", "step": "baseline"},
+            {"finding": "public_pin_leaves_bpf_residue\n", "step": "baseline"},
+            {
+                "finding": "public_pin_leaves_bpf_residue",
+                "step": "rollback",
+                "loader_programs": [None, 7, "", "x" * 65, "ok_prog", "a b", "../x"],
+                "bpffs_vantio": [
+                    None,
+                    "/sys/fs/bpf/vantio",
+                    "/sys/fs/bpf/vantio/../../../etc/shadow",
+                    "/sys/fs/bpf/other",
+                    "/sys/fs/bpf/vantio/m ap",
+                    "relative/vantio",
+                    "/sys/fs/bpf/vantio/" + "p" * 200,
+                ],
+                "bpftool_rc": True,
+                "docker_containers": "deadbeef",
+                "hostname": "vm-1",
+                "token": "ghp_x",
+            },
+            {
+                "finding": "public_pin_leaves_bpf_residue",
+                "step": "baseline",
+                "loader_programs": "vantio_exec",
+                "bpffs_vantio": None,
+                "bpftool_rc": 256,
+            },
+        ]
+        rows = od.allow_record({"loader_restart_findings": raw})["loader_restart_findings"]
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "bpffs_vantio": ["/sys/fs/bpf/vantio"],
+                    "finding": "public_pin_leaves_bpf_residue",
+                    "loader_programs": ["ok_prog"],
+                    "step": "rollback",
+                },
+                {"finding": "public_pin_leaves_bpf_residue", "step": "baseline"},
+            ],
+        )
+        self.assertEqual(od.allow_record({"loader_restart_findings": None}), {})
+        self.assertEqual(od.allow_record({"loader_restart_findings": "x"}), {})
+        self.assertEqual(od.allow_record({"loader_restart_findings": []})["loader_restart_findings"], [])
+
+    def test_finding_caps_and_rc_range(self) -> None:
+        many = {
+            "finding": "public_pin_leaves_bpf_residue",
+            "step": "baseline",
+            "loader_programs": [f"p{i}" for i in range(40)],
+            "bpffs_vantio": [f"/sys/fs/bpf/vantio/m{i}" for i in range(40)],
+            "bpftool_rc": 255,
+        }
+        rows = od.allow_cycle_findings([many] * 12)
+        self.assertEqual(len(rows), 8)
+        self.assertEqual(rows[0]["loader_programs"], [f"p{i}" for i in range(32)])
+        self.assertEqual(rows[0]["bpffs_vantio"], [f"/sys/fs/bpf/vantio/m{i}" for i in range(32)])
+        self.assertEqual(rows[0]["bpftool_rc"], 255)
+        for rc, kept in ((0, True), (255, True), (-1, False), (256, False), (False, False), ("0", False), (1.0, False)):
+            row = od.allow_cycle_findings([dict(many, bpftool_rc=rc)])[0]
+            self.assertEqual("bpftool_rc" in row, kept, rc)
+
+    def test_finding_names_pinned_to_grader(self) -> None:
+        self.assertEqual(od.KNOWN_CYCLE_FINDINGS, frozenset({self.grade.PUBLIC_PIN_RESIDUE_FINDING}))
+        self.assertEqual(od.allow_cycle_findings([{"finding": "made_up", "step": "baseline"}]), [])
+
+
+class MainBlockLastTest(unittest.TestCase):
+    """CI runs these files as scripts. Anything after unittest.main() never runs (#363 council)."""
+
+    def test_no_definitions_after_main_block(self) -> None:
+        import ast
+
+        late = []
+        for path in sorted([*(ROOT / "scripts/aws").glob("test_*.py"), *(ROOT / "scripts/gcp").glob("test_*.py")]):
+            body = ast.parse(path.read_text(encoding="utf-8")).body
+            mains = [
+                i
+                for i, node in enumerate(body)
+                if isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'"
+            ]
+            if mains:
+                # Anchor on the FIRST main block: unittest.main() exits there, so
+                # anything after it, even another main block, never runs.
+                late += [f"{path.name}:{node.lineno}" for node in body[mains[0] + 1 :]]
+        self.assertEqual(late, [])
+
+
 if __name__ == "__main__":
     unittest.main()
