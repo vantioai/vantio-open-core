@@ -1184,6 +1184,8 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     guest_dir = host.parent
     shutil.copy2(guest_dir / "baseline_diag.py", dest / "baseline_diag.py")
     shutil.copy2(guest_dir / "sticky_write.py", dest / "sticky_write.py")
+    # phase2_host.py imports this on the guest in 2c-upgrade-rollback.
+    shutil.copy2(guest_dir / "product_uninstall_census.py", dest / "product_uninstall_census.py")
     rows = pack_debs(deb_dir, dest / "debs.tar")
     bundle = deb_dir / "ca-certificates.crt"
     if not bundle.is_file() or bundle.stat().st_size < 1000:

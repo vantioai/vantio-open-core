@@ -970,6 +970,28 @@ print("ok")
         self.assertEqual(od.serial_port_argv("vantio-lab-oct08", "vantio-gcp-lab-1", 552072)[-1], "--start=552072")
         self.assertNotIn("The full serial log", deliver)
 
+    def test_every_guest_helper_phase2_host_imports_reaches_the_guest(self) -> None:
+        # 2c-upgrade-rollback imports product_uninstall_census on the guest.
+        guest_dir = ROOT / "scripts/aws/lab-guests"
+        host = (guest_dir / "phase2_host.py").read_text(encoding="utf-8")
+        imported = set(re.findall(r"^\s*import ([a-z_0-9]+)", host, re.M))
+        helpers = sorted(name for name in imported if (guest_dir / f"{name}.py").is_file())
+        self.assertIn("product_uninstall_census", helpers)
+        stage_src = (ROOT / "scripts/gcp/offline_deliver_2.py").read_text(encoding="utf-8")
+        stage = stage_src[stage_src.index("def _stage_payload("):]
+        stage = stage[: stage.index("    return rows")]
+        deliver_src = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        upload = deliver_src[deliver_src.index("debs = _stage_payload(env, payload_dir)"):]
+        upload = upload[: upload.index("lsm = _prepare_lab_lsm(")]
+        workflow = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
+        deliver_job = workflow[workflow.index("- name: Checkout delivery scripts"):]
+        deliver_job = deliver_job[: deliver_job.index("sparse-checkout-cone-mode")]
+        for name in helpers:
+            with self.subTest(helper=name):
+                self.assertIn(f'dest / "{name}.py"', stage)
+                self.assertIn(f'payload_dir / "{name}.py"', upload)
+                self.assertIn(f"scripts/aws/lab-guests/{name}.py", deliver_job)
+
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))
         self.assertEqual(set(names), set(lab.WORKFLOWS))

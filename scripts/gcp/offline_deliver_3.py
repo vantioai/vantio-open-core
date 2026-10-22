@@ -917,6 +917,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
                 payload_dir / "pe-seal-history.json",
                 payload_dir / "baseline_diag.py",
                 payload_dir / "sticky_write.py",
+                payload_dir / "product_uninstall_census.py",
                 payload_dir / "debs.tar",
                 payload_dir / "ca-certificates.crt",
             ],

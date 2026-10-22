@@ -374,6 +374,7 @@ jobs:
             scripts/aws/lab-guests/phase2_grade.py
             scripts/aws/lab-guests/baseline_diag.py
             scripts/aws/lab-guests/sticky_write.py
+            scripts/aws/lab-guests/product_uninstall_census.py
             scripts/aws/lab-guests/self_service.py
             scripts/aws/lab-guests/t5-egress.sh
             scripts/clean-host/t5/
