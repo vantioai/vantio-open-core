@@ -1865,6 +1865,144 @@ class DescendantStartFieldsTest(unittest.TestCase):
         held = od._loader_capture("loader-kill", {"body": {"enroll_restart": {"held": True, "reason": "x"}}, "word": "held"})
         self.assertNotIn("x", held.get("fail_reasons", []))
 
+    def test_loader_kill_capture_flags_a_late_row_before_and_after(self) -> None:
+        restart = {
+            "held": True,
+            "reason": None,
+            "before_row_wait_s": 1.25,
+            "before_row_seen": True,
+            "after_row_wait_s": 0.75,
+            "after_row_seen": True,
+            "warnings": ["late_deny_row_before_restart", "ghp_" + "a" * 30],
+        }
+        capture = od._loader_capture("loader-kill", {"body": {"enroll_restart": restart}, "word": "held"})
+        kept = od._allow_capture(capture)
+        self.assertEqual(kept["warnings"], ["late_deny_row_before_restart", "late_deny_row_after_restart"])
+        self.assertEqual(kept["after_row_wait_s"], 0.75)
+        self.assertIs(kept["after_row_seen"], True)
+        # On time (<= 0.5s): recorded, not flagged.
+        quick = dict(restart, before_row_wait_s=0.5, after_row_wait_s=0.25, warnings=[])
+        kept = od._allow_capture(od._loader_capture("loader-kill", {"body": {"enroll_restart": quick}, "word": "held"}))
+        self.assertNotIn("warnings", kept)
+        self.assertEqual(kept["before_row_wait_s"], 0.5)
+        # A row that never came is a fail, never a late-row warning.
+        missing = {
+            "held": False,
+            "reason": "anchor_changed_or_missing",
+            "before_row_wait_s": 0.25,
+            "before_row_seen": True,
+            "after_row_wait_s": 5.0,
+            "after_row_seen": False,
+        }
+        kept = od._allow_capture(od._loader_capture("loader-kill", {"body": {"enroll_restart": missing}, "word": "fail"}))
+        self.assertIs(kept["hold"], False)
+        self.assertIn("anchor_changed_or_missing", kept["fail_reasons"])
+        self.assertNotIn("warnings", kept)
+        self.assertIs(kept["after_row_seen"], False)
+
+    def test_allow_record_stores_the_normalised_image(self) -> None:
+        kept = od.allow_record({"image": "docker.io/library/vantio-phantom-engine:da961aa9"})
+        self.assertEqual(kept["image"], "vantio-phantom-engine:da961aa9")
+        kept = od.allow_record({"image": " vantio-phantom-engine:da961aa9\n"})
+        self.assertEqual(kept["image"], "vantio-phantom-engine:da961aa9")
+        for bad in ("docker.io/library/evil:da961aa9", "ghcr.io/x/vantio-phantom-engine:da961aa9", 7, None, ["vantio-phantom-engine:da961aa9"]):
+            with self.subTest(bad=bad):
+                self.assertNotIn("image", od.allow_record({"image": bad}))
+
+    def test_sanitizers_drop_forged_and_oversized_values(self) -> None:
+        cases = {
+            "start_probe": (
+                {
+                    "pid": 4099.0,
+                    "file_errno": True,
+                    "net_errno": 256,
+                    "lineage_anchor": 2**33,
+                    "took_s": 1e9,
+                    "pass": "true",
+                    "token": "ghp_" + "a" * 30,
+                },
+                {},
+            ),
+            "start_timing": (
+                {
+                    "ledger_since": -1,
+                    "banner_wait_s": float("nan"),
+                    "start_wait_s": "4",
+                    "ledger_timeout_s": True,
+                    "ledger_seen": 1,
+                    "probe_done_after_banner_s": 3601,
+                },
+                {},
+            ),
+            "boot_lsm": ({"lsm": "bpf;rm -rf /", "cmdline_lsm": "x" * 121, "bpf_lsm_active": "yes"}, {}),
+            "lab_lsm_reassert": (
+                {"ok": "true", "reason": "R" * 5, "lsm_value": "BPF", "boot_id": "not-a-boot", "secret": "s"},
+                {},
+            ),
+        }
+        for key, (forged, expected) in cases.items():
+            with self.subTest(field=key):
+                self.assertEqual(od.allow_start_fields({key: forged})[key], expected)
+        for key in ("start_probe", "start_timing", "boot_lsm", "lab_lsm_reassert", "start_window_rows", "warnings"):
+            for wrong in ("x", 7, 1.5, True, ["x"] if key != "warnings" else {"a": "b"}):
+                with self.subTest(field=key, wrong=wrong):
+                    self.assertNotIn(key, od.allow_start_fields({key: wrong}))
+        window = od.allow_start_fields(
+            {
+                "start_window_rows": {
+                    "status": "all_good",
+                    "delayed": 1001,
+                    "dropped": -1,
+                    "ledger_line_index": 2.5,
+                    "ledger_line_time": "1; drop table",
+                    "checked": [{"name": f"p{i}", "status": "recorded", "pid": i} for i in range(100)]
+                    + [
+                        {"name": "x", "status": "forged"},
+                        {"name": "Bad Name", "status": "recorded"},
+                        {"name": "y", "status": "delayed", "pid": 1.0, "file_errno": 999, "row_index": -3, "row_time": True},
+                    ],
+                    "error": "ValueError: /home/secret/path",
+                }
+            }
+        )["start_window_rows"]
+        self.assertNotIn("status", window)
+        self.assertNotIn("delayed", window)
+        self.assertNotIn("dropped", window)
+        self.assertNotIn("ledger_line_index", window)
+        self.assertNotIn("ledger_line_time", window)
+        self.assertEqual(len(window["checked"]), 24)
+        self.assertEqual(window["error"], "ValueError")
+        tail = od._allow_start_window({"checked": [{"name": "y", "status": "delayed", "pid": 1.0, "file_errno": 999, "row_index": -3, "row_time": True}]})
+        self.assertEqual(tail["checked"], [{"name": "y", "status": "delayed"}])
+        self.assertEqual(od._allow_start_window({"checked": [{"name": "x", "status": "forged"}]})["checked"], [])
+        warnings = od.allow_start_fields(
+            {"warnings": ["a=b"] * 20 + ["late_deny_row_before_restart"]}
+        )["warnings"]
+        self.assertEqual(len(warnings), 8)
+        bad = od.allow_start_fields(
+            {
+                "warnings": [
+                    "ghp_" + "a" * 30,
+                    "late_deny_row_during_restart",
+                    "A=b",
+                    "a=" + "b" * 61,
+                    "k" * 41 + "=v",
+                    7,
+                    None,
+                    "late_deny_row_after_restart",
+                ]
+            }
+        )["warnings"]
+        self.assertEqual(bad, ["late_deny_row_after_restart"])
+        # Capture- and battery-level copies use the same rules.
+        capture = od._allow_capture(
+            {"name": "loader-kill", "before_row_wait_s": True, "after_row_wait_s": 3601, "after_row_seen": "yes", "start_probe": {"pid": 1.5}}
+        )
+        for key in ("before_row_wait_s", "after_row_wait_s", "after_row_seen"):
+            self.assertNotIn(key, capture)
+        self.assertEqual(capture.get("start_probe"), {})
+        self.assertIsNone(od.allow_battery({"start_probe": "x"}))
+
     def test_descendant_pre_clears_enterprise_rows_and_reassert_record(self) -> None:
         shell = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
         branch = shell.split('if [ "$mode" = "descendant-b1" ]; then', 1)[1]

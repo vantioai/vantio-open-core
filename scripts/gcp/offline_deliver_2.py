@@ -1051,11 +1051,23 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
         and restart.get("held") is not True
     ):
         kept["fail_reasons"] = [*kept.get("fail_reasons", []), reason]
-    wait = restart.get("before_row_wait_s")
-    if isinstance(wait, (int, float)) and not isinstance(wait, bool) and 0 <= wait <= 3600:
-        kept["before_row_wait_s"] = wait
-    if isinstance(restart.get("before_row_seen"), bool):
-        kept["before_row_seen"] = restart["before_row_seen"]
+    warnings = []
+    for phase in ("before", "after"):
+        wait = restart.get(f"{phase}_row_wait_s")
+        seen = restart.get(f"{phase}_row_seen")
+        if _seconds(wait):
+            kept[f"{phase}_row_wait_s"] = wait
+        if isinstance(seen, bool):
+            kept[f"{phase}_row_seen"] = seen
+        # Flag a late row here too, so the capture shows it even if the guest
+        # output dropped its own warning.
+        if seen is True and _seconds(wait) and wait > DENY_ROW_LATE_S:
+            warnings.append(f"late_deny_row_{phase}_restart")
+    for item in _allow_warnings(restart.get("warnings")) or []:
+        if item not in warnings:
+            warnings.append(item)
+    if warnings:
+        kept["warnings"] = warnings[:8]
     return kept
 
 

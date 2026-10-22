@@ -338,7 +338,11 @@ LOADED_IMAGE_RE = re.compile(r"vantio-phantom-engine:[0-9a-f]{7,40}")
 LOADED_LINE_RE = re.compile(r"^(?:Loaded image: |IMAGE_LINE=)(?:docker\.io/library/)?(\S+)\s*$", re.M)
 _LSM_RE = re.compile(r"[a-z0-9,]{0,120}")
 _WORD_RE = re.compile(r"[a-z0-9_]{1,40}")
-_WARNING_RE = re.compile(r"[a-z0-9_]{1,40}=[a-z0-9_]{1,60}")
+# descendant_b1 emits key=value warnings. The only bare flags are phase2_host's
+# late deny row warnings; any other bare token (which could be a secret) is dropped.
+_WARNING_RE = re.compile(r"[a-z0-9_]{1,40}=[a-z0-9_]{1,60}|late_deny_row_(?:before|after)_restart")
+# Above this, a deny row is flagged as late (phase2_host.DENY_ROW_LATE_S).
+DENY_ROW_LATE_S = 0.5
 _EVENT_TIME_RE = re.compile(r"[0-9T:.+Z -]{1,40}")
 _BOOT_ID_RE = re.compile(r"[0-9a-f-]{36}")
 
@@ -587,10 +591,11 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
     image = engine_image(entry.get("image"))
     if image:
         kept["image"] = image
-    if _seconds(entry.get("before_row_wait_s")):
-        kept["before_row_wait_s"] = entry["before_row_wait_s"]
-    if isinstance(entry.get("before_row_seen"), bool):
-        kept["before_row_seen"] = entry["before_row_seen"]
+    for phase in ("before", "after"):
+        if _seconds(entry.get(f"{phase}_row_wait_s")):
+            kept[f"{phase}_row_wait_s"] = entry[f"{phase}_row_wait_s"]
+        if isinstance(entry.get(f"{phase}_row_seen"), bool):
+            kept[f"{phase}_row_seen"] = entry[f"{phase}_row_seen"]
     cases = entry.get("cases")
     if isinstance(cases, list):
         rows = []
@@ -687,8 +692,11 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             ]
             continue
         if key == "image":
-            if isinstance(value, str) and (value in ENUMS["image"] or engine_image(value)):
+            if isinstance(value, str) and value in ENUMS["image"]:
                 kept[key] = value
+            elif engine_image(value):
+                # Store the normalised tag, never the raw guest string.
+                kept[key] = engine_image(value)
             continue
         if key in ENUMS:
             if isinstance(value, str) and value in ENUMS[key]:
