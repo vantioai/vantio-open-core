@@ -1,5 +1,5 @@
 /**
- * Re-check the 6d3ce580 digest against the tree on disk.
+ * Re-check the lane seal digest against the tree on disk.
  *
  * This does not build the private engine and does not move a seal constant.
  * formal_reproducibility stays NOT_CLAIMED.

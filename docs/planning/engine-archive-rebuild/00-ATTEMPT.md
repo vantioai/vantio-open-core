@@ -2,7 +2,7 @@
 
 UTC: 2026-10-16
 
-This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`6d3ce580`, full value in `RESULT.json`).
+This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`8b1106ef` since 2026-10-22, `6d3ce580` at the time of the 2026-10-16 attempt; full value in `RESULT.json`).
 
 The comparison has three results:
 
@@ -21,3 +21,10 @@ The comparison has three results:
 When a tree is found, the script runs `docker build` on that Dockerfile and `docker save` of the local tag, then hashes the tar. On this checkout the remote is not readable and no local engine tree was found, so that build did not start. `comparison` is `NOT_PERFORMED` and `reason` is `source_unavailable`. `match` is null. No rebuilt digest is recorded.
 
 A later run that has the source can produce `MATCH` or `MISMATCH`. Until then this page does not claim the seal bytes were reproduced, and it does not claim they differ.
+
+## 2026-10-22 lane seal move
+
+`release/pe-canonical-seal.json` now points `lane_seal` at `8b1106ef`, so `working_seal` in `RESULT.json` follows it. Every other field in `RESULT.json` (`remote_ok`, `remote_exit_code`, `remote_stderr`, `source_dir_found`, `comparison`, `reason`) is still the 2026-10-16 attempt from a checkout that could not read the engine remote. This page did not rerun that attempt.
+
+`8b1106ef` is a `docker save` of `vantio-phantom-engine:da961aa9`, built outside this repository from phantom-engine `da961aa92ab75f3566ec086dc612fdda80807191`. An earlier build from the same commit, tagged `:local`, hashed to `e9eeb058`. Two builds of one commit gave two different digests, because the Dockerfile installs a floating Rust nightly and an unpinned `bpf-linker`. That is a reason `formal_reproducibility` stays `NOT_CLAIMED`. It is not a `MISMATCH` result here, because this script did not build either archive.
+

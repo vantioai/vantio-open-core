@@ -7,7 +7,7 @@ import { assertShape, recheck } from "./seal-identity-recheck.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-test("the 6d3ce580 digest is recorded and not rebuilt from this tree", async () => {
+test("the lane digest is recorded and not rebuilt from this tree", async () => {
   const body = await recheck(root);
   assert.deepEqual(assertShape(body), []);
   assert.equal(body.digest_role_on_main, "WORKING_SEAL");

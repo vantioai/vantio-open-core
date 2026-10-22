@@ -3,5 +3,19 @@
   "note": "Refused or retired seal digests. Not the canonical seal. Runtime reads these from this file.",
   "previous_working_seal": "bbb1025d9303e0c43e435f416772614a04ac5cc0e7e31c30ad43d7a403b2085d",
   "plumbing_only_seal": "f882dd81297b02c11c55d9df69f00d9fffa710d1a87d36066a5645922804d753",
-  "tracking_seal": "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a"
+  "tracking_seal": "16c9e5638c169e5fdd3fd7291b3225a809b18abfe464d717c2d31a398d5bda6a",
+  "retired_lane_seals": [
+    {
+      "sha256": "6d3ce580ffb5d52fa0bfb70bdee28409fa6282f86737011e3d85c1093f5ea403",
+      "role": "lane_seal",
+      "retired": "2026-10-22",
+      "note": "Working seal set 2026-10-16. Replaced on main by the da961aa9 rebuild."
+    },
+    {
+      "sha256": "e9eeb058557dac8293ae9d450e1f82f6e2471cec839b289096e746fc56dee2d7",
+      "role": "lab_bundle_seal",
+      "retired": "2026-10-22",
+      "note": "da961aa9 archive tagged vantio-phantom-engine:local. Never pinned on main. Lab arm refused the tag (loaded_image_refused)."
+    }
+  ]
 }
