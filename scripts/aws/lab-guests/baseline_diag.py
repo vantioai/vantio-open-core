@@ -1683,6 +1683,56 @@ def uninstall_keeps_boot_token(body: dict) -> bool:
     )
 
 
+def reassert_consented_lsm(root: Path) -> dict:
+    """Put back the lab drop-in a proved guard consented to, before a battery reboot.
+
+    Every battery's uninstall strips the lab lsm= token and deletes
+    99-vantio-lsm.cfg (remove_consented_lsm), so the host's boot config is
+    back to stock after each battery. That drop-in is lab scaffolding that
+    lsm-guard wrote with consent; the Phantom Engine loader never writes it.
+    A later battery that reboots on the same host still needs it, or the
+    sealed reboot script refuses. This writes only the drop-in, from the
+    guard's own record. The sealed reboot script then regenerates grub,
+    re-seals the firmware tree and verifies the boot line, failing closed.
+    No guard record is a no-op, so a stock host still fails a reboot.
+    """
+    dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+    if dropin.is_file():
+        return {"ok": True, "written": False, "reason": "present"}
+    record = None
+    for rel in ("var/lib/vantio-lab/lsm-stock.json", "boot/vantio-lsm-stock.json"):
+        mark = root / rel
+        if not mark.is_file():
+            continue
+        try:
+            loaded = json.loads(mark.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(loaded, dict):
+            record = loaded
+            break
+    if record is None:
+        return {"ok": True, "written": False, "reason": "no_guard_record"}
+    if record.get("guard_proved") is not True or record.get("reboot_requested") is not True:
+        return {"ok": True, "written": False, "reason": "guard_not_proved"}
+    value = record.get("lsm_value")
+    try:
+        text = lsm_dropin_text(value if isinstance(value, str) else "")
+    except ValueError:
+        return {"ok": False, "written": False, "reason": "lsm_value"}
+    dropin.parent.mkdir(parents=True, exist_ok=True)
+    dropin.write_text(text, encoding="utf-8")
+    dropin.chmod(0o755)
+    return {"ok": True, "written": True, "reason": "guard_record", "lsm_value": value}
+
+
+def reassert_consented_lsm_live() -> int:
+    """0 unless a guard record exists and its lsm value is unusable."""
+    result = reassert_consented_lsm(Path("/"))
+    print(f"lab_lsm_reassert written={str(result['written']).lower()} reason={result['reason']}", flush=True)
+    return 0 if result.get("ok") is True else 1
+
+
 def remove_consented_lsm(root: Path, updater) -> dict:
     """Remove the lab lsm= token from grub and regenerate.
 

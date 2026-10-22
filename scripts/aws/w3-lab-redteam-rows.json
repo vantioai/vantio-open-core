@@ -1,0 +1,7 @@
+{
+  "attempts": [
+    {
+      "technique_id": "pe.tamper.loader_kill"
+    }
+  ]
+}

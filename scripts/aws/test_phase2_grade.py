@@ -920,6 +920,67 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertEqual(dropin.read_text(encoding="utf-8"), baseline_diag.lsm_dropin_text(token))
             self.assertEqual(cfg.read_text(encoding="utf-8"), stale)
 
+    def test_reboot_reasserts_the_guard_dropin_after_a_battery_uninstall(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        record = {"lsm_value": token, "reboot_requested": True, "guard_proved": True, "stock_bpf_lsm": False}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
+            # No guard record: a stock host stays stock and the reboot still refuses.
+            none = baseline_diag.reassert_consented_lsm(root)
+            self.assertEqual(none, {"ok": True, "written": False, "reason": "no_guard_record"})
+            self.assertFalse(dropin.exists())
+            stock = root / "var/lib/vantio-lab/lsm-stock.json"
+            stock.parent.mkdir(parents=True)
+            stock.write_text(json.dumps(dict(record, guard_proved=False)), encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "guard_not_proved")
+            self.assertFalse(dropin.exists())
+            stock.write_text(json.dumps(dict(record, lsm_value="apparmor;reboot")), encoding="utf-8")
+            bad = baseline_diag.reassert_consented_lsm(root)
+            self.assertFalse(bad["ok"])
+            self.assertFalse(dropin.exists())
+            stock.write_text(json.dumps(record), encoding="utf-8")
+            # The guard wrote the drop-in; a battery uninstall removes it and the record stays.
+            dropin.parent.mkdir(parents=True)
+            dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
+            cfg = root / "boot/grub/grub.cfg"
+            cfg.parent.mkdir(parents=True)
+            cfg.write_text(f"linux /vmlinuz ro console=ttyS0 lsm={token} panic=-1\n", encoding="utf-8")
+
+            def updater() -> int:
+                cfg.write_text("linux /vmlinuz ro console=ttyS0 panic=-1\n", encoding="utf-8")
+                return 0
+
+            removed = baseline_diag.remove_consented_lsm(root, updater)
+            self.assertTrue(removed["removed"], removed)
+            self.assertFalse(dropin.exists())
+            self.assertTrue(stock.is_file())
+            put = baseline_diag.reassert_consented_lsm(root)
+            self.assertEqual(put["reason"], "guard_record")
+            self.assertTrue(put["written"])
+            self.assertEqual(dropin.read_text(encoding="utf-8"), baseline_diag.lsm_dropin_text(token))
+            self.assertTrue(os.access(dropin, os.X_OK))
+            self.assertEqual(baseline_diag.lsm_value_from_dropin(dropin.read_text(encoding="utf-8")), token)
+            # An existing drop-in is left as written.
+            dropin.write_text("# operator\n", encoding="utf-8")
+            again = baseline_diag.reassert_consented_lsm(root)
+            self.assertEqual(again, {"ok": True, "written": False, "reason": "present"})
+            self.assertEqual(dropin.read_text(encoding="utf-8"), "# operator\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mark = root / "boot/vantio-lsm-stock.json"
+            mark.parent.mkdir(parents=True)
+            mark.write_text(json.dumps(record), encoding="utf-8")
+            self.assertTrue(baseline_diag.reassert_consented_lsm(root)["written"])
+        shell = Path(__file__).resolve().parent.joinpath("lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        schedule = shell[shell.index("schedule_forced_reboot() {"):]
+        schedule = schedule[: schedule.index("\n}\n")]
+        self.assertLess(schedule.index("reassert_consented_lsm_live"), schedule.index('[ ! -x "$reboot_cmd" ]'))
+        self.assertLess(schedule.index("lab_lsm_reassert_failed"), schedule.index("systemd-run"))
+        uninstall = shell[shell.index("authorized_uninstall()"): shell.index("\nmode=${2:-enterprise}")]
+        self.assertNotIn("reassert_consented_lsm", uninstall)
+        self.assertIn("remove_consented_lsm_live", uninstall)
+
     def test_uninstall_strips_lsm_from_grub_and_the_cloudimg_file(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
         needle = f"lsm={token}"
