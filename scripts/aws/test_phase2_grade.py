@@ -2446,6 +2446,34 @@ class PublicPinResidueScopeTests(unittest.TestCase):
         self.assertTrue(all(item["step"] in grade.PIN_STEPS for item in failed["findings"]))
         self.assertEqual(grade.public_pin_residue(self._seal_clean()), None)
 
+    def _assert_residue_not_a_finding(self, pin: dict) -> None:
+        self.assertIsNone(grade.public_pin_residue(pin))
+        failed = self._cycle(pin=pin)
+        self.assertEqual(failed["host_result"], "FAIL")
+        self.assertEqual(failed["action"], "FAIL")
+        self.assertFalse(failed["upgrade_pass"])
+        self.assertEqual(failed["reason"], "baseline_uninstall")
+        self.assertIn("rollback_uninstall", failed["reasons"])
+        self.assertEqual(failed["findings"], [])
+
+    def test_residue_with_a_non_int_bpftool_rc_is_not_a_finding(self) -> None:
+        # False == 0 and 0.0 == 0 in Python; neither is a bpftool exit code.
+        for rc in (False, 0.0):
+            with self.subTest(bpftool_rc=rc):
+                pin = self._pin_residue()
+                pin["bpftool_rc"] = rc
+                self._assert_residue_not_a_finding(pin)
+
+    def test_residue_with_a_docker_ps_failure_is_not_a_finding(self) -> None:
+        # An empty container string next to a failed docker ps is not "no containers".
+        pin = self._pin_residue()
+        pin["docker_ps_failed"] = True
+        pin["docker_containers"] = ""
+        self._assert_residue_not_a_finding(pin)
+        # The same fixture with docker ps succeeding is still a finding.
+        pin["docker_ps_failed"] = False
+        self.assertIsNotNone(grade.public_pin_residue(pin))
+
     def test_residue_needs_the_pin_contract_and_its_shutdown_line(self) -> None:
         self.assertIsNotNone(grade.public_pin_residue(self._pin_residue()))
         silent = self._pin_residue()
