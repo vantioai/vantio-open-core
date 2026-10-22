@@ -1976,7 +1976,7 @@ class DescendantStartFieldsTest(unittest.TestCase):
         self.assertEqual(tail["checked"], [{"name": "y", "status": "delayed"}])
         self.assertEqual(od._allow_start_window({"checked": [{"name": "x", "status": "forged"}]})["checked"], [])
         warnings = od.allow_start_fields(
-            {"warnings": ["a=b"] * 20 + ["late_deny_row_before_restart"]}
+            {"warnings": ["scoped_banner=missing"] * 20 + ["late_deny_row_before_restart"]}
         )["warnings"]
         self.assertEqual(len(warnings), 8)
         bad = od.allow_start_fields(
@@ -1985,6 +1985,11 @@ class DescendantStartFieldsTest(unittest.TestCase):
                     "ghp_" + "a" * 30,
                     "late_deny_row_during_restart",
                     "A=b",
+                    "a=b",
+                    "scoped_banner=scoped",
+                    "scoped_banner=missing_x",
+                    "mid_scoped_banner=missing",
+                    "token=abc123",
                     "a=" + "b" * 61,
                     "k" * 41 + "=v",
                     7,
@@ -1994,6 +1999,13 @@ class DescendantStartFieldsTest(unittest.TestCase):
             }
         )["warnings"]
         self.assertEqual(bad, ["late_deny_row_after_restart"])
+        good = [
+            "scoped_banner=missing",
+            "pre_scoped_banner=not_checked",
+            "post_scoped_banner=scoped_banner_without_ledger_line",
+            "late_deny_row_before_restart",
+        ]
+        self.assertEqual(od.allow_start_fields({"warnings": good})["warnings"], good)
         # Capture- and battery-level copies use the same rules.
         capture = od._allow_capture(
             {"name": "loader-kill", "before_row_wait_s": True, "after_row_wait_s": 3601, "after_row_seen": "yes", "start_probe": {"pid": 1.5}}

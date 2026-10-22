@@ -338,9 +338,13 @@ LOADED_IMAGE_RE = re.compile(r"vantio-phantom-engine:[0-9a-f]{7,40}")
 LOADED_LINE_RE = re.compile(r"^(?:Loaded image: |IMAGE_LINE=)(?:docker\.io/library/)?(\S+)\s*$", re.M)
 _LSM_RE = re.compile(r"[a-z0-9,]{0,120}")
 _WORD_RE = re.compile(r"[a-z0-9_]{1,40}")
-# descendant_b1 emits key=value warnings. The only bare flags are phase2_host's
-# late deny row warnings; any other bare token (which could be a secret) is dropped.
-_WARNING_RE = re.compile(r"[a-z0-9_]{1,40}=[a-z0-9_]{1,60}|late_deny_row_(?:before|after)_restart")
+# Only the warnings the lab emits: descendant_b1's scoped_banner status
+# (BANNER_STATUS other than "scoped") and phase2_host's late deny row flags.
+# Anything else is dropped.
+_WARNING_RE = re.compile(
+    r"(?:pre_|post_)?scoped_banner=(?:missing|not_checked|scoped_banner_without_ledger_line)"
+    r"|late_deny_row_(?:before|after)_restart"
+)
 # Above this, a deny row is flagged as late (phase2_host.DENY_ROW_LATE_S).
 DENY_ROW_LATE_S = 0.5
 _EVENT_TIME_RE = re.compile(r"[0-9T:.+Z -]{1,40}")
