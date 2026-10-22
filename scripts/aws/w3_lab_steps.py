@@ -1215,7 +1215,7 @@ def phase_battery_verdict(battery: str, body: Mapping[str, Any] | None) -> dict[
         "pass": False,
         "row_reason": row_reason[:200],
     }
-    if body.get("battery") not in (None, battery):
+    if body.get("battery") != battery:
         verdict["reason"] = "battery_mismatch"
         return verdict
     if body.get("harness_error"):

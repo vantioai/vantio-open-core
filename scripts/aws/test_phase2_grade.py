@@ -2253,6 +2253,30 @@ class PublicPinCycleTests(unittest.TestCase):
         for write in ('"--uninstall"', ".unlink(", "detach(", "rmdir"):
             self.assertNotIn(write, body)
 
+    def test_pin_removal_needs_the_detached_line_even_with_a_clean_census(self) -> None:
+        text = _host_text()
+        source = text[text.index("def _stop_lab_containers"): text.index("def _cycle_step")]
+
+        def run(logs: str) -> dict:
+            def sudo(argv, timeout=0):
+                if argv[:2] == ["docker", "logs"]:
+                    return subprocess.CompletedProcess(argv, 0, stdout=logs, stderr="")
+                if argv[:3] == ["bpftool", "-j", "prog"]:
+                    return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+                return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+            ns = {"rows": types.SimpleNamespace(sudo=sudo, LOADER="vantio-loader"), "grade": grade, "Path": Path, "json": json}
+            exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+            return ns["_public_pin_uninstall"]()
+
+        clean = run("Detached cleanly. Pinned maps remain at /sys/fs/bpf\n")
+        self.assertEqual(clean["loader_programs"], [])
+        self.assertEqual(clean["bpffs_vantio"], [])
+        self.assertTrue(clean["verified_removed"])
+        for logs in ("", "Phantom Engine active\n", "detached cleanly\n", "UNINSTALL_VERIFIED\n"):
+            with self.subTest(logs=logs):
+                self.assertFalse(run(logs)["verified_removed"])
+
     def test_prepare_enforce_checks_the_pin_banner_only_for_the_pin(self) -> None:
         text = _host_text()
         prepare = text.split("def prepare_enforce", 1)[1].split("\ndef ", 1)[0]

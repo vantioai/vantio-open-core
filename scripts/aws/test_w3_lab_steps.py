@@ -2449,16 +2449,18 @@ class PhaseBatteryVerdictTests(unittest.TestCase):
             self.assertTrue(verdict["pass"], battery)
             self.assertEqual(verdict["reason"], "battery_pass")
         for result in ("LSM_ALREADY_ACTIVE", "LSM_ENABLED"):
-            self.assertTrue(steps.phase_battery_verdict("lsm-guard", {"host_result": result})["pass"])
+            self.assertTrue(steps.phase_battery_verdict("lsm-guard", {"battery": "lsm-guard", "host_result": result})["pass"])
         upgraded = steps.phase_battery_verdict(
             "2c-upgrade-rollback",
             {"battery": "2c-upgrade-rollback", "host_result": "RECORDED", "upgrade_pass": True},
         )
         self.assertTrue(upgraded["pass"])
         # A pass word that belongs to another battery is not a pass.
-        self.assertFalse(steps.phase_battery_verdict("2f-tamper", {"host_result": "RECORDED"})["pass"])
-        self.assertFalse(steps.phase_battery_verdict("r15-container-exit", {"host_result": "PASS"})["pass"])
-        self.assertFalse(steps.phase_battery_verdict("lsm-guard", {"host_result": "PASS"})["pass"])
+        self.assertFalse(steps.phase_battery_verdict("2f-tamper", {"battery": "2f-tamper", "host_result": "RECORDED"})["pass"])
+        self.assertFalse(
+            steps.phase_battery_verdict("r15-container-exit", {"battery": "r15-container-exit", "host_result": "PASS"})["pass"]
+        )
+        self.assertFalse(steps.phase_battery_verdict("lsm-guard", {"battery": "lsm-guard", "host_result": "PASS"})["pass"])
 
     def test_fail_not_graded_and_hold_are_named(self) -> None:
         cases = {
@@ -2480,6 +2482,48 @@ class PhaseBatteryVerdictTests(unittest.TestCase):
         self.assertFalse(missing["pass"])
         no_result = steps.phase_battery_verdict("2d-crash-recovery", {"battery": "2d-crash-recovery"})
         self.assertEqual(no_result["reason"], "battery_result_unknown")
+
+    PASS_ROWS = {
+        "r15-container-exit": {"host_result": "RECORDED"},
+        "2c-upgrade-rollback": {"host_result": "RECORDED", "upgrade_pass": True},
+        "2d-crash-recovery": {"host_result": "PASS"},
+        "2e-performance": {"host_result": "PASS"},
+        "2f-tamper": {"host_result": "PASS"},
+        "2g-distro": {"host_result": "PASS"},
+        "lsm-guard": {"host_result": "GUARD_PROVED"},
+    }
+
+    def test_no_graded_battery_passes_on_a_non_pass_row(self) -> None:
+        """Council: every graded battery x every non-pass shape. A mutant that lets one through dies here."""
+        self.assertEqual(set(self.PASS_ROWS), set(steps.PHASE_BATTERY_PASS))
+        non_pass = {
+            "not_graded": ({"host_result": "NOT_GRADED"}, "battery_not_graded"),
+            "hold": ({"host_result": "HOLD"}, "battery_hold"),
+            "fail": ({"host_result": "FAIL"}, "battery_fail"),
+            "unknown_result": ({"host_result": "MAYBE"}, "battery_result_unknown"),
+            "no_result": ({}, "battery_result_unknown"),
+        }
+        for battery, passing in self.PASS_ROWS.items():
+            # The control: this battery's own pass row does pass.
+            control = steps.phase_battery_verdict(battery, {"battery": battery, **passing})
+            self.assertTrue(control["pass"], battery)
+            for label, (shape, reason) in non_pass.items():
+                with self.subTest(battery=battery, case=label):
+                    row = {"battery": battery, **passing, "reason": "x"}
+                    row.pop("host_result")
+                    row.update(shape)
+                    verdict = steps.phase_battery_verdict(battery, row)
+                    self.assertIs(verdict["pass"], False)
+                    self.assertEqual(verdict["reason"], reason)
+            with self.subTest(battery=battery, case="missing_battery_field"):
+                verdict = steps.phase_battery_verdict(battery, dict(passing))
+                self.assertIs(verdict["pass"], False)
+                self.assertEqual(verdict["reason"], "battery_mismatch")
+            for wrong in ("", None, battery.upper(), battery + " "):
+                with self.subTest(battery=battery, case=f"battery_field={wrong!r}"):
+                    verdict = steps.phase_battery_verdict(battery, {**passing, "battery": wrong})
+                    self.assertIs(verdict["pass"], False)
+                    self.assertEqual(verdict["reason"], "battery_mismatch")
 
     def test_2c_record_without_upgrade_pass_is_a_fail(self) -> None:
         verdict = steps.phase_battery_verdict(
