@@ -15,6 +15,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lab-guests"))
@@ -3221,9 +3222,16 @@ class MapSwapTests(unittest.TestCase):
         self.assertIn("grade.ungraded_egress(", early)
         self.assertIn("return refused", early)
         self.assertIn("deny_diag([])", early)
-        # Every 2F body carries the swap facts and the kill timing.
-        returns = run_2f.count("return refused") + run_2f.count("return graded")
-        self.assertEqual(returns, run_2f.count("grade.KILL_TIMING_AFTER_MAP_SWAP"))
+        # Every 2F body carries the swap facts and the kill timing: not_killed
+        # before kill_loader, after_map_swap once it ran.
+        returns = run_2f.count("return refused") + run_2f.count("return grade.require_tamper_claim(graded)")
+        self.assertEqual(returns, 4)
+        self.assertEqual(run_2f.count("grade.KILL_TIMING_NOT_KILLED"), 1)
+        self.assertIn("grade.KILL_TIMING_NOT_KILLED", early)
+        self.assertNotIn("grade.KILL_TIMING_AFTER_MAP_SWAP", early)
+        after = run_2f[run_2f.index("kill_loader()"):]
+        self.assertEqual(after.count("grade.KILL_TIMING_AFTER_MAP_SWAP"), returns - 1)
+        self.assertNotIn("return graded", run_2f)
         self.assertEqual(run_2f.count("return refused"), run_2f.count('refused["map_swap"] = swap'))
         self.assertIn('graded["map_swap"] = swap', run_2f)
         self.assertEqual(run_2f.count("grade.CLAIM_SCOPE_2F"), 1)
@@ -3271,8 +3279,10 @@ class MapSwapTests(unittest.TestCase):
                 self.assertEqual(body["map_swap"]["reason"], reason)
                 self.assertEqual(body["policy_digest"], "digest-1")
                 self.assertIs(body["loader_killed"], False)
-                self.assertEqual(body["kill_timing"], "after_map_swap")
+                self.assertEqual(body["kill_timing"], "not_killed")
+                self.assertEqual(body["kill_timing"], grade.KILL_TIMING_NOT_KILLED)
                 self.assertNotIn("claim_scope", body)
+                self.assertFalse(grade.tamper_claim_complete(body))
         body, killed = self._run_2f({"swapped": "yes"})
         self.assertEqual(body["reason"], grade.MAP_SWAP_TIMEOUT)
         self.assertEqual(killed, [])
@@ -3292,6 +3302,108 @@ class MapSwapTests(unittest.TestCase):
         self.assertEqual(graded["claim_scope"], "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)")
         self.assertNotIn("claim_scope", lab_net)
         self.assertNotIn("claim_scope", ungraded)
+        # The complete graded pass stays a pass after the claim check.
+        self.assertEqual(graded["host_result"], "PASS")
+        self.assertNotIn("withheld_host_result", graded)
+        self.assertTrue(grade.tamper_claim_complete(graded))
+
+    def test_run_2f_pass_goes_through_the_claim_check(self) -> None:
+        seen: list[dict] = []
+        real = grade.require_tamper_claim
+
+        def spy(body):
+            seen.append(dict(body))
+            return real(body)
+
+        with mock.patch.object(grade, "require_tamper_claim", spy):
+            graded, _killed = self._run_2f({"swapped": True, "reason": None})
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0]["kill_timing"], "after_map_swap")
+        self.assertEqual(seen[0]["claim_scope"], grade.CLAIM_SCOPE_2F)
+        self.assertEqual(graded["host_result"], "PASS")
+
+    def test_pass_without_claim_fields_is_not_graded(self) -> None:
+        scope = grade.CLAIM_SCOPE_2F
+        bad = {
+            "no_fields": {},
+            "no_timing": {"claim_scope": scope},
+            "not_killed": {"kill_timing": "not_killed", "claim_scope": scope},
+            "other_timing": {"kill_timing": "after_banner", "claim_scope": scope},
+            "no_scope": {"kill_timing": "after_map_swap"},
+            "empty_scope": {"kill_timing": "after_map_swap", "claim_scope": ""},
+            "blank_scope": {"kill_timing": "after_map_swap", "claim_scope": "  \n"},
+            "scope_not_str": {"kill_timing": "after_map_swap", "claim_scope": ["x"]},
+        }
+        for label, fields in bad.items():
+            with self.subTest(label=label):
+                body = dict(grade._base("2f-tamper"), host_result="PASS", expectation_met=True, classification="fail_closed", **fields)
+                self.assertFalse(grade.tamper_claim_complete(body))
+                out = grade.require_tamper_claim(body)
+                self.assertEqual(out["host_result"], "NOT_GRADED")
+                self.assertEqual(out["reason"], "claim_fields_missing")
+                self.assertEqual(out["reason"], grade.CLAIM_FIELDS_MISSING)
+                self.assertEqual(out["withheld_host_result"], "PASS")
+                self.assertIs(out["setup_invalid"], True)
+                self.assertIs(out["expectation_met"], False)
+                self.assertEqual(out["classification"], "not_graded")
+        good = dict(grade._base("2f-tamper"), host_result="PASS", expectation_met=True, kill_timing="after_map_swap", claim_scope=scope)
+        self.assertEqual(grade.require_tamper_claim(dict(good)), good)
+        # FAIL and HOLD stand: the claim fields bound only what a pass claims.
+        for result in ("FAIL", "HOLD", "NOT_GRADED"):
+            with self.subTest(result=result):
+                body = dict(grade._base("2f-tamper"), host_result=result, expectation_met=False)
+                self.assertEqual(grade.require_tamper_claim(dict(body)), body)
+        self.assertFalse(grade.tamper_claim_complete(None))
+        self.assertFalse(grade.tamper_claim_complete([("kill_timing", "after_map_swap")]))
+
+    def test_watch_stops_when_the_swap_lands(self) -> None:
+        ns, _clock = self._waiter(
+            lambda n: (self.BEFORE, []) if n <= 2 else ((self.BEFORE, self.SIDE) if n < 4 else (self.AFTER, []))
+        )
+        ns["record_swap_baseline"]()
+        events: list[str] = []
+        ns["stop_side_pin_watch"] = lambda: events.append("stop")
+        real_loaders = ns["loader_pids"]
+        ns["loader_pids"] = lambda: events.append("loaders") or real_loaders()
+        got = ns["wait_map_swap"](timeout=30.0, step=0.25)
+        self.assertTrue(got["swapped"])
+        # Stopped exactly once, after the owner check, on the success return.
+        self.assertEqual(events, ["loaders", "stop"])
+
+    def test_stop_side_pin_watch_sets_joins_and_forgets(self) -> None:
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []))
+        calls: list[object] = []
+        stop = types.SimpleNamespace(set=lambda: calls.append("set"))
+        thread = types.SimpleNamespace(join=lambda timeout=None: calls.append(("join", timeout)))
+        ns["SWAP_WATCH"].update({"stop": stop, "thread": thread})
+        ns["stop_side_pin_watch"]()
+        self.assertEqual(calls, ["set", ("join", 1.0)])
+        self.assertEqual(ns["SWAP_WATCH"], {})
+        ns["stop_side_pin_watch"]()
+        self.assertEqual(calls, ["set", ("join", 1.0)])
+
+    def test_pid_zero_or_negative_never_names_the_owner(self) -> None:
+        for path in (
+            "/sys/fs/bpf/vantio_deny_attr_incoming_0",
+            "/sys/fs/bpf/vantio_deny_attr_incoming_00",
+            "/sys/fs/bpf/vantio_deny_attr_incoming_-1",
+            "/sys/fs/bpf/vantio_deny_attr_incoming_",
+        ):
+            with self.subTest(path=path):
+                self.assertIsNone(grade.side_pin_pid(path))
+        self.assertEqual(grade.side_pin_pid("/sys/fs/bpf/vantio_deny_attr_incoming_1"), 1)
+        zero = ["/sys/fs/bpf/vantio_deny_attr_incoming_0"]
+        for owner in ({"host": 0, "ns": 0}, {"host": -1, "ns": 0}, {"host": 0}, {"host": -52926, "ns": -52926}):
+            with self.subTest(owner=owner):
+                self.assertFalse(grade.swap_owner_matches(list(zero), [owner]))
+                self.assertFalse(grade.swap_owner_matches(list(self.SIDE), [owner]))
+        # swap_owner_matches drops a pid <= 0 itself, even if a pin parsed to one.
+        for bad in (0, -1):
+            with self.subTest(bad=bad), mock.patch.object(grade, "side_pin_pid", lambda _p, bad=bad: bad):
+                self.assertFalse(grade.swap_owner_matches(list(zero), [{"host": bad, "ns": bad}]))
+                self.assertFalse(grade.swap_owner_matches(list(zero), [{"host": bad, "ns": 52926}]))
+        # A valid namespace pid still names the loader when the host pid is 0.
+        self.assertTrue(grade.swap_owner_matches(list(self.SIDE), [{"host": 0, "ns": 52926}]))
 
 
 class IncomingCopyDiagTests(unittest.TestCase):

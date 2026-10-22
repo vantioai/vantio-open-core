@@ -1195,6 +1195,16 @@ PHASE_BATTERY_PASS: dict[str, frozenset[str]] = {
 }
 
 
+TAMPER_KILL_TIMING = "after_map_swap"
+TAMPER_CLAIM_FIELDS_MISSING = "claim_fields_missing"
+
+
+def _tamper_claim_complete(body: Mapping[str, Any]) -> bool:
+    """The 2F row says the kill came after the map swap and names its claim scope."""
+    scope = body.get("claim_scope")
+    return body.get("kill_timing") == TAMPER_KILL_TIMING and isinstance(scope, str) and bool(scope.strip())
+
+
 def phase_battery_verdict(battery: str, body: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """Grade a phase battery from its rows file, not from the guest exit code.
 
@@ -1238,6 +1248,11 @@ def phase_battery_verdict(battery: str, body: Mapping[str, Any] | None) -> dict[
         return verdict
     if battery == "2c-upgrade-rollback" and body.get("upgrade_pass") is not True:
         verdict["reason"] = "battery_fail"
+        return verdict
+    if battery == "2f-tamper" and not _tamper_claim_complete(body):
+        # A 2F pass claims a kill after the map swap, within a named scope.
+        # Without both fields the row does not say what it proves.
+        verdict["reason"] = TAMPER_CLAIM_FIELDS_MISSING
         return verdict
     verdict["pass"] = True
     verdict["reason"] = "battery_pass"

@@ -299,14 +299,46 @@ MAP_SWAP_SIDE_PIN_UNMATCHED = "map_swap_side_pin_unmatched"
 # what that timing does and does not cover.
 KILL_TIMING_AFTER_MAP_SWAP = "after_map_swap"
 CLAIM_SCOPE_2F = "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)"
+# A 2F body refused before kill_loader ran says so.
+KILL_TIMING_NOT_KILLED = "not_killed"
+# A 2F PASS without both claim fields is not a pass.
+CLAIM_FIELDS_MISSING = "claim_fields_missing"
+
+
+def tamper_claim_complete(body: Any) -> bool:
+    """The body says the kill came after the map swap and names the claim it supports."""
+    if not isinstance(body, dict):
+        return False
+    scope = body.get("claim_scope")
+    return body.get("kill_timing") == KILL_TIMING_AFTER_MAP_SWAP and isinstance(scope, str) and bool(scope.strip())
+
+
+def require_tamper_claim(body: dict[str, Any]) -> dict[str, Any]:
+    """Leave a 2F PASS not graded when it lacks kill_timing or claim_scope.
+
+    FAIL and HOLD stand as they are: the claim fields only bound what a pass
+    may claim. The withheld result is kept for the record.
+    """
+    if body.get("host_result") != "PASS" or tamper_claim_complete(body):
+        return body
+    body["withheld_host_result"] = "PASS"
+    body["setup_invalid"] = True
+    body["reason"] = CLAIM_FIELDS_MISSING
+    body["host_result"] = "NOT_GRADED"
+    body["expectation_met"] = False
+    body["classification"] = "not_graded"
+    return body
 
 
 def side_pin_pid(path: str) -> int | None:
-    """The pid in <stem>_incoming_<pid>, or None."""
+    """The pid in <stem>_incoming_<pid>, or None. A pid of 0 is never a process."""
     if not isinstance(path, str) or "_incoming_" not in path:
         return None
     tail = path.rsplit("_incoming_", 1)[1]
-    return int(tail) if tail.isdigit() else None
+    if not tail.isdigit():
+        return None
+    pid = int(tail)
+    return pid if pid > 0 else None
 
 
 def swap_owner_matches(seen: list[str], loaders: list[dict[str, Any]]) -> bool:

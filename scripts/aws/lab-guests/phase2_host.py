@@ -1988,7 +1988,7 @@ def run_2f() -> dict:
         refused["policy_digest"] = digest
         refused["loader_up"] = loader_running()
         refused["loader_killed"] = False
-        refused["kill_timing"] = grade.KILL_TIMING_AFTER_MAP_SWAP
+        refused["kill_timing"] = grade.KILL_TIMING_NOT_KILLED
         return refused
     kill_loader()
     standin = standin_after_sigkill()
@@ -2060,7 +2060,7 @@ def run_2f() -> dict:
         graded["deny_diag"] = deny_diag([net_pid], recheck_pid=net_pid if net_anchor <= 0 else 0)
     graded["kill_timing"] = grade.KILL_TIMING_AFTER_MAP_SWAP
     graded["claim_scope"] = grade.CLAIM_SCOPE_2F
-    return graded
+    return grade.require_tamper_claim(graded)
 
 
 def kernel_facts() -> dict:
