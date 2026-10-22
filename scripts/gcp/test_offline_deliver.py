@@ -1676,5 +1676,210 @@ class PublicPinHandoffTest(unittest.TestCase):
                 self.assertIn("RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}", step)
 
 
+class DescendantStartFieldsTest(unittest.TestCase):
+    """#357 descendant-b1 start fields, the loaded image tag, and the 2D row wait reach gcp-lab-rows.json."""
+
+    BOOT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    LATER = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+    def _body(self, phase: str) -> dict:
+        return {
+            "phase": phase,
+            "hostname": "vantio-gcp-lab-1",
+            "image": "vantio-phantom-engine:da961aa9",
+            "boot_id": self.BOOT if phase == "pre" else self.LATER,
+            "boot_lsm": {
+                "lsm": "lockdown,capability,landlock,yama,apparmor,bpf,ima,evm",
+                "bpf_lsm_active": True,
+                "cmdline_lsm": "lockdown,capability,landlock,yama,apparmor,bpf,ima,evm",
+            },
+            "cases": [
+                {
+                    "name": "moved",
+                    "pass": False,
+                    "samples": [{"name": "moved", "expect_deny": True, "pass": False, "file_errno": 13, "pid": 4100}],
+                }
+            ],
+            "failed_cases": ["moved"],
+            "scoped_banner": "scoped_banner_without_ledger_line",
+            "start_timing": {
+                "ledger_since": 120,
+                "banner_wait_s": 4.012,
+                "probe_done_after_banner_s": 0.21,
+                "ledger_seen": False,
+                "banner_to_ledger_s": None,
+                "ledger_timeout_s": 30.1,
+                "start_wait_s": 34.3,
+                "hostname": "leak",
+            },
+            "start_probe": {
+                "pid": 4099,
+                "file_errno": 13,
+                "lineage_anchor": 0,
+                "took_s": 0.05,
+                "file_event": None,
+                "path": "/etc/shadow",
+            },
+            "start_window_rows": {
+                "status": "delayed",
+                "delayed": 1,
+                "dropped": 0,
+                "checked": [
+                    {
+                        "name": "start_probe",
+                        "pid": 4099,
+                        "file_errno": 13,
+                        "row_index": 7,
+                        "status": "recorded",
+                        "after_ledger_line": False,
+                        "row_time": "2026-10-22T17:30:01.5Z",
+                    },
+                    {"name": "moved", "pid": 4100, "row_index": 9, "status": "delayed", "after_ledger_line": True},
+                    {"name": "Bad Name", "status": "dropped"},
+                ],
+                "ledger_line_index": 8,
+                "ledger_line_time": 1792690201.5,
+                "informational": True,
+            },
+            "warnings": ["scoped_banner=scoped_banner_without_ledger_line", "ghp_" + "a" * 30],
+            "descendant_pass": False,
+        }
+
+    def test_allow_start_fields_keeps_typed_values_only(self) -> None:
+        kept = od.allow_start_fields(self._body("pre"))
+        self.assertEqual(
+            set(kept), {"start_timing", "start_probe", "start_window_rows", "warnings", "boot_lsm"}
+        )
+        self.assertNotIn("hostname", kept["start_timing"])
+        self.assertIsNone(kept["start_timing"]["banner_to_ledger_s"])
+        self.assertIs(kept["start_timing"]["ledger_seen"], False)
+        self.assertNotIn("path", kept["start_probe"])
+        self.assertIs(kept["start_probe"]["file_event"], False)
+        self.assertEqual([item["name"] for item in kept["start_window_rows"]["checked"]], ["start_probe", "moved"])
+        self.assertEqual(kept["warnings"], ["scoped_banner=scoped_banner_without_ledger_line"])
+        self.assertTrue(kept["boot_lsm"]["bpf_lsm_active"])
+        self.assertEqual(od.allow_start_fields({"lab_lsm_reassert": None}), {"lab_lsm_reassert": None})
+        reassert = od.allow_start_fields(
+            {"lab_lsm_reassert": {"ok": True, "written": True, "reason": "guard_record", "lsm_value": "bpf", "boot_id": self.BOOT, "x": 1}}
+        )["lab_lsm_reassert"]
+        self.assertEqual(set(reassert), {"ok", "written", "reason", "lsm_value", "boot_id"})
+        error = od.allow_start_fields({"start_probe": {"error": "OSError: /root/secret token=abc"}})
+        self.assertEqual(error["start_probe"], {"error": "OSError"})
+
+    def test_loaded_image_tag_replaces_the_lab_constant(self) -> None:
+        text = "x\nLoaded image: vantio-phantom-engine:da961aa9\nIMAGE_LINE=vantio-phantom-engine:da961aa9\n"
+        self.assertEqual(od.loaded_image_from_text(text), "vantio-phantom-engine:da961aa9")
+        self.assertEqual(
+            od.loaded_image_from_text("Loaded image: docker.io/library/vantio-phantom-engine:egress-2e6ab54\n"),
+            od.IMAGE_NAME,
+        )
+        for bad in ("Loaded image: vantio-phantom-engine:latest", "Loaded image: evil:da961aa9", "Loaded image: vantio-phantom-engine:DA961AA9", ""):
+            with self.subTest(bad=bad):
+                self.assertEqual(od.loaded_image_from_text(bad), "")
+        self.assertEqual(od.allow_record({"image": "vantio-phantom-engine:da961aa9"})["image"], "vantio-phantom-engine:da961aa9")
+        self.assertNotIn("image", od.allow_record({"image": "vantio-phantom-engine:latest"}))
+        self.assertEqual(od.allow_record({"image": f"{od.IMAGE_PROJECT}/{od.IMAGE_FAMILY}"})["image"], f"{od.IMAGE_PROJECT}/{od.IMAGE_FAMILY}")
+        self.assertEqual(od.allow_battery({"image": "vantio-phantom-engine:" + "a" * 40}), {"image": "vantio-phantom-engine:" + "a" * 40})
+        self.assertIsNone(od.allow_battery({"image": "vantio-phantom-engine:" + "a" * 41}))
+        source = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        self.assertNotIn('"image": IMAGE_NAME', source)
+        shell = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        self.assertIn("vantio-phantom-engine:(egress-2e6ab54|[0-9a-f]{7,40})", shell)
+
+    def test_objects_keep_the_public_pin_handoff_name(self) -> None:
+        kept = od.allow_record({"objects": ["1/seal.oci.tar", "1/public-pin.oci.tar", "1/other.tar"]})
+        self.assertEqual(kept["objects"], ["1/seal.oci.tar", "1/public-pin.oci.tar"])
+
+    def test_run_one_battery_carries_start_fields_and_image_into_rows(self) -> None:
+        seal = "ab" * 32
+        pre_guest = {"pre": self._body("pre"), "reboot_requested": True, "failed_cases": ["moved"]}
+        post_guest = {
+            "battery": "descendant-b1",
+            "pre": self._body("pre"),
+            "post": self._body("post"),
+            "reboot_observed": True,
+            "lab_lsm_reassert": None,
+            "b1_pass": False,
+            "descendant_pass": False,
+        }
+        pulls = [{"image": "vantio-phantom-engine:da961aa9"}, pre_guest, post_guest]
+        loaded = "Loaded image: vantio-phantom-engine:da961aa9\nPY_RC=1\n"
+
+        def ssh_case(_project, _name, _command):
+            return subprocess.CompletedProcess([], 1, stdout=loaded, stderr="")
+
+        captures: list[dict] = []
+        with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack:
+            for name, fn in (
+                ("_ssh_case", ssh_case),
+                ("_pull_guest_json", lambda *_a: pulls.pop(0)),
+                ("_scp_from", lambda *_a: False),
+                ("_wait_ssh", lambda *_a: self.BOOT),
+                ("_wait_boot", lambda *_a: self.LATER),
+                ("_ssh_ready", lambda *_a, **_k: True),
+            ):
+                stack.enter_context(mock.patch.object(od, name, fn))
+            stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            summary = od._run_one_battery("vantio-lab-oct08", "vantio-gcp-lab-1", seal, Path(tmp), 1, captures)
+            od.write_evidence(Path(tmp) / "gcp-lab-rows.json", {"captures": captures, "repeats": [summary, summary], "image": summary["image"]})
+            rows = json.loads((Path(tmp) / "gcp-lab-rows.json").read_text(encoding="utf-8"))
+        self.assertEqual(rows["image"], "vantio-phantom-engine:da961aa9")
+        self.assertEqual(rows["repeats"][0]["rows"]["image"], "vantio-phantom-engine:da961aa9")
+        by_name = {item["name"]: item for item in rows["captures"]}
+        for name in ("descendant-pre-1", "descendant-post-1"):
+            with self.subTest(capture=name):
+                capture = by_name[name]
+                for key in ("start_timing", "start_probe", "start_window_rows", "warnings", "boot_lsm"):
+                    self.assertIn(key, capture)
+                self.assertEqual(capture["image"], "vantio-phantom-engine:da961aa9")
+                self.assertEqual(capture["start_window_rows"]["status"], "delayed")
+                self.assertNotIn("hostname", json.dumps(capture))
+        self.assertIn("lab_lsm_reassert", by_name["descendant-post-1"])
+        self.assertIsNone(by_name["descendant-post-1"]["lab_lsm_reassert"])
+        self.assertNotIn("lab_lsm_reassert", by_name["descendant-pre-1"])
+        post = rows["repeats"][0]["post"]
+        self.assertEqual(post["image"], "vantio-phantom-engine:da961aa9")
+        self.assertEqual(post["start_timing"]["ledger_since"], 120)
+        self.assertEqual(rows["repeats"][0]["pre"]["boot_lsm"]["cmdline_lsm"].split(",")[-1], "evm")
+
+    def test_loader_kill_capture_names_the_missing_row_and_the_wait(self) -> None:
+        body = {
+            "enroll_restart": {
+                "held": False,
+                "reason": "deny_row_missing_before_restart",
+                "pid": 3612,
+                "before_errno": 13,
+                "before_anchor": 0,
+                "before_count": 0,
+                "before_row_wait_s": 5.002,
+                "before_row_seen": False,
+            },
+            "reason": "deny_row_missing_before_restart",
+        }
+        capture = od._loader_capture("loader-kill", {"body": body, "word": "fail", "rc": 1})
+        kept = od._allow_capture(capture)
+        self.assertIn("deny_row_missing_before_restart", kept["fail_reasons"])
+        self.assertEqual(kept["before_row_wait_s"], 5.002)
+        self.assertIs(kept["before_row_seen"], False)
+        self.assertIs(kept["hold"], False)
+        held = od._loader_capture("loader-kill", {"body": {"enroll_restart": {"held": True, "reason": "x"}}, "word": "held"})
+        self.assertNotIn("x", held.get("fail_reasons", []))
+
+    def test_descendant_pre_clears_enterprise_rows_and_reassert_record(self) -> None:
+        shell = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        branch = shell.split('if [ "$mode" = "descendant-b1" ]; then', 1)[1]
+        pre_rm = branch.split('if [ "$phase" = "pre" ]; then', 1)[1].split("fi", 1)[0]
+        for path in (
+            "/var/lib/vantio-lab/b1-pre.json",
+            "/var/lib/vantio-lab/enterprise-pe-rows.json",
+            "/var/lib/vantio-lab/lsm-reassert.json",
+        ):
+            self.assertIn(path, pre_rm)
+        run = branch.index('python3 "$here/descendant_b1.py"')
+        self.assertLess(branch.index("/var/lib/vantio-lab/lsm-reassert.json"), run)
+        # post must keep the re-assert record; it reads it after the reboot.
+        self.assertEqual(branch[:run].count("lsm-reassert.json"), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

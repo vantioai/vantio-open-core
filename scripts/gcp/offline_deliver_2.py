@@ -1041,6 +1041,21 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
         and not _sample_held(sample)
     ):
         kept["fail_reasons"] = ["attribution_after_kill"]
+    # 2D: the same-process restart check (phase2_host.same_process_across_restart).
+    restart = body.get("enroll_restart") if isinstance(body.get("enroll_restart"), dict) else {}
+    reason = restart.get("reason")
+    if (
+        kept["hold"] is False
+        and isinstance(reason, str)
+        and re.fullmatch(r"[a-z0-9_]{1,40}", reason)
+        and restart.get("held") is not True
+    ):
+        kept["fail_reasons"] = [*kept.get("fail_reasons", []), reason]
+    wait = restart.get("before_row_wait_s")
+    if isinstance(wait, (int, float)) and not isinstance(wait, bool) and 0 <= wait <= 3600:
+        kept["before_row_wait_s"] = wait
+    if isinstance(restart.get("before_row_seen"), bool):
+        kept["before_row_seen"] = restart["before_row_seen"]
     return kept
 
 

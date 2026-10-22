@@ -1659,5 +1659,74 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertIn("strace", (root / relative).read_text(encoding="utf-8"))
 
 
+class DenyRowWaitTests(unittest.TestCase):
+    """2D polls for the pre-restart DENIED row instead of one 0.5s look (AWS and GCP share phase2_host)."""
+
+    HOST = Path(__file__).resolve().parent / "lab-guests" / "phase2_host.py"
+
+    def _waiter(self, rows_after: int | None):
+        text = self.HOST.read_text(encoding="utf-8")
+        start = text.index("DENY_ROW_WAIT_S = ")
+        source = text[start: text.index("def _banner_ready")]
+        clock = {"now": 100.0, "calls": 0}
+
+        class FakeTime:
+            @staticmethod
+            def monotonic() -> float:
+                return clock["now"]
+
+            @staticmethod
+            def sleep(seconds: float) -> None:
+                clock["now"] += seconds
+
+        def deny_event_for(pid: int):
+            clock["calls"] += 1
+            if rows_after is not None and clock["calls"] > rows_after:
+                return {"action": "DENIED", "lineage_anchor": 6840, "pid": pid}
+            return None
+
+        namespace = {"time": FakeTime, "deny_event_for": deny_event_for}
+        exec(compile("from __future__ import annotations\n" + source, str(self.HOST), "exec"), namespace)
+        return namespace["wait_deny_event"], clock
+
+    def test_row_that_lands_late_is_seen_and_timed(self) -> None:
+        wait, clock = self._waiter(rows_after=6)
+        event, waited = wait(3612)
+        self.assertEqual(event["lineage_anchor"], 6840)
+        self.assertEqual(waited, 1.5)
+        self.assertEqual(clock["calls"], 7)
+
+    def test_row_that_never_lands_is_still_a_miss(self) -> None:
+        wait, clock = self._waiter(rows_after=None)
+        event, waited = wait(3612)
+        self.assertIsNone(event)
+        self.assertGreaterEqual(waited, 5.0)
+        self.assertLess(waited, 5.5)
+
+    def test_row_already_there_returns_at_once(self) -> None:
+        wait, clock = self._waiter(rows_after=0)
+        event, waited = wait(3612)
+        self.assertIsNotNone(event)
+        self.assertEqual(waited, 0.0)
+        self.assertEqual(clock["calls"], 1)
+
+    def test_reason_separates_missing_row_from_not_enforced(self) -> None:
+        text = self.HOST.read_text(encoding="utf-8")
+        body = text.split("def same_process_across_restart", 1)[1].split("kill_loader()", 1)[0]
+        self.assertIn("wait_deny_event(pid)", body)
+        self.assertNotIn("time.sleep(0.5)", body)
+        self.assertIn('"before_row_wait_s": row_wait_s', body)
+        # errno != 13: the open was not enforced, so the process was not enrolled.
+        not_enforced = body.index("if errno_before != 13:")
+        self.assertLess(not_enforced, body.index('"not_enrolled_before_restart"'))
+        # errno 13 with no row: still a fail, under its own name.
+        missing = body.index("if before_anchor <= 0:")
+        self.assertLess(missing, body.index('"deny_row_missing_before_restart"'))
+        self.assertLess(body.index('"deny_row_missing_before_restart"'), body.index("return body", missing))
+        self.assertEqual(body.count("return body"), 3)
+        grade_text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_grade.py").read_text(encoding="utf-8")
+        self.assertNotIn("deny_row_missing_before_restart", grade_text)
+
+
 if __name__ == "__main__":
     unittest.main()

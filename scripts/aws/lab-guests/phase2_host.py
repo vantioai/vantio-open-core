@@ -758,6 +758,26 @@ def deny_event_for(pid: int) -> dict | None:
     return None
 
 
+DENY_ROW_WAIT_S = 5.0
+DENY_ROW_POLL_S = 0.25
+
+
+def wait_deny_event(pid: int, timeout: float = DENY_ROW_WAIT_S, step: float = DENY_ROW_POLL_S) -> tuple[dict | None, float]:
+    """Poll for this pid's DENIED row. Returns the row (or None) and the seconds waited.
+
+    The ledger writer can land the row a little after the open returns.
+    Waiting longer does not change what counts: no row by the deadline is
+    still a miss.
+    """
+    began = time.monotonic()
+    while True:
+        event = deny_event_for(pid)
+        waited = round(time.monotonic() - began, 3)
+        if event is not None or waited >= timeout:
+            return event, waited
+        time.sleep(step)
+
+
 def _banner_ready(text: str) -> bool:
     """The cgroup program is pinned. Open pins print before that load.
 
@@ -1044,8 +1064,10 @@ def same_process_across_restart(adapter) -> dict:
             return body
         errno_before = int(first[1])
         pid = int(first[2])
-        time.sleep(0.5)
-        event = deny_event_for(pid)
+        if errno_before == 13:
+            event, row_wait_s = wait_deny_event(pid)
+        else:
+            event, row_wait_s = deny_event_for(pid), 0.0
         before_anchor = event["lineage_anchor"] if event else 0
         before_count = _deny_count(pid)
         body.update(
@@ -1054,10 +1076,16 @@ def same_process_across_restart(adapter) -> dict:
                 "before_errno": errno_before,
                 "before_anchor": before_anchor,
                 "before_count": before_count,
+                "before_row_wait_s": row_wait_s,
+                "before_row_seen": before_anchor > 0,
             }
         )
-        if errno_before != 13 or before_anchor <= 0:
+        if errno_before != 13:
             body["reason"] = "not_enrolled_before_restart"
+            return body
+        if before_anchor <= 0:
+            # errno 13 shows the deny was enforced; the ledger row never came.
+            body["reason"] = "deny_row_missing_before_restart"
             return body
         kill_loader()
         started = rows.start_loader(adapter)

@@ -332,6 +332,213 @@ ENUMS = {
 }
 
 
+# The guest prints "Loaded image: <tag>" from docker load of the sealed tar.
+# enterprise-rows.sh accepts the historical lab tag or an engine-commit tag.
+LOADED_IMAGE_RE = re.compile(r"vantio-phantom-engine:[0-9a-f]{7,40}")
+LOADED_LINE_RE = re.compile(r"^(?:Loaded image: |IMAGE_LINE=)(?:docker\.io/library/)?(\S+)\s*$", re.M)
+_LSM_RE = re.compile(r"[a-z0-9,]{0,120}")
+_WORD_RE = re.compile(r"[a-z0-9_]{1,40}")
+_WARNING_RE = re.compile(r"[a-z0-9_]{1,40}=[a-z0-9_]{1,60}")
+_EVENT_TIME_RE = re.compile(r"[0-9T:.+Z -]{1,40}")
+_BOOT_ID_RE = re.compile(r"[0-9a-f-]{36}")
+
+
+def engine_image(value: object) -> str:
+    """The loaded engine tag, or "" when it is not one the guest would accept."""
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if text.startswith("docker.io/library/"):
+        text = text[len("docker.io/library/"):]
+    if text == IMAGE_NAME or LOADED_IMAGE_RE.fullmatch(text):
+        return text
+    return ""
+
+
+def loaded_image_from_text(text: object) -> str:
+    """The last accepted tag the guest printed, or ""."""
+    if not isinstance(text, str):
+        return ""
+    found = ""
+    for match in LOADED_LINE_RE.finditer(text):
+        tag = engine_image(match.group(1))
+        if tag:
+            found = tag
+    return found
+
+
+def _int_in(value: object, low: int, high: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+
+
+def _seconds(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return 0 <= float(value) <= 3600
+
+
+def _allow_start_timing(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    kept: dict[str, Any] = {}
+    for key in ("banner_wait_s", "probe_done_after_banner_s", "banner_to_ledger_s", "ledger_timeout_s", "start_wait_s"):
+        item = value.get(key)
+        if item is None and key in value:
+            kept[key] = None
+        elif _seconds(item):
+            kept[key] = item
+    if _int_in(value.get("ledger_since"), 0, 10_000_000):
+        kept["ledger_since"] = value["ledger_since"]
+    if isinstance(value.get("ledger_seen"), bool):
+        kept["ledger_seen"] = value["ledger_seen"]
+    return kept
+
+
+def _allow_start_probe(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    kept: dict[str, Any] = {}
+    if _int_in(value.get("pid"), 0, 2**22):
+        kept["pid"] = value["pid"]
+    for key in ("file_errno", "net_errno"):
+        if _int_in(value.get(key), 0, 255):
+            kept[key] = value[key]
+    if _int_in(value.get("lineage_anchor"), 0, 2**32):
+        kept["lineage_anchor"] = value["lineage_anchor"]
+    if _seconds(value.get("took_s")):
+        kept["took_s"] = value["took_s"]
+    if isinstance(value.get("pass"), bool):
+        kept["pass"] = value["pass"]
+    if "file_event" in value:
+        kept["file_event"] = bool(value.get("file_event"))
+    error = value.get("error")
+    if isinstance(error, str):
+        kind = error.split(":", 1)[0].strip()
+        kept["error"] = kind if re.fullmatch(r"[A-Za-z]{1,40}", kind) else "error"
+    return kept
+
+
+def _allow_window_entry(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    name = value.get("name")
+    status = value.get("status")
+    if not isinstance(name, str) or re.fullmatch(r"[a-z0-9_-]{1,40}", name) is None:
+        return None
+    if status not in {"recorded", "delayed", "dropped", "probe_not_denied"}:
+        return None
+    kept: dict[str, Any] = {"name": name, "status": status}
+    if _int_in(value.get("pid"), 0, 2**22):
+        kept["pid"] = value["pid"]
+    if _int_in(value.get("file_errno"), 0, 255):
+        kept["file_errno"] = value["file_errno"]
+    index = value.get("row_index")
+    if index is None or _int_in(index, 0, 10_000_000):
+        kept["row_index"] = index
+    if isinstance(value.get("after_ledger_line"), bool):
+        kept["after_ledger_line"] = value["after_ledger_line"]
+    row_time = value.get("row_time")
+    if _seconds(row_time) or (isinstance(row_time, (int, float)) and not isinstance(row_time, bool) and 0 <= row_time < 2**42):
+        kept["row_time"] = row_time
+    elif isinstance(row_time, str) and _EVENT_TIME_RE.fullmatch(row_time):
+        kept["row_time"] = row_time
+    return kept
+
+
+def _allow_start_window(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    kept: dict[str, Any] = {"informational": True}
+    status = value.get("status")
+    if status in {"none_missing", "delayed", "dropped", "mixed", "error"}:
+        kept["status"] = status
+    for key in ("delayed", "dropped"):
+        if _int_in(value.get(key), 0, 1000):
+            kept[key] = value[key]
+    index = value.get("ledger_line_index")
+    if index is None or _int_in(index, 0, 10_000_000):
+        kept["ledger_line_index"] = index
+    line_time = value.get("ledger_line_time")
+    if isinstance(line_time, (int, float)) and not isinstance(line_time, bool) and 0 <= line_time < 2**42:
+        kept["ledger_line_time"] = line_time
+    elif isinstance(line_time, str) and _EVENT_TIME_RE.fullmatch(line_time):
+        kept["ledger_line_time"] = line_time
+    checked = value.get("checked")
+    if isinstance(checked, list):
+        kept["checked"] = [item for item in (_allow_window_entry(entry) for entry in checked) if item][:24]
+    error = value.get("error")
+    if isinstance(error, str):
+        kind = error.split(":", 1)[0].strip()
+        kept["error"] = kind if re.fullmatch(r"[A-Za-z]{1,40}", kind) else "error"
+    return kept
+
+
+def _allow_boot_lsm(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    kept: dict[str, Any] = {}
+    for key in ("lsm", "cmdline_lsm"):
+        item = value.get(key)
+        if isinstance(item, str) and _LSM_RE.fullmatch(item):
+            kept[key] = item
+    if isinstance(value.get("bpf_lsm_active"), bool):
+        kept["bpf_lsm_active"] = value["bpf_lsm_active"]
+    return kept
+
+
+def _allow_reassert(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    kept: dict[str, Any] = {}
+    for key in ("ok", "written"):
+        if isinstance(value.get(key), bool):
+            kept[key] = value[key]
+    reason = value.get("reason")
+    if isinstance(reason, str) and _WORD_RE.fullmatch(reason):
+        kept["reason"] = reason
+    lsm_value = value.get("lsm_value")
+    if isinstance(lsm_value, str) and _LSM_RE.fullmatch(lsm_value):
+        kept["lsm_value"] = lsm_value
+    boot = value.get("boot_id")
+    if isinstance(boot, str) and _BOOT_ID_RE.fullmatch(boot):
+        kept["boot_id"] = boot
+    return kept
+
+
+def _allow_warnings(value: object) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, str) and _WARNING_RE.fullmatch(item)][:8]
+
+
+# descendant_b1.py (#357) start-window and LSM fields. Informational; none of them gates a pass.
+START_FIELD_SANITIZERS = {
+    "start_timing": _allow_start_timing,
+    "start_probe": _allow_start_probe,
+    "start_window_rows": _allow_start_window,
+    "warnings": _allow_warnings,
+    "boot_lsm": _allow_boot_lsm,
+    "lab_lsm_reassert": _allow_reassert,
+}
+
+
+def allow_start_fields(body: object) -> dict[str, Any]:
+    """Keep the descendant-b1 start fields that pass their allowlist. A None value stays None."""
+    if not isinstance(body, dict):
+        return {}
+    kept: dict[str, Any] = {}
+    for key, clean in START_FIELD_SANITIZERS.items():
+        if key not in body:
+            continue
+        if body[key] is None:
+            kept[key] = None
+            continue
+        value = clean(body[key])
+        if value is not None:
+            kept[key] = value
+    return kept
+
+
 def _allow_capture(entry: Any) -> dict[str, Any] | None:
     """One guest result: case name, pid, anchor, path, and errno. Nothing else."""
     if not isinstance(entry, dict):
@@ -376,6 +583,14 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
         kept["not_run"] = [
             item for item in not_run if isinstance(item, str) and re.fullmatch(r"[a-z0-9_-]{1,40}", item)
         ][:16]
+    kept.update(allow_start_fields(entry))
+    image = engine_image(entry.get("image"))
+    if image:
+        kept["image"] = image
+    if _seconds(entry.get("before_row_wait_s")):
+        kept["before_row_wait_s"] = entry["before_row_wait_s"]
+    if isinstance(entry.get("before_row_seen"), bool):
+        kept["before_row_seen"] = entry["before_row_seen"]
     cases = entry.get("cases")
     if isinstance(cases, list):
         rows = []
@@ -457,7 +672,7 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 for item in value
                 if isinstance(item, str)
                 and re.fullmatch(
-                    r"[0-9]{1,20}/(seal\.oci\.tar|contract\.tar|qwen2\.5-3b-instruct-q4_k_m\.gguf|llama-b11540-bin-ubuntu-x64\.tar\.gz)",
+                    r"[0-9]{1,20}/(seal\.oci\.tar|contract\.tar|public-pin\.oci\.tar|qwen2\.5-3b-instruct-q4_k_m\.gguf|llama-b11540-bin-ubuntu-x64\.tar\.gz)",
                     item,
                 )
             ]
@@ -470,6 +685,10 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             kept["reasons"] = [
                 item for item in value if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)
             ]
+            continue
+        if key == "image":
+            if isinstance(value, str) and (value in ENUMS["image"] or engine_image(value)):
+                kept[key] = value
             continue
         if key in ENUMS:
             if isinstance(value, str) and value in ENUMS[key]:
@@ -711,8 +930,11 @@ def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
         if key == "result" and value in {"open_ok", "open_error", "probe_failed", "not_run", "pass", "fail"}:
             kept[key] = value
             continue
-        if key == "image" and value == IMAGE_NAME:
-            kept[key] = value
+        if key == "image" and engine_image(value):
+            kept[key] = engine_image(value)
+            continue
+        if key in START_FIELD_SANITIZERS:
+            kept.update(allow_start_fields({key: value}))
             continue
         if key == "boot_id" and isinstance(value, str) and re.fullmatch(r"[0-9a-f-]{36}", value):
             kept[key] = value
