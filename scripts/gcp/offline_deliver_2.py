@@ -700,12 +700,70 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
             return "held"
         return "fail"
     if mode == "2c-upgrade-rollback":
+        if _is_image_cycle(body):
+            return _image_cycle_word(body)
         if not _sample_held(body.get("deny_before")):
             return "setup_invalid"
         if _sample_held(body.get("deny_after")):
             return "held"
         return "fail"
     return "fail"
+
+
+# phase2_host.run_2c returns phase2_grade.grade_image_cycle(): steps
+# baseline/upgrade/rollback/reupgrade plus host_result and reasons. It has no
+# deny_before/deny_after, so the legacy 2C mapping above always said
+# setup_invalid (provision 39859707484). These reasons mean the cycle never
+# had both images to run; anything else the host graded is a real FAIL.
+IMAGE_CYCLE_SETUP_REASONS = frozenset(
+    {"public_pin_absent", "public_pin_digest", "seal_absent", "seal", "cycle_incomplete"}
+)
+IMAGE_CYCLE_STEPS = CYCLE_STEP_NAMES
+
+
+def _is_image_cycle(body: Mapping[str, Any]) -> bool:
+    return body.get("battery") == "2c-upgrade-rollback" and "steps" in body and "host_result" in body
+
+
+def _image_cycle_word(body: Mapping[str, Any]) -> str:
+    """Held only when the host recorded the full cycle with upgrade_pass. No pass rule is added."""
+    if body.get("host_result") == "RECORDED" and body.get("upgrade_pass") is True:
+        return "held"
+    if body.get("reason") in IMAGE_CYCLE_SETUP_REASONS:
+        return "setup_invalid"
+    return "fail"
+
+
+def _image_cycle_reasons(body: Mapping[str, Any]) -> list[str]:
+    reasons = body.get("reasons")
+    if not isinstance(reasons, list):
+        reasons = [body.get("reason")]
+    return [item for item in reasons if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)][:16]
+
+
+def _image_cycle_cases(body: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """One capture row per cycle step: enforcement errno and the host's first reason for that step."""
+    steps = body.get("steps") if isinstance(body.get("steps"), list) else []
+    reasons = _image_cycle_reasons(body)
+    rows = []
+    for step in steps:
+        if not isinstance(step, dict) or step.get("name") not in IMAGE_CYCLE_STEPS:
+            continue
+        name = step["name"]
+        mine = [item for item in reasons if item.startswith(f"{name}_")]
+        row: dict[str, Any] = {
+            "expect_deny": True,
+            "name": name,
+            "pass": not mine and step.get("file_errno") == 13 and step.get("attributed") is True,
+            "path": CEILING_PATH,
+        }
+        errno = step.get("file_errno")
+        if isinstance(errno, int) and not isinstance(errno, bool) and 0 <= errno <= 255:
+            row["file_errno"] = errno
+        if mine:
+            row["reason"] = mine[0]
+        rows.append(row)
+    return rows
 
 
 def _kill_after_held(sample: Mapping[str, Any] | None) -> bool:
@@ -989,6 +1047,28 @@ def _probe_case(name: str, result: str, sample: Mapping[str, Any] | None) -> dic
 
 def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
     body = case.get("body") if isinstance(case.get("body"), dict) else {}
+    if name == "loader-restart" and _is_image_cycle(body):
+        kept: dict[str, Any] = {
+            "cases": _image_cycle_cases(body),
+            "enforcement_drop": body.get("enforcement_drop") is True,
+            "hold": case.get("word") == "held",
+            "lineage_anchor": 0,
+            "name": name,
+            "path": CEILING_PATH,
+            "pid": 0,
+            "uid": 65534,
+        }
+        reasons = _image_cycle_reasons(body)
+        if reasons and kept["hold"] is False:
+            kept["fail_reasons"] = reasons
+        # #362: pin residue is a named finding, not a fail. Keep it either way.
+        findings = allow_cycle_findings(body.get("findings"))
+        if findings:
+            kept["findings"] = findings
+        guest_rc = case.get("rc")
+        if isinstance(guest_rc, int) and not isinstance(guest_rc, bool) and 0 <= guest_rc <= 255:
+            kept["guest_rc"] = guest_rc
+        return kept
     if name == "loader-kill":
         sample = body.get("enrolled_after") if isinstance(body.get("enrolled_after"), dict) else {}
         before = body.get("while_loader_up") if isinstance(body.get("while_loader_up"), dict) else {}

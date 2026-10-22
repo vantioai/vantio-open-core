@@ -1050,6 +1050,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "package_image": PACKAGE_IMAGE,
             "loader_kill": loader_kill,
             "loader_restart": loader_restart,
+            "loader_restart_findings": allow_cycle_findings(
+                restart["body"].get("findings") if isinstance(restart.get("body"), dict) else None
+            ),
             "debs": debs,
             "deny_attr_post_kill": post_kill_row,
             "full_set": passed,

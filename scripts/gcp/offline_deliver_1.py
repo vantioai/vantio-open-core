@@ -547,6 +547,50 @@ def allow_start_fields(body: object) -> dict[str, Any]:
     return kept
 
 
+CYCLE_STEP_NAMES = ("baseline", "upgrade", "rollback", "reupgrade")
+BPF_PROG_NAME_RE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
+BPFFS_VANTIO_RE = re.compile(r"/sys/fs/bpf/vantio[A-Za-z0-9_./-]{0,120}")
+
+
+def allow_cycle_findings(value: Any) -> list[dict[str, Any]]:
+    """Named 2C host findings (phase2_grade grade_image_cycle findings[]).
+
+    For example public_pin_leaves_bpf_residue with the census detail: bpf
+    program names and bpffs pins under /sys/fs/bpf/vantio*. Anything else is
+    dropped. A finding is carried as evidence; it never changes a grade here.
+    """
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        finding = item.get("finding")
+        step = item.get("step")
+        if not isinstance(finding, str) or re.fullmatch(r"[a-z0-9_]{1,60}", finding) is None:
+            continue
+        if step not in CYCLE_STEP_NAMES:
+            continue
+        row: dict[str, Any] = {"finding": finding, "step": step}
+        programs = item.get("loader_programs")
+        if isinstance(programs, list):
+            row["loader_programs"] = [
+                name for name in programs if isinstance(name, str) and BPF_PROG_NAME_RE.fullmatch(name)
+            ][:32]
+        paths = item.get("bpffs_vantio")
+        if isinstance(paths, list):
+            row["bpffs_vantio"] = [
+                path
+                for path in paths
+                if isinstance(path, str) and BPFFS_VANTIO_RE.fullmatch(path) and ".." not in path.split("/")
+            ][:32]
+        rc = item.get("bpftool_rc")
+        if isinstance(rc, int) and not isinstance(rc, bool) and 0 <= rc <= 255:
+            row["bpftool_rc"] = rc
+        rows.append(row)
+    return rows[:8]
+
+
 def _allow_capture(entry: Any) -> dict[str, Any] | None:
     """One guest result: case name, pid, anchor, path, and errno. Nothing else."""
     if not isinstance(entry, dict):
@@ -591,6 +635,9 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
         kept["not_run"] = [
             item for item in not_run if isinstance(item, str) and re.fullmatch(r"[a-z0-9_-]{1,40}", item)
         ][:16]
+    findings = allow_cycle_findings(entry.get("findings"))
+    if findings:
+        kept["findings"] = findings
     kept.update(allow_start_fields(entry))
     image = engine_image(entry.get("image"))
     if image:
@@ -813,6 +860,9 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key in {"loader_kill", "loader_restart"} and value in {"held", "fail", "infra_retry", "setup_invalid"}:
             kept[key] = value
+            continue
+        if key == "loader_restart_findings" and isinstance(value, list):
+            kept[key] = allow_cycle_findings(value)
             continue
         if key == "cases" and isinstance(value, list):
             rows = []
