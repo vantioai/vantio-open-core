@@ -736,6 +736,31 @@ def anchor_before_first_open() -> tuple[int, dict]:
     return anchor, facts
 
 
+def _deny_rows(pid: int) -> list[dict]:
+    """This pid's DENIED rows for the ceiling path that carry an anchor, oldest first."""
+    path = str(rows.DENY)
+    out = []
+    for item in events():
+        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
+            continue
+        attempted = item.get("PathAttempted") or item.get("Payload")
+        if attempted != path:
+            continue
+        anchor = item.get("lineage_anchor")
+        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
+            continue
+        out.append(
+            {
+                "action": "DENIED",
+                "lineage_anchor": anchor,
+                "path": path,
+                "pid": pid,
+                "uid": item.get("Uid"),
+            }
+        )
+    return out
+
+
 def deny_event_for(pid: int) -> dict | None:
     """The DENIED ledger row for this open. A row for some other pid does not count."""
     path = str(rows.DENY)
@@ -778,6 +803,29 @@ def wait_deny_event(pid: int, timeout: float = DENY_ROW_WAIT_S, step: float = DE
         waited = round(time.monotonic() - began, 3)
         if event is not None or waited >= timeout:
             return event, waited
+        time.sleep(step)
+
+
+def wait_new_deny_event(
+    pid: int, before_count: int, poll: bool, timeout: float = DENY_ROW_WAIT_S, step: float = DENY_ROW_POLL_S
+) -> tuple[dict | None, float, int]:
+    """Wait for a DENIED row for this pid past the first before_count rows.
+
+    The pid is the same before and after the restart, so the pre-restart row
+    is still in the ledger; only a row past it is the after-restart deny.
+    Returns (that new row or None, seconds waited, row count at the end).
+    poll=False keeps the old single look after 0.5s (the open was not denied).
+    """
+    began = time.monotonic()
+    if not poll:
+        time.sleep(0.5)
+    while True:
+        found = _deny_rows(pid)
+        waited = round(time.monotonic() - began, 3) if poll else 0.0
+        if len(found) > before_count:
+            return found[before_count], waited, len(found)
+        if not poll or waited >= timeout:
+            return None, waited, len(found)
         time.sleep(step)
 
 
@@ -1036,19 +1084,7 @@ def stamp_deny(sample: dict) -> dict:
 
 def _deny_count(pid: int) -> int:
     """DENIED rows for this pid and the ceiling path that carry an anchor."""
-    path = str(rows.DENY)
-    count = 0
-    for item in events():
-        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
-            continue
-        attempted = item.get("PathAttempted") or item.get("Payload")
-        if attempted != path:
-            continue
-        anchor = item.get("lineage_anchor")
-        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
-            continue
-        count += 1
-    return count
+    return len(_deny_rows(pid))
 
 
 def same_process_across_restart(adapter) -> dict:
@@ -1130,11 +1166,11 @@ def same_process_across_restart(adapter) -> dict:
             body["detail"] = " ".join(second)
             return body
         errno_after = int(second[1])
-        # Same poll as before the restart. A row that never comes is still
-        # after_anchor 0, which restart_keeps_the_same_anchor fails.
-        after, after_wait_s = row_wait(pid, errno_after)
+        # Only a row past the pre-restart ones counts (same pid, so the old row
+        # is still there). No new row leaves after_anchor 0 and after_count ==
+        # before_count, which restart_keeps_the_same_anchor fails.
+        after, after_wait_s, after_count = wait_new_deny_event(pid, before_count, poll=errno_after == 13)
         after_anchor = after["lineage_anchor"] if after else 0
-        after_count = _deny_count(pid)
         body.update(
             {
                 "after_errno": errno_after,

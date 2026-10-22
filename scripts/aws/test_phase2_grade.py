@@ -1769,7 +1769,9 @@ class DenyRowWaitTests(unittest.TestCase):
         text = self.HOST.read_text(encoding="utf-8")
         body = text.split("def same_process_across_restart", 1)[1].split("\ndef ", 1)[0]
         after = body[body.index("errno_after = int(second[1])"):]
-        self.assertIn("row_wait(pid, errno_after)", after)
+        self.assertIn("wait_new_deny_event(pid, before_count, poll=errno_after == 13)", after)
+        self.assertNotIn("deny_event_for(", after)
+        self.assertNotIn("_deny_count(", after)
         self.assertNotIn("time.sleep(0.5)", after)
         self.assertIn('"after_row_wait_s": after_wait_s', after)
         self.assertIn('"after_row_seen": after_anchor > 0', after)
@@ -1784,6 +1786,128 @@ class DenyRowWaitTests(unittest.TestCase):
         text = self.HOST.read_text(encoding="utf-8")
         run = text.split("def run_2d() -> dict:", 1)[1].split("\ndef ", 1)[0]
         self.assertEqual(run.count('list(carried.get("warnings") or [])'), 4)
+
+
+class AfterRestartNewRowTests(unittest.TestCase):
+    """After the restart the pid is the same, so the pre-restart row is still in the ledger.
+
+    Only a row past it counts as the after-restart deny.
+    """
+
+    HOST = Path(__file__).resolve().parent / "lab-guests" / "phase2_host.py"
+    DENY = "/opt/vantio-lab/ceiling/deny.txt"
+
+    def _row(self, pid: int, anchor: int) -> dict:
+        return {"Pid": pid, "ActionTaken": "DENIED", "PathAttempted": self.DENY, "lineage_anchor": anchor, "Uid": 65534}
+
+    def _host(self, ledger: list, new_rows: list, after_reads: int | None):
+        """Exec the real _deny_rows .. late-row helpers over a fake ledger and clock.
+
+        new_rows are appended to the ledger once events() has been read more
+        than after_reads times (None: never).
+        """
+        text = self.HOST.read_text(encoding="utf-8")
+        source = text[text.index("def _deny_rows"): text.index("def _banner_ready")]
+        clock = {"now": 100.0, "reads": 0}
+
+        class FakeTime:
+            @staticmethod
+            def monotonic() -> float:
+                return clock["now"]
+
+            @staticmethod
+            def sleep(seconds: float) -> None:
+                clock["now"] += seconds
+
+        def events() -> list:
+            clock["reads"] += 1
+            if after_reads is not None and clock["reads"] > after_reads and new_rows:
+                ledger.extend(new_rows)
+                new_rows.clear()
+            return list(ledger)
+
+        self.stderr = io.StringIO()
+        namespace = {
+            "time": FakeTime,
+            "events": events,
+            "rows": types.SimpleNamespace(DENY=Path(self.DENY)),
+            "sys": types.SimpleNamespace(stderr=self.stderr),
+        }
+        exec(compile("from __future__ import annotations\n" + source, str(self.HOST), "exec"), namespace)
+        return namespace, clock
+
+    def _after_body(self, ns, pid: int, before_anchor: int, before_count: int, errno_after: int = 13) -> dict:
+        after, wait_s, after_count = ns["wait_new_deny_event"](pid, before_count, poll=errno_after == 13)
+        after_anchor = after["lineage_anchor"] if after else 0
+        body = {
+            "before_row_seen": True,
+            "before_row_wait_s": 0.0,
+            "after_anchor": after_anchor,
+            "after_count": after_count,
+            "after_row_wait_s": wait_s,
+            "after_row_seen": after_anchor > 0,
+        }
+        ns["_note_late_rows"](body)
+        body.update(
+            grade.restart_keeps_the_same_anchor(
+                pid=pid,
+                before_errno=13,
+                before_anchor=before_anchor,
+                after_errno=errno_after,
+                after_anchor=after_anchor,
+                before_count=before_count,
+                after_count=after_count,
+            )
+        )
+        return body
+
+    def test_pre_restart_row_alone_is_not_the_after_row(self) -> None:
+        ns, _ = self._host([self._row(3612, 6840)], [], None)
+        self.assertEqual(ns["deny_event_for"](3612)["lineage_anchor"], 6840)
+        before_count = len(ns["_deny_rows"](3612))
+        body = self._after_body(ns, 3612, 6840, before_count)
+        self.assertIs(body["after_row_seen"], False)
+        self.assertEqual(body["after_anchor"], 0)
+        self.assertEqual(body["after_count"], 1)
+        self.assertGreaterEqual(body["after_row_wait_s"], 5.0)
+        self.assertNotIn("warnings", body)
+        self.assertFalse(body["held"])
+
+    def test_new_row_that_lands_late_is_used_timed_and_flagged(self) -> None:
+        # Old row stays; another pid's row and an unanchored row do not count.
+        ledger = [self._row(3612, 6840), self._row(4000, 6840), dict(self._row(3612, 0))]
+        ns, clock = self._host(ledger, [self._row(3612, 6840)], after_reads=4)
+        body = self._after_body(ns, 3612, 6840, 1)
+        self.assertIs(body["after_row_seen"], True)
+        self.assertEqual(body["after_anchor"], 6840)
+        self.assertEqual(body["after_count"], 2)
+        self.assertEqual(body["after_row_wait_s"], 1.0)
+        self.assertEqual(body["warnings"], ["late_deny_row_after_restart"])
+        self.assertIn("WARNING late_deny_row_after_restart wait_s=1.0", self.stderr.getvalue())
+        self.assertTrue(body["held"])
+
+    def test_new_row_in_time_is_not_flagged(self) -> None:
+        for reads, waited in ((1, 0.25), (2, 0.5)):
+            with self.subTest(waited=waited):
+                ns, _ = self._host([self._row(3612, 6840)], [self._row(3612, 6840)], after_reads=reads)
+                body = self._after_body(ns, 3612, 6840, 1)
+                self.assertEqual(body["after_row_wait_s"], waited)
+                self.assertNotIn("warnings", body)
+                self.assertTrue(body["held"])
+
+    def test_new_row_with_another_anchor_still_fails(self) -> None:
+        ns, _ = self._host([self._row(3612, 6840)], [self._row(3612, 7001)], after_reads=1)
+        body = self._after_body(ns, 3612, 6840, 1)
+        self.assertEqual(body["after_anchor"], 7001)
+        self.assertFalse(body["held"])
+
+    def test_not_denied_after_restart_keeps_the_single_half_second_look(self) -> None:
+        ns, clock = self._host([self._row(3612, 6840)], [], None)
+        after, waited, count = ns["wait_new_deny_event"](3612, 1, poll=False)
+        self.assertIsNone(after)
+        self.assertEqual((waited, count), (0.0, 1))
+        self.assertEqual(clock["now"], 100.5)
+        self.assertEqual(clock["reads"], 1)
 
 
 if __name__ == "__main__":
