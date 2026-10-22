@@ -196,7 +196,14 @@ class Phase2GradeTests(unittest.TestCase):
                 "file_errno": errno,
                 "image_id": image,
                 "name": name,
-                "uninstall": {"tail": "UNINSTALL_VERIFIED\n", "verified_removed": True},
+                "uninstall": {
+                    "bpffs_vantio": [],
+                    "bpftool_rc": 0,
+                    "docker_containers": "",
+                    "loader_programs": [],
+                    "tail": "UNINSTALL_VERIFIED\n",
+                    "verified_removed": True,
+                },
             }
 
         held = grade.grade_image_cycle(
@@ -2155,7 +2162,15 @@ class PublicPinCycleTests(unittest.TestCase):
         }
 
     def _cycle(self, pin_uninstall: dict, seal_uninstall: dict | None = None) -> dict:
-        seal_uninstall = seal_uninstall or {"contract": grade.SEAL_UNINSTALL, "tail": "UNINSTALL_VERIFIED\n", "verified_removed": True}
+        seal_uninstall = seal_uninstall or {
+            "bpffs_vantio": [],
+            "bpftool_rc": 0,
+            "contract": grade.SEAL_UNINSTALL,
+            "docker_containers": "",
+            "loader_programs": [],
+            "tail": "UNINSTALL_VERIFIED\n",
+            "verified_removed": True,
+        }
         return grade.grade_image_cycle(
             [
                 self._step(name, uninstall=pin_uninstall if name in grade.PIN_STEPS else seal_uninstall)
@@ -2177,7 +2192,8 @@ class PublicPinCycleTests(unittest.TestCase):
         self.assertEqual(held["host_result"], "RECORDED")
         self.assertTrue(held["upgrade_pass"])
 
-    def test_programs_left_after_the_pin_uninstall_still_fail(self) -> None:
+    def test_pin_removal_without_a_readable_census_still_fails(self) -> None:
+        # No census detail means the residue cannot be named, so it is not a finding.
         left = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "Detached cleanly.\n", "verified_removed": False}
         failed = self._cycle(left)
         self.assertEqual(failed["host_result"], "FAIL")
@@ -2283,6 +2299,265 @@ class PublicPinCycleTests(unittest.TestCase):
         self.assertIn("_public_pin_banner_ready if public_pin else _banner_ready", prepare)
         pin_ready = text.split("def _public_pin_banner_ready", 1)[1].split("\ndef ", 1)[0]
         self.assertIn("grade.public_pin_banner_ready", pin_ready)
+
+
+class PublicPinResidueScopeTests(unittest.TestCase):
+    """2C customer path: pin residue is a named finding; the seal uninstall must leave the host fully clean."""
+
+    PIN_IMAGE = "sha256:" + "a" * 64
+    SEAL_IMAGE = "sha256:" + "b" * 64
+    PIN_TAIL = "Detached cleanly. Pinned maps remain at /sys/fs/bpf\n"
+    PIN_PROGRAMS = ["cgroup_skb_egress_enforce", "tc_enforce"]
+    PIN_PATHS = ["/sys/fs/bpf/vantio_deny_attr", "/sys/fs/bpf/vantio_enrolled_cgroups"]
+
+    def _clean(self, contract: str, tail: str) -> dict:
+        return {
+            "bpffs_vantio": [],
+            "bpftool_rc": 0,
+            "contract": contract,
+            "docker_containers": "",
+            "loader_programs": [],
+            "tail": tail,
+            "verified_removed": True,
+        }
+
+    def _seal_clean(self) -> dict:
+        return self._clean(grade.SEAL_UNINSTALL, "UNINSTALL_VERIFIED\n")
+
+    def _pin_residue(self) -> dict:
+        body = self._clean(grade.PUBLIC_PIN_UNINSTALL, self.PIN_TAIL)
+        body["loader_programs"] = list(self.PIN_PROGRAMS)
+        body["bpffs_vantio"] = list(self.PIN_PATHS)
+        body["verified_removed"] = False
+        return body
+
+    def _step(self, name: str, uninstall: dict, **over) -> dict:
+        pin = name in grade.PIN_STEPS
+        step = {
+            "archive_sha256": grade.PUBLIC_INSTALLER_PIN if pin else grade.WORKING_SEAL,
+            "attributed": True,
+            "file_errno": 13,
+            "image_id": self.PIN_IMAGE if pin else self.SEAL_IMAGE,
+            "name": name,
+            "uninstall": uninstall,
+        }
+        step.update(over)
+        return step
+
+    def _cycle(self, *, pin: dict | None = None, seal: dict | None = None, over: dict | None = None) -> dict:
+        over = over or {}
+        steps = []
+        for name in grade.CYCLE_STEPS:
+            if name in grade.PIN_STEPS:
+                uninstall = dict(pin if pin is not None else self._pin_residue())
+            else:
+                uninstall = dict(seal if seal is not None else self._seal_clean())
+            steps.append(self._step(name, uninstall, **over.get(name, {})))
+        return grade.grade_image_cycle(steps)
+
+    def test_pin_residue_is_a_named_finding_not_a_fail(self) -> None:
+        held = self._cycle()
+        self.assertEqual(held["host_result"], "RECORDED")
+        self.assertEqual(held["action"], "RECORDED")
+        self.assertEqual(held["reason"], "upgrade_rollback_reupgrade")
+        self.assertTrue(held["upgrade_pass"])
+        self.assertFalse(held["lab_pass"])
+        self.assertFalse(held["customer_claim"])
+        self.assertNotIn("reasons", held)
+        findings = held["findings"]
+        self.assertEqual([item["step"] for item in findings], ["baseline", "rollback"])
+        for item in findings:
+            self.assertEqual(item["finding"], grade.PUBLIC_PIN_RESIDUE_FINDING)
+            self.assertEqual(item["finding"], "public_pin_leaves_bpf_residue")
+            self.assertEqual(item["loader_programs"], self.PIN_PROGRAMS)
+            self.assertEqual(item["bpffs_vantio"], self.PIN_PATHS)
+            self.assertEqual(item["bpftool_rc"], 0)
+            self.assertEqual(item["docker_containers"], "")
+        # Only programs left, or only pins left, are both recorded.
+        only_programs = self._pin_residue()
+        only_programs["bpffs_vantio"] = []
+        self.assertEqual(self._cycle(pin=only_programs)["host_result"], "RECORDED")
+        only_pins = self._pin_residue()
+        only_pins["loader_programs"] = []
+        self.assertEqual(self._cycle(pin=only_pins)["host_result"], "RECORDED")
+
+    def test_a_clean_pin_removal_records_no_finding(self) -> None:
+        held = self._cycle(pin=self._clean(grade.PUBLIC_PIN_UNINSTALL, self.PIN_TAIL))
+        self.assertEqual(held["host_result"], "RECORDED")
+        self.assertEqual(held["findings"], [])
+
+    def test_seal_uninstall_leaving_any_residue_fails(self) -> None:
+        cases = {
+            "pin_programs_left": {"loader_programs": ["cgroup_skb_egre"], "verified_removed": False},
+            "pin_maps_left": {"bpffs_vantio": ["/sys/fs/bpf/vantio_deny_attr"], "verified_removed": False},
+            "container_left": {"docker_containers": "abc123", "verified_removed": False},
+            "bpftool_failed": {"bpftool_rc": 1, "verified_removed": False},
+            "find_failed": {"bpffs_vantio": ["find_failed"], "verified_removed": False},
+            # A census that claims clean but lists residue is still not clean.
+            "claims_clean_with_programs": {"loader_programs": ["tc_enforce"]},
+            "claims_clean_with_pins": {"bpffs_vantio": ["/sys/fs/bpf/vantio_enrolled_cgroups"]},
+            "claims_clean_with_container": {"docker_containers": "abc123"},
+            "claims_clean_with_bpftool_failed": {"bpftool_rc": 1},
+            "census_fields_missing": {"loader_programs": None, "bpffs_vantio": None},
+            "no_attestation": {"tail": "Detached cleanly.\n"},
+        }
+        for label, change in cases.items():
+            for target in ("upgrade", "reupgrade"):
+                with self.subTest(case=label, step=target):
+                    seal = self._seal_clean()
+                    seal.update(change)
+                    steps = []
+                    for name in grade.CYCLE_STEPS:
+                        if name in grade.PIN_STEPS:
+                            uninstall = self._pin_residue()
+                        elif name == target:
+                            uninstall = seal
+                        else:
+                            uninstall = self._seal_clean()
+                        steps.append(self._step(name, uninstall))
+                    failed = grade.grade_image_cycle(steps)
+                    self.assertEqual(failed["host_result"], "FAIL")
+                    self.assertEqual(failed["action"], "FAIL")
+                    self.assertFalse(failed["upgrade_pass"])
+                    self.assertIn(f"{target}_uninstall", failed["reasons"])
+
+    def test_seal_steps_cannot_use_the_residue_finding(self) -> None:
+        # The pin's residue contract on a seal step is never a finding.
+        failed = self._cycle(seal=self._pin_residue())
+        self.assertEqual(failed["host_result"], "FAIL")
+        self.assertEqual(failed["reason"], "upgrade_uninstall")
+        self.assertIn("reupgrade_uninstall", failed["reasons"])
+        self.assertTrue(all(item["step"] in grade.PIN_STEPS for item in failed["findings"]))
+        self.assertEqual(grade.public_pin_residue(self._seal_clean()), None)
+
+    def test_residue_needs_the_pin_contract_and_its_shutdown_line(self) -> None:
+        self.assertIsNotNone(grade.public_pin_residue(self._pin_residue()))
+        silent = self._pin_residue()
+        silent["tail"] = "UNINSTALL_VERIFIED\n"
+        self.assertIsNone(grade.public_pin_residue(silent))
+        other = self._pin_residue()
+        other["contract"] = grade.SEAL_UNINSTALL
+        self.assertIsNone(grade.public_pin_residue(other))
+        self.assertIsNone(grade.public_pin_residue(self._clean(grade.PUBLIC_PIN_UNINSTALL, self.PIN_TAIL)))
+
+    def test_pin_residue_that_is_not_readable_still_fails(self) -> None:
+        cases = {
+            "no_detached_line": {"tail": "Phantom Engine active\n"},
+            "bpftool_failed": {"bpftool_rc": 1},
+            "container_left": {"docker_containers": "abc123"},
+            "find_failed": {"bpffs_vantio": ["find_failed"]},
+            "programs_unreadable": {"loader_programs": None},
+            "pins_unreadable": {"bpffs_vantio": "vantio"},
+            "wrong_contract": {"contract": grade.SEAL_UNINSTALL},
+        }
+        for label, change in cases.items():
+            with self.subTest(case=label):
+                pin = self._pin_residue()
+                pin.update(change)
+                failed = self._cycle(pin=pin)
+                self.assertEqual(failed["host_result"], "FAIL")
+                self.assertEqual(failed["reason"], "baseline_uninstall")
+                self.assertIn("rollback_uninstall", failed["reasons"])
+                self.assertFalse(failed["upgrade_pass"])
+                self.assertEqual(failed["findings"], [])
+
+    def test_pin_failing_to_start_or_enforce_still_fails(self) -> None:
+        cases = {
+            "allowed": {"file_errno": 0, "attributed": False},
+            "not_started": {"file_errno": None, "attributed": False, "setup_error": "public pin banner missing"},
+            "unattributed": {"file_errno": 13, "attributed": False},
+            "other_errno": {"file_errno": 1, "attributed": True},
+        }
+        for label, change in cases.items():
+            for target in grade.PIN_STEPS:
+                with self.subTest(case=label, step=target):
+                    failed = self._cycle(over={target: change})
+                    self.assertEqual(failed["host_result"], "FAIL")
+                    self.assertFalse(failed["upgrade_pass"])
+                    self.assertIn(f"{target}_enforcement", failed["reasons"])
+        # The pin's own banner rule is unchanged.
+        banner = (
+            "[ \u2205 VANTIO ] Phantom Engine active\n"
+            "  tc enforce : SCOPED (drop enrolled)\n"
+            "  cgroup_skb : egress enforce ON\n"
+        )
+        self.assertTrue(grade.public_pin_banner_ready(banner))
+        self.assertFalse(grade.public_pin_banner_ready(banner.replace("SCOPED", "MONITOR")))
+        self.assertFalse(grade.public_pin_banner_ready(banner.replace("egress enforce ON", "off")))
+
+    def test_seal_failing_to_enforce_still_fails(self) -> None:
+        for target in ("upgrade", "reupgrade"):
+            with self.subTest(step=target):
+                failed = self._cycle(over={target: {"file_errno": 0, "attributed": False}})
+                self.assertEqual(failed["host_result"], "FAIL")
+                self.assertIn(f"{target}_enforcement", failed["reasons"])
+
+    def test_digest_image_and_cycle_checks_are_unchanged(self) -> None:
+        for target in grade.CYCLE_STEPS:
+            with self.subTest(step=target):
+                failed = self._cycle(over={target: {"archive_sha256": "0" * 64}})
+                self.assertEqual(failed["host_result"], "FAIL")
+                self.assertIn(f"{target}_digest", failed["reasons"])
+                bad_image = self._cycle(over={target: {"image_id": "sha256:short"}})
+                self.assertIn(f"{target}_image", bad_image["reasons"])
+        swapped = self._cycle(over={"upgrade": {"archive_sha256": grade.PUBLIC_INSTALLER_PIN}})
+        self.assertIn("upgrade_digest", swapped["reasons"])
+        same = self._cycle(over={name: {"image_id": self.PIN_IMAGE} for name in grade.CYCLE_STEPS})
+        self.assertIn("image_identity", same["reasons"])
+        self.assertFalse(same["upgrade_pass"])
+        short = grade.grade_image_cycle([self._step("baseline", self._pin_residue())])
+        self.assertEqual(short["reason"], "cycle_incomplete")
+        self.assertFalse(short["upgrade_pass"])
+        self.assertEqual(grade.PUBLIC_INSTALLER_PIN, grade.PUBLIC_INSTALLER_PIN.lower())
+        self.assertEqual(len(grade.WORKING_SEAL), 64)
+
+    def test_verdict_only_passes_a_recorded_cycle(self) -> None:
+        import w3_lab_steps
+
+        held = self._cycle()
+        self.assertTrue(w3_lab_steps.phase_battery_verdict("2c-upgrade-rollback", held)["pass"])
+        seal = self._seal_clean()
+        seal["loader_programs"] = ["tc_enforce"]
+        seal["verified_removed"] = False
+        failed = self._cycle(seal=seal)
+        verdict = w3_lab_steps.phase_battery_verdict("2c-upgrade-rollback", failed)
+        self.assertFalse(verdict["pass"])
+        self.assertEqual(verdict["reason"], "battery_fail")
+
+    def test_cycle_step_carries_the_full_census(self) -> None:
+        text = _host_text()
+        source = text[text.index("def _cycle_step"): text.index("\ndef run_2c")]
+        census = {
+            "bpffs_vantio": list(self.PIN_PATHS),
+            "bpftool_rc": 0,
+            "contract": grade.PUBLIC_PIN_UNINSTALL,
+            "docker_containers": "",
+            "loader_programs": list(self.PIN_PROGRAMS),
+            "tail": self.PIN_TAIL,
+            "verified_removed": False,
+        }
+        ns = {
+            "grade": grade,
+            "_measure_loaded": lambda ref, *, public_pin=False: {
+                "attributed": True, "file_errno": 13, "image_id": self.PIN_IMAGE, "policy_digest": "", "setup_error": ""
+            },
+            "_public_pin_uninstall": lambda: dict(census),
+            "_product_uninstall": lambda ref: {},
+        }
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        step = ns["_cycle_step"]("baseline", "pin:img", grade.PUBLIC_INSTALLER_PIN)
+        for key in ("bpffs_vantio", "bpftool_rc", "docker_containers", "loader_programs", "tail"):
+            self.assertEqual(step["uninstall"][key], census[key])
+        self.assertIsNotNone(grade.public_pin_residue(step["uninstall"]))
+        # A seal uninstall that returned no census is never clean.
+        empty = ns["_cycle_step"]("upgrade", "seal:img", grade.WORKING_SEAL)
+        self.assertFalse(grade.census_fully_clean(empty["uninstall"]))
+
+    def test_harness_still_never_detaches_or_unlinks(self) -> None:
+        text = _host_text()
+        run = text[text.index("def _stop_lab_containers"): text.index("\ndef run_2d")]
+        for write in (".unlink(", "bpftool prog detach", "cgroup detach", "rmdir", '"detach"'):
+            self.assertNotIn(write, run)
 
 
 if __name__ == "__main__":

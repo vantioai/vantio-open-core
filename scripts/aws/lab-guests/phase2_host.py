@@ -1502,7 +1502,9 @@ def _cycle_step(name: str, ref: str, archive_sha256: str) -> dict:
         "setup_error": measured["setup_error"],
         "uninstall": {
             "bpffs_vantio": uninstall.get("bpffs_vantio"),
+            "bpftool_rc": uninstall.get("bpftool_rc"),
             "contract": uninstall.get("contract", ""),
+            "docker_containers": uninstall.get("docker_containers"),
             "loader_programs": uninstall.get("loader_programs"),
             "reason": uninstall.get("reason", ""),
             "tail": uninstall.get("tail", ""),
