@@ -27,7 +27,12 @@ apt-get install -y --download-only --no-install-recommends \
   linux-tools-6.8.0-1069-gcp linux-gcp-tools-6.8.0-1069 \
   linux-tools-6.8.0-1070-gcp linux-gcp-tools-6.8.0-1070
 rm -f /var/cache/apt/archives/ca-certificates_*.deb
-( cd /var/cache/apt/archives && apt-get download ca-certificates )
+# The runner image installed ca-certificates from the live archive, which can
+# be newer than the snapshot. Download the snapshot's own version explicitly;
+# madison lists only repository versions, highest first.
+ca_version=$(apt-cache madison ca-certificates | awk -F'|' 'NR==1 {gsub(/ /, "", $2); print $2}')
+test -n "$ca_version"
+( cd /var/cache/apt/archives && apt-get download "ca-certificates=${ca_version}" )
 cp /var/cache/apt/archives/*.deb /out/
 cp /etc/ssl/certs/ca-certificates.crt /out/ca-certificates.crt
 EOS
