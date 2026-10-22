@@ -462,9 +462,12 @@ def census_fully_clean(uninstall: dict[str, Any]) -> bool:
 
     Missing fields are not clean. This is the bar for the seal's uninstall.
     """
+    rc = uninstall.get("bpftool_rc")
     return (
         uninstall.get("verified_removed") is True
-        and uninstall.get("bpftool_rc") == 0
+        and uninstall.get("docker_ps_failed") is not True
+        and type(rc) is int
+        and rc == 0
         and uninstall.get("loader_programs") == []
         and uninstall.get("bpffs_vantio") == []
         and uninstall.get("docker_containers") == ""
@@ -491,7 +494,10 @@ def public_pin_residue(uninstall: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if "find_failed" in paths:
         return None
-    if uninstall.get("bpftool_rc") != 0 or uninstall.get("docker_containers") != "":
+    rc = uninstall.get("bpftool_rc")
+    if type(rc) is not int or rc != 0 or uninstall.get("docker_containers") != "":
+        return None
+    if uninstall.get("docker_ps_failed") is True:
         return None
     if not programs and not paths:
         return None
@@ -556,7 +562,7 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
             residue = public_pin_residue(uninstall)
             if residue is not None and attested:
                 body["findings"].append({"finding": PUBLIC_PIN_RESIDUE_FINDING, "step": name, **residue})
-            elif uninstall.get("verified_removed") is not True or not attested:
+            elif not attested or not census_fully_clean(uninstall):
                 reasons.append(f"{name}_uninstall")
         elif not attested or not census_fully_clean(uninstall):
             reasons.append(f"{name}_uninstall")

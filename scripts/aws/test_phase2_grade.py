@@ -2187,7 +2187,15 @@ class PublicPinCycleTests(unittest.TestCase):
         self.assertFalse(grade.enforce_banner_ready(self.PIN_BANNER))
 
     def test_pin_sigint_with_a_clean_census_records(self) -> None:
-        clean = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "Detached cleanly. Pinned maps remain at /sys/fs/bpf\n", "verified_removed": True}
+        clean = {
+            "bpffs_vantio": [],
+            "bpftool_rc": 0,
+            "contract": grade.PUBLIC_PIN_UNINSTALL,
+            "docker_containers": "",
+            "loader_programs": [],
+            "tail": "Detached cleanly. Pinned maps remain at /sys/fs/bpf\n",
+            "verified_removed": True,
+        }
         held = self._cycle(clean)
         self.assertEqual(held["host_result"], "RECORDED")
         self.assertTrue(held["upgrade_pass"])
@@ -2206,7 +2214,15 @@ class PublicPinCycleTests(unittest.TestCase):
         self.assertEqual(self._cycle(silent)["reason"], "baseline_uninstall")
 
     def test_seal_steps_cannot_claim_the_pin_contract(self) -> None:
-        clean = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "Detached cleanly.\n", "verified_removed": True}
+        clean = {
+            "bpffs_vantio": [],
+            "bpftool_rc": 0,
+            "contract": grade.PUBLIC_PIN_UNINSTALL,
+            "docker_containers": "",
+            "loader_programs": [],
+            "tail": "Detached cleanly.\n",
+            "verified_removed": True,
+        }
         failed = self._cycle(clean, seal_uninstall=dict(clean))
         self.assertEqual(failed["reason"], "upgrade_uninstall")
         self.assertIn("reupgrade_uninstall", failed["reasons"])
@@ -2549,9 +2565,185 @@ class PublicPinResidueScopeTests(unittest.TestCase):
         for key in ("bpffs_vantio", "bpftool_rc", "docker_containers", "loader_programs", "tail"):
             self.assertEqual(step["uninstall"][key], census[key])
         self.assertIsNotNone(grade.public_pin_residue(step["uninstall"]))
+        self.assertIs(step["uninstall"]["docker_ps_failed"], None)
         # A seal uninstall that returned no census is never clean.
         empty = ns["_cycle_step"]("upgrade", "seal:img", grade.WORKING_SEAL)
         self.assertFalse(grade.census_fully_clean(empty["uninstall"]))
+
+    def test_cycle_step_carries_a_left_container(self) -> None:
+        text = _host_text()
+        source = text[text.index("def _cycle_step"): text.index("\ndef run_2c")]
+        pin_census = {
+            "bpffs_vantio": list(self.PIN_PATHS),
+            "bpftool_rc": 0,
+            "contract": grade.PUBLIC_PIN_UNINSTALL,
+            "docker_containers": "deadbeef0001",
+            "docker_ps_failed": False,
+            "loader_programs": list(self.PIN_PROGRAMS),
+            "tail": self.PIN_TAIL,
+            "verified_removed": False,
+        }
+        seal_census = dict(self._seal_clean(), docker_containers="deadbeef0002", docker_ps_failed=False, verified_removed=True)
+        ns = {
+            "grade": grade,
+            "_measure_loaded": lambda ref, *, public_pin=False: {
+                "attributed": True,
+                "file_errno": 13,
+                "image_id": self.PIN_IMAGE if public_pin else self.SEAL_IMAGE,
+                "policy_digest": "",
+                "setup_error": "",
+            },
+            "_public_pin_uninstall": lambda: dict(pin_census),
+            "_product_uninstall": lambda ref: dict(seal_census),
+        }
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        pin_step = ns["_cycle_step"]("baseline", "pin:img", grade.PUBLIC_INSTALLER_PIN)
+        seal_step = ns["_cycle_step"]("upgrade", "seal:img", grade.WORKING_SEAL)
+        self.assertEqual(pin_step["uninstall"]["docker_containers"], "deadbeef0001")
+        self.assertEqual(seal_step["uninstall"]["docker_containers"], "deadbeef0002")
+        # A container left is not pin residue, and not a clean seal census.
+        self.assertIsNone(grade.public_pin_residue(pin_step["uninstall"]))
+        self.assertFalse(grade.census_fully_clean(seal_step["uninstall"]))
+        steps = [
+            pin_step,
+            seal_step,
+            ns["_cycle_step"]("rollback", "pin:img", grade.PUBLIC_INSTALLER_PIN),
+            ns["_cycle_step"]("reupgrade", "seal:img", grade.WORKING_SEAL),
+        ]
+        failed = grade.grade_image_cycle(steps)
+        self.assertEqual(failed["host_result"], "FAIL")
+        self.assertFalse(failed["upgrade_pass"])
+        for name in grade.CYCLE_STEPS:
+            self.assertIn(f"{name}_uninstall", failed["reasons"])
+        self.assertEqual(failed["findings"], [])
+
+    def test_forged_seal_step_with_both_lines_and_residue_fails(self) -> None:
+        forged = self._pin_residue()
+        forged["tail"] = "Detached cleanly. Pinned maps remain\nUNINSTALL_VERIFIED\n"
+        for contract in (grade.PUBLIC_PIN_UNINSTALL, grade.SEAL_UNINSTALL):
+            for target in ("upgrade", "reupgrade"):
+                with self.subTest(contract=contract, step=target):
+                    seal = dict(forged, contract=contract)
+                    steps = []
+                    for name in grade.CYCLE_STEPS:
+                        if name in grade.PIN_STEPS:
+                            uninstall = self._pin_residue()
+                        elif name == target:
+                            uninstall = seal
+                        else:
+                            uninstall = self._seal_clean()
+                        steps.append(self._step(name, uninstall))
+                    failed = grade.grade_image_cycle(steps)
+                    self.assertEqual(failed["host_result"], "FAIL")
+                    self.assertFalse(failed["upgrade_pass"])
+                    self.assertIn(f"{target}_uninstall", failed["reasons"])
+                    self.assertTrue(all(item["step"] in grade.PIN_STEPS for item in failed["findings"]))
+                    # verified_removed=True on the forged step does not help either.
+                    steps[grade.CYCLE_STEPS.index(target)]["uninstall"]["verified_removed"] = True
+                    self.assertIn(f"{target}_uninstall", grade.grade_image_cycle(steps)["reasons"])
+
+    def test_residue_items_must_be_non_empty_strings(self) -> None:
+        bad_items = ("", None, 0, 1, ["tc_enforce"], {"name": "tc_enforce"}, b"tc_enforce")
+        for field in ("loader_programs", "bpffs_vantio"):
+            for item in bad_items:
+                with self.subTest(field=field, item=item):
+                    pin = self._pin_residue()
+                    pin[field] = list(pin[field]) + [item]
+                    self.assertIsNone(grade.public_pin_residue(pin))
+                    failed = self._cycle(pin=pin)
+                    self.assertEqual(failed["host_result"], "FAIL")
+                    self.assertIn("baseline_uninstall", failed["reasons"])
+                    self.assertEqual(failed["findings"], [])
+                    only = self._pin_residue()
+                    only[field] = [item]
+                    other = "bpffs_vantio" if field == "loader_programs" else "loader_programs"
+                    only[other] = []
+                    self.assertIsNone(grade.public_pin_residue(only))
+
+    def test_seal_census_with_a_missing_field_fails_even_when_verified(self) -> None:
+        for field in ("loader_programs", "bpffs_vantio", "docker_containers", "bpftool_rc"):
+            for mode in ("missing", "none"):
+                for target in ("upgrade", "reupgrade"):
+                    with self.subTest(field=field, mode=mode, step=target):
+                        seal = self._seal_clean()
+                        if mode == "missing":
+                            del seal[field]
+                        else:
+                            seal[field] = None
+                        self.assertTrue(seal["verified_removed"])
+                        self.assertFalse(grade.census_fully_clean(seal))
+                        steps = []
+                        for name in grade.CYCLE_STEPS:
+                            if name in grade.PIN_STEPS:
+                                uninstall = self._pin_residue()
+                            elif name == target:
+                                uninstall = seal
+                            else:
+                                uninstall = self._seal_clean()
+                            steps.append(self._step(name, uninstall))
+                        failed = grade.grade_image_cycle(steps)
+                        self.assertEqual(failed["host_result"], "FAIL")
+                        self.assertIn(f"{target}_uninstall", failed["reasons"])
+        for rc in (False, "0", 0.0):
+            with self.subTest(bpftool_rc=rc):
+                self.assertFalse(grade.census_fully_clean(dict(self._seal_clean(), bpftool_rc=rc)))
+        self.assertFalse(grade.census_fully_clean(dict(self._seal_clean(), docker_ps_failed=True)))
+        self.assertTrue(grade.census_fully_clean(dict(self._seal_clean(), docker_ps_failed=False)))
+
+    def test_pin_clean_path_needs_a_fully_clean_census(self) -> None:
+        # verified_removed alone is not trusted on the pin's clean path.
+        for field in ("loader_programs", "bpffs_vantio", "docker_containers", "bpftool_rc"):
+            with self.subTest(field=field):
+                pin = self._clean(grade.PUBLIC_PIN_UNINSTALL, self.PIN_TAIL)
+                del pin[field]
+                failed = self._cycle(pin=pin)
+                self.assertEqual(failed["host_result"], "FAIL")
+                self.assertIn("baseline_uninstall", failed["reasons"])
+        failed = self._cycle(pin=dict(self._clean(grade.PUBLIC_PIN_UNINSTALL, self.PIN_TAIL), docker_ps_failed=True))
+        self.assertIn("baseline_uninstall", failed["reasons"])
+        held = self._cycle(pin=self._clean(grade.PUBLIC_PIN_UNINSTALL, self.PIN_TAIL))
+        self.assertEqual(held["host_result"], "RECORDED")
+
+    def _census_ns(self, ps: subprocess.CompletedProcess) -> tuple[dict, list]:
+        text = _host_text()
+        source = text[text.index("def _removal_census"): text.index("def _public_pin_uninstall")]
+        ran: list[list[str]] = []
+
+        def sudo(argv, timeout=0):
+            ran.append(list(argv))
+            if argv[:2] == ["docker", "ps"]:
+                return subprocess.CompletedProcess(argv, ps.returncode, stdout=ps.stdout, stderr=ps.stderr)
+            if argv[:3] == ["bpftool", "-j", "prog"]:
+                return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        ns = {"rows": types.SimpleNamespace(sudo=sudo), "grade": grade, "Path": Path, "json": json}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        return ns["_removal_census"](), ran
+
+    def test_host_census_lists_all_containers_and_never_reads_a_docker_failure_as_empty(self) -> None:
+        clean, ran = self._census_ns(subprocess.CompletedProcess([], 0, stdout="", stderr=""))
+        self.assertIn(["docker", "ps", "-aq"], ran)
+        self.assertNotIn(["docker", "ps", "-q"], ran)
+        self.assertEqual(clean["docker_containers"], "")
+        self.assertIs(clean["docker_ps_failed"], False)
+        self.assertTrue(clean["verified_removed"])
+        self.assertTrue(grade.census_fully_clean(clean))
+        stopped, _ = self._census_ns(subprocess.CompletedProcess([], 0, stdout="cafe0001\n", stderr=""))
+        self.assertEqual(stopped["docker_containers"], "cafe0001")
+        self.assertFalse(stopped["verified_removed"])
+        self.assertFalse(grade.census_fully_clean(stopped))
+        for out in ("", "cafe0001\n"):
+            with self.subTest(stdout=out):
+                failed, _ = self._census_ns(subprocess.CompletedProcess([], 1, stdout=out, stderr="Cannot connect to the Docker daemon"))
+                self.assertIsNone(failed["docker_containers"])
+                self.assertIs(failed["docker_ps_failed"], True)
+                self.assertFalse(failed["verified_removed"])
+                self.assertFalse(grade.census_fully_clean(failed))
+                pin = dict(failed, contract=grade.PUBLIC_PIN_UNINSTALL, tail=self.PIN_TAIL, loader_programs=list(self.PIN_PROGRAMS))
+                self.assertIsNone(grade.public_pin_residue(pin))
+                seal = dict(failed, contract=grade.SEAL_UNINSTALL, tail="UNINSTALL_VERIFIED\n", verified_removed=True)
+                self.assertFalse(grade.census_fully_clean(seal))
 
     def test_harness_still_never_detaches_or_unlinks(self) -> None:
         text = _host_text()
