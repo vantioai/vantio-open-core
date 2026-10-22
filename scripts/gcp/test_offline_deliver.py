@@ -1537,7 +1537,7 @@ print("ok")
 _CA_PIN_STUBS = {
     "apt-cache": 'echo "apt-cache $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_MADISON:-}"\n',
     "apt-get": 'echo "apt-get $*" >> "$STUB_LOG"\n',
-    "update-ca-certificates": 'echo "update-ca-certificates" >> "$STUB_LOG"\n',
+    "update-ca-certificates": 'echo "update-ca-certificates $*" >> "$STUB_LOG"\n',
     "dpkg-query": 'echo "dpkg-query $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_INSTALLED:-}"\n',
 }
 
@@ -1597,7 +1597,7 @@ class CaPinBehaviourTest(unittest.TestCase):
                 "apt-cache madison ca-certificates",
                 "apt-get download ca-certificates=20240203",
                 "apt-get install -y --allow-downgrades --no-install-recommends ca-certificates=20240203",
-                "update-ca-certificates",
+                "update-ca-certificates --fresh",
                 "dpkg-query -W -f=${Version} ca-certificates",
             ],
         )
