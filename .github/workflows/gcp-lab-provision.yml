@@ -110,6 +110,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             scripts/aws/w3_lab_steps.py
+            scripts/aws/lab-guests/webshell_grade.py
             scripts/aws/w3_lab_auto.py
             scripts/aws/enterprise_bundle.py
             scripts/aws/lab_iam_capabilities.json
