@@ -1534,5 +1534,88 @@ print("ok")
             self.assertEqual(calls["wait_boot"], [])
 
 
+_CA_PIN_STUBS = {
+    "apt-cache": 'echo "apt-cache $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_MADISON:-}"\n',
+    "apt-get": 'echo "apt-get $*" >> "$STUB_LOG"\n',
+    "update-ca-certificates": 'echo "update-ca-certificates" >> "$STUB_LOG"\n',
+    "dpkg-query": 'echo "dpkg-query $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_INSTALLED:-}"\n',
+}
+
+
+class CaPinBehaviourTest(unittest.TestCase):
+    """Run the fetch script's ca-certificates block with stubbed apt tools."""
+
+    def _block(self) -> str:
+        text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
+        start = text.index("# BEGIN ca-pin")
+        end = text.index("# END ca-pin")
+        return text[start:end]
+
+    def _run(self, madison: str, installed: str) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            stubs = base / "bin"
+            stubs.mkdir()
+            for name, body in _CA_PIN_STUBS.items():
+                path = stubs / name
+                path.write_text("#!/bin/bash\n" + body, encoding="utf-8")
+                path.chmod(0o755)
+            archives = base / "archives"
+            archives.mkdir()
+            log = base / "log"
+            log.write_text("", encoding="utf-8")
+            env = dict(os.environ)
+            env.update(
+                {
+                    "PATH": f"{stubs}{os.pathsep}{env.get('PATH', '')}",
+                    "STUB_LOG": str(log),
+                    "STUB_MADISON": madison,
+                    "STUB_INSTALLED": installed,
+                }
+            )
+            script = "set -euo pipefail\narchives=" + str(archives) + "\n" + self._block()
+            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+            calls = log.read_text(encoding="utf-8").splitlines()
+        return result, calls
+
+    def test_empty_madison_exits_non_zero_before_any_download(self) -> None:
+        result, calls = self._run("", "20240203")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no ca-certificates version", result.stderr)
+        self.assertEqual(calls, ["apt-cache madison ca-certificates"])
+
+    def test_snapshot_version_is_downloaded_installed_and_asserted(self) -> None:
+        madison = (
+            "ca-certificates | 20240203 | https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates/main amd64 Packages\n"
+            "ca-certificates | 20230311ubuntu1 | https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble/main amd64 Packages\n"
+        )
+        result, calls = self._run(madison, "20240203")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            calls,
+            [
+                "apt-cache madison ca-certificates",
+                "apt-get download ca-certificates=20240203",
+                "apt-get install -y --allow-downgrades --no-install-recommends ca-certificates=20240203",
+                "update-ca-certificates",
+                "dpkg-query -W -f=${Version} ca-certificates",
+            ],
+        )
+
+    def test_installed_version_mismatch_exits_non_zero(self) -> None:
+        madison = "ca-certificates | 20240203 | https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates/main amd64 Packages\n"
+        result, _calls = self._run(madison, "20260816ubuntu0.24.04.1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("is not the snapshot's 20240203", result.stderr)
+
+    def test_bundle_is_copied_after_the_snapshot_install(self) -> None:
+        text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
+        snapshot = text.index("snapshot.ubuntu.com")
+        install = text.index("--allow-downgrades")
+        self.assertLess(snapshot, install)
+        self.assertLess(install, text.index("update-ca-certificates"))
+        self.assertLess(text.index("# END ca-pin"), text.index("cp /etc/ssl/certs/ca-certificates.crt /out/ca-certificates.crt"))
+
+
 if __name__ == "__main__":
     unittest.main()
