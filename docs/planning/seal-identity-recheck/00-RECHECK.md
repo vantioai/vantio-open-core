@@ -2,9 +2,11 @@
 
 UTC: 2026-10-16
 
-Lane digest under re-check: `6d3ce580` (full value in `RESULT.json`).
+Refreshed: 2026-10-22, when the lane seal moved from `6d3ce580` to `8b1106ef`.
 
-Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps the `bbb1025d` constant. `COMPARISON_SEAL` is an alias of `WORKING_SEAL`. The installer public pin remains `e0b19d55` on `pe_archive_sha256`. This re-check does not move any of those constants.
+Lane digest under re-check: `8b1106ef` (full value in `RESULT.json`).
+
+Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps the `bbb1025d` constant. `COMPARISON_SEAL` is an alias of `WORKING_SEAL`. The installer public pin remains `e0b19d55` on `pe_archive_sha256`. This re-check does not move any of those constants. `constants_moved: false` describes the script. The lane seal itself was moved by the 2026-10-22 edit of `release/pe-canonical-seal.json`, and `RESULT.json` was regenerated after that edit.
 
 ## What was checked
 
@@ -22,7 +24,7 @@ Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps
 
 The open-core manifest hash is not the lane digest. Matching passes mean this script read the same bytes twice. They do not mean the engine image was rebuilt.
 
-A rebuild of the `6d3ce580` OCI archive needs the private engine sources and the build inputs named in `docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md`. Those inputs are not in this repository. This re-check does not fetch them and does not start a lab.
+A rebuild of the lane OCI archive needs the private engine sources and the build inputs named in `docs/planning/phantom-engine-production/02-P1-PACKAGE-ARTIFACT-PROVENANCE.md`. Those inputs are not in this repository. This re-check does not fetch them and does not start a lab.
 
 ## Labels
 

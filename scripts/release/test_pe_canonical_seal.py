@@ -82,6 +82,8 @@ def _historical() -> set[str]:
         if not isinstance(value, str):
             raise AssertionError(key)
         found.add(value)
+    for entry in body.get("retired_lane_seals") or []:
+        found.add(entry["sha256"])
     return found
 
 
@@ -131,7 +133,7 @@ class CanonicalSealTests(unittest.TestCase):
         self.assertEqual(constants.FROZEN_PINS["pe_archive_name"], public["archive_basename"])
         self.assertNotEqual(seal.public_pin(), seal.lane_seal())
         self.assertIsNone(body["signer_kid"])
-        self.assertEqual(body["updated"], "2026-10-21")
+        self.assertEqual(body["updated"], "2026-10-22")
 
     def test_mirror_docs_keep_the_json_literals(self) -> None:
         body = seal.load()
