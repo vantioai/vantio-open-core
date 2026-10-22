@@ -879,7 +879,11 @@ print("ok")
         self.assertIn("linux-tools-6.8.0-1069-gcp", text)
         self.assertIn("linux-gcp-tools-6.8.0-1069", text)
         self.assertLess(text.index("apt-get install -y --no-install-recommends ca-certificates"), text.index("snapshot.ubuntu.com"))
-        self.assertLess(text.index("--download-only"), text.index("apt-get download ca-certificates"))
+        self.assertLess(text.index("--download-only"), text.index("apt-get download \"ca-certificates="))
+        # The live-installed ca-certificates can be newer than the snapshot (run 39818326180).
+        self.assertIn("apt-cache madison ca-certificates", text)
+        self.assertLess(text.index("apt-cache madison ca-certificates"), text.index("apt-get download \"ca-certificates="))
+        self.assertNotIn("apt-get download ca-certificates )", text)
         self.assertIn("ca-certificates.crt", text)
 
     def test_confirm_rejects_the_pre_reboot_rows_file(self) -> None:
