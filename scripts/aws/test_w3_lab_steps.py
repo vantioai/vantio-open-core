@@ -2425,6 +2425,13 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "console_missing")
 
 
+# A 2F pass row names when the loader died and what the pass claims.
+TAMPER_CLAIM = {
+    "kill_timing": "after_map_swap",
+    "claim_scope": "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)",
+}
+
+
 class PhaseBatteryVerdictTests(unittest.TestCase):
     """A phase battery is graded from its rows, not from a green guest exit."""
 
@@ -2445,7 +2452,8 @@ class PhaseBatteryVerdictTests(unittest.TestCase):
             "lsm-guard": "GUARD_PROVED",
         }
         for battery, result in passing.items():
-            verdict = steps.phase_battery_verdict(battery, {"battery": battery, "host_result": result})
+            claim = TAMPER_CLAIM if battery == "2f-tamper" else {}
+            verdict = steps.phase_battery_verdict(battery, {"battery": battery, "host_result": result, **claim})
             self.assertTrue(verdict["pass"], battery)
             self.assertEqual(verdict["reason"], "battery_pass")
         for result in ("LSM_ALREADY_ACTIVE", "LSM_ENABLED"):
@@ -2488,7 +2496,7 @@ class PhaseBatteryVerdictTests(unittest.TestCase):
         "2c-upgrade-rollback": {"host_result": "RECORDED", "upgrade_pass": True},
         "2d-crash-recovery": {"host_result": "PASS"},
         "2e-performance": {"host_result": "PASS"},
-        "2f-tamper": {"host_result": "PASS"},
+        "2f-tamper": {"host_result": "PASS", **TAMPER_CLAIM},
         "2g-distro": {"host_result": "PASS"},
         "lsm-guard": {"host_result": "GUARD_PROVED"},
     }
@@ -2667,15 +2675,25 @@ class PhaseBatteryRunTests(unittest.TestCase):
         self.assertEqual(evidence["battery_verdict"]["host_result"], "NOT_GRADED")
 
     def test_a_pass_is_still_phase2(self) -> None:
-        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS", "reason": "post_kill_holds"}
+        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS", "reason": "post_kill_holds", **TAMPER_CLAIM}
         result, error, evidence, _pulled, _tmp = self._run("2f-tamper", rows)
         self.assertIsNone(error)
         self.assertEqual(result["status"], "PHASE2")
         self.assertTrue(evidence["battery_verdict"]["pass"])
         self.assertNotIn("reason", evidence)
 
+    def test_a_2f_pass_without_claim_fields_fails_the_arm(self) -> None:
+        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS", "kill_timing": "not_killed"}
+        result, error, evidence, _pulled, _tmp = self._run("2f-tamper", rows)
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+        self.assertEqual(error.reason, "claim_fields_missing")
+        self.assertEqual(evidence["status"], "FAILED")
+        self.assertFalse(evidence["battery_verdict"]["pass"])
+        self.assertEqual(evidence["battery_verdict"]["reason"], "claim_fields_missing")
+
     def test_non_b1_battery_never_pulls_or_keeps_redteam_rows(self) -> None:
-        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS"}
+        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS", **TAMPER_CLAIM}
         result, _error, evidence, pulled, tmp = self._run("2f-tamper", rows, stale_redteam=True)
         self.assertEqual(pulled, [])
         self.assertFalse((tmp / "redteam.json").exists())
@@ -2985,6 +3003,121 @@ class ProductUninstallCensusTests(unittest.TestCase):
         unlabeled = json.loads(json.dumps(rows))
         unlabeled["grant_allow_event"].pop("EventType")
         self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=unlabeled), 1)
+
+
+
+class TamperClaimScopeTests(unittest.TestCase):
+    """Council #364: every 2F verdict prints the kill timing and, when graded, the claim scope."""
+
+    SCOPE = "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)"
+
+    def _line(self, body: dict) -> tuple[dict, str]:
+        verdict = steps.phase_battery_verdict("2f-tamper", body)
+        saved = os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                summary = Path(tmp) / "summary.md"
+                os.environ["GITHUB_STEP_SUMMARY"] = str(summary)
+                line = steps.report_battery_verdict(verdict)
+                self.assertEqual(summary.read_text(encoding="utf-8"), line + "\n")
+        finally:
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            if saved is not None:
+                os.environ["GITHUB_STEP_SUMMARY"] = saved
+        return verdict, line
+
+    def test_graded_2f_prints_timing_and_scope(self) -> None:
+        for result in ("PASS", "FAIL", "HOLD"):
+            with self.subTest(result=result):
+                verdict, line = self._line(
+                    {"battery": "2f-tamper", "host_result": result, "kill_timing": "after_map_swap", "claim_scope": self.SCOPE}
+                )
+                self.assertEqual(verdict["kill_timing"], "after_map_swap")
+                self.assertEqual(verdict["claim_scope"], self.SCOPE)
+                self.assertTrue(line.startswith("BATTERY_VERDICT battery=2f-tamper "))
+                self.assertIn(f"host_result={result}", line)
+                self.assertTrue(line.endswith(f' kill_timing=after_map_swap claim_scope="{self.SCOPE}"'), line)
+
+    def test_refused_2f_prints_timing_and_a_dash_for_scope(self) -> None:
+        verdict, line = self._line(
+            {"battery": "2f-tamper", "host_result": "NOT_GRADED", "reason": "map_swap_timeout", "kill_timing": "after_map_swap"}
+        )
+        self.assertFalse(verdict["pass"])
+        self.assertIsNone(verdict["claim_scope"])
+        self.assertIn("row_reason=map_swap_timeout", line)
+        self.assertTrue(line.endswith(' kill_timing=after_map_swap claim_scope="-"'), line)
+
+    def test_missing_fields_print_as_dashes(self) -> None:
+        verdict, line = self._line({"battery": "2f-tamper", "host_result": "PASS"})
+        self.assertFalse(verdict["pass"])
+        self.assertEqual(verdict["reason"], "claim_fields_missing")
+        self.assertTrue(line.endswith(' kill_timing=- claim_scope="-"'), line)
+        mismatch, line = self._line({"battery": "2d-crash-recovery", "host_result": "PASS", "kill_timing": "after_map_swap"})
+        self.assertEqual(mismatch["reason"], "battery_mismatch")
+        self.assertIn("kill_timing=after_map_swap", line)
+        odd, line = self._line(
+            {"battery": "2f-tamper", "host_result": "PASS", "kill_timing": "after\nmap swap", "claim_scope": 'a "b"\nc'}
+        )
+        self.assertEqual(line.count("\n"), 0)
+        self.assertTrue(line.endswith(" kill_timing=after map swap claim_scope=\"a 'b' c\""), line)
+        self.assertFalse(odd["pass"])
+
+    def test_2f_pass_needs_kill_timing_and_claim_scope(self) -> None:
+        good = {"battery": "2f-tamper", "host_result": "PASS", "kill_timing": "after_map_swap", "claim_scope": self.SCOPE}
+        verdict = steps.phase_battery_verdict("2f-tamper", good)
+        self.assertTrue(verdict["pass"])
+        self.assertEqual(verdict["reason"], "battery_pass")
+        self.assertTrue(steps.phase_battery_verdict("2f-tamper", dict(good, claim_scope="x"))["pass"])
+        bad = {
+            "no_timing": {"kill_timing": None},
+            "not_killed": {"kill_timing": "not_killed"},
+            "timing_case": {"kill_timing": "AFTER_MAP_SWAP"},
+            "timing_padded": {"kill_timing": " after_map_swap"},
+            "no_scope": {"claim_scope": None},
+            "empty_scope": {"claim_scope": ""},
+            "blank_scope": {"claim_scope": " \t\n"},
+            "scope_not_str": {"claim_scope": 7},
+        }
+        for label, change in bad.items():
+            with self.subTest(label=label):
+                verdict, line = self._line(dict(good, **change))
+                self.assertFalse(verdict["pass"])
+                self.assertEqual(verdict["reason"], "claim_fields_missing")
+                self.assertEqual(verdict["reason"], steps.TAMPER_CLAIM_FIELDS_MISSING)
+                self.assertEqual(verdict["host_result"], "PASS")
+                self.assertIn("pass=false reason=claim_fields_missing", line)
+        for key in ("kill_timing", "claim_scope"):
+            with self.subTest(dropped=key):
+                body = dict(good)
+                del body[key]
+                self.assertEqual(steps.phase_battery_verdict("2f-tamper", body)["reason"], "claim_fields_missing")
+        # A graded FAIL or HOLD keeps its own reason; the claim check guards only a pass.
+        for result, reason in (("FAIL", "battery_fail"), ("HOLD", "battery_hold"), ("NOT_GRADED", "battery_not_graded")):
+            with self.subTest(result=result):
+                self.assertEqual(steps.phase_battery_verdict("2f-tamper", {"battery": "2f-tamper", "host_result": result})["reason"], reason)
+        # Other batteries pass without the 2F fields.
+        self.assertTrue(steps.phase_battery_verdict("2d-crash-recovery", {"battery": "2d-crash-recovery", "host_result": "PASS"})["pass"])
+
+    def test_other_batteries_do_not_print_2f_fields(self) -> None:
+        verdict = steps.phase_battery_verdict(
+            "2d-crash-recovery", {"battery": "2d-crash-recovery", "host_result": "PASS", "kill_timing": "after_map_swap"}
+        )
+        self.assertNotIn("kill_timing", verdict)
+        saved = os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        try:
+            line = steps.report_battery_verdict(verdict)
+        finally:
+            if saved is not None:
+                os.environ["GITHUB_STEP_SUMMARY"] = saved
+        self.assertNotIn("kill_timing", line)
+        self.assertNotIn("claim_scope", line)
+
+    def test_host_constants_match_what_the_report_expects(self) -> None:
+        grade_text = Path(steps.__file__).resolve().parent.joinpath("lab-guests", "phase2_grade.py").read_text(encoding="utf-8")
+        self.assertIn(f'CLAIM_SCOPE_2F = "{self.SCOPE}"', grade_text)
+        self.assertIn('KILL_TIMING_AFTER_MAP_SWAP = "after_map_swap"', grade_text)
+        self.assertIn(f'KILL_TIMING_AFTER_MAP_SWAP = "{steps.TAMPER_KILL_TIMING}"', grade_text)
+        self.assertIn(f'CLAIM_FIELDS_MISSING = "{steps.TAMPER_CLAIM_FIELDS_MISSING}"', grade_text)
 
 
 if __name__ == "__main__":

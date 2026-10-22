@@ -2596,8 +2596,58 @@ class ImageCycleWordTest(unittest.TestCase):
             self.assertEqual("bpftool_rc" in row, kept, rc)
 
     def test_finding_names_pinned_to_grader(self) -> None:
-        self.assertEqual(od.KNOWN_CYCLE_FINDINGS, frozenset({self.grade.PUBLIC_PIN_RESIDUE_FINDING}))
+        # The full set: every named 2C finding the grader can emit, and nothing else.
+        self.assertEqual(od.KNOWN_CYCLE_FINDINGS, self.grade.CYCLE_FINDINGS)
+        self.assertEqual(
+            self.grade.CYCLE_FINDINGS,
+            frozenset({self.grade.PUBLIC_PIN_RESIDUE_FINDING, self.grade.PUBLIC_PIN_UNATTRIBUTED_FINDING}),
+        )
         self.assertEqual(od.allow_cycle_findings([{"finding": "made_up", "step": "baseline"}]), [])
+
+    def test_public_pin_unattributed_finding_reaches_capture_and_rows(self) -> None:
+        steps = [self._step(name) for name in od.IMAGE_CYCLE_STEPS]
+        for step in steps:
+            step["setup_error"] = ""
+        for step in steps[0::2]:
+            step["attributed"] = False
+        body = self.grade.grade_image_cycle(steps)
+        self.assertEqual(body["host_result"], "RECORDED", body.get("reasons"))
+        names = {item["finding"] for item in body["findings"]}
+        self.assertLessEqual(names, self.grade.CYCLE_FINDINGS)
+        word = od._loader_word("2c-upgrade-rollback", body)
+        self.assertEqual(word, "held")
+        kept = od._allow_capture(od._loader_capture("loader-restart", {"body": body, "rc": 0, "word": word}))
+        expected = [
+            {"file_errno": 13, "finding": "public_pin_unattributed_deny", "step": step}
+            for step in ("baseline", "rollback")
+        ]
+        self.assertEqual(kept["findings"], expected)
+        self.assertEqual(od.allow_cycle_findings([dict(expected[0])]), [expected[0]])
+
+    def test_unattributed_finding_keeps_only_errno_13_on_a_pin_step(self) -> None:
+        good = {"file_errno": 13, "finding": "public_pin_unattributed_deny", "step": "baseline"}
+        self.assertEqual(od.allow_cycle_findings([dict(good, step="rollback")]), [dict(good, step="rollback")])
+        for errno in (0, 1, 110, -1, True, "13", 13.0, None, 4096):
+            with self.subTest(errno=errno):
+                self.assertEqual(od.allow_cycle_findings([dict(good, file_errno=errno)]), [])
+        missing = dict(good)
+        del missing["file_errno"]
+        self.assertEqual(od.allow_cycle_findings([missing]), [])
+        for step in ("upgrade", "reupgrade"):
+            self.assertEqual(od.allow_cycle_findings([dict(good, step=step)]), [], step)
+        # The residue finding never carries an errno.
+        residue = od.allow_cycle_findings([dict(self.RESIDUE, file_errno=13)])[0]
+        self.assertNotIn("file_errno", residue)
+
+    def test_unattributed_seal_step_still_fails_through_gcp(self) -> None:
+        steps = [self._step(name) for name in od.IMAGE_CYCLE_STEPS]
+        for step in steps:
+            step["setup_error"] = ""
+        steps[1]["attributed"] = False
+        body = self.grade.grade_image_cycle(steps)
+        self.assertEqual(body["host_result"], "FAIL")
+        self.assertIn("upgrade_enforcement", body["reasons"])
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
 
 
 class MainBlockLastTest(unittest.TestCase):

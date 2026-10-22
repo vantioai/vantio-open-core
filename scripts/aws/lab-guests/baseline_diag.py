@@ -2658,4 +2658,69 @@ def deny_attr_diag(pids: list[int], anchors: list[int], cgroup_path: str = "") -
     facts["cgroup_attached"] = attached_by_path
     facts["pins"] = vantio_pins()
     facts["cause"] = classify_deny_gap(facts)
+    copies = incoming_copies(Path(DENY_PIN).parent, facts["pids"], facts["anchors"], pid)
+    facts["incoming_copies"] = copies
+    facts["side_copy_state"] = side_copy_state(copies)
     return facts
+
+
+INCOMING_STEMS = ("vantio_deny_attr", "vantio_deny_attr_drops", "vantio_deny_overflow")
+INCOMING_KEEP = 8
+
+
+def incoming_pin_paths(root: Path) -> list[tuple[str, str]]:
+    """(stem, path) for every <stem>_incoming_<pid> side pin under root."""
+    found: list[tuple[str, str]] = []
+    try:
+        names = sorted(child.name for child in root.iterdir())
+    except OSError:
+        return found
+    for stem in INCOMING_STEMS:
+        prefix = f"{stem}_incoming_"
+        for name in names:
+            if name.startswith(prefix) and name[len(prefix):].isdigit():
+                found.append((stem, str(root / name)))
+    return found[:INCOMING_KEEP]
+
+
+def _pinned_id(path: str) -> int:
+    body, _meta = _json_run(["bpftool", "-j", "map", "show", "pinned", path])
+    found = body.get("id") if isinstance(body, dict) else None
+    return found if type(found) is int and found > 0 else 0
+
+
+def incoming_copies(root: Path, pids: list[int], anchors: list[int], pid: int) -> list[dict]:
+    """Dump each deny-attr side copy a starting loader left beside its canonical pin.
+
+    For a deny-attr copy: total rows, rows per kind, rows naming these pids or
+    anchors, and the egress row state for the pid. For a drops copy: the
+    counters. For an overflow copy: the row count. Read only.
+    """
+    copies: list[dict] = []
+    for stem, path in incoming_pin_paths(root):
+        row: dict = {"pin": path, "stem": stem, "map_id": _pinned_id(path)}
+        dump, meta = _json_run(["bpftool", "-j", "map", "dump", "pinned", path], timeout=30)
+        row["dump_meta"] = meta
+        if stem == "vantio_deny_attr":
+            summary = summarize_deny_dump(dump, pids, anchors)
+            row["dump_rows"] = summary.get("rows")
+            row["dump_kinds"] = summary.get("kinds")
+            row["dump_undecoded"] = summary.get("undecoded")
+            row["rows_for_pids_or_anchors"] = summary.get("matched")
+            row["egress_row"] = egress_row_state(summary, pid, anchors) if pid else "no_pid"
+        elif stem == "vantio_deny_attr_drops":
+            row["drops"] = drop_counters(dump)
+        else:
+            row["dump_rows"] = len(dump) if isinstance(dump, list) else None
+        copies.append(row)
+    return copies
+
+
+def side_copy_state(copies: list[dict]) -> str:
+    """no_side_copy, side_row_present (an egress row for the pid sits in a side copy), or side_row_absent."""
+    attr = [row for row in copies if row.get("stem") == "vantio_deny_attr"]
+    if not attr:
+        return "no_side_copy"
+    if any(row.get("egress_row") == "row_present" for row in attr):
+        return "side_row_present"
+    return "side_row_absent"
