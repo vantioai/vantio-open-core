@@ -1534,5 +1534,147 @@ print("ok")
             self.assertEqual(calls["wait_boot"], [])
 
 
+class PublicPinHandoffTest(unittest.TestCase):
+    """2c-upgrade-rollback needs public-pin.oci.tar beside seal.oci.tar on the GCP guest."""
+
+    RUN = "39820831363"
+
+    def _pin(self, directory: Path) -> tuple[Path, str]:
+        path = directory / od.PUBLIC_PIN_FILE
+        path.write_bytes(b"public-pin-bytes" * 64)
+        return path, hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def test_file_name_matches_the_guest_and_aws(self) -> None:
+        host = (ROOT / "scripts/aws/lab-guests/phase2_host.py").read_text(encoding="utf-8")
+        self.assertIn(f'HERE / "{od.PUBLIC_PIN_FILE}"', host)
+        self.assertEqual(od.PUBLIC_PIN_FILE, enterprise_bundle.PUBLIC_PIN_FILE)
+        self.assertEqual(od.PUBLIC_INSTALLER_PIN, enterprise_bundle.PUBLIC_INSTALLER_PIN)
+
+    def test_handoff_objects_carry_the_pin_only_for_batteries(self) -> None:
+        base = {"GITHUB_RUN_ID": self.RUN, "REDTEAM_BRAIN": "false"}
+        pin = f"{self.RUN}/public-pin.oci.tar"
+        self.assertNotIn(pin, od.handoff_objects({**base, "RUN_BATTERIES": "false"}))
+        self.assertNotIn(pin, od.handoff_objects(base))
+        self.assertIn(pin, od.handoff_objects({**base, "RUN_BATTERIES": "true"}))
+
+    def test_verify_refuses_absent_and_wrong_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            with self.assertRaises(SystemExit) as absent:
+                od.verify_public_pin_file(directory / od.PUBLIC_PIN_FILE)
+            self.assertEqual(absent.exception.code, "public_pin_absent")
+            path, digest = self._pin(directory)
+            with self.assertRaises(SystemExit) as wrong:
+                od.verify_public_pin_file(path)
+            self.assertEqual(wrong.exception.code, "public_pin_digest")
+            with mock.patch.dict(od.__dict__, {"PUBLIC_INSTALLER_PIN": digest}):
+                self.assertEqual(od.verify_public_pin_file(path), digest)
+
+    def _upload(self, run_batteries: str, directory: Path) -> list[str]:
+        uploaded: list[str] = []
+        env = {
+            "GCP_LAB_EXECUTE": "1",
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "GITHUB_RUN_ID": self.RUN,
+            "W3_BUNDLE_DIR": str(directory),
+            "EVIDENCE_DIR": str(directory / "evidence"),
+            "REDTEAM_BRAIN": "false",
+            "RUN_BATTERIES": run_batteries,
+        }
+        checked = {"seal_sha256": "a" * 64, "contract_sha256": "b" * 64, "trust_sha256": "c" * 64}
+        with mock.patch.dict(
+            od.__dict__,
+            {
+                "assert_bundle_dir": lambda _d, _e: checked,
+                "expected_seal": lambda _env: "a" * 64,
+                "upload_one": lambda _b, name, _p, max_bytes: uploaded.append(name) or "uploaded",
+                "github_output": lambda *_a: None,
+            },
+        ), contextlib.redirect_stdout(io.StringIO()):
+            od.upload_handoff(env)
+        return uploaded
+
+    def test_upload_sends_the_verified_pin_with_batteries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self.assertEqual(len(self._upload("false", directory)), 2)
+            with self.assertRaises(SystemExit) as absent:
+                self._upload("true", directory)
+            self.assertEqual(absent.exception.code, "public_pin_absent")
+            _path, digest = self._pin(directory)
+            with mock.patch.dict(od.__dict__, {"PUBLIC_INSTALLER_PIN": digest}):
+                names = self._upload("true", directory)
+            self.assertEqual(names[-1], f"{self.RUN}/public-pin.oci.tar")
+
+    def test_download_reverifies_the_pin_and_deletes_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "bundle"
+            source = Path(tmp) / "src"
+            source.mkdir()
+            _path, digest = self._pin(source)
+            deleted: list[tuple[str, ...]] = []
+
+            def fake_download(_bucket: str, name: str, path: Path) -> None:
+                if name.endswith(od.PUBLIC_PIN_FILE):
+                    path.write_bytes((source / od.PUBLIC_PIN_FILE).read_bytes())
+                else:
+                    path.write_bytes(b"x")
+
+            env = {
+                "GCP_LAB_EXECUTE": "1",
+                "GCP_LAB_PROJECT": "vantio-lab-oct08",
+                "GITHUB_RUN_ID": self.RUN,
+                "W3_BUNDLE_DIR": str(directory),
+                "EVIDENCE_DIR": str(Path(tmp) / "evidence"),
+                "EXPECTED_CONTRACT_SHA256": "b" * 64,
+                "REDTEAM_BRAIN": "false",
+                "RUN_BATTERIES": "true",
+            }
+            patches = {
+                "download_one": fake_download,
+                "verify_seal_file": lambda _p, _e: "a" * 64,
+                "expected_seal": lambda _env: "a" * 64,
+                "verify_contract_trust": lambda _p, _t: "b" * 64,
+                "delete_objects": lambda names, missing_ok: deleted.append(tuple(names)),
+                "PUBLIC_INSTALLER_PIN": digest,
+            }
+            with mock.patch.dict(od.__dict__, patches), contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(od.download_handoff(env), 0)
+            self.assertEqual(json.loads(out.getvalue())["public_pin_sha256"], digest)
+            self.assertEqual(od.verify_public_pin_file.__name__, "verify_public_pin_file")
+            self.assertTrue((directory / od.PUBLIC_PIN_FILE).is_file())
+            self.assertIn(f"{self.RUN}/public-pin.oci.tar", deleted[-1])
+            (source / od.PUBLIC_PIN_FILE).write_bytes(b"tampered")
+            with mock.patch.dict(od.__dict__, patches), self.assertRaises(SystemExit) as bad:
+                od.download_handoff(env)
+            self.assertEqual(bad.exception.code, "public_pin_digest")
+            self.assertIn(f"{self.RUN}/public-pin.oci.tar", deleted[-1])
+
+    def test_pin_reaches_the_guest_and_stays_there(self) -> None:
+        stage_src = (ROOT / "scripts/gcp/offline_deliver_2.py").read_text(encoding="utf-8")
+        stage = stage_src[stage_src.index("def _stage_payload("):]
+        stage = stage[: stage.index("    return rows")]
+        self.assertIn("dest / PUBLIC_PIN_FILE", stage)
+        self.assertIn("verify_public_pin_file(dest / PUBLIC_PIN_FILE)", stage)
+        deliver_src = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        upload = deliver_src[deliver_src.index("debs = _stage_payload(env, payload_dir)"):]
+        upload = upload[: upload.index("lsm = _prepare_lab_lsm(")]
+        self.assertIn("payload_dir / PUBLIC_PIN_FILE", upload)
+        unlinked = upload[upload.index("for local_name in"):]
+        self.assertNotIn("public-pin", unlinked)
+        self.assertNotIn("PUBLIC_PIN_FILE", unlinked)
+
+    def test_workflow_stages_and_carries_the_pin_for_batteries(self) -> None:
+        workflow = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
+        prepare = workflow[workflow.index("- name: Prepare and verify the private bundle"):]
+        prepare = prepare[: prepare.index("assert-bundle")]
+        self.assertIn("W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}", prepare)
+        for command in ("upload-handoff", "download-handoff", "delete-handoff", "teardown-if-present"):
+            with self.subTest(command=command):
+                end = workflow.index(f"offline_deliver.py {command}")
+                step = workflow[workflow.rindex("- name:", 0, end): end]
+                self.assertIn("RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}", step)
+
+
 if __name__ == "__main__":
     unittest.main()
