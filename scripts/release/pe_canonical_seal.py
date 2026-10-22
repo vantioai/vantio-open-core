@@ -101,6 +101,14 @@ def load_history() -> Mapping[str, object]:
         raise SealFileError("history_schema")
     for key in ("previous_working_seal", "plumbing_only_seal", "tracking_seal"):
         _hex(body.get(key), 64, key)
+    retired = body.get("retired_lane_seals")
+    if retired is not None:
+        if not isinstance(retired, list):
+            raise SealFileError("retired_lane_seals")
+        for entry in retired:
+            if not isinstance(entry, dict):
+                raise SealFileError("retired_lane_seals")
+            _hex(entry.get("sha256"), 64, "retired_lane_seals")
     return body
 
 

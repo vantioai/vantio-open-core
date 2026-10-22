@@ -31,6 +31,13 @@ export function readSealHistory(root) {
   for (const key of ["previous_working_seal", "plumbing_only_seal", "tracking_seal"]) {
     if (!HEX64.test(body[key])) throw new Error(key);
   }
+  const retired = body.retired_lane_seals;
+  if (retired !== undefined) {
+    if (!Array.isArray(retired)) throw new Error("retired_lane_seals");
+    for (const entry of retired) {
+      if (!entry || typeof entry !== "object" || !HEX64.test(entry.sha256)) throw new Error("retired_lane_seals");
+    }
+  }
   return body;
 }
 

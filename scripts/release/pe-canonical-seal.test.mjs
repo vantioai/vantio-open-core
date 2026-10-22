@@ -17,6 +17,13 @@ test("the node reader matches the python helper and keeps the two roles apart", 
   assert.equal(seal.updated, "2026-10-22");
   assert.match(seal.lane_seal.note, /one seal/);
   assert.notEqual(history.previous_working_seal, seal.lane_seal.sha256);
+  const retired = (history.retired_lane_seals ?? []).map((entry) => entry.sha256);
+  assert.ok(retired.length > 0);
+  for (const digest of retired) {
+    assert.match(digest, /^[0-9a-f]{64}$/);
+    assert.notEqual(digest, seal.lane_seal.sha256);
+    assert.notEqual(digest, seal.public_pin.archive_sha256);
+  }
   const py = spawnSync(
     "python3",
     [

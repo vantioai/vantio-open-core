@@ -82,6 +82,8 @@ def _historical() -> set[str]:
         if not isinstance(value, str):
             raise AssertionError(key)
         found.add(value)
+    for entry in body.get("retired_lane_seals") or []:
+        found.add(entry["sha256"])
     return found
 
 
