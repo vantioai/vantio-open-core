@@ -1910,5 +1910,380 @@ class AfterRestartNewRowTests(unittest.TestCase):
         self.assertEqual(clock["reads"], 1)
 
 
+HOST_PATH = Path(__file__).resolve().parent / "lab-guests" / "phase2_host.py"
+
+
+def _host_text() -> str:
+    return HOST_PATH.read_text(encoding="utf-8")
+
+
+def _hex(data: bytes) -> list[str]:
+    return [f"0x{byte:02x}" for byte in data]
+
+
+def _deny_row(key_pid: int, key_kind: int, *, pid: int, kind: int, anchor: int, ts: int = 1, path_len: int = 5) -> dict:
+    key = ((key_pid << 8) | key_kind).to_bytes(8, "little")
+    value = (
+        pid.to_bytes(4, "little")
+        + (0).to_bytes(4, "little")
+        + kind.to_bytes(4, "little")
+        + path_len.to_bytes(4, "little")
+        + anchor.to_bytes(8, "little")
+        + ts.to_bytes(8, "little")
+        + b"/etc/shadow".ljust(56, b"\x00")
+    )
+    return {"key": _hex(key), "value": _hex(value)}
+
+
+class DenyDiagTests(unittest.TestCase):
+    """Fix 2: read-only deny-attr facts when 2D or 2F cannot grade or a row is missing."""
+
+    def test_a_row_decodes_without_copying_the_path(self) -> None:
+        decoded = baseline_diag.decode_deny_row(_deny_row(4242, 2, pid=4242, kind=2, anchor=6840))
+        self.assertEqual(decoded["key_pid"], 4242)
+        self.assertEqual(decoded["key_kind_name"], "egress_cgroup")
+        self.assertEqual(decoded["anchor"], 6840)
+        self.assertTrue(decoded["timestamp_set"])
+        self.assertEqual(decoded["value_size"], baseline_diag.DENY_ATTR_SIZE)
+        self.assertEqual(decoded["path_len"], 5)
+        self.assertNotIn("shadow", json.dumps(decoded))
+        self.assertIsNone(baseline_diag.decode_deny_row({"key": ["0x01"], "value": ["0x00"] * 8}))
+        self.assertIsNone(baseline_diag.decode_deny_row("row"))
+
+    def test_egress_row_states(self) -> None:
+        pid, anchor = 4242, 6840
+        cases = {
+            "row_present": [_deny_row(pid, 2, pid=pid, kind=2, anchor=anchor)],
+            "row_invalid": [_deny_row(pid, 3, pid=pid, kind=3, anchor=0)],
+            "row_mis_keyed": [_deny_row(7, 2, pid=7, kind=2, anchor=anchor)],
+            "row_absent": [_deny_row(pid, 1, pid=pid, kind=1, anchor=anchor)],
+        }
+        for state, dump in cases.items():
+            summary = baseline_diag.summarize_deny_dump(dump, [pid], [anchor])
+            self.assertEqual(baseline_diag.egress_row_state(summary, pid, [anchor]), state, state)
+        no_ts = [_deny_row(pid, 2, pid=pid, kind=2, anchor=anchor, ts=0)]
+        summary = baseline_diag.summarize_deny_dump(no_ts, [pid], [anchor])
+        self.assertEqual(baseline_diag.egress_row_state(summary, pid, [anchor]), "row_invalid")
+        mixed = [_deny_row(pid, 1, pid=pid, kind=1, anchor=anchor), _deny_row(9, 2, pid=9, kind=2, anchor=1), "x"]
+        summary = baseline_diag.summarize_deny_dump(mixed, [pid], [anchor])
+        self.assertEqual(summary["rows"], 2)
+        self.assertEqual(summary["undecoded"], 1)
+        self.assertEqual(summary["kinds"], {"file": 1, "egress_cgroup": 1})
+        self.assertEqual(len(summary["matched"]), 1)
+        self.assertIsNone(baseline_diag.summarize_deny_dump(None, [pid], [anchor])["rows"])
+
+    def test_gap_names_and_counters(self) -> None:
+        self.assertEqual(baseline_diag.classify_deny_gap({"deny_pin_present": False}), "deny_pin_missing")
+        self.assertEqual(
+            baseline_diag.classify_deny_gap({"deny_pin_present": True, "dump_rows": None}), "deny_dump_unreadable"
+        )
+        self.assertEqual(
+            baseline_diag.classify_deny_gap({"deny_pin_present": True, "dump_rows": 3, "egress_row": "row_mis_keyed"}),
+            "row_mis_keyed",
+        )
+        drops = [
+            {"key": 0, "values": [{"cpu": 0, "value": 2}, {"cpu": 1, "value": 3}]},
+            {"key": _hex((1).to_bytes(4, "little")), "values": [{"cpu": 0, "value": _hex((9).to_bytes(8, "little"))}]},
+        ]
+        self.assertEqual(baseline_diag.drop_counters(drops), {"lru_evictions": 5, "live_keys": 9})
+        self.assertEqual(baseline_diag.drop_counters(None), {"lru_evictions": None, "live_keys": None})
+        self.assertEqual(baseline_diag.bpftool_names([{"name": "a"}, {"id": 3}, {"name": "b"}]), ["a", "b"])
+        self.assertEqual(baseline_diag.bpftool_names("x"), [])
+
+    def test_vantio_pins_reads_a_temp_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "vantio_deny_attr").write_text("", encoding="utf-8")
+            (root / "tc").mkdir()
+            (root / "tc" / "vantio_tc").write_text("", encoding="utf-8")
+            (root / "other").write_text("", encoding="utf-8")
+            found = baseline_diag.vantio_pins(root)
+            self.assertEqual(found, [str(root / "tc" / "vantio_tc"), str(root / "vantio_deny_attr")])
+            self.assertEqual(baseline_diag.vantio_pins(root / "missing"), [])
+
+    def test_deny_attr_diag_only_reads(self) -> None:
+        pid, anchor = 4242, 6840
+        calls: list[list[str]] = []
+        big = [_deny_row(1000 + n, 1, pid=1000 + n, kind=1, anchor=1) for n in range(60)]
+        big.append(_deny_row(pid, 2, pid=pid, kind=2, anchor=anchor))
+
+        def fake_run(argv, **_kwargs):
+            calls.append(list(argv))
+            if argv[:4] == ["bpftool", "-j", "map", "dump"] and argv[-1].endswith("vantio_deny_attr"):
+                out = json.dumps(big)
+            elif argv[-1].endswith("_drops"):
+                out = json.dumps([{"key": 0, "values": [{"cpu": 0, "value": 4}]}])
+            elif argv[:4] == ["bpftool", "-j", "prog", "show"]:
+                out = json.dumps([{"name": "cgroup_skb_egress_enforce"}])
+            elif argv[:4] == ["bpftool", "-j", "map", "show"]:
+                out = json.dumps([{"name": "DENY_ATTR", "id": 4}])
+            else:
+                out = "[]"
+            return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+
+        saved = (baseline_diag.subprocess, baseline_diag.DENY_PIN, baseline_diag.DENY_DROPS_PIN, baseline_diag.ENROLLED_PIN)
+        with tempfile.TemporaryDirectory() as tmp:
+            pin = Path(tmp) / "vantio_deny_attr"
+            pin.write_text("", encoding="utf-8")
+            drops = Path(tmp) / "vantio_deny_attr_drops"
+            drops.write_text("", encoding="utf-8")
+            try:
+                baseline_diag.subprocess = types.SimpleNamespace(run=fake_run, TimeoutExpired=subprocess.TimeoutExpired)
+                baseline_diag.DENY_PIN = str(pin)
+                baseline_diag.DENY_DROPS_PIN = str(drops)
+                baseline_diag.ENROLLED_PIN = str(Path(tmp) / "absent")
+                facts = baseline_diag.deny_attr_diag([pid], [anchor], tmp)
+            finally:
+                (
+                    baseline_diag.subprocess,
+                    baseline_diag.DENY_PIN,
+                    baseline_diag.DENY_DROPS_PIN,
+                    baseline_diag.ENROLLED_PIN,
+                ) = saved
+        # A dump longer than clip() still parses in full.
+        self.assertEqual(facts["dump_rows"], 61)
+        self.assertEqual(facts["egress_row"], "row_present")
+        self.assertEqual(facts["cause"], "row_present")
+        self.assertEqual(facts["drops"]["lru_evictions"], 4)
+        self.assertFalse(facts["enrolled_pin_present"])
+        self.assertEqual(facts["programs"], ["cgroup_skb_egress_enforce"])
+        self.assertIn(tmp, facts["cgroup_attached"])
+        self.assertNotIn("shadow", json.dumps(facts))
+        for argv in calls:
+            self.assertEqual(argv[:2], ["bpftool", "-j"])
+            self.assertIn(argv[3], {"show", "dump"}, argv)
+            for verb in ("update", "delete", "detach", "attach", "pin", "unpin", "load"):
+                self.assertNotIn(verb, argv[2:4])
+
+    def test_missing_pin_is_named_and_nothing_is_dumped(self) -> None:
+        saved = (baseline_diag.subprocess, baseline_diag.DENY_PIN, baseline_diag.DENY_DROPS_PIN, baseline_diag.ENROLLED_PIN)
+        calls: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                baseline_diag.subprocess = types.SimpleNamespace(run=fake_run, TimeoutExpired=subprocess.TimeoutExpired)
+                baseline_diag.DENY_PIN = str(Path(tmp) / "none")
+                baseline_diag.DENY_DROPS_PIN = str(Path(tmp) / "none_drops")
+                baseline_diag.ENROLLED_PIN = str(Path(tmp) / "none_enrolled")
+                facts = baseline_diag.deny_attr_diag([4242], [], "")
+            finally:
+                (
+                    baseline_diag.subprocess,
+                    baseline_diag.DENY_PIN,
+                    baseline_diag.DENY_DROPS_PIN,
+                    baseline_diag.ENROLLED_PIN,
+                ) = saved
+        self.assertEqual(facts["cause"], "deny_pin_missing")
+        self.assertFalse(any("dump" in argv and "pinned" in argv for argv in calls))
+
+    def test_recheck_is_bounded_and_never_regrades(self) -> None:
+        text = _host_text()
+        source = text[text.index("EGRESS_RECHECK_S = "): text.index("def _anchor_ids")]
+        clock = {"now": 10.0, "calls": 0}
+
+        class FakeTime:
+            @staticmethod
+            def monotonic() -> float:
+                return clock["now"]
+
+            @staticmethod
+            def sleep(seconds: float) -> None:
+                clock["now"] += seconds
+
+        def make(after: int | None):
+            def egress_block_anchor(_pid: int) -> int:
+                clock["calls"] += 1
+                return 6840 if after is not None and clock["calls"] > after else 0
+
+            ns = {"time": FakeTime, "egress_block_anchor": egress_block_anchor}
+            exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+            return ns["egress_row_recheck"]
+
+        late = make(3)(4242)
+        self.assertTrue(late["found"])
+        self.assertFalse(late["regraded"])
+        self.assertLessEqual(late["waited_s"], 1.0)
+        clock.update(now=10.0, calls=0)
+        never = make(None)(4242)
+        self.assertFalse(never["found"])
+        self.assertFalse(never["regraded"])
+        self.assertGreaterEqual(never["waited_s"], 1.0)
+        self.assertLess(never["waited_s"], 1.2)
+
+    def test_2d_and_2f_attach_the_diag_where_they_cannot_grade(self) -> None:
+        text = _host_text()
+        run_2d = text.split("\ndef run_2d", 1)[1].split("\ndef _file_attributed_2d", 1)[0]
+        run_2f = text.split("\ndef run_2f", 1)[1].split("\ndef ", 1)[0]
+        self.assertGreaterEqual(run_2d.count("deny_diag("), 4)
+        self.assertIn("recheck_pid=", run_2d)
+        self.assertGreaterEqual(run_2f.count("deny_diag("), 3)
+        self.assertIn("recheck_pid=", run_2f)
+        for body in (run_2d, run_2f):
+            self.assertIn("_bpf_pin_sample()", body)
+            self.assertIn('"file_attributed"', body)
+            self.assertIn("ndjson_denied_pids", body)
+        diag = text.split("\ndef egress_row_recheck", 1)[1].split("\ndef kill_loader", 1)[0]
+        for write in (".unlink(", "rows.sudo", "write_text", "detach", "enroll", "pkill", '"update"'):
+            self.assertNotIn(write, diag)
+        self.assertIn('"regraded": False', diag)
+
+
+class PublicPinCycleTests(unittest.TestCase):
+    """Fix 4: the 2C baseline is the public pin, held to that pin's own banner and removal."""
+
+    PIN_IMAGE = "sha256:" + "a" * 64
+    SEAL_IMAGE = "sha256:" + "b" * 64
+    PIN_BANNER = (
+        "[ \u2205 VANTIO ] Phantom Engine active\n"
+        "  tc enforce : SCOPED (drop enrolled) \U0001F7E0 iface 'vlab-host'\n"
+        "  cgroup_skb : egress enforce ON (enrolled cgroups + cgroup root for lineage)\n"
+    )
+
+    def _step(self, name: str, *, uninstall: dict) -> dict:
+        pin = name in grade.PIN_STEPS
+        return {
+            "archive_sha256": grade.PUBLIC_INSTALLER_PIN if pin else grade.WORKING_SEAL,
+            "attributed": True,
+            "file_errno": 13,
+            "image_id": self.PIN_IMAGE if pin else self.SEAL_IMAGE,
+            "name": name,
+            "uninstall": uninstall,
+        }
+
+    def _cycle(self, pin_uninstall: dict, seal_uninstall: dict | None = None) -> dict:
+        seal_uninstall = seal_uninstall or {"contract": grade.SEAL_UNINSTALL, "tail": "UNINSTALL_VERIFIED\n", "verified_removed": True}
+        return grade.grade_image_cycle(
+            [
+                self._step(name, uninstall=pin_uninstall if name in grade.PIN_STEPS else seal_uninstall)
+                for name in grade.CYCLE_STEPS
+            ]
+        )
+
+    def test_pin_banner_is_its_own(self) -> None:
+        self.assertTrue(grade.public_pin_banner_ready(self.PIN_BANNER))
+        self.assertFalse(grade.public_pin_banner_ready(self.PIN_BANNER.replace("egress enforce ON", "off")))
+        self.assertFalse(grade.public_pin_banner_ready(self.PIN_BANNER.replace("SCOPED", "MONITOR")))
+        self.assertFalse(grade.public_pin_banner_ready(""))
+        # The seal's banner rule is not relaxed by the pin's lines.
+        self.assertFalse(grade.enforce_banner_ready(self.PIN_BANNER))
+
+    def test_pin_sigint_with_a_clean_census_records(self) -> None:
+        clean = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "Detached cleanly. Pinned maps remain at /sys/fs/bpf\n", "verified_removed": True}
+        held = self._cycle(clean)
+        self.assertEqual(held["host_result"], "RECORDED")
+        self.assertTrue(held["upgrade_pass"])
+
+    def test_programs_left_after_the_pin_uninstall_still_fail(self) -> None:
+        left = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "Detached cleanly.\n", "verified_removed": False}
+        failed = self._cycle(left)
+        self.assertEqual(failed["host_result"], "FAIL")
+        self.assertEqual(failed["reason"], "baseline_uninstall")
+        self.assertIn("rollback_uninstall", failed["reasons"])
+        self.assertFalse(failed["upgrade_pass"])
+
+    def test_pin_without_its_shutdown_line_fails(self) -> None:
+        silent = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "", "verified_removed": True}
+        self.assertEqual(self._cycle(silent)["reason"], "baseline_uninstall")
+
+    def test_seal_steps_cannot_claim_the_pin_contract(self) -> None:
+        clean = {"contract": grade.PUBLIC_PIN_UNINSTALL, "tail": "Detached cleanly.\n", "verified_removed": True}
+        failed = self._cycle(clean, seal_uninstall=dict(clean))
+        self.assertEqual(failed["reason"], "upgrade_uninstall")
+        self.assertIn("reupgrade_uninstall", failed["reasons"])
+        self.assertEqual(grade.uninstall_attestation("upgrade", clean), grade.SEAL_UNINSTALL_ATTESTATION)
+        self.assertEqual(grade.uninstall_attestation("baseline", clean), grade.PUBLIC_PIN_DETACHED)
+        self.assertEqual(grade.uninstall_attestation("baseline", {}), grade.SEAL_UNINSTALL_ATTESTATION)
+
+    def test_cycle_step_picks_the_pin_path_only_for_the_pinned_archive(self) -> None:
+        text = _host_text()
+        source = text[text.index("def _cycle_step"): text.index("\ndef run_2c")]
+        seen: list[tuple[str, object]] = []
+        ns = {
+            "grade": grade,
+            "_measure_loaded": lambda ref, *, public_pin=False: seen.append(("measure", public_pin))
+            or {"attributed": True, "file_errno": 13, "image_id": "sha256:x", "policy_digest": "", "setup_error": ""},
+            "_public_pin_uninstall": lambda: seen.append(("pin_uninstall", None)) or {"contract": grade.PUBLIC_PIN_UNINSTALL},
+            "_product_uninstall": lambda ref: seen.append(("product_uninstall", ref)) or {"contract": grade.SEAL_UNINSTALL},
+        }
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        step = ns["_cycle_step"]
+        self.assertEqual(step("baseline", "pin:img", grade.PUBLIC_INSTALLER_PIN)["uninstall"]["contract"], grade.PUBLIC_PIN_UNINSTALL)
+        self.assertEqual(seen, [("measure", True), ("pin_uninstall", None)])
+        seen.clear()
+        step("upgrade", "seal:img", grade.WORKING_SEAL)
+        self.assertEqual(seen, [("measure", False), ("product_uninstall", "seal:img")])
+        seen.clear()
+        # A wrong digest on a pin step is not treated as the pin.
+        step("rollback", "pin:img", "0" * 64)
+        self.assertEqual(seen, [("measure", False), ("product_uninstall", "pin:img")])
+
+    def test_pin_uninstall_sigints_and_records_what_is_left(self) -> None:
+        text = _host_text()
+        source = text[text.index("def _stop_lab_containers"): text.index("def _cycle_step")]
+        ran: list[list[str]] = []
+
+        def sudo(argv, timeout=0):
+            ran.append(list(argv))
+            if argv[:2] == ["docker", "logs"]:
+                return subprocess.CompletedProcess(argv, 0, stdout="Detached cleanly. Pinned maps remain at /sys/fs/bpf\n", stderr="warn\n")
+            if argv[:3] == ["bpftool", "-j", "prog"]:
+                return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([{"name": "cgroup_skb_egress_enforce"}]), stderr="")
+            if argv[0] == "find":
+                return subprocess.CompletedProcess(argv, 0, stdout="/sys/fs/bpf/vantio_deny_attr\n", stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        ns = {"rows": types.SimpleNamespace(sudo=sudo, LOADER="vantio-loader"), "grade": grade, "Path": Path, "json": json}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        result = ns["_public_pin_uninstall"]()
+        self.assertEqual(result["contract"], grade.PUBLIC_PIN_UNINSTALL)
+        self.assertIn("Detached cleanly.", result["tail"])
+        self.assertTrue(result["tail"].rstrip().endswith("/sys/fs/bpf"))
+        self.assertIsNone(result["uninstall_rc"])
+        self.assertTrue(result["loader_programs"])
+        self.assertFalse(result["verified_removed"])
+        self.assertIn(["docker", "stop", "--signal", "SIGINT", "--time", "20", "vantio-loader"], ran)
+        flat = [" ".join(argv) for argv in ran]
+        self.assertFalse(any("--uninstall" in line for line in flat))
+        self.assertFalse(any(line.startswith(("rm ", "bpftool prog detach", "bpftool cgroup detach")) for line in flat))
+        body = source.split("def _public_pin_uninstall", 1)[1]
+        for write in ('"--uninstall"', ".unlink(", "detach(", "rmdir"):
+            self.assertNotIn(write, body)
+
+    def test_pin_removal_needs_the_detached_line_even_with_a_clean_census(self) -> None:
+        text = _host_text()
+        source = text[text.index("def _stop_lab_containers"): text.index("def _cycle_step")]
+
+        def run(logs: str) -> dict:
+            def sudo(argv, timeout=0):
+                if argv[:2] == ["docker", "logs"]:
+                    return subprocess.CompletedProcess(argv, 0, stdout=logs, stderr="")
+                if argv[:3] == ["bpftool", "-j", "prog"]:
+                    return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+                return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+            ns = {"rows": types.SimpleNamespace(sudo=sudo, LOADER="vantio-loader"), "grade": grade, "Path": Path, "json": json}
+            exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+            return ns["_public_pin_uninstall"]()
+
+        clean = run("Detached cleanly. Pinned maps remain at /sys/fs/bpf\n")
+        self.assertEqual(clean["loader_programs"], [])
+        self.assertEqual(clean["bpffs_vantio"], [])
+        self.assertTrue(clean["verified_removed"])
+        for logs in ("", "Phantom Engine active\n", "detached cleanly\n", "UNINSTALL_VERIFIED\n"):
+            with self.subTest(logs=logs):
+                self.assertFalse(run(logs)["verified_removed"])
+
+    def test_prepare_enforce_checks_the_pin_banner_only_for_the_pin(self) -> None:
+        text = _host_text()
+        prepare = text.split("def prepare_enforce", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("_public_pin_banner_ready if public_pin else _banner_ready", prepare)
+        pin_ready = text.split("def _public_pin_banner_ready", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("grade.public_pin_banner_ready", pin_ready)
+
+
 if __name__ == "__main__":
     unittest.main()

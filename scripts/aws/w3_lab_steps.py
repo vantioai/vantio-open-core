@@ -1070,6 +1070,15 @@ def _ssh_failure(proc: subprocess.CompletedProcess[str]) -> None:
     raise lab.GuardAbort("ssh" if not flat else f"ssh {flat}")
 
 
+def _drop_stale_redteam(path: Path) -> None:
+    """Remove a local red-team rows file and its hash so no battery but B1 uploads one."""
+    for item in (path, path.with_name(path.name + ".sha256")):
+        try:
+            item.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _store_guest_rows(path: Path, text: str) -> None:
     token = os.environ.get("W3_LAB_PRIVATE_BUNDLE_TOKEN", "")
     redacted, _changed = redact(text)
@@ -1170,6 +1179,82 @@ def _b1_start_window(body: Mapping[str, Any] | None) -> dict[str, Any]:
         if isinstance(window, Mapping):
             found[name] = {key: window.get(key) for key in ("status", "delayed", "dropped")}
     return found
+
+
+# The host_result each phase battery must record to count as passed. These
+# are the values phase2_grade and phase2_host already treat as the battery's
+# own result. soak-hourly has its own status and is not graded here.
+PHASE_BATTERY_PASS: dict[str, frozenset[str]] = {
+    "r15-container-exit": frozenset({"RECORDED"}),
+    "2c-upgrade-rollback": frozenset({"RECORDED"}),
+    "2d-crash-recovery": frozenset({"PASS"}),
+    "2e-performance": frozenset({"PASS"}),
+    "2f-tamper": frozenset({"PASS"}),
+    "2g-distro": frozenset({"PASS"}),
+    "lsm-guard": frozenset({"GUARD_PROVED", "LSM_ALREADY_ACTIVE", "LSM_ENABLED"}),
+}
+
+
+def phase_battery_verdict(battery: str, body: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Grade a phase battery from its rows file, not from the guest exit code.
+
+    The guest exits 0 on a graded FAIL, so a green step is not a pass. This
+    reads host_result from the rows and names why it is not a pass. None
+    means this battery is not graded here.
+    """
+    accepted = PHASE_BATTERY_PASS.get(battery)
+    if accepted is None:
+        return None
+    if not isinstance(body, Mapping):
+        return {"battery": battery, "host_result": None, "pass": False, "reason": "battery_rows_missing", "row_reason": ""}
+    host_result = body.get("host_result")
+    row_reason = body.get("reason") if isinstance(body.get("reason"), str) else ""
+    verdict: dict[str, Any] = {
+        "battery": battery,
+        "host_result": host_result if isinstance(host_result, str) else None,
+        "pass": False,
+        "row_reason": row_reason[:200],
+    }
+    if body.get("battery") != battery:
+        verdict["reason"] = "battery_mismatch"
+        return verdict
+    if body.get("harness_error"):
+        verdict["reason"] = "battery_harness_error"
+        return verdict
+    if not isinstance(host_result, str) or host_result not in accepted:
+        if host_result == "NOT_GRADED":
+            verdict["reason"] = "battery_not_graded"
+        elif host_result == "HOLD":
+            verdict["reason"] = "battery_hold"
+        elif host_result == "FAIL":
+            verdict["reason"] = "battery_fail"
+        else:
+            verdict["reason"] = "battery_result_unknown"
+        return verdict
+    if battery == "2c-upgrade-rollback" and body.get("upgrade_pass") is not True:
+        verdict["reason"] = "battery_fail"
+        return verdict
+    verdict["pass"] = True
+    verdict["reason"] = "battery_pass"
+    return verdict
+
+
+def report_battery_verdict(verdict: Mapping[str, Any]) -> str:
+    """Print one line and append it to the step summary when Actions provides one."""
+    line = (
+        f"BATTERY_VERDICT battery={verdict.get('battery')} "
+        f"host_result={verdict.get('host_result')} pass={str(bool(verdict.get('pass'))).lower()} "
+        f"reason={verdict.get('reason')} row_reason={verdict.get('row_reason') or '-'}"
+    )
+    print(line, flush=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
+    if summary:
+        try:
+            with open(summary, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            pass
+    return line
 
 
 def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
@@ -2019,15 +2104,15 @@ def execute_enterprise_rows(
                 if b1_window:
                     payload["b1_start_window"] = b1_window
             redteam_local = Path(os.environ.get("W3_REDTEAM_PATH", "w3-lab-redteam-rows.json"))
-            pulled_redteam = _run_with_fresh_key(
-                runner,
-                connect,
-                public,
-                ssh_runner,
-                ["scp", *base[:-1], f"{ssh_user}@{host}:{REDTEAM_ROWS_REMOTE}", str(redteam_local)],
-                "",
-            )
             if battery == "descendant-b1":
+                pulled_redteam = _run_with_fresh_key(
+                    runner,
+                    connect,
+                    public,
+                    ssh_runner,
+                    ["scp", *base[:-1], f"{ssh_user}@{host}:{REDTEAM_ROWS_REMOTE}", str(redteam_local)],
+                    "",
+                )
                 redteam_text = ""
                 if pulled_redteam.returncode == 0 and redteam_local.is_file():
                     redteam_text = redteam_local.read_text(encoding="utf-8", errors="replace")
@@ -2047,9 +2132,12 @@ def execute_enterprise_rows(
                     raise lab.GuardAbort(payload["reason"])
                 _store_guest_rows(redteam_local, redteam_text)
                 payload["redteam_rows_sha256"] = hashlib.sha256(redteam_local.read_bytes()).hexdigest()
-            elif pulled_redteam.returncode == 0 and redteam_local.is_file():
-                _store_guest_rows(redteam_local, redteam_local.read_text(encoding="utf-8", errors="replace"))
-                payload["redteam_rows_sha256"] = hashlib.sha256(redteam_local.read_bytes()).hexdigest()
+            else:
+                # Only descendant-b1 writes red-team rows. The guest file stays on
+                # the host across batteries, so pulling it here would upload B1's
+                # rows as this battery's evidence.
+                _drop_stale_redteam(redteam_local)
+                payload["redteam_rows"] = "not_collected_for_battery"
             live_boot = _remote_boot_id(remote)
             if live_boot:
                 payload["boot_id"] = live_boot
@@ -2060,6 +2148,10 @@ def execute_enterprise_rows(
                 raise lab.GuardAbort("stale_rows")
             payload["guest_rc"] = ran.returncode
             payload["mutated"] = True
+            battery_verdict = phase_battery_verdict(battery, parsed if isinstance(parsed, dict) else None)
+            if battery_verdict is not None:
+                payload["battery_verdict"] = battery_verdict
+                report_battery_verdict(battery_verdict)
             if ran.returncode != 0:
                 reason = _guest_failure_reason(parsed)
                 payload.update({"reason": reason, "status": "FAILED"})
@@ -2160,6 +2252,11 @@ def execute_enterprise_rows(
             elif battery == "soak-hourly":
                 payload["status"] = "SOAK_HOURLY"
             else:
+                # The rows decide the battery. A graded FAIL exits 0 on the
+                # guest, so the workflow fails here instead.
+                if battery_verdict is not None and battery_verdict.get("pass") is not True:
+                    payload.update({"reason": str(battery_verdict.get("reason")), "status": "FAILED"})
+                    raise lab.GuardAbort(str(battery_verdict.get("reason")))
                 payload["status"] = "PHASE2"
         finally:
             if private is not None:

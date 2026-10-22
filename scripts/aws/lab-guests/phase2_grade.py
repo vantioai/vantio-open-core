@@ -414,6 +414,42 @@ def grade_rollback_gap(*, from_pin: str, to_seal: str, rollback_image_present: b
 
 
 CYCLE_STEPS = ("baseline", "upgrade", "rollback", "reupgrade")
+PIN_STEPS = ("baseline", "rollback")
+# The public pin (e0b19d55, PE 06696d5) predates `vantio-loader --uninstall`
+# and the stderr pin line. Its own banner is these stdout lines. Its own
+# removal is SIGINT on the container, which ends with PUBLIC_PIN_DETACHED and
+# says the pinned maps remain. The bpftool and bpffs census is still required.
+PUBLIC_PIN_SCOPED_LINE = "tc enforce : SCOPED (drop enrolled)"
+PUBLIC_PIN_CGROUP_SKB_LINE = "cgroup_skb : egress enforce ON"
+PUBLIC_PIN_ACTIVE_LINE = "Phantom Engine active"
+PUBLIC_PIN_DETACHED = "Detached cleanly."
+PUBLIC_PIN_UNINSTALL = "public_pin_sigint"
+SEAL_UNINSTALL = "product_uninstall"
+SEAL_UNINSTALL_ATTESTATION = "UNINSTALL_VERIFIED"
+
+
+def public_pin_banner_ready(text: str) -> bool:
+    """The public pin printed its own SCOPED start with the cgroup_skb program loaded.
+
+    That pin prints these lines on stdout after the cgroup program loaded and
+    the root attach ran. It never prints the newer stderr pin line.
+    """
+    return (
+        PUBLIC_PIN_ACTIVE_LINE in text
+        and PUBLIC_PIN_SCOPED_LINE in text
+        and PUBLIC_PIN_CGROUP_SKB_LINE in text
+    )
+
+
+def uninstall_attestation(name: str, uninstall: dict[str, Any]) -> str:
+    """The line this step's own uninstall must print.
+
+    Only a pin step may use the pin's SIGINT contract. A seal step always
+    needs UNINSTALL_VERIFIED. Either way the census must be clean.
+    """
+    if name in PIN_STEPS and uninstall.get("contract") == PUBLIC_PIN_UNINSTALL:
+        return PUBLIC_PIN_DETACHED
+    return SEAL_UNINSTALL_ATTESTATION
 
 
 def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
@@ -460,7 +496,7 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
             reasons.append(f"{name}_enforcement")
         uninstall = step.get("uninstall") if isinstance(step.get("uninstall"), dict) else {}
         tail = str(uninstall.get("tail") or "")
-        if uninstall.get("verified_removed") is not True or "UNINSTALL_VERIFIED" not in tail:
+        if uninstall.get("verified_removed") is not True or uninstall_attestation(name, uninstall) not in tail:
             reasons.append(f"{name}_uninstall")
     if (
         len(pin_ids) != 2
