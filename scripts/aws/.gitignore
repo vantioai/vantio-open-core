@@ -1,0 +1,6 @@
+# Local test_w3_lab_steps / lab-step evidence output. It can carry lab account
+# identifiers and must never be committed. (Kept out of the root .gitignore,
+# whose bytes are part of the sealed vantio_agent_sdk sdist.)
+w3-lab-*.json
+w3-lab-*.json.sha256
+w3-lab-console-*.txt
