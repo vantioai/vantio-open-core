@@ -1144,6 +1144,34 @@ def _rows_disagree_with_boot(body: Mapping[str, Any], live_boot: str) -> bool:
     return live_boot not in named
 
 
+def _b1_scoped_banner_warnings(body: Mapping[str, Any] | None) -> list[str]:
+    """Informational. Name a descendant-b1 phase whose scoped_banner is not scoped.
+
+    The warning goes on the payload. It never changes status or reason.
+    """
+    if not isinstance(body, Mapping):
+        return []
+    found: list[str] = []
+    for name in ("pre", "post"):
+        phase = body.get(name)
+        if isinstance(phase, Mapping) and "scoped_banner" in phase and phase.get("scoped_banner") != "scoped":
+            found.append(f"{name}_scoped_banner={phase.get('scoped_banner')}")
+    return found
+
+
+def _b1_start_window(body: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Informational. The start-window re-scan per phase: status, delayed, dropped."""
+    if not isinstance(body, Mapping):
+        return {}
+    found: dict[str, Any] = {}
+    for name in ("pre", "post"):
+        phase = body.get(name)
+        window = phase.get("start_window_rows") if isinstance(phase, Mapping) else None
+        if isinstance(window, Mapping):
+            found[name] = {key: window.get(key) for key in ("status", "delayed", "dropped")}
+    return found
+
+
 def _guest_failure_reason(body: Mapping[str, Any] | None) -> str:
     """Name the uninstall line the guest recorded. A missing tail stays guest."""
     if not isinstance(body, Mapping):
@@ -1981,6 +2009,15 @@ def execute_enterprise_rows(
                 raise
             _store_guest_rows(rows_local, guest_text)
             payload["rows_sha256"] = hashlib.sha256(rows_local.read_bytes()).hexdigest()
+            if battery == "descendant-b1":
+                # Informational only: status and reason are decided below as before.
+                b1_warnings = _b1_scoped_banner_warnings(parsed)
+                if b1_warnings:
+                    payload["warnings"] = b1_warnings
+                    print("WARNING descendant-b1 " + " ".join(b1_warnings), flush=True)
+                b1_window = _b1_start_window(parsed)
+                if b1_window:
+                    payload["b1_start_window"] = b1_window
             redteam_local = Path(os.environ.get("W3_REDTEAM_PATH", "w3-lab-redteam-rows.json"))
             pulled_redteam = _run_with_fresh_key(
                 runner,

@@ -2121,6 +2121,93 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertTrue(all("/var/lib/vantio-lab/redteam-rows.json" in item for item in redteam_pulls))
         self.assertTrue(result.get("redteam_rows_sha256"))
 
+    def test_descendant_b1_start_window_warning_is_informational(self) -> None:
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        pulled: list[str] = []
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "redteam-rows.json" in joined:
+                pulled.append(joined)
+                if "/tmp/redteam-rows.json" in joined:
+                    raise AssertionError("descendant-b1 pulled /tmp redteam rows")
+                Path(args[-1]).write_text(
+                    json.dumps({"attempts": [{"technique_id": "pe.tamper.loader_kill"}]}),
+                    encoding="utf-8",
+                )
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                pulled.append(joined)
+                if "/tmp/enterprise-pe-rows.json" in joined:
+                    raise AssertionError("descendant-b1 pulled /tmp")
+                Path(args[-1]).write_text(
+                    json.dumps(
+                        {
+                            "battery": "descendant-b1",
+                            "reboot_observed": True,
+                            "pre": {"boot_id": "boot-old", "descendant_pass": True, "scoped_banner": "scoped",
+                                    "start_window_rows": {"status": "none_missing", "delayed": 0, "dropped": 0}},
+                            "post": {"boot_id": "boot-new", "descendant_pass": True,
+                                     "scoped_banner": "scoped_banner_without_ledger_line",
+                                     "start_window_rows": {"status": "delayed", "delayed": 1, "dropped": 0, "checked": []}},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            return completed(stdout="")
+
+        def wait(*_args: object, **kwargs: object) -> str:
+            note = kwargs.get("note")
+            if isinstance(note, dict):
+                note["before"] = "boot-old"
+            return "boot-new"
+
+        original = steps._wait_for_reboot
+        steps._wait_for_reboot = wait
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                self._env_ready(tmp)
+                os.environ["W3_BATTERY"] = "descendant-b1"
+                result = steps.execute_enterprise_rows(
+                    runner,
+                    keygen=self._keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        finally:
+            steps._wait_for_reboot = original
+        self.assertEqual(result["status"], "DESCENDANT_B1")
+        self.assertEqual(result["boot_id"], "boot-new")
+        enterprise_pulls = [item for item in pulled if "enterprise-pe-rows.json" in item]
+        redteam_pulls = [item for item in pulled if "redteam-rows.json" in item]
+        self.assertTrue(enterprise_pulls)
+        self.assertTrue(all("/var/lib/vantio-lab/enterprise-pe-rows.json" in item for item in enterprise_pulls))
+        self.assertTrue(redteam_pulls)
+        self.assertTrue(all("/var/lib/vantio-lab/redteam-rows.json" in item for item in redteam_pulls))
+        self.assertEqual(result["warnings"], ["post_scoped_banner=scoped_banner_without_ledger_line"])
+        self.assertEqual(
+            result["b1_start_window"],
+            {"pre": {"status": "none_missing", "delayed": 0, "dropped": 0}, "post": {"status": "delayed", "delayed": 1, "dropped": 0}},
+        )
+        self.assertNotIn("reason", result)
+
+    def test_b1_warning_helpers_never_grade(self) -> None:
+        self.assertEqual(steps._b1_scoped_banner_warnings(None), [])
+        self.assertEqual(steps._b1_scoped_banner_warnings({"pre": {"scoped_banner": "scoped"}}), [])
+        self.assertEqual(
+            steps._b1_scoped_banner_warnings({"pre": {"scoped_banner": "missing"}, "post": {"descendant_pass": False}}),
+            ["pre_scoped_banner=missing"],
+        )
+        self.assertEqual(steps._b1_start_window({"post": {"start_window_rows": "x"}}), {})
+        source = Path(steps.__file__).read_text(encoding="utf-8")
+        block = source.split('if battery == "descendant-b1":\n                # Informational only', 1)[1]
+        block = block.split("redteam_local =", 1)[0]
+        self.assertNotIn('"status"', block)
+        self.assertNotIn('"reason"', block)
+        self.assertNotIn("GuardAbort", block)
+
     def test_lsm_guard_reads_the_durable_record_after_tmp_is_wiped(self) -> None:
         runner = FakeAws()
         runner.dry_run = "allowed"
