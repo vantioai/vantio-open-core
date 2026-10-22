@@ -38,3 +38,8 @@ output.txt
 **/passwd.txt
 **/output.sh
 **/output.txt
+
+# Lab evidence written to the working directory by w3_lab_steps (holds the lab account id)
+scripts/aws/w3-lab-*.json
+scripts/aws/w3-lab-*.json.sha256
+scripts/aws/w3-lab-console-*.txt

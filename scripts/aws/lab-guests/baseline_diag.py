@@ -1694,7 +1694,10 @@ def reassert_consented_lsm(root: Path) -> dict:
     sealed reboot script refuses. This writes only the drop-in, from the
     guard's own record. The sealed reboot script then regenerates grub,
     re-seals the firmware tree and verifies the boot line, failing closed.
-    No guard record is a no-op, so a stock host still fails a reboot.
+    No guard record is a no-op, so a stock host still fails a reboot. So
+    is a record without guard_proved and reboot_requested, and a boot that
+    is not the guard's LSM_ENABLED boot (bpf active, consented lsm= word on
+    /proc/cmdline). A record whose value is not a bpf list fails closed.
     """
     dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
     if dropin.is_file():
@@ -1720,16 +1723,45 @@ def reassert_consented_lsm(root: Path) -> dict:
         text = lsm_dropin_text(value if isinstance(value, str) else "")
     except ValueError:
         return {"ok": False, "written": False, "reason": "lsm_value"}
+    # The guard's second pass (LSM_ENABLED) is the boot this host is on:
+    # bpf active and the consented lsm= word on /proc/cmdline. Rows files
+    # are overwritten per battery, so read the live boot, not a stale row.
+    lsm_path = root / "sys/kernel/security/lsm"
+    cmdline_path = root / "proc/cmdline"
+    try:
+        active = lsm_path.read_text(encoding="utf-8").strip()
+        cmdline = cmdline_path.read_text(encoding="utf-8").split()
+    except OSError:
+        active, cmdline = "", []
+    if not bpf_lsm_active(active) or f"lsm={value}" not in cmdline:
+        return {"ok": True, "written": False, "reason": "lsm_enabled_not_seen"}
     dropin.parent.mkdir(parents=True, exist_ok=True)
     dropin.write_text(text, encoding="utf-8")
     dropin.chmod(0o755)
     return {"ok": True, "written": True, "reason": "guard_record", "lsm_value": value}
 
 
-def reassert_consented_lsm_live() -> int:
-    """0 unless a guard record exists and its lsm value is unusable."""
-    result = reassert_consented_lsm(Path("/"))
+def reassert_consented_lsm_live(root: Path = Path("/")) -> int:
+    """0 unless a guard record exists and its lsm value is unusable.
+
+    A written drop-in is recorded in the durable rows file the runner
+    uploads, so the battery's evidence says the harness re-asserted it.
+    """
+    result = reassert_consented_lsm(root)
     print(f"lab_lsm_reassert written={str(result['written']).lower()} reason={result['reason']}", flush=True)
+    if result.get("written") is True:
+        rows = root / "var/lib/vantio-lab/enterprise-pe-rows.json"
+        try:
+            body = json.loads(rows.read_text(encoding="utf-8")) if rows.is_file() else None
+        except (OSError, json.JSONDecodeError):
+            body = None
+        if isinstance(body, dict):
+            body["lab_lsm_reasserted"] = True
+            body["lab_lsm_reassert_value"] = result.get("lsm_value")
+            tmp = rows.with_name(rows.name + ".reassert.tmp")
+            tmp.write_text(json.dumps(body), encoding="utf-8")
+            tmp.chmod(0o644)
+            os.replace(tmp, rows)
     return 0 if result.get("ok") is True else 1
 
 

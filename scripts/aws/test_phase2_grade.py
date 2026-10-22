@@ -920,11 +920,25 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertEqual(dropin.read_text(encoding="utf-8"), baseline_diag.lsm_dropin_text(token))
             self.assertEqual(cfg.read_text(encoding="utf-8"), stale)
 
+    @staticmethod
+    def _consented_boot(root: Path, token: str, *, bpf: bool = True, cmdline_token: bool = True) -> None:
+        lsm = root / "sys/kernel/security/lsm"
+        lsm.parent.mkdir(parents=True, exist_ok=True)
+        lsm.write_text(
+            "lockdown,capability,landlock,yama,apparmor,bpf,ima,evm\n" if bpf else "lockdown,capability,landlock,yama,apparmor,ima,evm\n",
+            encoding="utf-8",
+        )
+        cmdline = root / "proc/cmdline"
+        cmdline.parent.mkdir(parents=True, exist_ok=True)
+        word = f" lsm={token}" if cmdline_token else ""
+        cmdline.write_text(f"BOOT_IMAGE=/vmlinuz ro console=ttyS0{word} panic=-1\n", encoding="utf-8")
+
     def test_reboot_reasserts_the_guard_dropin_after_a_battery_uninstall(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
         record = {"lsm_value": token, "reboot_requested": True, "guard_proved": True, "stock_bpf_lsm": False}
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            self._consented_boot(root, token)
             dropin = root / "etc/default/grub.d/99-vantio-lsm.cfg"
             # No guard record: a stock host stays stock and the reboot still refuses.
             none = baseline_diag.reassert_consented_lsm(root)
@@ -932,14 +946,29 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertFalse(dropin.exists())
             stock = root / "var/lib/vantio-lab/lsm-stock.json"
             stock.parent.mkdir(parents=True)
+            # A malformed record is no record.
+            stock.write_text("{not json", encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "no_guard_record")
+            stock.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "no_guard_record")
             stock.write_text(json.dumps(dict(record, guard_proved=False)), encoding="utf-8")
             self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "guard_not_proved")
+            stock.write_text(json.dumps(dict(record, reboot_requested=False)), encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "guard_not_proved")
             self.assertFalse(dropin.exists())
-            stock.write_text(json.dumps(dict(record, lsm_value="apparmor;reboot")), encoding="utf-8")
-            bad = baseline_diag.reassert_consented_lsm(root)
-            self.assertFalse(bad["ok"])
-            self.assertFalse(dropin.exists())
+            for bad_value in ("apparmor;reboot", "apparmor,yama", "", 7):
+                stock.write_text(json.dumps(dict(record, lsm_value=bad_value)), encoding="utf-8")
+                bad = baseline_diag.reassert_consented_lsm(root)
+                self.assertEqual(bad, {"ok": False, "written": False, "reason": "lsm_value"}, bad_value)
+                self.assertFalse(dropin.exists())
             stock.write_text(json.dumps(record), encoding="utf-8")
+            # Not the guard's LSM_ENABLED boot: no write.
+            self._consented_boot(root, token, bpf=False)
+            self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "lsm_enabled_not_seen")
+            self._consented_boot(root, token, cmdline_token=False)
+            self.assertEqual(baseline_diag.reassert_consented_lsm(root)["reason"], "lsm_enabled_not_seen")
+            self.assertFalse(dropin.exists())
+            self._consented_boot(root, token)
             # The guard wrote the drop-in; a battery uninstall removes it and the record stays.
             dropin.parent.mkdir(parents=True)
             dropin.write_text(baseline_diag.lsm_dropin_text(token), encoding="utf-8")
@@ -968,6 +997,7 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertEqual(dropin.read_text(encoding="utf-8"), "# operator\n")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            self._consented_boot(root, token)
             mark = root / "boot/vantio-lsm-stock.json"
             mark.parent.mkdir(parents=True)
             mark.write_text(json.dumps(record), encoding="utf-8")
@@ -980,6 +1010,45 @@ class BaselineDiagTests(unittest.TestCase):
         uninstall = shell[shell.index("authorized_uninstall()"): shell.index("\nmode=${2:-enterprise}")]
         self.assertNotIn("reassert_consented_lsm", uninstall)
         self.assertIn("remove_consented_lsm_live", uninstall)
+
+    def test_reassert_wrapper_exit_code_and_durable_row(self) -> None:
+        token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
+        record = {"lsm_value": token, "reboot_requested": True, "guard_proved": True}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._consented_boot(root, token)
+            lab_dir = root / "var/lib/vantio-lab"
+            lab_dir.mkdir(parents=True)
+            rows = lab_dir / "enterprise-pe-rows.json"
+            rows.write_text(json.dumps({"battery": "descendant-b1", "phase": "pre"}), encoding="utf-8")
+            # No record: exit 0, rows untouched.
+            self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 0)
+            self.assertNotIn("lab_lsm_reasserted", json.loads(rows.read_text(encoding="utf-8")))
+            # Unusable value: exit 1, nothing written.
+            stock = lab_dir / "lsm-stock.json"
+            stock.write_text(json.dumps(dict(record, lsm_value="apparmor,yama")), encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 1)
+            self.assertFalse((root / "etc/default/grub.d/99-vantio-lsm.cfg").exists())
+            self.assertNotIn("lab_lsm_reasserted", json.loads(rows.read_text(encoding="utf-8")))
+            # Written: exit 0 and the durable row says so, other keys kept.
+            stock.write_text(json.dumps(record), encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 0)
+            body = json.loads(rows.read_text(encoding="utf-8"))
+            self.assertIs(body["lab_lsm_reasserted"], True)
+            self.assertEqual(body["lab_lsm_reassert_value"], token)
+            self.assertEqual(body["battery"], "descendant-b1")
+            self.assertEqual(sorted(path.name for path in lab_dir.iterdir()), ["enterprise-pe-rows.json", "lsm-stock.json"])
+            # Present on the next call: exit 0, no second write needed.
+            self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 0)
+        with tempfile.TemporaryDirectory() as tmp:
+            # No rows file: the wrapper does not invent one.
+            root = Path(tmp)
+            self._consented_boot(root, token)
+            lab_dir = root / "var/lib/vantio-lab"
+            lab_dir.mkdir(parents=True)
+            (lab_dir / "lsm-stock.json").write_text(json.dumps(record), encoding="utf-8")
+            self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 0)
+            self.assertFalse((lab_dir / "enterprise-pe-rows.json").exists())
 
     def test_uninstall_strips_lsm_from_grub_and_the_cloudimg_file(self) -> None:
         token = "lockdown,capability,landlock,yama,apparmor,ima,evm,bpf"
