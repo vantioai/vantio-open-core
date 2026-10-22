@@ -550,6 +550,8 @@ def allow_start_fields(body: object) -> dict[str, Any]:
 CYCLE_STEP_NAMES = ("baseline", "upgrade", "rollback", "reupgrade")
 BPF_PROG_NAME_RE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 BPFFS_VANTIO_RE = re.compile(r"/sys/fs/bpf/vantio[A-Za-z0-9_./-]{0,120}")
+# Named 2C host findings phase2_grade can emit (PUBLIC_PIN_RESIDUE_FINDING).
+KNOWN_CYCLE_FINDINGS = frozenset({"public_pin_leaves_bpf_residue"})
 
 
 def allow_cycle_findings(value: Any) -> list[dict[str, Any]]:
@@ -567,7 +569,7 @@ def allow_cycle_findings(value: Any) -> list[dict[str, Any]]:
             continue
         finding = item.get("finding")
         step = item.get("step")
-        if not isinstance(finding, str) or re.fullmatch(r"[a-z0-9_]{1,60}", finding) is None:
+        if finding not in KNOWN_CYCLE_FINDINGS:
             continue
         if step not in CYCLE_STEP_NAMES:
             continue
