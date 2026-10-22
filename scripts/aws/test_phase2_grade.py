@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 
@@ -1685,8 +1687,14 @@ class DenyRowWaitTests(unittest.TestCase):
                 return {"action": "DENIED", "lineage_anchor": 6840, "pid": pid}
             return None
 
-        namespace = {"time": FakeTime, "deny_event_for": deny_event_for}
+        self.stderr = io.StringIO()
+        namespace = {
+            "time": FakeTime,
+            "deny_event_for": deny_event_for,
+            "sys": types.SimpleNamespace(stderr=self.stderr),
+        }
         exec(compile("from __future__ import annotations\n" + source, str(self.HOST), "exec"), namespace)
+        self.ns = namespace
         return namespace["wait_deny_event"], clock
 
     def test_row_that_lands_late_is_seen_and_timed(self) -> None:
@@ -1713,7 +1721,7 @@ class DenyRowWaitTests(unittest.TestCase):
     def test_reason_separates_missing_row_from_not_enforced(self) -> None:
         text = self.HOST.read_text(encoding="utf-8")
         body = text.split("def same_process_across_restart", 1)[1].split("kill_loader()", 1)[0]
-        self.assertIn("wait_deny_event(pid)", body)
+        self.assertIn("row_wait(pid, errno_before)", body)
         self.assertNotIn("time.sleep(0.5)", body)
         self.assertIn('"before_row_wait_s": row_wait_s', body)
         # errno != 13: the open was not enforced, so the process was not enrolled.
@@ -1726,6 +1734,56 @@ class DenyRowWaitTests(unittest.TestCase):
         self.assertEqual(body.count("return body"), 3)
         grade_text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_grade.py").read_text(encoding="utf-8")
         self.assertNotIn("deny_row_missing_before_restart", grade_text)
+
+    def test_row_wait_polls_only_when_errno_13(self) -> None:
+        _, clock = self._waiter(rows_after=2)
+        event, waited = self.ns["row_wait"](3612, 13)
+        self.assertEqual(event["lineage_anchor"], 6840)
+        self.assertEqual(waited, 0.5)
+        self.assertEqual(clock["calls"], 3)
+        # Not enforced: keep the old single look after 0.5s, and no wait is recorded.
+        _, clock = self._waiter(rows_after=None)
+        event, waited = self.ns["row_wait"](3612, 0)
+        self.assertIsNone(event)
+        self.assertEqual(waited, 0.0)
+        self.assertEqual(clock["calls"], 1)
+        self.assertEqual(clock["now"], 100.5)
+
+    def test_late_row_is_flagged_not_just_recorded(self) -> None:
+        self._waiter(rows_after=0)
+        late = self.ns["late_row_warnings"]
+        self.assertEqual(late({"before_row_seen": True, "before_row_wait_s": 0.5}), [])
+        self.assertEqual(late({"before_row_seen": True, "before_row_wait_s": 0.75}), ["late_deny_row_before_restart"])
+        self.assertEqual(
+            late({"before_row_seen": True, "before_row_wait_s": 1.0, "after_row_seen": True, "after_row_wait_s": 2.25}),
+            ["late_deny_row_before_restart", "late_deny_row_after_restart"],
+        )
+        # A missing row is a fail, not a late row.
+        self.assertEqual(late({"before_row_seen": False, "before_row_wait_s": 5.0}), [])
+        body = {"before_row_seen": True, "before_row_wait_s": 1.25}
+        self.ns["_note_late_rows"](body)
+        self.assertEqual(body["warnings"], ["late_deny_row_before_restart"])
+        self.assertIn("WARNING late_deny_row_before_restart wait_s=1.25", self.stderr.getvalue())
+
+    def test_after_restart_uses_the_same_poll_and_a_missing_row_still_fails(self) -> None:
+        text = self.HOST.read_text(encoding="utf-8")
+        body = text.split("def same_process_across_restart", 1)[1].split("\ndef ", 1)[0]
+        after = body[body.index("errno_after = int(second[1])"):]
+        self.assertIn("row_wait(pid, errno_after)", after)
+        self.assertNotIn("time.sleep(0.5)", after)
+        self.assertIn('"after_row_wait_s": after_wait_s', after)
+        self.assertIn('"after_row_seen": after_anchor > 0', after)
+        self.assertLess(after.index("_note_late_rows(body)"), after.index("grade.restart_keeps_the_same_anchor("))
+        # The grade still sees after_anchor 0 for a missing row, and fails it.
+        verdict = grade.restart_keeps_the_same_anchor(
+            pid=3612, before_errno=13, before_anchor=6840, after_errno=13, after_anchor=0, before_count=1, after_count=1
+        )
+        self.assertFalse(verdict["held"])
+
+    def test_run_2d_surfaces_restart_warnings(self) -> None:
+        text = self.HOST.read_text(encoding="utf-8")
+        run = text.split("def run_2d() -> dict:", 1)[1].split("\ndef ", 1)[0]
+        self.assertEqual(run.count('list(carried.get("warnings") or [])'), 4)
 
 
 if __name__ == "__main__":
