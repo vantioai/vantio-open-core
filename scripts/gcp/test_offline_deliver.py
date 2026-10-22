@@ -1534,9 +1534,21 @@ print("ok")
             self.assertEqual(calls["wait_boot"], [])
 
 
+DOCKER_CLEAN_RM = "rm -f /etc/apt/apt.conf.d/docker-clean"
+
 _CA_PIN_STUBS = {
     "apt-cache": 'echo "apt-cache $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_MADISON:-}"\n',
-    "apt-get": 'echo "apt-get $*" >> "$STUB_LOG"\n',
+    # download drops a fake .deb in the cwd (the archive). A real install runs dpkg,
+    # so when STUB_HOOK names an existing file it models ubuntu's docker-clean
+    # DPkg::Post-Invoke hook and empties STUB_ARCHIVES.
+    "apt-get": (
+        'echo "apt-get $*" >> "$STUB_LOG"\n'
+        'if [ "${1:-}" = download ]; then v=${2#*=}; : > "ca-certificates_${v}_all.deb"; fi\n'
+        'if [ "${1:-}" = install ] && [[ " $* " != *" --download-only "* ]] '
+        '&& [ -n "${STUB_HOOK:-}" ] && [ -e "$STUB_HOOK" ] && [ -n "${STUB_ARCHIVES:-}" ]; then\n'
+        '  rm -f "$STUB_ARCHIVES"/*.deb\n'
+        'fi\n'
+    ),
     "update-ca-certificates": 'echo "update-ca-certificates $*" >> "$STUB_LOG"\n',
     "dpkg-query": 'echo "dpkg-query $*" >> "$STUB_LOG"\nprintf "%s" "${STUB_INSTALLED:-}"\n',
 }
@@ -1617,14 +1629,70 @@ class CaPinBehaviourTest(unittest.TestCase):
         self.assertLess(text.index("# END ca-pin"), text.index("cp /etc/ssl/certs/ca-certificates.crt /out/ca-certificates.crt"))
 
 
-    def test_docker_clean_hook_is_disabled_before_dpkg_runs(self) -> None:
-        # The ubuntu image's docker-clean hook empties the apt archive after any
-        # dpkg run; the ca-pin install would delete the downloaded debs.
+    def test_docker_clean_is_removed_before_any_apt_install_or_dpkg_call(self) -> None:
+        # ubuntu:24.04's docker-clean hook empties the apt archive after every dpkg
+        # run and after apt-get update (provision 39857348011 lost every .deb).
         text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
-        hook = text.index("rm -f /etc/apt/apt.conf.d/docker-clean")
-        self.assertLess(hook, text.index("apt-get install -y --no-install-recommends ca-certificates"))
-        self.assertLess(hook, text.index("--allow-downgrades"))
+        body = text[text.index("script=$(cat <<'EOS'"):]
+        lines = [line.strip() for line in body.splitlines()]
+        hook = lines.index(DOCKER_CLEAN_RM)
+        calls = [
+            index
+            for index, line in enumerate(lines)
+            if not line.startswith("#")
+            and re.search(r"\bapt-get (update|install|download)\b|\bdpkg\b(?!-query)|\bapt\b ", line)
+        ]
+        self.assertTrue(calls)
+        self.assertLess(hook, min(calls))
         self.assertLess(text.index("--allow-downgrades"), text.index('cp "$archives"/*.deb /out/'))
+        # Only inside the throwaway container script, never on the runner itself.
+        self.assertEqual(text.count("docker-clean"), body.count("docker-clean"))
+
+    def _run_with_hook(self, remove_hook: bool) -> list[str]:
+        madison = "ca-certificates | 20240203 | https://snapshot.ubuntu.com/ubuntu/20261008T000000Z noble-updates/main amd64 Packages\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            stubs = base / "bin"
+            stubs.mkdir()
+            for name, body in _CA_PIN_STUBS.items():
+                path = stubs / name
+                path.write_text("#!/bin/bash\n" + body, encoding="utf-8")
+                path.chmod(0o755)
+            archives = base / "archives"
+            archives.mkdir()
+            (archives / "docker.io_24.0.7_amd64.deb").write_text("", encoding="utf-8")
+            hook = base / "docker-clean"
+            hook.write_text("DPkg::Post-Invoke {};\n", encoding="utf-8")
+            log = base / "log"
+            log.write_text("", encoding="utf-8")
+            env = dict(os.environ)
+            env.update(
+                {
+                    "PATH": f"{stubs}{os.pathsep}{env.get('PATH', '')}",
+                    "STUB_LOG": str(log),
+                    "STUB_MADISON": madison,
+                    "STUB_INSTALLED": "20240203",
+                    "STUB_HOOK": str(hook),
+                    "STUB_ARCHIVES": str(archives),
+                }
+            )
+            # The script's own removal line, pointed at the stand-in hook file.
+            prelude = DOCKER_CLEAN_RM.replace("/etc/apt/apt.conf.d/docker-clean", str(hook)) if remove_hook else ":"
+            script = "set -euo pipefail\narchives=" + str(archives) + "\n" + prelude + "\n" + self._block()
+            result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return sorted(path.name for path in archives.glob("*.deb"))
+
+    def test_archive_keeps_debs_through_the_ca_pin_install_once_hook_is_removed(self) -> None:
+        self.assertIn(DOCKER_CLEAN_RM, (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8").splitlines())
+        self.assertEqual(
+            self._run_with_hook(remove_hook=True),
+            ["ca-certificates_20240203_all.deb", "docker.io_24.0.7_amd64.deb"],
+        )
+
+    def test_hook_left_in_place_empties_the_archive(self) -> None:
+        # Control: the stub hook reproduces the 39857348011 failure.
+        self.assertEqual(self._run_with_hook(remove_hook=False), [])
 
 class PublicPinHandoffTest(unittest.TestCase):
     """2c-upgrade-rollback needs public-pin.oci.tar beside seal.oci.tar on the GCP guest."""
