@@ -529,7 +529,7 @@ def vantio_bpf_pins() -> list[str]:
 REVOKE_CONVERGENCE: dict = {}
 
 
-def prepare_enforce(*, time_revoke: bool = False) -> tuple[PeHostAdapter, str]:
+def prepare_enforce(*, time_revoke: bool = False, public_pin: bool = False) -> tuple[PeHostAdapter, str]:
     rows.ensure_cgroups()
     ensure_lab_iface()
     ensure_allowlist_peer()
@@ -562,9 +562,16 @@ def prepare_enforce(*, time_revoke: bool = False) -> tuple[PeHostAdapter, str]:
     # Docker logs for this container only. A SCOPED line left in the events
     # file by an earlier battery is not this loader. A missing banner is not
     # a measured fail-open: the probe has not seen a deny yet.
-    banner = _wait_scoped_banner()
-    if not _banner_ready(banner):
+    # The public pin is checked against its own banner, not the seal's.
+    ready = _public_pin_banner_ready if public_pin else _banner_ready
+    banner = _wait_scoped_banner(ready=ready)
+    if not ready(banner):
         tail = " ".join(banner.split())[-800:]
+        if public_pin:
+            raise SystemExit(
+                "public pin banner missing: Phantom Engine active, tc enforce : SCOPED (drop enrolled)"
+                f" and cgroup_skb : egress enforce ON tail={tail}"
+            )
         raise SystemExit(
             "loader banner missing: SCOPED (drop enrolled) and cgroup_skb_egress_enforce"
             f" tail={tail}"
@@ -866,14 +873,20 @@ def _banner_ready(text: str) -> bool:
     return grade.enforce_banner_ready(text)
 
 
-def _wait_scoped_banner(timeout: float = 120) -> str:
+def _public_pin_banner_ready(text: str) -> bool:
+    """The public pin's own SCOPED banner. It has no stderr pin line."""
+    return grade.public_pin_banner_ready(text)
+
+
+def _wait_scoped_banner(timeout: float = 120, ready=None) -> str:
     """Wait until this container logs the enforce banner. Do not read a stale file."""
+    check = ready or _banner_ready
     deadline = time.time() + timeout
     last = ""
     while time.time() < deadline:
         proc = rows.sudo(["docker", "logs", rows.LOADER], timeout=20)
         last = (proc.stdout or "") + (proc.stderr or "")
-        if _banner_ready(last):
+        if check(last):
             return last
         time.sleep(2)
     return last
@@ -1203,6 +1216,76 @@ def same_process_across_restart(adapter) -> dict:
         os.waitpid(child, 0)
 
 
+EGRESS_RECHECK_S = 1.0
+EGRESS_RECHECK_STEP_S = 0.1
+
+
+def egress_row_recheck(pid: int, timeout: float = EGRESS_RECHECK_S, step: float = EGRESS_RECHECK_STEP_S) -> dict:
+    """Look for the egress row again for up to one second after a timeout.
+
+    Diagnostic only. The grade already ran on the first lookup and is not
+    redone, so a late row is recorded here and does not turn into a pass.
+    """
+    started = time.monotonic()
+    anchor = egress_block_anchor(pid) if pid > 0 else 0
+    while anchor <= 0 and pid > 0 and time.monotonic() - started < timeout:
+        time.sleep(step)
+        anchor = egress_block_anchor(pid)
+    return {
+        "anchor": anchor,
+        "found": anchor > 0,
+        "regraded": False,
+        "waited_s": round(time.monotonic() - started, 3),
+    }
+
+
+def _anchor_ids() -> list[int]:
+    """The lab cgroup's inode and kernfs id. Read only."""
+    found: list[int] = []
+    try:
+        inode = os.stat(str(rows.ANCHOR)).st_ino
+    except OSError:
+        inode = 0
+    if inode > 0:
+        found.append(inode)
+        handle = _kernfs_handle_id(str(rows.ANCHOR))
+        if handle and handle not in found:
+            found.append(handle)
+    return found
+
+
+def deny_diag(pids: list[int], *, anchor: int = 0, recheck_pid: int = 0) -> dict:
+    """Read-only deny-attr facts for a 2D or 2F row that is missing or not graded.
+
+    Records whether the deny pin exists, the keys for these pids and the
+    anchor cgroup, the drop counter, the bpf programs and maps, file
+    attribution, and the pins. It writes nothing on the guest.
+    """
+    anchors = _anchor_ids()
+    if isinstance(anchor, int) and not isinstance(anchor, bool) and anchor > 0 and anchor not in anchors:
+        anchors.insert(0, anchor)
+    clean = [pid for pid in pids if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0]
+    try:
+        facts = baseline_diag.deny_attr_diag(clean, anchors, str(rows.ANCHOR))
+    except Exception as exc:
+        facts = {"cause": "diag_failed", "error": type(exc).__name__}
+    try:
+        facts["file_attributed"] = {str(pid): attributed(pid, "DENIED") for pid in clean}
+        facts["ndjson_denied_pids"] = ndjson_denied_pids()
+    except Exception as exc:
+        facts["file_attribution_error"] = type(exc).__name__
+    if recheck_pid > 0:
+        facts["egress_row_recheck"] = egress_row_recheck(recheck_pid)
+    return facts
+
+
+def _bpf_pin_sample() -> list[str]:
+    root = Path("/sys/fs/bpf")
+    if not root.is_dir():
+        return []
+    return [str(path) for path in root.rglob("*") if path.is_file()][:5]
+
+
 def kill_loader() -> int:
     proc = rows.sudo(["pkill", "-9", "-x", "vantio-loader"])
     time.sleep(1.0)
@@ -1279,11 +1362,11 @@ def _use_image(ref: str) -> None:
     rows.IMAGE = ref
 
 
-def _measure_loaded(ref: str) -> dict:
+def _measure_loaded(ref: str, *, public_pin: bool = False) -> dict:
     """Start this image and record one attributed enrolled open. No detach."""
     _use_image(ref)
     try:
-        _adapter, digest = prepare_enforce()
+        _adapter, digest = prepare_enforce(public_pin=public_pin)
     except SystemExit as exc:
         return {
             "attributed": False,
@@ -1309,18 +1392,7 @@ def _product_uninstall(image: str) -> dict:
     Stopping the loader container is what the shell already does before the
     product binary. This does not detach a program and does not unlink a pin.
     """
-    import product_uninstall_census as census
-
-    rows.sudo(["docker", "update", "--restart=no", rows.LOADER], timeout=20)
-    rows.sudo(["docker", "stop", "--signal", "SIGINT", "--time", "20", rows.LOADER], timeout=40)
-    rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
-    rows.sudo(["docker", "update", "--restart=no", "vantio-pe-lab"], timeout=20)
-    rows.sudo(["docker", "rm", "-f", "vantio-pe-lab"], timeout=40)
-    record = Path("/run/vantio-failclosed-mounts")
-    if record.is_file():
-        for path in record.read_text(encoding="utf-8", errors="replace").splitlines():
-            if path.startswith("/") and ".." not in path.split("/"):
-                rows.sudo(["umount", path], timeout=20)
+    _stop_lab_containers()
     rows.sudo(["mkdir", "-p", "/var/lib/vantio", "/var/log/vantio", "/var/lib/vantio-lab"], timeout=20)
     token_path = "/var/lib/vantio/enterprise-uninstall.token"
     if rows.sudo(["test", "-s", token_path], timeout=10).returncode != 0:
@@ -1350,6 +1422,40 @@ def _product_uninstall(image: str) -> dict:
         timeout=180,
     )
     text = ((proc.stdout or "") + "\n" + (proc.stderr or "")).replace(token, "[token]")
+    removed = _removal_census()
+    tail = text[-400:]
+    removed["contract"] = grade.SEAL_UNINSTALL
+    removed["tail"] = tail
+    removed["uninstall_rc"] = proc.returncode
+    removed["verified_removed"] = bool(removed.get("verified_removed")) and grade.SEAL_UNINSTALL_ATTESTATION in text
+    return removed
+
+
+def _stop_lab_containers() -> str:
+    """SIGINT the loader, keep its last log, then remove the lab containers.
+
+    The log is read before rm so a pin's own shutdown line is kept.
+    """
+    rows.sudo(["docker", "update", "--restart=no", rows.LOADER], timeout=20)
+    rows.sudo(["docker", "stop", "--signal", "SIGINT", "--time", "20", rows.LOADER], timeout=40)
+    logs = rows.sudo(["docker", "logs", "--tail", "40", rows.LOADER], timeout=20)
+    # stdout last: the pin's shutdown line is on stdout and must stay in the tail.
+    text = (logs.stderr or "") + "\n" + (logs.stdout or "")
+    rows.sudo(["docker", "rm", "-f", rows.LOADER], timeout=40)
+    rows.sudo(["docker", "update", "--restart=no", "vantio-pe-lab"], timeout=20)
+    rows.sudo(["docker", "rm", "-f", "vantio-pe-lab"], timeout=40)
+    record = Path("/run/vantio-failclosed-mounts")
+    if record.is_file():
+        for path in record.read_text(encoding="utf-8", errors="replace").splitlines():
+            if path.startswith("/") and ".." not in path.split("/"):
+                rows.sudo(["umount", path], timeout=20)
+    return text
+
+
+def _removal_census() -> dict:
+    """Read bpftool and bpffs after an uninstall. Read only."""
+    import product_uninstall_census as census
+
     show = rows.sudo(["bpftool", "-j", "prog", "show"], timeout=30)
     raw = (show.stdout or "") + "\n" + (show.stderr or "")
     try:
@@ -1361,17 +1467,30 @@ def _product_uninstall(image: str) -> dict:
     mounted = "bpf" in Path("/proc/mounts").read_text(encoding="utf-8", errors="replace")
     paths = census.classify_bpffs(mounted=mounted, find_rc=find.returncode, text=find.stdout or "")
     ps = rows.sudo(["docker", "ps", "-q"], timeout=20)
-    removed = census.removal_census(programs, paths, ps.stdout or "", show.returncode)
-    tail = text[-400:]
-    removed["tail"] = tail
-    removed["uninstall_rc"] = proc.returncode
-    removed["verified_removed"] = bool(removed.get("verified_removed")) and "UNINSTALL_VERIFIED" in text
+    return census.removal_census(programs, paths, ps.stdout or "", show.returncode)
+
+
+def _public_pin_uninstall() -> dict:
+    """The public pin's own removal: SIGINT on its container, then the same census.
+
+    That pin has no --uninstall. On SIGINT it detaches and prints
+    "Detached cleanly." and says its pinned maps remain. Programs or pins
+    still loaded after that are recorded as they are. Nothing is detached
+    or unlinked here.
+    """
+    text = _stop_lab_containers()
+    removed = _removal_census()
+    removed["contract"] = grade.PUBLIC_PIN_UNINSTALL
+    removed["tail"] = text[-400:]
+    removed["uninstall_rc"] = None
+    removed["verified_removed"] = bool(removed.get("verified_removed")) and grade.PUBLIC_PIN_DETACHED in text
     return removed
 
 
 def _cycle_step(name: str, ref: str, archive_sha256: str) -> dict:
-    measured = _measure_loaded(ref)
-    uninstall = _product_uninstall(ref)
+    public_pin = name in grade.PIN_STEPS and archive_sha256 == grade.PUBLIC_INSTALLER_PIN
+    measured = _measure_loaded(ref, public_pin=public_pin)
+    uninstall = _public_pin_uninstall() if public_pin else _product_uninstall(ref)
     return {
         "archive_sha256": archive_sha256,
         "attributed": measured["attributed"],
@@ -1382,6 +1501,8 @@ def _cycle_step(name: str, ref: str, archive_sha256: str) -> dict:
         "policy_digest": measured["policy_digest"],
         "setup_error": measured["setup_error"],
         "uninstall": {
+            "bpffs_vantio": uninstall.get("bpffs_vantio"),
+            "contract": uninstall.get("contract", ""),
             "loader_programs": uninstall.get("loader_programs"),
             "reason": uninstall.get("reason", ""),
             "tail": uninstall.get("tail", ""),
@@ -1470,6 +1591,7 @@ def run_2d() -> dict:
             "lab_pass": False,
             "policy_digest": digest,
             "reason": carried.get("reason") or "enrollment_dropped",
+            "deny_diag": deny_diag([carried.get("pid")], anchor=anchor),
             "setup_invalid": False,
             "warnings": list(carried.get("warnings") or []),
             "while_loader_up": up,
@@ -1487,6 +1609,7 @@ def run_2d() -> dict:
     observed = egress_observation()
     if control_errno != 0:
         refused = grade.ungraded_egress("2d-crash-recovery", "lab_network")
+        refused["deny_diag"] = deny_diag([enrolled.get("pid"), up.get("pid")], anchor=anchor)
         refused["policy_digest"] = digest
         refused["while_loader_up"] = up
         refused["enrolled_after"] = enrolled
@@ -1504,6 +1627,14 @@ def run_2d() -> dict:
     block = grade.egress_grade_block(control_errno, egress.get("net_errno"))
     if block is not None and not (block == "enrolled_egress_timeout" and net_anchor > 0):
         refused = grade.ungraded_egress("2d-crash-recovery", block)
+        refused["deny_diag"] = deny_diag(
+            [net_pid, enrolled.get("pid"), up.get("pid")],
+            anchor=anchor,
+            recheck_pid=net_pid if block == "enrolled_egress_timeout" else 0,
+        )
+        refused["file_attributed"] = _file_attributed_2d(enrolled)
+        refused["bpf_pin_sample"] = _bpf_pin_sample()
+        refused["ndjson_denied_pids"] = ndjson_denied_pids()
         refused["policy_digest"] = digest
         refused["while_loader_up"] = up
         refused["enrolled_after"] = enrolled
@@ -1525,14 +1656,7 @@ def run_2d() -> dict:
         "role": "control",
         "uid": SUBJECT,
     }
-    event = enrolled.get("deny_event")
-    file_attributed = (
-        isinstance(event, dict)
-        and event.get("pid") == enrolled.get("pid")
-        and isinstance(event.get("lineage_anchor"), int)
-        and not isinstance(event.get("lineage_anchor"), bool)
-        and event.get("lineage_anchor") > 0
-    )
+    file_attributed = _file_attributed_2d(enrolled)
     graded = grade.grade_crash(
         enrolled_errno=enrolled.get("net_errno"),
         unenrolled_errno=unenrolled.get("net_errno"),
@@ -1564,7 +1688,25 @@ def run_2d() -> dict:
         and up.get("deny_event") is not None
         and enrolled.get("file_errno") == 0
     )
+    if graded.get("host_result") != "PASS":
+        graded["deny_diag"] = deny_diag(
+            [net_pid, enrolled.get("pid"), up.get("pid")],
+            anchor=anchor,
+            recheck_pid=net_pid if net_anchor <= 0 else 0,
+        )
     return graded
+
+
+def _file_attributed_2d(enrolled: dict) -> bool:
+    """The enrolled open's ledger row names its pid and a non-zero anchor."""
+    event = enrolled.get("deny_event")
+    return (
+        isinstance(event, dict)
+        and event.get("pid") == enrolled.get("pid")
+        and isinstance(event.get("lineage_anchor"), int)
+        and not isinstance(event.get("lineage_anchor"), bool)
+        and event.get("lineage_anchor") > 0
+    )
 
 
 def run_2e() -> dict:
@@ -1592,6 +1734,8 @@ def run_2f() -> dict:
     observed = egress_observation()
     if control_errno != 0:
         refused = grade.ungraded_egress("2f-tamper", "lab_network")
+        refused["deny_diag"] = deny_diag([])
+        refused["bpf_pin_sample"] = _bpf_pin_sample()
         refused["policy_digest"] = digest
         refused["unenrolled_after"] = control
         refused["control_errno"] = control_errno
@@ -1605,6 +1749,13 @@ def run_2f() -> dict:
     block = grade.egress_grade_block(control_errno, enrolled.get("net_errno"))
     if block is not None and not (block == "enrolled_egress_timeout" and net_anchor > 0):
         refused = grade.ungraded_egress("2f-tamper", block)
+        refused["deny_diag"] = deny_diag(
+            [net_pid],
+            recheck_pid=net_pid if block == "enrolled_egress_timeout" else 0,
+        )
+        refused["file_attributed"] = net_pid > 0 and attributed(net_pid, "DENIED")
+        refused["bpf_pin_sample"] = _bpf_pin_sample()
+        refused["ndjson_denied_pids"] = ndjson_denied_pids()
         refused["policy_digest"] = digest
         refused["enrolled_after"] = enrolled
         refused["unenrolled_after"] = control
@@ -1615,10 +1766,7 @@ def run_2f() -> dict:
         return refused
     unenrolled = control
     file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
-    pins = []
-    root = Path("/sys/fs/bpf")
-    if root.is_dir():
-        pins = [str(path) for path in root.rglob("*") if path.is_file()][:5]
+    pins = _bpf_pin_sample()
     graded = grade.grade_tamper(
         enrolled_errno=enrolled.get("net_errno"),
         unenrolled_errno=unenrolled.get("net_errno"),
@@ -1639,6 +1787,8 @@ def run_2f() -> dict:
     graded["ndjson_denied_pids"] = ndjson_denied_pids()
     graded["allowlist_host"] = ALLOW_HOST
     grade.apply_allowlisted_private(graded, enrolled_connect_errno(ALLOW_HOST, ALLOW_PORT))
+    if graded.get("host_result") != "PASS":
+        graded["deny_diag"] = deny_diag([net_pid], recheck_pid=net_pid if net_anchor <= 0 else 0)
     return graded
 
 

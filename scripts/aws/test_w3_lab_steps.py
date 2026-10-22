@@ -2425,6 +2425,230 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "console_missing")
 
 
+class PhaseBatteryVerdictTests(unittest.TestCase):
+    """A phase battery is graded from its rows, not from a green guest exit."""
+
+    def setUp(self) -> None:
+        self._env = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._env)
+
+    def test_each_battery_passes_only_on_its_own_result(self) -> None:
+        passing = {
+            "r15-container-exit": "RECORDED",
+            "2d-crash-recovery": "PASS",
+            "2e-performance": "PASS",
+            "2f-tamper": "PASS",
+            "2g-distro": "PASS",
+            "lsm-guard": "GUARD_PROVED",
+        }
+        for battery, result in passing.items():
+            verdict = steps.phase_battery_verdict(battery, {"battery": battery, "host_result": result})
+            self.assertTrue(verdict["pass"], battery)
+            self.assertEqual(verdict["reason"], "battery_pass")
+        for result in ("LSM_ALREADY_ACTIVE", "LSM_ENABLED"):
+            self.assertTrue(steps.phase_battery_verdict("lsm-guard", {"host_result": result})["pass"])
+        upgraded = steps.phase_battery_verdict(
+            "2c-upgrade-rollback",
+            {"battery": "2c-upgrade-rollback", "host_result": "RECORDED", "upgrade_pass": True},
+        )
+        self.assertTrue(upgraded["pass"])
+        # A pass word that belongs to another battery is not a pass.
+        self.assertFalse(steps.phase_battery_verdict("2f-tamper", {"host_result": "RECORDED"})["pass"])
+        self.assertFalse(steps.phase_battery_verdict("r15-container-exit", {"host_result": "PASS"})["pass"])
+        self.assertFalse(steps.phase_battery_verdict("lsm-guard", {"host_result": "PASS"})["pass"])
+
+    def test_fail_not_graded_and_hold_are_named(self) -> None:
+        cases = {
+            "FAIL": "battery_fail",
+            "NOT_GRADED": "battery_not_graded",
+            "HOLD": "battery_hold",
+            "SOMETHING": "battery_result_unknown",
+        }
+        for result, reason in cases.items():
+            verdict = steps.phase_battery_verdict(
+                "2f-tamper",
+                {"battery": "2f-tamper", "host_result": result, "reason": "enrolled_egress_timeout"},
+            )
+            self.assertFalse(verdict["pass"])
+            self.assertEqual(verdict["reason"], reason)
+            self.assertEqual(verdict["row_reason"], "enrolled_egress_timeout")
+        missing = steps.phase_battery_verdict("2d-crash-recovery", None)
+        self.assertEqual(missing["reason"], "battery_rows_missing")
+        self.assertFalse(missing["pass"])
+        no_result = steps.phase_battery_verdict("2d-crash-recovery", {"battery": "2d-crash-recovery"})
+        self.assertEqual(no_result["reason"], "battery_result_unknown")
+
+    def test_2c_record_without_upgrade_pass_is_a_fail(self) -> None:
+        verdict = steps.phase_battery_verdict(
+            "2c-upgrade-rollback",
+            {"battery": "2c-upgrade-rollback", "host_result": "RECORDED", "upgrade_pass": False},
+        )
+        self.assertFalse(verdict["pass"])
+        self.assertEqual(verdict["reason"], "battery_fail")
+        failed = steps.phase_battery_verdict(
+            "2c-upgrade-rollback",
+            {"battery": "2c-upgrade-rollback", "host_result": "FAIL", "reason": "baseline_enforcement"},
+        )
+        self.assertEqual(failed["reason"], "battery_fail")
+
+    def test_other_battery_rows_and_harness_errors_do_not_pass(self) -> None:
+        other = steps.phase_battery_verdict("2f-tamper", {"battery": "2d-crash-recovery", "host_result": "PASS"})
+        self.assertEqual(other["reason"], "battery_mismatch")
+        self.assertFalse(other["pass"])
+        broken = steps.phase_battery_verdict(
+            "2f-tamper",
+            {"battery": "2f-tamper", "host_result": "PASS", "harness_error": "SystemExit loader 1"},
+        )
+        self.assertEqual(broken["reason"], "battery_harness_error")
+        self.assertFalse(broken["pass"])
+
+    def test_batteries_outside_phase_two_are_not_graded_here(self) -> None:
+        for battery in ("soak-hourly", "descendant-b1", "enterprise", "webshell", "reboot-check"):
+            self.assertIsNone(steps.phase_battery_verdict(battery, {"host_result": "FAIL"}))
+
+    def test_the_verdict_line_reaches_the_step_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.md"
+            os.environ["GITHUB_STEP_SUMMARY"] = str(summary)
+            line = steps.report_battery_verdict(
+                {"battery": "2f-tamper", "host_result": "NOT_GRADED", "pass": False, "reason": "battery_not_graded", "row_reason": "enrolled_egress_timeout"}
+            )
+            self.assertIn("BATTERY_VERDICT battery=2f-tamper", line)
+            self.assertIn("pass=false", line)
+            self.assertEqual(summary.read_text(encoding="utf-8"), line + "\n")
+
+    def test_every_phase_battery_except_soak_has_a_pass_rule(self) -> None:
+        source = Path(steps.__file__).read_text(encoding="utf-8")
+        block = source.split("phase_batteries = {", 1)[1].split("}", 1)[0]
+        listed = {item.strip().strip('",') for item in block.splitlines() if item.strip().strip('",')}
+        self.assertEqual(listed - {"soak-hourly"}, set(steps.PHASE_BATTERY_PASS))
+
+
+class PhaseBatteryRunTests(unittest.TestCase):
+    """End to end through arm-enterprise with fake AWS and SSH."""
+
+    def setUp(self) -> None:
+        self._env = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._env)
+
+    def _env_ready(self, tmp: str, battery: str) -> None:
+        path = Path(tmp) / "caps.json"
+        path.write_text(json.dumps({"ssh_instance_connect": True, "max_life_hours_36": True, "ssm": False}))
+        os.environ["W3_LAB_CAPABILITIES"] = str(path)
+        os.environ["INSTANCE_ID"] = INSTANCE
+        os.environ["SEAL"] = SEAL
+        os.environ["PUBLIC_PIN"] = PIN
+        os.environ["W3_RUNNER_CIDR"] = "1.1.1.1/32"
+        os.environ["EVIDENCE_PATH"] = str(Path(tmp) / "arm.json")
+        os.environ["W3_STAMP"] = str(Path(tmp) / "stamp.json")
+        os.environ["W3_BUNDLE_DIR"] = str(Path(tmp) / "bundle")
+        os.environ["W3_ROWS_PATH"] = str(Path(tmp) / "rows.json")
+        os.environ["W3_REDTEAM_PATH"] = str(Path(tmp) / "redteam.json")
+        os.environ["W3_BATTERY"] = battery
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        Path(os.environ["W3_BUNDLE_DIR"]).mkdir()
+
+    def _keygen(self, directory: Path) -> tuple[Path, str]:
+        private = directory / "lab-ed25519"
+        private.write_text("key\n", encoding="utf-8")
+        return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+    def _run(self, battery: str, rows: dict, *, guest_rc: int = 0, stale_redteam: bool = False):
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        pulled: list[str] = []
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(args)
+            if args[0] == "scp" and "redteam-rows.json" in joined:
+                pulled.append(joined)
+                Path(args[-1]).write_text(json.dumps({"attempts": [{"row": "stale-b1"}]}), encoding="utf-8")
+            if args[0] == "scp" and "enterprise-pe-rows.json" in joined:
+                Path(args[-1]).write_text(json.dumps(rows), encoding="utf-8")
+            if args[0] == "ssh" and args[-1] == "/proc/sys/kernel/random/boot_id":
+                return completed(stdout="boot-new\n")
+            if args[0] == "ssh" and "enterprise-rows.sh" in joined and battery in joined:
+                return completed(stdout="", code=guest_rc)
+            return completed(stdout="")
+
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp, ignore_errors=True))
+        self._env_ready(tmp, battery)
+        redteam = Path(os.environ["W3_REDTEAM_PATH"])
+        if stale_redteam:
+            redteam.write_text('{"attempts": []}\n', encoding="utf-8")
+            redteam.with_name(redteam.name + ".sha256").write_text("x  redteam.json\n", encoding="utf-8")
+        error = None
+        result = None
+        try:
+            result = steps.execute_enterprise_rows(
+                runner,
+                keygen=self._keygen,
+                ssh_runner=ssh,
+                checker=lambda _path: {"seal_sha256": SEAL},
+            )
+        except lab.GuardAbort as exc:
+            error = exc
+        evidence = json.loads(Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8"))
+        return result, error, evidence, pulled, Path(tmp)
+
+    def test_a_graded_fail_with_guest_exit_zero_fails_the_arm(self) -> None:
+        rows = {"battery": "2d-crash-recovery", "boot_id": "boot-new", "host_result": "FAIL", "reason": "no_new_deny_after_restart"}
+        result, error, evidence, _pulled, tmp = self._run("2d-crash-recovery", rows)
+        self.assertIsNone(result)
+        self.assertIsNotNone(error)
+        self.assertEqual(error.reason, "battery_fail")
+        self.assertEqual(evidence["status"], "FAILED")
+        self.assertEqual(evidence["reason"], "battery_fail")
+        self.assertEqual(evidence["guest_rc"], 0)
+        self.assertEqual(evidence["battery_verdict"]["row_reason"], "no_new_deny_after_restart")
+        self.assertFalse(evidence["battery_verdict"]["pass"])
+        # The rows were stored before the arm failed, so they still upload.
+        self.assertTrue((tmp / "rows.json").is_file())
+        self.assertIn("rows_sha256", evidence)
+
+    def test_not_graded_keeps_the_guest_exit_code_and_records_the_verdict(self) -> None:
+        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "NOT_GRADED", "reason": "enrolled_egress_timeout"}
+        _result, error, evidence, _pulled, _tmp = self._run("2f-tamper", rows, guest_rc=2)
+        self.assertIsNotNone(error)
+        self.assertEqual(evidence["guest_rc"], 2)
+        self.assertEqual(evidence["status"], "FAILED")
+        self.assertEqual(evidence["battery_verdict"]["reason"], "battery_not_graded")
+        self.assertEqual(evidence["battery_verdict"]["host_result"], "NOT_GRADED")
+
+    def test_a_pass_is_still_phase2(self) -> None:
+        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS", "reason": "post_kill_holds"}
+        result, error, evidence, _pulled, _tmp = self._run("2f-tamper", rows)
+        self.assertIsNone(error)
+        self.assertEqual(result["status"], "PHASE2")
+        self.assertTrue(evidence["battery_verdict"]["pass"])
+        self.assertNotIn("reason", evidence)
+
+    def test_non_b1_battery_never_pulls_or_keeps_redteam_rows(self) -> None:
+        rows = {"battery": "2f-tamper", "boot_id": "boot-new", "host_result": "PASS"}
+        result, _error, evidence, pulled, tmp = self._run("2f-tamper", rows, stale_redteam=True)
+        self.assertEqual(pulled, [])
+        self.assertFalse((tmp / "redteam.json").exists())
+        self.assertFalse((tmp / "redteam.json.sha256").exists())
+        self.assertNotIn("redteam_rows_sha256", evidence)
+        self.assertEqual(result["redteam_rows"], "not_collected_for_battery")
+
+    def test_redteam_pull_is_inside_the_b1_branch(self) -> None:
+        source = Path(steps.__file__).read_text(encoding="utf-8")
+        start = source.index('redteam_local = Path(os.environ.get("W3_REDTEAM_PATH"')
+        block = source[start: source.index("live_boot = _remote_boot_id(remote)", start)]
+        b1 = block.index('if battery == "descendant-b1":')
+        self.assertGreater(block.index("REDTEAM_ROWS_REMOTE"), b1)
+        self.assertEqual(block.count("REDTEAM_ROWS_REMOTE"), 1)
+        self.assertNotIn("elif pulled_redteam", block)
+
+
 class RebootWaitTests(unittest.TestCase):
     def test_ssh_that_stays_up_on_the_same_boot_uses_the_observe_budget(self) -> None:
         now = {"t": 0.0}

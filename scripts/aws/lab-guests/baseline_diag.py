@@ -2422,3 +2422,240 @@ def classify(facts: dict) -> str:
     if facts.get("strace_eacces") is True:
         return "eacces_cgroup_mismatch"
     return "unclassified"
+
+
+# ── Deny-attr diagnostics for 2D and 2F ─────────────────────────────────────
+# Read only. Nothing here writes a map, detaches a program, or unlinks a pin.
+# A record's path bytes are never copied out; only its length is.
+DENY_DROPS_PIN = "/sys/fs/bpf/vantio_deny_attr_drops"
+ENROLLED_PIN = "/sys/fs/bpf/vantio_enrolled_cgroups"
+DENY_ATTR_SIZE = 88
+DENY_KIND_NAMES = {1: "file", 2: "egress_cgroup", 3: "egress_tc", 4: "self"}
+EGRESS_KINDS = (2, 3)
+DENY_DUMP_KEEP = 32
+NAMES_KEEP = 200
+
+
+def decode_deny_row(row: object) -> dict | None:
+    """One deny-attr dump row as numbers. The key is (pid << 8) | kind."""
+    if not isinstance(row, dict):
+        return None
+    key = _le_int(row.get("key"))
+    blob = _byte_blob(row.get("value"))
+    if key is None or blob is None or len(blob) < 32:
+        return None
+    return {
+        "key_pid": key >> 8,
+        "key_kind": key & 0xFF,
+        "key_kind_name": DENY_KIND_NAMES.get(key & 0xFF, "unknown"),
+        "pid": int.from_bytes(blob[0:4], "little"),
+        "uid": int.from_bytes(blob[4:8], "little"),
+        "kind": int.from_bytes(blob[8:12], "little"),
+        "path_len": int.from_bytes(blob[12:16], "little"),
+        "anchor": int.from_bytes(blob[16:24], "little"),
+        "timestamp_set": int.from_bytes(blob[24:32], "little") != 0,
+        "value_size": len(blob),
+    }
+
+
+def summarize_deny_dump(dump: object, pids: list[int], anchors: list[int]) -> dict:
+    """Rows that name these pids or anchors, and how many rows of each kind exist."""
+    wanted_pids = {pid for pid in pids if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0}
+    wanted_anchors = {a for a in anchors if isinstance(a, int) and not isinstance(a, bool) and a > 0}
+    kinds: dict[str, int] = {}
+    matched: list[dict] = []
+    total = 0
+    undecoded = 0
+    if not isinstance(dump, list):
+        return {"rows": None, "kinds": kinds, "matched": matched, "undecoded": 0}
+    for raw in dump:
+        decoded = decode_deny_row(raw)
+        if decoded is None:
+            undecoded += 1
+            continue
+        total += 1
+        name = decoded["key_kind_name"]
+        kinds[name] = kinds.get(name, 0) + 1
+        hit = (
+            decoded["key_pid"] in wanted_pids
+            or decoded["pid"] in wanted_pids
+            or decoded["anchor"] in wanted_anchors
+        )
+        if hit and len(matched) < DENY_DUMP_KEEP:
+            matched.append(decoded)
+    return {"rows": total, "kinds": kinds, "matched": matched, "undecoded": undecoded}
+
+
+def egress_row_state(summary: dict, pid: int, anchors: list[int]) -> str:
+    """Why an egress row for this pid did or did not count.
+
+    row_present: keyed (pid << 8) | egress kind, names the pid, an anchor and a timestamp.
+    row_invalid: the key is there but the value lacks the pid, anchor, or timestamp.
+    row_mis_keyed: an egress row names this pid or anchor under another key.
+    row_absent: no egress row for this pid or anchor.
+    """
+    matched = summary.get("matched") if isinstance(summary.get("matched"), list) else []
+    anchor_set = {a for a in anchors if isinstance(a, int) and a > 0}
+    keyed = [
+        row for row in matched
+        if row.get("key_pid") == pid and row.get("key_kind") in EGRESS_KINDS
+    ]
+    for row in keyed:
+        if (
+            row.get("pid") == pid
+            and row.get("kind") in EGRESS_KINDS
+            and row.get("anchor", 0) > 0
+            and row.get("timestamp_set") is True
+        ):
+            return "row_present"
+    if keyed:
+        return "row_invalid"
+    for row in matched:
+        if row.get("kind") in EGRESS_KINDS or row.get("key_kind") in EGRESS_KINDS:
+            if row.get("pid") == pid or row.get("key_pid") == pid or row.get("anchor") in anchor_set:
+                return "row_mis_keyed"
+    return "row_absent"
+
+
+def classify_deny_gap(facts: dict) -> str:
+    """Name the gap behind a missing egress row from read-only facts."""
+    if facts.get("deny_pin_present") is not True:
+        return "deny_pin_missing"
+    if facts.get("dump_rows") is None:
+        return "deny_dump_unreadable"
+    return str(facts.get("egress_row") or "row_absent")
+
+
+def drop_counters(dump: object) -> dict:
+    """Index 0 counts LRU evictions, index 1 the live key count."""
+    found: dict = {"lru_evictions": None, "live_keys": None}
+    if not isinstance(dump, list):
+        return found
+    for row in dump:
+        if not isinstance(row, dict):
+            continue
+        key = _le_int(row.get("key"))
+        values = _cpu_values(row)
+        if key is None or not values:
+            continue
+        if key == 0:
+            found["lru_evictions"] = sum(values)
+        elif key == 1:
+            found["live_keys"] = sum(values)
+    return found
+
+
+def bpftool_names(payload: object) -> list[str]:
+    """Names from bpftool -j prog show or map show, in order, capped."""
+    names: list[str] = []
+    if not isinstance(payload, list):
+        return names
+    for item in payload:
+        if isinstance(item, dict) and isinstance(item.get("name"), str):
+            names.append(item["name"])
+        if len(names) >= NAMES_KEEP:
+            break
+    return names
+
+
+JSON_RUN_MAX = 16 * 1024 * 1024
+
+
+def _json_run(argv: list[str], timeout: float = 20) -> tuple[object, dict]:
+    """Parse bpftool JSON in full; _run clips stdout, which would cut a map dump.
+
+    Only the summary is kept in the evidence, never the raw stdout.
+    """
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, {"rc": None, "error": type(exc).__name__}
+    stdout = proc.stdout or ""
+    meta: dict = {"rc": proc.returncode, "error": ""}
+    if len(stdout) > JSON_RUN_MAX:
+        meta["error"] = "stdout_too_large"
+        return None, meta
+    try:
+        body = json.loads(stdout or "null")
+    except json.JSONDecodeError:
+        body = None
+    if body is None:
+        meta["stderr"] = clip(proc.stderr or "", 300)
+    return body, meta
+
+
+def vantio_pins(root: Path = Path("/sys/fs/bpf")) -> list[str]:
+    """Pin names under bpffs that start with vantio, two levels deep."""
+    found: list[str] = []
+    if not root.is_dir():
+        return found
+    try:
+        for child in sorted(root.iterdir()):
+            if child.name.startswith("vantio"):
+                found.append(str(child))
+            elif child.is_dir():
+                for inner in sorted(child.iterdir()):
+                    if inner.name.startswith("vantio"):
+                        found.append(str(inner))
+            if len(found) >= NAMES_KEEP:
+                break
+    except OSError:
+        pass
+    return found
+
+
+def _pin_exists(path: str) -> bool | None:
+    """True or False, or None when the pin cannot be stat'ed (not root)."""
+    try:
+        return Path(path).exists()
+    except OSError:
+        return None
+
+
+def deny_attr_diag(pids: list[int], anchors: list[int], cgroup_path: str = "") -> dict:
+    """Read-only facts behind a missing or ungraded deny row.
+
+    Records whether the deny pin exists, the deny-attr rows for these pids
+    or anchors, the drop counters, the overflow counter, the bpf programs and
+    maps loaded, the programs attached to the anchor cgroup, and the vantio pins.
+    """
+    pid = next((p for p in pids if isinstance(p, int) and not isinstance(p, bool) and p > 0), 0)
+    facts: dict = {
+        "anchors": [a for a in anchors if isinstance(a, int) and a > 0],
+        "deny_pin": DENY_PIN,
+        "deny_pin_present": _pin_exists(DENY_PIN),
+        "drops_pin_present": _pin_exists(DENY_DROPS_PIN),
+        "enrolled_pin_present": _pin_exists(ENROLLED_PIN),
+        "pids": [p for p in pids if isinstance(p, int) and p > 0],
+    }
+    summary: dict = {"rows": None, "kinds": {}, "matched": [], "undecoded": 0}
+    if facts["deny_pin_present"]:
+        dump, meta = _json_run(["bpftool", "-j", "map", "dump", "pinned", DENY_PIN], timeout=30)
+        summary = summarize_deny_dump(dump, facts["pids"], facts["anchors"])
+        facts["dump_meta"] = meta
+    facts["dump_rows"] = summary.get("rows")
+    facts["dump_kinds"] = summary.get("kinds")
+    facts["dump_undecoded"] = summary.get("undecoded")
+    facts["rows_for_pids_or_anchors"] = summary.get("matched")
+    facts["egress_row"] = egress_row_state(summary, pid, facts["anchors"]) if pid else "no_pid"
+    if facts["drops_pin_present"]:
+        drops, _meta = _json_run(["bpftool", "-j", "map", "dump", "pinned", DENY_DROPS_PIN])
+        facts["drops"] = drop_counters(drops)
+    else:
+        facts["drops"] = {"lru_evictions": None, "live_keys": None}
+    facts["overflow"] = _overflow()
+    progs, prog_meta = _json_run(["bpftool", "-j", "prog", "show"], timeout=30)
+    maps, map_meta = _json_run(["bpftool", "-j", "map", "show"], timeout=30)
+    facts["programs"] = bpftool_names(progs)
+    facts["programs_meta"] = prog_meta
+    facts["maps"] = bpftool_names(maps)
+    facts["maps_meta"] = map_meta
+    attached_by_path: dict = {}
+    for path in (cgroup_path, "/sys/fs/cgroup"):
+        if path and path not in attached_by_path and Path(path).is_dir():
+            attached, attach_meta = _json_run(["bpftool", "-j", "cgroup", "show", path])
+            attached_by_path[path] = {"names": bpftool_names(attached), "rc": attach_meta.get("rc")}
+    facts["cgroup_attached"] = attached_by_path
+    facts["pins"] = vantio_pins()
+    facts["cause"] = classify_deny_gap(facts)
+    return facts
