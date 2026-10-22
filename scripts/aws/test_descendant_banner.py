@@ -44,6 +44,47 @@ class DescendantBannerTests(unittest.TestCase):
         self.assertNotIn("open_pins_before_scoped_line", waiter)
         self.assertIn('if decision == "scoped"', waiter)
 
+    def test_post_reboot_ledger_wait_ignores_the_pre_boot_line(self) -> None:
+        text = GUEST.read_text(encoding="utf-8")
+        start = text.index("def fresh_scoped_ledger_line")
+        end = text.index("\ndef _cgroup_pin_logged")
+        namespace: dict = {}
+        exec(text[start:end], namespace)
+        fresh = namespace["fresh_scoped_ledger_line"]
+        # events.ndjson survives the B1 reboot (run 39820487208 post: SCOPED x2).
+        pre_boot = [
+            {"EventType": "ENGINE_STARTED", "ActionTaken": "AUDIT"},
+            {"EventType": "ENGINE_STARTED", "ActionTaken": "SCOPED"},
+            {"EventType": "SYSCALL_OPENAT", "ActionTaken": "DENIED", "Pid": 19867},
+            {"EventType": "ENGINE_STARTED", "ActionTaken": "AUDIT"},
+        ]
+        since = len(pre_boot)
+        self.assertFalse(fresh(pre_boot, since))
+        self.assertTrue(fresh(pre_boot, 0))
+        self.assertFalse(fresh(pre_boot + [{"EventType": "SYSCALL_OPENAT", "ActionTaken": "DENIED"}], since))
+        self.assertTrue(fresh(pre_boot + [{"EventType": "ENGINE_STARTED", "ActionTaken": "SCOPED"}], since))
+        self.assertFalse(fresh([], 0))
+        prepare = text.split("def prepare_enforce", 1)[1].split("\nSCOPED_NEEDLE", 1)[0]
+        self.assertLess(prepare.index("ledger_since = len(events())"), prepare.index("blocked = rows.start_loader(adapter)"))
+        self.assertIn("require_scoped_start(ledger_since)", prepare)
+        waiter = text.split("def require_scoped_start", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("fresh_scoped_ledger_line(events(), ledger_since)", waiter)
+        self.assertNotIn("for item in events():", waiter)
+
+    def test_rows_carry_boot_lsm_and_the_reassert_record(self) -> None:
+        text = GUEST.read_text(encoding="utf-8")
+        measure = text.split("def measure(phase: str)", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn('"boot_lsm": boot_lsm()', measure)
+        post = text.split("def _main", 1)[1]
+        self.assertIn('"lab_lsm_reassert": reassert_record()', post)
+        self.assertIn('Path("/var/lib/vantio-lab/lsm-reassert.json")', text)
+        shell = (ROOT / "scripts" / "aws" / "lab-guests" / "enterprise-rows.sh").read_text(encoding="utf-8")
+        branch = shell.split('if [ "$mode" = "descendant-b1" ]; then', 1)[1]
+        pre_rm = branch.split('if [ "$phase" = "pre" ]; then', 1)[1].split("else", 1)[0]
+        self.assertIn("/var/lib/vantio-lab/lsm-reassert.json", pre_rm)
+        post_rm = branch.split('if [ "$phase" = "pre" ]; then', 1)[1].split("else", 1)[1].split("fi", 1)[0]
+        self.assertNotIn("lsm-reassert.json", post_rm)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1029,6 +1029,8 @@ class BaselineDiagTests(unittest.TestCase):
             stock.write_text(json.dumps(dict(record, lsm_value="apparmor,yama")), encoding="utf-8")
             self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 1)
             self.assertFalse((root / "etc/default/grub.d/99-vantio-lsm.cfg").exists())
+            failed = json.loads((lab_dir / "lsm-reassert.json").read_text(encoding="utf-8"))
+            self.assertEqual((failed["ok"], failed["written"], failed["reason"]), (False, False, "lsm_value"))
             self.assertNotIn("lab_lsm_reasserted", json.loads(rows.read_text(encoding="utf-8")))
             # Written: exit 0 and the durable row says so, other keys kept.
             stock.write_text(json.dumps(record), encoding="utf-8")
@@ -1037,7 +1039,16 @@ class BaselineDiagTests(unittest.TestCase):
             self.assertIs(body["lab_lsm_reasserted"], True)
             self.assertEqual(body["lab_lsm_reassert_value"], token)
             self.assertEqual(body["battery"], "descendant-b1")
-            self.assertEqual(sorted(path.name for path in lab_dir.iterdir()), ["enterprise-pe-rows.json", "lsm-stock.json"])
+            self.assertEqual(
+                sorted(path.name for path in lab_dir.iterdir()),
+                ["enterprise-pe-rows.json", "lsm-reassert.json", "lsm-stock.json"],
+            )
+            record = json.loads((lab_dir / "lsm-reassert.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["reason"], "guard_record")
+            self.assertIs(record["written"], True)
+            self.assertEqual(record["lsm_value"], token)
+            self.assertEqual(record["boot_id"], "")
+            self.assertEqual(oct((lab_dir / "lsm-reassert.json").stat().st_mode & 0o777), "0o644")
             # Present on the next call: exit 0, no second write needed.
             self.assertEqual(baseline_diag.reassert_consented_lsm_live(root), 0)
         with tempfile.TemporaryDirectory() as tmp:

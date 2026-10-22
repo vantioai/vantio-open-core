@@ -657,7 +657,8 @@ if [ "$mode" = "descendant-b1" ]; then
   # The enterprise rows file also survives, and the runner would upload it
   # as this phase's result.
   if [ "$phase" = "pre" ]; then
-    sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
+    sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json \
+      /var/lib/vantio-lab/lsm-reassert.json
   else
     sudo rm -f /var/lib/vantio-lab/enterprise-pe-rows.json /tmp/enterprise-pe-rows.json
   fi

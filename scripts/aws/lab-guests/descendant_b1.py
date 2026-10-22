@@ -582,10 +582,13 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
+    # events.ndjson lives on disk and survives the B1 reboot, so post still
+    # holds pre's SCOPED ledger line. Only a line this loader wrote counts.
+    ledger_since = len(events())
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
-    require_scoped_start()
+    require_scoped_start(ledger_since)
     return adapter, digest
 
 
@@ -594,6 +597,14 @@ OPEN_PIN = "Path DENY pinned: kprobe_open_deny"
 OPENAT_PIN = "Path DENY pinned: kprobe_openat_deny"
 CGROUP_PIN_LINE = "cgroup_skb_egress_enforce"
 BANNER_STATUS = "not_checked"
+
+
+def fresh_scoped_ledger_line(items: list[dict], since: int) -> bool:
+    """True once the enforce loader started after offset since wrote its own SCOPED line."""
+    for item in items[max(since, 0):]:
+        if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
+            return True
+    return False
 
 
 def _cgroup_pin_logged(banner: str) -> bool:
@@ -632,7 +643,7 @@ def require_banner(needle: str) -> None:
         raise SystemExit(f"loader banner missing: {needle}")
 
 
-def require_scoped_start() -> None:
+def require_scoped_start(ledger_since: int) -> None:
     global BANNER_STATUS
     deadline = time.time() + 120
     banner = ""
@@ -649,13 +660,38 @@ def require_scoped_start() -> None:
         raise SystemExit(
             f"loader banner missing: {SCOPED_NEEDLE} and {CGROUP_PIN_LINE} tail={tail}"
         )
-    for _ in range(15):
-        for item in events():
-            if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
-                BANNER_STATUS = "scoped"
-                return
+    for _ in range(30):
+        if fresh_scoped_ledger_line(events(), ledger_since):
+            BANNER_STATUS = "scoped"
+            return
         time.sleep(1)
     BANNER_STATUS = "scoped_banner_without_ledger_line"
+
+
+def boot_lsm() -> dict:
+    """The live LSM list and the lsm= word this boot used. Kprobe denies do not prove bpf LSM."""
+    try:
+        active = Path("/sys/kernel/security/lsm").read_text(encoding="utf-8").strip()
+    except OSError:
+        active = ""
+    try:
+        words = Path("/proc/cmdline").read_text(encoding="utf-8").split()
+    except OSError:
+        words = []
+    cmdline_lsm = next((word[4:] for word in words if word.startswith("lsm=")), "")
+    return {"lsm": active, "bpf_lsm_active": "bpf" in active.split(","), "cmdline_lsm": cmdline_lsm}
+
+
+REASSERT_PATH = Path("/var/lib/vantio-lab/lsm-reassert.json")
+
+
+def reassert_record() -> dict | None:
+    """What the pre-reboot LSM re-assert did. The rows file is replaced on post, this file is not."""
+    try:
+        body = json.loads(REASSERT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
 
 
 def measure(phase: str) -> dict:
@@ -684,6 +720,7 @@ def measure(phase: str) -> dict:
         "hostname": node,
         "image": rows.IMAGE,
         "boot_id": boot_id(),
+        "boot_lsm": boot_lsm(),
         "policy_digest": digest,
         "event_count": len(events()),
         "event_census": event_census(),
@@ -742,6 +779,7 @@ def _main() -> int:
         "pre": pre,
         "post": post,
         "reboot_observed": bool(pre) and not same_boot,
+        "lab_lsm_reassert": reassert_record(),
         "descendant_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")),
         "b1_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")) and not same_boot,
         "coverage_note": "A case with pass false is a failure. A topology absent from cases was not run.",
