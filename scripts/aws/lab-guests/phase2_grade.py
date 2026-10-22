@@ -284,6 +284,42 @@ def apply_allowlisted_private(body: dict[str, Any], errno: int | None) -> dict[s
     return body
 
 
+# The three deny-attr pins a starting loader pins beside the canonical name
+# (<pin>_incoming_<pid>) and promotes only after the previous generation stops.
+DENY_SWAP_STEMS = ("vantio_deny_attr", "vantio_deny_attr_drops", "vantio_deny_overflow")
+MAP_SWAP_TIMEOUT = "map_swap_timeout"
+MAP_SWAP_BASELINE_MISSING = "map_swap_baseline_missing"
+
+
+def deny_map_swapped(
+    before_ids: dict[str, Any],
+    before_incoming: list[str],
+    ids: dict[str, Any],
+    incoming: list[str],
+) -> bool:
+    """The enforce loader's deny-attr maps are on the canonical pins.
+
+    Both must hold: no side pin exists that was not already there before the
+    enforce loader started, and every canonical pin names a map whose id is
+    set and differs from the id it had before (when it had one). The ready
+    banner prints before this handoff, so the banner alone is not enough.
+    """
+    if not isinstance(before_ids, dict) or not isinstance(ids, dict):
+        return False
+    if not isinstance(before_incoming, list) or not isinstance(incoming, list):
+        return False
+    if any(path not in before_incoming for path in incoming):
+        return False
+    for stem in DENY_SWAP_STEMS:
+        now = ids.get(stem)
+        was = before_ids.get(stem)
+        if type(now) is not int or now <= 0:
+            return False
+        if type(was) is int and was > 0 and now == was:
+            return False
+    return True
+
+
 def ungraded_egress(battery: str, reason: str) -> dict[str, Any]:
     """A timeout or a dead control. This is not a pass, a fail, or a hold."""
     body = _base(battery)
@@ -431,6 +467,14 @@ SEAL_UNINSTALL_ATTESTATION = "UNINSTALL_VERIFIED"
 # seal's own product uninstall after it leaves the census fully clean,
 # including whatever the pin left. That is the customer upgrade path.
 PUBLIC_PIN_RESIDUE_FINDING = "public_pin_leaves_bpf_residue"
+# The pin (PE 06696d5) enforces, but its denies were not attributed in
+# CHAIN8 2C 39864267674. On a pin step only, an enforced open (errno 13)
+# after the pin's own banner that is not attributed is this named finding,
+# not a 2C fail. A seal step still needs an
+# attributed deny.
+PUBLIC_PIN_UNATTRIBUTED_FINDING = "public_pin_unattributed_deny"
+# Every named finding grade_image_cycle can emit. GCP pins its allowlist to this.
+CYCLE_FINDINGS = frozenset({PUBLIC_PIN_RESIDUE_FINDING, PUBLIC_PIN_UNATTRIBUTED_FINDING})
 
 
 def public_pin_banner_ready(text: str) -> bool:
@@ -509,15 +553,36 @@ def public_pin_residue(uninstall: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def public_pin_unattributed(name: str, step: dict[str, Any]) -> bool:
+    """A pin step that enforced on its own banner but whose deny names no pid.
+
+    Only baseline or rollback on the public pin archive. The open must have
+    returned errno 13, the pin's own banner must have been seen (setup_error
+    is exactly ""), and attributed must be exactly False. Anything else,
+    including a missing measurement, is not this finding.
+    """
+    errno = step.get("file_errno")
+    return (
+        name in PIN_STEPS
+        and step.get("archive_sha256") == PUBLIC_INSTALLER_PIN
+        and type(errno) is int
+        and errno == 13
+        and step.get("setup_error") == ""
+        and step.get("attributed") is False
+    )
+
+
 def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
     """Upgrade, roll back, and upgrade again on two different archives.
 
     Each step has already been measured. Every step must start and enforce
     on its own image. A pin step's own removal may leave bpf programs or pins
     (the pin says its pinned maps remain); that is recorded as the named
-    finding public_pin_leaves_bpf_residue with the census detail. A seal
-    step's product uninstall must leave the census fully clean, which
-    includes anything the pin left. lab_pass stays false.
+    finding public_pin_leaves_bpf_residue with the census detail. A pin
+    step that enforced (errno 13) on its own banner without attribution is
+    the named finding public_pin_unattributed_deny. A seal step must deny
+    with attribution, and its product uninstall must leave the census fully
+    clean, which includes anything the pin left. lab_pass stays false.
     """
     body = _base("2c-upgrade-rollback")
     body["from_pin"] = PUBLIC_INSTALLER_PIN
@@ -554,7 +619,10 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             seal_ids.append(image_id)
         if step.get("file_errno") != 13 or step.get("attributed") is not True:
-            reasons.append(f"{name}_enforcement")
+            if public_pin_unattributed(name, step):
+                body["findings"].append({"finding": PUBLIC_PIN_UNATTRIBUTED_FINDING, "step": name, "file_errno": 13})
+            else:
+                reasons.append(f"{name}_enforcement")
         uninstall = step.get("uninstall") if isinstance(step.get("uninstall"), dict) else {}
         tail = str(uninstall.get("tail") or "")
         attested = uninstall_attestation(name, uninstall) in tail

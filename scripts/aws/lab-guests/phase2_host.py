@@ -556,6 +556,10 @@ def prepare_enforce(*, time_revoke: bool = False, public_pin: bool = False) -> t
     revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
+    SWAP_BEFORE.clear()
+    if not public_pin:
+        # Read only: the ids the enforce loader must replace (2F waits on this).
+        record_swap_baseline()
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
@@ -1286,6 +1290,110 @@ def _bpf_pin_sample() -> list[str]:
     return [str(path) for path in root.rglob("*") if path.is_file()][:5]
 
 
+BPFFS_ROOT = Path("/sys/fs/bpf")
+MAP_SWAP_TIMEOUT_S = 30.0
+MAP_SWAP_STEP_S = 0.25
+# Canonical deny-attr map ids and side pins read just before the enforce
+# loader starts. wait_map_swap compares against this. Read only.
+SWAP_BEFORE: dict = {}
+
+
+def incoming_pins(root: Path | None = None) -> list[str]:
+    """Side pins <stem>_incoming_<pid> for the three deny-attr maps. Read only."""
+    base = root if root is not None else BPFFS_ROOT
+    found: list[str] = []
+    try:
+        names = sorted(child.name for child in base.iterdir())
+    except OSError:
+        return found
+    for stem in grade.DENY_SWAP_STEMS:
+        prefix = f"{stem}_incoming_"
+        for name in names:
+            if name.startswith(prefix) and name[len(prefix):].isdigit():
+                found.append(str(base / name))
+    return found
+
+
+def pinned_map_id(path: str) -> int:
+    """bpftool's map id for a pinned map, or 0 when absent or unreadable. Read only."""
+    try:
+        if not Path(path).exists():
+            return 0
+    except OSError:
+        return 0
+    body, _meta = baseline_diag._json_run(["bpftool", "-j", "map", "show", "pinned", path])
+    found = body.get("id") if isinstance(body, dict) else None
+    return found if type(found) is int and found > 0 else 0
+
+
+def canonical_map_ids(root: Path | None = None) -> dict:
+    base = root if root is not None else BPFFS_ROOT
+    return {stem: pinned_map_id(str(base / stem)) for stem in grade.DENY_SWAP_STEMS}
+
+
+def record_swap_baseline(root: Path | None = None) -> dict:
+    """Read the canonical ids and side pins before the enforce loader starts."""
+    SWAP_BEFORE.clear()
+    SWAP_BEFORE.update({"ids": canonical_map_ids(root), "incoming": incoming_pins(root), "recorded": True})
+    return dict(SWAP_BEFORE)
+
+
+def wait_map_swap(
+    timeout: float = MAP_SWAP_TIMEOUT_S,
+    step: float = MAP_SWAP_STEP_S,
+    root: Path | None = None,
+) -> dict:
+    """Wait until the enforce loader's deny-attr maps sit on the canonical pins.
+
+    The loader prints its ready lines before it promotes its side pins. A
+    kill in that window leaves its programs writing to a side map that no
+    reader opens. A timeout is never a pass: the caller leaves the battery
+    not graded with the reason returned here.
+    """
+    before = dict(SWAP_BEFORE)
+    started = time.monotonic()
+    if before.get("recorded") is not True:
+        return {
+            "swapped": False,
+            "reason": grade.MAP_SWAP_BASELINE_MISSING,
+            "waited_s": 0.0,
+            "before_ids": {},
+            "ids": canonical_map_ids(root),
+            "incoming": incoming_pins(root),
+        }
+    ids: dict = {}
+    incoming: list[str] = []
+    seen: list[str] = []
+    while True:
+        ids = canonical_map_ids(root)
+        incoming = incoming_pins(root)
+        seen.extend(pin for pin in incoming if pin not in seen and pin not in before.get("incoming", []))
+        if grade.deny_map_swapped(before.get("ids", {}), before.get("incoming", []), ids, incoming):
+            return {
+                "swapped": True,
+                "reason": None,
+                "waited_s": round(time.monotonic() - started, 3),
+                "before_ids": before.get("ids", {}),
+                "ids": ids,
+                "incoming": incoming,
+                "incoming_before": before.get("incoming", []),
+                "incoming_seen": seen,
+            }
+        if time.monotonic() - started >= timeout:
+            break
+        time.sleep(step)
+    return {
+        "swapped": False,
+        "reason": grade.MAP_SWAP_TIMEOUT,
+        "waited_s": round(time.monotonic() - started, 3),
+        "before_ids": before.get("ids", {}),
+        "ids": ids,
+        "incoming": incoming,
+        "incoming_before": before.get("incoming", []),
+        "incoming_seen": seen,
+    }
+
+
 def kill_loader() -> int:
     proc = rows.sudo(["pkill", "-9", "-x", "vantio-loader"])
     time.sleep(1.0)
@@ -1739,6 +1847,18 @@ def run_2e() -> dict:
 
 def run_2f() -> dict:
     _adapter, digest = prepare_enforce()
+    # The ready banner prints before the loader promotes its deny-attr side
+    # pins. Kill only after the swap, or a post-kill row can land in a side
+    # map no reader opens (CHAIN8 39866003348).
+    swap = wait_map_swap()
+    if swap.get("swapped") is not True:
+        refused = grade.ungraded_egress("2f-tamper", str(swap.get("reason") or grade.MAP_SWAP_TIMEOUT))
+        refused["map_swap"] = swap
+        refused["deny_diag"] = deny_diag([])
+        refused["bpf_pin_sample"] = _bpf_pin_sample()
+        refused["policy_digest"] = digest
+        refused["loader_up"] = loader_running()
+        return refused
     kill_loader()
     standin = standin_after_sigkill()
     still = loader_running()
@@ -1754,6 +1874,7 @@ def run_2f() -> dict:
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
         refused["loader_up"] = still
+        refused["map_swap"] = swap
         refused.update(observed)
         return refused
     enrolled = child_open(True)
@@ -1775,6 +1896,7 @@ def run_2f() -> dict:
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
         refused["loader_up"] = still
+        refused["map_swap"] = swap
         refused.update(observed)
         return refused
     unenrolled = control
@@ -1799,6 +1921,7 @@ def run_2f() -> dict:
     graded["policy_malformed"] = False
     graded["ndjson_denied_pids"] = ndjson_denied_pids()
     graded["allowlist_host"] = ALLOW_HOST
+    graded["map_swap"] = swap
     grade.apply_allowlisted_private(graded, enrolled_connect_errno(ALLOW_HOST, ALLOW_PORT))
     if graded.get("host_result") != "PASS":
         graded["deny_diag"] = deny_diag([net_pid], recheck_pid=net_pid if net_anchor <= 0 else 0)

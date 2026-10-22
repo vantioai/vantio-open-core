@@ -550,15 +550,17 @@ def allow_start_fields(body: object) -> dict[str, Any]:
 CYCLE_STEP_NAMES = ("baseline", "upgrade", "rollback", "reupgrade")
 BPF_PROG_NAME_RE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 BPFFS_VANTIO_RE = re.compile(r"/sys/fs/bpf/vantio[A-Za-z0-9_./-]{0,120}")
-# Named 2C host findings phase2_grade can emit (PUBLIC_PIN_RESIDUE_FINDING).
-KNOWN_CYCLE_FINDINGS = frozenset({"public_pin_leaves_bpf_residue"})
+# Named 2C host findings phase2_grade can emit (phase2_grade.CYCLE_FINDINGS:
+# PUBLIC_PIN_RESIDUE_FINDING and PUBLIC_PIN_UNATTRIBUTED_FINDING).
+KNOWN_CYCLE_FINDINGS = frozenset({"public_pin_leaves_bpf_residue", "public_pin_unattributed_deny"})
 
 
 def allow_cycle_findings(value: Any) -> list[dict[str, Any]]:
     """Named 2C host findings (phase2_grade grade_image_cycle findings[]).
 
     For example public_pin_leaves_bpf_residue with the census detail: bpf
-    program names and bpffs pins under /sys/fs/bpf/vantio*. Anything else is
+    program names and bpffs pins under /sys/fs/bpf/vantio*, or
+    public_pin_unattributed_deny with the pin step's errno. Anything else is
     dropped. A finding is carried as evidence; it never changes a grade here.
     """
     if not isinstance(value, list):
@@ -589,6 +591,9 @@ def allow_cycle_findings(value: Any) -> list[dict[str, Any]]:
         rc = item.get("bpftool_rc")
         if isinstance(rc, int) and not isinstance(rc, bool) and 0 <= rc <= 255:
             row["bpftool_rc"] = rc
+        errno = item.get("file_errno")
+        if isinstance(errno, int) and not isinstance(errno, bool) and 0 <= errno <= 4095:
+            row["file_errno"] = errno
         rows.append(row)
     return rows[:8]
 

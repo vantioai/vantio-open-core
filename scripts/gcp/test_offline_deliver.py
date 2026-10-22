@@ -2596,8 +2596,45 @@ class ImageCycleWordTest(unittest.TestCase):
             self.assertEqual("bpftool_rc" in row, kept, rc)
 
     def test_finding_names_pinned_to_grader(self) -> None:
-        self.assertEqual(od.KNOWN_CYCLE_FINDINGS, frozenset({self.grade.PUBLIC_PIN_RESIDUE_FINDING}))
+        # The full set: every named 2C finding the grader can emit, and nothing else.
+        self.assertEqual(od.KNOWN_CYCLE_FINDINGS, self.grade.CYCLE_FINDINGS)
+        self.assertEqual(
+            self.grade.CYCLE_FINDINGS,
+            frozenset({self.grade.PUBLIC_PIN_RESIDUE_FINDING, self.grade.PUBLIC_PIN_UNATTRIBUTED_FINDING}),
+        )
         self.assertEqual(od.allow_cycle_findings([{"finding": "made_up", "step": "baseline"}]), [])
+
+    def test_public_pin_unattributed_finding_reaches_capture_and_rows(self) -> None:
+        steps = [self._step(name) for name in od.IMAGE_CYCLE_STEPS]
+        for step in steps:
+            step["setup_error"] = ""
+        for step in steps[0::2]:
+            step["attributed"] = False
+        body = self.grade.grade_image_cycle(steps)
+        self.assertEqual(body["host_result"], "RECORDED", body.get("reasons"))
+        names = {item["finding"] for item in body["findings"]}
+        self.assertLessEqual(names, self.grade.CYCLE_FINDINGS)
+        word = od._loader_word("2c-upgrade-rollback", body)
+        self.assertEqual(word, "held")
+        kept = od._allow_capture(od._loader_capture("loader-restart", {"body": body, "rc": 0, "word": word}))
+        expected = [
+            {"file_errno": 13, "finding": "public_pin_unattributed_deny", "step": step}
+            for step in ("baseline", "rollback")
+        ]
+        self.assertEqual(kept["findings"], expected)
+        for errno, keep in ((13, True), (0, True), (-1, False), (True, False), ("13", False), (4096, False)):
+            row = od.allow_cycle_findings([dict(expected[0], file_errno=errno)])[0]
+            self.assertEqual("file_errno" in row, keep, errno)
+
+    def test_unattributed_seal_step_still_fails_through_gcp(self) -> None:
+        steps = [self._step(name) for name in od.IMAGE_CYCLE_STEPS]
+        for step in steps:
+            step["setup_error"] = ""
+        steps[1]["attributed"] = False
+        body = self.grade.grade_image_cycle(steps)
+        self.assertEqual(body["host_result"], "FAIL")
+        self.assertIn("upgrade_enforcement", body["reasons"])
+        self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
 
 
 class MainBlockLastTest(unittest.TestCase):
