@@ -1466,8 +1466,18 @@ def _removal_census() -> dict:
     find = rows.sudo(["find", "/sys/fs/bpf", "-maxdepth", "2", "-name", "vantio*"], timeout=20)
     mounted = "bpf" in Path("/proc/mounts").read_text(encoding="utf-8", errors="replace")
     paths = census.classify_bpffs(mounted=mounted, find_rc=find.returncode, text=find.stdout or "")
-    ps = rows.sudo(["docker", "ps", "-q"], timeout=20)
-    return census.removal_census(programs, paths, ps.stdout or "", show.returncode)
+    # -a: a stopped container left behind is not clean either.
+    ps = rows.sudo(["docker", "ps", "-aq"], timeout=20)
+    if ps.returncode != 0:
+        # An unreadable container list is never recorded as empty.
+        removed = census.removal_census(programs, paths, "docker_ps_failed", show.returncode)
+        removed["docker_containers"] = None
+        removed["docker_ps_failed"] = True
+        removed["verified_removed"] = False
+        return removed
+    removed = census.removal_census(programs, paths, ps.stdout or "", show.returncode)
+    removed["docker_ps_failed"] = False
+    return removed
 
 
 def _public_pin_uninstall() -> dict:
@@ -1502,7 +1512,10 @@ def _cycle_step(name: str, ref: str, archive_sha256: str) -> dict:
         "setup_error": measured["setup_error"],
         "uninstall": {
             "bpffs_vantio": uninstall.get("bpffs_vantio"),
+            "bpftool_rc": uninstall.get("bpftool_rc"),
             "contract": uninstall.get("contract", ""),
+            "docker_containers": uninstall.get("docker_containers"),
+            "docker_ps_failed": uninstall.get("docker_ps_failed"),
             "loader_programs": uninstall.get("loader_programs"),
             "reason": uninstall.get("reason", ""),
             "tail": uninstall.get("tail", ""),

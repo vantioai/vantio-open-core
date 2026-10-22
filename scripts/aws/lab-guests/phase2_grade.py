@@ -426,6 +426,11 @@ PUBLIC_PIN_DETACHED = "Detached cleanly."
 PUBLIC_PIN_UNINSTALL = "public_pin_sigint"
 SEAL_UNINSTALL = "product_uninstall"
 SEAL_UNINSTALL_ATTESTATION = "UNINSTALL_VERIFIED"
+# The pin's SIGINT removal says its pinned maps remain, so programs or pins it
+# leaves behind are a named finding, not a 2C fail. 2C passes only when the
+# seal's own product uninstall after it leaves the census fully clean,
+# including whatever the pin left. That is the customer upgrade path.
+PUBLIC_PIN_RESIDUE_FINDING = "public_pin_leaves_bpf_residue"
 
 
 def public_pin_banner_ready(text: str) -> bool:
@@ -452,12 +457,67 @@ def uninstall_attestation(name: str, uninstall: dict[str, Any]) -> str:
     return SEAL_UNINSTALL_ATTESTATION
 
 
+def census_fully_clean(uninstall: dict[str, Any]) -> bool:
+    """Every removal_census field read back clean: bpftool ran, nothing listed.
+
+    Missing fields are not clean. This is the bar for the seal's uninstall.
+    """
+    rc = uninstall.get("bpftool_rc")
+    return (
+        uninstall.get("verified_removed") is True
+        and uninstall.get("docker_ps_failed") is not True
+        and type(rc) is int
+        and rc == 0
+        and uninstall.get("loader_programs") == []
+        and uninstall.get("bpffs_vantio") == []
+        and uninstall.get("docker_containers") == ""
+    )
+
+
+def public_pin_residue(uninstall: dict[str, Any]) -> dict[str, Any] | None:
+    """Census detail when the pin's own removal left only bpf programs or pins.
+
+    The pin must have printed its own shutdown line, bpftool must have run,
+    bpffs must have been listed, and no container may remain. Anything else
+    is not residue; it is an unreadable or unfinished removal and still fails.
+    None means there is no residue to record (or it is not recordable).
+    """
+    if uninstall.get("contract") != PUBLIC_PIN_UNINSTALL:
+        return None
+    if PUBLIC_PIN_DETACHED not in str(uninstall.get("tail") or ""):
+        return None
+    programs = uninstall.get("loader_programs")
+    paths = uninstall.get("bpffs_vantio")
+    if not isinstance(programs, list) or not isinstance(paths, list):
+        return None
+    if not all(isinstance(item, str) and item for item in programs + paths):
+        return None
+    if "find_failed" in paths:
+        return None
+    rc = uninstall.get("bpftool_rc")
+    if type(rc) is not int or rc != 0 or uninstall.get("docker_containers") != "":
+        return None
+    if uninstall.get("docker_ps_failed") is True:
+        return None
+    if not programs and not paths:
+        return None
+    return {
+        "bpffs_vantio": list(paths),
+        "bpftool_rc": 0,
+        "docker_containers": "",
+        "loader_programs": list(programs),
+    }
+
+
 def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
     """Upgrade, roll back, and upgrade again on two different archives.
 
-    Each step has already been measured. This records whether enforcement
-    held and whether that image's own uninstall left bpftool and bpffs clean.
-    lab_pass stays false.
+    Each step has already been measured. Every step must start and enforce
+    on its own image. A pin step's own removal may leave bpf programs or pins
+    (the pin says its pinned maps remain); that is recorded as the named
+    finding public_pin_leaves_bpf_residue with the census detail. A seal
+    step's product uninstall must leave the census fully clean, which
+    includes anything the pin left. lab_pass stays false.
     """
     body = _base("2c-upgrade-rollback")
     body["from_pin"] = PUBLIC_INSTALLER_PIN
@@ -466,6 +526,7 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
     body["host_rollback"] = "NOT_RUN"
     body["upgrade_pass"] = False
     body["steps"] = steps
+    body["findings"] = []
     names = [step.get("name") for step in steps] if isinstance(steps, list) else []
     if names != list(CYCLE_STEPS):
         body["action"] = "FAIL"
@@ -496,7 +557,14 @@ def grade_image_cycle(steps: list[dict[str, Any]]) -> dict[str, Any]:
             reasons.append(f"{name}_enforcement")
         uninstall = step.get("uninstall") if isinstance(step.get("uninstall"), dict) else {}
         tail = str(uninstall.get("tail") or "")
-        if uninstall.get("verified_removed") is not True or uninstall_attestation(name, uninstall) not in tail:
+        attested = uninstall_attestation(name, uninstall) in tail
+        if name in PIN_STEPS and uninstall.get("contract") == PUBLIC_PIN_UNINSTALL:
+            residue = public_pin_residue(uninstall)
+            if residue is not None and attested:
+                body["findings"].append({"finding": PUBLIC_PIN_RESIDUE_FINDING, "step": name, **residue})
+            elif not attested or not census_fully_clean(uninstall):
+                reasons.append(f"{name}_uninstall")
+        elif not attested or not census_fully_clean(uninstall):
             reasons.append(f"{name}_uninstall")
     if (
         len(pin_ids) != 2
