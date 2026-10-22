@@ -2,7 +2,7 @@
 
 UTC: 2026-10-16
 
-This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`6d3ce580`, full value in `RESULT.json`).
+This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`e9eeb058`, full value in `RESULT.json`).
 
 The comparison has three results:
 
