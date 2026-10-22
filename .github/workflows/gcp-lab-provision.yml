@@ -182,6 +182,8 @@ jobs:
           EXPECTED_SEAL: ${{ inputs.seal }}
           RUN_BATTERIES: ${{ inputs.run_batteries }}
           EVIDENCE_PATH: ${{ runner.temp }}/gcp-lab-evidence/prepare-bundle.json
+          # Batteries end with 2c-upgrade-rollback, which needs public-pin.oci.tar (#320).
+          W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: |
           set -euo pipefail
@@ -235,6 +237,7 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           BRAIN_DIR: ${{ runner.temp }}/redteam-brain
+          RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py upload-handoff
 
       - name: Delete the local bundle
@@ -468,6 +471,7 @@ jobs:
           EXPECTED_CONTRACT_SHA256: ${{ needs.fetch.outputs.contract_sha256 }}
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           BRAIN_DIR: ${{ runner.temp }}/redteam-brain
+          RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py download-handoff
 
       - name: Download pinned offline packages
@@ -641,6 +645,7 @@ jobs:
           GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
+          RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py delete-handoff
 
       - name: Remove the OS Login key
@@ -816,6 +821,7 @@ jobs:
           GCP_LAB_PROJECT: ${{ env.GCP_LAB_PROJECT }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
+          RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py teardown-if-present
 
       - name: Keep only allowlisted evidence

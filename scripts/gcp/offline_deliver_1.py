@@ -146,10 +146,34 @@ def brain_object_names(run_id: str) -> tuple[str, str]:
     return (f"{prefix}/{rtbrain.MODEL_NAME}", f"{prefix}/{rtbrain.RUNTIME_NAME}")
 
 
+# phase2_host.run_2c needs this file beside seal.oci.tar on the guest (#320).
+PUBLIC_PIN_FILE = "public-pin.oci.tar"
+
+
+def public_pin_object_name(run_id: str) -> str:
+    return f"{require_run_id(run_id)}/{PUBLIC_PIN_FILE}"
+
+
+def verify_public_pin_file(path: Path) -> str:
+    """Return the sha256 only when the file is the public installer pin."""
+    if not path.is_file():
+        raise SystemExit("public_pin_absent")
+    size = path.stat().st_size
+    if size <= 0 or size > MAX_SEAL_BYTES:
+        raise SystemExit("public_pin_digest")
+    digest = sha256_file(path)
+    if digest != PUBLIC_INSTALLER_PIN:
+        raise SystemExit("public_pin_digest")
+    return digest
+
+
 def handoff_objects(env: Mapping[str, str]) -> tuple[str, ...]:
-    names = object_names(env.get("GITHUB_RUN_ID", ""))
+    run_id = env.get("GITHUB_RUN_ID", "")
+    names = object_names(run_id)
     if brain_requested(env):
-        return names + brain_object_names(env.get("GITHUB_RUN_ID", ""))
+        names = names + brain_object_names(run_id)
+    if batteries_requested(env):
+        names = names + (public_pin_object_name(run_id),)
     return names
 
 

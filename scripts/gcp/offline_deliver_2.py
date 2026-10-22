@@ -115,6 +115,12 @@ def upload_handoff(env: Mapping[str, str]) -> int:
         names.extend(brain_names)
         paths.extend([brain_dir / rtbrain.MODEL_NAME, brain_dir / rtbrain.RUNTIME_NAME])
         limits.extend([rtbrain.MODEL_BYTES, rtbrain.RUNTIME_BYTES])
+    public_pin = ""
+    if batteries_requested(env):
+        public_pin = verify_public_pin_file(directory / PUBLIC_PIN_FILE)
+        names.append(public_pin_object_name(env.get("GITHUB_RUN_ID", "")))
+        paths.append(directory / PUBLIC_PIN_FILE)
+        limits.append(MAX_SEAL_BYTES)
     via = [
         upload_one(BUCKET, name, path, max_bytes=limit)
         for name, path, limit in zip(names, paths, limits)
@@ -129,6 +135,8 @@ def upload_handoff(env: Mapping[str, str]) -> int:
         "trust_sha256": checked["trust_sha256"],
         "via": via,
     }
+    if public_pin:
+        payload["public_pin_sha256"] = public_pin
     write_evidence(_evidence_dir(env) / "handoff.json", payload)
     github_output("seal_sha256", checked["seal_sha256"])
     github_output("contract_sha256", checked["contract_sha256"])
@@ -221,6 +229,10 @@ def download_handoff(env: Mapping[str, str]) -> int:
             "seal_sha256": seal,
             "trust_sha256": TRUST_SHA256,
         }
+        if batteries_requested(env):
+            pin_path = directory / PUBLIC_PIN_FILE
+            download_one(BUCKET, public_pin_object_name(env.get("GITHUB_RUN_ID", "")), pin_path)
+            payload["public_pin_sha256"] = verify_public_pin_file(pin_path)
         if brain_requested(env):
             brain_dir = Path(env.get("BRAIN_DIR", ""))
             brain_dir.mkdir(parents=True, exist_ok=True)
@@ -1165,6 +1177,10 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     dest.mkdir(parents=True)
     shutil.copy2(bundle / "seal.oci.tar", dest / "seal.oci.tar")
     shutil.copy2(bundle / "contract.tar", dest / "contract.tar")
+    if batteries_requested(env):
+        verify_public_pin_file(bundle / PUBLIC_PIN_FILE)
+        shutil.copy2(bundle / PUBLIC_PIN_FILE, dest / PUBLIC_PIN_FILE)
+        verify_public_pin_file(dest / PUBLIC_PIN_FILE)
     script_dest = dest / "enterprise-rows.sh"
     shutil.copy2(guest, script_dest)
     script_dest.chmod(0o755)
