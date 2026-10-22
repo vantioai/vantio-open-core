@@ -113,9 +113,20 @@ RESTART_ROW_CAP_S = 15.0
 RESTART_ROW_LATE_S = 5.0
 # Why one side of the restart check failed. not_blocked is a fail-open (the
 # open succeeded). row_absent_errno13 means the open was blocked but no row
-# was written; that is still a fail.
+# was written; row_past_cap means the row came only after RESTART_ROW_CAP_S;
+# row_not_new means the row did not raise the count. All are fails.
 RESTART_ROW_CAUSES = frozenset(
-    {"anchor_not_carried", "errno_invalid", "errno_not_13", "not_blocked", "pid_mismatch", "row_absent_errno13"}
+    {
+        "anchor_not_carried",
+        "errno_invalid",
+        "errno_not_13",
+        "guest_flag_mismatch",
+        "not_blocked",
+        "pid_mismatch",
+        "row_absent_errno13",
+        "row_not_new",
+        "row_past_cap",
+    }
 )
 
 
@@ -132,9 +143,10 @@ def restart_row_cause(side: Any) -> str | None:
 
     The probe needs errno int 13: bool, str, float and None are rejected.
     errno 0 is always not_blocked, whatever the ledger shows. With errno 13,
-    a new DENIED row for the same pid has to be seen within RESTART_ROW_CAP_S.
-    If it is not, the cause is row_absent_errno13. The row also has to carry
-    the expected anchor.
+    a new DENIED row for the same pid has to be seen within RESTART_ROW_CAP_S
+    and carry the expected anchor. pid, anchor and newness come from the
+    integers; a boolean that disagrees is guest_flag_mismatch. The host
+    (offline_deliver_2.restart_row_cause) grades the same way.
     """
     if not isinstance(side, dict):
         return "errno_invalid"
@@ -146,17 +158,22 @@ def restart_row_cause(side: Any) -> str | None:
     if errno != 13:
         return "errno_not_13"
     wait = side.get("wait_s")
-    if (
-        side.get("row_seen") is not True
-        or side.get("new_row") is not True
-        or type(wait) not in (int, float)
-        or not 0 <= wait <= RESTART_ROW_CAP_S
-    ):
+    if side.get("row_seen") is not True or type(wait) not in (int, float) or not 0 <= wait < float("inf"):
         return "row_absent_errno13"
-    if side.get("pid_match") is not True:
+    if wait > RESTART_ROW_CAP_S:
+        return "row_past_cap"
+    count, before = side.get("row_count"), side.get("rows_before")
+    if not (_count(count) and _count(before) and count > before):
+        return "row_not_new"
+    pid = side.get("pid")
+    if not (_positive_int(pid) and side.get("row_pid") == pid):
         return "pid_mismatch"
-    if side.get("anchor_match") is not True:
+    anchor, expected = side.get("anchor"), side.get("expected_anchor")
+    if not _positive_int(anchor) or (expected is not None and expected != anchor):
         return "anchor_not_carried"
+    for key in ("new_row", "pid_match", "anchor_match"):
+        if key in side and side[key] is not True:
+            return "guest_flag_mismatch"
     return None
 
 

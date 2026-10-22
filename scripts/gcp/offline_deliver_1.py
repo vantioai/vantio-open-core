@@ -662,6 +662,9 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
     restart_rows = allow_restart_rows(entry.get("restart_rows"))
     if restart_rows:
         kept["restart_rows"] = restart_rows
+    if _seconds(entry.get("late_s")) and entry.get("claim_scope") == LATE_CLAIM_SCOPE:
+        kept["late_s"] = entry["late_s"]
+        kept["claim_scope"] = entry["claim_scope"]
     cases = entry.get("cases")
     if isinstance(cases, list):
         rows = []
@@ -881,6 +884,12 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key == "loader_kill_restart_rows" and isinstance(value, dict):
             kept[key] = allow_restart_rows(value)
+            continue
+        if key == "loader_kill_late_s" and (value is None or _seconds(value)):
+            kept[key] = value
+            continue
+        if key == "loader_kill_claim_scope" and value == LATE_CLAIM_SCOPE:
+            kept[key] = value
             continue
         if key == "cases" and isinstance(value, list):
             rows = []

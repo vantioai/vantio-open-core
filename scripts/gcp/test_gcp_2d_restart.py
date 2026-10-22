@@ -100,6 +100,10 @@ class RestartRowGradeTest(unittest.TestCase):
         self.assertIsNone(side["cause"])
         self.assertNotIn("late_s", side)
         self.assertEqual(od._loader_word("2d-crash-recovery", _body(_restart(side))), "held")
+        kept = _capture(_restart(side), "held")
+        self.assertNotIn("late_s", kept)
+        self.assertNotIn("claim_scope", kept)
+        self.assertIsNone(od.restart_rows_late_s(kept["restart_rows"]))
 
     def test_late_within_15s_passes_with_the_warning_and_seconds(self) -> None:
         side = _side(wait_s=7.25)
@@ -110,7 +114,10 @@ class RestartRowGradeTest(unittest.TestCase):
         kept = _capture(restart, "held")
         self.assertIs(kept["hold"], True)
         self.assertIn("late_deny_row_after_restart", kept["warnings"])
-        self.assertEqual(kept["restart_rows"]["after"]["late_s"], 7.25)
+        # The host derives lateness from wait_s, not from the guest's late_s.
+        self.assertNotIn("late_s", kept["restart_rows"]["after"])
+        self.assertEqual(kept["late_s"], 7.25)
+        self.assertEqual(kept["claim_scope"], od.LATE_CLAIM_SCOPE)
         self.assertEqual(kept["restart_rows"]["after"]["wait_s"], 7.25)
         self.assertNotIn("fail_reasons", kept)
         # The edges: exactly 5 s is not late, exactly 15 s still counts.
@@ -132,10 +139,13 @@ class RestartRowGradeTest(unittest.TestCase):
         self.assertIs(kept["restart_rows"]["after"]["row_seen"], False)
         self.assertEqual(kept["restart_rows"]["after"]["errno"], 13)
 
-    def test_row_past_the_cap_or_not_new_is_absent(self) -> None:
-        self.assertEqual(_side(wait_s=15.25)["cause"], "row_absent_errno13")
+    def test_row_past_the_cap_or_not_new_fails_under_its_own_name(self) -> None:
+        # A row found only after the 15 s cap is row_past_cap, not row_absent_errno13.
+        self.assertEqual(_side(wait_s=15.25)["cause"], "row_past_cap")
+        self.assertEqual(od.restart_row_cause(od.allow_restart_side(_side(wait_s=15.25))), "row_past_cap")
+        self.assertEqual(od._loader_word("2d-crash-recovery", _body(_restart(_side(wait_s=15.25)))), "fail")
         # Only the old pre-restart row: same pid, no new row past it.
-        self.assertEqual(_side(count=1)["cause"], "row_absent_errno13")
+        self.assertEqual(_side(count=1)["cause"], "row_not_new")
         for wait in (-0.25, float("nan"), float("inf"), True, "7.0", None):
             with self.subTest(wait=wait):
                 self.assertEqual(_side(wait_s=wait)["cause"], "row_absent_errno13")
@@ -197,6 +207,12 @@ class RestartRowGradeTest(unittest.TestCase):
         late = _side(before=True, wait_s=9.5)
         self.assertEqual(late["late_s"], 9.5)
         self.assertEqual(od._loader_word("2d-crash-recovery", _body(_restart(_side(), before=late))), "held")
+        # A late before-restart row also marks the hold as not prompt.
+        kept = _capture(_restart(_side(), before=late), "held")
+        self.assertEqual((kept["late_s"], kept["claim_scope"]), (9.5, od.LATE_CLAIM_SCOPE))
+        past = _side(before=True, wait_s=15.25)
+        rows = od.allow_restart_rows({"before": past, "after": _side()})
+        self.assertEqual(od.restart_rows_cause(rows), "row_past_cap_before_restart")
 
     def test_missing_side_or_guest_not_held_fails(self) -> None:
         restart = _restart(_side())
@@ -204,10 +220,21 @@ class RestartRowGradeTest(unittest.TestCase):
         self.assertEqual(od._loader_word("2d-crash-recovery", _body(restart)), "fail")
         self.assertEqual(od._loader_word("2d-crash-recovery", _body(_restart(_side(), held=False))), "fail")
         self.assertEqual(od._loader_word("2d-crash-recovery", _body(dict(_restart(_side()), held="true"))), "fail")
-        # A body from before this change (no restart_rows) keeps its old grade.
+        self.assertEqual(od.restart_rows_cause(restart["restart_rows"]), "restart_rows_missing")
+        self.assertEqual(od.restart_rows_cause({}), "restart_rows_missing")
+        # GCP 2D requires restart_rows: without them it fails as restart_rows_missing.
         old = _restart(_side())
         del old["restart_rows"]
-        self.assertEqual(od._loader_word("2d-crash-recovery", _body(old)), "held")
+        self.assertEqual(od._loader_word("2d-crash-recovery", _body(old)), "fail")
+        no_restart = _body(old)
+        del no_restart["enroll_restart"]
+        self.assertEqual(od._loader_word("2d-crash-recovery", no_restart), "fail")
+        for body in (_body(old), no_restart):
+            kept = od._allow_capture(od._loader_capture("loader-kill", {"body": body, "rc": 0, "word": "fail"}))
+            self.assertIn("restart_rows_missing", kept["fail_reasons"])
+        # 2C (loader-restart) has no restart rows and is not asked for them.
+        kept = od._loader_capture("loader-restart", {"body": {}, "rc": 0, "word": "fail"})
+        self.assertNotIn("restart_rows_missing", kept.get("fail_reasons", []))
 
     def test_host_and_guest_grades_agree(self) -> None:
         self.assertEqual(od.RESTART_ROW_CAP_S, grade.RESTART_ROW_CAP_S)
@@ -219,11 +246,105 @@ class RestartRowGradeTest(unittest.TestCase):
             for wait in (0.0, 5.0, 7.25, 15.0, 15.25)
             for seen in (True, False)
             for anchor in (ANCHOR, 7110)
-        ]
+        ] + [_side(count=1), _side(row_pid=9999), _side(pid=0, row_pid=0), _side(anchor=0)]
         for side in cases:
             with self.subTest(side=side):
                 self.assertEqual(od.restart_row_cause(od.allow_restart_side(side)), side["cause"])
                 self.assertIn(side["cause"], {None, *grade.RESTART_ROW_CAUSES})
+
+
+def _forged(**changes) -> dict:
+    """A kept after side whose guest booleans all claim a pass, with some integers changed."""
+    side = od.allow_restart_side(_side())
+    for key in ("new_row", "pid_match", "anchor_match", "row_seen", "pass"):
+        side[key] = True
+    side.update(changes)
+    return side
+
+
+class HostRecomputeTest(unittest.TestCase):
+    """The host recomputes pid_match, anchor_match and new_row from the kept integers."""
+
+    def _word(self, after: dict, before: dict | None = None) -> str:
+        rows = {"before": before or od.allow_restart_side(_side(before=True)), "after": after}
+        return od._loader_word("2d-crash-recovery", _body(dict(_restart(_side()), restart_rows=rows)))
+
+    def test_consistent_side_holds(self) -> None:
+        self.assertIsNone(od.restart_row_cause(_forged()))
+        self.assertEqual(self._word(_forged()), "held")
+
+    def test_pid_must_equal_row_pid_and_be_positive(self) -> None:
+        for changes in ({"row_pid": 9999}, {"pid": 0, "row_pid": 0}, {"row_pid": 0}):
+            with self.subTest(changes=changes):
+                self.assertEqual(od.restart_row_cause(_forged(**changes)), "pid_mismatch")
+                self.assertEqual(self._word(_forged(**changes)), "fail")
+        side = _forged()
+        del side["row_pid"]
+        self.assertEqual(od.restart_row_cause(side), "pid_mismatch")
+
+    def test_anchor_must_equal_expected_and_be_positive(self) -> None:
+        for changes in ({"anchor": 7110}, {"expected_anchor": 7110}, {"anchor": 0, "expected_anchor": 0}):
+            with self.subTest(changes=changes):
+                self.assertEqual(od.restart_row_cause(_forged(**changes)), "anchor_not_carried")
+                self.assertEqual(self._word(_forged(**changes)), "fail")
+
+    def test_row_seen_but_not_new_fails(self) -> None:
+        for changes in ({"row_count": 1, "rows_before": 1}, {"row_count": 0, "rows_before": 1}):
+            with self.subTest(changes=changes):
+                self.assertEqual(od.restart_row_cause(_forged(**changes)), "row_not_new")
+                self.assertEqual(self._word(_forged(**changes)), "fail")
+        side = _forged()
+        del side["rows_before"]
+        self.assertEqual(od.restart_row_cause(side), "row_not_new")
+
+    def test_after_expected_anchor_must_be_the_before_anchor(self) -> None:
+        before = od.allow_restart_side(_side(before=True, anchor=7110))
+        self.assertIsNone(od.restart_row_cause(before))
+        self.assertIsNone(od.restart_row_cause(_forged()))
+        rows = {"before": before, "after": _forged()}
+        self.assertEqual(od.restart_rows_cause(rows), "anchor_not_carried")
+        self.assertEqual(self._word(_forged(), before), "fail")
+        missing = _forged()
+        del missing["expected_anchor"]
+        self.assertEqual(od.restart_rows_cause({"before": od.allow_restart_side(_side(before=True)),
+                                                "after": missing}), "anchor_not_carried")
+
+    def test_a_guest_boolean_that_disagrees_fails(self) -> None:
+        for key in ("new_row", "pid_match", "anchor_match"):
+            with self.subTest(key=key):
+                self.assertEqual(od.restart_row_cause(_forged(**{key: False})), "guest_flag_mismatch")
+                self.assertEqual(self._word(_forged(**{key: False})), "fail")
+                self.assertEqual(grade.restart_row_cause(_forged(**{key: False})), "guest_flag_mismatch")
+
+    def test_bad_wait_is_absent_on_the_host_itself(self) -> None:
+        # Checked on the raw side, not only through the sanitiser.
+        for wait in (float("nan"), float("inf"), -0.25, True, "7.0", None):
+            with self.subTest(wait=wait):
+                self.assertEqual(od.restart_row_cause(_forged(wait_s=wait)), "row_absent_errno13")
+        self.assertEqual(od.restart_row_cause(_forged(wait_s=15.25)), "row_past_cap")
+
+    def test_host_lateness_edges(self) -> None:
+        before = od.allow_restart_side(_side(before=True))
+        for wait, want in ((5.0, None), (5.001, 5.001), (15.0, 15.0), (15.25, None)):
+            with self.subTest(wait=wait):
+                self.assertEqual(od.restart_rows_late_s({"before": before, "after": _forged(wait_s=wait)}), want)
+
+    def test_ledger_latency_is_evidence_only(self) -> None:
+        self.assertEqual(od.allow_restart_side(_side())["ledger_latency_s"], 7.125)
+        self.assertNotIn("ledger_latency_s", od.allow_restart_side(_side(seen=False)))
+        cases = {
+            ("2026-10-22T22:58:01.125Z", "2026-10-22T18:58:03.500-04:00"): 2.375,
+            ("2026-10-22T22:58:01Z", "2026-10-22 22:58:02.5"): 1.5,
+            ("1792709881.25", "1792709882750000000"): 1.5,
+            ("2026-10-22T22:58:01Z", "garbage"): None,
+            ("2026-10-22T22:58:01Z", "2026-10-25T22:58:01Z"): None,
+        }
+        for (probe, ledger), want in cases.items():
+            with self.subTest(probe=probe, ledger=ledger):
+                self.assertEqual(od.ledger_latency_s({"probe_at": probe, "ledger_ts": ledger}), want)
+        # It never changes the grade.
+        slow = dict(_forged(), ledger_latency_s=99.0)
+        self.assertIsNone(od.restart_row_cause(slow))
 
 
 class RestartRowsReachTheRowsTest(unittest.TestCase):
@@ -249,8 +370,17 @@ class RestartRowsReachTheRowsTest(unittest.TestCase):
         kept = od.allow_record({"loader_kill_restart_rows": rows})
         self.assertEqual(set(kept["loader_kill_restart_rows"]), {"before", "after"})
         self.assertEqual(kept["loader_kill_restart_rows"]["after"]["errno"], 13)
-        self.assertEqual(kept["loader_kill_restart_rows"]["after"]["late_s"], 7.25)
+        self.assertNotIn("late_s", kept["loader_kill_restart_rows"]["after"])
         self.assertEqual(kept["loader_kill_restart_rows"]["before"]["row_count"], 1)
+        fields = od.kill_late_fields(od.allow_restart_rows(rows))
+        self.assertEqual(fields, {"loader_kill_late_s": 7.25, "loader_kill_claim_scope": od.LATE_CLAIM_SCOPE})
+        self.assertEqual(od.allow_record(fields), fields)
+        self.assertEqual(od.allow_record({"loader_kill_late_s": None}), {"loader_kill_late_s": None})
+        forged = od.allow_record({"loader_kill_late_s": True, "loader_kill_claim_scope": "prompt"})
+        self.assertNotIn("loader_kill_late_s", forged)
+        self.assertNotIn("loader_kill_claim_scope", forged)
+        self.assertEqual(od.kill_late_fields({"before": _side(before=True), "after": _side()}),
+                         {"loader_kill_late_s": None})
 
     def _write_rows(self, kill_body: dict) -> dict:
         """Drive od.run_batteries with every cloud call stubbed and return gcp-lab-rows.json."""
@@ -306,9 +436,19 @@ class RestartRowsReachTheRowsTest(unittest.TestCase):
         self.assertEqual(kill["restart_rows"]["after"]["row_count"], 1)
         self.assertEqual(kill["before_row_wait_s"], 0.25)
         self.assertEqual(kill["after_row_wait_s"], 15.0)
+        self.assertIsNone(rows["loader_kill_late_s"])
+        self.assertNotIn("loader_kill_claim_scope", rows)
+        self.assertEqual(after["ledger_latency_s"] if "ledger_latency_s" in after else None, None)
+        self.assertEqual(rows["loader_kill_restart_rows"]["before"]["ledger_latency_s"], 7.125)
         late, _ = self._write_rows(_body(_restart(_side(wait_s=7.25))))
         self.assertEqual(late["loader_kill"], "held")
-        self.assertEqual(late["loader_kill_restart_rows"]["after"]["late_s"], 7.25)
+        self.assertEqual(late["loader_kill_late_s"], 7.25)
+        self.assertEqual(late["loader_kill_claim_scope"], od.LATE_CLAIM_SCOPE)
+        self.assertNotIn("late_s", late["loader_kill_restart_rows"]["after"])
+        prompt, _ = self._write_rows(_body(_restart(_side())))
+        self.assertEqual(prompt["loader_kill"], "held")
+        self.assertIsNone(prompt["loader_kill_late_s"])
+        self.assertNotIn("loader_kill_claim_scope", prompt)
         empty, _ = self._write_rows({})
         self.assertEqual(empty["loader_kill_restart_rows"], {})
 

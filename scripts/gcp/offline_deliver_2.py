@@ -682,24 +682,79 @@ def _sample_held(sample: Mapping[str, Any] | None) -> bool:
 
 
 # GCP 2D restart rows (phase2_grade.restart_row_side / restart_row_cause). The
-# guest waits RESTART_ROW_CAP_S for each deny row. A row after
-# RESTART_ROW_LATE_S counts, and its seconds are kept as late_s.
+# guest waits RESTART_ROW_CAP_S for each deny row. The host re-grades the kept
+# integers itself and never trusts the guest's booleans or late_s. A row after
+# RESTART_ROW_LATE_S still counts, but the claim is then not "prompt".
 RESTART_ROW_CAP_S = 15.0
 RESTART_ROW_LATE_S = 5.0
 RESTART_ROW_CAUSES = frozenset(
-    {"anchor_not_carried", "errno_invalid", "errno_not_13", "not_blocked", "pid_mismatch", "row_absent_errno13"}
+    {
+        "anchor_not_carried",
+        "errno_invalid",
+        "errno_not_13",
+        "guest_flag_mismatch",
+        "not_blocked",
+        "pid_mismatch",
+        "row_absent_errno13",
+        "row_not_new",
+        "row_past_cap",
+    }
 )
 RESTART_ROW_SIDES = ("before", "after")
+RESTART_ROWS_MISSING = "restart_rows_missing"
+LATE_CLAIM_SCOPE = "deny row within 15 s on e2-micro; not prompt"
+_ISO_TS_RE = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?\s*(Z|[+-]\d{2}:?\d{2})?"
+)
 
 
 def _restart_errno(value: object) -> bool:
     return type(value) is int and 0 <= value <= 4095
 
 
+def _ts_seconds(value: object) -> float | None:
+    """Epoch seconds for an ISO-8601 or epoch timestamp string, or None."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    match = _ISO_TS_RE.fullmatch(text)
+    if match:
+        import calendar
+
+        year, month, day, hour, minute, second = (int(match.group(i)) for i in range(1, 7))
+        try:
+            whole = calendar.timegm((year, month, day, hour, minute, second, 0, 0, 0))
+        except (OverflowError, ValueError):
+            return None
+        zone = match.group(8)
+        offset = 0
+        if zone and zone != "Z":
+            digits = zone[1:].replace(":", "")
+            offset = (int(digits[:2]) * 3600 + int(digits[2:]) * 60) * (1 if zone[0] == "+" else -1)
+        return whole + float(match.group(7) or 0) - offset
+    if re.fullmatch(r"\d{9,19}(\.\d{1,9})?", text):
+        number = float(text)
+        for scale in (1e9, 1e6, 1e3):
+            if number > scale * 1e8:
+                return number / scale
+        return number
+    return None
+
+
+def ledger_latency_s(side: Mapping[str, Any]) -> float | None:
+    """ledger_ts - probe_at in seconds, when both parse. Evidence only, never graded."""
+    ledger = _ts_seconds(side.get("ledger_ts"))
+    probe = _ts_seconds(side.get("probe_at"))
+    if ledger is None or probe is None or abs(ledger - probe) > 86400:
+        return None
+    return round(ledger - probe, 3)
+
+
 def allow_restart_side(value: object) -> dict[str, Any] | None:
     """One side of the restart evidence with typed values only.
 
     A bool, str or float errno is dropped, and a dropped errno grades as errno_invalid.
+    The guest's late_s is dropped too: the host derives lateness from wait_s.
     """
     if not isinstance(value, dict):
         return None
@@ -715,15 +770,17 @@ def allow_restart_side(value: object) -> dict[str, Any] | None:
     for key in ("row_count", "rows_before"):
         if _int_in(value.get(key), 0, 100000):
             kept[key] = value[key]
-    for key in ("late_s", "wait_s"):
-        if _seconds(value.get(key)):
-            kept[key] = value[key]
+    if _seconds(value.get("wait_s")):
+        kept["wait_s"] = value["wait_s"]
     for key in ("ledger_ts", "probe_at", "seen_at"):
         item = value.get(key)
         if isinstance(item, str) and _EVENT_TIME_RE.fullmatch(item):
             kept[key] = item
     if value.get("cause") in RESTART_ROW_CAUSES:
         kept["cause"] = value["cause"]
+    latency = ledger_latency_s(kept)
+    if latency is not None:
+        kept["ledger_latency_s"] = latency
     return kept
 
 
@@ -745,11 +802,21 @@ def _kill_restart_rows(body: object) -> dict[str, Any]:
     return allow_restart_rows(restart.get("restart_rows") if isinstance(restart, dict) else None)
 
 
+def _restart_pos(value: object) -> bool:
+    return type(value) is int and value > 0
+
+
+def _restart_count(value: object) -> bool:
+    return type(value) is int and value >= 0
+
+
 def restart_row_cause(side: object) -> str | None:
     """The host's own grade of one side. It matches phase2_grade.restart_row_cause.
 
-    errno 0 is always not_blocked. errno 13 with no new row for the same pid
-    by RESTART_ROW_CAP_S is row_absent_errno13. Neither is ever softened.
+    errno 0 is always not_blocked. errno 13 with no row is row_absent_errno13,
+    a row only after RESTART_ROW_CAP_S is row_past_cap, and a row that does not
+    raise the count is row_not_new. pid, anchor and newness are recomputed from
+    the integers; a guest boolean that disagrees is guest_flag_mismatch.
     """
     if not isinstance(side, dict):
         return "errno_invalid"
@@ -761,26 +828,61 @@ def restart_row_cause(side: object) -> str | None:
     if errno != 13:
         return "errno_not_13"
     wait = side.get("wait_s")
-    if (
-        side.get("row_seen") is not True
-        or side.get("new_row") is not True
-        or type(wait) not in (int, float)
-        or not 0 <= wait <= RESTART_ROW_CAP_S
-    ):
+    if side.get("row_seen") is not True or type(wait) not in (int, float) or not 0 <= wait < float("inf"):
         return "row_absent_errno13"
-    if side.get("pid_match") is not True:
+    if wait > RESTART_ROW_CAP_S:
+        return "row_past_cap"
+    count, before = side.get("row_count"), side.get("rows_before")
+    if not (_restart_count(count) and _restart_count(before) and count > before):
+        return "row_not_new"
+    pid = side.get("pid")
+    if not (_restart_pos(pid) and side.get("row_pid") == pid):
         return "pid_mismatch"
-    if side.get("anchor_match") is not True:
+    anchor, expected = side.get("anchor"), side.get("expected_anchor")
+    if not _restart_pos(anchor) or (expected is not None and expected != anchor):
         return "anchor_not_carried"
+    for key in ("new_row", "pid_match", "anchor_match"):
+        if key in side and side[key] is not True:
+            return "guest_flag_mismatch"
     return None
 
 
 def restart_rows_cause(rows: Mapping[str, Any]) -> str | None:
-    """None only when both sides held. Before-restart causes end in _before_restart."""
-    before = restart_row_cause(rows.get("before"))
-    if before is not None:
-        return f"{before}_before_restart"
-    return restart_row_cause(rows.get("after"))
+    """None only when both sides held. Before-restart causes end in _before_restart.
+
+    The after row's expected_anchor has to be the before row's anchor.
+    """
+    before, after = rows.get("before"), rows.get("after")
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return RESTART_ROWS_MISSING
+    cause = restart_row_cause(before)
+    if cause is not None:
+        return f"{cause}_before_restart"
+    cause = restart_row_cause(after)
+    if cause is not None:
+        return cause
+    if after.get("expected_anchor") != before.get("anchor"):
+        return "anchor_not_carried"
+    return None
+
+
+def restart_rows_late_s(rows: Mapping[str, Any]) -> float | None:
+    """The host's own lateness: the largest wait_s over RESTART_ROW_LATE_S on a side that held."""
+    late = [
+        float(side["wait_s"])
+        for side in (rows.get(name) for name in RESTART_ROW_SIDES)
+        if isinstance(side, dict) and restart_row_cause(side) is None and side["wait_s"] > RESTART_ROW_LATE_S
+    ]
+    return round(max(late), 3) if late else None
+
+
+def kill_late_fields(rows: Mapping[str, Any]) -> dict[str, Any]:
+    """Top-level gcp-lab-rows.json fields so a late GCP 2D hold is never read as prompt."""
+    late = restart_rows_late_s(rows)
+    fields: dict[str, Any] = {"loader_kill_late_s": late}
+    if late is not None:
+        fields["loader_kill_claim_scope"] = LATE_CLAIM_SCOPE
+    return fields
 
 
 def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
@@ -801,8 +903,11 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
             # rows have to pass the host's own grade too.
             if restart.get("held") is not True:
                 return "fail"
-            if "restart_rows" in restart and restart_rows_cause(allow_restart_rows(restart["restart_rows"])):
+            if restart_rows_cause(allow_restart_rows(restart.get("restart_rows"))):
                 return "fail"
+        else:
+            # GCP 2D needs the restart rows (restart_rows_missing).
+            return "fail"
         unenrolled = body.get("unenrolled_after")
         if not isinstance(unenrolled, dict) or unenrolled.get("file_errno") != 0:
             return "fail"
@@ -1264,6 +1369,12 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
         cause = restart_rows_cause(restart_rows)
         if cause is not None and kept["hold"] is False and cause not in kept.get("fail_reasons", []):
             kept["fail_reasons"] = [*kept.get("fail_reasons", []), cause]
+        late = restart_rows_late_s(restart_rows)
+        if late is not None:
+            kept["late_s"] = late
+            kept["claim_scope"] = LATE_CLAIM_SCOPE
+    elif name == "loader-kill" and kept["hold"] is False:
+        kept["fail_reasons"] = [*kept.get("fail_reasons", []), RESTART_ROWS_MISSING]
     return kept
 
 
