@@ -11,6 +11,11 @@ mkdir -p "$dest"
 script=$(cat <<'EOS'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# ubuntu:24.04 ships /etc/apt/apt.conf.d/docker-clean, a DPkg::Post-Invoke hook
+# that deletes /var/cache/apt/archives/*.deb after every dpkg run. The ca-pin
+# install below runs dpkg, so without this the downloaded debs are gone before
+# the copy to /out (provision 39857348011: cp: cannot stat .../*.deb).
+rm -f /etc/apt/apt.conf.d/docker-clean
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates
 cat > /etc/apt/sources.list <<'EOF'

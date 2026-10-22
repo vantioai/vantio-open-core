@@ -1617,6 +1617,15 @@ class CaPinBehaviourTest(unittest.TestCase):
         self.assertLess(text.index("# END ca-pin"), text.index("cp /etc/ssl/certs/ca-certificates.crt /out/ca-certificates.crt"))
 
 
+    def test_docker_clean_hook_is_disabled_before_dpkg_runs(self) -> None:
+        # The ubuntu image's docker-clean hook empties the apt archive after any
+        # dpkg run; the ca-pin install would delete the downloaded debs.
+        text = (ROOT / "scripts/gcp/fetch_offline_debs.sh").read_text(encoding="utf-8")
+        hook = text.index("rm -f /etc/apt/apt.conf.d/docker-clean")
+        self.assertLess(hook, text.index("apt-get install -y --no-install-recommends ca-certificates"))
+        self.assertLess(hook, text.index("--allow-downgrades"))
+        self.assertLess(text.index("--allow-downgrades"), text.index('cp "$archives"/*.deb /out/'))
+
 class PublicPinHandoffTest(unittest.TestCase):
     """2c-upgrade-rollback needs public-pin.oci.tar beside seal.oci.tar on the GCP guest."""
 
