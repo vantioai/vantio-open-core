@@ -907,6 +907,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
             [
                 payload_dir / "seal.oci.tar",
                 payload_dir / "contract.tar",
+                payload_dir / PUBLIC_PIN_FILE,
                 payload_dir / "enterprise-rows.sh",
                 payload_dir / "descendant_b1.py",
                 payload_dir / "descendant_probe",

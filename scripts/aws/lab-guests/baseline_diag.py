@@ -1746,9 +1746,28 @@ def reassert_consented_lsm_live(root: Path = Path("/")) -> int:
 
     A written drop-in is recorded in the durable rows file the runner
     uploads, so the battery's evidence says the harness re-asserted it.
+    Every outcome also goes to /var/lib/vantio-lab/lsm-reassert.json with
+    the boot it ran on. descendant-b1 replaces the rows file after the
+    reboot, so its post phase reads that file instead.
     """
     result = reassert_consented_lsm(root)
     print(f"lab_lsm_reassert written={str(result['written']).lower()} reason={result['reason']}", flush=True)
+    lab = root / "var/lib/vantio-lab"
+    if lab.is_dir():
+        try:
+            boot = (root / "proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+        except OSError:
+            boot = ""
+        record = {key: result.get(key) for key in ("ok", "written", "reason", "lsm_value") if key in result}
+        record["boot_id"] = boot
+        out = lab / "lsm-reassert.json"
+        tmp = out.with_name(out.name + ".tmp")
+        try:
+            tmp.write_text(json.dumps(record), encoding="utf-8")
+            tmp.chmod(0o644)
+            os.replace(tmp, out)
+        except OSError:
+            pass
     if result.get("written") is True:
         rows = root / "var/lib/vantio-lab/enterprise-pe-rows.json"
         try:

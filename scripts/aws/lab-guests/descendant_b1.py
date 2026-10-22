@@ -407,6 +407,92 @@ def file_denied(digest: str, pid: int, since: int = 0) -> dict | None:
     return None
 
 
+EVENT_TIME_KEYS = ("Timestamp", "timestamp", "ts", "time", "Time")
+
+
+def event_time(item: dict):
+    """The first time-like field on a row, as written. None when the row has none."""
+    for key in EVENT_TIME_KEYS:
+        if item.get(key) not in (None, ""):
+            return item.get(key)
+    return None
+
+
+def start_window_rows(digest: str, since: int, probe: dict | None, first_round: list[dict]) -> dict:
+    """Informational. Re-scan events.ndjson after the rounds for start-window denies.
+
+    The probe and every round-1 sample with errno 13 but no DENIED row at
+    score time are looked up again from this loader's offset. A row that
+    is there now was delayed. A row that is still missing was dropped.
+    Nothing here changes a case's pass or fail.
+    """
+    items = events()[max(since, 0):]
+    ledger_index = next(
+        (
+            index
+            for index, item in enumerate(items)
+            if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED"
+        ),
+        None,
+    )
+
+    def deny_row(pid: int) -> tuple[int | None, dict | None]:
+        for index, item in enumerate(items):
+            if not attributable(item, digest, pid) or item.get("ActionTaken") != "DENIED":
+                continue
+            if str(item.get("EventType") or "").startswith("SYSCALL_"):
+                return index, item
+        return None, None
+
+    checked: list[dict] = []
+    if isinstance(probe, dict) and probe.get("pid") is not None:
+        index, item = deny_row(int(probe["pid"]))
+        entry = {"name": "start_probe", "pid": probe["pid"], "file_errno": probe.get("file_errno"), "row_index": index}
+        if probe.get("file_errno") != 13:
+            entry["status"] = "probe_not_denied"
+        elif index is None:
+            entry["status"] = "dropped"
+        else:
+            entry["status"] = "recorded"
+            entry["after_ledger_line"] = ledger_index is not None and index > ledger_index
+            entry["row_time"] = event_time(item)
+        checked.append(entry)
+    for sample in first_round:
+        if not sample.get("expect_deny") or sample.get("file_errno") != 13 or sample.get("file_event"):
+            continue
+        if sample.get("pid") is None:
+            continue
+        index, item = deny_row(int(sample["pid"]))
+        entry = {"name": sample.get("name"), "pid": sample["pid"], "row_index": index}
+        if index is None:
+            entry["status"] = "dropped"
+        else:
+            entry["status"] = "delayed"
+            entry["after_ledger_line"] = ledger_index is not None and index > ledger_index
+            entry["row_time"] = event_time(item)
+        checked.append(entry)
+    delayed = sum(1 for entry in checked if entry["status"] == "delayed")
+    dropped = sum(1 for entry in checked if entry["status"] == "dropped")
+    if delayed and dropped:
+        status = "mixed"
+    elif dropped:
+        status = "dropped"
+    elif delayed:
+        status = "delayed"
+    else:
+        status = "none_missing"
+    ledger_item = items[ledger_index] if ledger_index is not None else None
+    return {
+        "status": status,
+        "delayed": delayed,
+        "dropped": dropped,
+        "checked": checked,
+        "ledger_line_index": ledger_index,
+        "ledger_line_time": event_time(ledger_item) if ledger_item else None,
+        "informational": True,
+    }
+
+
 def egress_denied(digest: str, pid: int) -> bool:
     for item in events():
         if not attributable(item, digest, pid):
@@ -557,7 +643,23 @@ def uid0_open() -> dict:
         return {"errno": exc.errno}
 
 
+def start_window_probe() -> dict:
+    """One openat of the deny file by uid 65534 moved into the scoped anchor.
+
+    It runs right after the enforce banner and before the ledger wait, so
+    the start window is measured instead of waited past.
+    """
+    started = time.monotonic()
+    try:
+        observed = fork_case(lambda pid: move_pid(pid, Path(rows.ANCHOR)))
+    except Exception as exc:  # informational only
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    observed["took_s"] = round(time.monotonic() - started, 3)
+    return observed
+
+
 def prepare_enforce() -> tuple[PeHostAdapter, str]:
+    global LEDGER_SINCE
     rows.ensure_cgroups()
     ensure_net()
     meta = rows.load("meta.json")
@@ -582,10 +684,14 @@ def prepare_enforce() -> tuple[PeHostAdapter, str]:
     revoked = plane.submit_governance(rows.load("revoke.json"), rows.sig("revoke.sig.json"), now=meta["now"])
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
+    # events.ndjson lives on disk and survives the B1 reboot, so post still
+    # holds pre's SCOPED ledger line. Only a line this loader wrote counts.
+    ledger_since = len(events())
+    LEDGER_SINCE = ledger_since
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
         raise SystemExit(f"enforce loader {blocked['rc']}")
-    require_scoped_start()
+    require_scoped_start(ledger_since, probe=start_window_probe)
     return adapter, digest
 
 
@@ -594,6 +700,18 @@ OPEN_PIN = "Path DENY pinned: kprobe_open_deny"
 OPENAT_PIN = "Path DENY pinned: kprobe_openat_deny"
 CGROUP_PIN_LINE = "cgroup_skb_egress_enforce"
 BANNER_STATUS = "not_checked"
+START_TIMING: dict = {}
+START_PROBE: dict | None = None
+LEDGER_SINCE = 0
+LEDGER_WAIT_TRIES = 30
+
+
+def fresh_scoped_ledger_line(items: list[dict], since: int) -> bool:
+    """True once the enforce loader started after offset since wrote its own SCOPED line."""
+    for item in items[max(since, 0):]:
+        if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
+            return True
+    return False
 
 
 def _cgroup_pin_logged(banner: str) -> bool:
@@ -632,8 +750,17 @@ def require_banner(needle: str) -> None:
         raise SystemExit(f"loader banner missing: {needle}")
 
 
-def require_scoped_start() -> None:
-    global BANNER_STATUS
+def require_scoped_start(ledger_since: int, probe=None) -> None:
+    """Wait for the scoped banner, run the start probe, then wait for this loader's ledger line.
+
+    START_TIMING records how long each wait took. A ledger line that never
+    comes falls through as scoped_banner_without_ledger_line. That is a
+    warning in the rows, not a failure by itself.
+    """
+    global BANNER_STATUS, START_TIMING, START_PROBE
+    began = time.monotonic()
+    START_TIMING = {"ledger_since": ledger_since}
+    START_PROBE = None
     deadline = time.time() + 120
     banner = ""
     while time.time() < deadline:
@@ -645,17 +772,66 @@ def require_scoped_start() -> None:
         time.sleep(2)
     else:
         BANNER_STATUS = "missing"
+        START_TIMING["banner_wait_s"] = round(time.monotonic() - began, 3)
         tail = " ".join(banner.split())[-800:]
         raise SystemExit(
             f"loader banner missing: {SCOPED_NEEDLE} and {CGROUP_PIN_LINE} tail={tail}"
         )
-    for _ in range(15):
-        for item in events():
-            if item.get("EventType") == "ENGINE_STARTED" and item.get("ActionTaken") == "SCOPED":
-                BANNER_STATUS = "scoped"
-                return
+    banner_at = time.monotonic()
+    START_TIMING["banner_wait_s"] = round(banner_at - began, 3)
+    if probe is not None:
+        START_PROBE = probe()
+        START_TIMING["probe_done_after_banner_s"] = round(time.monotonic() - banner_at, 3)
+    for _ in range(LEDGER_WAIT_TRIES):
+        if fresh_scoped_ledger_line(events(), ledger_since):
+            seen = time.monotonic()
+            BANNER_STATUS = "scoped"
+            START_TIMING.update(
+                {
+                    "ledger_seen": True,
+                    "banner_to_ledger_s": round(seen - banner_at, 3),
+                    "start_wait_s": round(seen - began, 3),
+                }
+            )
+            return
         time.sleep(1)
+    ended = time.monotonic()
+    START_TIMING.update(
+        {
+            "ledger_seen": False,
+            "banner_to_ledger_s": None,
+            "ledger_timeout_s": round(ended - banner_at, 3),
+            "start_wait_s": round(ended - began, 3),
+        }
+    )
     BANNER_STATUS = "scoped_banner_without_ledger_line"
+
+
+def boot_lsm() -> dict:
+    """The live LSM list and the lsm= word this boot used. Kprobe denies do not prove bpf LSM."""
+    try:
+        active = Path("/sys/kernel/security/lsm").read_text(encoding="utf-8").strip()
+    except OSError:
+        active = ""
+    try:
+        words = Path("/proc/cmdline").read_text(encoding="utf-8").split()
+    except OSError:
+        words = []
+    # The kernel takes the last lsm= on the command line.
+    cmdline_lsm = next((word[4:] for word in reversed(words) if word.startswith("lsm=")), "")
+    return {"lsm": active, "bpf_lsm_active": "bpf" in active.split(","), "cmdline_lsm": cmdline_lsm}
+
+
+REASSERT_PATH = Path("/var/lib/vantio-lab/lsm-reassert.json")
+
+
+def reassert_record() -> dict | None:
+    """What the pre-reboot LSM re-assert did. The rows file is replaced on post, this file is not."""
+    try:
+        body = json.loads(REASSERT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
 
 
 def measure(phase: str) -> dict:
@@ -666,6 +842,10 @@ def measure(phase: str) -> dict:
     rounds = []
     for _ in range(REPEATS):
         rounds.append(one_round(digest))
+    try:
+        window = start_window_rows(digest, LEDGER_SINCE, START_PROBE, rounds[0])
+    except Exception as exc:  # informational only; never a reason to fail or pass
+        window = {"status": "error", "error": f"{type(exc).__name__}: {exc}", "informational": True}
     names = [item["name"] for item in rounds[0]]
     stable = []
     for name in names:
@@ -684,6 +864,7 @@ def measure(phase: str) -> dict:
         "hostname": node,
         "image": rows.IMAGE,
         "boot_id": boot_id(),
+        "boot_lsm": boot_lsm(),
         "policy_digest": digest,
         "event_count": len(events()),
         "event_census": event_census(),
@@ -694,6 +875,10 @@ def measure(phase: str) -> dict:
         "uid0_open": root_open,
         "descendant_pass": all(item["pass"] for item in stable if not item.get("skipped")) and root_open.get("errno") == 0,
         "scoped_banner": BANNER_STATUS,
+        "start_timing": dict(START_TIMING),
+        "start_probe": START_PROBE,
+        "start_window_rows": window,
+        "warnings": [f"scoped_banner={BANNER_STATUS}"] if BANNER_STATUS != "scoped" else [],
         "coverage_gaps": COVERAGE_GAPS,
     }
 
@@ -742,6 +927,7 @@ def _main() -> int:
         "pre": pre,
         "post": post,
         "reboot_observed": bool(pre) and not same_boot,
+        "lab_lsm_reassert": reassert_record(),
         "descendant_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")),
         "b1_pass": bool(pre.get("descendant_pass")) and bool(post.get("descendant_pass")) and not same_boot,
         "coverage_note": "A case with pass false is a failure. A topology absent from cases was not run.",
