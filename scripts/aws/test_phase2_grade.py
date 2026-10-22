@@ -15,6 +15,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lab-guests"))
@@ -2778,6 +2779,714 @@ class PublicPinResidueScopeTests(unittest.TestCase):
         run = text[text.index("def _stop_lab_containers"): text.index("\ndef run_2d")]
         for write in (".unlink(", "bpftool prog detach", "cgroup detach", "rmdir", '"detach"'):
             self.assertNotIn(write, run)
+
+
+
+class PublicPinUnattributedTests(unittest.TestCase):
+    """2C: an unattributed errno 13 on the old public pin is a named finding, never on the seal."""
+
+    CLEAN_PIN = {
+        "bpffs_vantio": [],
+        "bpftool_rc": 0,
+        "contract": grade.PUBLIC_PIN_UNINSTALL,
+        "docker_containers": "",
+        "loader_programs": [],
+        "tail": "Detached cleanly. Pinned maps remain at /sys/fs/bpf\n",
+        "verified_removed": True,
+    }
+    CLEAN_SEAL = {
+        "bpffs_vantio": [],
+        "bpftool_rc": 0,
+        "contract": grade.SEAL_UNINSTALL,
+        "docker_containers": "",
+        "loader_programs": [],
+        "tail": "UNINSTALL_VERIFIED\n",
+        "verified_removed": True,
+    }
+
+    def _steps(self, **changes: dict) -> list[dict]:
+        steps = []
+        for name in grade.CYCLE_STEPS:
+            pin = name in grade.PIN_STEPS
+            step = {
+                "archive_sha256": grade.PUBLIC_INSTALLER_PIN if pin else grade.WORKING_SEAL,
+                "attributed": True,
+                "file_errno": 13,
+                "image_id": "sha256:" + ("a" if pin else "b") * 64,
+                "name": name,
+                "policy_digest": "",
+                "setup_error": "",
+                "uninstall": dict(self.CLEAN_PIN if pin else self.CLEAN_SEAL),
+            }
+            step.update(changes.get(name, {}))
+            steps.append(step)
+        return steps
+
+    def test_pin_unattributed_enforced_deny_is_the_named_finding(self) -> None:
+        body = grade.grade_image_cycle(
+            self._steps(baseline={"attributed": False}, rollback={"attributed": False})
+        )
+        self.assertEqual(body["host_result"], "RECORDED", body.get("reasons"))
+        self.assertTrue(body["upgrade_pass"])
+        self.assertEqual(
+            body["findings"],
+            [
+                {"finding": "public_pin_unattributed_deny", "step": "baseline", "file_errno": 13},
+                {"finding": "public_pin_unattributed_deny", "step": "rollback", "file_errno": 13},
+            ],
+        )
+        self.assertNotIn("reasons", body)
+        self.assertLessEqual({item["finding"] for item in body["findings"]}, grade.CYCLE_FINDINGS)
+        self.assertFalse(body.get("lab_pass", False))
+        one = grade.grade_image_cycle(self._steps(rollback={"attributed": False}))
+        self.assertEqual(one["host_result"], "RECORDED")
+        self.assertEqual([item["step"] for item in one["findings"]], ["rollback"])
+
+    def test_attributed_pin_adds_no_finding(self) -> None:
+        body = grade.grade_image_cycle(self._steps())
+        self.assertEqual(body["host_result"], "RECORDED")
+        self.assertEqual(body["findings"], [])
+
+    def test_unattributed_seal_step_still_fails(self) -> None:
+        for name in ("upgrade", "reupgrade"):
+            for attributed in (False, None):
+                with self.subTest(name=name, attributed=attributed):
+                    body = grade.grade_image_cycle(self._steps(**{name: {"attributed": attributed}}))
+                    self.assertEqual(body["host_result"], "FAIL")
+                    self.assertEqual(body["reasons"], [f"{name}_enforcement"])
+                    self.assertEqual(body["findings"], [])
+        # Even a seal step that carries the pin's archive is not the pin finding.
+        self.assertFalse(
+            grade.public_pin_unattributed(
+                "upgrade",
+                {"archive_sha256": grade.PUBLIC_INSTALLER_PIN, "file_errno": 13, "setup_error": "", "attributed": False},
+            )
+        )
+
+    def test_seal_census_rule_is_unchanged_beside_the_finding(self) -> None:
+        dirty = dict(self.CLEAN_SEAL, loader_programs=["vantio_file_open"], verified_removed=False)
+        body = grade.grade_image_cycle(
+            self._steps(baseline={"attributed": False}, upgrade={"uninstall": dirty})
+        )
+        self.assertEqual(body["host_result"], "FAIL")
+        self.assertEqual(body["reasons"], ["upgrade_uninstall"])
+
+    def test_pin_step_without_errno_13_still_fails(self) -> None:
+        # 13.0 with attributed True is the existing seal rule (== 13), not this path.
+        cases = [(e, a) for e in (0, 1, 110, None, "13", True) for a in (False, True)] + [(13.0, False)]
+        for errno, attributed in cases:
+            with self.subTest(errno=errno, attributed=attributed):
+                body = grade.grade_image_cycle(
+                    self._steps(baseline={"file_errno": errno, "attributed": attributed})
+                )
+                self.assertEqual(body["host_result"], "FAIL")
+                self.assertIn("baseline_enforcement", body["reasons"])
+                self.assertNotIn(
+                    grade.PUBLIC_PIN_UNATTRIBUTED_FINDING, [item["finding"] for item in body["findings"]]
+                )
+
+    def test_pin_step_without_its_banner_or_attribution_word_still_fails(self) -> None:
+        cases = {
+            "banner_missing": {"setup_error": "public pin banner missing: tail=x", "file_errno": None},
+            "setup_error_with_13": {"setup_error": "loader 1", "attributed": False},
+            "setup_error_absent": {"setup_error": None, "attributed": False},
+            "attributed_none": {"attributed": None},
+            "attributed_zero": {"attributed": 0},
+            "wrong_archive": {"archive_sha256": grade.WORKING_SEAL, "attributed": False},
+        }
+        for label, change in cases.items():
+            with self.subTest(label=label):
+                steps = self._steps(baseline=change)
+                if change.get("setup_error") is None and "setup_error" in change:
+                    del steps[0]["setup_error"]
+                body = grade.grade_image_cycle(steps)
+                self.assertEqual(body["host_result"], "FAIL")
+                self.assertIn("baseline_enforcement", body["reasons"])
+                self.assertEqual(body["findings"], [])
+
+    def test_predicate_truth_table(self) -> None:
+        good = {"archive_sha256": grade.PUBLIC_INSTALLER_PIN, "file_errno": 13, "setup_error": "", "attributed": False}
+        for name in grade.PIN_STEPS:
+            self.assertTrue(grade.public_pin_unattributed(name, dict(good)))
+        for key, bad in (
+            ("archive_sha256", grade.WORKING_SEAL),
+            ("file_errno", 0),
+            ("file_errno", True),
+            ("setup_error", "x"),
+            ("attributed", True),
+            ("attributed", None),
+        ):
+            with self.subTest(key=key, bad=bad):
+                self.assertFalse(grade.public_pin_unattributed("baseline", dict(good, **{key: bad})))
+        self.assertFalse(grade.public_pin_unattributed("upgrade", dict(good)))
+        self.assertFalse(grade.public_pin_unattributed("reupgrade", dict(good)))
+        self.assertEqual(
+            grade.CYCLE_FINDINGS,
+            frozenset({grade.PUBLIC_PIN_RESIDUE_FINDING, grade.PUBLIC_PIN_UNATTRIBUTED_FINDING}),
+        )
+
+    def test_measure_reports_setup_error_empty_only_after_the_banner(self) -> None:
+        # The finding trusts setup_error == "": _measure_loaded sets it only after
+        # prepare_enforce returned, which raises when the pin's banner is missing.
+        text = _host_text()
+        measure = text.split("\ndef _measure_loaded", 1)[1].split("\ndef ", 1)[0]
+        self.assertLess(measure.index("prepare_enforce(public_pin=public_pin)"), measure.index('"setup_error": ""'))
+        self.assertIn('"setup_error": str(exc.code)', measure)
+        prepare = text.split("\ndef prepare_enforce", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("public pin banner missing", prepare)
+
+
+class MapSwapTests(unittest.TestCase):
+    """2F: kill the loader only after its deny-attr maps sit on the canonical pins."""
+
+    STEMS = grade.DENY_SWAP_STEMS
+    BEFORE = {"vantio_deny_attr": 10, "vantio_deny_attr_drops": 11, "vantio_deny_overflow": 12}
+    AFTER = {"vantio_deny_attr": 20, "vantio_deny_attr_drops": 21, "vantio_deny_overflow": 22}
+    SIDE = [
+        "/sys/fs/bpf/vantio_deny_attr_incoming_52926",
+        "/sys/fs/bpf/vantio_deny_attr_drops_incoming_52926",
+        "/sys/fs/bpf/vantio_deny_overflow_incoming_52926",
+    ]
+    ENFORCE = [{"host": 52926, "ns": 52926}]
+
+    def test_swapped_needs_new_ids_and_no_new_side_pin(self) -> None:
+        stale = ["/sys/fs/bpf/vantio_deny_attr_incoming_1"]
+        side = self.SIDE[:1]
+        self.assertTrue(grade.deny_map_swapped(self.BEFORE, [], self.AFTER, []))
+        # A side pin left by an earlier killed loader does not block the wait.
+        self.assertTrue(grade.deny_map_swapped(self.BEFORE, stale, self.AFTER, stale))
+        # The CHAIN8 shape: the new loader's side pins are still there.
+        self.assertFalse(grade.deny_map_swapped(self.BEFORE, [], self.AFTER, side))
+        self.assertFalse(grade.deny_map_swapped(self.BEFORE, stale, self.AFTER, stale + side))
+        # The canonical pins still name the audit generation's maps.
+        self.assertFalse(grade.deny_map_swapped(self.BEFORE, [], dict(self.BEFORE), []))
+        for stem in self.STEMS:
+            with self.subTest(stem=stem):
+                self.assertFalse(grade.deny_map_swapped(self.BEFORE, [], dict(self.AFTER, **{stem: self.BEFORE[stem]}), []))
+                self.assertFalse(grade.deny_map_swapped(self.BEFORE, [], dict(self.AFTER, **{stem: 0}), []))
+                missing = dict(self.AFTER)
+                del missing[stem]
+                self.assertFalse(grade.deny_map_swapped(self.BEFORE, [], missing, []))
+                self.assertFalse(grade.deny_map_swapped(self.BEFORE, [], dict(self.AFTER, **{stem: True}), []))
+        # No canonical pin before: any set id after counts.
+        self.assertTrue(grade.deny_map_swapped({s: 0 for s in self.STEMS}, [], self.AFTER, []))
+        for bad in ((None, [], self.AFTER, []), (self.BEFORE, None, self.AFTER, []), (self.BEFORE, [], self.AFTER, "x")):
+            self.assertFalse(grade.deny_map_swapped(*bad))
+
+    def test_side_pin_owner_is_the_one_running_enforce_loader(self) -> None:
+        self.assertEqual(grade.side_pin_pid(self.SIDE[0]), 52926)
+        self.assertIsNone(grade.side_pin_pid("/sys/fs/bpf/vantio_deny_attr"))
+        self.assertIsNone(grade.side_pin_pid("/sys/fs/bpf/vantio_deny_attr_incoming_x"))
+        self.assertTrue(grade.swap_owner_matches(list(self.SIDE), self.ENFORCE))
+        # The pid inside the loader's own namespace also names it.
+        self.assertTrue(grade.swap_owner_matches(list(self.SIDE), [{"host": 70001, "ns": 52926}]))
+        cases = {
+            "no_side_pin_seen": ([], self.ENFORCE),
+            "audit_loader_pin": (["/sys/fs/bpf/vantio_deny_attr_incoming_52800"], self.ENFORCE),
+            "one_pin_not_owned": (self.SIDE + ["/sys/fs/bpf/vantio_deny_attr_incoming_52800"], self.ENFORCE),
+            "pid_unknown": (list(self.SIDE), []),
+            "two_loaders": (list(self.SIDE), self.ENFORCE + [{"host": 52800, "ns": 52800}]),
+            "bad_owner": (list(self.SIDE), [{"host": 0, "ns": True}]),
+            "owner_not_dict": (list(self.SIDE), ["52926"]),
+            "seen_not_list": ("x", self.ENFORCE),
+        }
+        for label, (seen, loaders) in cases.items():
+            with self.subTest(label=label):
+                self.assertFalse(grade.swap_owner_matches(seen, loaders))
+
+    def _waiter(self, script, loaders=None):
+        """exec the host's swap helpers against a fake clock and scripted bpffs reads."""
+        text = _host_text()
+        source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
+        clock = {"now": 100.0, "reads": 0, "watch": 0}
+
+        class FakeTime:
+            @staticmethod
+            def monotonic() -> float:
+                return clock["now"]
+
+            @staticmethod
+            def sleep(seconds: float) -> None:
+                clock["now"] += seconds
+
+        ns = {"time": FakeTime, "grade": grade, "Path": Path, "baseline_diag": types.SimpleNamespace()}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+
+        def ids(_root=None):
+            clock["reads"] += 1
+            return script(clock["reads"])[0]
+
+        def incoming(_root=None):
+            return script(clock["reads"])[1]
+
+        ns["canonical_map_ids"] = ids
+        ns["incoming_pins"] = incoming
+        ns["loader_pids"] = loaders if loaders is not None else (lambda: list(self.ENFORCE))
+        ns["start_side_pin_watch"] = lambda _root=None: clock.update(watch=clock["watch"] + 1)
+        return ns, clock
+
+    def test_wait_returns_once_the_swap_lands(self) -> None:
+        side = self.SIDE
+        ns, clock = self._waiter(
+            lambda n: (self.BEFORE, []) if n <= 2 else ((self.BEFORE, side) if n < 7 else (self.AFTER, []))
+        )
+        before = ns["record_swap_baseline"]()
+        self.assertTrue(before["recorded"])
+        self.assertTrue(before["settle"]["settled"])
+        self.assertEqual(clock["watch"], 1)
+        got = ns["wait_map_swap"](timeout=30.0, step=0.25)
+        self.assertTrue(got["swapped"])
+        self.assertIsNone(got["reason"])
+        self.assertEqual(got["ids"], self.AFTER)
+        self.assertEqual(got["incoming_seen"], side)
+        self.assertEqual(got["loaders"], self.ENFORCE)
+        self.assertAlmostEqual(got["waited_s"], 1.0)
+
+    def test_side_pin_seen_by_the_background_watch_counts(self) -> None:
+        # The promote landed before the first poll: only the watch saw the pin.
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.AFTER, []))
+        ns["record_swap_baseline"]()
+        ns["SWAP_SEEN"].extend(self.SIDE)
+        self.assertTrue(ns["wait_map_swap"](timeout=5.0, step=0.25)["swapped"])
+        # Without any side pin seen, the same id change is not a swap.
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.AFTER, []))
+        ns["record_swap_baseline"]()
+        got = ns["wait_map_swap"](timeout=1.0, step=0.25)
+        self.assertFalse(got["swapped"])
+        self.assertEqual(got["reason"], grade.MAP_SWAP_SIDE_PIN_UNMATCHED)
+
+    def test_watch_records_only_new_side_pins(self) -> None:
+        text = _host_text()
+        source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
+        ns = {"time": time, "grade": grade, "Path": Path, "baseline_diag": types.SimpleNamespace()}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        reads = iter([["/old_incoming_1"], ["/old_incoming_1", self.SIDE[0]], [self.SIDE[0]]])
+
+        class Stop:
+            calls = 0
+
+            def is_set(self) -> bool:
+                return self.calls >= 3
+
+            def wait(self, _seconds: float) -> None:
+                self.calls += 1
+
+        ns["incoming_pins"] = lambda _root=None: next(reads)
+        ns["_watch_side_pins"](None, Stop(), ["/old_incoming_1"])
+        self.assertEqual(ns["SWAP_SEEN"], [self.SIDE[0]])
+
+    def test_timeout_is_not_swapped_and_bounded(self) -> None:
+        side = self.SIDE
+        ns, clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.BEFORE, side))
+        ns["record_swap_baseline"]()
+        got = ns["wait_map_swap"](timeout=2.0, step=0.25)
+        self.assertFalse(got["swapped"])
+        self.assertEqual(got["reason"], grade.MAP_SWAP_TIMEOUT)
+        self.assertGreaterEqual(got["waited_s"], 2.0)
+        self.assertLess(got["waited_s"], 2.3)
+        self.assertEqual(got["incoming"], side)
+        # New ids but a side pin still present is not swapped either.
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.AFTER, side))
+        ns["record_swap_baseline"]()
+        self.assertEqual(ns["wait_map_swap"](timeout=1.0, step=0.25)["reason"], grade.MAP_SWAP_TIMEOUT)
+
+    def test_swap_by_another_loader_is_not_counted(self) -> None:
+        promote = lambda n: (self.BEFORE, []) if n <= 2 else ((self.BEFORE, self.SIDE) if n < 4 else (self.AFTER, []))
+        for label, loaders in (
+            ("other_pid", lambda: [{"host": 52800, "ns": 52800}]),
+            ("pid_unknown", lambda: []),
+            ("two_loaders", lambda: self.ENFORCE + [{"host": 52800, "ns": 52800}]),
+        ):
+            with self.subTest(label=label):
+                ns, _clock = self._waiter(promote, loaders=loaders)
+                ns["record_swap_baseline"]()
+                got = ns["wait_map_swap"](timeout=2.0, step=0.25)
+                self.assertFalse(got["swapped"])
+                self.assertEqual(got["reason"], grade.MAP_SWAP_SIDE_PIN_UNMATCHED)
+
+    def test_no_baseline_is_not_swapped(self) -> None:
+        ns, clock = self._waiter(lambda n: (self.AFTER, []))
+        got = ns["wait_map_swap"](timeout=30.0, step=0.25)
+        self.assertFalse(got["swapped"])
+        self.assertEqual(got["reason"], grade.MAP_SWAP_BASELINE_MISSING)
+        self.assertEqual(clock["now"], 100.0)
+
+    def test_baseline_waits_for_the_audit_loader_to_settle(self) -> None:
+        audit_side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52800"]
+        audit = lambda: [{"host": 52800, "ns": 52800}]
+        # The audit loader still owns a side pin for 1 s, then promotes it.
+        ns, clock = self._waiter(lambda n: (self.BEFORE, audit_side) if n <= 4 else (self.BEFORE, []), loaders=audit)
+        before = ns["record_swap_baseline"]()
+        self.assertTrue(before["recorded"])
+        self.assertAlmostEqual(before["settle"]["waited_s"], 1.0)
+        self.assertEqual(before["incoming"], [])
+        # A side pin whose loader is gone cannot be promoted: kept as stale.
+        stale = ["/sys/fs/bpf/vantio_deny_attr_incoming_40000"]
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, stale), loaders=audit)
+        before = ns["record_swap_baseline"]()
+        self.assertTrue(before["recorded"])
+        self.assertEqual(before["settle"]["stale_side_pins"], stale)
+        self.assertEqual(before["incoming"], stale)
+
+    def test_unsettled_baseline_is_not_graded_and_starts_no_watch(self) -> None:
+        audit_side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52800"]
+        cases = {
+            "live_side_pin": ((lambda n: (self.BEFORE, audit_side)), lambda: [{"host": 52800, "ns": 52800}]),
+            "map_missing": ((lambda n: (dict(self.BEFORE, vantio_deny_overflow=0), [])), lambda: []),
+            "no_maps": ((lambda n: ({}, [])), lambda: []),
+        }
+        for label, (script, loaders) in cases.items():
+            with self.subTest(label=label):
+                ns, clock = self._waiter(script, loaders=loaders)
+                before = ns["record_swap_baseline"](settle_timeout=2.0)
+                self.assertFalse(before["recorded"])
+                self.assertEqual(before["reason"], grade.MAP_SWAP_BASELINE_UNSETTLED)
+                self.assertFalse(before["settle"]["settled"])
+                self.assertGreaterEqual(before["settle"]["waited_s"], 2.0)
+                self.assertLess(before["settle"]["waited_s"], 2.3)
+                self.assertEqual(clock["watch"], 0)
+                got = ns["wait_map_swap"](timeout=30.0, step=0.25)
+                self.assertFalse(got["swapped"])
+                self.assertEqual(got["reason"], grade.MAP_SWAP_BASELINE_UNSETTLED)
+                self.assertEqual(got["waited_s"], 0.0)
+
+    def test_incoming_pins_and_map_id_read_a_temp_tree(self) -> None:
+        text = _host_text()
+        source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
+        calls: list[list[str]] = []
+
+        def json_run(argv, **_kwargs):
+            calls.append(list(argv))
+            return ({"id": 77, "name": "DENY_ATTR"}, {"rc": 0})
+
+        ns = {"time": time, "grade": grade, "Path": Path, "baseline_diag": types.SimpleNamespace(_json_run=json_run)}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in (
+                "vantio_deny_attr",
+                "vantio_deny_attr_incoming_52926",
+                "vantio_deny_attr_drops_incoming_52926",
+                "vantio_deny_overflow_incoming_52926",
+                "vantio_deny_attr_incoming_x",
+                "other_incoming_5",
+            ):
+                (root / name).write_text("", encoding="utf-8")
+            found = ns["incoming_pins"](root)
+            self.assertEqual(
+                sorted(found),
+                sorted(
+                    str(root / n)
+                    for n in (
+                        "vantio_deny_attr_incoming_52926",
+                        "vantio_deny_attr_drops_incoming_52926",
+                        "vantio_deny_overflow_incoming_52926",
+                    )
+                ),
+            )
+            self.assertEqual(ns["canonical_map_ids"](root), {"vantio_deny_attr": 77, "vantio_deny_attr_drops": 0, "vantio_deny_overflow": 0})
+            self.assertEqual(ns["incoming_pins"](root / "missing"), [])
+        for argv in calls:
+            self.assertEqual(argv[:4], ["bpftool", "-j", "map", "show"])
+
+    def test_loader_pids_reads_pgrep_and_nspid(self) -> None:
+        text = _host_text()
+        source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
+        ran: list[list[str]] = []
+
+        class FakePath:
+            def __init__(self, path: str) -> None:
+                self.path = path
+
+            def read_text(self, encoding: str = "utf-8") -> str:
+                if self.path == "/proc/52926/status":
+                    return "Name:\tvantio-loader\nNSpid:\t52926\t7\n"
+                raise OSError("gone")
+
+        rows_ns = types.SimpleNamespace(
+            run=lambda argv: ran.append(list(argv)) or subprocess.CompletedProcess(argv, 0, stdout="52926\n52930\nx\n", stderr="")
+        )
+        ns = {"time": time, "grade": grade, "Path": FakePath, "baseline_diag": None, "rows": rows_ns}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        self.assertEqual(ns["loader_pids"](), [{"host": 52926, "ns": 7}, {"host": 52930, "ns": 52930}])
+        self.assertEqual(ran, [["pgrep", "-x", "vantio-loader"]])
+
+    def test_run_2f_waits_for_the_swap_before_the_kill(self) -> None:
+        text = _host_text()
+        run_2f = text.split("\ndef run_2f", 1)[1].split("\ndef ", 1)[0]
+        self.assertIn("prepare_enforce(swap_baseline=True)", run_2f)
+        self.assertLess(run_2f.index("prepare_enforce("), run_2f.index("wait_map_swap()"))
+        self.assertLess(run_2f.index("wait_map_swap()"), run_2f.index("kill_loader()"))
+        early = run_2f[run_2f.index("wait_map_swap()"): run_2f.index("kill_loader()")]
+        self.assertIn('swap.get("swapped") is not True', early)
+        self.assertIn("grade.ungraded_egress(", early)
+        self.assertIn("return refused", early)
+        self.assertIn("deny_diag([])", early)
+        # Every 2F body carries the swap facts and the kill timing: not_killed
+        # before kill_loader, after_map_swap once it ran.
+        returns = run_2f.count("return refused") + run_2f.count("return grade.require_tamper_claim(graded)")
+        self.assertEqual(returns, 4)
+        self.assertEqual(run_2f.count("grade.KILL_TIMING_NOT_KILLED"), 1)
+        self.assertIn("grade.KILL_TIMING_NOT_KILLED", early)
+        self.assertNotIn("grade.KILL_TIMING_AFTER_MAP_SWAP", early)
+        after = run_2f[run_2f.index("kill_loader()"):]
+        self.assertEqual(after.count("grade.KILL_TIMING_AFTER_MAP_SWAP"), returns - 1)
+        self.assertNotIn("return graded", run_2f)
+        self.assertEqual(run_2f.count("return refused"), run_2f.count('refused["map_swap"] = swap'))
+        self.assertIn('graded["map_swap"] = swap', run_2f)
+        self.assertEqual(run_2f.count("grade.CLAIM_SCOPE_2F"), 1)
+        prepare = text.split("\ndef prepare_enforce", 1)[1].split("\ndef ", 1)[0]
+        self.assertLess(prepare.index("record_swap_baseline()"), prepare.index("blocked = rows.start_loader"))
+        self.assertLess(prepare.index("SWAP_BEFORE.clear()"), prepare.index("record_swap_baseline()"))
+        self.assertIn("if swap_baseline and not public_pin:", prepare.split("record_swap_baseline()", 1)[0][-400:])
+        # Only 2F asks for the baseline; 2E keeps its revoke-to-enforce timing.
+        self.assertEqual(text.count("swap_baseline=True"), 1)
+
+    def _run_2f(self, swap: dict, *, block=None, control: int = 0, tamper=None):
+        text = _host_text()
+        source = text[text.index("def run_2f"): text.index("\ndef kernel_facts")]
+        killed: list[bool] = []
+        ns = {
+            "grade": grade,
+            "prepare_enforce": lambda **kw: (None, "digest-1"),
+            "wait_map_swap": lambda: dict(swap),
+            "kill_loader": lambda: killed.append(True) or 0,
+            "deny_diag": lambda pids, **_kw: {"cause": "probe", "pids": pids},
+            "_bpf_pin_sample": lambda: [],
+            "loader_running": lambda: False,
+            "standin_after_sigkill": lambda: {},
+            "control_handshake": lambda: control,
+            "egress_observation": lambda: {"egress": "obs", "kill_timing": "bogus"},
+            "child_open": lambda enrolled: {"pid": 4242, "net_errno": 13 if block is None else 110, "file_errno": 13},
+            "egress_block_anchor": lambda pid: 6840 if block is None else 0,
+            "attributed": lambda pid, word: True,
+            "ndjson_denied_pids": lambda: [4242],
+            "enrolled_connect_errno": lambda host, port: 0,
+            "ALLOW_HOST": "10.0.0.1",
+            "ALLOW_PORT": 443,
+        }
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        return ns["run_2f"](), killed
+
+    def test_run_2f_timeout_is_not_graded(self) -> None:
+        for reason in (grade.MAP_SWAP_TIMEOUT, grade.MAP_SWAP_BASELINE_MISSING, grade.MAP_SWAP_BASELINE_UNSETTLED, grade.MAP_SWAP_SIDE_PIN_UNMATCHED):
+            with self.subTest(reason=reason):
+                body, killed = self._run_2f({"swapped": False, "reason": reason, "waited_s": 30.0})
+                self.assertEqual(killed, [])
+                self.assertEqual(body["host_result"], "NOT_GRADED")
+                self.assertEqual(body["reason"], reason)
+                self.assertFalse(body.get("lab_pass", False))
+                self.assertEqual(body["map_swap"]["reason"], reason)
+                self.assertEqual(body["policy_digest"], "digest-1")
+                self.assertIs(body["loader_killed"], False)
+                self.assertEqual(body["kill_timing"], "not_killed")
+                self.assertEqual(body["kill_timing"], grade.KILL_TIMING_NOT_KILLED)
+                self.assertNotIn("claim_scope", body)
+                self.assertFalse(grade.tamper_claim_complete(body))
+        body, killed = self._run_2f({"swapped": "yes"})
+        self.assertEqual(body["reason"], grade.MAP_SWAP_TIMEOUT)
+        self.assertEqual(killed, [])
+
+    def test_every_2f_body_names_the_kill_timing(self) -> None:
+        swapped = {"swapped": True, "reason": None}
+        lab_net, killed = self._run_2f(swapped, control=111)
+        self.assertEqual(killed, [True])
+        self.assertEqual(lab_net["reason"], "lab_network")
+        ungraded, _killed = self._run_2f(swapped, block="timeout")
+        self.assertEqual(ungraded["host_result"], "NOT_GRADED")
+        graded, _killed = self._run_2f(swapped)
+        self.assertIn(graded["host_result"], {"PASS", "FAIL", "HOLD"})
+        for body in (lab_net, ungraded, graded):
+            self.assertEqual(body["kill_timing"], grade.KILL_TIMING_AFTER_MAP_SWAP)
+            self.assertEqual(body["map_swap"], swapped)
+        self.assertEqual(graded["claim_scope"], "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)")
+        self.assertNotIn("claim_scope", lab_net)
+        self.assertNotIn("claim_scope", ungraded)
+        # The complete graded pass stays a pass after the claim check.
+        self.assertEqual(graded["host_result"], "PASS")
+        self.assertNotIn("withheld_host_result", graded)
+        self.assertTrue(grade.tamper_claim_complete(graded))
+
+    def test_run_2f_pass_goes_through_the_claim_check(self) -> None:
+        seen: list[dict] = []
+        real = grade.require_tamper_claim
+
+        def spy(body):
+            seen.append(dict(body))
+            return real(body)
+
+        with mock.patch.object(grade, "require_tamper_claim", spy):
+            graded, _killed = self._run_2f({"swapped": True, "reason": None})
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0]["kill_timing"], "after_map_swap")
+        self.assertEqual(seen[0]["claim_scope"], grade.CLAIM_SCOPE_2F)
+        self.assertEqual(graded["host_result"], "PASS")
+
+    def test_pass_without_claim_fields_is_not_graded(self) -> None:
+        scope = grade.CLAIM_SCOPE_2F
+        bad = {
+            "no_fields": {},
+            "no_timing": {"claim_scope": scope},
+            "not_killed": {"kill_timing": "not_killed", "claim_scope": scope},
+            "other_timing": {"kill_timing": "after_banner", "claim_scope": scope},
+            "no_scope": {"kill_timing": "after_map_swap"},
+            "empty_scope": {"kill_timing": "after_map_swap", "claim_scope": ""},
+            "blank_scope": {"kill_timing": "after_map_swap", "claim_scope": "  \n"},
+            "scope_not_str": {"kill_timing": "after_map_swap", "claim_scope": ["x"]},
+        }
+        for label, fields in bad.items():
+            with self.subTest(label=label):
+                body = dict(grade._base("2f-tamper"), host_result="PASS", expectation_met=True, classification="fail_closed", **fields)
+                self.assertFalse(grade.tamper_claim_complete(body))
+                out = grade.require_tamper_claim(body)
+                self.assertEqual(out["host_result"], "NOT_GRADED")
+                self.assertEqual(out["reason"], "claim_fields_missing")
+                self.assertEqual(out["reason"], grade.CLAIM_FIELDS_MISSING)
+                self.assertEqual(out["withheld_host_result"], "PASS")
+                self.assertIs(out["setup_invalid"], True)
+                self.assertIs(out["expectation_met"], False)
+                self.assertEqual(out["classification"], "not_graded")
+        good = dict(grade._base("2f-tamper"), host_result="PASS", expectation_met=True, kill_timing="after_map_swap", claim_scope=scope)
+        self.assertEqual(grade.require_tamper_claim(dict(good)), good)
+        # FAIL and HOLD stand: the claim fields bound only what a pass claims.
+        for result in ("FAIL", "HOLD", "NOT_GRADED"):
+            with self.subTest(result=result):
+                body = dict(grade._base("2f-tamper"), host_result=result, expectation_met=False)
+                self.assertEqual(grade.require_tamper_claim(dict(body)), body)
+        self.assertFalse(grade.tamper_claim_complete(None))
+        self.assertFalse(grade.tamper_claim_complete([("kill_timing", "after_map_swap")]))
+
+    def test_watch_stops_when_the_swap_lands(self) -> None:
+        ns, _clock = self._waiter(
+            lambda n: (self.BEFORE, []) if n <= 2 else ((self.BEFORE, self.SIDE) if n < 4 else (self.AFTER, []))
+        )
+        ns["record_swap_baseline"]()
+        events: list[str] = []
+        ns["stop_side_pin_watch"] = lambda: events.append("stop")
+        real_loaders = ns["loader_pids"]
+        ns["loader_pids"] = lambda: events.append("loaders") or real_loaders()
+        got = ns["wait_map_swap"](timeout=30.0, step=0.25)
+        self.assertTrue(got["swapped"])
+        # Stopped exactly once, after the owner check, on the success return.
+        self.assertEqual(events, ["loaders", "stop"])
+
+    def test_stop_side_pin_watch_sets_joins_and_forgets(self) -> None:
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []))
+        calls: list[object] = []
+        stop = types.SimpleNamespace(set=lambda: calls.append("set"))
+        thread = types.SimpleNamespace(join=lambda timeout=None: calls.append(("join", timeout)))
+        ns["SWAP_WATCH"].update({"stop": stop, "thread": thread})
+        ns["stop_side_pin_watch"]()
+        self.assertEqual(calls, ["set", ("join", 1.0)])
+        self.assertEqual(ns["SWAP_WATCH"], {})
+        ns["stop_side_pin_watch"]()
+        self.assertEqual(calls, ["set", ("join", 1.0)])
+
+    def test_pid_zero_or_negative_never_names_the_owner(self) -> None:
+        for path in (
+            "/sys/fs/bpf/vantio_deny_attr_incoming_0",
+            "/sys/fs/bpf/vantio_deny_attr_incoming_00",
+            "/sys/fs/bpf/vantio_deny_attr_incoming_-1",
+            "/sys/fs/bpf/vantio_deny_attr_incoming_",
+        ):
+            with self.subTest(path=path):
+                self.assertIsNone(grade.side_pin_pid(path))
+        self.assertEqual(grade.side_pin_pid("/sys/fs/bpf/vantio_deny_attr_incoming_1"), 1)
+        zero = ["/sys/fs/bpf/vantio_deny_attr_incoming_0"]
+        for owner in ({"host": 0, "ns": 0}, {"host": -1, "ns": 0}, {"host": 0}, {"host": -52926, "ns": -52926}):
+            with self.subTest(owner=owner):
+                self.assertFalse(grade.swap_owner_matches(list(zero), [owner]))
+                self.assertFalse(grade.swap_owner_matches(list(self.SIDE), [owner]))
+        # swap_owner_matches drops a pid <= 0 itself, even if a pin parsed to one.
+        for bad in (0, -1):
+            with self.subTest(bad=bad), mock.patch.object(grade, "side_pin_pid", lambda _p, bad=bad: bad):
+                self.assertFalse(grade.swap_owner_matches(list(zero), [{"host": bad, "ns": bad}]))
+                self.assertFalse(grade.swap_owner_matches(list(zero), [{"host": bad, "ns": 52926}]))
+        # A valid namespace pid still names the loader when the host pid is 0.
+        self.assertTrue(grade.swap_owner_matches(list(self.SIDE), [{"host": 0, "ns": 52926}]))
+
+
+class IncomingCopyDiagTests(unittest.TestCase):
+    """deny_attr_diag dumps any <pin>_incoming_<pid> side copies, read only."""
+
+    def _diag(self, files: list[str], side_rows: list) -> tuple[dict, list[list[str]]]:
+        pid, anchor = 52998, 8458
+        calls: list[list[str]] = []
+
+        def fake_run(argv, **_kwargs):
+            calls.append(list(argv))
+            last = argv[-1]
+            if argv[:4] == ["bpftool", "-j", "map", "show"] and "pinned" in argv:
+                out = json.dumps({"id": 900 + len(last) % 50, "name": "x"})
+            elif argv[:4] == ["bpftool", "-j", "map", "dump"] and "_incoming_" in last:
+                if "vantio_deny_attr_drops" in last:
+                    out = json.dumps([{"key": 0, "values": [{"cpu": 0, "value": 3}]}])
+                elif "vantio_deny_overflow" in last:
+                    out = json.dumps([{"key": 0, "value": 1}])
+                else:
+                    out = json.dumps(side_rows)
+            elif argv[:4] == ["bpftool", "-j", "map", "dump"]:
+                out = "[]"
+            elif argv[:4] == ["bpftool", "-j", "map", "show"]:
+                out = json.dumps([{"name": "DENY_ATTR", "id": 4}])
+            else:
+                out = "[]"
+            return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+
+        saved = (baseline_diag.subprocess, baseline_diag.DENY_PIN, baseline_diag.DENY_DROPS_PIN, baseline_diag.ENROLLED_PIN)
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ["vantio_deny_attr", "vantio_deny_attr_drops", *files]:
+                (Path(tmp) / name).write_text("", encoding="utf-8")
+            try:
+                baseline_diag.subprocess = types.SimpleNamespace(run=fake_run, TimeoutExpired=subprocess.TimeoutExpired)
+                baseline_diag.DENY_PIN = str(Path(tmp) / "vantio_deny_attr")
+                baseline_diag.DENY_DROPS_PIN = str(Path(tmp) / "vantio_deny_attr_drops")
+                baseline_diag.ENROLLED_PIN = str(Path(tmp) / "absent")
+                facts = baseline_diag.deny_attr_diag([pid], [anchor], "")
+            finally:
+                (
+                    baseline_diag.subprocess,
+                    baseline_diag.DENY_PIN,
+                    baseline_diag.DENY_DROPS_PIN,
+                    baseline_diag.ENROLLED_PIN,
+                ) = saved
+        return facts, calls
+
+    SIDE = [
+        "vantio_deny_attr_incoming_52926",
+        "vantio_deny_attr_drops_incoming_52926",
+        "vantio_deny_overflow_incoming_52926",
+    ]
+
+    def test_chain8_shape_finds_the_row_in_the_side_copy(self) -> None:
+        rows = [_deny_row(52998, 2, pid=52998, kind=2, anchor=8458), _deny_row(52998, 1, pid=52998, kind=1, anchor=8458)]
+        facts, calls = self._diag(self.SIDE, rows)
+        self.assertEqual(facts["egress_row"], "row_absent")
+        self.assertEqual(facts["side_copy_state"], "side_row_present")
+        copies = {row["stem"]: row for row in facts["incoming_copies"]}
+        self.assertEqual(set(copies), set(grade.DENY_SWAP_STEMS))
+        attr = copies["vantio_deny_attr"]
+        self.assertEqual(attr["dump_rows"], 2)
+        self.assertEqual(attr["egress_row"], "row_present")
+        self.assertEqual(attr["dump_kinds"], {"egress_cgroup": 1, "file": 1})
+        self.assertEqual(len(attr["rows_for_pids_or_anchors"]), 2)
+        self.assertGreater(attr["map_id"], 0)
+        self.assertEqual(copies["vantio_deny_attr_drops"]["drops"]["lru_evictions"], 3)
+        self.assertEqual(copies["vantio_deny_overflow"]["dump_rows"], 1)
+        self.assertNotIn("shadow", json.dumps(facts))
+        for argv in calls:
+            self.assertEqual(argv[:2], ["bpftool", "-j"])
+            self.assertIn(argv[3], {"show", "dump"}, argv)
+
+    def test_empty_side_copy_and_no_side_copy(self) -> None:
+        facts, _calls = self._diag(self.SIDE, [])
+        self.assertEqual(facts["side_copy_state"], "side_row_absent")
+        facts, calls = self._diag([], [])
+        self.assertEqual(facts["incoming_copies"], [])
+        self.assertEqual(facts["side_copy_state"], "no_side_copy")
+        self.assertFalse(any("_incoming_" in argv[-1] for argv in calls))
+        facts, _calls = self._diag(["vantio_deny_attr_incoming_abc", "vantio_trace_incoming_1"], [])
+        self.assertEqual(facts["incoming_copies"], [])
 
 
 if __name__ == "__main__":
