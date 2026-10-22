@@ -571,7 +571,9 @@ case "$mode" in
     test -f "$here/phase2_host.py"
     test -f "$here/phase2_grade.py"
     set +e
-    sudo env VANTIO_IMAGE="$image" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
+    # VANTIO_LAB_CLOUD=gcp: 2D waits up to 15 s for the after-restart deny row
+    # and records restart_rows (phase2_grade.restart_row_side). AWS never sets it.
+    sudo env VANTIO_LAB_CLOUD=gcp VANTIO_IMAGE="$image" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out

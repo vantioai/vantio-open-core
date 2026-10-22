@@ -743,8 +743,11 @@ def anchor_before_first_open() -> tuple[int, dict]:
     return anchor, facts
 
 
-def _deny_rows(pid: int) -> list[dict]:
-    """This pid's DENIED rows for the ceiling path that carry an anchor, oldest first."""
+def _deny_rows(pid: int, *, with_time: bool = False) -> list[dict]:
+    """This pid's DENIED rows for the ceiling path that carry an anchor, oldest first.
+
+    with_time adds the ledger's own time as ledger_ts (GCP 2D restart rows only).
+    """
     path = str(rows.DENY)
     out = []
     for item in events():
@@ -756,15 +759,17 @@ def _deny_rows(pid: int) -> list[dict]:
         anchor = item.get("lineage_anchor")
         if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
             continue
-        out.append(
-            {
-                "action": "DENIED",
-                "lineage_anchor": anchor,
-                "path": path,
-                "pid": pid,
-                "uid": item.get("Uid"),
-            }
-        )
+        row = {
+            "action": "DENIED",
+            "lineage_anchor": anchor,
+            "path": path,
+            "pid": pid,
+            "uid": item.get("Uid"),
+        }
+        if with_time:
+            stamp = next((item.get(key) for key in EVENT_TIME_KEYS if isinstance(item.get(key), str)), None)
+            row["ledger_ts"] = stamp[:40] if stamp else None
+        out.append(row)
     return out
 
 
@@ -836,12 +841,36 @@ def wait_new_deny_event(
         time.sleep(step)
 
 
-def row_wait(pid: int, errno_seen: int) -> tuple[dict | None, float]:
+def row_wait(pid: int, errno_seen: int, timeout: float = DENY_ROW_WAIT_S) -> tuple[dict | None, float]:
     """Poll for the deny row only when errno 13 shows the open was denied."""
     if errno_seen == 13:
-        return wait_deny_event(pid)
+        return wait_deny_event(pid, timeout)
     time.sleep(0.5)
     return deny_event_for(pid), 0.0
+
+
+EVENT_TIME_KEYS = ("Timestamp", "timestamp", "ts", "time", "Time")
+LAB_CLOUD_ENV = "VANTIO_LAB_CLOUD"
+
+
+def gcp_restart_rows() -> bool:
+    """GCP 2D restart evidence. Only scripts/gcp/lab-guests/enterprise-rows.sh sets VANTIO_LAB_CLOUD=gcp."""
+    return os.environ.get(LAB_CLOUD_ENV) == "gcp"
+
+
+def restart_row_timeout() -> float:
+    """15 s on GCP (phase2_grade.RESTART_ROW_CAP_S). AWS keeps DENY_ROW_WAIT_S."""
+    return grade.RESTART_ROW_CAP_S if gcp_restart_rows() else DENY_ROW_WAIT_S
+
+
+def wall_now() -> str:
+    now = time.time()
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now)) + f".{int(now * 1000) % 1000:03d}Z"
+
+
+def _ledger_ts(pid: int, index: int) -> str | None:
+    found = _deny_rows(pid, with_time=True)
+    return found[index].get("ledger_ts") if 0 <= index < len(found) else None
 
 
 def late_row_warnings(body: dict) -> list[str]:
@@ -1143,7 +1172,10 @@ def same_process_across_restart(adapter) -> dict:
             return body
         errno_before = int(first[1])
         pid = int(first[2])
-        event, row_wait_s = row_wait(pid, errno_before)
+        gcp = gcp_restart_rows()
+        probe_before_at = wall_now()
+        event, row_wait_s = row_wait(pid, errno_before, restart_row_timeout())
+        before_seen_at = wall_now() if event else None
         before_anchor = event["lineage_anchor"] if event else 0
         before_count = _deny_count(pid)
         body.update(
@@ -1156,7 +1188,28 @@ def same_process_across_restart(adapter) -> dict:
                 "before_row_seen": before_anchor > 0,
             }
         )
+        if gcp:
+            before_side = grade.restart_row_side(
+                pid=pid,
+                errno=errno_before,
+                row=event,
+                wait_s=row_wait_s,
+                row_count=before_count,
+                rows_before=0,
+                expected_anchor=None,
+                probe_at=probe_before_at,
+                seen_at=before_seen_at,
+                ledger_ts=_ledger_ts(pid, before_count - 1),
+            )
+            body["restart_rows"] = {
+                "before": before_side,
+                "cap_s": grade.RESTART_ROW_CAP_S,
+                "late_s": grade.RESTART_ROW_LATE_S,
+            }
         _note_late_rows(body)
+        if gcp and before_side["cause"] is not None:
+            body["reason"] = f"{before_side['cause']}_before_restart"
+            return body
         if errno_before != 13:
             body["reason"] = "not_enrolled_before_restart"
             return body
@@ -1179,10 +1232,14 @@ def same_process_across_restart(adapter) -> dict:
             body["detail"] = " ".join(second)
             return body
         errno_after = int(second[1])
+        probe_after_at = wall_now()
         # Only a row past the pre-restart ones counts (same pid, so the old row
         # is still there). No new row leaves after_anchor 0 and after_count ==
         # before_count, which restart_keeps_the_same_anchor fails.
-        after, after_wait_s, after_count = wait_new_deny_event(pid, before_count, poll=errno_after == 13)
+        after, after_wait_s, after_count = wait_new_deny_event(
+            pid, before_count, poll=errno_after == 13, timeout=restart_row_timeout()
+        )
+        after_seen_at = wall_now() if after else None
         after_anchor = after["lineage_anchor"] if after else 0
         body.update(
             {
@@ -1205,6 +1262,24 @@ def same_process_across_restart(adapter) -> dict:
                 after_count=after_count,
             )
         )
+        if gcp:
+            after_side = grade.restart_row_side(
+                pid=pid,
+                errno=errno_after,
+                row=after,
+                wait_s=after_wait_s,
+                row_count=after_count,
+                rows_before=before_count,
+                expected_anchor=before_anchor,
+                probe_at=probe_after_at,
+                seen_at=after_seen_at,
+                ledger_ts=_ledger_ts(pid, before_count),
+            )
+            body["restart_rows"]["after"] = after_side
+            # The GCP grade can only take a hold away, never add one.
+            if after_side["cause"] is not None:
+                body["held"] = False
+                body["reason"] = after_side["cause"]
         return body
     finally:
         try:

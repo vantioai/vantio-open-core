@@ -1728,7 +1728,8 @@ class DenyRowWaitTests(unittest.TestCase):
     def test_reason_separates_missing_row_from_not_enforced(self) -> None:
         text = self.HOST.read_text(encoding="utf-8")
         body = text.split("def same_process_across_restart", 1)[1].split("kill_loader()", 1)[0]
-        self.assertIn("row_wait(pid, errno_before)", body)
+        # restart_row_timeout() is DENY_ROW_WAIT_S unless VANTIO_LAB_CLOUD=gcp.
+        self.assertIn("row_wait(pid, errno_before, restart_row_timeout())", body)
         self.assertNotIn("time.sleep(0.5)", body)
         self.assertIn('"before_row_wait_s": row_wait_s', body)
         # errno != 13: the open was not enforced, so the process was not enrolled.
@@ -1738,7 +1739,9 @@ class DenyRowWaitTests(unittest.TestCase):
         missing = body.index("if before_anchor <= 0:")
         self.assertLess(missing, body.index('"deny_row_missing_before_restart"'))
         self.assertLess(body.index('"deny_row_missing_before_restart"'), body.index("return body", missing))
-        self.assertEqual(body.count("return body"), 3)
+        # The fourth return is the GCP-only before-restart cause (restart_rows).
+        self.assertEqual(body.count("return body"), 4)
+        self.assertIn("if gcp and before_side[\"cause\"] is not None:", body)
         grade_text = Path(__file__).resolve().parent.joinpath("lab-guests", "phase2_grade.py").read_text(encoding="utf-8")
         self.assertNotIn("deny_row_missing_before_restart", grade_text)
 
@@ -1776,7 +1779,7 @@ class DenyRowWaitTests(unittest.TestCase):
         text = self.HOST.read_text(encoding="utf-8")
         body = text.split("def same_process_across_restart", 1)[1].split("\ndef ", 1)[0]
         after = body[body.index("errno_after = int(second[1])"):]
-        self.assertIn("wait_new_deny_event(pid, before_count, poll=errno_after == 13)", after)
+        self.assertIn("pid, before_count, poll=errno_after == 13, timeout=restart_row_timeout()", after)
         self.assertNotIn("deny_event_for(", after)
         self.assertNotIn("_deny_count(", after)
         self.assertNotIn("time.sleep(0.5)", after)

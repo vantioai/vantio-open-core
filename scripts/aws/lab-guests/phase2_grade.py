@@ -105,6 +105,112 @@ def restart_keeps_the_same_anchor(
     return {"held": held, "reason": reason}
 
 
+# GCP 2D only (phase2_host with VANTIO_LAB_CLOUD=gcp; AWS keeps DENY_ROW_WAIT_S).
+# On an e2-micro the same-process deny row took 4.2 s after the restart in run 4
+# and more than 5 s in run 5. The GCP wait is 15 s. A row seen after 5 s still
+# counts, and its seconds are kept as late_s.
+RESTART_ROW_CAP_S = 15.0
+RESTART_ROW_LATE_S = 5.0
+# Why one side of the restart check failed. not_blocked is a fail-open (the
+# open succeeded). row_absent_errno13 means the open was blocked but no row
+# was written; that is still a fail.
+RESTART_ROW_CAUSES = frozenset(
+    {"anchor_not_carried", "errno_invalid", "errno_not_13", "not_blocked", "pid_mismatch", "row_absent_errno13"}
+)
+
+
+def _positive_int(value: object) -> bool:
+    return type(value) is int and value > 0
+
+
+def _count(value: object) -> bool:
+    return type(value) is int and value >= 0
+
+
+def restart_row_cause(side: Any) -> str | None:
+    """None when one side of the GCP 2D restart check held, else why it failed.
+
+    The probe needs errno int 13: bool, str, float and None are rejected.
+    errno 0 is always not_blocked, whatever the ledger shows. With errno 13,
+    a new DENIED row for the same pid has to be seen within RESTART_ROW_CAP_S.
+    If it is not, the cause is row_absent_errno13. The row also has to carry
+    the expected anchor.
+    """
+    if not isinstance(side, dict):
+        return "errno_invalid"
+    errno = side.get("errno")
+    if type(errno) is not int:
+        return "errno_invalid"
+    if errno == 0:
+        return "not_blocked"
+    if errno != 13:
+        return "errno_not_13"
+    wait = side.get("wait_s")
+    if (
+        side.get("row_seen") is not True
+        or side.get("new_row") is not True
+        or type(wait) not in (int, float)
+        or not 0 <= wait <= RESTART_ROW_CAP_S
+    ):
+        return "row_absent_errno13"
+    if side.get("pid_match") is not True:
+        return "pid_mismatch"
+    if side.get("anchor_match") is not True:
+        return "anchor_not_carried"
+    return None
+
+
+def restart_row_side(
+    *,
+    pid: Any,
+    errno: Any,
+    row: Any,
+    wait_s: Any,
+    row_count: Any,
+    rows_before: Any,
+    expected_anchor: Any,
+    probe_at: Any = None,
+    seen_at: Any = None,
+    ledger_ts: Any = None,
+) -> dict[str, Any]:
+    """Evidence for one side of the GCP 2D restart check, plus its grade.
+
+    expected_anchor None (before the restart) accepts any positive anchor.
+    After the restart it is the anchor on the first row. The fields are the
+    same on both sides.
+    """
+    row = row if isinstance(row, dict) else None
+    anchor = row.get("lineage_anchor") if row else 0
+    row_pid = row.get("pid") if row else 0
+    if expected_anchor is None:
+        anchor_match = row is not None and _positive_int(anchor)
+    else:
+        anchor_match = row is not None and _positive_int(anchor) and anchor == expected_anchor
+    side: dict[str, Any] = {
+        "anchor": anchor if _positive_int(anchor) else 0,
+        "anchor_match": anchor_match,
+        "errno": errno,
+        "expected_anchor": expected_anchor,
+        "ledger_ts": ledger_ts if row is not None else None,
+        "new_row": _count(row_count) and _count(rows_before) and row_count > rows_before,
+        "pid": pid,
+        "pid_match": row is not None and _positive_int(pid) and row_pid == pid,
+        "probe_at": probe_at,
+        "row_count": row_count,
+        "row_pid": row_pid if _positive_int(row_pid) else 0,
+        "row_seen": row is not None,
+        "rows_before": rows_before,
+        "seen_at": seen_at if row is not None else None,
+        "wait_s": wait_s,
+    }
+    cause = restart_row_cause(side)
+    side["cause"] = cause
+    side["pass"] = cause is None
+    if cause is None and wait_s > RESTART_ROW_LATE_S:
+        side["late_s"] = wait_s
+    return side
+
+
 def anchor_before_open_ok(anchor: object) -> bool:
     """The 2D baseline may open only after the lab cgroup has a non-zero anchor.
 

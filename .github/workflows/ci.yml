@@ -174,6 +174,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_eip.py -v
           python3 scripts/gcp/test_lab_auto.py -v
           python3 scripts/gcp/test_offline_deliver.py -v
+          python3 scripts/gcp/test_gcp_2d_restart.py -v
           python3 scripts/gcp/test_redteam_packet.py -v
           python3 scripts/gcp/test_redteam_brain.py -v
           python3 tests/planning/test_r15_lifecycle.py -v

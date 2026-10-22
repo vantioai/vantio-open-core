@@ -649,6 +649,9 @@ def _allow_capture(entry: Any) -> dict[str, Any] | None:
             kept[f"{phase}_row_wait_s"] = entry[f"{phase}_row_wait_s"]
         if isinstance(entry.get(f"{phase}_row_seen"), bool):
             kept[f"{phase}_row_seen"] = entry[f"{phase}_row_seen"]
+    restart_rows = allow_restart_rows(entry.get("restart_rows"))
+    if restart_rows:
+        kept["restart_rows"] = restart_rows
     cases = entry.get("cases")
     if isinstance(cases, list):
         rows = []
@@ -865,6 +868,9 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key == "loader_restart_findings" and isinstance(value, list):
             kept[key] = allow_cycle_findings(value)
+            continue
+        if key == "loader_kill_restart_rows" and isinstance(value, dict):
+            kept[key] = allow_restart_rows(value)
             continue
         if key == "cases" and isinstance(value, list):
             rows = []

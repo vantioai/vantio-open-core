@@ -681,6 +681,108 @@ def _sample_held(sample: Mapping[str, Any] | None) -> bool:
     return event.get("pid") == pid and event.get("lineage_anchor") == anchor and event.get("path") == CEILING_PATH
 
 
+# GCP 2D restart rows (phase2_grade.restart_row_side / restart_row_cause). The
+# guest waits RESTART_ROW_CAP_S for each deny row. A row after
+# RESTART_ROW_LATE_S counts, and its seconds are kept as late_s.
+RESTART_ROW_CAP_S = 15.0
+RESTART_ROW_LATE_S = 5.0
+RESTART_ROW_CAUSES = frozenset(
+    {"anchor_not_carried", "errno_invalid", "errno_not_13", "not_blocked", "pid_mismatch", "row_absent_errno13"}
+)
+RESTART_ROW_SIDES = ("before", "after")
+
+
+def _restart_errno(value: object) -> bool:
+    return type(value) is int and 0 <= value <= 4095
+
+
+def allow_restart_side(value: object) -> dict[str, Any] | None:
+    """One side of the restart evidence with typed values only.
+
+    A bool, str or float errno is dropped, and a dropped errno grades as errno_invalid.
+    """
+    if not isinstance(value, dict):
+        return None
+    kept: dict[str, Any] = {}
+    if _restart_errno(value.get("errno")):
+        kept["errno"] = value["errno"]
+    for key in ("anchor_match", "new_row", "pass", "pid_match", "row_seen"):
+        if isinstance(value.get(key), bool):
+            kept[key] = value[key]
+    for key, high in (("anchor", 2**32), ("expected_anchor", 2**32), ("pid", 2**22), ("row_pid", 2**22)):
+        if _int_in(value.get(key), 0, high):
+            kept[key] = value[key]
+    for key in ("row_count", "rows_before"):
+        if _int_in(value.get(key), 0, 100000):
+            kept[key] = value[key]
+    for key in ("late_s", "wait_s"):
+        if _seconds(value.get(key)):
+            kept[key] = value[key]
+    for key in ("ledger_ts", "probe_at", "seen_at"):
+        item = value.get(key)
+        if isinstance(item, str) and _EVENT_TIME_RE.fullmatch(item):
+            kept[key] = item
+    if value.get("cause") in RESTART_ROW_CAUSES:
+        kept["cause"] = value["cause"]
+    return kept
+
+
+def allow_restart_rows(value: object) -> dict[str, Any]:
+    """The GCP 2D before/after restart evidence, or {} when the guest sent none."""
+    if not isinstance(value, dict):
+        return {}
+    kept: dict[str, Any] = {}
+    for side in RESTART_ROW_SIDES:
+        item = allow_restart_side(value.get(side))
+        if item is not None:
+            kept[side] = item
+    return kept
+
+
+def _kill_restart_rows(body: object) -> dict[str, Any]:
+    """The loader-kill body's enroll_restart.restart_rows for gcp-lab-rows.json."""
+    restart = body.get("enroll_restart") if isinstance(body, dict) else None
+    return allow_restart_rows(restart.get("restart_rows") if isinstance(restart, dict) else None)
+
+
+def restart_row_cause(side: object) -> str | None:
+    """The host's own grade of one side. It matches phase2_grade.restart_row_cause.
+
+    errno 0 is always not_blocked. errno 13 with no new row for the same pid
+    by RESTART_ROW_CAP_S is row_absent_errno13. Neither is ever softened.
+    """
+    if not isinstance(side, dict):
+        return "errno_invalid"
+    errno = side.get("errno")
+    if type(errno) is not int:
+        return "errno_invalid"
+    if errno == 0:
+        return "not_blocked"
+    if errno != 13:
+        return "errno_not_13"
+    wait = side.get("wait_s")
+    if (
+        side.get("row_seen") is not True
+        or side.get("new_row") is not True
+        or type(wait) not in (int, float)
+        or not 0 <= wait <= RESTART_ROW_CAP_S
+    ):
+        return "row_absent_errno13"
+    if side.get("pid_match") is not True:
+        return "pid_mismatch"
+    if side.get("anchor_match") is not True:
+        return "anchor_not_carried"
+    return None
+
+
+def restart_rows_cause(rows: Mapping[str, Any]) -> str | None:
+    """None only when both sides held. Before-restart causes end in _before_restart."""
+    before = restart_row_cause(rows.get("before"))
+    if before is not None:
+        return f"{before}_before_restart"
+    return restart_row_cause(rows.get("after"))
+
+
 def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
     """Held only when the measured probe itself is denied. An older pid does not count.
 
@@ -693,6 +795,14 @@ def _loader_word(mode: str, body: Mapping[str, Any] | None) -> str:
     if mode == "2d-crash-recovery":
         if not _sample_held(body.get("while_loader_up")):
             return "setup_invalid"
+        restart = body.get("enroll_restart")
+        if isinstance(restart, dict):
+            # The same-process restart check has to hold, and its GCP restart
+            # rows have to pass the host's own grade too.
+            if restart.get("held") is not True:
+                return "fail"
+            if "restart_rows" in restart and restart_rows_cause(allow_restart_rows(restart["restart_rows"])):
+                return "fail"
         unenrolled = body.get("unenrolled_after")
         if not isinstance(unenrolled, dict) or unenrolled.get("file_errno") != 0:
             return "fail"
@@ -1148,6 +1258,12 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
             warnings.append(item)
     if warnings:
         kept["warnings"] = warnings[:8]
+    restart_rows = allow_restart_rows(restart.get("restart_rows"))
+    if restart_rows:
+        kept["restart_rows"] = restart_rows
+        cause = restart_rows_cause(restart_rows)
+        if cause is not None and kept["hold"] is False and cause not in kept.get("fail_reasons", []):
+            kept["fail_reasons"] = [*kept.get("fail_reasons", []), cause]
     return kept
 
 
