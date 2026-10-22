@@ -2454,9 +2454,61 @@ class ImageCycleWordTest(unittest.TestCase):
         self.assertEqual(rollback["loader_programs"], ["ok_prog"])
         self.assertNotIn("docker_containers", rollback)
 
+    def _write_rows(self, restart_body: dict) -> dict:
+        """Drive od.run_batteries with every cloud call stubbed and return the written gcp-lab-rows.json."""
+        repeat = {"b1_pass": True, "deny_hold": True, "deny_pid": 41, "desc_deny_pid": 42, "lineage_anchor": 7}
+
+        def loader_case(_project: str, _name: str, _seal: str, mode: str) -> dict:
+            if mode == "2c-upgrade-rollback":
+                return {"body": restart_body, "rc": 0, "word": "held"}
+            return {"body": {}, "rc": 0, "word": "held"}
+
+        ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9\n", stderr="")
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "evidence"
+            stubs = {
+                "_enabled": mock.DEFAULT,
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.DEFAULT,
+                "batteries_requested": mock.Mock(return_value=True),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "refuse_batteries": mock.Mock(return_value="a" * 64),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_stage_payload": mock.Mock(return_value=[]),
+                "_wait_until_running": mock.DEFAULT,
+                "_ssh": mock.Mock(return_value=ok),
+                "_scp_to": mock.DEFAULT,
+                "_prepare_lab_lsm": mock.Mock(return_value={}),
+                "_wait_live_boot": mock.Mock(return_value="boot-2"),
+                "_run_one_battery": mock.Mock(return_value=repeat),
+                "full_set_passes": mock.Mock(return_value=True),
+                "_loader_case": mock.Mock(side_effect=loader_case),
+                "drop_guest_copies": mock.DEFAULT,
+                "remove_os_login_key": mock.DEFAULT,
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
+                rc = od.run_batteries({"RUNNER_TEMP": tmp})
+            self.assertEqual(rc, 0)
+            return json.loads((evidence / "gcp-lab-rows.json").read_text(encoding="utf-8"))
+
     def test_rows_writer_carries_findings(self) -> None:
-        src = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
-        self.assertIn('"loader_restart_findings": allow_cycle_findings(', src)
+        body = self._residue_body()
+        rows = self._write_rows(body)
+        self.assertEqual(rows["loader_restart"], "held")
+        self.assertEqual(rows["loader_restart_findings"], od.allow_cycle_findings(body["findings"]))
+        self.assertEqual([item["step"] for item in rows["loader_restart_findings"]], ["baseline", "rollback"])
+        self.assertEqual(rows["loader_restart_findings"][0]["finding"], "public_pin_leaves_bpf_residue")
+        self.assertEqual(rows["loader_restart_findings"][0]["loader_programs"], self.RESIDUE["loader_programs"])
+
+    def test_rows_writer_without_findings(self) -> None:
+        # Current behaviour: no host findings -> the key is written as [].
+        for findings in (None, "junk"):
+            body = self._cycle()
+            body["findings"] = findings
+            self.assertEqual(self._write_rows(body)["loader_restart_findings"], [])
+        body = self._cycle()
+        body.pop("findings", None)
+        self.assertEqual(self._write_rows(body)["loader_restart_findings"], [])
 
     def test_recorded_without_upgrade_pass_is_fail(self) -> None:
         body = self._cycle()
@@ -2547,6 +2599,7 @@ class ImageCycleWordTest(unittest.TestCase):
         self.assertEqual(od.KNOWN_CYCLE_FINDINGS, frozenset({self.grade.PUBLIC_PIN_RESIDUE_FINDING}))
         self.assertEqual(od.allow_cycle_findings([{"finding": "made_up", "step": "baseline"}]), [])
 
+
 class MainBlockLastTest(unittest.TestCase):
     """CI runs these files as scripts. Anything after unittest.main() never runs (#363 council)."""
 
@@ -2556,9 +2609,15 @@ class MainBlockLastTest(unittest.TestCase):
         late = []
         for path in sorted([*(ROOT / "scripts/aws").glob("test_*.py"), *(ROOT / "scripts/gcp").glob("test_*.py")]):
             body = ast.parse(path.read_text(encoding="utf-8")).body
-            mains = [i for i, node in enumerate(body) if isinstance(node, ast.If) and "__main__" in ast.unparse(node.test)]
+            mains = [
+                i
+                for i, node in enumerate(body)
+                if isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'"
+            ]
             if mains:
-                late += [f"{path.name}:{node.lineno}" for node in body[mains[-1] + 1 :]]
+                # Anchor on the FIRST main block: unittest.main() exits there, so
+                # anything after it, even another main block, never runs.
+                late += [f"{path.name}:{node.lineno}" for node in body[mains[0] + 1 :]]
         self.assertEqual(late, [])
 
 
