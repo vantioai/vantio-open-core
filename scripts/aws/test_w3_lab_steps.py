@@ -2987,5 +2987,80 @@ class ProductUninstallCensusTests(unittest.TestCase):
         self.assertEqual(finish_code(verified_removed=True, guest_rc=1, rows=unlabeled), 1)
 
 
+
+class TamperClaimScopeTests(unittest.TestCase):
+    """Council #364: every 2F verdict prints the kill timing and, when graded, the claim scope."""
+
+    SCOPE = "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)"
+
+    def _line(self, body: dict) -> tuple[dict, str]:
+        verdict = steps.phase_battery_verdict("2f-tamper", body)
+        saved = os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                summary = Path(tmp) / "summary.md"
+                os.environ["GITHUB_STEP_SUMMARY"] = str(summary)
+                line = steps.report_battery_verdict(verdict)
+                self.assertEqual(summary.read_text(encoding="utf-8"), line + "\n")
+        finally:
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            if saved is not None:
+                os.environ["GITHUB_STEP_SUMMARY"] = saved
+        return verdict, line
+
+    def test_graded_2f_prints_timing_and_scope(self) -> None:
+        for result in ("PASS", "FAIL", "HOLD"):
+            with self.subTest(result=result):
+                verdict, line = self._line(
+                    {"battery": "2f-tamper", "host_result": result, "kill_timing": "after_map_swap", "claim_scope": self.SCOPE}
+                )
+                self.assertEqual(verdict["kill_timing"], "after_map_swap")
+                self.assertEqual(verdict["claim_scope"], self.SCOPE)
+                self.assertTrue(line.startswith("BATTERY_VERDICT battery=2f-tamper "))
+                self.assertIn(f"host_result={result}", line)
+                self.assertTrue(line.endswith(f' kill_timing=after_map_swap claim_scope="{self.SCOPE}"'), line)
+
+    def test_refused_2f_prints_timing_and_a_dash_for_scope(self) -> None:
+        verdict, line = self._line(
+            {"battery": "2f-tamper", "host_result": "NOT_GRADED", "reason": "map_swap_timeout", "kill_timing": "after_map_swap"}
+        )
+        self.assertFalse(verdict["pass"])
+        self.assertIsNone(verdict["claim_scope"])
+        self.assertIn("row_reason=map_swap_timeout", line)
+        self.assertTrue(line.endswith(' kill_timing=after_map_swap claim_scope="-"'), line)
+
+    def test_missing_fields_print_as_dashes_and_never_change_the_grade(self) -> None:
+        verdict, line = self._line({"battery": "2f-tamper", "host_result": "PASS"})
+        self.assertTrue(verdict["pass"])
+        self.assertTrue(line.endswith(' kill_timing=- claim_scope="-"'), line)
+        mismatch, line = self._line({"battery": "2d-crash-recovery", "host_result": "PASS", "kill_timing": "after_map_swap"})
+        self.assertEqual(mismatch["reason"], "battery_mismatch")
+        self.assertIn("kill_timing=after_map_swap", line)
+        odd, line = self._line(
+            {"battery": "2f-tamper", "host_result": "PASS", "kill_timing": "after\nmap swap", "claim_scope": 'a "b"\nc'}
+        )
+        self.assertEqual(line.count("\n"), 0)
+        self.assertTrue(line.endswith(" kill_timing=after map swap claim_scope=\"a 'b' c\""), line)
+
+    def test_other_batteries_do_not_print_2f_fields(self) -> None:
+        verdict = steps.phase_battery_verdict(
+            "2d-crash-recovery", {"battery": "2d-crash-recovery", "host_result": "PASS", "kill_timing": "after_map_swap"}
+        )
+        self.assertNotIn("kill_timing", verdict)
+        saved = os.environ.pop("GITHUB_STEP_SUMMARY", None)
+        try:
+            line = steps.report_battery_verdict(verdict)
+        finally:
+            if saved is not None:
+                os.environ["GITHUB_STEP_SUMMARY"] = saved
+        self.assertNotIn("kill_timing", line)
+        self.assertNotIn("claim_scope", line)
+
+    def test_host_constants_match_what_the_report_expects(self) -> None:
+        grade_text = Path(steps.__file__).resolve().parent.joinpath("lab-guests", "phase2_grade.py").read_text(encoding="utf-8")
+        self.assertIn(f'CLAIM_SCOPE_2F = "{self.SCOPE}"', grade_text)
+        self.assertIn('KILL_TIMING_AFTER_MAP_SWAP = "after_map_swap"', grade_text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -289,6 +289,43 @@ def apply_allowlisted_private(body: dict[str, Any], errno: int | None) -> dict[s
 DENY_SWAP_STEMS = ("vantio_deny_attr", "vantio_deny_attr_drops", "vantio_deny_overflow")
 MAP_SWAP_TIMEOUT = "map_swap_timeout"
 MAP_SWAP_BASELINE_MISSING = "map_swap_baseline_missing"
+# The previous generation still had a live side pin, or a canonical map was
+# missing, when the baseline was due. Nothing is killed.
+MAP_SWAP_BASELINE_UNSETTLED = "map_swap_baseline_unsettled"
+# The ids changed, but the side pin seen during the wait was not the
+# running enforce loader's <pin>_incoming_<pid> (or that pid was not known).
+MAP_SWAP_SIDE_PIN_UNMATCHED = "map_swap_side_pin_unmatched"
+# Every 2F body says when the loader was killed. A graded 2F body also says
+# what that timing does and does not cover.
+KILL_TIMING_AFTER_MAP_SWAP = "after_map_swap"
+CLAIM_SCOPE_2F = "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)"
+
+
+def side_pin_pid(path: str) -> int | None:
+    """The pid in <stem>_incoming_<pid>, or None."""
+    if not isinstance(path, str) or "_incoming_" not in path:
+        return None
+    tail = path.rsplit("_incoming_", 1)[1]
+    return int(tail) if tail.isdigit() else None
+
+
+def swap_owner_matches(seen: list[str], loaders: list[dict[str, Any]]) -> bool:
+    """The side pins seen during the wait belong to the one running enforce loader.
+
+    loaders lists the running vantio-loader processes as {"host": pid, "ns":
+    pid in its own namespace}. The pid is known only when exactly one loader
+    runs. At least one new side pin must have been seen, and every one must
+    name that loader's host or namespace pid.
+    """
+    if not isinstance(seen, list) or not isinstance(loaders, list) or len(loaders) != 1:
+        return False
+    owner = loaders[0]
+    if not isinstance(owner, dict):
+        return False
+    pids = {pid for pid in (owner.get("host"), owner.get("ns")) if type(pid) is int and pid > 0}
+    if not pids or not seen:
+        return False
+    return all(side_pin_pid(path) in pids for path in seen)
 
 
 def deny_map_swapped(

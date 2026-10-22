@@ -2622,9 +2622,22 @@ class ImageCycleWordTest(unittest.TestCase):
             for step in ("baseline", "rollback")
         ]
         self.assertEqual(kept["findings"], expected)
-        for errno, keep in ((13, True), (0, True), (-1, False), (True, False), ("13", False), (4096, False)):
-            row = od.allow_cycle_findings([dict(expected[0], file_errno=errno)])[0]
-            self.assertEqual("file_errno" in row, keep, errno)
+        self.assertEqual(od.allow_cycle_findings([dict(expected[0])]), [expected[0]])
+
+    def test_unattributed_finding_keeps_only_errno_13_on_a_pin_step(self) -> None:
+        good = {"file_errno": 13, "finding": "public_pin_unattributed_deny", "step": "baseline"}
+        self.assertEqual(od.allow_cycle_findings([dict(good, step="rollback")]), [dict(good, step="rollback")])
+        for errno in (0, 1, 110, -1, True, "13", 13.0, None, 4096):
+            with self.subTest(errno=errno):
+                self.assertEqual(od.allow_cycle_findings([dict(good, file_errno=errno)]), [])
+        missing = dict(good)
+        del missing["file_errno"]
+        self.assertEqual(od.allow_cycle_findings([missing]), [])
+        for step in ("upgrade", "reupgrade"):
+            self.assertEqual(od.allow_cycle_findings([dict(good, step=step)]), [], step)
+        # The residue finding never carries an errno.
+        residue = od.allow_cycle_findings([dict(self.RESIDUE, file_errno=13)])[0]
+        self.assertNotIn("file_errno", residue)
 
     def test_unattributed_seal_step_still_fails_through_gcp(self) -> None:
         steps = [self._step(name) for name in od.IMAGE_CYCLE_STEPS]

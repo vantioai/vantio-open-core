@@ -2941,10 +2941,16 @@ class MapSwapTests(unittest.TestCase):
     STEMS = grade.DENY_SWAP_STEMS
     BEFORE = {"vantio_deny_attr": 10, "vantio_deny_attr_drops": 11, "vantio_deny_overflow": 12}
     AFTER = {"vantio_deny_attr": 20, "vantio_deny_attr_drops": 21, "vantio_deny_overflow": 22}
+    SIDE = [
+        "/sys/fs/bpf/vantio_deny_attr_incoming_52926",
+        "/sys/fs/bpf/vantio_deny_attr_drops_incoming_52926",
+        "/sys/fs/bpf/vantio_deny_overflow_incoming_52926",
+    ]
+    ENFORCE = [{"host": 52926, "ns": 52926}]
 
     def test_swapped_needs_new_ids_and_no_new_side_pin(self) -> None:
         stale = ["/sys/fs/bpf/vantio_deny_attr_incoming_1"]
-        side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52926"]
+        side = self.SIDE[:1]
         self.assertTrue(grade.deny_map_swapped(self.BEFORE, [], self.AFTER, []))
         # A side pin left by an earlier killed loader does not block the wait.
         self.assertTrue(grade.deny_map_swapped(self.BEFORE, stale, self.AFTER, stale))
@@ -2966,11 +2972,32 @@ class MapSwapTests(unittest.TestCase):
         for bad in ((None, [], self.AFTER, []), (self.BEFORE, None, self.AFTER, []), (self.BEFORE, [], self.AFTER, "x")):
             self.assertFalse(grade.deny_map_swapped(*bad))
 
-    def _waiter(self, script):
+    def test_side_pin_owner_is_the_one_running_enforce_loader(self) -> None:
+        self.assertEqual(grade.side_pin_pid(self.SIDE[0]), 52926)
+        self.assertIsNone(grade.side_pin_pid("/sys/fs/bpf/vantio_deny_attr"))
+        self.assertIsNone(grade.side_pin_pid("/sys/fs/bpf/vantio_deny_attr_incoming_x"))
+        self.assertTrue(grade.swap_owner_matches(list(self.SIDE), self.ENFORCE))
+        # The pid inside the loader's own namespace also names it.
+        self.assertTrue(grade.swap_owner_matches(list(self.SIDE), [{"host": 70001, "ns": 52926}]))
+        cases = {
+            "no_side_pin_seen": ([], self.ENFORCE),
+            "audit_loader_pin": (["/sys/fs/bpf/vantio_deny_attr_incoming_52800"], self.ENFORCE),
+            "one_pin_not_owned": (self.SIDE + ["/sys/fs/bpf/vantio_deny_attr_incoming_52800"], self.ENFORCE),
+            "pid_unknown": (list(self.SIDE), []),
+            "two_loaders": (list(self.SIDE), self.ENFORCE + [{"host": 52800, "ns": 52800}]),
+            "bad_owner": (list(self.SIDE), [{"host": 0, "ns": True}]),
+            "owner_not_dict": (list(self.SIDE), ["52926"]),
+            "seen_not_list": ("x", self.ENFORCE),
+        }
+        for label, (seen, loaders) in cases.items():
+            with self.subTest(label=label):
+                self.assertFalse(grade.swap_owner_matches(seen, loaders))
+
+    def _waiter(self, script, loaders=None):
         """exec the host's swap helpers against a fake clock and scripted bpffs reads."""
         text = _host_text()
         source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
-        clock = {"now": 100.0, "reads": 0}
+        clock = {"now": 100.0, "reads": 0, "watch": 0}
 
         class FakeTime:
             @staticmethod
@@ -2993,22 +3020,63 @@ class MapSwapTests(unittest.TestCase):
 
         ns["canonical_map_ids"] = ids
         ns["incoming_pins"] = incoming
+        ns["loader_pids"] = loaders if loaders is not None else (lambda: list(self.ENFORCE))
+        ns["start_side_pin_watch"] = lambda _root=None: clock.update(watch=clock["watch"] + 1)
         return ns, clock
 
     def test_wait_returns_once_the_swap_lands(self) -> None:
-        side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52926"]
-        ns, clock = self._waiter(lambda n: (self.BEFORE, []) if n == 1 else ((self.BEFORE, side) if n < 6 else (self.AFTER, [])))
-        ns["record_swap_baseline"]()
+        side = self.SIDE
+        ns, clock = self._waiter(
+            lambda n: (self.BEFORE, []) if n <= 2 else ((self.BEFORE, side) if n < 7 else (self.AFTER, []))
+        )
+        before = ns["record_swap_baseline"]()
+        self.assertTrue(before["recorded"])
+        self.assertTrue(before["settle"]["settled"])
+        self.assertEqual(clock["watch"], 1)
         got = ns["wait_map_swap"](timeout=30.0, step=0.25)
         self.assertTrue(got["swapped"])
         self.assertIsNone(got["reason"])
         self.assertEqual(got["ids"], self.AFTER)
         self.assertEqual(got["incoming_seen"], side)
+        self.assertEqual(got["loaders"], self.ENFORCE)
         self.assertAlmostEqual(got["waited_s"], 1.0)
 
+    def test_side_pin_seen_by_the_background_watch_counts(self) -> None:
+        # The promote landed before the first poll: only the watch saw the pin.
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.AFTER, []))
+        ns["record_swap_baseline"]()
+        ns["SWAP_SEEN"].extend(self.SIDE)
+        self.assertTrue(ns["wait_map_swap"](timeout=5.0, step=0.25)["swapped"])
+        # Without any side pin seen, the same id change is not a swap.
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.AFTER, []))
+        ns["record_swap_baseline"]()
+        got = ns["wait_map_swap"](timeout=1.0, step=0.25)
+        self.assertFalse(got["swapped"])
+        self.assertEqual(got["reason"], grade.MAP_SWAP_SIDE_PIN_UNMATCHED)
+
+    def test_watch_records_only_new_side_pins(self) -> None:
+        text = _host_text()
+        source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
+        ns = {"time": time, "grade": grade, "Path": Path, "baseline_diag": types.SimpleNamespace()}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        reads = iter([["/old_incoming_1"], ["/old_incoming_1", self.SIDE[0]], [self.SIDE[0]]])
+
+        class Stop:
+            calls = 0
+
+            def is_set(self) -> bool:
+                return self.calls >= 3
+
+            def wait(self, _seconds: float) -> None:
+                self.calls += 1
+
+        ns["incoming_pins"] = lambda _root=None: next(reads)
+        ns["_watch_side_pins"](None, Stop(), ["/old_incoming_1"])
+        self.assertEqual(ns["SWAP_SEEN"], [self.SIDE[0]])
+
     def test_timeout_is_not_swapped_and_bounded(self) -> None:
-        side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52926"]
-        ns, clock = self._waiter(lambda n: (self.BEFORE, []) if n == 1 else (self.BEFORE, side))
+        side = self.SIDE
+        ns, clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.BEFORE, side))
         ns["record_swap_baseline"]()
         got = ns["wait_map_swap"](timeout=2.0, step=0.25)
         self.assertFalse(got["swapped"])
@@ -3016,10 +3084,24 @@ class MapSwapTests(unittest.TestCase):
         self.assertGreaterEqual(got["waited_s"], 2.0)
         self.assertLess(got["waited_s"], 2.3)
         self.assertEqual(got["incoming"], side)
-        # A timeout with new ids but a side pin still present is not swapped either.
-        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n == 1 else (self.AFTER, side))
+        # New ids but a side pin still present is not swapped either.
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, []) if n <= 2 else (self.AFTER, side))
         ns["record_swap_baseline"]()
         self.assertEqual(ns["wait_map_swap"](timeout=1.0, step=0.25)["reason"], grade.MAP_SWAP_TIMEOUT)
+
+    def test_swap_by_another_loader_is_not_counted(self) -> None:
+        promote = lambda n: (self.BEFORE, []) if n <= 2 else ((self.BEFORE, self.SIDE) if n < 4 else (self.AFTER, []))
+        for label, loaders in (
+            ("other_pid", lambda: [{"host": 52800, "ns": 52800}]),
+            ("pid_unknown", lambda: []),
+            ("two_loaders", lambda: self.ENFORCE + [{"host": 52800, "ns": 52800}]),
+        ):
+            with self.subTest(label=label):
+                ns, _clock = self._waiter(promote, loaders=loaders)
+                ns["record_swap_baseline"]()
+                got = ns["wait_map_swap"](timeout=2.0, step=0.25)
+                self.assertFalse(got["swapped"])
+                self.assertEqual(got["reason"], grade.MAP_SWAP_SIDE_PIN_UNMATCHED)
 
     def test_no_baseline_is_not_swapped(self) -> None:
         ns, clock = self._waiter(lambda n: (self.AFTER, []))
@@ -3027,6 +3109,45 @@ class MapSwapTests(unittest.TestCase):
         self.assertFalse(got["swapped"])
         self.assertEqual(got["reason"], grade.MAP_SWAP_BASELINE_MISSING)
         self.assertEqual(clock["now"], 100.0)
+
+    def test_baseline_waits_for_the_audit_loader_to_settle(self) -> None:
+        audit_side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52800"]
+        audit = lambda: [{"host": 52800, "ns": 52800}]
+        # The audit loader still owns a side pin for 1 s, then promotes it.
+        ns, clock = self._waiter(lambda n: (self.BEFORE, audit_side) if n <= 4 else (self.BEFORE, []), loaders=audit)
+        before = ns["record_swap_baseline"]()
+        self.assertTrue(before["recorded"])
+        self.assertAlmostEqual(before["settle"]["waited_s"], 1.0)
+        self.assertEqual(before["incoming"], [])
+        # A side pin whose loader is gone cannot be promoted: kept as stale.
+        stale = ["/sys/fs/bpf/vantio_deny_attr_incoming_40000"]
+        ns, _clock = self._waiter(lambda n: (self.BEFORE, stale), loaders=audit)
+        before = ns["record_swap_baseline"]()
+        self.assertTrue(before["recorded"])
+        self.assertEqual(before["settle"]["stale_side_pins"], stale)
+        self.assertEqual(before["incoming"], stale)
+
+    def test_unsettled_baseline_is_not_graded_and_starts_no_watch(self) -> None:
+        audit_side = ["/sys/fs/bpf/vantio_deny_attr_incoming_52800"]
+        cases = {
+            "live_side_pin": ((lambda n: (self.BEFORE, audit_side)), lambda: [{"host": 52800, "ns": 52800}]),
+            "map_missing": ((lambda n: (dict(self.BEFORE, vantio_deny_overflow=0), [])), lambda: []),
+            "no_maps": ((lambda n: ({}, [])), lambda: []),
+        }
+        for label, (script, loaders) in cases.items():
+            with self.subTest(label=label):
+                ns, clock = self._waiter(script, loaders=loaders)
+                before = ns["record_swap_baseline"](settle_timeout=2.0)
+                self.assertFalse(before["recorded"])
+                self.assertEqual(before["reason"], grade.MAP_SWAP_BASELINE_UNSETTLED)
+                self.assertFalse(before["settle"]["settled"])
+                self.assertGreaterEqual(before["settle"]["waited_s"], 2.0)
+                self.assertLess(before["settle"]["waited_s"], 2.3)
+                self.assertEqual(clock["watch"], 0)
+                got = ns["wait_map_swap"](timeout=30.0, step=0.25)
+                self.assertFalse(got["swapped"])
+                self.assertEqual(got["reason"], grade.MAP_SWAP_BASELINE_UNSETTLED)
+                self.assertEqual(got["waited_s"], 0.0)
 
     def test_incoming_pins_and_map_id_read_a_temp_tree(self) -> None:
         text = _host_text()
@@ -3067,51 +3188,110 @@ class MapSwapTests(unittest.TestCase):
         for argv in calls:
             self.assertEqual(argv[:4], ["bpftool", "-j", "map", "show"])
 
+    def test_loader_pids_reads_pgrep_and_nspid(self) -> None:
+        text = _host_text()
+        source = text[text.index("BPFFS_ROOT = Path("): text.index("\ndef kill_loader")]
+        ran: list[list[str]] = []
+
+        class FakePath:
+            def __init__(self, path: str) -> None:
+                self.path = path
+
+            def read_text(self, encoding: str = "utf-8") -> str:
+                if self.path == "/proc/52926/status":
+                    return "Name:\tvantio-loader\nNSpid:\t52926\t7\n"
+                raise OSError("gone")
+
+        rows_ns = types.SimpleNamespace(
+            run=lambda argv: ran.append(list(argv)) or subprocess.CompletedProcess(argv, 0, stdout="52926\n52930\nx\n", stderr="")
+        )
+        ns = {"time": time, "grade": grade, "Path": FakePath, "baseline_diag": None, "rows": rows_ns}
+        exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
+        self.assertEqual(ns["loader_pids"](), [{"host": 52926, "ns": 7}, {"host": 52930, "ns": 52930}])
+        self.assertEqual(ran, [["pgrep", "-x", "vantio-loader"]])
+
     def test_run_2f_waits_for_the_swap_before_the_kill(self) -> None:
         text = _host_text()
         run_2f = text.split("\ndef run_2f", 1)[1].split("\ndef ", 1)[0]
-        self.assertLess(run_2f.index("prepare_enforce()"), run_2f.index("wait_map_swap()"))
+        self.assertIn("prepare_enforce(swap_baseline=True)", run_2f)
+        self.assertLess(run_2f.index("prepare_enforce("), run_2f.index("wait_map_swap()"))
         self.assertLess(run_2f.index("wait_map_swap()"), run_2f.index("kill_loader()"))
         early = run_2f[run_2f.index("wait_map_swap()"): run_2f.index("kill_loader()")]
         self.assertIn('swap.get("swapped") is not True', early)
         self.assertIn("grade.ungraded_egress(", early)
         self.assertIn("return refused", early)
         self.assertIn("deny_diag([])", early)
-        # Every 2F body carries the swap facts.
+        # Every 2F body carries the swap facts and the kill timing.
+        returns = run_2f.count("return refused") + run_2f.count("return graded")
+        self.assertEqual(returns, run_2f.count("grade.KILL_TIMING_AFTER_MAP_SWAP"))
         self.assertEqual(run_2f.count("return refused"), run_2f.count('refused["map_swap"] = swap'))
         self.assertIn('graded["map_swap"] = swap', run_2f)
+        self.assertEqual(run_2f.count("grade.CLAIM_SCOPE_2F"), 1)
         prepare = text.split("\ndef prepare_enforce", 1)[1].split("\ndef ", 1)[0]
         self.assertLess(prepare.index("record_swap_baseline()"), prepare.index("blocked = rows.start_loader"))
         self.assertLess(prepare.index("SWAP_BEFORE.clear()"), prepare.index("record_swap_baseline()"))
-        self.assertIn("if not public_pin:", prepare.split("record_swap_baseline()", 1)[0][-200:])
+        self.assertIn("if swap_baseline and not public_pin:", prepare.split("record_swap_baseline()", 1)[0][-400:])
+        # Only 2F asks for the baseline; 2E keeps its revoke-to-enforce timing.
+        self.assertEqual(text.count("swap_baseline=True"), 1)
 
-    def test_run_2f_timeout_is_not_graded(self) -> None:
+    def _run_2f(self, swap: dict, *, block=None, control: int = 0, tamper=None):
         text = _host_text()
         source = text[text.index("def run_2f"): text.index("\ndef kernel_facts")]
         killed: list[bool] = []
         ns = {
             "grade": grade,
-            "prepare_enforce": lambda: (None, "digest-1"),
-            "wait_map_swap": lambda: {"swapped": False, "reason": grade.MAP_SWAP_TIMEOUT, "waited_s": 30.0},
+            "prepare_enforce": lambda **kw: (None, "digest-1"),
+            "wait_map_swap": lambda: dict(swap),
             "kill_loader": lambda: killed.append(True) or 0,
             "deny_diag": lambda pids, **_kw: {"cause": "probe", "pids": pids},
             "_bpf_pin_sample": lambda: [],
-            "loader_running": lambda: True,
+            "loader_running": lambda: False,
+            "standin_after_sigkill": lambda: {},
+            "control_handshake": lambda: control,
+            "egress_observation": lambda: {"egress": "obs", "kill_timing": "bogus"},
+            "child_open": lambda enrolled: {"pid": 4242, "net_errno": 13 if block is None else 110, "file_errno": 13},
+            "egress_block_anchor": lambda pid: 6840 if block is None else 0,
+            "attributed": lambda pid, word: True,
+            "ndjson_denied_pids": lambda: [4242],
+            "enrolled_connect_errno": lambda host, port: 0,
+            "ALLOW_HOST": "10.0.0.1",
+            "ALLOW_PORT": 443,
         }
         exec(compile("from __future__ import annotations\n" + source, str(HOST_PATH), "exec"), ns)
-        body = ns["run_2f"]()
-        self.assertEqual(killed, [])
-        self.assertEqual(body["host_result"], "NOT_GRADED")
+        return ns["run_2f"](), killed
+
+    def test_run_2f_timeout_is_not_graded(self) -> None:
+        for reason in (grade.MAP_SWAP_TIMEOUT, grade.MAP_SWAP_BASELINE_MISSING, grade.MAP_SWAP_BASELINE_UNSETTLED, grade.MAP_SWAP_SIDE_PIN_UNMATCHED):
+            with self.subTest(reason=reason):
+                body, killed = self._run_2f({"swapped": False, "reason": reason, "waited_s": 30.0})
+                self.assertEqual(killed, [])
+                self.assertEqual(body["host_result"], "NOT_GRADED")
+                self.assertEqual(body["reason"], reason)
+                self.assertFalse(body.get("lab_pass", False))
+                self.assertEqual(body["map_swap"]["reason"], reason)
+                self.assertEqual(body["policy_digest"], "digest-1")
+                self.assertIs(body["loader_killed"], False)
+                self.assertEqual(body["kill_timing"], "after_map_swap")
+                self.assertNotIn("claim_scope", body)
+        body, killed = self._run_2f({"swapped": "yes"})
         self.assertEqual(body["reason"], grade.MAP_SWAP_TIMEOUT)
-        self.assertNotEqual(body.get("action"), "PASS")
-        self.assertFalse(body.get("lab_pass", False))
-        self.assertEqual(body["map_swap"]["reason"], grade.MAP_SWAP_TIMEOUT)
-        self.assertEqual(body["policy_digest"], "digest-1")
-        ns["wait_map_swap"] = lambda: {"swapped": False, "reason": grade.MAP_SWAP_BASELINE_MISSING}
-        self.assertEqual(ns["run_2f"]()["reason"], grade.MAP_SWAP_BASELINE_MISSING)
-        ns["wait_map_swap"] = lambda: {"swapped": "yes"}
-        self.assertEqual(ns["run_2f"]()["reason"], grade.MAP_SWAP_TIMEOUT)
         self.assertEqual(killed, [])
+
+    def test_every_2f_body_names_the_kill_timing(self) -> None:
+        swapped = {"swapped": True, "reason": None}
+        lab_net, killed = self._run_2f(swapped, control=111)
+        self.assertEqual(killed, [True])
+        self.assertEqual(lab_net["reason"], "lab_network")
+        ungraded, _killed = self._run_2f(swapped, block="timeout")
+        self.assertEqual(ungraded["host_result"], "NOT_GRADED")
+        graded, _killed = self._run_2f(swapped)
+        self.assertIn(graded["host_result"], {"PASS", "FAIL", "HOLD"})
+        for body in (lab_net, ungraded, graded):
+            self.assertEqual(body["kill_timing"], grade.KILL_TIMING_AFTER_MAP_SWAP)
+            self.assertEqual(body["map_swap"], swapped)
+        self.assertEqual(graded["claim_scope"], "kill after deny-attr map swap; ready-to-swap gap not covered (VAN-45)")
+        self.assertNotIn("claim_scope", lab_net)
+        self.assertNotIn("claim_scope", ungraded)
 
 
 class IncomingCopyDiagTests(unittest.TestCase):

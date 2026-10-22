@@ -529,7 +529,9 @@ def vantio_bpf_pins() -> list[str]:
 REVOKE_CONVERGENCE: dict = {}
 
 
-def prepare_enforce(*, time_revoke: bool = False, public_pin: bool = False) -> tuple[PeHostAdapter, str]:
+def prepare_enforce(
+    *, time_revoke: bool = False, public_pin: bool = False, swap_baseline: bool = False
+) -> tuple[PeHostAdapter, str]:
     rows.ensure_cgroups()
     ensure_lab_iface()
     ensure_allowlist_peer()
@@ -557,8 +559,10 @@ def prepare_enforce(*, time_revoke: bool = False, public_pin: bool = False) -> t
     adapter.on_governance(revoked, "revoke")
     digest = adapter.state.policy_digest or ""
     SWAP_BEFORE.clear()
-    if not public_pin:
-        # Read only: the ids the enforce loader must replace (2F waits on this).
+    if swap_baseline and not public_pin:
+        # 2F only, read only: wait for the audit loader's handoff, then read
+        # the ids the enforce loader must replace. Other batteries keep
+        # their revoke-to-enforce timing.
         record_swap_baseline()
     blocked = rows.start_loader(adapter)
     if blocked["rc"] != 0:
@@ -1293,9 +1297,16 @@ def _bpf_pin_sample() -> list[str]:
 BPFFS_ROOT = Path("/sys/fs/bpf")
 MAP_SWAP_TIMEOUT_S = 30.0
 MAP_SWAP_STEP_S = 0.25
+MAP_SETTLE_TIMEOUT_S = 30.0
+SIDE_PIN_WATCH_S = 0.05
+SIDE_PIN_WATCH_MAX_S = 300.0
 # Canonical deny-attr map ids and side pins read just before the enforce
 # loader starts. wait_map_swap compares against this. Read only.
 SWAP_BEFORE: dict = {}
+# Side pins that appeared after the baseline, seen by the background watch
+# while the harness waits for the banner. Read only.
+SWAP_SEEN: list = []
+SWAP_WATCH: dict = {}
 
 
 def incoming_pins(root: Path | None = None) -> list[str]:
@@ -1331,10 +1342,108 @@ def canonical_map_ids(root: Path | None = None) -> dict:
     return {stem: pinned_map_id(str(base / stem)) for stem in grade.DENY_SWAP_STEMS}
 
 
-def record_swap_baseline(root: Path | None = None) -> dict:
-    """Read the canonical ids and side pins before the enforce loader starts."""
+def loader_pids() -> list[dict]:
+    """Running vantio-loader processes: host pid and the pid in its own namespace. Read only."""
+    proc = rows.run(["pgrep", "-x", "vantio-loader"])
+    found: list[dict] = []
+    for word in (proc.stdout or "").split():
+        if not word.isdigit():
+            continue
+        host = int(word)
+        ns = host
+        try:
+            for line in Path(f"/proc/{host}/status").read_text(encoding="utf-8").splitlines():
+                if line.startswith("NSpid:"):
+                    last = line.split()[-1]
+                    ns = int(last) if last.isdigit() else host
+        except OSError:
+            pass
+        found.append({"host": host, "ns": ns})
+    return found
+
+
+def _live_side_pins(incoming: list[str], loaders: list[dict]) -> list[str]:
+    """Side pins whose pid is a running loader's. A dead loader's pin is never promoted."""
+    live = {pid for item in loaders for pid in (item.get("host"), item.get("ns")) if type(pid) is int}
+    return [path for path in incoming if grade.side_pin_pid(path) in live]
+
+
+def wait_baseline_settled(
+    timeout: float = MAP_SETTLE_TIMEOUT_S,
+    step: float = MAP_SWAP_STEP_S,
+    root: Path | None = None,
+) -> dict:
+    """Before the baseline: the audit loader's handoff is done.
+
+    All three canonical maps exist and no running loader still owns a side
+    pin. A side pin whose loader is gone is kept as stale; it cannot be
+    promoted. A timeout is map_swap_baseline_unsettled. Read only.
+    """
+    started = time.monotonic()
+    while True:
+        ids = canonical_map_ids(root)
+        incoming = incoming_pins(root)
+        loaders = loader_pids() if incoming else []
+        live = _live_side_pins(incoming, loaders)
+        maps_ok = all(type(ids.get(stem)) is int and ids.get(stem, 0) > 0 for stem in grade.DENY_SWAP_STEMS)
+        waited = round(time.monotonic() - started, 3)
+        if maps_ok and not live:
+            return {"settled": True, "waited_s": waited, "ids": ids, "live_side_pins": [], "stale_side_pins": incoming}
+        if time.monotonic() - started >= timeout:
+            return {
+                "settled": False,
+                "reason": grade.MAP_SWAP_BASELINE_UNSETTLED,
+                "waited_s": waited,
+                "ids": ids,
+                "live_side_pins": live,
+                "stale_side_pins": [path for path in incoming if path not in live],
+            }
+        time.sleep(step)
+
+
+def _watch_side_pins(root: Path | None, stop, before: list[str]) -> None:
+    """Record every new side pin until stopped. Read only."""
+    started = time.monotonic()
+    while not stop.is_set() and time.monotonic() - started < SIDE_PIN_WATCH_MAX_S:
+        for path in incoming_pins(root):
+            if path not in before and path not in SWAP_SEEN:
+                SWAP_SEEN.append(path)
+        stop.wait(SIDE_PIN_WATCH_S)
+
+
+def start_side_pin_watch(root: Path | None = None) -> None:
+    import threading
+
+    stop = threading.Event()
+    thread = threading.Thread(
+        target=_watch_side_pins, args=(root, stop, list(SWAP_BEFORE.get("incoming", []))), daemon=True
+    )
+    SWAP_WATCH.update({"stop": stop, "thread": thread})
+    thread.start()
+
+
+def stop_side_pin_watch() -> None:
+    stop = SWAP_WATCH.pop("stop", None)
+    thread = SWAP_WATCH.pop("thread", None)
+    if stop is not None:
+        stop.set()
+    if thread is not None:
+        thread.join(timeout=1.0)
+
+
+def record_swap_baseline(root: Path | None = None, settle_timeout: float = MAP_SETTLE_TIMEOUT_S) -> dict:
+    """Wait for the audit loader to settle, then read the canonical ids and side pins."""
+    stop_side_pin_watch()
     SWAP_BEFORE.clear()
-    SWAP_BEFORE.update({"ids": canonical_map_ids(root), "incoming": incoming_pins(root), "recorded": True})
+    del SWAP_SEEN[:]
+    settle = wait_baseline_settled(timeout=settle_timeout, root=root)
+    if settle.get("settled") is not True:
+        SWAP_BEFORE.update({"recorded": False, "reason": grade.MAP_SWAP_BASELINE_UNSETTLED, "settle": settle})
+        return dict(SWAP_BEFORE)
+    SWAP_BEFORE.update(
+        {"ids": canonical_map_ids(root), "incoming": incoming_pins(root), "recorded": True, "settle": settle}
+    )
+    start_side_pin_watch(root)
     return dict(SWAP_BEFORE)
 
 
@@ -1347,50 +1456,70 @@ def wait_map_swap(
 
     The loader prints its ready lines before it promotes its side pins. A
     kill in that window leaves its programs writing to a side map that no
-    reader opens. A timeout is never a pass: the caller leaves the battery
-    not graded with the reason returned here.
+    reader opens. The swap counts only when the side pin seen after the
+    baseline is the running enforce loader's own <pin>_incoming_<pid>. A
+    timeout is never a pass: the caller leaves the battery not graded with
+    the reason returned here.
     """
     before = dict(SWAP_BEFORE)
     started = time.monotonic()
     if before.get("recorded") is not True:
+        stop_side_pin_watch()
+        reason = grade.MAP_SWAP_BASELINE_UNSETTLED
+        if before.get("reason") != grade.MAP_SWAP_BASELINE_UNSETTLED:
+            reason = grade.MAP_SWAP_BASELINE_MISSING
         return {
             "swapped": False,
-            "reason": grade.MAP_SWAP_BASELINE_MISSING,
+            "reason": reason,
             "waited_s": 0.0,
             "before_ids": {},
+            "settle": before.get("settle"),
             "ids": canonical_map_ids(root),
             "incoming": incoming_pins(root),
         }
     ids: dict = {}
     incoming: list[str] = []
-    seen: list[str] = []
+    loaders: list[dict] = []
+    seen = SWAP_SEEN
+    maps_swapped = False
     while True:
         ids = canonical_map_ids(root)
         incoming = incoming_pins(root)
-        seen.extend(pin for pin in incoming if pin not in seen and pin not in before.get("incoming", []))
-        if grade.deny_map_swapped(before.get("ids", {}), before.get("incoming", []), ids, incoming):
-            return {
-                "swapped": True,
-                "reason": None,
-                "waited_s": round(time.monotonic() - started, 3),
-                "before_ids": before.get("ids", {}),
-                "ids": ids,
-                "incoming": incoming,
-                "incoming_before": before.get("incoming", []),
-                "incoming_seen": seen,
-            }
+        for path in incoming:
+            if path not in seen and path not in before.get("incoming", []):
+                seen.append(path)
+        maps_swapped = grade.deny_map_swapped(before.get("ids", {}), before.get("incoming", []), ids, incoming)
+        if maps_swapped:
+            loaders = loader_pids()
+            if grade.swap_owner_matches(list(seen), loaders):
+                stop_side_pin_watch()
+                return {
+                    "swapped": True,
+                    "reason": None,
+                    "waited_s": round(time.monotonic() - started, 3),
+                    "before_ids": before.get("ids", {}),
+                    "settle": before.get("settle"),
+                    "ids": ids,
+                    "incoming": incoming,
+                    "incoming_before": before.get("incoming", []),
+                    "incoming_seen": list(seen),
+                    "loaders": loaders,
+                }
         if time.monotonic() - started >= timeout:
             break
         time.sleep(step)
+    stop_side_pin_watch()
     return {
         "swapped": False,
-        "reason": grade.MAP_SWAP_TIMEOUT,
+        "reason": grade.MAP_SWAP_SIDE_PIN_UNMATCHED if maps_swapped else grade.MAP_SWAP_TIMEOUT,
         "waited_s": round(time.monotonic() - started, 3),
         "before_ids": before.get("ids", {}),
+        "settle": before.get("settle"),
         "ids": ids,
         "incoming": incoming,
         "incoming_before": before.get("incoming", []),
-        "incoming_seen": seen,
+        "incoming_seen": list(seen),
+        "loaders": loaders,
     }
 
 
@@ -1846,7 +1975,7 @@ def run_2e() -> dict:
 
 
 def run_2f() -> dict:
-    _adapter, digest = prepare_enforce()
+    _adapter, digest = prepare_enforce(swap_baseline=True)
     # The ready banner prints before the loader promotes its deny-attr side
     # pins. Kill only after the swap, or a post-kill row can land in a side
     # map no reader opens (CHAIN8 39866003348).
@@ -1858,6 +1987,8 @@ def run_2f() -> dict:
         refused["bpf_pin_sample"] = _bpf_pin_sample()
         refused["policy_digest"] = digest
         refused["loader_up"] = loader_running()
+        refused["loader_killed"] = False
+        refused["kill_timing"] = grade.KILL_TIMING_AFTER_MAP_SWAP
         return refused
     kill_loader()
     standin = standin_after_sigkill()
@@ -1876,6 +2007,7 @@ def run_2f() -> dict:
         refused["loader_up"] = still
         refused["map_swap"] = swap
         refused.update(observed)
+        refused["kill_timing"] = grade.KILL_TIMING_AFTER_MAP_SWAP
         return refused
     enrolled = child_open(True)
     net_pid = enrolled.get("pid") if isinstance(enrolled.get("pid"), int) else 0
@@ -1898,6 +2030,7 @@ def run_2f() -> dict:
         refused["loader_up"] = still
         refused["map_swap"] = swap
         refused.update(observed)
+        refused["kill_timing"] = grade.KILL_TIMING_AFTER_MAP_SWAP
         return refused
     unenrolled = control
     file_attributed = isinstance(enrolled.get("pid"), int) and attributed(enrolled["pid"], "DENIED")
@@ -1925,6 +2058,8 @@ def run_2f() -> dict:
     grade.apply_allowlisted_private(graded, enrolled_connect_errno(ALLOW_HOST, ALLOW_PORT))
     if graded.get("host_result") != "PASS":
         graded["deny_diag"] = deny_diag([net_pid], recheck_pid=net_pid if net_anchor <= 0 else 0)
+    graded["kill_timing"] = grade.KILL_TIMING_AFTER_MAP_SWAP
+    graded["claim_scope"] = grade.CLAIM_SCOPE_2F
     return graded
 
 

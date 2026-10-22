@@ -1215,6 +1215,11 @@ def phase_battery_verdict(battery: str, body: Mapping[str, Any] | None) -> dict[
         "pass": False,
         "row_reason": row_reason[:200],
     }
+    if battery == "2f-tamper":
+        # The kill timing and the claim it supports travel with every 2F verdict.
+        for key in ("kill_timing", "claim_scope"):
+            value = body.get(key)
+            verdict[key] = value[:200] if isinstance(value, str) and value else None
     if body.get("battery") != battery:
         verdict["reason"] = "battery_mismatch"
         return verdict
@@ -1246,6 +1251,10 @@ def report_battery_verdict(verdict: Mapping[str, Any]) -> str:
         f"host_result={verdict.get('host_result')} pass={str(bool(verdict.get('pass'))).lower()} "
         f"reason={verdict.get('reason')} row_reason={verdict.get('row_reason') or '-'}"
     )
+    if verdict.get("battery") == "2f-tamper":
+        timing = " ".join(str(verdict.get("kill_timing") or "-").split()) or "-"
+        scope = " ".join(str(verdict.get("claim_scope") or "-").replace('"', "'").split()) or "-"
+        line += f' kill_timing={timing} claim_scope="{scope}"'
     print(line, flush=True)
     summary = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
     if summary:
