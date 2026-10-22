@@ -1053,6 +1053,8 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "loader_restart_findings": allow_cycle_findings(
                 restart["body"].get("findings") if isinstance(restart.get("body"), dict) else None
             ),
+            "loader_kill_restart_rows": _kill_restart_rows(kill.get("body")),
+            **kill_late_fields(_kill_restart_rows(kill.get("body"))),
             "debs": debs,
             "deny_attr_post_kill": post_kill_row,
             "full_set": passed,

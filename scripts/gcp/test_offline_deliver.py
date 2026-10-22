@@ -258,12 +258,20 @@ class OfflineDeliverTest(unittest.TestCase):
             "while_loader_up": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6863},
         }
         self.assertEqual(od._loader_word("2d-crash-recovery", stale), "setup_invalid")
+        side = {"errno": 13, "pid": 6870, "row_pid": 6870, "anchor": 6599, "row_count": 1,
+                "rows_before": 0, "row_seen": True, "wait_s": 0.25}
         held = {
+            "enroll_restart": {
+                "held": True,
+                "restart_rows": {"before": side, "after": dict(side, expected_anchor=6599, rows_before=1, row_count=2)},
+            },
             "enrolled_after": sample(6895),
             "unenrolled_after": {"file_errno": 0, "path": od.CEILING_PATH, "pid": 6896},
             "while_loader_up": sample(6863),
         }
         self.assertEqual(od._loader_word("2d-crash-recovery", held), "held")
+        # GCP 2D requires the restart rows (restart_rows_missing).
+        self.assertEqual(od._loader_word("2d-crash-recovery", {k: v for k, v in held.items() if k != "enroll_restart"}), "fail")
         restart = {"deny_after": sample(7653), "deny_before": sample(7548)}
         self.assertEqual(od._loader_word("2c-upgrade-rollback", restart), "held")
         dropped = dict(held)
