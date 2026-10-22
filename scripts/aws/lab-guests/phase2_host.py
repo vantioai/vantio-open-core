@@ -736,6 +736,31 @@ def anchor_before_first_open() -> tuple[int, dict]:
     return anchor, facts
 
 
+def _deny_rows(pid: int) -> list[dict]:
+    """This pid's DENIED rows for the ceiling path that carry an anchor, oldest first."""
+    path = str(rows.DENY)
+    out = []
+    for item in events():
+        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
+            continue
+        attempted = item.get("PathAttempted") or item.get("Payload")
+        if attempted != path:
+            continue
+        anchor = item.get("lineage_anchor")
+        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
+            continue
+        out.append(
+            {
+                "action": "DENIED",
+                "lineage_anchor": anchor,
+                "path": path,
+                "pid": pid,
+                "uid": item.get("Uid"),
+            }
+        )
+    return out
+
+
 def deny_event_for(pid: int) -> dict | None:
     """The DENIED ledger row for this open. A row for some other pid does not count."""
     path = str(rows.DENY)
@@ -756,6 +781,79 @@ def deny_event_for(pid: int) -> dict | None:
             "uid": item.get("Uid"),
         }
     return None
+
+
+DENY_ROW_WAIT_S = 5.0
+DENY_ROW_POLL_S = 0.25
+# A row that needed more than the old single 0.5s check is still counted,
+# but it is flagged so a slow ledger is visible in the output.
+DENY_ROW_LATE_S = 0.5
+
+
+def wait_deny_event(pid: int, timeout: float = DENY_ROW_WAIT_S, step: float = DENY_ROW_POLL_S) -> tuple[dict | None, float]:
+    """Poll for this pid's DENIED row. Returns the row (or None) and the seconds waited.
+
+    The ledger writer can land the row a little after the open returns.
+    Waiting longer does not change what counts: no row by the deadline is
+    still a miss.
+    """
+    began = time.monotonic()
+    while True:
+        event = deny_event_for(pid)
+        waited = round(time.monotonic() - began, 3)
+        if event is not None or waited >= timeout:
+            return event, waited
+        time.sleep(step)
+
+
+def wait_new_deny_event(
+    pid: int, before_count: int, poll: bool, timeout: float = DENY_ROW_WAIT_S, step: float = DENY_ROW_POLL_S
+) -> tuple[dict | None, float, int]:
+    """Wait for a DENIED row for this pid past the first before_count rows.
+
+    The pid is the same before and after the restart, so the pre-restart row
+    is still in the ledger; only a row past it is the after-restart deny.
+    Returns (that new row or None, seconds waited, row count at the end).
+    poll=False keeps the old single look after 0.5s (the open was not denied).
+    """
+    began = time.monotonic()
+    if not poll:
+        time.sleep(0.5)
+    while True:
+        found = _deny_rows(pid)
+        waited = round(time.monotonic() - began, 3) if poll else 0.0
+        if len(found) > before_count:
+            return found[before_count], waited, len(found)
+        if not poll or waited >= timeout:
+            return None, waited, len(found)
+        time.sleep(step)
+
+
+def row_wait(pid: int, errno_seen: int) -> tuple[dict | None, float]:
+    """Poll for the deny row only when errno 13 shows the open was denied."""
+    if errno_seen == 13:
+        return wait_deny_event(pid)
+    time.sleep(0.5)
+    return deny_event_for(pid), 0.0
+
+
+def late_row_warnings(body: dict) -> list[str]:
+    """`late_deny_row_<phase>_restart` for each row that was seen after DENY_ROW_LATE_S."""
+    out = []
+    for phase in ("before", "after"):
+        wait = body.get(f"{phase}_row_wait_s")
+        if body.get(f"{phase}_row_seen") and isinstance(wait, (int, float)) and wait > DENY_ROW_LATE_S:
+            out.append(f"late_deny_row_{phase}_restart")
+    return out
+
+
+def _note_late_rows(body: dict) -> None:
+    warnings = late_row_warnings(body)
+    if warnings:
+        body["warnings"] = warnings
+        for warning in warnings:
+            phase = warning.split("_")[3]
+            print(f"WARNING {warning} wait_s={body.get(f'{phase}_row_wait_s')}", file=sys.stderr, flush=True)
 
 
 def _banner_ready(text: str) -> bool:
@@ -986,19 +1084,7 @@ def stamp_deny(sample: dict) -> dict:
 
 def _deny_count(pid: int) -> int:
     """DENIED rows for this pid and the ceiling path that carry an anchor."""
-    path = str(rows.DENY)
-    count = 0
-    for item in events():
-        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
-            continue
-        attempted = item.get("PathAttempted") or item.get("Payload")
-        if attempted != path:
-            continue
-        anchor = item.get("lineage_anchor")
-        if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor <= 0:
-            continue
-        count += 1
-    return count
+    return len(_deny_rows(pid))
 
 
 def same_process_across_restart(adapter) -> dict:
@@ -1044,8 +1130,7 @@ def same_process_across_restart(adapter) -> dict:
             return body
         errno_before = int(first[1])
         pid = int(first[2])
-        time.sleep(0.5)
-        event = deny_event_for(pid)
+        event, row_wait_s = row_wait(pid, errno_before)
         before_anchor = event["lineage_anchor"] if event else 0
         before_count = _deny_count(pid)
         body.update(
@@ -1054,10 +1139,17 @@ def same_process_across_restart(adapter) -> dict:
                 "before_errno": errno_before,
                 "before_anchor": before_anchor,
                 "before_count": before_count,
+                "before_row_wait_s": row_wait_s,
+                "before_row_seen": before_anchor > 0,
             }
         )
-        if errno_before != 13 or before_anchor <= 0:
+        _note_late_rows(body)
+        if errno_before != 13:
             body["reason"] = "not_enrolled_before_restart"
+            return body
+        if before_anchor <= 0:
+            # errno 13 shows the deny was enforced; the ledger row never came.
+            body["reason"] = "deny_row_missing_before_restart"
             return body
         kill_loader()
         started = rows.start_loader(adapter)
@@ -1074,17 +1166,21 @@ def same_process_across_restart(adapter) -> dict:
             body["detail"] = " ".join(second)
             return body
         errno_after = int(second[1])
-        time.sleep(0.5)
-        after = deny_event_for(pid)
+        # Only a row past the pre-restart ones counts (same pid, so the old row
+        # is still there). No new row leaves after_anchor 0 and after_count ==
+        # before_count, which restart_keeps_the_same_anchor fails.
+        after, after_wait_s, after_count = wait_new_deny_event(pid, before_count, poll=errno_after == 13)
         after_anchor = after["lineage_anchor"] if after else 0
-        after_count = _deny_count(pid)
         body.update(
             {
                 "after_errno": errno_after,
                 "after_anchor": after_anchor,
                 "after_count": after_count,
+                "after_row_wait_s": after_wait_s,
+                "after_row_seen": after_anchor > 0,
             }
         )
+        _note_late_rows(body)
         body.update(
             grade.restart_keeps_the_same_anchor(
                 pid=pid,
@@ -1375,6 +1471,7 @@ def run_2d() -> dict:
             "policy_digest": digest,
             "reason": carried.get("reason") or "enrollment_dropped",
             "setup_invalid": False,
+            "warnings": list(carried.get("warnings") or []),
             "while_loader_up": up,
         }
     kill_loader()
@@ -1397,6 +1494,8 @@ def run_2d() -> dict:
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
         refused.update(observed)
+        refused["enroll_restart"] = carried
+        refused["warnings"] = list(carried.get("warnings") or [])
         return refused
     egress = child_open(True)
     enrolled["net_errno"] = egress.get("net_errno")
@@ -1412,6 +1511,8 @@ def run_2d() -> dict:
         refused["control_errno"] = control_errno
         refused["standin_after_sigkill"] = standin
         refused.update(observed)
+        refused["enroll_restart"] = carried
+        refused["warnings"] = list(carried.get("warnings") or [])
         return refused
     file_open = child_open(False)
     unenrolled = {
@@ -1442,6 +1543,7 @@ def run_2d() -> dict:
     graded["policy_digest"] = digest
     graded["anchor_before_open"] = anchor
     graded["enroll_restart"] = carried
+    graded["warnings"] = list(carried.get("warnings") or [])
     graded["while_loader_up"] = up
     graded["enrolled_after"] = enrolled
     graded["unenrolled_after"] = unenrolled

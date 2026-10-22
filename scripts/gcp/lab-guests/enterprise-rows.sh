@@ -524,8 +524,12 @@ if [ "$mode" = "descendant-b1" ]; then
   fi
   # b1-pre.json survives a reboot. A later pre that fails before it writes
   # would otherwise leave the previous repeat's measurements for post to read.
+  # The enterprise rows file and the LSM re-assert record also survive, and
+  # a descendant pre that fails before it writes would otherwise hand the
+  # runner the enterprise battery's rows as its own.
   if [ "$phase" = "pre" ]; then
-    sudo rm -f /var/lib/vantio-lab/b1-pre.json
+    sudo rm -f /var/lib/vantio-lab/b1-pre.json /var/lib/vantio-lab/enterprise-pe-rows.json \
+      /var/lib/vantio-lab/lsm-reassert.json
   fi
   sudo rm -f /tmp/enterprise-pe-rows.json
   set +e

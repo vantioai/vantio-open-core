@@ -119,6 +119,13 @@ def _kernel_flags(payload: Any) -> dict[str, Any]:
     return flags
 
 
+def _start_fields_from(body: object) -> dict[str, Any]:
+    """The raw descendant-b1 start fields (#357). write_evidence runs them through allow_start_fields."""
+    if not isinstance(body, dict):
+        return {}
+    return {key: body[key] for key in START_FIELD_SANITIZERS if key in body}
+
+
 def _finish_repeat(
     summary: dict[str, Any],
     *,
@@ -192,6 +199,12 @@ def _run_one_battery(
         summary["loader_running"] = ledger["loader_running"]
     if got_kernel and kernel_path.is_file():
         summary.update(_kernel_flags(_load_json_file(kernel_path)))
+    # The tag docker load reported on the guest, not the historical lab constant.
+    loaded_image = loaded_image_from_text(enterprise_text) or engine_image(
+        raw.get("image") if isinstance(raw, dict) else ""
+    )
+    if loaded_image:
+        summary["image"] = loaded_image
     grant_probe = raw.get("grant_probe") if isinstance(raw, dict) else {}
     grant_errno = grant_probe.get("nobody_errno") if isinstance(grant_probe, dict) else -1
     if not isinstance(grant_errno, int) or isinstance(grant_errno, bool):
@@ -204,7 +217,7 @@ def _run_one_battery(
                     "result": "open_ok" if grant_errno == 0 else "open_error",
                 }
             },
-            "image": IMAGE_NAME,
+            "image": loaded_image,
             "revoke": {
                 "probe": {
                     "nobody_errno": hold["errno"],
@@ -260,6 +273,13 @@ def _run_one_battery(
     if held_case:
         pre_capture["lineage_anchor"] = held_case["lineage_anchor"]
         pre_capture["pid"] = held_case["pid"]
+    pre_body = None
+    if isinstance(pre_guest, dict):
+        pre_body = pre_guest.get("pre") if isinstance(pre_guest.get("pre"), dict) else pre_guest
+    pre_capture.update(_start_fields_from(pre_body))
+    pre_image = loaded_image_from_text(pre_text)
+    if pre_image:
+        pre_capture["image"] = pre_image
     captures.append(pre_capture)
     if not observed:
         print(redact(pre_text)[-1500:], file=sys.stderr)
@@ -284,6 +304,7 @@ def _run_one_battery(
         )
     post = _ssh_case(project, name, guest_command(seal, "descendant-b1", "post"))
     post_text = (post.stdout or "") + (post.stderr or "")
+    post_image = loaded_image_from_text(post_text)
     if post.returncode != 0:
         print(redact(post_text)[-1500:], file=sys.stderr)
     guest = _pull_guest_json(project, name)
@@ -326,6 +347,13 @@ def _run_one_battery(
             "name": f"descendant-post-{repeat}",
             "path": CEILING_PATH,
             "pid": summary.get("desc_deny_pid") or 0,
+            **_start_fields_from(guest.get("post") if isinstance(guest, dict) else None),
+            **_start_fields_from(
+                {"lab_lsm_reassert": guest["lab_lsm_reassert"]}
+                if isinstance(guest, dict) and "lab_lsm_reassert" in guest
+                else None
+            ),
+            **({"image": post_image} if post_image else {}),
         }
     )
     post_rc = _py_rc(post_text)
@@ -1026,7 +1054,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "deny_attr_post_kill": post_kill_row,
             "full_set": passed,
             "uninstall_verified": uninstall_verified,
-            "image": IMAGE_NAME,
+            "image": next((item["image"] for item in repeats if engine_image(item.get("image"))), ""),
             "lsm_guard": lsm.get("lsm_guard") if isinstance(lsm.get("lsm_guard"), str) else "",
             "mode": "enterprise",
             "stock_bpf_lsm": lsm.get("stock_bpf_lsm") is True,

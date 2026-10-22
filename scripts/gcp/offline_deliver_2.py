@@ -1041,6 +1041,33 @@ def _loader_capture(name: str, case: Mapping[str, Any]) -> dict[str, Any]:
         and not _sample_held(sample)
     ):
         kept["fail_reasons"] = ["attribution_after_kill"]
+    # 2D: the same-process restart check (phase2_host.same_process_across_restart).
+    restart = body.get("enroll_restart") if isinstance(body.get("enroll_restart"), dict) else {}
+    reason = restart.get("reason")
+    if (
+        kept["hold"] is False
+        and isinstance(reason, str)
+        and re.fullmatch(r"[a-z0-9_]{1,40}", reason)
+        and restart.get("held") is not True
+    ):
+        kept["fail_reasons"] = [*kept.get("fail_reasons", []), reason]
+    warnings = []
+    for phase in ("before", "after"):
+        wait = restart.get(f"{phase}_row_wait_s")
+        seen = restart.get(f"{phase}_row_seen")
+        if _seconds(wait):
+            kept[f"{phase}_row_wait_s"] = wait
+        if isinstance(seen, bool):
+            kept[f"{phase}_row_seen"] = seen
+        # Flag a late row here too, so the capture shows it even if the guest
+        # output dropped its own warning.
+        if seen is True and _seconds(wait) and wait > DENY_ROW_LATE_S:
+            warnings.append(f"late_deny_row_{phase}_restart")
+    for item in _allow_warnings(restart.get("warnings")) or []:
+        if item not in warnings:
+            warnings.append(item)
+    if warnings:
+        kept["warnings"] = warnings[:8]
     return kept
 
 
