@@ -24,7 +24,7 @@ DENY_PIN = "/sys/fs/bpf/vantio_deny_attr"
 DECISION_PIN = "/sys/fs/bpf/vantio_decision"
 CEIL_PIN = "/sys/fs/bpf/vantio_ceil_key"
 DECISION_SLOTS = 8
-HOOK_NAMES = ("path", "file")
+HOOK_NAMES = ("path", "file", "egress_tc", "egress_cgroup")
 SLOT_NAMES = (
     "hits",
     "cgroup_enrolled",
@@ -43,6 +43,7 @@ ALLOW_REASONS = {
     4: "root",
     5: "self",
     6: "anchor_missing",
+    7: "private",
 }
 FILE_KIND = 1
 

@@ -1452,6 +1452,7 @@ def run_2d() -> dict:
     graded["allowlist_host"] = ALLOW_HOST
     grade.apply_allowlisted_private(graded, enrolled_connect_errno(ALLOW_HOST, ALLOW_PORT))
     graded["standin_after_sigkill"] = standin
+    graded["decision"] = baseline_diag.decision_counters()
     graded["ndjson_denied_pids"] = [
         item["pid"]
         for item in (up, enrolled)
@@ -1533,6 +1534,7 @@ def run_2f() -> dict:
     graded["file_attributed"] = file_attributed
     graded["standin_after_sigkill"] = standin
     graded["bpf_pin_sample"] = pins
+    graded["decision"] = baseline_diag.decision_counters()
     graded["policy_malformed"] = False
     graded["ndjson_denied_pids"] = ndjson_denied_pids()
     graded["allowlist_host"] = ALLOW_HOST
