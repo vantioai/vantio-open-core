@@ -269,6 +269,10 @@ PY
   sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader
   sudo docker rm "$cid" >/dev/null
   sudo chmod 755 /var/lib/vantio/vantio-loader
+  # The loader appends to uninstall.ndjson. Each enterprise repeat now runs
+  # its own uninstall, so the post-kill check reads only what this run added.
+  local ledger_before
+  ledger_before=$(sudo stat -c %s /var/log/vantio/uninstall.ndjson 2>/dev/null || echo 0)
   set +e
   sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/var/lib/vantio-lab/vantio-uninstall.out 2>&1
   local urc=$?
@@ -286,15 +290,20 @@ PY
     return 1
   fi
   if [ "$require_row" = "yes" ]; then
-    python3 - "$probe_pid" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
+    python3 - "$probe_pid" "$ledger_before" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
 import json, sys
 want = int(sys.argv[1])
+ledger_before = int(sys.argv[2]) if sys.argv[2].isdigit() else 0
 found = False
-for path in sys.argv[2:]:
+# argv[4] is the loader's append-only uninstall ledger.
+for index, path in enumerate(sys.argv[3:], start=3):
     try:
-        lines = open(path, errors="replace").read().splitlines()
+        data = open(path, "rb").read()
     except OSError:
         continue
+    if index == 4 and len(data) >= ledger_before:
+        data = data[ledger_before:]
+    lines = data.decode("utf-8", errors="replace").splitlines()
     for line in lines:
         line = line.strip()
         if not line.startswith("{"):
@@ -624,6 +633,18 @@ set +e
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
+# AWS parity: guest_rows reads bpftool right after the container exits, and
+# root cgroup programs outlive the container until the product uninstall.
+# Run vantio-loader --uninstall, then read bpftool and bpffs until the census
+# is clean or times out. The census keeps the guest read as
+# after_container_exit and records the final read as removal. Do not detach.
+if ! authorized_uninstall "$image" no 0; then
+  rc=1
+elif sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/product_uninstall_census.py" --record /tmp/enterprise-pe-rows.json --guest-rc "$rc"; then
+  rc=0
+else
+  rc=1
+fi
 sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
 sudo chmod a+r /tmp/gcp-kernel-facts.json 2>/dev/null || true
 stamp_host_evidence

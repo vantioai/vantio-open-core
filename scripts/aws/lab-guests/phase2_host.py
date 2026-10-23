@@ -761,6 +761,10 @@ def _deny_rows(pid: int, *, with_time: bool = False) -> list[dict]:
     for item in events():
         if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
             continue
+        # A post-kill drain row is written by the uninstall, not at the open.
+        # It is not a live deny row even when the path fits in 32 bytes.
+        if item.get("source") == "deny_attr_post_kill":
+            continue
         attempted = item.get("PathAttempted") or item.get("Payload")
         if attempted != path:
             continue

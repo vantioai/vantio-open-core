@@ -887,6 +887,40 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(kept["verdict_reason"], "rows_missing", text)
             self.assertIs(kept["uninstall_verified"], clean, text)
 
+    def test_transport_failure_without_py_rc_never_pulls_rows(self) -> None:
+        # The tunnel died before the guest printed PY_RC. Rows on the guest
+        # may be a previous phase's, so they are never pulled: NOT_RUN transport.
+        for dead in (_done("operation timed out", 255), _done("Connection reset by peer", 1)):
+            for mode in od.PHASE_MODES:
+                pull = mock.Mock(side_effect=AssertionError("no pull"))
+                uninstall = mock.Mock(return_value=_done(UNINSTALL_OK))
+                stubs = {
+                    "_phase_ssh_case": mock.Mock(return_value=(dead, False)),
+                    "_pull_guest_json": pull,
+                    "_ssh": uninstall,
+                    "_boot_source": mock.Mock(side_effect=AssertionError("no boot read")),
+                }
+                with mock.patch.multiple(od, **stubs), contextlib.redirect_stderr(io.StringIO()):
+                    kept = od._run_one_phase("vantio-lab-oct08", "vantio-gcp-lab-1", SEAL, mode)
+                self.assertEqual(pull.call_count, 0, mode)
+                self.assertEqual(kept["host_result"], "NOT_RUN", mode)
+                self.assertEqual(kept["not_run_reason"], "transport", mode)
+                self.assertIs(kept["pass"], False, mode)
+                self.assertTrue(kept["uninstall_verified"], mode)
+                self.assertEqual(uninstall.call_count, 1, mode)
+                self.assertIn("VANTIO_REQUIRE_POST_KILL=no", uninstall.call_args[0][2])
+        # The same transport text after the guest printed PY_RC does pull.
+        pull = mock.Mock(side_effect=SystemExit("rows_missing"))
+        stubs = {
+            "_phase_ssh_case": mock.Mock(return_value=(_done("PY_RC=1\nConnection reset by peer", 255), False)),
+            "_pull_guest_json": pull,
+            "_ssh": mock.Mock(return_value=_done(UNINSTALL_OK)),
+        }
+        with mock.patch.multiple(od, **stubs), contextlib.redirect_stderr(io.StringIO()):
+            kept = od._run_one_phase("vantio-lab-oct08", "vantio-gcp-lab-1", SEAL, "2e-performance")
+        self.assertEqual(pull.call_count, 1)
+        self.assertEqual(kept["verdict_reason"], "rows_missing")
+
     def test_post_kill_row_is_asked_for_only_with_a_probe_after_the_swap(self) -> None:
         bodies = self._bodies()
         bodies["2f-tamper"]["enrolled_after"]["pid"] = 0
