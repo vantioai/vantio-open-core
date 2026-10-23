@@ -1792,6 +1792,18 @@ def _stop_lab_containers() -> str:
 
 
 def _removal_census() -> dict:
+    """Poll the read-only census after an uninstall until it is clean or 20 s pass.
+
+    The kernel can still be freeing programs right after the uninstall (the
+    race that failed GCP run 6). A census still listed at the timeout stays
+    verified_removed False.
+    """
+    import product_uninstall_census as census
+
+    return census.poll_census(_removal_census_once)
+
+
+def _removal_census_once() -> dict:
     """Read bpftool and bpffs after an uninstall. Read only."""
     import product_uninstall_census as census
 
