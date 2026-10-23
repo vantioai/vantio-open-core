@@ -214,7 +214,12 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
         self.assertEqual(calls, ["uninstall img no 0"])
 
     def _post_kill(
-        self, ledger: bytes, before: int, want: int, events_data: bytes = b"", events_before: int = 0
+        self,
+        ledger: bytes,
+        before: int | str,
+        want: int,
+        events_data: bytes = b"",
+        events_before: int | str = 0,
     ) -> subprocess.CompletedProcess[str]:
         text = GCP_SHELL.read_text(encoding="utf-8")
         body = text[text.index("authorized_uninstall() {") :]
@@ -363,6 +368,107 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
             "/var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson",
             body,
         )
+
+    def _size_reads(
+        self, exists: set, stat_rc: int = 0, sudo_rc: int = 0, sudo_fail: str = ""
+    ) -> tuple[str, str]:
+        """Run the real uninstall-time size reads under a fake sudo; return (ledger, events).
+
+        A non-zero sudo_rc breaks every sudo call; sudo_fail breaks only calls naming that path.
+        """
+        text = GCP_SHELL.read_text(encoding="utf-8")
+        body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
+        lines = [
+            line.strip()
+            for line in body.splitlines()
+            if line.strip().startswith(("ledger_before=$(sudo stat", "events_before=$(sudo stat"))
+        ]
+        self.assertEqual(len(lines), 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            sudo = Path(tmp) / "sudo"
+            sudo.write_text(
+                "#!/bin/bash\n"
+                '[ "$SUDO_RC" = 0 ] || { echo "sudo: failed" >&2; exit "$SUDO_RC"; }\n'
+                'if [ -n "$SUDO_FAIL" ]; then case " $* " in *" $SUDO_FAIL "*) exit 1 ;; esac; fi\n'
+                'if [ "$1" = test ]; then\n'
+                '  neg=0; [ "$2" = "!" ] && { neg=1; shift; }\n'
+                '  [ "$2" = -e ] || exit 98\n'
+                '  case " $EXISTS " in *" $3 "*) hit=1 ;; *) hit=0 ;; esac\n'
+                '  [ "$hit" != "$neg" ] && exit 0; exit 1\n'
+                "fi\n"
+                'if [ "$1" = stat ]; then\n'
+                '  case " $EXISTS " in *" $4 "*) ;; *) echo "stat: no such file" >&2; exit 1 ;; esac\n'
+                '  [ "$STAT_RC" = 0 ] && { echo 123; exit 0; }; echo "stat: failed" >&2; exit "$STAT_RC"\n'
+                "fi\n"
+                "exit 99\n",
+                encoding="utf-8",
+            )
+            sudo.chmod(0o755)
+            env = {
+                **os.environ,
+                "PATH": f"{tmp}:{os.environ['PATH']}",
+                "STAT_RC": str(stat_rc),
+                "SUDO_RC": str(sudo_rc),
+                "SUDO_FAIL": sudo_fail,
+                "EXISTS": " ".join(sorted(exists)),
+            }
+            done = subprocess.run(
+                ["bash", "-c", "\n".join(lines) + '\nprintf "%s|%s" "$ledger_before" "$events_before"'],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
+            )
+        ledger, events = done.stdout.split("|")
+        return ledger, events
+
+    def test_the_uninstall_time_size_reads_print_0_only_for_a_missing_file(self) -> None:
+        # PR 368 council delta-4 N1: a failed stat or sudo is empty, never 0.
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        self.assertEqual(self._size_reads({ledger, events}), ("123", "123"))
+        self.assertEqual(self._size_reads({ledger}), ("123", "0"))
+        self.assertEqual(self._size_reads(set()), ("0", "0"))
+        self.assertEqual(self._size_reads({ledger, events}, stat_rc=1), ("", ""))
+        self.assertEqual(self._size_reads({events}, stat_rc=1), ("0", ""))
+        for exists in ({ledger, events}, {ledger}, set()):
+            self.assertEqual(self._size_reads(exists, sudo_rc=1), ("", ""), sorted(exists))
+
+    def test_post_kill_check_refuses_unreadable_offsets(self) -> None:
+        row = {"source": "deny_attr_post_kill", "ActionTaken": "DENIED", "Pid": PID, "lineage_anchor": ANCHOR}
+        old = (json.dumps(row) + "\n").encode()
+        for before, events_before in (("", len(old)), (len(old), ""), ("", ""), ("x1", len(old))):
+            done = self._post_kill(old, before, PID, old, events_before)
+            self.assertNotEqual(done.returncode, 0, (before, events_before))
+            self.assertIn("post_kill_offsets_unreadable", done.stderr, (before, events_before))
+            self.assertNotIn("deny_attr_post_kill pid", done.stdout, (before, events_before))
+
+    def test_a_sudo_failure_fails_the_2f_post_kill_check_closed(self) -> None:
+        # 2F passes no marks, so the uninstall-time sizes are the offsets.
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        row = {"source": "deny_attr_post_kill", "ActionTaken": "DENIED", "Pid": PID, "lineage_anchor": ANCHOR}
+        stale = (json.dumps(row) + "\n").encode()
+        for exists in ({ledger, events}, {ledger}, {events}, set()):
+            before, events_before = self._size_reads(exists, sudo_rc=1)
+            done = self._post_kill(stale, before, PID, stale, events_before)
+            self.assertNotEqual(done.returncode, 0, sorted(exists))
+            self.assertIn("post_kill_offsets_unreadable", done.stderr, sorted(exists))
+            self.assertNotIn("deny_attr_post_kill pid", done.stdout, sorted(exists))
+        # sudo fails only on one file's reads; the stale row sits in that file.
+        for broken in (ledger, events):
+            before, events_before = self._size_reads({ledger, events}, sudo_fail=broken)
+            done = self._post_kill(
+                stale if broken == ledger else b"", before, PID, stale if broken == events else b"", events_before
+            )
+            self.assertNotEqual(done.returncode, 0, broken)
+            self.assertIn("post_kill_offsets_unreadable", done.stderr, broken)
+            self.assertNotIn("deny_attr_post_kill pid", done.stdout, broken)
+        # With sudo working and both files absent, every byte is new: the row counts.
+        before, events_before = self._size_reads(set())
+        fresh = self._post_kill(stale, before, PID, b"", events_before)
+        self.assertEqual(fresh.returncode, 0, fresh.stderr)
+        self.assertIn(f"deny_attr_post_kill pid {PID} anchor {ANCHOR}", fresh.stdout)
 
 
 class DenyRowsSkipPostKillTest(unittest.TestCase):

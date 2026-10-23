@@ -276,11 +276,11 @@ PY
   # The loader appends to uninstall.ndjson. Each enterprise repeat now runs
   # its own uninstall, so the post-kill check reads only what this run added.
   local ledger_before
-  ledger_before=$(sudo stat -c %s /var/log/vantio/uninstall.ndjson 2>/dev/null || echo 0)
+  ledger_before=$(sudo stat -c %s /var/log/vantio/uninstall.ndjson 2>/dev/null || { sudo test ! -e /var/log/vantio/uninstall.ndjson && echo 0; })
   # The startup drain can also land post-kill rows in events.ndjson, and an
   # earlier repeat on this VM leaves its own there. Read only what is new.
   local events_before
-  events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson 2>/dev/null || echo 0)
+  events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson 2>/dev/null || { sudo test ! -e /var/lib/vantio-pe-clean-host/evidence/events.ndjson && echo 0; })
   case "$events_mark" in ''|*[!0-9]*) ;; *) events_before=$events_mark ;; esac
   case "$ledger_mark" in ''|*[!0-9]*) ;; *) ledger_before=$ledger_mark ;; esac
   set +e
@@ -306,8 +306,10 @@ want = int(sys.argv[1])
 # Without the killed probe's pid any older post-kill row would match.
 if want <= 0:
     raise SystemExit("post_kill_probe_pid_missing")
-ledger_before = int(sys.argv[2]) if sys.argv[2].isdigit() else 0
-events_before = int(sys.argv[3]) if sys.argv[3].isdigit() else 0
+if not (sys.argv[2].isdigit() and sys.argv[3].isdigit()):
+    raise SystemExit("post_kill_offsets_unreadable")
+ledger_before = int(sys.argv[2])
+events_before = int(sys.argv[3])
 found = False
 # Path slots: 3 uninstall.out, 4 the loader's append-only uninstall ledger,
 # 5 events.ndjson. A file shorter than its offset was replaced; read it all.
