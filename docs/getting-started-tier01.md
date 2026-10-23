@@ -155,7 +155,7 @@ any code changes.
 |------|-------------------|
 | **Free · Vantio Optics (this tier)** | Any process not started with `vantio run` / `shield()`; Python without `vantio-agent-sdk`; native socket calls the interceptor does not mediate |
 | **Vantio Phantom Engine** (Contact Vantio) | Raw sockets and unenrolled processes not on an enrolled Linux host |
-| **Vantio Enterprise** (Contact Vantio) | Same host scope; ledger and dual-control are in progress; passed only in Vantio's own lab. Certifications are not held. |
+| **Vantio Enterprise** (Contact Vantio) | Same host scope; ledger and dual-control are planned. Enterprise governance of Phantom Engine is in progress; passed only in Vantio's own lab. Certifications are not held. |
 
 Run `vantio discover --local` to see what Optics can observe on your machine. Residual risk closes with **Vantio Phantom Engine** — see [observe-only.md](./observe-only.md).
 

@@ -41,7 +41,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 - Protection on **Linux machines you own** — Observe, Enforce, and Control together, one purchase
 - Includes all Enforce functions: block by hostname, PII redaction, spend/size caps, policy-as-code
 - Rogue Reconciliation when the host sees a transmission with no app-layer record
-- Enterprise ledger, evidence, and dual-control depth are in progress; passed only in Vantio's own lab. Contact Vantio
+- Enterprise ledger, evidence, and dual-control are planned. Enterprise governance of Phantom Engine is in progress; passed only in Vantio's own lab. Contact Vantio
 - This repo does not ship Phantom Engine. See `vantio-phantom-engine`.
 
 > **Note on Gate:** Gate is the internal name for the Enforce function set inside Phantom Engine.
@@ -61,7 +61,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 | Host enforcement on enrolled Linux | — | ✓ | ✓ |
 | Fork inheritance on enrolled hosts | — | ✓ | ✓ |
 | CIDR / k8s network policy (enrolled) | — | ✓ | ✓ |
-| Durable ledger / dual-control | — | partial | ✓ |
+| Durable ledger / dual-control | — | partial | planned |
 
 ---
 

@@ -142,7 +142,7 @@ export function proveMarkdown(log) {
     "",
     "## Residual (honest)",
     "",
-    "Optics fills your data log on the attach path. Ungoverned paths (curl, raw sockets, unwrapped processes) stay silent. Upgrade to **Vantio Phantom Engine** ($75 per Linux server per month month-to-month; annual $60 / $45 / $35 by volume) for Observe, Enforce, and Control on enrolled Linux servers. [Enterprise](https://vantio.ai/enterprise) governance of Phantom Engine is in progress; passed only in Vantio's own lab. Contact Vantio.",
+    "Optics fills your data log on the attach path. Ungoverned paths (curl, raw sockets, unwrapped processes) stay silent. Upgrade to **Vantio Phantom Engine** ($75 per Linux server per month month-to-month, up to 99 servers; annual graduated: $60 for servers 1–99, $45 for 100–499, $35 for 500+; 100+ servers annual only) for Observe, Enforce, and Control on enrolled Linux servers. [Enterprise](https://vantio.ai/enterprise) governance of Phantom Engine is in progress; passed only in Vantio's own lab. Contact Vantio.",
     "",
     "https://vantio.ai/optics · https://vantio.ai/pricing",
     "",

@@ -47,7 +47,7 @@ function activate(context) {
           "Ungoverned paths stay silent — that gap is the upgrade signal.",
           "",
           "When observe is not enough:",
-          "  → Vantio Phantom Engine ($75 per Linux server/mo month-to-month; annual $60 / $45 / $35 by volume) — Observe, Enforce, and Control — protect machines you own",
+          "  → Vantio Phantom Engine ($75 per Linux server/mo month-to-month, up to 99 servers; annual graduated: $60 for servers 1–99, $45 for 100–499, $35 for 500+; 100+ servers annual only) — Observe, Enforce, and Control — protect machines you own",
           "  → Vantio Enterprise (Contact Vantio) — governance on top, in progress; passed only in Vantio's own lab",
           "",
           "https://vantio.ai/pricing",
