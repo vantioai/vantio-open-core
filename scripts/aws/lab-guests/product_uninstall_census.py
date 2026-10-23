@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
+from typing import Callable
 
 # Names of programs in the Phantom Engine object. bpftool prints at most 15
 # characters, so the census accepts that truncation as the same program.
@@ -21,6 +23,13 @@ ENGINE_PROGRAMS = (
     "inherit_trace_on_fork",
     "tc_enforce",
 )
+
+# The kernel frees a detached program after its last reference drops, so
+# bpftool can list it for a moment after the uninstall returns. Read again
+# until the census is clean or this many seconds pass. The last read is the
+# one recorded. Polling only reads; it never detaches or unlinks.
+CENSUS_POLL_TIMEOUT_S = 20.0
+CENSUS_POLL_INTERVAL_S = 1.0
 
 
 def engine_name(name: object) -> str:
@@ -239,6 +248,34 @@ def read_census() -> dict[str, object]:
     return removal_census(programs, bpffs, container_text, bpftool_rc)
 
 
+def poll_census(
+    read: Callable[[], dict[str, object]] | None = None,
+    *,
+    timeout_s: float = CENSUS_POLL_TIMEOUT_S,
+    interval_s: float = CENSUS_POLL_INTERVAL_S,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, object]:
+    """Read the census until it is clean or timeout_s passes. Return the last read.
+
+    The returned census gains census_polls (reads taken) and census_waited_s.
+    A census that is still not clean at the timeout stays not clean.
+    """
+    read = read or read_census
+    start = clock()
+    polls = 0
+    while True:
+        census = dict(read())
+        polls += 1
+        waited = clock() - start
+        if census.get("verified_removed") is True or waited >= timeout_s:
+            break
+        sleep(min(interval_s, max(timeout_s - waited, 0.0)))
+    census["census_polls"] = polls
+    census["census_waited_s"] = round(waited, 3)
+    return census
+
+
 def _write(path: Path, census: dict[str, object]) -> dict:
     if not path.is_file():
         raise SystemExit("rows_missing")
@@ -290,7 +327,7 @@ def main(argv: list[str]) -> int:
             continue
         print(f"unknown {item}", file=sys.stderr)
         return 1
-    census = read_census()
+    census = poll_census()
     if not record:
         if census["verified_removed"] is not True:
             print("programs_not_removed " + " ".join(census["loader_programs"]), file=sys.stderr)

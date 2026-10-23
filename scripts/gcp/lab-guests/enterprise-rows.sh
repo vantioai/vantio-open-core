@@ -198,6 +198,8 @@ authorized_uninstall() {
   local image="$1"
   local require_row="${2:-no}"
   local probe_pid="${3:-0}"
+  # 2D passes the sizes it marked before the kill; other callers pass none.
+  local events_mark="${4:-}" ledger_mark="${5:-}"
   export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
   record_uninstall() {
     # guest_rows.py runs as root and owns this file. The lab user cannot
@@ -265,10 +267,22 @@ PY
     sudo docker load -i "$here/seal.oci.tar" >/dev/null
   fi
   local cid
-  cid=$(sudo docker create "$image")
-  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader
+  # authorized_uninstall runs inside `if !`, so set -e is off here. A failed
+  # create or copy must not fall through to an older loader on disk.
+  cid=$(sudo docker create "$image") || { echo "UNINSTALL_NOT_VERIFIED loader_create" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; return 1; }
+  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; sudo docker rm "$cid" >/dev/null 2>&1; return 1; }
   sudo docker rm "$cid" >/dev/null
   sudo chmod 755 /var/lib/vantio/vantio-loader
+  # The loader appends to uninstall.ndjson. Each enterprise repeat now runs
+  # its own uninstall, so the post-kill check reads only what this run added.
+  local ledger_before
+  ledger_before=$(sudo stat -c %s /var/log/vantio/uninstall.ndjson 2>/dev/null || { sudo test ! -e /var/log/vantio/uninstall.ndjson && echo 0; })
+  # The startup drain can also land post-kill rows in events.ndjson, and an
+  # earlier repeat on this VM leaves its own there. Read only what is new.
+  local events_before
+  events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson 2>/dev/null || { sudo test ! -e /var/lib/vantio-pe-clean-host/evidence/events.ndjson && echo 0; })
+  case "$events_mark" in ''|*[!0-9]*) ;; *) events_before=$events_mark ;; esac
+  case "$ledger_mark" in ''|*[!0-9]*) ;; *) ledger_before=$ledger_mark ;; esac
   set +e
   sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/var/lib/vantio-lab/vantio-uninstall.out 2>&1
   local urc=$?
@@ -286,15 +300,29 @@ PY
     return 1
   fi
   if [ "$require_row" = "yes" ]; then
-    python3 - "$probe_pid" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
+    python3 - "$probe_pid" "$ledger_before" "$events_before" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
 import json, sys
 want = int(sys.argv[1])
+# Without the killed probe's pid any older post-kill row would match.
+if want <= 0:
+    raise SystemExit("post_kill_probe_pid_missing")
+if not (sys.argv[2].isdigit() and sys.argv[3].isdigit()):
+    raise SystemExit("post_kill_offsets_unreadable")
+ledger_before = int(sys.argv[2])
+events_before = int(sys.argv[3])
 found = False
-for path in sys.argv[2:]:
+# Path slots: 3 uninstall.out, 4 the loader's append-only uninstall ledger,
+# 5 events.ndjson. A file shorter than its offset was replaced; read it all.
+offsets = {4: ledger_before, 5: events_before}
+for index, path in enumerate(sys.argv[4:], start=3):
     try:
-        lines = open(path, errors="replace").read().splitlines()
+        data = open(path, "rb").read()
     except OSError:
         continue
+    off = offsets.get(index, 0)
+    if off and len(data) >= off:
+        data = data[off:]
+    lines = data.decode("utf-8", errors="replace").splitlines()
     for line in lines:
         line = line.strip()
         if not line.startswith("{"):
@@ -396,7 +424,7 @@ if [ "$mode" = "uninstall" ]; then
     image=$(accept_loaded_image "$load")
   fi
   set +e
-  authorized_uninstall "$image" "${VANTIO_REQUIRE_POST_KILL:-yes}" "${VANTIO_PROBE_PID:-0}"
+  authorized_uninstall "$image" "${VANTIO_REQUIRE_POST_KILL:-yes}" "${VANTIO_PROBE_PID:-0}" "${VANTIO_EVENTS_BEFORE:-}" "${VANTIO_LEDGER_BEFORE:-}"
   urc=$?
   set -e
   stamp_host_evidence
@@ -624,6 +652,18 @@ set +e
 sudo env VANTIO_IMAGE="$image" python3 "$stage/guest_rows.py" "$stage"
 rc=$?
 set -e
+# AWS parity: guest_rows reads bpftool right after the container exits, and
+# root cgroup programs outlive the container until the product uninstall.
+# Run vantio-loader --uninstall, then read bpftool and bpffs until the census
+# is clean or times out. The census keeps the guest read as
+# after_container_exit and records the final read as removal. Do not detach.
+if ! authorized_uninstall "$image" no 0; then
+  rc=1
+elif sudo env PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH" python3 "$here/product_uninstall_census.py" --record /tmp/enterprise-pe-rows.json --guest-rc "$rc"; then
+  rc=0
+else
+  rc=1
+fi
 sudo chmod a+r /tmp/enterprise-pe-rows.json 2>/dev/null || true
 sudo chmod a+r /tmp/gcp-kernel-facts.json 2>/dev/null || true
 stamp_host_evidence

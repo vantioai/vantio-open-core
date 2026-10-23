@@ -42,7 +42,7 @@ on:
         default: false
         type: boolean
       stop_after_minutes:
-        description: Guest shutdown delay in minutes. 1 through 120.
+        description: Guest shutdown delay in minutes. 1 through 120. At least 90 with run_batteries (use 105).
         required: true
         default: "60"
         type: string
@@ -77,6 +77,8 @@ jobs:
       contract_sha256: ${{ steps.publish.outputs.contract_sha256 }}
     steps:
       - name: Require main on vantio-open-core
+        env:
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
         run: |
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
@@ -90,6 +92,20 @@ jobs:
           if [ "${{ inputs.t5_egress }}" = "true" ] && { [ "${{ inputs.run_batteries }}" = "true" ] || [ "${{ inputs.self_service }}" = "true" ] || [ "${{ inputs.redteam_brain }}" = "true" ]; }; then
             echo "t5_egress does not run the other batteries" >&2
             exit 1
+          fi
+          # The phases after the batteries need the guest up past 90 minutes
+          # (offline_deliver_4: deadline is min(stop_after_minutes, 105)).
+          if [ "${{ inputs.run_batteries }}" = "true" ]; then
+            case "$STOP_AFTER_MINUTES" in
+              ''|*[!0-9]*)
+                echo "stop_after_minutes must be a whole number" >&2
+                exit 1
+                ;;
+            esac
+            if [ "$((10#$STOP_AFTER_MINUTES))" -lt 90 ]; then
+              echo "run_batteries needs stop_after_minutes of at least 90" >&2
+              exit 1
+            fi
           fi
 
       - name: Refuse static cloud keys
@@ -317,6 +333,8 @@ jobs:
     timeout-minutes: 110
     steps:
       - name: Require main on vantio-open-core
+        env:
+          STOP_AFTER_MINUTES: ${{ inputs.stop_after_minutes }}
         run: |
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
@@ -332,6 +350,20 @@ jobs:
           if [ "${{ inputs.t5_egress }}" = "true" ] && { [ "${{ inputs.run_batteries }}" = "true" ] || [ "${{ inputs.self_service }}" = "true" ] || [ "${{ inputs.redteam_brain }}" = "true" ]; }; then
             echo "t5_egress does not run the other batteries" >&2
             exit 1
+          fi
+          # The phases after the batteries need the guest up past 90 minutes
+          # (offline_deliver_4: deadline is min(stop_after_minutes, 105)).
+          if [ "${{ inputs.run_batteries }}" = "true" ]; then
+            case "$STOP_AFTER_MINUTES" in
+              ''|*[!0-9]*)
+                echo "stop_after_minutes must be a whole number" >&2
+                exit 1
+                ;;
+            esac
+            if [ "$((10#$STOP_AFTER_MINUTES))" -lt 90 ]; then
+              echo "run_batteries needs stop_after_minutes of at least 90" >&2
+              exit 1
+            fi
           fi
 
       - name: Refuse static GCP keys

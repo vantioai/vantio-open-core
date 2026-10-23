@@ -12,6 +12,7 @@ import contextlib
 import copy
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -887,6 +888,40 @@ class RunnerTest(unittest.TestCase):
             self.assertEqual(kept["verdict_reason"], "rows_missing", text)
             self.assertIs(kept["uninstall_verified"], clean, text)
 
+    def test_transport_failure_without_py_rc_never_pulls_rows(self) -> None:
+        # The tunnel died before the guest printed PY_RC. Rows on the guest
+        # may be a previous phase's, so they are never pulled: NOT_RUN transport.
+        for dead in (_done("operation timed out", 255), _done("Connection reset by peer", 1)):
+            for mode in od.PHASE_MODES:
+                pull = mock.Mock(side_effect=AssertionError("no pull"))
+                uninstall = mock.Mock(return_value=_done(UNINSTALL_OK))
+                stubs = {
+                    "_phase_ssh_case": mock.Mock(return_value=(dead, False)),
+                    "_pull_guest_json": pull,
+                    "_ssh": uninstall,
+                    "_boot_source": mock.Mock(side_effect=AssertionError("no boot read")),
+                }
+                with mock.patch.multiple(od, **stubs), contextlib.redirect_stderr(io.StringIO()):
+                    kept = od._run_one_phase("vantio-lab-oct08", "vantio-gcp-lab-1", SEAL, mode)
+                self.assertEqual(pull.call_count, 0, mode)
+                self.assertEqual(kept["host_result"], "NOT_RUN", mode)
+                self.assertEqual(kept["not_run_reason"], "transport", mode)
+                self.assertIs(kept["pass"], False, mode)
+                self.assertTrue(kept["uninstall_verified"], mode)
+                self.assertEqual(uninstall.call_count, 1, mode)
+                self.assertIn("VANTIO_REQUIRE_POST_KILL=no", uninstall.call_args[0][2])
+        # The same transport text after the guest printed PY_RC does pull.
+        pull = mock.Mock(side_effect=SystemExit("rows_missing"))
+        stubs = {
+            "_phase_ssh_case": mock.Mock(return_value=(_done("PY_RC=1\nConnection reset by peer", 255), False)),
+            "_pull_guest_json": pull,
+            "_ssh": mock.Mock(return_value=_done(UNINSTALL_OK)),
+        }
+        with mock.patch.multiple(od, **stubs), contextlib.redirect_stderr(io.StringIO()):
+            kept = od._run_one_phase("vantio-lab-oct08", "vantio-gcp-lab-1", SEAL, "2e-performance")
+        self.assertEqual(pull.call_count, 1)
+        self.assertEqual(kept["verdict_reason"], "rows_missing")
+
     def test_post_kill_row_is_asked_for_only_with_a_probe_after_the_swap(self) -> None:
         bodies = self._bodies()
         bodies["2f-tamper"]["enrolled_after"]["pid"] = 0
@@ -964,13 +999,31 @@ class RunBatteriesTest(unittest.TestCase):
         uninstall_rc: int = 0,
         ready: bool = True,
         interim: list | None = None,
+        kill_body: dict | None = None,
+        calls: list | None = None,
+        marks: object = None,
     ) -> tuple[object, dict]:
+        if marks is None:
+            marks = subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")
+        if kill_body is None:
+            kill_body = {"enrolled_after": {"pid": 9}}
         repeat = {"b1_pass": True, "deny_hold": True, "deny_pid": 41, "desc_deny_pid": 42, "lineage_anchor": 7}
         done = subprocess.CompletedProcess([], uninstall_rc, stdout=uninstall, stderr="")
         setup = subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         def ssh(_p, _n, command, timeout_s=None):
+            if calls is not None:
+                calls.append(command)
+            if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
+                if calls is not None:
+                    calls.append(f"marks timeout_s={timeout_s}")
+                return marks(command) if callable(marks) else marks
             return done if command.endswith(" uninstall") else setup
+
+        def loader_case(_p, _n, _s, mode):
+            if calls is not None:
+                calls.append(f"loader_case {mode}")
+            return {"body": kill_body, "rc": 0, "word": "held"}
 
         with tempfile.TemporaryDirectory() as tmp:
             evidence = Path(tmp) / "evidence"
@@ -998,7 +1051,8 @@ class RunBatteriesTest(unittest.TestCase):
                 "_wait_live_boot": mock.Mock(return_value="boot-2"),
                 "_run_one_battery": mock.Mock(return_value=repeat),
                 "full_set_passes": mock.Mock(return_value=full),
-                "_loader_case": mock.Mock(return_value={"body": {}, "rc": 0, "word": "held"}),
+                # 2D asks for a post-kill row only when the kill body has the probe pid.
+                "_loader_case": mock.Mock(side_effect=loader_case),
                 "run_phase_batteries": runner,
                 "drop_guest_copies": mock.DEFAULT,
                 "remove_os_login_key": mock.DEFAULT,
@@ -1014,6 +1068,158 @@ class RunBatteriesTest(unittest.TestCase):
 
     def _passing(self) -> list:
         return [row("2e-performance", body_2e()), row("2f-tamper", body_2f()), row("2g-distro", body_2g())]
+
+    def test_2d_without_a_probe_pid_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
+        # PR 368 council N1: with pid 0 any older post-kill row would satisfy the check.
+        calls: list = []
+        code, rows = self._write(full=True, phase_rows=self._passing(), kill_body={}, calls=calls)
+        uninstall = [command for command in calls if command.endswith(" uninstall")]
+        self.assertEqual(len(uninstall), 1)
+        self.assertIn("VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=0", uninstall[0])
+        self.assertEqual(code, "uninstall")
+
+    def test_2d_with_a_probe_pid_asks_for_that_pid(self) -> None:
+        calls: list = []
+        code, _rows = self._write(full=True, phase_rows=self._passing(), calls=calls)
+        uninstall = [command for command in calls if command.endswith(" uninstall")]
+        self.assertIn("VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID=9", uninstall[0])
+        self.assertEqual(code, 0)
+
+    def test_2d_marks_the_files_before_the_kill_and_passes_the_marks(self) -> None:
+        # PR 368 council D1: the 2C cycle writes the probe's row before the final
+        # uninstall, so the sizes are taken before the 2D case kills the loader.
+        calls: list = []
+        code, _rows = self._write(full=True, phase_rows=self._passing(), calls=calls)
+        mark = next(i for i, c in enumerate(calls) if c.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"))
+        self.assertIn("/var/log/vantio/uninstall.ndjson", calls[mark])
+        self.assertLess(mark, calls.index("loader_case 2d-crash-recovery"))
+        self.assertLess(calls.index("loader_case 2d-crash-recovery"), calls.index("loader_case 2c-upgrade-rollback"))
+        uninstall = [command for command in calls if command.endswith(" uninstall")]
+        self.assertEqual(len(uninstall), 1)
+        self.assertIn(
+            "VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE=120 VANTIO_LEDGER_BEFORE=45 ",
+            uninstall[0],
+        )
+        self.assertEqual(code, 0)
+
+    def _run_marks(
+        self, command: str, stat_rc: int, exists: set, sudo_rc: int = 0
+    ) -> subprocess.CompletedProcess:
+        """Run the real marks command with a fake sudo: test -e by set, stat by rc.
+
+        A non-zero sudo_rc makes every sudo call fail with that code (sudo broken).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            sudo = Path(tmp) / "sudo"
+            sudo.write_text(
+                "#!/bin/bash\n"
+                '[ "$SUDO_RC" = 0 ] || { echo "sudo: failed" >&2; exit "$SUDO_RC"; }\n'
+                'if [ "$1" = test ]; then\n'
+                '  neg=0; [ "$2" = "!" ] && { neg=1; shift; }\n'
+                '  [ "$2" = -e ] || exit 98\n'
+                '  case " $EXISTS " in *" $3 "*) hit=1 ;; *) hit=0 ;; esac\n'
+                '  [ "$hit" != "$neg" ] && exit 0; exit 1\n'
+                "fi\n"
+                'if [ "$1" = stat ]; then\n'
+                '  case " $EXISTS " in *" $4 "*) ;; *) echo "stat: no such file" >&2; exit 1 ;; esac\n'
+                '  [ "$STAT_RC" = 0 ] && { echo 123; exit 0; }; echo "stat: failed" >&2; exit "$STAT_RC"\n'
+                "fi\n"
+                "exit 99\n",
+                encoding="utf-8",
+            )
+            sudo.chmod(0o755)
+            env = {
+                **os.environ,
+                "PATH": f"{tmp}:{os.environ['PATH']}",
+                "STAT_RC": str(stat_rc),
+                "SUDO_RC": str(sudo_rc),
+                "EXISTS": " ".join(sorted(exists)),
+            }
+            return subprocess.run(["bash", "-c", command], capture_output=True, text=True, env=env, check=False)
+
+    def test_the_marks_command_reads_0_only_for_a_missing_file(self) -> None:
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        seen: list = []
+
+        def capture(command: str) -> subprocess.CompletedProcess:
+            seen.append(command)
+            return subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")
+
+        calls: list = []
+        self._write(full=True, phase_rows=self._passing(), marks=capture, calls=calls)
+        self.assertIn("marks timeout_s=60", calls)
+        command = seen[0]
+        self.assertEqual(self._run_marks(command, 0, {events, ledger}).stdout.split(), ["123", "123"])
+        self.assertEqual(self._run_marks(command, 0, {events}).stdout.split(), ["123", "0"])
+        self.assertEqual(self._run_marks(command, 0, set()).stdout.split(), ["0", "0"])
+        # stat fails on a file that exists: no 0 is printed for it.
+        failed = self._run_marks(command, 1, {events})
+        self.assertEqual(failed.stdout.split(), ["0"])
+        # sudo itself fails on every call: nothing is printed, not "0 0".
+        for exists in ({events, ledger}, {events}, set()):
+            broken = self._run_marks(command, 0, exists, sudo_rc=1)
+            self.assertEqual(broken.stdout.split(), [], sorted(exists))
+            self.assertNotEqual(broken.returncode, 0, sorted(exists))
+
+    def test_a_sudo_failure_fails_the_marks_closed(self) -> None:
+        # PR 368 council delta-3 N1: a failed sudo must not read as "missing" (offset 0).
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        for exists in ({events, ledger}, {events}, {ledger}, set()):
+            calls: list = []
+            code, _rows = self._write(
+                full=True,
+                phase_rows=self._passing(),
+                calls=calls,
+                marks=lambda command, exists=exists: self._run_marks(command, 0, exists, sudo_rc=1),
+            )
+            uninstall = [command for command in calls if command.endswith(" uninstall")]
+            self.assertIn(
+                "VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE= VANTIO_LEDGER_BEFORE= ",
+                uninstall[0],
+                sorted(exists),
+            )
+            self.assertEqual(code, "uninstall", sorted(exists))
+
+    def test_a_stat_failure_on_an_existing_file_fails_the_marks_closed(self) -> None:
+        # PR 368 council delta-2 note 1: a failed stat must not read the whole file.
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        for exists in ({events, ledger}, {events}, {ledger}):
+            calls: list = []
+            code, _rows = self._write(
+                full=True,
+                phase_rows=self._passing(),
+                calls=calls,
+                marks=lambda command, exists=exists: self._run_marks(command, 1, exists),
+            )
+            uninstall = [command for command in calls if command.endswith(" uninstall")]
+            self.assertIn(
+                "VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE= VANTIO_LEDGER_BEFORE= ",
+                uninstall[0],
+                sorted(exists),
+            )
+            self.assertEqual(code, "uninstall", sorted(exists))
+
+    def test_2d_without_good_marks_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
+        bad = (
+            subprocess.CompletedProcess([], 1, stdout="120\n45\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="120\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="120\nx45\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="1\n2\n3\n", stderr=""),
+        )
+        for marks in bad:
+            calls: list = []
+            code, _rows = self._write(full=True, phase_rows=self._passing(), calls=calls, marks=marks)
+            uninstall = [command for command in calls if command.endswith(" uninstall")]
+            self.assertIn(
+                "VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE= VANTIO_LEDGER_BEFORE= ",
+                uninstall[0],
+                marks.stdout,
+            )
+            self.assertEqual(code, "uninstall", marks.stdout)
 
     def test_all_pass(self) -> None:
         code, rows = self._write(full=True, phase_rows=self._passing())
