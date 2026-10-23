@@ -419,7 +419,7 @@ class RestartRowsReachTheRowsTest(unittest.TestCase):
             }
             with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
                 with contextlib.suppress(SystemExit):
-                    od.run_batteries({"RUNNER_TEMP": tmp})
+                    od.run_batteries({"RUNNER_TEMP": tmp, "STOP_AFTER_MINUTES": "105"})
             rows = json.loads((evidence / "gcp-lab-rows.json").read_text(encoding="utf-8"))
             guest = json.loads((evidence / "guest-evidence.json").read_text(encoding="utf-8"))
             return rows, guest

@@ -2534,7 +2534,8 @@ class ImageCycleWordTest(unittest.TestCase):
         def loader_case(_project: str, _name: str, _seal: str, mode: str) -> dict:
             if mode == "2c-upgrade-rollback":
                 return {"body": restart_body, "rc": 0, "word": "held"}
-            return {"body": {}, "rc": 0, "word": "held"}
+            # 2D needs the killed probe's pid to ask for its post-kill row.
+            return {"body": {"enrolled_after": {"pid": 9}}, "rc": 0, "word": "held"}
 
         ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9\n", stderr="")
         with tempfile.TemporaryDirectory() as tmp:
@@ -2563,7 +2564,7 @@ class ImageCycleWordTest(unittest.TestCase):
                 "remove_os_login_key": mock.DEFAULT,
             }
             with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
-                rc = od.run_batteries({"RUNNER_TEMP": tmp})
+                rc = od.run_batteries({"RUNNER_TEMP": tmp, "STOP_AFTER_MINUTES": "105"})
             self.assertEqual(rc, 0)
             return json.loads((evidence / "gcp-lab-rows.json").read_text(encoding="utf-8"))
 

@@ -998,12 +998,18 @@ class RunBatteriesTest(unittest.TestCase):
         uninstall_rc: int = 0,
         ready: bool = True,
         interim: list | None = None,
+        kill_body: dict | None = None,
+        calls: list | None = None,
     ) -> tuple[object, dict]:
+        if kill_body is None:
+            kill_body = {"enrolled_after": {"pid": 9}}
         repeat = {"b1_pass": True, "deny_hold": True, "deny_pid": 41, "desc_deny_pid": 42, "lineage_anchor": 7}
         done = subprocess.CompletedProcess([], uninstall_rc, stdout=uninstall, stderr="")
         setup = subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         def ssh(_p, _n, command, timeout_s=None):
+            if calls is not None:
+                calls.append(command)
             return done if command.endswith(" uninstall") else setup
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1032,7 +1038,8 @@ class RunBatteriesTest(unittest.TestCase):
                 "_wait_live_boot": mock.Mock(return_value="boot-2"),
                 "_run_one_battery": mock.Mock(return_value=repeat),
                 "full_set_passes": mock.Mock(return_value=full),
-                "_loader_case": mock.Mock(return_value={"body": {}, "rc": 0, "word": "held"}),
+                # 2D asks for a post-kill row only when the kill body has the probe pid.
+                "_loader_case": mock.Mock(return_value={"body": kill_body, "rc": 0, "word": "held"}),
                 "run_phase_batteries": runner,
                 "drop_guest_copies": mock.DEFAULT,
                 "remove_os_login_key": mock.DEFAULT,
@@ -1048,6 +1055,22 @@ class RunBatteriesTest(unittest.TestCase):
 
     def _passing(self) -> list:
         return [row("2e-performance", body_2e()), row("2f-tamper", body_2f()), row("2g-distro", body_2g())]
+
+    def test_2d_without_a_probe_pid_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
+        # PR 368 council N1: with pid 0 any older post-kill row would satisfy the check.
+        calls: list = []
+        code, rows = self._write(full=True, phase_rows=self._passing(), kill_body={}, calls=calls)
+        uninstall = [command for command in calls if command.endswith(" uninstall")]
+        self.assertEqual(len(uninstall), 1)
+        self.assertIn("VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=0", uninstall[0])
+        self.assertEqual(code, "uninstall")
+
+    def test_2d_with_a_probe_pid_asks_for_that_pid(self) -> None:
+        calls: list = []
+        code, _rows = self._write(full=True, phase_rows=self._passing(), calls=calls)
+        uninstall = [command for command in calls if command.endswith(" uninstall")]
+        self.assertIn("VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID=9", uninstall[0])
+        self.assertEqual(code, 0)
 
     def test_all_pass(self) -> None:
         code, rows = self._write(full=True, phase_rows=self._passing())

@@ -103,6 +103,16 @@ class PollCensusTest(unittest.TestCase):
         read.assert_called_once_with()
         self.assertIs(got["verified_removed"], True)
 
+    def test_the_bound_is_20_seconds_one_second_apart(self) -> None:
+        self.assertEqual((census.CENSUS_POLL_TIMEOUT_S, census.CENSUS_POLL_INTERVAL_S), (20.0, 1.0))
+
+    def test_the_default_timeout_stops_an_always_dirty_read_at_20_seconds(self) -> None:
+        clock = _Clock()
+        got = census.poll_census(lambda: _census(False), clock=clock.clock, sleep=clock.sleep)
+        self.assertIs(got["verified_removed"], False)
+        self.assertEqual(got["census_polls"], 21)
+        self.assertEqual(got["census_waited_s"], 20.0)
+
     def test_main_records_the_polled_census_and_keeps_the_guest_read(self) -> None:
         reads = iter([_census(False), _census(True)])
         with tempfile.TemporaryDirectory() as tmp:
@@ -203,7 +213,9 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(calls, ["uninstall img no 0"])
 
-    def _post_kill(self, ledger: bytes, before: int, want: int) -> subprocess.CompletedProcess[str]:
+    def _post_kill(
+        self, ledger: bytes, before: int, want: int, events_data: bytes = b"", events_before: int = 0
+    ) -> subprocess.CompletedProcess[str]:
         text = GCP_SHELL.read_text(encoding="utf-8")
         body = text[text.index("authorized_uninstall() {") :]
         start = body.index("<<'PY'\n", body.index('if [ "$require_row" = "yes" ]; then')) + len("<<'PY'\n")
@@ -214,8 +226,19 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
             led = Path(tmp) / "uninstall.ndjson"
             led.write_bytes(ledger)
             events = Path(tmp) / "events.ndjson"
+            events.write_bytes(events_data)
             return subprocess.run(
-                [sys.executable, "-c", program, str(want), str(before), str(out), str(led), str(events)],
+                [
+                    sys.executable,
+                    "-c",
+                    program,
+                    str(want),
+                    str(before),
+                    str(events_before),
+                    str(out),
+                    str(led),
+                    str(events),
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -234,6 +257,42 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
         shrunk = self._post_kill(old, len(old) + 50, PID)
         self.assertEqual(shrunk.returncode, 0, shrunk.stderr)
 
+    def test_post_kill_check_reads_only_this_uninstalls_event_rows(self) -> None:
+        row = {"source": "deny_attr_post_kill", "ActionTaken": "DENIED", "Pid": PID, "lineage_anchor": ANCHOR}
+        old = (json.dumps(row) + "\n").encode()
+        stale = self._post_kill(b"", 0, PID, old, len(old))
+        self.assertNotEqual(stale.returncode, 0)
+        self.assertIn("post_kill_row_missing", stale.stderr)
+        fresh = self._post_kill(b"", 0, PID, old + old, len(old))
+        self.assertEqual(fresh.returncode, 0, fresh.stderr)
+        self.assertIn(f"deny_attr_post_kill pid {PID} anchor {ANCHOR}", fresh.stdout)
+        shrunk = self._post_kill(b"", 0, PID, old, len(old) + 50)
+        self.assertEqual(shrunk.returncode, 0, shrunk.stderr)
+
+    def test_post_kill_check_refuses_a_missing_probe_pid(self) -> None:
+        row = {"source": "deny_attr_post_kill", "ActionTaken": "DENIED", "Pid": PID, "lineage_anchor": ANCHOR}
+        line = (json.dumps(row) + "\n").encode()
+        for want in (0, -1):
+            done = self._post_kill(line, 0, want, line, 0)
+            self.assertNotEqual(done.returncode, 0, want)
+            self.assertIn("post_kill_probe_pid_missing", done.stderr)
+            self.assertNotIn("deny_attr_post_kill pid", done.stdout)
+
+    def test_the_events_size_is_taken_before_the_loader_uninstall(self) -> None:
+        text = GCP_SHELL.read_text(encoding="utf-8")
+        body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
+        self.assertLess(
+            body.index("events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson"),
+            body.index("/var/lib/vantio/vantio-loader --uninstall"),
+        )
+
+    def test_a_failed_loader_create_or_copy_stops_the_uninstall(self) -> None:
+        text = GCP_SHELL.read_text(encoding="utf-8")
+        body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
+        self.assertIn('cid=$(sudo docker create "$image") || { echo "UNINSTALL_NOT_VERIFIED loader_create"', body)
+        self.assertIn('/var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy"', body)
+        self.assertLess(body.index("loader_copy"), body.index("/var/lib/vantio/vantio-loader --uninstall"))
+
     def test_the_ledger_size_is_taken_before_the_loader_uninstall(self) -> None:
         text = GCP_SHELL.read_text(encoding="utf-8")
         body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
@@ -241,7 +300,11 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
             body.index("ledger_before=$(sudo stat -c %s /var/log/vantio/uninstall.ndjson"),
             body.index("/var/lib/vantio/vantio-loader --uninstall"),
         )
-        self.assertIn('python3 - "$probe_pid" "$ledger_before" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson', body)
+        self.assertIn(
+            'python3 - "$probe_pid" "$ledger_before" "$events_before" /var/lib/vantio-lab/vantio-uninstall.out '
+            "/var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson",
+            body,
+        )
 
 
 class DenyRowsSkipPostKillTest(unittest.TestCase):
@@ -327,10 +390,42 @@ class StopAfterMinutesGuardTest(unittest.TestCase):
         return done.returncode
 
     def test_the_guard(self) -> None:
-        for minutes, code in (("105", 0), ("90", 0), ("100", 0), ("089", 1), ("89", 1), ("60", 1), ("", 1), ("9x", 1), ("-5", 1), ("08", 1)):
+        for minutes, code in (("105", 0), ("90", 0), ("100", 0), ("089", 1), ("89", 1), ("60", 1), ("", 1), ("9x", 1), ("-5", 1), ("08", 1), ("0100", 0), ("0090", 0)):
             self.assertEqual(self._run("true", minutes), code, minutes)
         for minutes in ("60", "", "abc"):
             self.assertEqual(self._run("false", minutes), 0, minutes)
+
+
+class RunnerSideTest(unittest.TestCase):
+    """Council notes on PR 368: runner-side checks that need no GCP."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        sys.path.insert(0, str(ROOT / "scripts/gcp"))
+        import offline_deliver as od  # noqa: E402
+
+        cls.od = od
+
+    def test_guest_json_missing_when_guest_rows_wrote_nothing(self) -> None:
+        reasons = self.od._enterprise_fail_reasons
+        self.assertEqual(reasons(None), ["guest_json_missing"])
+        self.assertEqual(reasons({}), ["guest_json_missing"])
+        self.assertEqual(reasons({"uninstall_tail": "x", "removal": _census(True)}), ["guest_json_missing"])
+        self.assertNotIn("guest_json_missing", reasons({"grant_loader": {"rc": 1}}))
+
+    def test_run_batteries_refuses_less_than_90_minutes(self) -> None:
+        for minutes in ("", "60", "89", "abc", "0"):
+            with mock.patch.object(self.od, "_enabled", side_effect=AssertionError("floor not first")):
+                with self.assertRaises(SystemExit) as caught:
+                    self.od.run_batteries({"STOP_AFTER_MINUTES": minutes})
+            self.assertEqual(str(caught.exception), "stop_after_minutes", minutes)
+
+    def test_2d_asks_for_a_post_kill_row_only_with_a_probe_pid(self) -> None:
+        source = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        self.assertIn('require_post_kill = "yes" if probe_pid > 0 else "no"', source)
+        self.assertIn('f"VANTIO_REQUIRE_POST_KILL={require_post_kill} VANTIO_PROBE_PID={probe_pid} "', source)
+        self.assertNotIn('"VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID={probe_pid} "', source)
+        self.assertIn('post_kill_row = probe_pid > 0 and "deny_attr_post_kill pid " in uninstall_text', source)
 
 
 if __name__ == "__main__":
