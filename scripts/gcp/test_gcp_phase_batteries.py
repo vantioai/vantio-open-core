@@ -12,6 +12,7 @@ import contextlib
 import copy
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -1000,7 +1001,7 @@ class RunBatteriesTest(unittest.TestCase):
         interim: list | None = None,
         kill_body: dict | None = None,
         calls: list | None = None,
-        marks: subprocess.CompletedProcess | None = None,
+        marks: object = None,
     ) -> tuple[object, dict]:
         if marks is None:
             marks = subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")
@@ -1014,7 +1015,9 @@ class RunBatteriesTest(unittest.TestCase):
             if calls is not None:
                 calls.append(command)
             if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
-                return marks
+                if calls is not None:
+                    calls.append(f"marks timeout_s={timeout_s}")
+                return marks(command) if callable(marks) else marks
             return done if command.endswith(" uninstall") else setup
 
         def loader_case(_p, _n, _s, mode):
@@ -1098,6 +1101,61 @@ class RunBatteriesTest(unittest.TestCase):
             uninstall[0],
         )
         self.assertEqual(code, 0)
+
+    def _run_marks(self, command: str, stat_rc: int, exists: set) -> subprocess.CompletedProcess:
+        """Run the real marks command with a fake sudo: test -e by set, stat by rc."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sudo = Path(tmp) / "sudo"
+            sudo.write_text(
+                "#!/bin/bash\n"
+                'if [ "$1" = test ]; then case " $EXISTS " in *" $3 "*) exit 0 ;; *) exit 1 ;; esac; fi\n'
+                'if [ "$1" = stat ]; then [ "$STAT_RC" = 0 ] && { echo 123; exit 0; }; echo "stat: failed" >&2; exit "$STAT_RC"; fi\n'
+                "exit 99\n",
+                encoding="utf-8",
+            )
+            sudo.chmod(0o755)
+            env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}", "STAT_RC": str(stat_rc), "EXISTS": " ".join(sorted(exists))}
+            return subprocess.run(["bash", "-c", command], capture_output=True, text=True, env=env, check=False)
+
+    def test_the_marks_command_reads_0_only_for_a_missing_file(self) -> None:
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        seen: list = []
+
+        def capture(command: str) -> subprocess.CompletedProcess:
+            seen.append(command)
+            return subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")
+
+        calls: list = []
+        self._write(full=True, phase_rows=self._passing(), marks=capture, calls=calls)
+        self.assertIn("marks timeout_s=60", calls)
+        command = seen[0]
+        self.assertEqual(self._run_marks(command, 0, {events, ledger}).stdout.split(), ["123", "123"])
+        self.assertEqual(self._run_marks(command, 0, {events}).stdout.split(), ["123", "0"])
+        self.assertEqual(self._run_marks(command, 0, set()).stdout.split(), ["0", "0"])
+        # stat fails on a file that exists: no 0 is printed for it.
+        failed = self._run_marks(command, 1, {events})
+        self.assertEqual(failed.stdout.split(), ["0"])
+
+    def test_a_stat_failure_on_an_existing_file_fails_the_marks_closed(self) -> None:
+        # PR 368 council delta-2 note 1: a failed stat must not read the whole file.
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        for exists in ({events, ledger}, {events}, {ledger}):
+            calls: list = []
+            code, _rows = self._write(
+                full=True,
+                phase_rows=self._passing(),
+                calls=calls,
+                marks=lambda command, exists=exists: self._run_marks(command, 1, exists),
+            )
+            uninstall = [command for command in calls if command.endswith(" uninstall")]
+            self.assertIn(
+                "VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE= VANTIO_LEDGER_BEFORE= ",
+                uninstall[0],
+                sorted(exists),
+            )
+            self.assertEqual(code, "uninstall", sorted(exists))
 
     def test_2d_without_good_marks_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
         bad = (
