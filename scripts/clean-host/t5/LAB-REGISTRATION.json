@@ -12,7 +12,7 @@
   "integration_step": "Battery id t5-egress is on the allow-list. The GCP workflow input t5_egress defaults to false and does not run the enterprise batteries. The guest runs the loader only on /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill.",
   "lab_slot_owner": "bc-8b310b16",
   "lab_project": "vantio-lab-oct08",
-  "seal_note": "Lane K lab seal is 8b1106ef (6d3ce580 until 2026-10-22). This registration does not change the public pin e0b19d55.",
+  "seal_note": "Lane K lab seal is 46982f26 (8b1106ef until 2026-10-23, 6d3ce580 until 2026-10-22). This registration does not change the public pin e0b19d55.",
   "do_not_edit": [
     ".github/workflows/w3-lab-auto-provision.yml",
     ".github/workflows/w3-lab-auto-collect.yml",
