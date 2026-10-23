@@ -307,6 +307,8 @@ ENUMS = {
     "bucket": frozenset({BUCKET}),
     "claim_cap": frozenset({CLAIM_CAP}),
     "cloud": frozenset({"gcp"}),
+    # offline_deliver_4.PHASE_DISTRO_SCOPE. Part 4 loads after this table.
+    "distro_scope": frozenset({"ubuntu-2404-only"}),
     "image": frozenset({f"{IMAGE_PROJECT}/{IMAGE_FAMILY}", IMAGE_NAME}),
     "machine_type": frozenset({lab.MACHINE_TYPE, rtbrain.BRAIN_MACHINE}),
     "mode": frozenset({"plumb", "enterprise", "descendant-b1", "self-service", "t5-egress"}),

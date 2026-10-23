@@ -229,10 +229,49 @@ class Phase2ETest(unittest.TestCase):
             self.assertEqual(row("2e-performance", body)["verdict_reason"], reason, change)
 
     def test_uninstall_has_to_verify(self) -> None:
-        kept = row("2e-performance", body_2e(), uninstall="UNINSTALL_NOT_VERIFIED rc=1\n", rc=1)
-        self.assertEqual((kept["pass"], kept["verdict_reason"]), (False, "uninstall_not_verified"))
-        kept = row("2e-performance", body_2e(), uninstall="UNINSTALL_VERIFIED\n", rc=1)
-        self.assertFalse(kept["pass"])
+        for text in (
+            "UNINSTALL_NOT_VERIFIED rc=1\n",
+            "",
+            "UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n/sys/fs/bpf/vantio_deny_attr\n",
+            "UNINSTALL_VERIFIED\nUNINSTALL_NOT_VERIFIED rc=1\n",
+            "UNINSTALL_RESIDUAL bpftool missing\n",
+            "loader said UNINSTALL_VERIFIED\n",
+            "UNINSTALL_VERIFIED \n",
+        ):
+            kept = row("2e-performance", body_2e(), uninstall=text, rc=1)
+            self.assertEqual((kept["pass"], kept["verdict_reason"]), (False, "uninstall_not_verified"), text)
+            self.assertFalse(kept["uninstall_verified"], text)
+
+    def test_clean_host_is_the_lines_not_the_exit_code(self) -> None:
+        # enterprise-rows.sh exits 1 when VANTIO_REQUIRE_POST_KILL=yes finds no
+        # post-kill row, after it printed UNINSTALL_VERIFIED. The host is clean.
+        kept = row("2e-performance", body_2e(), uninstall="UNINSTALL_VERIFIED\npost_kill_row_missing\n", rc=1)
+        self.assertEqual((kept["pass"], kept["verdict_reason"]), (True, "battery_pass"))
+        self.assertTrue(kept["uninstall_verified"])
+        self.assertEqual(kept["uninstall_rc"], 1)
+
+    def test_host_clean_is_an_exact_line(self) -> None:
+        self.assertTrue(od.phase_host_clean("noise\nUNINSTALL_VERIFIED\nmore\n"))
+        self.assertFalse(od.phase_host_clean("noise UNINSTALL_VERIFIED\n"))
+        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED_LATER\n"))
+        self.assertFalse(od.phase_host_clean("XUNINSTALL_VERIFIED\n"))
+        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n"))
+        self.assertFalse(od.phase_host_clean(None))
+        self.assertEqual(od.PHASE_UNINSTALL_DIRTY, ("UNINSTALL_RESIDUAL", "UNINSTALL_NOT_VERIFIED"))
+        script = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
+        self.assertIn("grep -qx 'UNINSTALL_VERIFIED'", script)
+        for marker in od.PHASE_UNINSTALL_DIRTY:
+            self.assertIn(f'echo "{marker} ', script)
+
+    def test_missing_revoke_fail_open_fails(self) -> None:
+        body = body_2e()
+        body.pop("revoke_fail_open")
+        body["host_result"] = "PASS"
+        kept = row("2e-performance", body)
+        self.assertNotIn("revoke_fail_open", kept)
+        self.assertEqual((kept["pass"], kept["verdict_reason"]), (False, "guest_flag_mismatch"))
+        body["revoke_fail_open"] = None
+        self.assertEqual(row("2e-performance", body)["verdict_reason"], "guest_flag_mismatch")
 
 
 class Phase2FTest(unittest.TestCase):
@@ -419,7 +458,22 @@ class NoWeakerThanAwsTest(unittest.TestCase):
             aws = aws_steps.phase_battery_verdict(mode, body)
             with contextlib.redirect_stdout(io.StringIO()), mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""}):
                 aws_line = aws_steps.report_battery_verdict(aws)
-            self.assertEqual(od.phase_verdict_line(kept), aws_line, mode)
+            # GCP 2G names its one-image scope after the AWS fields.
+            extra = " distro_scope=ubuntu-2404-only" if mode == "2g-distro" else ""
+            self.assertEqual(od.phase_verdict_line(kept), aws_line + extra, mode)
+
+    def test_2g_line_and_summary_name_the_distro_scope(self) -> None:
+        self.assertEqual(od.PHASE_DISTRO_SCOPE, "ubuntu-2404-only")
+        self.assertEqual(od.ENUMS["distro_scope"], frozenset({od.PHASE_DISTRO_SCOPE}))
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.md"
+            with contextlib.redirect_stdout(io.StringIO()), mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": str(summary)}):
+                line = od.report_phase_verdict(row("2g-distro", body_2g()))
+                od.report_phase_verdict(row("2e-performance", body_2e()))
+            text = summary.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(line.endswith(" distro_scope=ubuntu-2404-only"), line)
+        self.assertEqual(text[0], line)
+        self.assertNotIn("distro_scope", text[1])
 
 
 class SanitizerTest(unittest.TestCase):
@@ -451,6 +505,19 @@ class SanitizerTest(unittest.TestCase):
         rows[1] = dict(rows[1], enrolled_file_errno=0, **{"pass": True})
         self.assertFalse(od.allow_record({"phases": rows, "phases_pass": True})["phases_pass"])
 
+    def test_allow_record_keeps_three_phases_at_most(self) -> None:
+        rows = [row("2e-performance", body_2e()), row("2f-tamper", body_2f()), row("2g-distro", body_2g())]
+        kept = od.allow_record({"phases": rows + [rows[2]]})
+        self.assertEqual(len(kept["phases"]), 3)
+        self.assertTrue(kept["phases_pass"])
+
+    def test_unknown_host_result_is_not_kept(self) -> None:
+        body = body_2e()
+        body["host_result"] = "MAYBE"
+        kept = row("2e-performance", body)
+        self.assertEqual(kept["host_result"], "")
+        self.assertIn(" host_result=None ", od.phase_verdict_line(kept))
+
     def test_phases_pass_needs_all_three_in_order(self) -> None:
         rows = [row("2e-performance", body_2e()), row("2f-tamper", body_2f()), row("2g-distro", body_2g())]
         self.assertTrue(od.phases_pass(rows))
@@ -469,25 +536,48 @@ class SanitizerTest(unittest.TestCase):
 class BudgetTest(unittest.TestCase):
     T = 1_800_000_000
 
+    def test_reserve_covers_the_worst_phase(self) -> None:
+        # Two CASE_SSH_TIMEOUT calls around the sshd wait (INFRA_RETRY), the
+        # last probe, then the pull, describe, and uninstall timeouts.
+        self.assertGreaterEqual(
+            od.PHASE_RESERVE_S,
+            2 * od.CASE_SSH_TIMEOUT + od.SSHD_WAIT_SECONDS + od.PHASE_UNINSTALL_TIMEOUT_S,
+        )
+        self.assertEqual(
+            od.PHASE_RESERVE_S,
+            2 * od.CASE_SSH_TIMEOUT
+            + od.SSHD_WAIT_SECONDS
+            + od.PROBE_SSH_TIMEOUT
+            + od.PHASE_PULL_TIMEOUT_S
+            + od.PHASE_DESCRIBE_TIMEOUT_S
+            + od.PHASE_UNINSTALL_TIMEOUT_S,
+        )
+        self.assertEqual(od.PHASE_RESERVE_S, 3200)
+
     def test_run_six_timing_fits_one_hundred_minutes(self) -> None:
         deadline = od.phase_deadline(self.T, self.T + 19, "100")
         self.assertEqual(deadline, self.T + 100 * 60 - od.PHASE_END_MARGIN_S)
-        # Run 6 finished 2C 26 minutes after create. At ten minutes a phase
+        self.assertLess(deadline, self.T + 110 * 60)
+        # The last start with a full reserve: 41 min 40 s after create.
+        self.assertTrue(od.phase_has_time(deadline, self.T + 2500))
+        self.assertFalse(od.phase_has_time(deadline, self.T + 2501))
+        # Run 6 finished 2C 26 minutes after create. At five minutes a phase
         # (2C took five) all three start with a full reserve left.
         start = self.T + 26 * 60
         for index in range(3):
-            self.assertTrue(od.phase_has_time(deadline, start + index * 600), index)
-        # Worst case every phase hits the ssh timeout: two start, the third is
-        # skipped, and nothing runs past the guest's power-off.
+            self.assertTrue(od.phase_has_time(deadline, start + index * 300), index)
+        # At ten minutes a phase 2G is skipped.
+        self.assertFalse(od.phase_has_time(deadline, start + 2 * 600))
+        # Worst case every phase hits every timeout: one starts, and nothing
+        # runs past the guest's power-off.
         started = [index for index in range(3) if od.phase_has_time(deadline, start + index * od.PHASE_RESERVE_S)]
-        self.assertEqual(started, [0, 1])
-        self.assertLessEqual(start + 2 * od.PHASE_RESERVE_S, deadline)
-        self.assertLess(deadline, self.T + 110 * 60)
+        self.assertEqual(started, [0])
+        self.assertLessEqual(start + od.PHASE_RESERVE_S, deadline)
 
     def test_short_budget_stops_phases(self) -> None:
-        deadline = od.phase_deadline(self.T, self.T, "60")
-        self.assertTrue(od.phase_has_time(deadline, self.T + 26 * 60))
-        self.assertFalse(od.phase_has_time(deadline, self.T + 40 * 60))
+        deadline = od.phase_deadline(self.T, self.T, "80")
+        self.assertTrue(od.phase_has_time(deadline, self.T + 20 * 60))
+        self.assertFalse(od.phase_has_time(deadline, self.T + 26 * 60))
 
     def test_job_limit_caps_the_guest_budget(self) -> None:
         self.assertEqual(od.phase_deadline(self.T, self.T, "120"), self.T + od.PHASE_JOB_LIMIT_AFTER_CREATE_S - od.PHASE_END_MARGIN_S)
@@ -509,10 +599,21 @@ def _done(stdout: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:
 class RunnerTest(unittest.TestCase):
     T = 1_800_000_000
 
-    def _run(self, bodies: dict, *, ready: bool = True, uninstall: dict | None = None, now=None, minutes: str = "100"):
+    def _run(
+        self,
+        bodies: dict,
+        *,
+        ready: bool = True,
+        uninstall: dict | None = None,
+        now=None,
+        minutes: str = "100",
+        lane_seal: str = SEAL,
+        timeouts: list | None = None,
+    ):
         calls: list[str] = []
         pulled: list[str] = []
         current: dict = {}
+        timeouts = timeouts if timeouts is not None else []
 
         def ssh_case(_p, _n, command):
             calls.append(command)
@@ -520,7 +621,8 @@ class RunnerTest(unittest.TestCase):
             current["mode"] = mode
             return _done(f"PY_RC={0 if mode != '2f-tamper' else 0}\n")
 
-        def pull(_p, _n):
+        def pull(_p, _n, timeout_s=None):
+            timeouts.append(("pull", timeout_s))
             mode = current["mode"]
             pulled.append(mode)
             body = bodies.get(mode)
@@ -529,11 +631,27 @@ class RunnerTest(unittest.TestCase):
             return copy.deepcopy(body)
 
         def ssh(_p, _n, command, timeout_s=None):
+            # Mirrors enterprise-rows.sh authorized_uninstall: exit 1 unless the
+            # exact UNINSTALL_VERIFIED line is there with no residual, and with
+            # VANTIO_REQUIRE_POST_KILL=yes exit 1 when no post-kill row was
+            # found, even after UNINSTALL_VERIFIED. With =no it prints no row.
             calls.append(command)
+            timeouts.append(("uninstall", timeout_s))
+            require = "VANTIO_REQUIRE_POST_KILL=yes" in command
             text = (uninstall or {}).get(current["mode"])
             if text is None:
                 text = UNINSTALL_ROW if current["mode"] == "2f-tamper" else UNINSTALL_OK
-            return _done(text, 0 if "UNINSTALL_VERIFIED" in text else 1)
+            lines = text.splitlines()
+            if not require:
+                lines = [line for line in lines if not line.startswith("deny_attr_post_kill ")]
+            clean = "UNINSTALL_VERIFIED" in lines and not any(
+                line.startswith(("UNINSTALL_RESIDUAL", "UNINSTALL_NOT_VERIFIED")) for line in lines
+            )
+            has_row = any(line.startswith("deny_attr_post_kill pid ") for line in lines)
+            if clean and require and not has_row:
+                lines.append("post_kill_row_missing")
+            rc = 0 if clean and (has_row or not require) else 1
+            return _done("\n".join(lines) + "\n", rc)
 
         stubs = {
             "_ssh_case": mock.Mock(side_effect=ssh_case),
@@ -541,7 +659,7 @@ class RunnerTest(unittest.TestCase):
             "_ssh": mock.Mock(side_effect=ssh),
             "_creation_epoch": mock.Mock(return_value=self.T),
             "_boot_source": mock.Mock(return_value=SOURCE),
-            "_lane_seal": mock.Mock(return_value=SEAL),
+            "_lane_seal": mock.Mock(return_value=lane_seal),
         }
         out = io.StringIO()
         with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
@@ -593,20 +711,133 @@ class RunnerTest(unittest.TestCase):
         rows, calls, _, _ = self._run(self._bodies(), now=self.T + 80 * 60)
         self.assertEqual(calls, [])
         self.assertEqual({item["verdict_reason"] for item in rows}, {"time_budget"})
-        # stop_after_minutes=60: each phase takes ten minutes, 2E runs, 2F and 2G do not.
+        # stop_after_minutes=100: each phase takes ten minutes, 2E and 2F run, 2G does not.
         clock = iter([self.T + 26 * 60, self.T + 36 * 60, self.T + 46 * 60])
-        rows, calls, _, _ = self._run(self._bodies(), minutes="60", now=lambda: next(clock))
-        self.assertEqual([item["verdict_reason"] for item in rows], ["battery_pass", "time_budget", "time_budget"])
-        self.assertEqual(len(calls), 2)
+        rows, calls, _, _ = self._run(self._bodies(), now=lambda: next(clock))
+        self.assertEqual([item["verdict_reason"] for item in rows], ["battery_pass", "battery_pass", "time_budget"])
+        self.assertEqual(len(calls), 4)
         self.assertFalse(od.phases_pass(rows))
+        # stop_after_minutes=60: no phase has a full reserve at 26 minutes.
+        rows, calls, _, _ = self._run(self._bodies(), minutes="60")
+        self.assertEqual({item["verdict_reason"] for item in rows}, {"time_budget"})
+        self.assertEqual(calls, [])
 
     def test_missing_rows_still_uninstall(self) -> None:
         bodies = self._bodies()
         bodies["2f-tamper"] = "rows_malformed"
         rows, calls, _, _ = self._run(bodies)
         self.assertEqual(rows[1]["verdict_reason"], "rows_malformed")
-        self.assertIn("VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID=0", calls[3])
+        # No body, no probe pid: the uninstall does not ask for a post-kill row,
+        # so the real script exits 0 on a clean host and 2G runs.
+        self.assertIn("VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=0", calls[3])
+        self.assertTrue(rows[1]["uninstall_verified"])
         self.assertTrue(rows[2]["pass"])
+
+    def test_missing_rows_on_a_dirty_host_stop_2g(self) -> None:
+        bodies = self._bodies()
+        bodies["2f-tamper"] = "rows_missing"
+        rows, calls, _, _ = self._run(bodies, uninstall={"2f-tamper": "UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n"})
+        self.assertEqual(rows[1]["verdict_reason"], "rows_missing")
+        self.assertFalse(rows[1]["uninstall_verified"])
+        self.assertEqual(rows[2]["verdict_reason"], "previous_uninstall")
+        self.assertEqual(len(calls), 4)
+
+    def test_2f_map_swap_timeout_still_runs_2g(self) -> None:
+        bodies = self._bodies()
+        refused = grade.ungraded_egress("2f-tamper", grade.MAP_SWAP_TIMEOUT)
+        refused["map_swap"] = swap(swapped=False, reason=grade.MAP_SWAP_TIMEOUT)
+        refused["kill_timing"] = grade.KILL_TIMING_NOT_KILLED
+        refused["enrolled_after"] = {"pid": PID}
+        bodies["2f-tamper"] = refused
+        rows, calls, _, _ = self._run(bodies, uninstall={"2f-tamper": UNINSTALL_OK})
+        self.assertEqual(rows[1]["verdict_reason"], "battery_not_graded")
+        self.assertIn(f"VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID={PID}", calls[3])
+        self.assertTrue(rows[1]["uninstall_verified"])
+        self.assertEqual(rows[1]["uninstall_rc"], 0)
+        self.assertEqual((rows[2]["pass"], rows[2]["verdict_reason"]), (True, "battery_pass"))
+        self.assertEqual(len(calls), 6)
+
+    def test_2f_without_post_kill_row_still_runs_2g(self) -> None:
+        # The guest killed after the swap, the uninstall is verified, but no
+        # post-kill row: the script exits 1. 2F fails on the row; the host is
+        # clean, so 2G still runs.
+        rows, calls, _, _ = self._run(self._bodies(), uninstall={"2f-tamper": UNINSTALL_OK})
+        self.assertIn(f"VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID={PID}", calls[3])
+        self.assertEqual(rows[1]["uninstall_rc"], 1)
+        self.assertTrue(rows[1]["uninstall_verified"])
+        self.assertEqual((rows[1]["pass"], rows[1]["verdict_reason"]), (False, "host_post_kill_row_missing"))
+        self.assertNotIn("post_kill_pid", rows[1])
+        self.assertTrue(rows[2]["pass"])
+        self.assertFalse(od.phases_pass(rows))
+
+    def test_rowless_phase_reads_host_clean_from_the_lines(self) -> None:
+        for text, rc, clean in (
+            ("UNINSTALL_VERIFIED\n", 1, True),
+            ("UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n", 0, False),
+            ("loader said UNINSTALL_VERIFIED\n", 0, False),
+        ):
+            stubs = {
+                "_ssh_case": mock.Mock(return_value=_done("PY_RC=1\n", 1)),
+                "_pull_guest_json": mock.Mock(side_effect=SystemExit("rows_missing")),
+                "_ssh": mock.Mock(return_value=_done(text, rc)),
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stderr(io.StringIO()):
+                kept = od._run_one_phase("vantio-lab-oct08", "vantio-gcp-lab-1", SEAL, "2e-performance")
+            self.assertEqual(kept["verdict_reason"], "rows_missing", text)
+            self.assertIs(kept["uninstall_verified"], clean, text)
+
+    def test_post_kill_row_is_asked_for_only_with_a_probe_after_the_swap(self) -> None:
+        bodies = self._bodies()
+        bodies["2f-tamper"]["enrolled_after"]["pid"] = 0
+        rows, calls, _, _ = self._run(bodies)
+        self.assertIn("VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=0", calls[3])
+        self.assertEqual(rows[1]["verdict_reason"], "host_probe_pid_missing")
+        self.assertTrue(rows[2]["pass"])
+        bodies = self._bodies()
+        bodies["2f-tamper"]["kill_timing"] = grade.KILL_TIMING_NOT_KILLED
+        _, calls, _, _ = self._run(bodies)
+        self.assertIn(f"VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID={PID}", calls[3])
+
+    def test_residual_line_stops_later_phases(self) -> None:
+        rows, calls, _, _ = self._run(self._bodies(), uninstall={"2e-performance": "UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n"})
+        self.assertEqual(rows[0]["verdict_reason"], "uninstall_not_verified")
+        self.assertEqual([item.get("not_run_reason") for item in rows[1:]], ["previous_uninstall"] * 2)
+        self.assertEqual(len(calls), 2)
+
+    def test_2g_seal_is_checked_against_the_lane_seal(self) -> None:
+        rows, _, _, _ = self._run(self._bodies(), lane_seal="b" * 64)
+        self.assertEqual([item["pass"] for item in rows], [True, True, False])
+        self.assertEqual(rows[2]["verdict_reason"], "host_seal_not_lane")
+        self.assertIs(rows[2]["seal_lane"], False)
+        rows, _, _, _ = self._run(self._bodies(), lane_seal="")
+        self.assertEqual(rows[2]["verdict_reason"], "host_seal_not_lane")
+
+    def test_every_phase_call_has_a_timeout(self) -> None:
+        timeouts: list = []
+        self._run(self._bodies(), timeouts=timeouts)
+        self.assertEqual(
+            timeouts,
+            [("pull", od.PHASE_PULL_TIMEOUT_S), ("uninstall", od.PHASE_UNINSTALL_TIMEOUT_S)] * 3,
+        )
+        seen: list = []
+
+        def run(argv, timeout_s=None):
+            seen.append(timeout_s)
+            return _done(json.dumps({"sourceImage": SOURCE}))
+
+        with mock.patch.object(od, "_run", side_effect=run):
+            self.assertEqual(od._boot_source("vantio-lab-oct08", "vantio-gcp-lab-1"), SOURCE)
+        self.assertEqual(seen, [od.PHASE_DESCRIBE_TIMEOUT_S])
+        scp: list = []
+
+        def scp_run(argv, timeout_s=None):
+            scp.append(timeout_s)
+            return _done("", 1)
+
+        with mock.patch.object(od, "_run", side_effect=scp_run), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                od._pull_guest_json("vantio-lab-oct08", "vantio-gcp-lab-1", timeout_s=od.PHASE_PULL_TIMEOUT_S)
+        self.assertEqual(scp, [od.PHASE_PULL_TIMEOUT_S])
 
     def test_a_broken_phase_is_recorded_and_stops_the_rest(self) -> None:
         bodies = self._bodies()
@@ -623,12 +854,33 @@ class RunnerTest(unittest.TestCase):
 
 
 class RunBatteriesTest(unittest.TestCase):
-    def _write(self, *, full: bool, phase_rows: list) -> tuple[object, dict]:
+    def _write(
+        self,
+        *,
+        full: bool,
+        phase_rows: list,
+        uninstall: str = "UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9 anchor 3\n",
+        uninstall_rc: int = 0,
+        ready: bool = True,
+        interim: list | None = None,
+    ) -> tuple[object, dict]:
         repeat = {"b1_pass": True, "deny_hold": True, "deny_pid": 41, "desc_deny_pid": 42, "lineage_anchor": 7}
-        ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9 anchor 3\n", stderr="")
-        runner = mock.Mock(return_value=phase_rows)
+        done = subprocess.CompletedProcess([], uninstall_rc, stdout=uninstall, stderr="")
+        setup = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        def ssh(_p, _n, command, timeout_s=None):
+            return done if command.endswith(" uninstall") else setup
+
         with tempfile.TemporaryDirectory() as tmp:
             evidence = Path(tmp) / "evidence"
+
+            def phases(*_args, **_kwargs):
+                # What is on disk while 2E, 2F, 2G run.
+                if interim is not None:
+                    interim.append(json.loads((evidence / "gcp-lab-rows.json").read_text(encoding="utf-8")))
+                return phase_rows
+
+            runner = mock.Mock(side_effect=phases)
             stubs = {
                 "_enabled": mock.DEFAULT,
                 "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
@@ -639,7 +891,7 @@ class RunBatteriesTest(unittest.TestCase):
                 "_evidence_dir": mock.Mock(return_value=evidence),
                 "_stage_payload": mock.Mock(return_value=[]),
                 "_wait_until_running": mock.DEFAULT,
-                "_ssh": mock.Mock(return_value=ok),
+                "_ssh": mock.Mock(side_effect=ssh),
                 "_scp_to": mock.DEFAULT,
                 "_prepare_lab_lsm": mock.Mock(return_value={}),
                 "_wait_live_boot": mock.Mock(return_value="boot-2"),
@@ -656,7 +908,7 @@ class RunBatteriesTest(unittest.TestCase):
                     code = od.run_batteries({"RUNNER_TEMP": tmp, "STOP_AFTER_MINUTES": "100"})
                 except SystemExit as exc:
                     code = exc.code
-            self.assertTrue(runner.call_args.kwargs["ready"])
+            self.assertIs(runner.call_args.kwargs["ready"], ready)
             return code, json.loads((evidence / "gcp-lab-rows.json").read_text(encoding="utf-8"))
 
     def _passing(self) -> list:
@@ -668,7 +920,44 @@ class RunBatteriesTest(unittest.TestCase):
         self.assertTrue(rows["phases_pass"])
         self.assertEqual(len(rows["phases"]), 3)
         self.assertEqual(rows["claim_cap"], "INTERNAL_CLEAN_HOST_PROOF")
+        self.assertEqual(rows["distro_scope"], "ubuntu-2404-only")
         self.assertEqual(len(rows["distro_excluded"]), len(od.DISTRO_EXCLUDED))
+
+    def test_interim_rows_are_on_disk_before_the_phases(self) -> None:
+        interim: list = []
+        code, rows = self._write(full=True, phase_rows=self._passing(), interim=interim)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(interim), 1)
+        self.assertEqual(interim[0]["phases"], [])
+        self.assertFalse(interim[0]["phases_pass"])
+        self.assertTrue(interim[0]["full_set"])
+        self.assertTrue(interim[0]["uninstall_verified"])
+        self.assertEqual(interim[0]["claim_cap"], "INTERNAL_CLEAN_HOST_PROOF")
+        self.assertEqual(interim[0]["distro_scope"], "ubuntu-2404-only")
+        self.assertEqual(len(interim[0]["repeats"]), od.BATTERY_REPEATS)
+        self.assertTrue(rows["phases_pass"])
+
+    def test_dirty_final_uninstall_runs_no_phase(self) -> None:
+        for text in ("UNINSTALL_NOT_VERIFIED rc=1\n", "UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n", "x UNINSTALL_VERIFIED\n"):
+            code, rows = self._write(full=True, phase_rows=[], uninstall=text, uninstall_rc=1, ready=False)
+            self.assertEqual(code, "uninstall", text)
+            self.assertFalse(rows["uninstall_verified"], text)
+
+    def test_missing_2d_post_kill_row_does_not_block_the_phases(self) -> None:
+        # The final uninstall verified the host but found no 2D post-kill row
+        # (exit 1). 2E, 2F, 2G still run; the full set still fails on the row.
+        code, rows = self._write(
+            full=True,
+            phase_rows=self._passing(),
+            uninstall="UNINSTALL_VERIFIED\npost_kill_row_missing\n",
+            uninstall_rc=1,
+            ready=True,
+        )
+        self.assertEqual(code, "uninstall")
+        self.assertTrue(rows["uninstall_verified"])
+        self.assertFalse(rows["deny_attr_post_kill"])
+        self.assertTrue(rows["phases_pass"])
+        self.assertEqual(len(rows["phases"]), 3)
 
     def test_a_failed_phase_fails_the_step(self) -> None:
         phases = self._passing()

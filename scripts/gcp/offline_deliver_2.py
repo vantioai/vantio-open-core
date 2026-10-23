@@ -503,11 +503,11 @@ SCP_FROM_REMOTES = frozenset(
 )
 
 
-def _scp_from(project: str, name: str, remote: str, dest: Path) -> bool:
+def _scp_from(project: str, name: str, remote: str, dest: Path, timeout_s: int | None = None) -> bool:
     if remote not in SCP_FROM_REMOTES:
         print(f"scp_refused remote={remote}", file=sys.stderr)
         raise SystemExit("scp")
-    completed = _run(iap_scp_argv(project, [f"{name}:{remote}"], str(dest)))
+    completed = _run(iap_scp_argv(project, [f"{name}:{remote}"], str(dest)), timeout_s=timeout_s)
     if completed.returncode == 0 and dest.is_file():
         return True
     detail = redact((completed.stderr or "") + (completed.stdout or ""))
@@ -1481,11 +1481,11 @@ def _read_copied_rows(local: Path) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _pull_guest_json(project: str, name: str) -> dict[str, Any]:
+def _pull_guest_json(project: str, name: str, timeout_s: int | None = None) -> dict[str, Any]:
     """The durable rows file. Missing and malformed are different failures."""
     local = Path(tempfile.mkdtemp(prefix="vantio-guest-")) / "rows.json"
     try:
-        if not _scp_from(project, name, ROWS_JSON, local):
+        if not _scp_from(project, name, ROWS_JSON, local, timeout_s=timeout_s):
             raise SystemExit("rows_missing")
         text = local.read_text(encoding="utf-8")
         if not text.strip():

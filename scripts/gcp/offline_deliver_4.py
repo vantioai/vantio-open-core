@@ -19,13 +19,32 @@ PHASE_CLAIM_SCOPE_2F = "kill after deny-attr map swap; ready-to-swap gap not cov
 PHASE_KILL_AFTER_MAP_SWAP = "after_map_swap"
 PHASE_KILL_NOT_KILLED = "not_killed"
 PHASE_DENY_SWAP_STEMS = ("vantio_deny_attr", "vantio_deny_attr_drops", "vantio_deny_overflow")
-# One phase is one guest ssh call (CASE_SSH_TIMEOUT) plus its uninstall and two pulls.
-PHASE_RESERVE_S = CASE_SSH_TIMEOUT + 300
+# Every guest call a phase makes has its own timeout.
+PHASE_UNINSTALL_TIMEOUT_S = 300
+PHASE_PULL_TIMEOUT_S = 120
+PHASE_DESCRIBE_TIMEOUT_S = 60
+# The worst case of one phase: _ssh_case times out, waits for sshd (its last
+# probe can run PROBE_SSH_TIMEOUT past the wait), times out again, then the
+# rows pull, the 2G boot disk describe, and the uninstall each hit their
+# timeout. 3200 s. With stop_after_minutes=100 the phase deadline is 95 minutes
+# after create, so a phase starts no later than 41 min 40 s after create.
+PHASE_RESERVE_S = (
+    2 * CASE_SSH_TIMEOUT
+    + SSHD_WAIT_SECONDS
+    + PROBE_SSH_TIMEOUT
+    + PHASE_PULL_TIMEOUT_S
+    + PHASE_DESCRIBE_TIMEOUT_S
+    + PHASE_UNINSTALL_TIMEOUT_S
+)
 # The guest powers off at stop_after_minutes. The deliver job stops at 110 minutes
 # and creates the VM a few minutes in; serial capture and cleanup run after us.
 PHASE_JOB_LIMIT_AFTER_CREATE_S = 105 * 60
 PHASE_END_MARGIN_S = 300
 PHASE_IMAGE = f"{IMAGE_PROJECT}/{IMAGE_FAMILY}"
+# 2G on GCP covers one image. offline_deliver_1.ENUMS carries the same word.
+PHASE_DISTRO_SCOPE = "ubuntu-2404-only"
+# enterprise-rows.sh authorized_uninstall prints these when the host is not clean.
+PHASE_UNINSTALL_DIRTY = ("UNINSTALL_RESIDUAL", "UNINSTALL_NOT_VERIFIED")
 PHASE_IMAGE_SOURCE_RE = re.compile(
     r"^(?:https://www\.googleapis\.com/compute/v1/)?projects/ubuntu-os-cloud/global/images/"
     r"(ubuntu-2404-[a-z0-9-]{1,80})$"
@@ -64,6 +83,23 @@ def _number(value: Any, low: float, high: float) -> float | None:
     if number != number or not low <= number <= high:
         return None
     return value
+
+
+def phase_host_clean(uninstall_text: Any) -> bool:
+    """The authorized uninstall left a clean host.
+
+    enterprise-rows.sh prints an exact UNINSTALL_VERIFIED line once the loader
+    verified the removal, and an UNINSTALL_RESIDUAL or UNINSTALL_NOT_VERIFIED
+    line when it did not. Its exit code also counts the 2F post-kill row, so
+    the exit code is not the host's state. The post-kill row is kept on its
+    own (post_kill_pid) and 2F needs it to pass.
+    """
+    if not isinstance(uninstall_text, str):
+        return False
+    lines = uninstall_text.splitlines()
+    if "UNINSTALL_VERIFIED" not in lines:
+        return False
+    return not any(marker in line for line in lines for marker in PHASE_UNINSTALL_DIRTY)
 
 
 def phase_egress_word(errno: Any) -> str:
@@ -323,7 +359,7 @@ def phase_row(
         row["guest_rc"] = guest_rc
     if uninstall_rc is not None:
         row["uninstall_rc"] = uninstall_rc
-    row["uninstall_verified"] = uninstall_rc == 0 and "UNINSTALL_VERIFIED" in uninstall_text.splitlines()
+    row["uninstall_verified"] = phase_host_clean(uninstall_text)
     post = POST_KILL_RE.findall(uninstall_text)
     if post:
         row["post_kill_pid"] = int(post[0][0])
@@ -491,6 +527,9 @@ def phase_verdict_line(row: Mapping[str, Any]) -> str:
         timing = row.get("kill_timing") or "-"
         scope = str(row.get("claim_scope") or "-").replace('"', "'")
         line += f' kill_timing={timing} claim_scope="{scope}"'
+    if row.get("battery") == "2g-distro":
+        # Not in the AWS line. GCP 2G covers the lab's one image.
+        line += f" distro_scope={PHASE_DISTRO_SCOPE}"
     return line
 
 
@@ -559,7 +598,7 @@ def _lane_seal() -> str:
 
 
 def _boot_source(project: str, name: str) -> str:
-    described = _run(describe_boot_disk_argv(project, name))
+    described = _run(describe_boot_disk_argv(project, name), timeout_s=PHASE_DESCRIBE_TIMEOUT_S)
     if described.returncode != 0:
         return ""
     try:
@@ -579,7 +618,7 @@ def _run_one_phase(project: str, name: str, seal: str, mode: str) -> dict[str, A
         missing = "transport"
     else:
         try:
-            body, missing = _pull_guest_json(project, name), ""
+            body, missing = _pull_guest_json(project, name, timeout_s=PHASE_PULL_TIMEOUT_S), ""
         except SystemExit as exc:
             body, missing = None, exc.code if exc.code in ("rows_missing", "rows_malformed") else "rows_missing"
     if completed.returncode != 0 or body is None:
@@ -588,11 +627,24 @@ def _run_one_phase(project: str, name: str, seal: str, mode: str) -> dict[str, A
     if mode == "2f-tamper" and isinstance(body, dict) and isinstance(body.get("enrolled_after"), dict):
         raw = body["enrolled_after"].get("pid")
         probe_pid = raw if isinstance(raw, int) and not isinstance(raw, bool) and raw > 0 else 0
-    uninstall = _ssh(project, name, phase_uninstall_command(seal, mode == "2f-tamper", probe_pid))
+    # Ask for the post-kill row only when the guest killed the loader after the
+    # map swap and named its probe. Host cleanliness never depends on it.
+    require_row = (
+        mode == "2f-tamper"
+        and isinstance(body, dict)
+        and body.get("kill_timing") == PHASE_KILL_AFTER_MAP_SWAP
+        and probe_pid > 0
+    )
+    uninstall = _ssh(
+        project,
+        name,
+        phase_uninstall_command(seal, require_row, probe_pid),
+        timeout_s=PHASE_UNINSTALL_TIMEOUT_S,
+    )
     uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
     if body is None:
         row = phase_row(mode, None, not_run_reason=missing)
-        row["uninstall_verified"] = uninstall.returncode == 0 and "UNINSTALL_VERIFIED" in uninstall_text.splitlines()
+        row["uninstall_verified"] = phase_host_clean(uninstall_text)
         return allow_phase_row(row) or row
     row = phase_row(
         mode,

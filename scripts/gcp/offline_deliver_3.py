@@ -1040,22 +1040,14 @@ def run_batteries(env: Mapping[str, str]) -> int:
             f"bash {GUEST_DIR}/enterprise-rows.sh {seal} uninstall",
         )
         uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
-        uninstall_verified = uninstall.returncode == 0 and "UNINSTALL_VERIFIED" in uninstall_text
+        # The host is clean on an exact UNINSTALL_VERIFIED line with no
+        # residual line (offline_deliver_4.phase_host_clean). The exit code
+        # also counts the 2D post-kill row, which is kept on its own below and
+        # still required for the full set.
+        uninstall_verified = phase_host_clean(uninstall_text)
         post_kill_row = "deny_attr_post_kill pid " in uninstall_text
         if not uninstall_verified or not post_kill_row:
             print(redact(uninstall_text)[-2000:], file=sys.stderr)
-        # 2E, 2F, 2G (offline_deliver_4.py). They run even when an earlier
-        # battery failed, so the run still records them, but only on a host
-        # the authorized uninstall verified clean.
-        phases = run_phase_batteries(
-            project,
-            name,
-            seal,
-            env,
-            ready=uninstall_verified,
-            started_epoch=started_epoch,
-        )
-        phases_ok = phases_pass(phases)
         result = {
             "batteries": True,
             "captures": captures,
@@ -1073,8 +1065,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "debs": debs,
             "deny_attr_post_kill": post_kill_row,
             "distro_excluded": list(DISTRO_EXCLUDED),
+            "distro_scope": PHASE_DISTRO_SCOPE,
             "full_set": passed,
-            "phases": phases,
+            "phases": [],
             "uninstall_verified": uninstall_verified,
             "image": next((item["image"] for item in repeats if engine_image(item.get("image"))), ""),
             "lsm_guard": lsm.get("lsm_guard") if isinstance(lsm.get("lsm_guard"), str) else "",
@@ -1089,6 +1082,22 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "subnet": SUBNET,
             "trust_sha256": TRUST_SHA256,
         }
+        # Interim rows: the earlier batteries are on disk before 2E starts, so a
+        # job stopped during a phase still leaves them (phases empty, not passed).
+        write_evidence(evidence / "gcp-lab-rows.json", result)
+        # 2E, 2F, 2G (offline_deliver_4.py). They run even when an earlier
+        # battery failed, so the run still records them, but only on a host
+        # the authorized uninstall verified clean.
+        phases = run_phase_batteries(
+            project,
+            name,
+            seal,
+            env,
+            ready=uninstall_verified,
+            started_epoch=started_epoch,
+        )
+        phases_ok = phases_pass(phases)
+        result["phases"] = phases
         print(json.dumps({"cases": cases, "loader_kill": loader_kill, "loader_restart": loader_restart}), flush=True)
         write_evidence(evidence / "guest-evidence.json", {"captures": captures, "claim_cap": CLAIM_CAP})
         if not passed or loader_kill != "held" or loader_restart != "held":
@@ -1100,7 +1109,17 @@ def run_batteries(env: Mapping[str, str]) -> int:
         write_evidence(evidence / "gcp-lab-rows.json", result)
         if not phases_ok:
             raise SystemExit("phases")
-        print(json.dumps({"full_set": True, "phases_pass": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
+        print(
+            json.dumps(
+                {
+                    "full_set": True,
+                    "phases_pass": True,
+                    "repeats": BATTERY_REPEATS,
+                    "claim_cap": CLAIM_CAP,
+                    "distro_scope": PHASE_DISTRO_SCOPE,
+                }
+            )
+        )
         return 0
     finally:
         if captures:
