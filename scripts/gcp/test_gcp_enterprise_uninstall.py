@@ -278,6 +278,56 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
             self.assertIn("post_kill_probe_pid_missing", done.stderr)
             self.assertNotIn("deny_attr_post_kill pid", done.stdout)
 
+    def test_2d_marks_find_a_row_written_before_the_uninstall(self) -> None:
+        # PR 368 council D1: the 2C cycle drains the probe's row into events.ndjson
+        # (loader start) or uninstall.ndjson (2C uninstall) before the final
+        # uninstall. With the pre-kill mark passed, that row is read.
+        row = {"source": "deny_attr_post_kill", "ActionTaken": "DENIED", "Pid": PID, "lineage_anchor": ANCHOR}
+        line = (json.dumps(row) + "\n").encode()
+        other = (json.dumps(dict(row, Pid=PID + 1)) + "\n").encode()
+        before_kill = other
+        after_2c = before_kill + line + other
+        # In events.ndjson: mark before the kill finds it; the uninstall-time size would not.
+        marked = self._post_kill(b"", 0, PID, after_2c, len(before_kill))
+        self.assertEqual(marked.returncode, 0, marked.stderr)
+        self.assertIn(f"deny_attr_post_kill pid {PID} anchor {ANCHOR}", marked.stdout)
+        late = self._post_kill(b"", 0, PID, after_2c, len(after_2c))
+        self.assertNotEqual(late.returncode, 0)
+        # Same in the uninstall ledger.
+        marked = self._post_kill(after_2c, len(before_kill), PID)
+        self.assertEqual(marked.returncode, 0, marked.stderr)
+        # A row for this pid from before the mark is still excluded.
+        stale = self._post_kill(b"", 0, PID, line + other, len(line))
+        self.assertNotEqual(stale.returncode, 0)
+
+    def test_2d_marks_replace_the_uninstall_time_sizes_only_when_numeric(self) -> None:
+        text = GCP_SHELL.read_text(encoding="utf-8")
+        body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
+        self.assertIn('local events_mark="${4:-}" ledger_mark="${5:-}"', body)
+        events_case = "case \"$events_mark\" in ''|*[!0-9]*) ;; *) events_before=$events_mark ;; esac"
+        ledger_case = "case \"$ledger_mark\" in ''|*[!0-9]*) ;; *) ledger_before=$ledger_mark ;; esac"
+        self.assertIn(events_case, body)
+        self.assertIn(ledger_case, body)
+        stat = body.index("events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson")
+        self.assertLess(body.index("ledger_before=$(sudo stat"), body.index(ledger_case))
+        self.assertLess(stat, body.index(events_case))
+        self.assertLess(body.index(ledger_case), body.index('python3 - "$probe_pid" "$ledger_before" "$events_before"'))
+        self.assertIn(
+            'authorized_uninstall "$image" "${VANTIO_REQUIRE_POST_KILL:-yes}" "${VANTIO_PROBE_PID:-0}" '
+            '"${VANTIO_EVENTS_BEFORE:-}" "${VANTIO_LEDGER_BEFORE:-}"',
+            text,
+        )
+        # The enterprise battery passes no marks and keeps the uninstall-time sizes.
+        self.assertIn('if ! authorized_uninstall "$image" no 0; then', text)
+        for mark, expect in (("", "77"), ("12", "12"), ("1x", "77"), ("-3", "77")):
+            done = subprocess.run(
+                ["bash", "-c", 'events_before=77; events_mark="$1"; ' + events_case + '; printf %s "$events_before"', "_", mark],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            self.assertEqual(done.stdout, expect, mark)
+
     def test_the_events_size_is_taken_before_the_loader_uninstall(self) -> None:
         text = GCP_SHELL.read_text(encoding="utf-8")
         body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
@@ -289,8 +339,16 @@ class GcpEnterpriseUninstallTest(unittest.TestCase):
     def test_a_failed_loader_create_or_copy_stops_the_uninstall(self) -> None:
         text = GCP_SHELL.read_text(encoding="utf-8")
         body = text[text.index("authorized_uninstall() {") : text.index("normalize_loaded_image() {")]
-        self.assertIn('cid=$(sudo docker create "$image") || { echo "UNINSTALL_NOT_VERIFIED loader_create"', body)
-        self.assertIn('/var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy"', body)
+        self.assertIn(
+            'cid=$(sudo docker create "$image") || { echo "UNINSTALL_NOT_VERIFIED loader_create" | '
+            "tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; return 1; }",
+            body,
+        )
+        self.assertIn(
+            '/var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy" | '
+            'tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; sudo docker rm "$cid" >/dev/null 2>&1; return 1; }',
+            body,
+        )
         self.assertLess(body.index("loader_copy"), body.index("/var/lib/vantio/vantio-loader --uninstall"))
 
     def test_the_ledger_size_is_taken_before_the_loader_uninstall(self) -> None:
@@ -413,6 +471,15 @@ class RunnerSideTest(unittest.TestCase):
         self.assertEqual(reasons({"uninstall_tail": "x", "removal": _census(True)}), ["guest_json_missing"])
         self.assertNotIn("guest_json_missing", reasons({"grant_loader": {"rc": 1}}))
 
+    def test_run_batteries_lets_90_and_120_past_the_floor(self) -> None:
+        class Reached(Exception):
+            pass
+
+        for minutes in ("90", "120", "105"):
+            with mock.patch.object(self.od, "_enabled", side_effect=Reached):
+                with self.assertRaises(Reached):
+                    self.od.run_batteries({"STOP_AFTER_MINUTES": minutes})
+
     def test_run_batteries_refuses_less_than_90_minutes(self) -> None:
         for minutes in ("", "60", "89", "abc", "0"):
             with mock.patch.object(self.od, "_enabled", side_effect=AssertionError("floor not first")):
@@ -422,10 +489,14 @@ class RunnerSideTest(unittest.TestCase):
 
     def test_2d_asks_for_a_post_kill_row_only_with_a_probe_pid(self) -> None:
         source = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
-        self.assertIn('require_post_kill = "yes" if probe_pid > 0 else "no"', source)
+        self.assertIn('require_post_kill = "yes" if probe_pid > 0 and post_kill_marks is not None else "no"', source)
         self.assertIn('f"VANTIO_REQUIRE_POST_KILL={require_post_kill} VANTIO_PROBE_PID={probe_pid} "', source)
         self.assertNotIn('"VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID={probe_pid} "', source)
-        self.assertIn('post_kill_row = probe_pid > 0 and "deny_attr_post_kill pid " in uninstall_text', source)
+        self.assertIn(
+            'post_kill_row = probe_pid > 0 and post_kill_marks is not None and "deny_attr_post_kill pid " in uninstall_text',
+            source,
+        )
+        self.assertLess(source.index("post_kill_marks = ("), source.index('kill = _loader_case(project, name, seal, "2d-crash-recovery")'))
 
 
 if __name__ == "__main__":

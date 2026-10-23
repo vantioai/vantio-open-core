@@ -1000,7 +1000,10 @@ class RunBatteriesTest(unittest.TestCase):
         interim: list | None = None,
         kill_body: dict | None = None,
         calls: list | None = None,
+        marks: subprocess.CompletedProcess | None = None,
     ) -> tuple[object, dict]:
+        if marks is None:
+            marks = subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")
         if kill_body is None:
             kill_body = {"enrolled_after": {"pid": 9}}
         repeat = {"b1_pass": True, "deny_hold": True, "deny_pid": 41, "desc_deny_pid": 42, "lineage_anchor": 7}
@@ -1010,7 +1013,14 @@ class RunBatteriesTest(unittest.TestCase):
         def ssh(_p, _n, command, timeout_s=None):
             if calls is not None:
                 calls.append(command)
+            if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
+                return marks
             return done if command.endswith(" uninstall") else setup
+
+        def loader_case(_p, _n, _s, mode):
+            if calls is not None:
+                calls.append(f"loader_case {mode}")
+            return {"body": kill_body, "rc": 0, "word": "held"}
 
         with tempfile.TemporaryDirectory() as tmp:
             evidence = Path(tmp) / "evidence"
@@ -1039,7 +1049,7 @@ class RunBatteriesTest(unittest.TestCase):
                 "_run_one_battery": mock.Mock(return_value=repeat),
                 "full_set_passes": mock.Mock(return_value=full),
                 # 2D asks for a post-kill row only when the kill body has the probe pid.
-                "_loader_case": mock.Mock(return_value={"body": kill_body, "rc": 0, "word": "held"}),
+                "_loader_case": mock.Mock(side_effect=loader_case),
                 "run_phase_batteries": runner,
                 "drop_guest_copies": mock.DEFAULT,
                 "remove_os_login_key": mock.DEFAULT,
@@ -1071,6 +1081,42 @@ class RunBatteriesTest(unittest.TestCase):
         uninstall = [command for command in calls if command.endswith(" uninstall")]
         self.assertIn("VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID=9", uninstall[0])
         self.assertEqual(code, 0)
+
+    def test_2d_marks_the_files_before_the_kill_and_passes_the_marks(self) -> None:
+        # PR 368 council D1: the 2C cycle writes the probe's row before the final
+        # uninstall, so the sizes are taken before the 2D case kills the loader.
+        calls: list = []
+        code, _rows = self._write(full=True, phase_rows=self._passing(), calls=calls)
+        mark = next(i for i, c in enumerate(calls) if c.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"))
+        self.assertIn("/var/log/vantio/uninstall.ndjson", calls[mark])
+        self.assertLess(mark, calls.index("loader_case 2d-crash-recovery"))
+        self.assertLess(calls.index("loader_case 2d-crash-recovery"), calls.index("loader_case 2c-upgrade-rollback"))
+        uninstall = [command for command in calls if command.endswith(" uninstall")]
+        self.assertEqual(len(uninstall), 1)
+        self.assertIn(
+            "VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE=120 VANTIO_LEDGER_BEFORE=45 ",
+            uninstall[0],
+        )
+        self.assertEqual(code, 0)
+
+    def test_2d_without_good_marks_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
+        bad = (
+            subprocess.CompletedProcess([], 1, stdout="120\n45\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="120\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="120\nx45\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="1\n2\n3\n", stderr=""),
+        )
+        for marks in bad:
+            calls: list = []
+            code, _rows = self._write(full=True, phase_rows=self._passing(), calls=calls, marks=marks)
+            uninstall = [command for command in calls if command.endswith(" uninstall")]
+            self.assertIn(
+                "VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE= VANTIO_LEDGER_BEFORE= ",
+                uninstall[0],
+                marks.stdout,
+            )
+            self.assertEqual(code, "uninstall", marks.stdout)
 
     def test_all_pass(self) -> None:
         code, rows = self._write(full=True, phase_rows=self._passing())

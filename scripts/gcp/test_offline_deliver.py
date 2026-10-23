@@ -2538,6 +2538,12 @@ class ImageCycleWordTest(unittest.TestCase):
             return {"body": {"enrolled_after": {"pid": 9}}, "rc": 0, "word": "held"}
 
         ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9\n", stderr="")
+
+        def ssh(_p, _n, command, timeout_s=None):
+            # D1: run_batteries marks events.ndjson and uninstall.ndjson before 2D.
+            if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
+                return subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")
+            return ok
         with tempfile.TemporaryDirectory() as tmp:
             evidence = Path(tmp) / "evidence"
             stubs = {
@@ -2550,7 +2556,7 @@ class ImageCycleWordTest(unittest.TestCase):
                 "_evidence_dir": mock.Mock(return_value=evidence),
                 "_stage_payload": mock.Mock(return_value=[]),
                 "_wait_until_running": mock.DEFAULT,
-                "_ssh": mock.Mock(return_value=ok),
+                "_ssh": mock.Mock(side_effect=ssh),
                 "_scp_to": mock.DEFAULT,
                 "_prepare_lab_lsm": mock.Mock(return_value={}),
                 "_wait_live_boot": mock.Mock(return_value="boot-2"),
