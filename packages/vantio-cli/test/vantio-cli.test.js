@@ -32,7 +32,7 @@ describe("vantio CLI — basic dispatch", () => {
   test("no command prints usage and exits 0", async () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
-    assert.match(stdout, /Vantio Optics \| Free Observability for AI/);
+    assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
     assert.doesNotMatch(stdout, /login|whoami|logout/i);
     assert.match(stdout, /vantio discover/);
   });
@@ -60,7 +60,7 @@ describe("vantio CLI — basic dispatch", () => {
     const { code, stderr } = await runCli(["frobnicate"]);
     assert.equal(code, 1);
     assert.match(stderr, /unknown command 'frobnicate'/);
-    assert.match(stderr, /Vantio Optics \| Free Observability for AI/);
+    assert.match(stderr, /Vantio Optics \| Free Observability for AI Agents/);
   });
 
   test("run with no program exits 1", async () => {

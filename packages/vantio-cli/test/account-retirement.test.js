@@ -59,8 +59,8 @@ describe("public surfaces do not advertise accounts", () => {
   test("primary help is the approved identity and has no account commands", async () => {
     const { code, stdout } = await runCli([]);
     assert.equal(code, 0);
-    assert.match(stdout, /Vantio Optics \| Free Observability for AI/);
-    assert.match(stdout, /Free and open source \(MIT\), local-first observability for calls to supported AI providers\. Prompts and completions are never stored\./);
+    assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
+    assert.match(stdout, /Free, local-first observability for supported AI-agent traffic\. Prompts and completions are never stored\./);
     assert.doesNotMatch(stdout, ACCOUNT_PROMISE);
     assert.doesNotMatch(stdout, LADDER);
     assert.doesNotMatch(stdout, HIDDEN_COMMAND);
@@ -109,8 +109,8 @@ describe("public surfaces do not advertise accounts", () => {
     assert.equal(existsSync(join(__dirname, "..", "..", "..", "LICENSE")), false);
     assert.deepEqual(packedLicense, approvedLicense);
     assert.equal(packedLicense.includes("Copyright (c) 2026 Vantio AI, Inc."), true);
-    assert.match(pkg.description, /Vantio Optics \| Free Observability for AI/);
-    assert.match(pkg.description, /Free and open source \(MIT\), local-first observability for calls to supported AI providers\. Prompts and completions are never stored\./);
+    assert.match(pkg.description, /Vantio Optics \| Free Observability for AI Agents/);
+    assert.match(pkg.description, /Free, local-first observability for supported AI-agent traffic\. Prompts and completions are never stored\./);
     assert.doesNotMatch(readme, ACCOUNT_PROMISE);
     assert.doesNotMatch(pkg.description, ACCOUNT_PROMISE);
     assert.doesNotMatch(JSON.stringify(pkg.keywords), ACCOUNT_PROMISE);
@@ -164,7 +164,7 @@ describe("retired commands and stored config", () => {
         VANTIO_INGEST_URL: `http://127.0.0.1:${server.address().port}`,
       });
       assert.equal(code, 0);
-      assert.match(stdout, /Vantio Optics \| Free Observability for AI/);
+      assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
       assert.doesNotMatch(`${stdout}\n${stderr}`, /key|credential|login|dashboard|pricing/i);
       assert.doesNotMatch(`${stdout}\n${stderr}`, new RegExp(canary));
       assert.throws(() => readFileSync(cfg));
@@ -341,7 +341,7 @@ describe("local proof still works with no config", () => {
       const proved = await runCli(["prove", "--format=html", "--out", join(home, "proof.html")], { HOME: home });
       assert.equal(proved.code, 0);
       const html = readFileSync(join(home, "proof.html"), "utf8");
-      assert.match(html, /Vantio Optics \| Free Observability for AI/);
+      assert.match(html, /Vantio Optics \| Free Observability for AI Agents/);
       assert.match(html, /No calls recorded in this run log/);
       assert.doesNotMatch(html, ACCOUNT_PROMISE);
       assert.doesNotMatch(html, LADDER);

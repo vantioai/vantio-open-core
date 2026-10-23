@@ -2,9 +2,9 @@
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> **Vantio Optics | Free Observability for AI**
+> **Vantio Optics | Free Observability for AI Agents**
 >
-> Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.
+> Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 >
 > The running version is `vantio --version`. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
@@ -139,7 +139,7 @@ vantio search --host=api.anthropic.com
 vantio tail                            # latest calls from the most recent run
 vantio tail -n 50 --run=<trace-id>
 vantio tail -n 0                       # zero calls
-vantio tail --all                      # all recorded calls in the run
+vantio tail --all                      # every call in the run
 vantio diff <run-a> <run-b>            # hosts added/removed, call and byte deltas
 ```
 
