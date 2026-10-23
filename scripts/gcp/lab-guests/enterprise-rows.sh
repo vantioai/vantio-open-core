@@ -265,14 +265,20 @@ PY
     sudo docker load -i "$here/seal.oci.tar" >/dev/null
   fi
   local cid
-  cid=$(sudo docker create "$image")
-  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader
+  # authorized_uninstall runs inside `if !`, so set -e is off here. A failed
+  # create or copy must not fall through to an older loader on disk.
+  cid=$(sudo docker create "$image") || { echo "UNINSTALL_NOT_VERIFIED loader_create" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; return 1; }
+  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; return 1; }
   sudo docker rm "$cid" >/dev/null
   sudo chmod 755 /var/lib/vantio/vantio-loader
   # The loader appends to uninstall.ndjson. Each enterprise repeat now runs
   # its own uninstall, so the post-kill check reads only what this run added.
   local ledger_before
   ledger_before=$(sudo stat -c %s /var/log/vantio/uninstall.ndjson 2>/dev/null || echo 0)
+  # The startup drain can also land post-kill rows in events.ndjson, and an
+  # earlier repeat on this VM leaves its own there. Read only what is new.
+  local events_before
+  events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson 2>/dev/null || echo 0)
   set +e
   sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/var/lib/vantio-lab/vantio-uninstall.out 2>&1
   local urc=$?
@@ -290,19 +296,26 @@ PY
     return 1
   fi
   if [ "$require_row" = "yes" ]; then
-    python3 - "$probe_pid" "$ledger_before" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
+    python3 - "$probe_pid" "$ledger_before" "$events_before" /var/lib/vantio-lab/vantio-uninstall.out /var/log/vantio/uninstall.ndjson /var/lib/vantio-pe-clean-host/evidence/events.ndjson <<'PY'
 import json, sys
 want = int(sys.argv[1])
+# Without the killed probe's pid any older post-kill row would match.
+if want <= 0:
+    raise SystemExit("post_kill_probe_pid_missing")
 ledger_before = int(sys.argv[2]) if sys.argv[2].isdigit() else 0
+events_before = int(sys.argv[3]) if sys.argv[3].isdigit() else 0
 found = False
-# argv[4] is the loader's append-only uninstall ledger.
-for index, path in enumerate(sys.argv[3:], start=3):
+# Path slots: 3 uninstall.out, 4 the loader's append-only uninstall ledger,
+# 5 events.ndjson. A file shorter than its offset was replaced; read it all.
+offsets = {4: ledger_before, 5: events_before}
+for index, path in enumerate(sys.argv[4:], start=3):
     try:
         data = open(path, "rb").read()
     except OSError:
         continue
-    if index == 4 and len(data) >= ledger_before:
-        data = data[ledger_before:]
+    off = offsets.get(index, 0)
+    if off and len(data) >= off:
+        data = data[off:]
     lines = data.decode("utf-8", errors="replace").splitlines()
     for line in lines:
         line = line.strip()

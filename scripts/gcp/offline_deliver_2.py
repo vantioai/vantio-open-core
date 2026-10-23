@@ -1073,7 +1073,9 @@ def _enterprise_hold(raw: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 def _enterprise_fail_reasons(raw: Mapping[str, Any] | None) -> list[str]:
-    if not isinstance(raw, dict):
+    # record_uninstall can leave {} plus uninstall_tail (and the census adds
+    # removal) when guest_rows wrote nothing. That is still a missing guest JSON.
+    if not isinstance(raw, dict) or "grant_loader" not in raw:
         return ["guest_json_missing"]
     reasons: list[str] = []
     grant = raw.get("grant_loader") if isinstance(raw.get("grant_loader"), dict) else {}

@@ -913,6 +913,13 @@ def _prepare_lab_lsm(project: str, name: str, seal: str, evidence: Path) -> dict
 
 
 def run_batteries(env: Mapping[str, str]) -> int:
+    # Defence in depth: the workflow already refuses fewer than 90 minutes.
+    try:
+        stop_minutes = lab.bounded_minutes(env.get("STOP_AFTER_MINUTES", ""))
+    except ValueError:
+        raise SystemExit("stop_after_minutes") from None
+    if stop_minutes < 90:
+        raise SystemExit("stop_after_minutes")
     _enabled(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
     _gate_ok(env)
@@ -1032,11 +1039,14 @@ def run_batteries(env: Mapping[str, str]) -> int:
         probe_pid = enrolled_after.get("pid") if isinstance(enrolled_after, dict) else 0
         if isinstance(probe_pid, bool) or not isinstance(probe_pid, int) or probe_pid < 0:
             probe_pid = 0
+        # With no killed probe pid, any older post-kill row would satisfy
+        # the check, so do not ask for one and do not count it.
+        require_post_kill = "yes" if probe_pid > 0 else "no"
         uninstall = _ssh(
             project,
             name,
             "sudo env "
-            f"VANTIO_REQUIRE_POST_KILL=yes VANTIO_PROBE_PID={probe_pid} "
+            f"VANTIO_REQUIRE_POST_KILL={require_post_kill} VANTIO_PROBE_PID={probe_pid} "
             f"bash {GUEST_DIR}/enterprise-rows.sh {seal} uninstall",
         )
         uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
@@ -1045,7 +1055,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
         # also counts the 2D post-kill row, which is kept on its own below and
         # still required for the full set.
         uninstall_verified = phase_host_clean(uninstall_text, uninstall.returncode)
-        post_kill_row = "deny_attr_post_kill pid " in uninstall_text
+        post_kill_row = probe_pid > 0 and "deny_attr_post_kill pid " in uninstall_text
         if not uninstall_verified or not post_kill_row:
             print(redact(uninstall_text)[-2000:], file=sys.stderr)
         result = {
