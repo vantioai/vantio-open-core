@@ -198,6 +198,8 @@ authorized_uninstall() {
   local image="$1"
   local require_row="${2:-no}"
   local probe_pid="${3:-0}"
+  # 2D passes the sizes it marked before the kill; other callers pass none.
+  local events_mark="${4:-}" ledger_mark="${5:-}"
   export PATH="/usr/local/bin:/usr/sbin:/usr/bin:$PATH"
   record_uninstall() {
     # guest_rows.py runs as root and owns this file. The lab user cannot
@@ -268,7 +270,7 @@ PY
   # authorized_uninstall runs inside `if !`, so set -e is off here. A failed
   # create or copy must not fall through to an older loader on disk.
   cid=$(sudo docker create "$image") || { echo "UNINSTALL_NOT_VERIFIED loader_create" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; return 1; }
-  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; return 1; }
+  sudo docker cp "$cid":/vantio-loader /var/lib/vantio/vantio-loader || { echo "UNINSTALL_NOT_VERIFIED loader_copy" | tee -a /var/lib/vantio-lab/vantio-uninstall.out >&2; sudo docker rm "$cid" >/dev/null 2>&1; return 1; }
   sudo docker rm "$cid" >/dev/null
   sudo chmod 755 /var/lib/vantio/vantio-loader
   # The loader appends to uninstall.ndjson. Each enterprise repeat now runs
@@ -279,6 +281,8 @@ PY
   # earlier repeat on this VM leaves its own there. Read only what is new.
   local events_before
   events_before=$(sudo stat -c %s /var/lib/vantio-pe-clean-host/evidence/events.ndjson 2>/dev/null || echo 0)
+  case "$events_mark" in ''|*[!0-9]*) ;; *) events_before=$events_mark ;; esac
+  case "$ledger_mark" in ''|*[!0-9]*) ;; *) ledger_before=$ledger_mark ;; esac
   set +e
   sudo env PATH="$PATH" /var/lib/vantio/vantio-loader --uninstall --confirm uninstall --enterprise-approval "$token" >/var/lib/vantio-lab/vantio-uninstall.out 2>&1
   local urc=$?
@@ -418,7 +422,7 @@ if [ "$mode" = "uninstall" ]; then
     image=$(accept_loaded_image "$load")
   fi
   set +e
-  authorized_uninstall "$image" "${VANTIO_REQUIRE_POST_KILL:-yes}" "${VANTIO_PROBE_PID:-0}"
+  authorized_uninstall "$image" "${VANTIO_REQUIRE_POST_KILL:-yes}" "${VANTIO_PROBE_PID:-0}" "${VANTIO_EVENTS_BEFORE:-}" "${VANTIO_LEDGER_BEFORE:-}"
   urc=$?
   set -e
   stamp_host_evidence

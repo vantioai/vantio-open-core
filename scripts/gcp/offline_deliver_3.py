@@ -991,6 +991,20 @@ def run_batteries(env: Mapping[str, str]) -> int:
             repeat = _run_one_battery(project, name, seal, evidence, index + 1, captures)
             repeats.append(repeat)
         passed = full_set_passes(repeats)
+        # 2D's post-kill row is written by the next loader start or
+        # uninstall (the 2C cycle), not by the final uninstall. Mark here.
+        marks = _ssh(
+            project,
+            name,
+            "for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson /var/log/vantio/uninstall.ndjson; "
+            'do sudo stat -c %s "$f" 2>/dev/null || echo 0; done',
+        )
+        mark_lines = (marks.stdout or "").split()
+        post_kill_marks = (
+            mark_lines
+            if marks.returncode == 0 and len(mark_lines) == 2 and all(item.isdigit() for item in mark_lines)
+            else None
+        )
         kill = _loader_case(project, name, seal, "2d-crash-recovery")
         restart = _loader_case(project, name, seal, "2c-upgrade-rollback")
         loader_kill = kill["word"]
@@ -1040,13 +1054,15 @@ def run_batteries(env: Mapping[str, str]) -> int:
         if isinstance(probe_pid, bool) or not isinstance(probe_pid, int) or probe_pid < 0:
             probe_pid = 0
         # With no killed probe pid, any older post-kill row would satisfy
-        # the check, so do not ask for one and do not count it.
-        require_post_kill = "yes" if probe_pid > 0 else "no"
+        # the check, and without the pre-kill marks the row cannot be placed.
+        # Do not ask for one and do not count it.
+        require_post_kill = "yes" if probe_pid > 0 and post_kill_marks is not None else "no"
         uninstall = _ssh(
             project,
             name,
             "sudo env "
             f"VANTIO_REQUIRE_POST_KILL={require_post_kill} VANTIO_PROBE_PID={probe_pid} "
+            f"VANTIO_EVENTS_BEFORE={post_kill_marks[0] if post_kill_marks else ''} VANTIO_LEDGER_BEFORE={post_kill_marks[1] if post_kill_marks else ''} "
             f"bash {GUEST_DIR}/enterprise-rows.sh {seal} uninstall",
         )
         uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
@@ -1055,7 +1071,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
         # also counts the 2D post-kill row, which is kept on its own below and
         # still required for the full set.
         uninstall_verified = phase_host_clean(uninstall_text, uninstall.returncode)
-        post_kill_row = probe_pid > 0 and "deny_attr_post_kill pid " in uninstall_text
+        post_kill_row = probe_pid > 0 and post_kill_marks is not None and "deny_attr_post_kill pid " in uninstall_text
         if not uninstall_verified or not post_kill_row:
             print(redact(uninstall_text)[-2000:], file=sys.stderr)
         result = {
