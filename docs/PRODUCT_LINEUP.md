@@ -4,7 +4,7 @@
 
 **Vantio Optics** (Free) · **Vantio Phantom Engine** (Contact Vantio) · **Vantio Enterprise** (Contact Vantio)
 
-Talk-track: Optics helps you see. Phantom Engine protects the machines you own — Observe, Enforce, and Control together, one purchase. Enterprise adds governance when you need proof and process on top.
+Talk-track: Optics helps you see. Phantom Engine protects the machines you own — Observe, Enforce, and Control together, one purchase. Enterprise governance on top is in progress; passed only in Vantio's own lab.
 
 Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. Site: [vantio.ai/pricing](https://vantio.ai/pricing).
 
@@ -41,7 +41,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 - Protection on **Linux machines you own** — Observe, Enforce, and Control together, one purchase
 - Includes all Enforce functions: block by hostname, PII redaction, spend/size caps, policy-as-code
 - Rogue Reconciliation when the host sees a transmission with no app-layer record
-- Enterprise adds ledger, evidence, and dual-control depth. Contact Vantio
+- Enterprise ledger, evidence, and dual-control are planned. Enterprise governance of Phantom Engine is in progress; passed only in Vantio's own lab. Contact Vantio
 - This repo does not ship Phantom Engine. See `vantio-phantom-engine`.
 
 > **Note on Gate:** Gate is the internal name for the Enforce function set inside Phantom Engine.
@@ -61,7 +61,7 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 | Host enforcement on enrolled Linux | — | ✓ | ✓ |
 | Fork inheritance on enrolled hosts | — | ✓ | ✓ |
 | CIDR / k8s network policy (enrolled) | — | ✓ | ✓ |
-| Durable ledger / dual-control | — | partial | ✓ |
+| Durable ledger / dual-control | — | partial | planned |
 
 ---
 
@@ -76,4 +76,4 @@ Canonical company lineup when both exist: Enterprise root `PRODUCT_LINEUP.md`. S
 
 ## One-line story
 
-> Optics helps you see. Phantom Engine protects the machines you own. Enterprise adds the governance layer.
+> Optics helps you see. Phantom Engine protects the machines you own. Enterprise governance is in progress; passed only in Vantio's own lab.
