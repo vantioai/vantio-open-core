@@ -924,6 +924,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
     debs = _stage_payload(env, payload_dir)
     captures: list[dict[str, Any]] = []
+    started_epoch = int(time.time())
     try:
         _wait_until_running(project, name)
         made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR} && chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
@@ -1041,6 +1042,20 @@ def run_batteries(env: Mapping[str, str]) -> int:
         uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
         uninstall_verified = uninstall.returncode == 0 and "UNINSTALL_VERIFIED" in uninstall_text
         post_kill_row = "deny_attr_post_kill pid " in uninstall_text
+        if not uninstall_verified or not post_kill_row:
+            print(redact(uninstall_text)[-2000:], file=sys.stderr)
+        # 2E, 2F, 2G (offline_deliver_4.py). They run even when an earlier
+        # battery failed, so the run still records them, but only on a host
+        # the authorized uninstall verified clean.
+        phases = run_phase_batteries(
+            project,
+            name,
+            seal,
+            env,
+            ready=uninstall_verified,
+            started_epoch=started_epoch,
+        )
+        phases_ok = phases_pass(phases)
         result = {
             "batteries": True,
             "captures": captures,
@@ -1057,7 +1072,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
             **kill_late_fields(_kill_restart_rows(kill.get("body"))),
             "debs": debs,
             "deny_attr_post_kill": post_kill_row,
+            "distro_excluded": list(DISTRO_EXCLUDED),
             "full_set": passed,
+            "phases": phases,
             "uninstall_verified": uninstall_verified,
             "image": next((item["image"] for item in repeats if engine_image(item.get("image"))), ""),
             "lsm_guard": lsm.get("lsm_guard") if isinstance(lsm.get("lsm_guard"), str) else "",
@@ -1078,11 +1095,12 @@ def run_batteries(env: Mapping[str, str]) -> int:
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("battery" if not passed else "loader")
         if not uninstall_verified or not post_kill_row:
-            print(redact(uninstall_text)[-2000:], file=sys.stderr)
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("uninstall")
         write_evidence(evidence / "gcp-lab-rows.json", result)
-        print(json.dumps({"full_set": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
+        if not phases_ok:
+            raise SystemExit("phases")
+        print(json.dumps({"full_set": True, "phases_pass": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
         return 0
     finally:
         if captures:

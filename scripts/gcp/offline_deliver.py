@@ -15,6 +15,7 @@ for _name in (
     "offline_deliver_1.py",
     "offline_deliver_2.py",
     "offline_deliver_3.py",
+    "offline_deliver_4.py",
 ):
     _path = _HERE / _name
     exec(compile(_path.read_text(encoding="utf-8"), str(_path), "exec"), globals())

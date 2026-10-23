@@ -2556,6 +2556,9 @@ class ImageCycleWordTest(unittest.TestCase):
                 "_run_one_battery": mock.Mock(return_value=repeat),
                 "full_set_passes": mock.Mock(return_value=True),
                 "_loader_case": mock.Mock(side_effect=loader_case),
+                # 2E-2G are test_gcp_phase_batteries.py. Stub them out here.
+                "run_phase_batteries": mock.Mock(return_value=[]),
+                "phases_pass": mock.Mock(return_value=True),
                 "drop_guest_copies": mock.DEFAULT,
                 "remove_os_login_key": mock.DEFAULT,
             }

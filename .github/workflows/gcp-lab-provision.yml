@@ -32,7 +32,7 @@ on:
         default: 75b6a94c1a50f07d3cc419a904ee08260c9c32ff
         type: string
       run_batteries:
-        description: Run portable PE batteries after the digest check. Refused for f882dd81.
+        description: Run portable PE batteries (enterprise, B1, 2D, 2C, then 2E, 2F, 2G) after the digest check. Refused for f882dd81.
         required: false
         default: false
         type: boolean
@@ -118,6 +118,7 @@ jobs:
             scripts/gcp/offline_deliver_1.py
             scripts/gcp/offline_deliver_2.py
             scripts/gcp/offline_deliver_3.py
+            scripts/gcp/offline_deliver_4.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
@@ -359,6 +360,7 @@ jobs:
             scripts/gcp/offline_deliver_1.py
             scripts/gcp/offline_deliver_2.py
             scripts/gcp/offline_deliver_3.py
+            scripts/gcp/offline_deliver_4.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
@@ -752,6 +754,7 @@ jobs:
             scripts/gcp/offline_deliver_1.py
             scripts/gcp/offline_deliver_2.py
             scripts/gcp/offline_deliver_3.py
+            scripts/gcp/offline_deliver_4.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
