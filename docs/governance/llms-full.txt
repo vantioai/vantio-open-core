@@ -103,9 +103,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.
 
 [![npm](https://img.shields.io/npm/v/@vantio/cli.svg)](https://www.npmjs.com/package/@vantio/cli)
 
-> **Vantio Optics | Free Observability for AI**
+> **Vantio Optics | Free Observability for AI Agents**
 >
-> Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.
+> Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
 >
 > The running version is `vantio --version`. Python support requires `vantio-agent-sdk`. Follow the current Python SDK example and verify that a supported outbound event appears before relying on the coverage state.
 
@@ -240,7 +240,7 @@ vantio search --host=api.anthropic.com
 vantio tail                            # latest calls from the most recent run
 vantio tail -n 50 --run=<trace-id>
 vantio tail -n 0                       # zero calls
-vantio tail --all                      # all recorded calls in the run
+vantio tail --all                      # every call in the run
 vantio diff <run-a> <run-b>            # hosts added/removed, call and byte deltas
 ```
 
@@ -608,9 +608,9 @@ Python needs [`vantio-agent-sdk`](https://pypi.org/project/vantio-agent-sdk) on 
 # BEGIN packages/vantio-agent-sdk-py/README.md
 # vantio-agent-sdk · Vantio Optics (Python)
 
-**Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions. Optics is free and open source (MIT). Optics does not block, redact, or cap spend on its own.
+**Vantio** is the infrastructure control layer for autonomous AI. This package is **Vantio Optics** Observe for Python: record where the agent calls LLM APIs (host, size, process, trace) without storing prompts or completions. Optics is free. Optics does not block, redact, or cap spend on its own.
 
-Optics helps you see. [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Observe, Enforce, and Control in one purchase. Contact Vantio. [Enterprise](https://vantio.ai/enterprise) governance on top of Phantom Engine is in progress; passed only in Vantio's own lab. Contact Vantio. Continuous Assurance is how the suite stays true after install; it is not a separate product.
+Optics helps you see. [Phantom Engine](https://vantio.ai/phantom) is runtime protection on enrolled Linux — Observe, Enforce, and Control in one purchase. Contact Vantio. [Enterprise](https://vantio.ai/enterprise) adds governance when you need proof and process on top. Contact Vantio. Continuous Assurance is how the suite stays true after install; it is not a separate product.
 
 > **Optics** (Free) · **Phantom Engine** (Contact Vantio) · **Enterprise** (Contact Vantio)
 
