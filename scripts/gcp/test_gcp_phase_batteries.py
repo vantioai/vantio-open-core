@@ -1102,19 +1102,39 @@ class RunBatteriesTest(unittest.TestCase):
         )
         self.assertEqual(code, 0)
 
-    def _run_marks(self, command: str, stat_rc: int, exists: set) -> subprocess.CompletedProcess:
-        """Run the real marks command with a fake sudo: test -e by set, stat by rc."""
+    def _run_marks(
+        self, command: str, stat_rc: int, exists: set, sudo_rc: int = 0
+    ) -> subprocess.CompletedProcess:
+        """Run the real marks command with a fake sudo: test -e by set, stat by rc.
+
+        A non-zero sudo_rc makes every sudo call fail with that code (sudo broken).
+        """
         with tempfile.TemporaryDirectory() as tmp:
             sudo = Path(tmp) / "sudo"
             sudo.write_text(
                 "#!/bin/bash\n"
-                'if [ "$1" = test ]; then case " $EXISTS " in *" $3 "*) exit 0 ;; *) exit 1 ;; esac; fi\n'
-                'if [ "$1" = stat ]; then [ "$STAT_RC" = 0 ] && { echo 123; exit 0; }; echo "stat: failed" >&2; exit "$STAT_RC"; fi\n'
+                '[ "$SUDO_RC" = 0 ] || { echo "sudo: failed" >&2; exit "$SUDO_RC"; }\n'
+                'if [ "$1" = test ]; then\n'
+                '  neg=0; [ "$2" = "!" ] && { neg=1; shift; }\n'
+                '  [ "$2" = -e ] || exit 98\n'
+                '  case " $EXISTS " in *" $3 "*) hit=1 ;; *) hit=0 ;; esac\n'
+                '  [ "$hit" != "$neg" ] && exit 0; exit 1\n'
+                "fi\n"
+                'if [ "$1" = stat ]; then\n'
+                '  case " $EXISTS " in *" $4 "*) ;; *) echo "stat: no such file" >&2; exit 1 ;; esac\n'
+                '  [ "$STAT_RC" = 0 ] && { echo 123; exit 0; }; echo "stat: failed" >&2; exit "$STAT_RC"\n'
+                "fi\n"
                 "exit 99\n",
                 encoding="utf-8",
             )
             sudo.chmod(0o755)
-            env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}", "STAT_RC": str(stat_rc), "EXISTS": " ".join(sorted(exists))}
+            env = {
+                **os.environ,
+                "PATH": f"{tmp}:{os.environ['PATH']}",
+                "STAT_RC": str(stat_rc),
+                "SUDO_RC": str(sudo_rc),
+                "EXISTS": " ".join(sorted(exists)),
+            }
             return subprocess.run(["bash", "-c", command], capture_output=True, text=True, env=env, check=False)
 
     def test_the_marks_command_reads_0_only_for_a_missing_file(self) -> None:
@@ -1136,6 +1156,31 @@ class RunBatteriesTest(unittest.TestCase):
         # stat fails on a file that exists: no 0 is printed for it.
         failed = self._run_marks(command, 1, {events})
         self.assertEqual(failed.stdout.split(), ["0"])
+        # sudo itself fails on every call: nothing is printed, not "0 0".
+        for exists in ({events, ledger}, {events}, set()):
+            broken = self._run_marks(command, 0, exists, sudo_rc=1)
+            self.assertEqual(broken.stdout.split(), [], sorted(exists))
+            self.assertNotEqual(broken.returncode, 0, sorted(exists))
+
+    def test_a_sudo_failure_fails_the_marks_closed(self) -> None:
+        # PR 368 council delta-3 N1: a failed sudo must not read as "missing" (offset 0).
+        events = "/var/lib/vantio-pe-clean-host/evidence/events.ndjson"
+        ledger = "/var/log/vantio/uninstall.ndjson"
+        for exists in ({events, ledger}, {events}, {ledger}, set()):
+            calls: list = []
+            code, _rows = self._write(
+                full=True,
+                phase_rows=self._passing(),
+                calls=calls,
+                marks=lambda command, exists=exists: self._run_marks(command, 0, exists, sudo_rc=1),
+            )
+            uninstall = [command for command in calls if command.endswith(" uninstall")]
+            self.assertIn(
+                "VANTIO_REQUIRE_POST_KILL=no VANTIO_PROBE_PID=9 VANTIO_EVENTS_BEFORE= VANTIO_LEDGER_BEFORE= ",
+                uninstall[0],
+                sorted(exists),
+            )
+            self.assertEqual(code, "uninstall", sorted(exists))
 
     def test_a_stat_failure_on_an_existing_file_fails_the_marks_closed(self) -> None:
         # PR 368 council delta-2 note 1: a failed stat must not read the whole file.

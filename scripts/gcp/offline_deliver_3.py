@@ -997,9 +997,9 @@ def run_batteries(env: Mapping[str, str]) -> int:
             project,
             name,
             "for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson /var/log/vantio/uninstall.ndjson; "
-            # A missing file is size 0. A stat that fails on a file that exists
-            # prints nothing, so the marks are refused (fail closed).
-            'do if sudo test -e "$f"; then sudo stat -c %s "$f"; else echo 0; fi; done',
+            # Size 0 only when sudo works and confirms the file is absent. A failed
+            # stat or sudo prints nothing, so the marks are refused (fail closed).
+            'do sudo stat -c %s "$f" 2>/dev/null || { sudo test ! -e "$f" && echo 0; }; done',
             timeout_s=60,
         )
         mark_lines = (marks.stdout or "").split()
