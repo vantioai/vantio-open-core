@@ -251,12 +251,24 @@ class Phase2ETest(unittest.TestCase):
         self.assertEqual(kept["uninstall_rc"], 1)
 
     def test_host_clean_is_an_exact_line(self) -> None:
-        self.assertTrue(od.phase_host_clean("noise\nUNINSTALL_VERIFIED\nmore\n"))
-        self.assertFalse(od.phase_host_clean("noise UNINSTALL_VERIFIED\n"))
-        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED_LATER\n"))
-        self.assertFalse(od.phase_host_clean("XUNINSTALL_VERIFIED\n"))
-        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n"))
-        self.assertFalse(od.phase_host_clean(None))
+        self.assertTrue(od.phase_host_clean("noise\nUNINSTALL_VERIFIED\nmore\n", 0))
+        self.assertFalse(od.phase_host_clean("noise UNINSTALL_VERIFIED\n", 0))
+        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED_LATER\n", 0))
+        self.assertFalse(od.phase_host_clean("XUNINSTALL_VERIFIED\n", 0))
+        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n", 0))
+        self.assertFalse(od.phase_host_clean(None, 0))
+
+    def test_host_clean_needs_the_script_to_have_exited(self) -> None:
+        # 0, or 1 for a missing post-kill row. 255 is ssh, a timeout, or a
+        # dropped tunnel: the residue check may not have run.
+        self.assertTrue(od.phase_host_clean("UNINSTALL_VERIFIED\n", 0))
+        self.assertTrue(od.phase_host_clean("UNINSTALL_VERIFIED\npost_kill_row_missing\n", 1))
+        for rc in (255, -1, 2, 6, 124, None, True, False, "0"):
+            self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED\n", rc), rc)
+        self.assertFalse(od.phase_host_clean("UNINSTALL_VERIFIED\n\noperation timed out", 255))
+        kept = row("2e-performance", body_2e(), uninstall="UNINSTALL_VERIFIED\n\noperation timed out", rc=255)
+        self.assertEqual((kept["pass"], kept["verdict_reason"]), (False, "uninstall_not_verified"))
+        self.assertFalse(kept["uninstall_verified"])
         self.assertEqual(od.PHASE_UNINSTALL_DIRTY, ("UNINSTALL_RESIDUAL", "UNINSTALL_NOT_VERIFIED"))
         script = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
         self.assertIn("grep -qx 'UNINSTALL_VERIFIED'", script)
@@ -537,47 +549,60 @@ class BudgetTest(unittest.TestCase):
     T = 1_800_000_000
 
     def test_reserve_covers_the_worst_phase(self) -> None:
-        # Two CASE_SSH_TIMEOUT calls around the sshd wait (INFRA_RETRY), the
-        # last probe, then the pull, describe, and uninstall timeouts.
-        self.assertGreaterEqual(
-            od.PHASE_RESERVE_S,
-            2 * od.CASE_SSH_TIMEOUT + od.SSHD_WAIT_SECONDS + od.PHASE_UNINSTALL_TIMEOUT_S,
-        )
+        # Two PHASE_CASE_SSH_TIMEOUT calls around the sshd wait (INFRA_RETRY),
+        # the last probe, then the pull, describe, and uninstall timeouts.
+        self.assertEqual(od.PHASE_CASE_SSH_TIMEOUT, 900)
+        self.assertLess(od.PHASE_CASE_SSH_TIMEOUT, od.CASE_SSH_TIMEOUT)
         self.assertEqual(
             od.PHASE_RESERVE_S,
-            2 * od.CASE_SSH_TIMEOUT
+            2 * od.PHASE_CASE_SSH_TIMEOUT
             + od.SSHD_WAIT_SECONDS
             + od.PROBE_SSH_TIMEOUT
             + od.PHASE_PULL_TIMEOUT_S
             + od.PHASE_DESCRIBE_TIMEOUT_S
             + od.PHASE_UNINSTALL_TIMEOUT_S,
         )
-        self.assertEqual(od.PHASE_RESERVE_S, 3200)
+        self.assertEqual(od.PHASE_RESERVE_S, 2600)
+        self.assertEqual(od.PHASE_RETRY_NEED_S, od.PHASE_RESERVE_S - od.PHASE_CASE_SSH_TIMEOUT)
+        self.assertEqual(od.PHASE_RETRY_NEED_S, 1700)
 
     def test_run_six_timing_fits_one_hundred_minutes(self) -> None:
         deadline = od.phase_deadline(self.T, self.T + 19, "100")
         self.assertEqual(deadline, self.T + 100 * 60 - od.PHASE_END_MARGIN_S)
         self.assertLess(deadline, self.T + 110 * 60)
-        # The last start with a full reserve: 41 min 40 s after create.
-        self.assertTrue(od.phase_has_time(deadline, self.T + 2500))
-        self.assertFalse(od.phase_has_time(deadline, self.T + 2501))
-        # Run 6 finished 2C 26 minutes after create. At five minutes a phase
+        # The last start with a full reserve: 51 min 40 s after create.
+        self.assertTrue(od.phase_has_time(deadline, self.T + 3100))
+        self.assertFalse(od.phase_has_time(deadline, self.T + 3101))
+        # Run 6 finished 2C 26 minutes after create. At ten minutes a phase
         # (2C took five) all three start with a full reserve left.
         start = self.T + 26 * 60
         for index in range(3):
-            self.assertTrue(od.phase_has_time(deadline, start + index * 300), index)
-        # At ten minutes a phase 2G is skipped.
-        self.assertFalse(od.phase_has_time(deadline, start + 2 * 600))
+            self.assertTrue(od.phase_has_time(deadline, start + index * 600), index)
+        # At thirteen minutes a phase 2G is skipped.
+        self.assertFalse(od.phase_has_time(deadline, start + 2 * 780))
         # Worst case every phase hits every timeout: one starts, and nothing
         # runs past the guest's power-off.
         started = [index for index in range(3) if od.phase_has_time(deadline, start + index * od.PHASE_RESERVE_S)]
         self.assertEqual(started, [0])
         self.assertLessEqual(start + od.PHASE_RESERVE_S, deadline)
 
+    def test_one_hundred_five_minutes_fits_the_job_limit(self) -> None:
+        # Dispatch with stop_after_minutes=105: the guest powers off at the
+        # same point the job cap allows, inside the 110-minute job.
+        deadline = od.phase_deadline(self.T, self.T + 19, "105")
+        self.assertEqual(deadline, self.T + 105 * 60 - od.PHASE_END_MARGIN_S)
+        self.assertEqual(deadline, od.phase_deadline(self.T, self.T + 19, "120"))
+        self.assertLess(deadline + od.PHASE_END_MARGIN_S, self.T + 110 * 60)
+        # The last start: 56 min 40 s after create.
+        self.assertTrue(od.phase_has_time(deadline, self.T + 3400))
+        self.assertFalse(od.phase_has_time(deadline, self.T + 3401))
+        start = self.T + 26 * 60
+        self.assertTrue(od.phase_has_time(deadline, start + 2 * 900))
+
     def test_short_budget_stops_phases(self) -> None:
         deadline = od.phase_deadline(self.T, self.T, "80")
-        self.assertTrue(od.phase_has_time(deadline, self.T + 20 * 60))
-        self.assertFalse(od.phase_has_time(deadline, self.T + 26 * 60))
+        self.assertTrue(od.phase_has_time(deadline, self.T + 30 * 60))
+        self.assertFalse(od.phase_has_time(deadline, self.T + 32 * 60))
 
     def test_job_limit_caps_the_guest_budget(self) -> None:
         self.assertEqual(od.phase_deadline(self.T, self.T, "120"), self.T + od.PHASE_JOB_LIMIT_AFTER_CREATE_S - od.PHASE_END_MARGIN_S)
@@ -615,11 +640,12 @@ class RunnerTest(unittest.TestCase):
         current: dict = {}
         timeouts = timeouts if timeouts is not None else []
 
-        def ssh_case(_p, _n, command):
+        def ssh_case(_p, _n, command, deadline=None, now=None):
             calls.append(command)
             mode = command.split()[-1]
             current["mode"] = mode
-            return _done(f"PY_RC={0 if mode != '2f-tamper' else 0}\n")
+            current["deadline"] = deadline
+            return _done("PY_RC=0\n"), False
 
         def pull(_p, _n, timeout_s=None):
             timeouts.append(("pull", timeout_s))
@@ -654,7 +680,7 @@ class RunnerTest(unittest.TestCase):
             return _done("\n".join(lines) + "\n", rc)
 
         stubs = {
-            "_ssh_case": mock.Mock(side_effect=ssh_case),
+            "_phase_ssh_case": mock.Mock(side_effect=ssh_case),
             "_pull_guest_json": mock.Mock(side_effect=pull),
             "_ssh": mock.Mock(side_effect=ssh),
             "_creation_epoch": mock.Mock(return_value=self.T),
@@ -711,8 +737,9 @@ class RunnerTest(unittest.TestCase):
         rows, calls, _, _ = self._run(self._bodies(), now=self.T + 80 * 60)
         self.assertEqual(calls, [])
         self.assertEqual({item["verdict_reason"] for item in rows}, {"time_budget"})
-        # stop_after_minutes=100: each phase takes ten minutes, 2E and 2F run, 2G does not.
-        clock = iter([self.T + 26 * 60, self.T + 36 * 60, self.T + 46 * 60])
+        # stop_after_minutes=100: 2G would start 52 minutes after create,
+        # past 51 min 40 s. 2E and 2F run, 2G does not.
+        clock = iter([self.T + 26 * 60, self.T + 39 * 60, self.T + 52 * 60])
         rows, calls, _, _ = self._run(self._bodies(), now=lambda: next(clock))
         self.assertEqual([item["verdict_reason"] for item in rows], ["battery_pass", "battery_pass", "time_budget"])
         self.assertEqual(len(calls), 4)
@@ -770,14 +797,88 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(rows[2]["pass"])
         self.assertFalse(od.phases_pass(rows))
 
+    def _case(self, results, *, deadline=None, now=None, ready=True):
+        seen: list = []
+        ssh = mock.Mock(side_effect=lambda _p, _n, command, timeout_s=None: seen.append(timeout_s) or results.pop(0))
+        sshd = mock.Mock(return_value=ready)
+        out = io.StringIO()
+        with mock.patch.multiple(od, _ssh=ssh, _ssh_ready=sshd), contextlib.redirect_stdout(out):
+            kwargs = {} if deadline is None else {"deadline": deadline, "now": now}
+            completed, skipped = od._phase_ssh_case("vantio-lab-oct08", "vantio-gcp-lab-1", "cmd", **kwargs)
+        return completed, skipped, seen, sshd.call_count, out.getvalue()
+
+    def test_phase_guest_call_uses_the_phase_timeout(self) -> None:
+        completed, skipped, seen, probes, _ = self._case([_done("PY_RC=0\n")])
+        self.assertEqual((completed.returncode, skipped, seen, probes), (0, False, [od.PHASE_CASE_SSH_TIMEOUT], 0))
+        # A guest exit code means the guest answered: no retry.
+        _, skipped, seen, probes, _ = self._case([_done("PY_RC=1\noperation timed out", 255)])
+        self.assertEqual((skipped, len(seen), probes), (False, 1, 0))
+
+    def test_infra_retry_runs_when_it_fits(self) -> None:
+        dead = _done("operation timed out", 255)
+        for deadline, now in ((None, None), (self.T + od.PHASE_RETRY_NEED_S, lambda: self.T)):
+            completed, skipped, seen, probes, out = self._case([dead, _done("PY_RC=0\n")], deadline=deadline, now=now)
+            self.assertEqual((completed.returncode, skipped), (0, False), deadline)
+            self.assertEqual(seen, [od.PHASE_CASE_SSH_TIMEOUT] * 2)
+            self.assertEqual(probes, 1)
+            self.assertIn("INFRA_RETRY", out)
+        # sshd never came back: no second call, not a skip.
+        completed, skipped, seen, _, _ = self._case([dead], ready=False)
+        self.assertEqual((completed.returncode, skipped, len(seen)), (255, False, 1))
+
+    def test_infra_retry_is_skipped_when_it_does_not_fit(self) -> None:
+        dead = _done("operation timed out", 255)
+        completed, skipped, seen, probes, out = self._case(
+            [dead], deadline=self.T + od.PHASE_RETRY_NEED_S - 1, now=lambda: self.T
+        )
+        self.assertEqual((completed.returncode, skipped, len(seen), probes), (255, True, 1, 0))
+        self.assertIn("INFRA_RETRY_SKIPPED time_budget", out)
+
+    def test_skipped_retry_is_infra_not_graded_and_still_uninstalls(self) -> None:
+        dead = _done("operation timed out", 255)
+        for mode in od.PHASE_MODES:
+            calls: list = []
+
+            def ssh(_p, _n, command, timeout_s=None):
+                calls.append(command)
+                return dead if not command.endswith(" uninstall") else _done(UNINSTALL_OK)
+
+            boot = mock.Mock(return_value=SOURCE)
+            pull = mock.Mock(side_effect=AssertionError("no pull"))
+            with mock.patch.multiple(od, _ssh=ssh, _boot_source=boot, _pull_guest_json=pull, _lane_seal=mock.Mock(return_value=SEAL)), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                kept = od._run_one_phase(
+                    "vantio-lab-oct08", "vantio-gcp-lab-1", SEAL, mode, deadline=self.T + 600, now=lambda: self.T
+                )
+            self.assertEqual(kept["host_result"], "NOT_GRADED", mode)
+            self.assertEqual(kept["reason"], "infra_retry_skipped", mode)
+            self.assertEqual((kept["pass"], kept["verdict_reason"]), (False, "battery_not_graded"), mode)
+            self.assertTrue(kept["uninstall_verified"], mode)
+            self.assertEqual(len(calls), 2, mode)
+            self.assertTrue(calls[1].endswith(" uninstall"), mode)
+            self.assertIn("VANTIO_REQUIRE_POST_KILL=no", calls[1])
+            self.assertEqual(boot.call_count, 0, mode)
+
+    def test_runner_passes_the_deadline_to_each_phase(self) -> None:
+        seen: list = []
+
+        def one(_p, _n, _s, mode, deadline=None, now=None):
+            seen.append((mode, deadline, callable(now)))
+            return od.phase_row(mode, None, not_run_reason="transport")
+
+        with mock.patch.multiple(od, _run_one_phase=mock.Mock(side_effect=one), _creation_epoch=mock.Mock(return_value=self.T)), contextlib.redirect_stdout(io.StringIO()):
+            od.run_phase_batteries("p", "n", SEAL, {"STOP_AFTER_MINUTES": "105"}, ready=True, started_epoch=self.T + 20, now=lambda: self.T + 26 * 60)
+        self.assertEqual(seen, [("2e-performance", self.T + 105 * 60 - od.PHASE_END_MARGIN_S, True)])
+
     def test_rowless_phase_reads_host_clean_from_the_lines(self) -> None:
         for text, rc, clean in (
             ("UNINSTALL_VERIFIED\n", 1, True),
             ("UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n", 0, False),
             ("loader said UNINSTALL_VERIFIED\n", 0, False),
+            ("UNINSTALL_VERIFIED\n\noperation timed out", 255, False),
+            ("UNINSTALL_VERIFIED\n", 2, False),
         ):
             stubs = {
-                "_ssh_case": mock.Mock(return_value=_done("PY_RC=1\n", 1)),
+                "_phase_ssh_case": mock.Mock(return_value=(_done("PY_RC=1\n", 1), False)),
                 "_pull_guest_json": mock.Mock(side_effect=SystemExit("rows_missing")),
                 "_ssh": mock.Mock(return_value=_done(text, rc)),
             }
@@ -929,13 +1030,38 @@ class RunBatteriesTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(len(interim), 1)
         self.assertEqual(interim[0]["phases"], [])
+        self.assertIs(interim[0]["interim"], True)
+        self.assertIs(interim[0]["phases_complete"], False)
         self.assertFalse(interim[0]["phases_pass"])
+        self.assertIs(rows["interim"], False)
+        self.assertIs(rows["phases_complete"], True)
         self.assertTrue(interim[0]["full_set"])
         self.assertTrue(interim[0]["uninstall_verified"])
         self.assertEqual(interim[0]["claim_cap"], "INTERNAL_CLEAN_HOST_PROOF")
         self.assertEqual(interim[0]["distro_scope"], "ubuntu-2404-only")
         self.assertEqual(len(interim[0]["repeats"]), od.BATTERY_REPEATS)
         self.assertTrue(rows["phases_pass"])
+
+    def test_interim_flags_do_not_change_the_grade(self) -> None:
+        phases = self._passing()
+        phases[1] = row("2f-tamper", body_2f(net=0))
+        code, rows = self._write(full=True, phase_rows=phases)
+        # The phases ran: complete, not interim, and still a failed step.
+        self.assertEqual(code, "phases")
+        self.assertIs(rows["phases_complete"], True)
+        self.assertIs(rows["interim"], False)
+        self.assertFalse(rows["phases_pass"])
+        kept = od.allow_record({"interim": True, "phases_complete": False, "phases": self._passing()})
+        self.assertTrue(kept["phases_pass"])
+        self.assertEqual((kept["interim"], kept["phases_complete"]), (True, False))
+        self.assertNotIn("interim", od.allow_record({"interim": "yes"}))
+
+    def test_final_uninstall_timeout_is_not_clean(self) -> None:
+        code, rows = self._write(
+            full=True, phase_rows=[], uninstall="UNINSTALL_VERIFIED\n\noperation timed out", uninstall_rc=255, ready=False
+        )
+        self.assertEqual(code, "uninstall")
+        self.assertFalse(rows["uninstall_verified"])
 
     def test_dirty_final_uninstall_runs_no_phase(self) -> None:
         for text in ("UNINSTALL_NOT_VERIFIED rc=1\n", "UNINSTALL_VERIFIED\nUNINSTALL_RESIDUAL bpffs\n", "x UNINSTALL_VERIFIED\n"):

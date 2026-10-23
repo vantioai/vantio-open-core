@@ -19,23 +19,30 @@ PHASE_CLAIM_SCOPE_2F = "kill after deny-attr map swap; ready-to-swap gap not cov
 PHASE_KILL_AFTER_MAP_SWAP = "after_map_swap"
 PHASE_KILL_NOT_KILLED = "not_killed"
 PHASE_DENY_SWAP_STEMS = ("vantio_deny_attr", "vantio_deny_attr_drops", "vantio_deny_overflow")
-# Every guest call a phase makes has its own timeout.
+# Every guest call a phase makes has its own timeout. The phase guest call
+# is shorter than CASE_SSH_TIMEOUT: a phase runs in seconds to minutes, and
+# 2E's runtime bound (900 s) is a grade bound, not a run time.
+PHASE_CASE_SSH_TIMEOUT = 900
 PHASE_UNINSTALL_TIMEOUT_S = 300
 PHASE_PULL_TIMEOUT_S = 120
 PHASE_DESCRIBE_TIMEOUT_S = 60
-# The worst case of one phase: _ssh_case times out, waits for sshd (its last
-# probe can run PROBE_SSH_TIMEOUT past the wait), times out again, then the
-# rows pull, the 2G boot disk describe, and the uninstall each hit their
-# timeout. 3200 s. With stop_after_minutes=100 the phase deadline is 95 minutes
-# after create, so a phase starts no later than 41 min 40 s after create.
-PHASE_RESERVE_S = (
-    2 * CASE_SSH_TIMEOUT
-    + SSHD_WAIT_SECONDS
+# What one INFRA_RETRY still needs once the first guest call failed: the sshd
+# wait (its last probe can run PROBE_SSH_TIMEOUT past it), the second call,
+# then the pull, describe, and uninstall. 1700 s.
+PHASE_RETRY_NEED_S = (
+    SSHD_WAIT_SECONDS
     + PROBE_SSH_TIMEOUT
+    + PHASE_CASE_SSH_TIMEOUT
     + PHASE_PULL_TIMEOUT_S
     + PHASE_DESCRIBE_TIMEOUT_S
     + PHASE_UNINSTALL_TIMEOUT_S
 )
+# The worst case of one phase: the guest call times out, INFRA_RETRY, then
+# the pull, describe, and uninstall each hit their timeout. 2600 s. The phase
+# deadline is min(stop_after_minutes, 105) minutes after create less 5 minutes,
+# so a phase starts by 51 min 40 s after create at stop_after_minutes=100 and
+# by 56 min 40 s at 105.
+PHASE_RESERVE_S = PHASE_CASE_SSH_TIMEOUT + PHASE_RETRY_NEED_S
 # The guest powers off at stop_after_minutes. The deliver job stops at 110 minutes
 # and creates the VM a few minutes in; serial capture and cleanup run after us.
 PHASE_JOB_LIMIT_AFTER_CREATE_S = 105 * 60
@@ -85,15 +92,19 @@ def _number(value: Any, low: float, high: float) -> float | None:
     return value
 
 
-def phase_host_clean(uninstall_text: Any) -> bool:
+def phase_host_clean(uninstall_text: Any, returncode: Any) -> bool:
     """The authorized uninstall left a clean host.
 
     enterprise-rows.sh prints an exact UNINSTALL_VERIFIED line once the loader
     verified the removal, and an UNINSTALL_RESIDUAL or UNINSTALL_NOT_VERIFIED
-    line when it did not. Its exit code also counts the 2F post-kill row, so
-    the exit code is not the host's state. The post-kill row is kept on its
-    own (post_kill_pid) and 2F needs it to pass.
+    line when it did not. It exits 0, or 1 when the post-kill row it was asked
+    for is missing, so 1 alone is not a dirty host; the post-kill row is kept
+    on its own (post_kill_pid) and 2F needs it to pass. Any other exit (255
+    from ssh, a timeout, a dropped tunnel) means the script may not have
+    reached its residue check, so the host is not known clean.
     """
+    if isinstance(returncode, bool) or returncode not in (0, 1):
+        return False
     if not isinstance(uninstall_text, str):
         return False
     lines = uninstall_text.splitlines()
@@ -359,7 +370,7 @@ def phase_row(
         row["guest_rc"] = guest_rc
     if uninstall_rc is not None:
         row["uninstall_rc"] = uninstall_rc
-    row["uninstall_verified"] = phase_host_clean(uninstall_text)
+    row["uninstall_verified"] = phase_host_clean(uninstall_text, uninstall_rc)
     post = POST_KILL_RE.findall(uninstall_text)
     if post:
         row["post_kill_pid"] = int(post[0][0])
@@ -609,12 +620,50 @@ def _boot_source(project: str, name: str) -> str:
     return source.strip() if isinstance(source, str) and "\n" not in source.strip() else ""
 
 
-def _run_one_phase(project: str, name: str, seal: str, mode: str) -> dict[str, Any]:
-    completed = _ssh_case(project, name, phase_command(seal, mode))
+def _phase_ssh_case(
+    project: str,
+    name: str,
+    command: str,
+    *,
+    deadline: int | None = None,
+    now: Any = time.time,
+) -> tuple[Any, bool]:
+    """_ssh_case with PHASE_CASE_SSH_TIMEOUT. The retry runs only if it fits.
+
+    Returns the call and whether a needed INFRA_RETRY was skipped for time.
+    """
+    completed = _ssh(project, name, command, timeout_s=PHASE_CASE_SSH_TIMEOUT)
+    text = (completed.stdout or "") + (completed.stderr or "")
+    if not _transport_failure(completed) or _py_rc(text) is not None:
+        return completed, False
+    if deadline is not None and deadline - now() < PHASE_RETRY_NEED_S:
+        print("INFRA_RETRY_SKIPPED time_budget", flush=True)
+        return completed, True
+    if not _ssh_ready(project, name):
+        return completed, False
+    print("INFRA_RETRY", flush=True)
+    return _ssh(project, name, command, timeout_s=PHASE_CASE_SSH_TIMEOUT), False
+
+
+def _run_one_phase(
+    project: str,
+    name: str,
+    seal: str,
+    mode: str,
+    *,
+    deadline: int | None = None,
+    now: Any = time.time,
+) -> dict[str, Any]:
+    completed, retry_skipped = _phase_ssh_case(project, name, phase_command(seal, mode), deadline=deadline, now=now)
     text = (completed.stdout or "") + (completed.stderr or "")
     guest_rc = _py_rc(text)
-    if _transport_failure(completed) and guest_rc is None:
-        body: dict[str, Any] | None = None
+    if retry_skipped:
+        # The tunnel dropped and a retry would not fit before the deadline.
+        # Infra, not a result: NOT_GRADED. The uninstall still runs.
+        body: dict[str, Any] | None = {"battery": mode, "host_result": "NOT_GRADED", "reason": "infra_retry_skipped"}
+        missing = ""
+    elif _transport_failure(completed) and guest_rc is None:
+        body = None
         missing = "transport"
     else:
         try:
@@ -644,7 +693,7 @@ def _run_one_phase(project: str, name: str, seal: str, mode: str) -> dict[str, A
     uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
     if body is None:
         row = phase_row(mode, None, not_run_reason=missing)
-        row["uninstall_verified"] = phase_host_clean(uninstall_text)
+        row["uninstall_verified"] = phase_host_clean(uninstall_text, uninstall.returncode)
         return allow_phase_row(row) or row
     row = phase_row(
         mode,
@@ -652,7 +701,7 @@ def _run_one_phase(project: str, name: str, seal: str, mode: str) -> dict[str, A
         guest_rc=guest_rc if guest_rc is not None else -1,
         uninstall_text=uninstall_text,
         uninstall_rc=uninstall.returncode if 0 <= uninstall.returncode <= 255 else -1,
-        boot_source=_boot_source(project, name) if mode == "2g-distro" else "",
+        boot_source=_boot_source(project, name) if mode == "2g-distro" and not retry_skipped else "",
         seal_lane=mode == "2g-distro" and seal == _lane_seal(),
     )
     if row.get("uninstall_verified") is not True:
@@ -681,7 +730,7 @@ def run_phase_batteries(
             row = phase_row(mode, None, not_run_reason=blocked)
         else:
             try:
-                row = _run_one_phase(project, name, seal, mode)
+                row = _run_one_phase(project, name, seal, mode, deadline=deadline, now=now)
             except (Exception, SystemExit) as exc:
                 # The earlier batteries' rows still get written. A phase that
                 # broke is not a result, and its uninstall is not known.

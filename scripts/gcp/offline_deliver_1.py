@@ -816,6 +816,8 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             "reboot_observed",
             "uninstall_verified",
             "deny_attr_post_kill",
+            "interim",
+            "phases_complete",
             "stock_bpf_lsm",
             "vm_digest_match",
         } and isinstance(value, bool):
