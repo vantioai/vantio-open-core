@@ -2371,6 +2371,43 @@ class ImageCycleWordTest(unittest.TestCase):
         body = self._cycle(reupgrade={"errno": 0})
         self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
 
+    def test_recorded_cycle_does_not_mark_upgrade_failed(self) -> None:
+        # Run 6: RECORDED sets reason upgrade_rollback_reupgrade and no reasons
+        # list. The capture read it as an upgrade_ fail and showed upgrade pass false.
+        body = self._cycle()
+        self.assertEqual(body["reason"], od.IMAGE_CYCLE_OK_REASON)
+        self.assertNotIn("reasons", body)
+        self.assertEqual(od._image_cycle_reasons(body), [])
+        kept = od._allow_capture(od._loader_capture("loader-restart", {"body": body, "rc": 0, "word": "held"}))
+        by_name = {row["name"]: row for row in kept["cases"]}
+        self.assertEqual(list(by_name), list(od.IMAGE_CYCLE_STEPS))
+        for name, row in by_name.items():
+            with self.subTest(step=name):
+                self.assertTrue(row["pass"])
+                self.assertNotIn("reason", row)
+        self.assertNotIn("fail_reasons", kept)
+
+    def test_single_reason_fallback_is_only_for_a_fail(self) -> None:
+        self.assertEqual(od._image_cycle_reasons({"reason": "upgrade_enforcement"}), ["upgrade_enforcement"])
+        self.assertEqual(
+            od._image_cycle_reasons({"host_result": "RECORDED", "reason": "upgrade_enforcement"}), []
+        )
+        self.assertEqual(od._image_cycle_reasons({"action": "RECORDED", "reason": "upgrade_enforcement"}), [])
+        self.assertEqual(od._image_cycle_reasons({"host_result": "FAIL", "reason": od.IMAGE_CYCLE_OK_REASON}), [])
+        self.assertEqual(
+            od._image_cycle_reasons({"reasons": [od.IMAGE_CYCLE_OK_REASON, "upgrade_uninstall"]}),
+            ["upgrade_uninstall"],
+        )
+
+    def test_a_real_upgrade_fail_still_marks_upgrade(self) -> None:
+        body = self._cycle(upgrade={"errno": 0})
+        self.assertEqual(body["host_result"], "FAIL")
+        kept = od._loader_capture("loader-restart", {"body": body, "rc": 1, "word": "fail"})
+        by_name = {row["name"]: row for row in kept["cases"]}
+        self.assertFalse(by_name["upgrade"]["pass"])
+        self.assertEqual(by_name["upgrade"]["reason"], "upgrade_enforcement")
+        self.assertTrue(by_name["baseline"]["pass"])
+
     def test_missing_archives_stay_setup_invalid(self) -> None:
         for reason in ("public_pin_absent", "public_pin_digest", "seal_absent", "seal"):
             body = self.grade.grade_image_cycle([])

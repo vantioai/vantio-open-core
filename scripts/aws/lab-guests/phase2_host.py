@@ -876,6 +876,25 @@ def wall_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(now)) + f".{int(now * 1000) % 1000:03d}Z"
 
 
+def _map_row_count(pid: int) -> int:
+    """This pid's DENIED rows drained from the deny-attr map. Evidence only, never graded.
+
+    PE writes those rows from DenyAttr.path_key, which is 32 bytes, so their
+    path is the ceiling path cut short and _deny_rows skips them. Counting them
+    shows whether the loader wrote a map row for an open that has no full-path row.
+    """
+    cut = str(rows.DENY).encode()[: grade.DENY_PATH_KEY_LEN].decode(errors="replace")
+    if cut == str(rows.DENY):
+        return 0
+    found = 0
+    for item in events():
+        if item.get("Pid") != pid or item.get("ActionTaken") != "DENIED":
+            continue
+        if (item.get("PathAttempted") or item.get("Payload")) == cut:
+            found += 1
+    return found
+
+
 def _ledger_ts(pid: int, index: int) -> str | None:
     found = _deny_rows(pid, with_time=True)
     return found[index].get("ledger_ts") if 0 <= index < len(found) else None
@@ -1208,6 +1227,7 @@ def same_process_across_restart(adapter) -> dict:
                 probe_at=probe_before_at,
                 seen_at=before_seen_at,
                 ledger_ts=_ledger_ts(pid, before_count - 1),
+                map_rows=_map_row_count(pid),
             )
             body["restart_rows"] = {
                 "before": before_side,
@@ -1282,6 +1302,7 @@ def same_process_across_restart(adapter) -> dict:
                 probe_at=probe_after_at,
                 seen_at=after_seen_at,
                 ledger_ts=_ledger_ts(pid, before_count),
+                map_rows=_map_row_count(pid),
             )
             body["restart_rows"]["after"] = after_side
             # The GCP grade can only take a hold away, never add one.

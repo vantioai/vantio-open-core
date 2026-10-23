@@ -741,13 +741,33 @@ def _ts_seconds(value: object) -> float | None:
     return None
 
 
-def ledger_latency_s(side: Mapping[str, Any]) -> float | None:
-    """ledger_ts - probe_at in seconds, when both parse. Evidence only, never graded."""
-    ledger = _ts_seconds(side.get("ledger_ts"))
+# Where ledger_latency_s came from. PE ledger rows (engine da961aa) carry no
+# time field, so host_seen_at (the guest's clock when its poll first saw the
+# row) is the usual source. That is an upper bound on when the row was written.
+LEDGER_TS_FROM_ROW = "ledger_row"
+LEDGER_TS_HOST_SEEN = "host_seen_at"
+LEDGER_TS_SOURCES = (LEDGER_TS_FROM_ROW, LEDGER_TS_HOST_SEEN)
+
+
+def ledger_latency(side: Mapping[str, Any]) -> tuple[float | None, str | None]:
+    """(row time - probe_at in seconds, source), or (None, None). Evidence only, never graded.
+
+    The row's own ledger_ts is used when it parses. Otherwise seen_at is used
+    and the source says host_seen_at, so the number is never read as a ledger time.
+    """
     probe = _ts_seconds(side.get("probe_at"))
-    if ledger is None or probe is None or abs(ledger - probe) > 86400:
-        return None
-    return round(ledger - probe, 3)
+    if probe is None:
+        return None, None
+    for key, source in (("ledger_ts", LEDGER_TS_FROM_ROW), ("seen_at", LEDGER_TS_HOST_SEEN)):
+        stamp = _ts_seconds(side.get(key))
+        if stamp is not None and abs(stamp - probe) <= 86400:
+            return round(stamp - probe, 3), source
+    return None, None
+
+
+def ledger_latency_s(side: Mapping[str, Any]) -> float | None:
+    """The seconds from ledger_latency, without the source."""
+    return ledger_latency(side)[0]
 
 
 def allow_restart_side(value: object) -> dict[str, Any] | None:
@@ -767,9 +787,11 @@ def allow_restart_side(value: object) -> dict[str, Any] | None:
     for key, high in (("anchor", 2**32), ("expected_anchor", 2**32), ("pid", 2**22), ("row_pid", 2**22)):
         if _int_in(value.get(key), 0, high):
             kept[key] = value[key]
-    for key in ("row_count", "rows_before"):
+    for key in ("map_rows", "row_count", "rows_before"):
         if _int_in(value.get(key), 0, 100000):
             kept[key] = value[key]
+    if value.get("ledger_ts_source") in LEDGER_TS_SOURCES:
+        kept["ledger_ts_source"] = value["ledger_ts_source"]
     if _seconds(value.get("wait_s")):
         kept["wait_s"] = value["wait_s"]
     for key in ("ledger_ts", "probe_at", "seen_at"):
@@ -778,9 +800,10 @@ def allow_restart_side(value: object) -> dict[str, Any] | None:
             kept[key] = item
     if value.get("cause") in RESTART_ROW_CAUSES:
         kept["cause"] = value["cause"]
-    latency = ledger_latency_s(kept)
+    latency, source = ledger_latency(kept) if kept.get("row_seen") is True else (None, None)
     if latency is not None:
         kept["ledger_latency_s"] = latency
+        kept["ledger_latency_source"] = source
     return kept
 
 
@@ -949,11 +972,26 @@ def _image_cycle_word(body: Mapping[str, Any]) -> str:
     return "fail"
 
 
+# phase2_grade.grade_upgrade_rollback sets this reason on a RECORDED cycle.
+# It starts with "upgrade_", so it must never be read as an upgrade-step fail.
+IMAGE_CYCLE_OK_REASON = "upgrade_rollback_reupgrade"
+
+
 def _image_cycle_reasons(body: Mapping[str, Any]) -> list[str]:
+    """The host's fail reasons for the cycle. A RECORDED cycle has none.
+
+    The single reason is used only when there is no reasons list, and never
+    on a RECORDED body or when it is the success reason.
+    """
     reasons = body.get("reasons")
     if not isinstance(reasons, list):
-        reasons = [body.get("reason")]
-    return [item for item in reasons if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)][:16]
+        recorded = body.get("host_result") == "RECORDED" or body.get("action") == "RECORDED"
+        reasons = [] if recorded else [body.get("reason")]
+    return [
+        item
+        for item in reasons
+        if isinstance(item, str) and item != IMAGE_CYCLE_OK_REASON and re.fullmatch(r"[a-z0-9_]{1,40}", item)
+    ][:16]
 
 
 def _image_cycle_cases(body: Mapping[str, Any]) -> list[dict[str, Any]]:

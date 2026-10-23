@@ -111,6 +111,13 @@ def restart_keeps_the_same_anchor(
 # counts, and its seconds are kept as late_s.
 RESTART_ROW_CAP_S = 15.0
 RESTART_ROW_LATE_S = 5.0
+# Where a 2D restart row's time came from. PE ledger rows carry no time field,
+# so the guest falls back to its own wall clock when it first saw the row.
+LEDGER_TS_FROM_ROW = "ledger_row"
+LEDGER_TS_HOST_SEEN = "host_seen_at"
+# DenyAttr.path_key is 32 bytes. Rows drained from the deny-attr map carry the
+# ceiling path cut to this length, so they never equal the full path.
+DENY_PATH_KEY_LEN = 32
 # Why one side of the restart check failed. not_blocked is a fail-open (the
 # open succeeded). row_absent_errno13 means the open was blocked but no row
 # was written; row_past_cap means the row came only after RESTART_ROW_CAP_S;
@@ -189,12 +196,19 @@ def restart_row_side(
     probe_at: Any = None,
     seen_at: Any = None,
     ledger_ts: Any = None,
+    map_rows: Any = None,
 ) -> dict[str, Any]:
     """Evidence for one side of the GCP 2D restart check, plus its grade.
 
     expected_anchor None (before the restart) accepts any positive anchor.
     After the restart it is the anchor on the first row. The fields are the
     same on both sides.
+
+    ledger_ts_source says where a time for the row came from. PE ledger rows
+    (engine da961aa) carry no time field, so it is usually host_seen_at: the
+    guest's wall clock when the poll first saw the row, an upper bound on when
+    the row was written. map_rows counts this pid's rows from the deny-attr
+    map, whose path is cut to 32 bytes; they are evidence only, never graded.
     """
     row = row if isinstance(row, dict) else None
     anchor = row.get("lineage_anchor") if row else 0
@@ -220,6 +234,10 @@ def restart_row_side(
         "seen_at": seen_at if row is not None else None,
         "wait_s": wait_s,
     }
+    if row is not None:
+        side["ledger_ts_source"] = LEDGER_TS_FROM_ROW if ledger_ts else LEDGER_TS_HOST_SEEN
+    if _count(map_rows):
+        side["map_rows"] = map_rows
     cause = restart_row_cause(side)
     side["cause"] = cause
     side["pass"] = cause is None
