@@ -924,6 +924,7 @@ def run_batteries(env: Mapping[str, str]) -> int:
     payload_dir = Path(env.get("RUNNER_TEMP") or "/tmp") / "gcp-guest-payload"
     debs = _stage_payload(env, payload_dir)
     captures: list[dict[str, Any]] = []
+    started_epoch = int(time.time())
     try:
         _wait_until_running(project, name)
         made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR} && chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
@@ -1039,8 +1040,14 @@ def run_batteries(env: Mapping[str, str]) -> int:
             f"bash {GUEST_DIR}/enterprise-rows.sh {seal} uninstall",
         )
         uninstall_text = (uninstall.stdout or "") + "\n" + (uninstall.stderr or "")
-        uninstall_verified = uninstall.returncode == 0 and "UNINSTALL_VERIFIED" in uninstall_text
+        # The host is clean on an exact UNINSTALL_VERIFIED line with no
+        # residual line (offline_deliver_4.phase_host_clean). The exit code
+        # also counts the 2D post-kill row, which is kept on its own below and
+        # still required for the full set.
+        uninstall_verified = phase_host_clean(uninstall_text, uninstall.returncode)
         post_kill_row = "deny_attr_post_kill pid " in uninstall_text
+        if not uninstall_verified or not post_kill_row:
+            print(redact(uninstall_text)[-2000:], file=sys.stderr)
         result = {
             "batteries": True,
             "captures": captures,
@@ -1057,7 +1064,13 @@ def run_batteries(env: Mapping[str, str]) -> int:
             **kill_late_fields(_kill_restart_rows(kill.get("body"))),
             "debs": debs,
             "deny_attr_post_kill": post_kill_row,
+            "distro_excluded": list(DISTRO_EXCLUDED),
+            "distro_scope": PHASE_DISTRO_SCOPE,
             "full_set": passed,
+            # Interim until 2E, 2F, 2G returned. Grading does not read these.
+            "interim": True,
+            "phases": [],
+            "phases_complete": False,
             "uninstall_verified": uninstall_verified,
             "image": next((item["image"] for item in repeats if engine_image(item.get("image"))), ""),
             "lsm_guard": lsm.get("lsm_guard") if isinstance(lsm.get("lsm_guard"), str) else "",
@@ -1072,17 +1085,46 @@ def run_batteries(env: Mapping[str, str]) -> int:
             "subnet": SUBNET,
             "trust_sha256": TRUST_SHA256,
         }
+        # Interim rows: the earlier batteries are on disk before 2E starts, so a
+        # job stopped during a phase still leaves them (phases empty, not passed).
+        write_evidence(evidence / "gcp-lab-rows.json", result)
+        # 2E, 2F, 2G (offline_deliver_4.py). They run even when an earlier
+        # battery failed, so the run still records them, but only on a host
+        # the authorized uninstall verified clean.
+        phases = run_phase_batteries(
+            project,
+            name,
+            seal,
+            env,
+            ready=uninstall_verified,
+            started_epoch=started_epoch,
+        )
+        phases_ok = phases_pass(phases)
+        result["phases"] = phases
+        result["interim"] = False
+        result["phases_complete"] = True
         print(json.dumps({"cases": cases, "loader_kill": loader_kill, "loader_restart": loader_restart}), flush=True)
         write_evidence(evidence / "guest-evidence.json", {"captures": captures, "claim_cap": CLAIM_CAP})
         if not passed or loader_kill != "held" or loader_restart != "held":
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("battery" if not passed else "loader")
         if not uninstall_verified or not post_kill_row:
-            print(redact(uninstall_text)[-2000:], file=sys.stderr)
             write_evidence(evidence / "gcp-lab-rows.json", result)
             raise SystemExit("uninstall")
         write_evidence(evidence / "gcp-lab-rows.json", result)
-        print(json.dumps({"full_set": True, "repeats": BATTERY_REPEATS, "claim_cap": CLAIM_CAP}))
+        if not phases_ok:
+            raise SystemExit("phases")
+        print(
+            json.dumps(
+                {
+                    "full_set": True,
+                    "phases_pass": True,
+                    "repeats": BATTERY_REPEATS,
+                    "claim_cap": CLAIM_CAP,
+                    "distro_scope": PHASE_DISTRO_SCOPE,
+                }
+            )
+        )
         return 0
     finally:
         if captures:

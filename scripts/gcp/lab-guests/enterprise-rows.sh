@@ -378,7 +378,7 @@ accept_loaded_image() {
 }
 
 case "$mode" in
-  enterprise|descendant-b1|2c-upgrade-rollback|2d-crash-recovery|lsm-guard|uninstall) ;;
+  enterprise|descendant-b1|2c-upgrade-rollback|2d-crash-recovery|lsm-guard|2e-performance|2f-tamper|2g-distro|uninstall) ;;
   *)
     echo "battery" >&2
     exit 2
@@ -564,7 +564,7 @@ if [ "$mode" = "descendant-b1" ]; then
   exit "$rc"
 fi
 case "$mode" in
-  2c-upgrade-rollback|2d-crash-recovery|lsm-guard)
+  2c-upgrade-rollback|2d-crash-recovery|lsm-guard|2e-performance|2f-tamper|2g-distro)
     # The pre-reboot guard already wrote the /var/lib copy. Leaving it
     # there makes a failed second run look like a post-reboot confirm.
     sudo rm -f /tmp/enterprise-pe-rows.json /var/lib/vantio-lab/enterprise-pe-rows.json
@@ -573,7 +573,9 @@ case "$mode" in
     set +e
     # VANTIO_LAB_CLOUD=gcp: 2D waits up to 15 s for the after-restart deny row
     # and records restart_rows (phase2_grade.restart_row_side). AWS never sets it.
-    sudo env VANTIO_LAB_CLOUD=gcp VANTIO_IMAGE="$image" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
+    # 2E, 2F, 2G: the runner does each phase's authorized uninstall in its own
+    # uninstall call. 2G reads VANTIO_IMAGE_ID (the image family the runner booted).
+    sudo env VANTIO_LAB_CLOUD=gcp VANTIO_IMAGE="$image" VANTIO_IMAGE_ID="${VANTIO_IMAGE_ID:-}" VANTIO_EGRESS_HOST="${VANTIO_EGRESS_HOST:-}" VANTIO_EGRESS_PORT="${VANTIO_EGRESS_PORT:-}" python3 "$here/phase2_host.py" "$stage" "$mode" > /tmp/phase2-host.out 2>&1
     rc=$?
     set -e
     cat /tmp/phase2-host.out

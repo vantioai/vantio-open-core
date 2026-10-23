@@ -307,6 +307,8 @@ ENUMS = {
     "bucket": frozenset({BUCKET}),
     "claim_cap": frozenset({CLAIM_CAP}),
     "cloud": frozenset({"gcp"}),
+    # offline_deliver_4.PHASE_DISTRO_SCOPE. Part 4 loads after this table.
+    "distro_scope": frozenset({"ubuntu-2404-only"}),
     "image": frozenset({f"{IMAGE_PROJECT}/{IMAGE_FAMILY}", IMAGE_NAME}),
     "machine_type": frozenset({lab.MACHINE_TYPE, rtbrain.BRAIN_MACHINE}),
     "mode": frozenset({"plumb", "enterprise", "descendant-b1", "self-service", "t5-egress"}),
@@ -814,6 +816,8 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             "reboot_observed",
             "uninstall_verified",
             "deny_attr_post_kill",
+            "interim",
+            "phases_complete",
             "stock_bpf_lsm",
             "vm_digest_match",
         } and isinstance(value, bool):
@@ -933,6 +937,17 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key == "full_set":
             continue
+        if key == "phases" and isinstance(value, list):
+            # offline_deliver_4.py. Each row's pass is recomputed on the way in.
+            kept["phases"] = [item for item in (allow_phase_row(entry) for entry in value[:3]) if item]
+            continue
+        if key == "distro_excluded" and isinstance(value, list):
+            kept["distro_excluded"] = [dict(item) for item in DISTRO_EXCLUDED if item in value]
+            continue
+        if key == "phases_pass":
+            continue
+    if "phases" in kept:
+        kept["phases_pass"] = phases_pass(kept["phases"])
     if "repeats" in kept:
         kept["full_set"] = full_set_passes(kept["repeats"])
     return kept
@@ -1402,7 +1417,7 @@ def guest_command(seal: str, mode: str, phase: str = "") -> str:
         return f"bash {script} {seal} enterprise"
     if mode == "descendant-b1" and phase in ("pre", "post"):
         return f"bash {script} {seal} descendant-b1 {phase}"
-    if mode in {"2c-upgrade-rollback", "2d-crash-recovery", "lsm-guard"} and phase == "":
+    if mode in {"2c-upgrade-rollback", "2d-crash-recovery", "lsm-guard", "2e-performance", "2f-tamper", "2g-distro"} and phase == "":
         return f"bash {script} {seal} {mode}"
     raise SystemExit("battery")
 
