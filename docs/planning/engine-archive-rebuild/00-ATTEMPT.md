@@ -2,7 +2,7 @@
 
 UTC: 2026-10-16
 
-This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`8b1106ef` since 2026-10-22, `6d3ce580` at the time of the 2026-10-16 attempt; full value in `RESULT.json`).
+This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`46982f26` since 2026-10-23, `8b1106ef` on 2026-10-22, `6d3ce580` at the time of the 2026-10-16 attempt; full value in `RESULT.json`).
 
 The comparison has three results:
 
@@ -28,3 +28,8 @@ A later run that has the source can produce `MATCH` or `MISMATCH`. Until then th
 
 `8b1106ef` is a `docker save` of `vantio-phantom-engine:da961aa9`, built outside this repository from phantom-engine `da961aa92ab75f3566ec086dc612fdda80807191`. An earlier build from the same commit, tagged `:local`, hashed to `e9eeb058`. Two builds of one commit gave two different digests, likely because the Dockerfile installs a floating Rust nightly and an unpinned `bpf-linker`, and its `rust:1-bookworm` base image is not pinned by digest either. That is a reason `formal_reproducibility` stays `NOT_CLAIMED`. It is not a `MISMATCH` result here, because this script did not build either archive.
 
+## 2026-10-23 lane seal move
+
+`release/pe-canonical-seal.json` now points `lane_seal` at `46982f26`, so `working_seal` in `RESULT.json` follows it again. The other `RESULT.json` fields are unchanged and still describe the 2026-10-16 attempt. This page did not rerun that attempt.
+
+`46982f26` is a `docker save` of `vantio-phantom-engine:1968525c`, built outside this repository from phantom-engine `1968525c5d71cf1ee68f231a651d8ae408540438` the same way as `8b1106ef`. `formal_reproducibility` stays `NOT_CLAIMED` for the reasons above.

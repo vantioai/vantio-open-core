@@ -16,6 +16,12 @@
       "role": "lab_bundle_seal",
       "retired": "2026-10-22",
       "note": "da961aa9 archive tagged vantio-phantom-engine:local. Never pinned on main. Lab arm refused the tag (loaded_image_refused)."
+    },
+    {
+      "sha256": "8b1106ef8f5e88466e36c061a95389398c3cf990d544ae945a44481b7694c240",
+      "role": "lane_seal",
+      "retired": "2026-10-23",
+      "note": "Lane seal set 2026-10-22 from engine da961aa9 (bundle 236db73c). Replaced on main by the 1968525c rebuild."
     }
   ]
 }

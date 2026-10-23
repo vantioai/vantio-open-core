@@ -30,7 +30,7 @@ test("a rebuilt digest is a match only when it equals the working seal", () => {
 test("this checkout records the live attempt", () => {
   const body = attempt(root);
   assert.equal(body.working_seal, workingSeal(root));
-  assert.equal(body.working_seal.startsWith("8b1106ef"), true);
+  assert.equal(body.working_seal.startsWith("46982f26"), true);
   assert.equal(body.label, "Lab-only");
   assert.equal(body.formal_reproducibility, "NOT_CLAIMED");
   const saved = JSON.parse(readFileSync(join(root, "docs/planning/engine-archive-rebuild/RESULT.json"), "utf8"));
