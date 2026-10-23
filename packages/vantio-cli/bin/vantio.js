@@ -31,9 +31,9 @@ const {
 const { createWrapSampler } = require("./optics-proc.cjs");
 
 const USAGE = `\
-Vantio Optics | Free Observability for AI Agents
+Vantio Optics | Free Observability for AI
 
-Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
+Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.
 
 Usage:
   vantio run [flags] <prog>   Spawn <prog> under the Vantio execution context
@@ -178,7 +178,7 @@ Usage:
 Options:
   --run=<trace-id>    Run to read (default: most recent local run)
   -n, --lines=<n>     Number of calls to show (default: 20). 0 shows zero calls.
-  --all               Show every call in the run
+  --all               Show all recorded calls in the run
   -f, --follow        Keep watching. New destination lines print as the call happens
   --json              Unstable JSON (schema_status unstable-pre-1.0; may change without notice)
   -h, --help          Show this help
@@ -466,8 +466,8 @@ function runCommand(rest) {
 function logoutCommand() {
   clearConfig();
   process.stdout.write(
-    "Vantio Optics | Free Observability for AI Agents\n" +
-    "Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.\n",
+    "Vantio Optics | Free Observability for AI\n" +
+    "Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.\n",
   );
 }
 
@@ -570,8 +570,8 @@ function generateHtmlReport(log) {
 </head>
 <body>
   <div class="page">
-    <h1>Vantio Optics | Free Observability for AI Agents</h1>
-    <p class="subtitle">Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.</p>
+    <h1>Vantio Optics | Free Observability for AI</h1>
+    <p class="subtitle">Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.</p>
 
     <div class="privacy-banner">
       ✓ <strong>Prompts and completions are never stored.</strong>
@@ -672,9 +672,9 @@ function generateMarkdownReport(log) {
     return `| ${i + 1} | \`${view.hostname || "—"}\` | ${view.opticsLabel} | ${view.applicationLabel} | ${http} | ${view.bytes != null ? Number(view.bytes).toLocaleString() : "—"} | \`${view.ts || "—"}\` |`;
   }).join("\n");
 
-  return `# Vantio Optics | Free Observability for AI Agents
+  return `# Vantio Optics | Free Observability for AI
 
-> Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.
+> Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.
 
 **Privacy notice:** This report contains hostnames, byte counts, process IDs,
 trace IDs, Optics status, and Application outcome. Prompts and completions are never stored.
@@ -1565,8 +1565,8 @@ function demoCommand(args) {
     return;
   }
   process.stdout.write(
-    "Vantio Optics | Free Observability for AI Agents\n" +
-    "Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.\n\n" +
+    "Vantio Optics | Free Observability for AI\n" +
+    "Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.\n\n" +
     "Demo — in-process stub. No network.\n\n" +
     "  method: POST /v1/chat/completions\n" +
     "  http_status: 200\n" +
@@ -1710,8 +1710,8 @@ function statusCommand(args) {
     : "not checked";
   const sdkLines = report.sdks.map((sdk) => `  ${sdk.name}  ${humanStatus(sdk.opticsStatus)}`).join("\n");
   process.stdout.write(
-    "Vantio Optics | Free Observability for AI Agents\n" +
-    "Free, local-first observability for supported AI-agent traffic. Prompts and completions are never stored.\n\n" +
+    "Vantio Optics | Free Observability for AI\n" +
+    "Free and open source (MIT), local-first observability for calls to supported AI providers. Prompts and completions are never stored.\n\n" +
     `Install version:             ${version}\n` +
     `Registry latest:             ${registryLine}\n` +
     `Telemetry:                   ${report.telemetry.posture}\n` +

@@ -2,7 +2,7 @@
 
 Manual version 1. Product name: **Vantio Optics**.
 
-Optics is free, local-first observability for supported AI-agent traffic. It records that a wrapped process called a destination, when, and how large the exchange was. Prompts and completions are absent from the record.
+Optics is free and open source (MIT), local-first observability for calls to supported AI providers. It records that a wrapped process called a destination, when, and how large the exchange was. Prompts and completions are absent from the record.
 
 Optics observes. Phantom Engine is the separate product that enforces. This manual stops at Optics.
 
