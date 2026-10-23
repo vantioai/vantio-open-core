@@ -197,6 +197,7 @@ def restart_row_side(
     seen_at: Any = None,
     ledger_ts: Any = None,
     map_rows: Any = None,
+    map_rows_before: Any = None,
 ) -> dict[str, Any]:
     """Evidence for one side of the GCP 2D restart check, plus its grade.
 
@@ -209,6 +210,11 @@ def restart_row_side(
     guest's wall clock when the poll first saw the row, an upper bound on when
     the row was written. map_rows counts this pid's rows from the deny-attr
     map, whose path is cut to 32 bytes; they are evidence only, never graded.
+
+    map_rows is cumulative for the pid, so on the after side it includes the
+    before side's rows. The after side also gets map_rows_before (the before
+    side's map_rows) and map_rows_after_new = map_rows - map_rows_before, never
+    below 0: the cut rows written since the before side was recorded.
     """
     row = row if isinstance(row, dict) else None
     anchor = row.get("lineage_anchor") if row else 0
@@ -238,6 +244,9 @@ def restart_row_side(
         side["ledger_ts_source"] = LEDGER_TS_FROM_ROW if ledger_ts else LEDGER_TS_HOST_SEEN
     if _count(map_rows):
         side["map_rows"] = map_rows
+        if _count(map_rows_before):
+            side["map_rows_before"] = map_rows_before
+            side["map_rows_after_new"] = max(0, map_rows - map_rows_before)
     cause = restart_row_cause(side)
     side["cause"] = cause
     side["pass"] = cause is None

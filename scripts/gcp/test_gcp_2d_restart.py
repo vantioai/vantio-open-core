@@ -545,7 +545,7 @@ class WiringTest(unittest.TestCase):
 LAB_DENY = "/var/lib/vantio-pe-clean-host/d/secret"
 
 
-def _no_ledger_time(*, before=False, seen=True, wait_s=2.965, map_rows=None):
+def _no_ledger_time(*, before=False, seen=True, wait_s=2.965, map_rows=None, map_rows_before=None):
     """A side the way PE da961aa rows really arrive: the row has no time field."""
     rows_before = 0 if before else 1
     return grade.restart_row_side(
@@ -560,6 +560,7 @@ def _no_ledger_time(*, before=False, seen=True, wait_s=2.965, map_rows=None):
         seen_at="2026-10-23T00:19:27.190Z" if seen else None,
         ledger_ts=None,
         map_rows=map_rows,
+        map_rows_before=map_rows_before,
     )
 
 
@@ -611,13 +612,56 @@ class LedgerTimeSourceTest(unittest.TestCase):
     def test_source_and_map_rows_are_allow_listed(self) -> None:
         side = dict(_no_ledger_time(), ledger_ts_source="ledger_row; x", map_rows=True, ledger_latency_source="made_up")
         kept = od.allow_restart_side(side)
-        self.assertNotIn("ledger_ts_source", kept)
+        self.assertEqual(kept["ledger_ts_source"], "host_seen_at")
         self.assertNotIn("map_rows", kept)
         self.assertEqual(kept["ledger_latency_source"], "host_seen_at")
         self.assertEqual(od.allow_restart_side(_no_ledger_time(map_rows=2))["map_rows"], 2)
         self.assertNotIn("map_rows", _no_ledger_time(map_rows=-1))
 
+    def test_host_sets_the_source_from_what_it_kept(self) -> None:
+        # The guest says ledger_row, but its ledger_ts is garbage or missing.
+        for ledger_ts in ("garbage", "x" * 41, None, 12.5):
+            with self.subTest(ledger_ts=ledger_ts):
+                side = dict(_no_ledger_time(), ledger_ts_source="ledger_row", ledger_ts=ledger_ts)
+                kept = od.allow_restart_side(side)
+                self.assertEqual(kept["ledger_ts_source"], "host_seen_at")
+                self.assertEqual(kept["ledger_latency_source"], "host_seen_at")
+                self.assertEqual(kept["ledger_latency_s"], 2.965)
+        # The guest says host_seen_at, but the host kept a ledger_ts that parses.
+        kept = od.allow_restart_side(dict(_side(), ledger_ts_source="host_seen_at"))
+        self.assertEqual((kept["ledger_ts_source"], kept["ledger_latency_source"]), ("ledger_row", "ledger_row"))
+        # No row: no source, whatever the guest says.
+        kept = od.allow_restart_side(dict(_no_ledger_time(seen=False), ledger_ts_source="ledger_row"))
+        self.assertNotIn("ledger_ts_source", kept)
+
+    def test_after_side_map_rows_split_before_and_new(self) -> None:
+        after = _no_ledger_time(map_rows=5, map_rows_before=2)
+        self.assertEqual((after["map_rows"], after["map_rows_before"], after["map_rows_after_new"]), (5, 2, 3))
+        self.assertEqual(_no_ledger_time(map_rows=1, map_rows_before=4)["map_rows_after_new"], 0)
+        before = _no_ledger_time(before=True, map_rows=2)
+        self.assertNotIn("map_rows_before", before)
+        self.assertNotIn("map_rows_after_new", before)
+        for bad in (None, -1, True, "2"):
+            with self.subTest(bad=bad):
+                self.assertNotIn("map_rows_after_new", _no_ledger_time(map_rows=5, map_rows_before=bad))
+        # The host derives the after-restart share itself.
+        kept = od.allow_restart_side(dict(after, map_rows_after_new=99))
+        self.assertEqual(kept["map_rows_after_new"], 3)
+        kept = od.allow_restart_side(dict(after, map_rows_before=7))
+        self.assertEqual(kept["map_rows_after_new"], 0)
+        kept = od.allow_restart_side(dict(after, map_rows_before=True))
+        self.assertNotIn("map_rows_after_new", kept)
+        self.assertNotIn("map_rows_before", kept)
+        # Evidence only.
+        self.assertIsNone(od.restart_row_cause(kept))
+        missing = od.allow_restart_side(_no_ledger_time(seen=False, map_rows=5, map_rows_before=2))
+        self.assertEqual(missing["map_rows_after_new"], 3)
+        self.assertEqual(od.restart_row_cause(missing), "row_absent_errno13")
+
     def test_latency_and_map_rows_never_change_the_grade(self) -> None:
+        # Guest map_rows cannot rescue the guest's own cause.
+        self.assertEqual(_no_ledger_time(seen=False, map_rows=3)["cause"], "row_absent_errno13")
+        self.assertFalse(_no_ledger_time(seen=False, map_rows=3)["pass"])
         missing = od.allow_restart_side(_no_ledger_time(seen=False, map_rows=3))
         self.assertEqual(missing["map_rows"], 3)
         self.assertEqual(od.restart_row_cause(missing), "row_absent_errno13")
@@ -671,7 +715,9 @@ class MapRowCountTest(unittest.TestCase):
     def test_guest_records_map_rows_on_both_sides(self) -> None:
         text = (GUESTS / "phase2_host.py").read_text(encoding="utf-8")
         body = text.split("def same_process_across_restart", 1)[1].split("\ndef ", 1)[0]
-        self.assertEqual(body.count("map_rows=_map_row_count(pid)"), 2)
+        self.assertEqual(body.count("map_rows_before = _map_row_count(pid)"), 1)
+        self.assertEqual(body.count("map_rows=map_rows_before,"), 1)
+        self.assertEqual(body.count("map_rows=_map_row_count(pid),\n                map_rows_before=map_rows_before,"), 1)
 
 
 if __name__ == "__main__":

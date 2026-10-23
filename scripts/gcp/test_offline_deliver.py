@@ -2392,12 +2392,40 @@ class ImageCycleWordTest(unittest.TestCase):
         self.assertEqual(
             od._image_cycle_reasons({"host_result": "RECORDED", "reason": "upgrade_enforcement"}), []
         )
-        self.assertEqual(od._image_cycle_reasons({"action": "RECORDED", "reason": "upgrade_enforcement"}), [])
-        self.assertEqual(od._image_cycle_reasons({"host_result": "FAIL", "reason": od.IMAGE_CYCLE_OK_REASON}), [])
+        # RECORDED means host_result only, as in _image_cycle_word. action is not read.
+        self.assertEqual(
+            od._image_cycle_reasons({"action": "RECORDED", "reason": "upgrade_enforcement"}), ["upgrade_enforcement"]
+        )
+        self.assertEqual(
+            od._image_cycle_reasons({"host_result": "FAIL", "action": "RECORDED", "reason": "upgrade_enforcement"}),
+            ["upgrade_enforcement"],
+        )
+        self.assertEqual(
+            od._image_cycle_reasons({"host_result": "FAIL", "reason": od.IMAGE_CYCLE_OK_REASON}),
+            [od.IMAGE_CYCLE_OK_REASON],
+        )
         self.assertEqual(
             od._image_cycle_reasons({"reasons": [od.IMAGE_CYCLE_OK_REASON, "upgrade_uninstall"]}),
-            ["upgrade_uninstall"],
+            [od.IMAGE_CYCLE_OK_REASON, "upgrade_uninstall"],
         )
+
+    def test_a_fail_body_keeps_its_fail_reasons(self) -> None:
+        cases = (
+            {"host_result": "FAIL", "action": "RECORDED", "reason": "upgrade_enforcement"},
+            {"host_result": "FAIL", "reason": od.IMAGE_CYCLE_OK_REASON},
+        )
+        for extra in cases:
+            with self.subTest(body=extra):
+                # A real FAIL cycle (upgrade not denied) with a single reason and no reasons list.
+                body = self._cycle(upgrade={"errno": 0})
+                body.pop("reasons", None)
+                body.update(extra)
+                self.assertEqual(od._loader_word("2c-upgrade-rollback", body), "fail")
+                kept = od._allow_capture(od._loader_capture("loader-restart", {"body": body, "rc": 1, "word": "fail"}))
+                self.assertEqual(kept["fail_reasons"], [body["reason"]])
+                by_name = {row["name"]: row for row in kept["cases"]}
+                self.assertFalse(by_name["upgrade"]["pass"])
+                self.assertEqual(by_name["upgrade"]["reason"], body["reason"])
 
     def test_a_real_upgrade_fail_still_marks_upgrade(self) -> None:
         body = self._cycle(upgrade={"errno": 0})

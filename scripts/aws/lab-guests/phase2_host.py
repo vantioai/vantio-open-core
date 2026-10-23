@@ -1216,6 +1216,7 @@ def same_process_across_restart(adapter) -> dict:
             }
         )
         if gcp:
+            map_rows_before = _map_row_count(pid)
             before_side = grade.restart_row_side(
                 pid=pid,
                 errno=errno_before,
@@ -1227,7 +1228,7 @@ def same_process_across_restart(adapter) -> dict:
                 probe_at=probe_before_at,
                 seen_at=before_seen_at,
                 ledger_ts=_ledger_ts(pid, before_count - 1),
-                map_rows=_map_row_count(pid),
+                map_rows=map_rows_before,
             )
             body["restart_rows"] = {
                 "before": before_side,
@@ -1303,6 +1304,7 @@ def same_process_across_restart(adapter) -> dict:
                 seen_at=after_seen_at,
                 ledger_ts=_ledger_ts(pid, before_count),
                 map_rows=_map_row_count(pid),
+                map_rows_before=map_rows_before,
             )
             body["restart_rows"]["after"] = after_side
             # The GCP grade can only take a hold away, never add one.

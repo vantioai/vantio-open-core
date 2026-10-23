@@ -787,11 +787,13 @@ def allow_restart_side(value: object) -> dict[str, Any] | None:
     for key, high in (("anchor", 2**32), ("expected_anchor", 2**32), ("pid", 2**22), ("row_pid", 2**22)):
         if _int_in(value.get(key), 0, high):
             kept[key] = value[key]
-    for key in ("map_rows", "row_count", "rows_before"):
+    for key in ("map_rows", "map_rows_before", "row_count", "rows_before"):
         if _int_in(value.get(key), 0, 100000):
             kept[key] = value[key]
-    if value.get("ledger_ts_source") in LEDGER_TS_SOURCES:
-        kept["ledger_ts_source"] = value["ledger_ts_source"]
+    # map_rows is cumulative for the pid. The host derives the after-restart
+    # share itself and ignores the guest's map_rows_after_new.
+    if "map_rows" in kept and "map_rows_before" in kept:
+        kept["map_rows_after_new"] = max(0, kept["map_rows"] - kept["map_rows_before"])
     if _seconds(value.get("wait_s")):
         kept["wait_s"] = value["wait_s"]
     for key in ("ledger_ts", "probe_at", "seen_at"):
@@ -800,6 +802,11 @@ def allow_restart_side(value: object) -> dict[str, Any] | None:
             kept[key] = item
     if value.get("cause") in RESTART_ROW_CAUSES:
         kept["cause"] = value["cause"]
+    # The host sets ledger_ts_source itself and ignores the guest's label:
+    # ledger_row only when it kept a ledger_ts that parses.
+    if kept.get("row_seen") is True:
+        parsed = _ts_seconds(kept.get("ledger_ts")) is not None
+        kept["ledger_ts_source"] = LEDGER_TS_FROM_ROW if parsed else LEDGER_TS_HOST_SEEN
     latency, source = ledger_latency(kept) if kept.get("row_seen") is True else (None, None)
     if latency is not None:
         kept["ledger_latency_s"] = latency
@@ -973,25 +980,22 @@ def _image_cycle_word(body: Mapping[str, Any]) -> str:
 
 
 # phase2_grade.grade_upgrade_rollback sets this reason on a RECORDED cycle.
-# It starts with "upgrade_", so it must never be read as an upgrade-step fail.
+# It starts with "upgrade_", so on a RECORDED body it must not be read as an
+# upgrade-step fail. On any other body it is kept like every other reason.
 IMAGE_CYCLE_OK_REASON = "upgrade_rollback_reupgrade"
 
 
 def _image_cycle_reasons(body: Mapping[str, Any]) -> list[str]:
     """The host's fail reasons for the cycle. A RECORDED cycle has none.
 
-    The single reason is used only when there is no reasons list, and never
-    on a RECORDED body or when it is the success reason.
+    The single reason is used only when there is no reasons list and the
+    body is not RECORDED. RECORDED means host_result, as in _image_cycle_word.
     """
     reasons = body.get("reasons")
     if not isinstance(reasons, list):
-        recorded = body.get("host_result") == "RECORDED" or body.get("action") == "RECORDED"
+        recorded = body.get("host_result") == "RECORDED"
         reasons = [] if recorded else [body.get("reason")]
-    return [
-        item
-        for item in reasons
-        if isinstance(item, str) and item != IMAGE_CYCLE_OK_REASON and re.fullmatch(r"[a-z0-9_]{1,40}", item)
-    ][:16]
+    return [item for item in reasons if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)][:16]
 
 
 def _image_cycle_cases(body: Mapping[str, Any]) -> list[dict[str, Any]]:
