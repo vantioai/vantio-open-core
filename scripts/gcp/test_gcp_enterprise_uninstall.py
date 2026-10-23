@@ -396,6 +396,20 @@ class StopAfterMinutesGuardTest(unittest.TestCase):
             self.assertEqual(self._run("false", minutes), 0, minutes)
 
 
+class PhaseRemovalCensusPollTest(unittest.TestCase):
+    """PR 368 council N2: the phase-level census polls like the battery census."""
+
+    def test_phase_census_polls_the_single_read(self) -> None:
+        text = (GUESTS / "phase2_host.py").read_text(encoding="utf-8")
+        wrapper = text[text.index("def _removal_census() -> dict:") : text.index("def _removal_census_once() -> dict:")]
+        self.assertIn("return census.poll_census(_removal_census_once)", wrapper)
+        once = text[text.index("def _removal_census_once() -> dict:") :]
+        once = once[: once.index("\ndef ")]
+        self.assertNotIn("poll_census", once)
+        self.assertNotIn("cgroup detach", once)
+        self.assertEqual(text.count("removed = _removal_census()"), 2)
+
+
 class RunnerSideTest(unittest.TestCase):
     """Council notes on PR 368: runner-side checks that need no GCP."""
 
