@@ -19,6 +19,7 @@ import json
 import os
 import pwd
 import re
+import stat
 import sys
 import tarfile
 from pathlib import Path
@@ -51,8 +52,14 @@ MOUNT_RE = re.compile(r"^/[A-Za-z0-9._+/-]{0,200}$")
 FSTYPE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 PATH_RE = re.compile(r"^/[A-Za-z0-9._+/-]{1,200}$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+KEY_ID_RE = re.compile(r"^(test|dev)-nonprod-[a-z0-9-]+$")
+KEY_CLASSES = frozenset({"test", "test_non_production", "dev_non_production"})
+ITEM_LINE = re.compile(r"^H-U item=([a-z_]+) result=(PASS|STOP)$")
+VERDICT_LINE = re.compile(r"^H-U verdict=(PASS|STOP)$")
+JSON_LINE = re.compile(r"^H-U-JSON \{.*\}$")
 MAX_JSON = 65536
 MAX_MOUNTS = 256
+MAX_TAR = 50_000_000
 
 
 def passing_facts() -> dict:
@@ -67,6 +74,10 @@ def passing_facts() -> dict:
         "signing_key_hits": [],
         "trust_docs": 1,
         "trust_nonprod": True,
+        "trust_unreadable": False,
+        "bundle_names_clean": True,
+        "expect_trust": "some",
+        "none_staged": False,
         "signer_kid_null": True,
     }
 
@@ -82,12 +93,7 @@ def grade(facts: object) -> dict:
         cursor_ok = False
     credential_ok = body.get("credential_paths") == "absent" and not _hits(body.get("credential_hits"))
     signing_ok = body.get("production_signing_key") == "absent" and not _hits(body.get("signing_key_hits"))
-    trust_ok = (
-        isinstance(body.get("trust_docs"), int)
-        and not isinstance(body.get("trust_docs"), bool)
-        and body["trust_docs"] >= 1
-        and body.get("trust_nonprod") is True
-    )
+    trust_ok = _trust_ok(body)
     signer_ok = body.get("signer_kid_null") is True
     items = [
         {"name": "mounts", "result": _word(mounts_ok)},
@@ -106,6 +112,8 @@ def grade(facts: object) -> dict:
     }
     if signer_ok:
         document["signer_kid"] = None
+    if trust_ok and body.get("expect_trust") == "none" and body.get("none_staged") is True:
+        document["none_staged"] = True
     present = _safe_paths(_hits(body.get("credential_hits")) + _hits(body.get("signing_key_hits")))
     if present:
         document["present"] = present
@@ -123,23 +131,55 @@ def transcript(facts: Mapping) -> str:
     return "\n".join(lines) + "\n"
 
 
-def accept_transcript(text: str) -> dict:
-    """Re-grade the facts line. A missing line, or a verdict that disagrees, is STOP."""
+def accept_transcript(text: str, *, expect_trust: str | None = None) -> dict:
+    """Re-grade one transcript. Extra, missing, or reordered H-U lines are STOP."""
     if len(text) > 200_000:
         return _missing()
-    raw = _last_prefixed(text, "H-U-JSON ")
-    verdict_line = _last_prefixed(text, "H-U verdict=")
-    if raw is None or len(raw) > MAX_JSON:
+    items: list[str] = []
+    verdicts: list[str] = []
+    blobs: list[str] = []
+    for raw in text.splitlines():
+        if not raw.startswith("H-U"):
+            continue
+        if ITEM_LINE.fullmatch(raw):
+            items.append(raw)
+        elif VERDICT_LINE.fullmatch(raw):
+            verdicts.append(raw)
+        elif JSON_LINE.fullmatch(raw):
+            blobs.append(raw)
+        else:
+            return _missing()
+    if len(items) != 6 or len(verdicts) != 1 or len(blobs) != 1:
+        return _missing()
+    names: list[str] = []
+    results: list[str] = []
+    for line in items:
+        matched = ITEM_LINE.fullmatch(line)
+        if matched is None:
+            return _missing()
+        names.append(matched.group(1))
+        results.append(matched.group(2))
+    if tuple(names) != ITEM_NAMES:
+        return _missing()
+    raw_json = blobs[0][len("H-U-JSON ") :]
+    if len(raw_json) > MAX_JSON:
         return _missing()
     try:
-        payload = json.loads(raw)
+        payload = json.loads(raw_json)
     except json.JSONDecodeError:
         return _missing()
     if not isinstance(payload, dict) or payload.get("schema") != SCHEMA:
         return _missing()
-    document = grade(payload.get("facts"))
-    if verdict_line != document["verdict"]:
+    facts = payload.get("facts")
+    document = grade(facts)
+    graded = [item["result"] for item in document["items"]]
+    verdict_word = VERDICT_LINE.fullmatch(verdicts[0])
+    if verdict_word is None or results != graded or verdict_word.group(1) != document["verdict"]:
         document["verdict"] = "STOP"
+    if expect_trust in {"some", "none"}:
+        printed = facts.get("expect_trust") if isinstance(facts, dict) else None
+        if printed != expect_trust:
+            document["verdict"] = "STOP"
     return document
 
 
@@ -147,10 +187,14 @@ def collect(bundle: Path, *, root: Path | None = None, mounts_text: str | None =
     """Stat names under root. root None means the guest filesystem."""
     fs = root if root is not None else Path("/")
     mounts, readable = _mounts(fs, mounts_text)
-    homes = _homes(fs)
+    homes, homes_readable = _homes(fs)
     credential_state, credential_hits = _group(_credential_paths(homes))
+    if not homes_readable:
+        credential_state = "unreadable"
     signing_state, signing_hits = _group(_signing_paths(fs, bundle, homes))
-    trust_docs, trust_nonprod = _trust(bundle)
+    if not homes_readable and signing_state == "absent":
+        signing_state = "unreadable"
+    trust_docs, trust_nonprod, trust_unreadable = _trust(bundle)
     cursor = _presence(fs / "cursor" / "stores")
     if _cursor_mounted(mounts):
         cursor = "present"
@@ -160,11 +204,15 @@ def collect(bundle: Path, *, root: Path | None = None, mounts_text: str | None =
         "cursor_stores": cursor,
         "mounts": mounts,
         "mounts_readable": readable,
+        "bundle_names_clean": _bundle_names_clean(bundle),
+        "expect_trust": "some",
+        "none_staged": False,
         "production_signing_key": signing_state,
         "signer_kid_null": _signer_kid_null(bundle),
         "signing_key_hits": signing_hits,
         "trust_docs": trust_docs,
         "trust_nonprod": trust_nonprod,
+        "trust_unreadable": trust_unreadable,
     }
 
 
@@ -221,6 +269,10 @@ def public_from_mapping(payload: Mapping) -> dict:
         document["signer_kid"] = None
     elif "signer_kid" in payload and payload.get("signer_kid") is not None:
         raise ValueError("h_u")
+    if payload.get("none_staged") is True and by_name["staged_trust"] == "PASS":
+        document["none_staged"] = True
+    elif "none_staged" in payload and payload.get("none_staged") is not True:
+        raise ValueError("h_u")
     present = payload.get("present")
     if present not in (None, []):
         safe = _safe_paths(present if isinstance(present, list) else ["bad"])
@@ -235,23 +287,37 @@ def public_from_mapping(payload: Mapping) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except Exception:
+        sys.stdout.write(transcript(_exception_facts()))
+        return 6
+
+
+def _main(argv: list[str] | None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     bundle = Path("/var/lib/vantio-lab/guest")
     out: Path | None = None
+    expect = "some"
     index = 0
     while index < len(args):
         flag = args[index]
-        if flag in {"--bundle", "--out"} and index + 1 < len(args):
-            value = Path(args[index + 1])
+        if flag in {"--bundle", "--out", "--expect-trust"} and index + 1 < len(args):
+            value = args[index + 1]
             if flag == "--bundle":
-                bundle = value
+                bundle = Path(value)
+            elif flag == "--out":
+                out = Path(value)
+            elif value not in {"some", "none"}:
+                print(_usage(), file=sys.stderr)
+                return 2
             else:
-                out = value
+                expect = value
             index += 2
             continue
-        print("usage: host_evidence_hu.py --bundle DIR [--out FILE]", file=sys.stderr)
+        print(_usage(), file=sys.stderr)
         return 2
-    facts = collect(bundle)
+    facts = _with_expect(collect(bundle), expect)
     document = grade(facts)
     sys.stdout.write(transcript(facts))
     if out is not None:
@@ -276,12 +342,57 @@ def _missing() -> dict:
     }
 
 
-def _last_prefixed(text: str, prefix: str) -> str | None:
-    found = None
-    for raw in text.splitlines():
-        if raw.startswith(prefix):
-            found = raw[len(prefix) :]
-    return found
+def _usage() -> str:
+    return "usage: host_evidence_hu.py --bundle DIR [--out FILE] [--expect-trust some|none]"
+
+
+def _with_expect(facts: Mapping, expect: str) -> dict:
+    """Absent means some. The guest does not choose none by itself."""
+    body = dict(facts)
+    mode = expect if expect in {"some", "none"} else "some"
+    body["expect_trust"] = mode
+    body["none_staged"] = (
+        mode == "none"
+        and body.get("trust_docs") == 0
+        and not isinstance(body.get("trust_docs"), bool)
+        and body.get("trust_unreadable") is not True
+        and body.get("bundle_names_clean") is True
+    )
+    return body
+
+
+def _exception_facts() -> dict:
+    return {
+        "bundle_names_clean": False,
+        "credential_hits": [],
+        "credential_paths": "unreadable",
+        "cursor_stores": "unreadable",
+        "error": "exception",
+        "expect_trust": "some",
+        "mounts": [],
+        "mounts_readable": False,
+        "none_staged": False,
+        "production_signing_key": "unreadable",
+        "signer_kid_null": False,
+        "signing_key_hits": [],
+        "trust_docs": 0,
+        "trust_nonprod": False,
+        "trust_unreadable": True,
+    }
+
+
+def _trust_ok(body: Mapping) -> bool:
+    expect = body.get("expect_trust")
+    if expect not in {"some", "none"}:
+        expect = "some"
+    if body.get("trust_unreadable") is True:
+        return False
+    docs = body.get("trust_docs")
+    if isinstance(docs, bool) or not isinstance(docs, int):
+        return False
+    if expect == "none":
+        return docs == 0 and body.get("bundle_names_clean") is True and body.get("none_staged") is True
+    return docs >= 1 and body.get("trust_nonprod") is True
 
 
 def _public_facts(facts: Mapping) -> dict:
@@ -298,18 +409,28 @@ def _public_facts(facts: Mapping) -> dict:
     docs = body.get("trust_docs")
     if isinstance(docs, bool) or not isinstance(docs, int):
         docs = 0
-    return {
+    expect = body.get("expect_trust")
+    if expect not in {"some", "none"}:
+        expect = "some"
+    public = {
+        "bundle_names_clean": body.get("bundle_names_clean") is True,
         "credential_hits": _safe_paths(_hits(body.get("credential_hits"))),
         "credential_paths": _state("credential_paths"),
         "cursor_stores": _state("cursor_stores"),
+        "expect_trust": expect,
         "mounts": graded["mounts"] if body.get("mounts_readable") is True else [],
         "mounts_readable": body.get("mounts_readable") is True and bool(graded["mounts"]),
+        "none_staged": body.get("none_staged") is True,
         "production_signing_key": _state("production_signing_key"),
         "signer_kid_null": body.get("signer_kid_null") is True,
         "signing_key_hits": _safe_paths(_hits(body.get("signing_key_hits"))),
         "trust_docs": docs,
         "trust_nonprod": body.get("trust_nonprod") is True,
+        "trust_unreadable": body.get("trust_unreadable") is True,
     }
+    if body.get("error") == "exception":
+        public["error"] = "exception"
+    return public
 
 
 def _clean_mounts(value: object) -> list[dict[str, str]]:
@@ -386,8 +507,10 @@ def _mounts(root: Path, mounts_text: str | None) -> tuple[list[dict[str, str]], 
     return rows, True
 
 
-def _homes(root: Path) -> list[Path]:
+def _homes(root: Path) -> tuple[list[Path], bool]:
+    """Homes under root, including every /home/* name. One path for live and tests."""
     found = [root / "root"]
+    readable = _home_children(root / "home", found)
     if root == Path("/"):
         try:
             found.append(Path(pwd.getpwuid(os.getuid()).pw_dir))
@@ -396,12 +519,6 @@ def _homes(root: Path) -> list[Path]:
         sudo_user = os.environ.get("SUDO_USER", "")
         if USER_RE.fullmatch(sudo_user or ""):
             found.append(Path("/home") / sudo_user)
-    else:
-        home = root / "home"
-        if home.is_dir():
-            for child in home.iterdir():
-                if child.is_dir() and USER_RE.fullmatch(child.name):
-                    found.append(child)
     unique: list[Path] = []
     seen: set[str] = set()
     for path in found:
@@ -410,7 +527,30 @@ def _homes(root: Path) -> list[Path]:
             continue
         seen.add(key)
         unique.append(path)
-    return unique
+    return unique, readable
+
+
+def _home_children(home: Path, found: list[Path]) -> bool:
+    try:
+        info = home.lstat()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return False
+    try:
+        children = list(home.iterdir())
+    except OSError:
+        return False
+    for child in children:
+        try:
+            child_info = child.lstat()
+        except OSError:
+            return False
+        if stat.S_ISDIR(child_info.st_mode) and USER_RE.fullmatch(child.name):
+            found.append(child)
+    return True
 
 
 def _credential_paths(homes: list[Path]) -> list[Path]:
@@ -458,15 +598,52 @@ def _group(paths: list[Path]) -> tuple[str, list[str]]:
     return state, hits
 
 
-def _trust(bundle: Path) -> tuple[int, bool]:
+def _trust(bundle: Path) -> tuple[int, bool, bool]:
     payloads = _trust_payloads(bundle)
-    if not payloads or any(item is False for item in payloads):
-        return 0, False
-    ok = True
-    for payload in payloads:
-        if not _document_ok(payload):
-            ok = False
-    return (len(payloads), True) if ok else (len(payloads), False)
+    if any(item is False for item in payloads):
+        return 0, False, True
+    if not payloads:
+        return 0, True, False
+    ok = all(_document_ok(payload) for payload in payloads)
+    return len(payloads), ok, False
+
+
+def _forbidden_name(name: str) -> bool:
+    if name.endswith(".pem") or name.endswith(".key"):
+        return True
+    return name.endswith(".json") and "trust" in name
+
+
+def _bundle_names_clean(bundle: Path) -> bool:
+    """Names only. No file bytes. A pem, key, or trust json is not clean."""
+    if not bundle.is_dir():
+        return False
+    try:
+        for path in bundle.rglob("*"):
+            if _forbidden_name(path.name):
+                return False
+            if path.is_symlink():
+                continue
+            if path.is_file() and path.name.endswith(".tar"):
+                if not _tar_names_clean(path):
+                    return False
+    except OSError:
+        return False
+    return True
+
+
+def _tar_names_clean(path: Path) -> bool:
+    try:
+        if path.stat().st_size <= 0 or path.stat().st_size > MAX_TAR:
+            return False
+        with tarfile.open(path, "r:*") as tar:
+            for member in tar.getmembers():
+                base = member.name.rsplit("/", 1)[-1]
+                if _forbidden_name(base):
+                    return False
+    except (OSError, tarfile.TarError, ValueError):
+        return False
+    return True
 
 
 def _trust_payloads(bundle: Path) -> list[object]:
@@ -510,7 +687,7 @@ def _read_json_file(path: Path) -> object:
 def _tar_trust(path: Path) -> list[object]:
     found: list[object] = []
     try:
-        if path.stat().st_size <= 0 or path.stat().st_size > 50_000_000:
+        if path.stat().st_size <= 0 or path.stat().st_size > MAX_TAR:
             return [False]
         with tarfile.open(path, "r:*") as tar:
             for member in tar.getmembers():
@@ -537,7 +714,9 @@ def _tar_trust(path: Path) -> list[object]:
 
 
 def _document_ok(payload: object) -> bool:
-    if not isinstance(payload, dict) or payload.get("not_a_production_root") is not True:
+    if not isinstance(payload, dict):
+        return False
+    if "not_a_production_root" in payload and payload.get("not_a_production_root") is not True:
         return False
     keys = payload.get("keys")
     records: list[dict] = []
@@ -554,14 +733,14 @@ def _record_ok(record: Mapping) -> bool:
     if record.get("not_a_production_root") is not True:
         return False
     key_id = record.get("key_id")
-    if not isinstance(key_id, str) or "nonprod" not in key_id or "prod-artifact" in key_id:
+    if not isinstance(key_id, str) or KEY_ID_RE.fullmatch(key_id) is None or key_id.startswith("prod-"):
         return False
     key_class = record.get("key_class")
     if key_class is None:
         return True
-    if not isinstance(key_class, str) or key_class == "production" or "prod-artifact" in key_class:
+    if not isinstance(key_class, str) or key_class == "production":
         return False
-    return True
+    return key_class in KEY_CLASSES
 
 
 def _signer_kid_null(bundle: Path) -> bool:

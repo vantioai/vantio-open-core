@@ -36,7 +36,8 @@ def completed(payload: dict | None = None, *, code: int = 0, stderr: str = "", s
 def _install_hu_stub(test: unittest.TestCase) -> None:
     """Answer the pre-battery H-U ssh. A test can set _hu_stdout to force STOP."""
     original = steps._run_with_fresh_key
-    pass_text = steps.host_evidence_hu.transcript(steps.host_evidence_hu.passing_facts())
+    checker = steps._load_host_evidence()
+    pass_text = checker.transcript(checker.passing_facts())
 
     def wrapped(runner, connect, public, ssh_runner, argv, script, *, attempts=4):
         if argv and argv[0] == "ssh" and "host_evidence_hu.py" in " ".join(argv):
@@ -1522,9 +1523,10 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertFalse((Path(tmp) / "seal.oci.tar").exists())
 
     def test_h_u_stop_does_not_grade_the_battery(self) -> None:
-        facts = steps.host_evidence_hu.passing_facts()
+        checker = steps._load_host_evidence()
+        facts = checker.passing_facts()
         facts["cursor_stores"] = "present"
-        self._hu_stdout = steps.host_evidence_hu.transcript(facts)
+        self._hu_stdout = checker.transcript(facts)
         runner = FakeAws()
         runner.dry_run = "allowed"
         seen: list[str] = []
@@ -1562,6 +1564,39 @@ class EnterpriseRowSessionTests(unittest.TestCase):
         self.assertEqual(hu_body["verdict"], "STOP")
         self.assertNotIn("PRIVATE KEY", hu_text)
         self.assertIn('"verdict": "STOP"', hu_text)
+
+    def test_a_missing_checker_stops_before_the_battery(self) -> None:
+        original = steps._load_host_evidence
+
+        def missing():
+            raise ImportError("missing")
+
+        steps._load_host_evidence = missing
+        self.addCleanup(lambda: setattr(steps, "_load_host_evidence", original))
+        runner = FakeAws()
+        runner.dry_run = "allowed"
+        seen: list[str] = []
+
+        def keygen(directory: Path) -> tuple[Path, str]:
+            private = directory / "lab-ed25519"
+            private.write_text("key\n", encoding="utf-8")
+            return private, "ssh-ed25519 AAAATEST vantio-lab"
+
+        def ssh(args: list[str], script: str) -> subprocess.CompletedProcess[str]:
+            seen.append(" ".join(args))
+            return completed(stdout="battery-should-not-run")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self._env_ready(tmp)
+            with self.assertRaises(lab.GuardAbort) as caught:
+                steps.execute_enterprise_rows(
+                    runner,
+                    keygen=keygen,
+                    ssh_runner=ssh,
+                    checker=lambda _path: {"seal_sha256": SEAL},
+                )
+        self.assertEqual(caught.exception.reason, "h_u")
+        self.assertFalse(any("enterprise-rows.sh" in item and item.startswith("ssh ") for item in seen))
 
     def test_publickey_on_a_new_connection_pushes_the_key_again(self) -> None:
         runner = FakeAws()

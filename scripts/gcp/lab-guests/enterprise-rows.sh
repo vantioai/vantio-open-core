@@ -85,7 +85,7 @@ fi
 # H-U records mount names, path presence, and non-production trust fields
 # before any battery mode. It does not print file contents. A STOP exits
 # here, so the battery below does not run. plumb returns above this check.
-if ! python3 "$here/host_evidence_hu.py" --bundle "$here" --out /var/lib/vantio-lab/h-u.json; then
+if ! sudo -n python3 "$here/host_evidence_hu.py" --bundle "$here" --out /var/lib/vantio-lab/h-u.json --expect-trust some; then
   exit 6
 fi
 # A second boot already has bpf in the LSM list. Confirm that and return

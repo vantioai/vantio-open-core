@@ -159,6 +159,7 @@ jobs:
             release/pe-canonical-seal.json
             release/pe-seal-history.json
             scripts/lab/stage_lab_trust.py
+            scripts/lab/host_evidence_hu.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
             scripts/gcp/fetch_offline_debs.sh

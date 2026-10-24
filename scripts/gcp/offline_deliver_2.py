@@ -2,7 +2,13 @@ import importlib.util
 
 
 def _load_host_evidence():
+    """Load the H-U checker. Teardown and key removal must not call this."""
     path = Path(__file__).resolve().parents[1] / "lab" / "host_evidence_hu.py"
+    if not path.is_file():
+        raise ImportError(path)
+    cached = sys.modules.get("host_evidence_hu")
+    if cached is not None and getattr(cached, "SCHEMA", "") == "vantio.lab.host-evidence.h-u/v1":
+        return cached
     spec = importlib.util.spec_from_file_location("host_evidence_hu", path)
     if spec is None or spec.loader is None:
         raise ImportError(path)
@@ -10,9 +16,6 @@ def _load_host_evidence():
     sys.modules["host_evidence_hu"] = module
     spec.loader.exec_module(module)
     return module
-
-
-host_evidence_hu = _load_host_evidence()
 
 
 def _json_delete(bucket: str, object_name: str, token: str, *, missing_ok: bool) -> None:
@@ -624,7 +627,12 @@ def prune_evidence(directory: Path) -> list[str]:
                     kept.append(path.name)
                     continue
                 if path.name == "h-u.json":
-                    host_evidence_hu.write_public(path, payload)
+                    try:
+                        _load_host_evidence().write_public(path, payload)
+                    except Exception:
+                        _remove_evidence_path(path)
+                        _remove_evidence_path(path.with_name(path.name + ".sha256"))
+                        continue
                     kept.append(path.name)
                     continue
                 write_evidence(path, payload)

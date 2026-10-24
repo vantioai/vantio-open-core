@@ -67,7 +67,13 @@ webshell_grade = _load_webshell_grade()
 
 
 def _load_host_evidence():
+    """Load the H-U checker. Callers that are not a gate must not call this."""
     path = Path(__file__).resolve().parents[1] / "lab" / "host_evidence_hu.py"
+    if not path.is_file():
+        raise ImportError(path)
+    cached = sys.modules.get("host_evidence_hu")
+    if cached is not None and getattr(cached, "SCHEMA", "") == "vantio.lab.host-evidence.h-u/v1":
+        return cached
     spec = importlib.util.spec_from_file_location("host_evidence_hu", path)
     if spec is None or spec.loader is None:
         raise ImportError(path)
@@ -76,8 +82,6 @@ def _load_host_evidence():
     spec.loader.exec_module(module)
     return module
 
-
-host_evidence_hu = _load_host_evidence()
 
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
@@ -1906,25 +1910,43 @@ def execute_enterprise_rows(
                 sized = remote(["stat", "-c", "%s", f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"], "")
                 if sized.returncode != 0 or (sized.stdout or "").strip() != "2104932768":
                     raise lab.GuardAbort("brain_not_landed")
-            hu_state = {"done": False}
+            hu_state: dict[str, Any] = {"done": False, "checker": None}
+            expect_trust = "none" if battery == t5_battery.BATTERY_ID else "some"
 
             def gate_host_evidence() -> None:
                 """Copy the checker and stop before the battery if H-U is not PASS."""
                 if hu_state["done"]:
                     return
+                try:
+                    checker = _load_host_evidence()
+                except Exception:
+                    raise lab.GuardAbort("h_u")
+                hu_state["checker"] = checker
                 hu_state["done"] = True
                 repo_root = Path(__file__).resolve().parents[2]
                 copy_to(repo_root / "scripts" / "lab" / "host_evidence_hu.py", "host_evidence_hu.py")
                 copy_to(repo_root / "release" / "pe-canonical-seal.json", "pe-canonical-seal.json")
                 proc = remote(
-                    ["python3", f"{GUEST_BUNDLE}/host_evidence_hu.py", "--bundle", GUEST_BUNDLE],
+                    [
+                        "sudo",
+                        "-n",
+                        "python3",
+                        f"{GUEST_BUNDLE}/host_evidence_hu.py",
+                        "--bundle",
+                        GUEST_BUNDLE,
+                        "--expect-trust",
+                        expect_trust,
+                    ],
                     "",
                 )
-                document = host_evidence_hu.accept_transcript(proc.stdout or "")
-                lab.write_json_with_hash(
-                    evidence_path("w3-lab-arm.json").with_name("w3-lab-h-u.json"),
-                    document,
-                )
+                document = checker.accept_transcript(proc.stdout or "", expect_trust=expect_trust)
+                try:
+                    checker.write_public(
+                        evidence_path("w3-lab-arm.json").with_name("w3-lab-h-u.json"),
+                        document,
+                    )
+                except (OSError, ValueError):
+                    raise lab.GuardAbort("h_u")
                 payload["h_u"] = document["verdict"]
                 for line in (proc.stdout or "").splitlines():
                     if line.startswith("H-U item="):
@@ -2143,12 +2165,18 @@ def execute_enterprise_rows(
                 ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
             guest_out = ran.stdout or ""
             if "H-U verdict=" in guest_out:
-                shell_hu = host_evidence_hu.accept_transcript(guest_out)
+                checker = hu_state.get("checker")
+                if checker is None:
+                    raise lab.GuardAbort("h_u")
+                shell_hu = checker.accept_transcript(guest_out, expect_trust=expect_trust)
                 if shell_hu.get("verdict") != "PASS":
-                    lab.write_json_with_hash(
-                        evidence_path("w3-lab-arm.json").with_name("w3-lab-h-u.json"),
-                        shell_hu,
-                    )
+                    try:
+                        checker.write_public(
+                            evidence_path("w3-lab-arm.json").with_name("w3-lab-h-u.json"),
+                            shell_hu,
+                        )
+                    except (OSError, ValueError):
+                        raise lab.GuardAbort("h_u")
                     payload["h_u"] = "STOP"
                     for line in guest_out.splitlines():
                         if line.startswith("H-U item="):

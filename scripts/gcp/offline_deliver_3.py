@@ -1,13 +1,24 @@
-def require_host_evidence(project: str, name: str, evidence: Path) -> None:
+def require_host_evidence(project: str, name: str, evidence: Path, *, expect_trust: str = "some") -> None:
     """Run H-U on the guest and stop before a battery when the verdict is not PASS."""
+    if expect_trust not in {"some", "none"}:
+        raise SystemExit("h_u")
+    try:
+        checker = _load_host_evidence()
+    except Exception:
+        raise SystemExit("h_u")
     proc = _ssh(
         project,
         name,
-        f"python3 {GUEST_DIR}/host_evidence_hu.py --bundle {GUEST_DIR} --out /var/lib/vantio-lab/h-u.json",
+        "sudo -n python3 "
+        f"{GUEST_DIR}/host_evidence_hu.py --bundle {GUEST_DIR} "
+        f"--out /var/lib/vantio-lab/h-u.json --expect-trust {expect_trust}",
     )
     text = proc.stdout or ""
-    document = host_evidence_hu.accept_transcript(text)
-    host_evidence_hu.write_public(evidence / "h-u.json", document)
+    document = checker.accept_transcript(text, expect_trust=expect_trust)
+    try:
+        checker.write_public(evidence / "h-u.json", document)
+    except (OSError, ValueError):
+        raise SystemExit("h_u")
     for line in text.splitlines():
         if line.startswith("H-U item="):
             print(line, flush=True)
@@ -1504,7 +1515,7 @@ def run_t5_egress(env: Mapping[str, str]) -> int:
         if made.returncode != 0:
             raise SystemExit("ssh")
         _scp_to(project, name, sorted(payload_dir.iterdir()))
-        require_host_evidence(project, name, evidence)
+        require_host_evidence(project, name, evidence, expect_trust="none")
         rows_remote = f"{GUEST_DIR}/t5-rows.json"
         ran = _ssh(
             project,

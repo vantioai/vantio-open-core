@@ -56,6 +56,7 @@ jobs:
             scripts/aws/w3_lab_steps.py
             scripts/aws/lab-guests/webshell_grade.py
             scripts/aws/founder-soak-close.json
+            scripts/lab/host_evidence_hu.py
           sparse-checkout-cone-mode: false
 
       - name: Assume vantio-w3-lab-sweeper

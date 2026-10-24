@@ -641,7 +641,8 @@ print("ok")
             self.assertFalse(nested.exists())
 
     def test_prune_keeps_an_h_u_row_and_drops_extra_keys(self) -> None:
-        document = od.host_evidence_hu.grade(od.host_evidence_hu.passing_facts())
+        checker = od._load_host_evidence()
+        document = checker.grade(checker.passing_facts())
         document["hostname"] = "synthetic-lab-host"
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
@@ -653,6 +654,16 @@ print("ok")
             self.assertNotIn("hostname", body)
             (directory / "h-u.json").write_text('{"schema":"nope","verdict":"PASS"}\n', encoding="utf-8")
             od.prune_evidence(directory)
+            self.assertFalse((directory / "h-u.json").exists())
+
+    def test_prune_drops_h_u_when_the_checker_is_missing(self) -> None:
+        checker = od._load_host_evidence()
+        document = checker.grade(checker.passing_facts())
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "h-u.json").write_text(json.dumps(document), encoding="utf-8")
+            with mock.patch.object(od, "_load_host_evidence", side_effect=ImportError("missing")):
+                od.prune_evidence(directory)
             self.assertFalse((directory / "h-u.json").exists())
 
     def test_prune_unlinks_guest_symlinks_and_survives_bad_utf8(self) -> None:

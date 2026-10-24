@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import shutil
@@ -95,6 +96,52 @@ class GradeTests(unittest.TestCase):
         )
         self.assertFalse(hu._document_ok(_trust("prod-artifact-example")))
 
+    def test_key_id_allowlist_accepts_the_lab_artifact_id(self) -> None:
+        allowed = (
+            "test-nonprod-artifact-lab-ci",
+            "dev-nonprod-lab-ci",
+            "test-nonprod-ed25519-2026-10-02",
+        )
+        for key_id in allowed:
+            self.assertTrue(hu._document_ok(_trust(key_id)), key_id)
+        self.assertFalse(hu._document_ok(_trust("prod-artifact-lab")))
+        self.assertFalse(hu._record_ok({"key_id": "test-nonprod-lab", "key_class": "production", "not_a_production_root": True}))
+
+    def test_key_level_flag_is_enough_when_the_top_level_flag_is_absent(self) -> None:
+        payload = {
+            "keys": [
+                {
+                    "key_class": "test",
+                    "key_id": "test-nonprod-ed25519-2026-10-02",
+                    "not_a_production_root": True,
+                }
+            ]
+        }
+        self.assertTrue(hu._document_ok(payload))
+        payload["not_a_production_root"] = False
+        self.assertFalse(hu._document_ok(payload))
+
+    def test_regrade_rejects_a_forged_or_incomplete_transcript(self) -> None:
+        good = hu.transcript(hu.passing_facts())
+        stop_facts = hu.passing_facts()
+        stop_facts["cursor_stores"] = "present"
+        stopped = hu.transcript(stop_facts)
+        cases = {
+            "duplicate": good + stopped,
+            "missing": "\n".join(line for line in good.splitlines() if "item=mounts" not in line) + "\n",
+            "reordered": good.replace(
+                "H-U item=mounts result=PASS\nH-U item=cursor_stores result=PASS",
+                "H-U item=cursor_stores result=PASS\nH-U item=mounts result=PASS",
+            ),
+            "extra_json": good + "H-U-JSON {\"schema\":\"vantio.lab.host-evidence.h-u/v1\",\"facts\":{}}\n",
+            "mismatched": good.replace("H-U item=mounts result=PASS", "H-U item=mounts result=STOP"),
+            "extra_line": good.replace("H-U verdict=PASS", "H-U note=1\nH-U verdict=PASS"),
+        }
+        for name, text in cases.items():
+            self.assertEqual(hu.accept_transcript(text)["verdict"], "STOP", name)
+        self.assertEqual(hu.accept_transcript(good)["verdict"], "PASS")
+        self.assertEqual(hu.accept_transcript(good, expect_trust="none")["verdict"], "STOP")
+
 
 class CollectTests(unittest.TestCase):
     def _tree(
@@ -178,6 +225,62 @@ class CollectTests(unittest.TestCase):
             self.assertEqual(hu.grade(facts)["verdict"], "STOP", kwargs)
             self.assertNotIn(banned, text, kwargs)
 
+    def test_expect_trust_none_passes_only_when_nothing_is_staged(self) -> None:
+        facts, _text = self._collect(trust=False)
+        graded = hu.grade(hu._with_expect(facts, "none"))
+        self.assertEqual(graded["verdict"], "PASS")
+        self.assertIs(graded["none_staged"], True)
+        item = next(row for row in graded["items"] if row["name"] == "staged_trust")
+        self.assertEqual(item["result"], "PASS")
+        dirty, _text = self._collect(trust=False, key=True)
+        self.assertEqual(hu.grade(hu._with_expect(dirty, "none"))["verdict"], "STOP")
+        named, bundle = self._tree(trust=False)
+        (bundle / "notes-trust.json").write_text("{}\n", encoding="utf-8")
+        walked = hu.collect(bundle, root=named)
+        self.assertEqual(hu.grade(hu._with_expect(walked, "none"))["verdict"], "STOP")
+        broken, broken_bundle = self._tree(trust=False)
+        (broken_bundle / "lab-artifact-trust.json").write_text("{", encoding="utf-8")
+        unreadable = hu.collect(broken_bundle, root=broken)
+        self.assertTrue(unreadable["trust_unreadable"])
+        self.assertEqual(hu.grade(hu._with_expect(unreadable, "none"))["verdict"], "STOP")
+        self.assertEqual(hu.grade(hu._with_expect(unreadable, "some"))["verdict"], "STOP")
+
+    def test_every_home_directory_is_on_the_same_path_the_guest_uses(self) -> None:
+        root, bundle = self._tree()
+        other = root / "home" / "otherbot" / ".aws"
+        other.mkdir(parents=True)
+        (other / "credentials").write_text(SECRET_CRED, encoding="utf-8")
+        facts = hu.collect(bundle, root=root)
+        self.assertTrue(any(hit.endswith("/home/otherbot/.aws/credentials") for hit in facts["credential_hits"]))
+        text = hu.transcript(facts)
+        self.assertNotIn(SECRET_CRED, text)
+        self.assertEqual(hu.grade(facts)["verdict"], "STOP")
+        source = (ROOT / "scripts/lab/host_evidence_hu.py").read_text(encoding="utf-8")
+        homes = source[source.index("def _homes("): source.index("def _home_children(")]
+        self.assertLess(homes.index("_home_children"), homes.index('root == Path("/")'))
+        home = root / "home"
+        home.chmod(0)
+        try:
+            blocked = hu.collect(bundle, root=root)
+        finally:
+            home.chmod(0o755)
+        self.assertEqual(blocked["credential_paths"], "unreadable")
+        self.assertEqual(hu.grade(blocked)["verdict"], "STOP")
+
+    def test_an_unexpected_error_prints_six_stops_and_hides_the_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(hu, "collect", side_effect=RuntimeError(SECRET_CRED)):
+                stdout = io.StringIO()
+                with contextlib.redirect_stdout(stdout):
+                    code = hu.main(["--bundle", tmp])
+        text = stdout.getvalue()
+        self.assertEqual(code, 6)
+        self.assertEqual(text.count("result=STOP"), 6)
+        self.assertIn("H-U verdict=STOP", text)
+        self.assertIn('"error":"exception"', text)
+        self.assertNotIn(SECRET_CRED, text)
+        self.assertEqual(hu.accept_transcript(text)["verdict"], "STOP")
+
     def test_missing_trust_seal_or_mounts_stop(self) -> None:
         for kwargs in ({"trust": False}, {"seal": False}, {"mounts": False}):
             facts, text = self._collect(**kwargs)
@@ -207,9 +310,11 @@ class WiringTests(unittest.TestCase):
         ):
             checked = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
             self.assertEqual(checked.returncode, 0, checked.stderr)
-        aws_call = aws.index('python3 "$here/host_evidence_hu.py"')
+        aws_call = aws.index('sudo -n python3 "$here/host_evidence_hu.py"')
+        self.assertIn("--expect-trust some", aws)
         self.assertLess(aws_call, aws.index('if [ "${2:-}" = "lsm-guard" ]'))
-        gcp_call = gcp.index('python3 "$here/host_evidence_hu.py"')
+        gcp_call = gcp.index('sudo -n python3 "$here/host_evidence_hu.py"')
+        self.assertIn("--expect-trust some", gcp)
         self.assertLess(gcp.index("  exit 0\nfi"), gcp_call)
         self.assertLess(gcp_call, gcp.index('if [ "$mode" = "lsm-guard" ]'))
         self.assertNotIn("VANTIO_LAB_CLOUD", aws)
@@ -223,6 +328,12 @@ class WiringTests(unittest.TestCase):
         self.assertLess(block.index("require_host_evidence"), block.index("_run_one_battery"))
         arm = (ROOT / ".github/workflows/w3-lab-auto-arm.yml").read_text(encoding="utf-8")
         self.assertIn("w3-lab-h-u.json", arm)
+        start = aws.index("def gate_host_evidence")
+        gate = aws[start:start + 2500]
+        self.assertIn('"sudo"', gate)
+        self.assertIn('"-n"', gate)
+        self.assertIn('"--expect-trust"', gate)
+        self.assertIn('expect_trust="none"', gcp)
 
 
 if __name__ == "__main__":
