@@ -17,12 +17,29 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from decimal import Decimal
 from pathlib import Path
 from unittest import mock
+
+import importlib.util
 
 import offline_deliver as od
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_hu():
+    path = ROOT / "scripts" / "lab" / "host_evidence_hu.py"
+    spec = importlib.util.spec_from_file_location("host_evidence_hu_phase", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+HU = _load_hu()
+HU_PASS = HU.transcript(HU.passing_facts())
 sys.path.insert(0, str(ROOT / "scripts/aws/lab-guests"))
 sys.path.insert(0, str(ROOT / "scripts/aws"))
 import phase2_grade as grade  # noqa: E402
@@ -1012,6 +1029,8 @@ class RunBatteriesTest(unittest.TestCase):
         setup = subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         def ssh(_p, _n, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                return subprocess.CompletedProcess([], 0, stdout=HU_PASS, stderr="")
             if calls is not None:
                 calls.append(command)
             if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
@@ -1068,6 +1087,45 @@ class RunBatteriesTest(unittest.TestCase):
 
     def _passing(self) -> list:
         return [row("2e-performance", body_2e()), row("2f-tamper", body_2f()), row("2g-distro", body_2g())]
+
+    def test_h_u_stop_does_not_start_batteries(self) -> None:
+        facts = HU.passing_facts()
+        facts["cursor_stores"] = "present"
+        stop = HU.transcript(facts)
+        battery = mock.Mock(side_effect=AssertionError("battery started"))
+
+        def ssh(_p, _n, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                return subprocess.CompletedProcess([], 6, stdout=stop, stderr="")
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "evidence"
+            stubs = {
+                "_enabled": mock.DEFAULT,
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.DEFAULT,
+                "batteries_requested": mock.Mock(return_value=True),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "refuse_batteries": mock.Mock(return_value=SEAL),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_stage_payload": mock.Mock(return_value=[]),
+                "_wait_until_running": mock.DEFAULT,
+                "_ssh": mock.Mock(side_effect=ssh),
+                "_scp_to": mock.DEFAULT,
+                "_prepare_lab_lsm": mock.Mock(side_effect=AssertionError("lsm started")),
+                "_run_one_battery": battery,
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    od.run_batteries({"RUNNER_TEMP": tmp, "STOP_AFTER_MINUTES": "100"})
+            body = json.loads((evidence / "h-u.json").read_text(encoding="utf-8"))
+            text = (evidence / "h-u.json").read_text(encoding="utf-8")
+        self.assertEqual(caught.exception.code, "h_u")
+        battery.assert_not_called()
+        self.assertEqual(body["verdict"], "STOP")
+        self.assertNotIn("PRIVATE KEY", text)
+        self.assertIn("h-u.json", od.EVIDENCE_FILES)
 
     def test_2d_without_a_probe_pid_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
         # PR 368 council N1: with pid 0 any older post-kill row would satisfy the check.
@@ -1336,6 +1394,172 @@ class WiringTest(unittest.TestCase):
         self.assertNotIn("subprocess.", source)
         self.assertNotIn("shell=True", source)
         self.assertNotIn("labels", source)
+
+
+class HostEvidenceAbortTests(unittest.TestCase):
+    def _stop(self) -> str:
+        facts = HU.passing_facts()
+        facts["cursor_stores"] = "present"
+        return HU.transcript(facts)
+
+    def _ssh(self, stop: str, expect: str):
+        def ssh(_project, _name, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                self.assertIn("sudo -n", command)
+                self.assertIn(f"--expect-trust {expect}", command)
+                return subprocess.CompletedProcess([], 6, stdout=stop, stderr="")
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        return ssh
+
+    def test_h_u_stop_before_self_service(self) -> None:
+        guest = mock.Mock(side_effect=AssertionError("guest started"))
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Path(tmp) / "staged"
+            staged.mkdir()
+            (staged / "self-service.tar").write_bytes(b"not-a-real-tar")
+            (staged / "lab-artifact-trust.json").write_text("{}\n", encoding="utf-8")
+            evidence = Path(tmp) / "evidence"
+            stubs = {
+                "_require_execute": mock.Mock(),
+                "batteries_requested": mock.Mock(return_value=False),
+                "self_service_requested": mock.Mock(return_value=True),
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "expected_seal": mock.Mock(return_value="ab" * 32),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "_wait_until_running": mock.Mock(),
+                "_wait_ssh": mock.Mock(),
+                "_ssh": mock.Mock(side_effect=self._ssh(self._stop(), "some")),
+                "_scp_to": mock.Mock(),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_run_guest": guest,
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    od.run_self_service({"W3_SELF_SERVICE_DIR": str(staged), "GITHUB_RUN_ID": "1", "RUNNER_TEMP": tmp})
+        self.assertEqual(caught.exception.code, "h_u")
+        guest.assert_not_called()
+
+    def test_h_u_stop_before_t5(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("t5_load", "t5_egress.bpf.o", "t5-egress.sh"):
+                (root / name).write_text("x", encoding="utf-8")
+            evidence = root / "evidence"
+            battery = mock.Mock()
+            battery.pack_tree = mock.Mock()
+            battery.GUEST_SCRIPT = root / "t5-egress.sh"
+            later = mock.Mock(side_effect=AssertionError("t5 started"))
+            stubs = {
+                "_enabled": mock.Mock(),
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.Mock(),
+                "assert_t5_dispatch": mock.Mock(return_value="ab" * 32),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_load_t5_battery": mock.Mock(return_value=battery),
+                "_wait_until_running": mock.Mock(),
+                "_ssh": mock.Mock(side_effect=self._ssh(self._stop(), "none")),
+                "_scp_to": mock.Mock(),
+                "_loader_libs": mock.Mock(return_value=[]),
+                "_scp_from": later,
+                "remove_os_login_key": mock.Mock(return_value=0),
+            }
+            env = {
+                "T5_LOADER": str(root / "t5_load"),
+                "T5_OBJECT": str(root / "t5_egress.bpf.o"),
+                "T5_GUEST_SCRIPT": str(root / "t5-egress.sh"),
+                "W3_BUNDLE_DIR": str(root / "missing-bundle"),
+                "GITHUB_RUN_ID": "1",
+                "RUNNER_TEMP": tmp,
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    od.run_t5_egress(env)
+        self.assertEqual(caught.exception.code, "h_u")
+        later.assert_not_called()
+
+    def test_h_u_stop_before_redteam(self) -> None:
+        import redteam_brain as rtbrain
+        import redteam_campaign
+
+        stop = self._stop()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            brain = root / "brain"
+            brain.mkdir()
+            (brain / rtbrain.MODEL_NAME).write_bytes(b"model")
+            (brain / rtbrain.RUNTIME_NAME).write_bytes(b"runtime")
+            rows = ROOT / "scripts/gcp/lab-guests/redteam_rows.py"
+            packet = root / "redteam_packet.py"
+            packet.write_text("packet\n", encoding="utf-8")
+            evidence = root / "evidence"
+
+            def stage(_env, payload_dir):
+                payload_dir.mkdir(parents=True, exist_ok=True)
+                return []
+
+            guest = mock.Mock(side_effect=AssertionError("descendant started"))
+            stubs = {
+                "_enabled": mock.Mock(),
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.Mock(),
+                "brain_requested": mock.Mock(return_value=True),
+                "refuse_batteries": mock.Mock(return_value="ab" * 32),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_stage_payload": mock.Mock(side_effect=stage),
+                "_wait_until_running": mock.Mock(),
+                "_ssh": mock.Mock(side_effect=self._ssh(stop, "some")),
+                "_scp_to": mock.Mock(),
+                "guest_command": guest,
+                "remove_os_login_key": mock.Mock(return_value=0),
+                "drop_guest_copies": mock.Mock(),
+            }
+            env = {
+                "BRAIN_DIR": str(brain),
+                "REDTEAM_ROWS": str(rows),
+                "REDTEAM_PACKET": str(packet),
+                "GITHUB_RUN_ID": "1",
+                "RUNNER_TEMP": tmp,
+                "STOP_AFTER_MINUTES": "90",
+            }
+            with (
+                mock.patch.multiple(od, **stubs),
+                mock.patch.object(od.lab, "bounded_minutes", return_value=90),
+                mock.patch.object(rtbrain, "assert_under_cap", return_value=Decimal("0.1000")),
+                mock.patch.object(rtbrain, "verify_files", return_value=None),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                with self.assertRaises(SystemExit) as caught:
+                    redteam_campaign.execute(env, od)
+        self.assertEqual(caught.exception.code, "h_u")
+        guest.assert_not_called()
+
+    def test_a_missing_checker_stops_before_batteries(self) -> None:
+        battery = mock.Mock(side_effect=AssertionError("battery started"))
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "evidence"
+            stubs = {
+                "_enabled": mock.DEFAULT,
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.DEFAULT,
+                "batteries_requested": mock.Mock(return_value=True),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "refuse_batteries": mock.Mock(return_value=SEAL),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_stage_payload": mock.Mock(return_value=[]),
+                "_wait_until_running": mock.DEFAULT,
+                "_ssh": mock.Mock(return_value=subprocess.CompletedProcess([], 0, stdout="", stderr="")),
+                "_scp_to": mock.DEFAULT,
+                "_prepare_lab_lsm": battery,
+                "_load_host_evidence": mock.Mock(side_effect=ImportError("missing")),
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    od.run_batteries({"RUNNER_TEMP": tmp, "STOP_AFTER_MINUTES": "100"})
+        self.assertEqual(caught.exception.code, "h_u")
+        battery.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -18,10 +18,25 @@ from decimal import Decimal
 from unittest import mock
 from pathlib import Path
 
+import importlib.util
+
 import lab_auto as lab
 import offline_deliver as od
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_hu():
+    path = ROOT / "scripts" / "lab" / "host_evidence_hu.py"
+    spec = importlib.util.spec_from_file_location("host_evidence_hu_offline", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+HU_PASS = _load_hu().transcript(_load_hu().passing_facts())
 sys.path.append(str(ROOT / "scripts" / "aws"))
 import enterprise_bundle  # noqa: E402
 
@@ -624,6 +639,32 @@ print("ok")
             od.prune_evidence(directory)
             self.assertFalse((directory / "teardown.json.sha256").exists())
             self.assertFalse(nested.exists())
+
+    def test_prune_keeps_an_h_u_row_and_drops_extra_keys(self) -> None:
+        checker = od._load_host_evidence()
+        document = checker.grade(checker.passing_facts())
+        document["hostname"] = "synthetic-lab-host"
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "h-u.json").write_text(json.dumps(document), encoding="utf-8")
+            od.prune_evidence(directory)
+            body = json.loads((directory / "h-u.json").read_text(encoding="utf-8"))
+            self.assertEqual(body["verdict"], "PASS")
+            self.assertIsNone(body["signer_kid"])
+            self.assertNotIn("hostname", body)
+            (directory / "h-u.json").write_text('{"schema":"nope","verdict":"PASS"}\n', encoding="utf-8")
+            od.prune_evidence(directory)
+            self.assertFalse((directory / "h-u.json").exists())
+
+    def test_prune_drops_h_u_when_the_checker_is_missing(self) -> None:
+        checker = od._load_host_evidence()
+        document = checker.grade(checker.passing_facts())
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "h-u.json").write_text(json.dumps(document), encoding="utf-8")
+            with mock.patch.object(od, "_load_host_evidence", side_effect=ImportError("missing")):
+                od.prune_evidence(directory)
+            self.assertFalse((directory / "h-u.json").exists())
 
     def test_prune_unlinks_guest_symlinks_and_survives_bad_utf8(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2540,6 +2581,8 @@ class ImageCycleWordTest(unittest.TestCase):
         ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\ndeny_attr_post_kill pid 9\n", stderr="")
 
         def ssh(_p, _n, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                return subprocess.CompletedProcess([], 0, stdout=HU_PASS, stderr="")
             # D1: run_batteries marks events.ndjson and uninstall.ndjson before 2D.
             if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
                 return subprocess.CompletedProcess([], 0, stdout="120\n45\n", stderr="")

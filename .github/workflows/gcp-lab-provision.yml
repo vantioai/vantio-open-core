@@ -135,6 +135,7 @@ jobs:
             scripts/gcp/offline_deliver_2.py
             scripts/gcp/offline_deliver_3.py
             scripts/gcp/offline_deliver_4.py
+            scripts/lab/host_evidence_hu.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
@@ -393,6 +394,7 @@ jobs:
             scripts/gcp/offline_deliver_2.py
             scripts/gcp/offline_deliver_3.py
             scripts/gcp/offline_deliver_4.py
+            scripts/lab/host_evidence_hu.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py
@@ -787,6 +789,7 @@ jobs:
             scripts/gcp/offline_deliver_2.py
             scripts/gcp/offline_deliver_3.py
             scripts/gcp/offline_deliver_4.py
+            scripts/lab/host_evidence_hu.py
             scripts/gcp/redteam_brain.py
             scripts/gcp/redteam_campaign.py
             scripts/gcp/redteam_packet.py

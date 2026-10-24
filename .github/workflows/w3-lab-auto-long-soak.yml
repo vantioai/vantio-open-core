@@ -75,6 +75,7 @@ jobs:
             scripts/aws/w3_lab_steps.py
             scripts/aws/lab-guests/webshell_grade.py
             scripts/aws/lab_iam_capabilities.json
+            scripts/lab/host_evidence_hu.py
           sparse-checkout-cone-mode: false
 
       - name: Setup Node.js 22

@@ -1,3 +1,32 @@
+def require_host_evidence(project: str, name: str, evidence: Path, *, expect_trust: str = "some") -> None:
+    """Run H-U on the guest and stop before a battery when the verdict is not PASS."""
+    if expect_trust not in {"some", "none"}:
+        raise SystemExit("h_u")
+    try:
+        checker = _load_host_evidence()
+    except Exception:
+        raise SystemExit("h_u")
+    proc = _ssh(
+        project,
+        name,
+        "sudo -n python3 "
+        f"{GUEST_DIR}/host_evidence_hu.py --bundle {GUEST_DIR} "
+        f"--out /var/lib/vantio-lab/h-u.json --expect-trust {expect_trust}",
+    )
+    text = proc.stdout or ""
+    document = checker.accept_transcript(text, expect_trust=expect_trust)
+    try:
+        checker.write_public(evidence / "h-u.json", document)
+    except (OSError, ValueError):
+        raise SystemExit("h_u")
+    for line in text.splitlines():
+        if line.startswith("H-U item="):
+            print(line, flush=True)
+    print(f"H-U verdict={document['verdict']}", flush=True)
+    if proc.returncode != 0 or document.get("verdict") != "PASS":
+        raise SystemExit("h_u")
+
+
 def _run_guest(project: str, name: str, command: str, reason: str) -> subprocess.CompletedProcess[str]:
     completed = _ssh(project, name, command)
     if completed.returncode != 0:
@@ -955,12 +984,14 @@ def run_batteries(env: Mapping[str, str]) -> int:
                 payload_dir / "baseline_diag.py",
                 payload_dir / "sticky_write.py",
                 payload_dir / "product_uninstall_census.py",
+                payload_dir / "host_evidence_hu.py",
                 payload_dir / "debs.tar",
                 payload_dir / "ca-certificates.crt",
             ],
         )
         for local_name in ("seal.oci.tar", "contract.tar"):
             (payload_dir / local_name).unlink(missing_ok=True)
+        require_host_evidence(project, name, evidence)
         lsm = _prepare_lab_lsm(project, name, seal, evidence)
         repeats: list[dict[str, Any]] = []
         schedule = battery_schedule(BATTERY_REPEATS)
@@ -1226,7 +1257,16 @@ def run_self_service(env: Mapping[str, str]) -> int:
     made = _ssh(project, name, f"sudo mkdir -p /var/lib/vantio-lab && sudo rm -rf {GUEST_DIR} && sudo mkdir -p {GUEST_DIR} && sudo chown -R $(id -u):$(id -g) /var/lib/vantio-lab {GUEST_DIR} && chmod 755 /var/lib/vantio-lab {GUEST_DIR}")
     if made.returncode != 0:
         raise SystemExit("ssh")
-    _scp_to(project, name, [tar_path])
+    repo = Path(__file__).resolve().parents[2]
+    _scp_to(
+        project,
+        name,
+        [
+            tar_path,
+            repo / "scripts" / "lab" / "host_evidence_hu.py",
+            repo / "release" / "pe-canonical-seal.json",
+        ],
+    )
     deb_dir = Path(env.get("DEB_DIR", ""))
     if deb_dir.is_dir() and any(deb_dir.glob("*.deb")):
         packed = Path(env.get("RUNNER_TEMP") or "/tmp") / "self-service-debs.tar"
@@ -1255,6 +1295,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
     )
     if "--artifact-trust" in script or "--fixture-host" in script or "\n" in script:
         raise SystemExit("self_service_layout")
+    require_host_evidence(project, name, _evidence_dir(env))
     _run_guest(project, name, f"bash -c {json.dumps(script)}", "self_service")
     evidence = _evidence_dir(env)
     local = evidence / "self-service-rows.json"
@@ -1457,6 +1498,8 @@ def run_t5_egress(env: Mapping[str, str]) -> int:
     payload_dir.mkdir(parents=True)
     try:
         battery.pack_tree(repo, payload_dir / "t5-egress.tar")
+        shutil.copy2(repo / "scripts" / "lab" / "host_evidence_hu.py", payload_dir / "host_evidence_hu.py")
+        shutil.copy2(repo / "release" / "pe-canonical-seal.json", payload_dir / "pe-canonical-seal.json")
         shutil.copy2(loader, payload_dir / "t5_load")
         shutil.copy2(obj, payload_dir / "t5_egress.bpf.o")
         shutil.copy2(script, payload_dir / "t5-egress.sh")
@@ -1472,6 +1515,7 @@ def run_t5_egress(env: Mapping[str, str]) -> int:
         if made.returncode != 0:
             raise SystemExit("ssh")
         _scp_to(project, name, sorted(payload_dir.iterdir()))
+        require_host_evidence(project, name, evidence, expect_trust="none")
         rows_remote = f"{GUEST_DIR}/t5-rows.json"
         ran = _ssh(
             project,

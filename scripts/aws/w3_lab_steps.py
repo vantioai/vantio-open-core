@@ -65,6 +65,24 @@ def _load_webshell_grade():
 
 webshell_grade = _load_webshell_grade()
 
+
+def _load_host_evidence():
+    """Load the H-U checker. Callers that are not a gate must not call this."""
+    path = Path(__file__).resolve().parents[1] / "lab" / "host_evidence_hu.py"
+    if not path.is_file():
+        raise ImportError(path)
+    cached = sys.modules.get("host_evidence_hu")
+    if cached is not None and getattr(cached, "SCHEMA", "") == "vantio.lab.host-evidence.h-u/v1":
+        return cached
+    spec = importlib.util.spec_from_file_location("host_evidence_hu", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["host_evidence_hu"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 GUEST_BUNDLE = "/var/lib/vantio-lab/enterprise-bundle"
 Runner = lab.Runner
 SshRunner = Callable[[list[str], str], subprocess.CompletedProcess[str]]
@@ -1892,6 +1910,51 @@ def execute_enterprise_rows(
                 sized = remote(["stat", "-c", "%s", f"{guest_brain}/qwen2.5-3b-instruct-q4_k_m.gguf"], "")
                 if sized.returncode != 0 or (sized.stdout or "").strip() != "2104932768":
                     raise lab.GuardAbort("brain_not_landed")
+            hu_state: dict[str, Any] = {"done": False, "checker": None}
+            expect_trust = "none" if battery == t5_battery.BATTERY_ID else "some"
+
+            def gate_host_evidence() -> None:
+                """Copy the checker and stop before the battery if H-U is not PASS."""
+                if hu_state["done"]:
+                    return
+                try:
+                    checker = _load_host_evidence()
+                except Exception:
+                    raise lab.GuardAbort("h_u")
+                hu_state["checker"] = checker
+                hu_state["done"] = True
+                repo_root = Path(__file__).resolve().parents[2]
+                copy_to(repo_root / "scripts" / "lab" / "host_evidence_hu.py", "host_evidence_hu.py")
+                copy_to(repo_root / "release" / "pe-canonical-seal.json", "pe-canonical-seal.json")
+                proc = remote(
+                    [
+                        "sudo",
+                        "-n",
+                        "python3",
+                        f"{GUEST_BUNDLE}/host_evidence_hu.py",
+                        "--bundle",
+                        GUEST_BUNDLE,
+                        "--expect-trust",
+                        expect_trust,
+                    ],
+                    "",
+                )
+                document = checker.accept_transcript(proc.stdout or "", expect_trust=expect_trust)
+                try:
+                    checker.write_public(
+                        evidence_path("w3-lab-arm.json").with_name("w3-lab-h-u.json"),
+                        document,
+                    )
+                except (OSError, ValueError):
+                    raise lab.GuardAbort("h_u")
+                payload["h_u"] = document["verdict"]
+                for line in (proc.stdout or "").splitlines():
+                    if line.startswith("H-U item="):
+                        print(line, flush=True)
+                print(f"H-U verdict={document['verdict']}", flush=True)
+                if proc.returncode != 0 or document.get("verdict") != "PASS":
+                    raise lab.GuardAbort("h_u")
+
             if battery == "self-service" or battery == "self-service-enforce":
                 deb_env = os.environ.get("W3_OFFLINE_DEBS", "").strip()
                 if deb_env:
@@ -1900,6 +1963,7 @@ def execute_enterprise_rows(
                         copy_to(ca_bundle, "ca-certificates.crt")
                 copy_to(staged / "self-service.tar", "self-service.tar")
                 if battery == "self-service-enforce":
+                    gate_host_evidence()
                     pre = remote(
                         ["bash", "-c", _self_service_enforce_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE, "pre")],
                         "",
@@ -1930,6 +1994,7 @@ def execute_enterprise_rows(
                             "",
                         )
                 else:
+                    gate_host_evidence()
                     ran = remote(["bash", "-c", _self_service_shell(GUEST_BUNDLE, LAB_ROWS_REMOTE)], "")
             elif battery == t5_battery.BATTERY_ID:
                 repo = Path(__file__).resolve().parents[2]
@@ -1937,6 +2002,7 @@ def execute_enterprise_rows(
                 t5_battery.pack_tree(repo, tar_path)
                 copy_to(tar_path, "t5-egress.tar")
                 copy_to(t5_battery.GUEST_SCRIPT, "t5-egress.sh")
+                gate_host_evidence()
                 ran = remote(["bash", f"{GUEST_BUNDLE}/t5-egress.sh", GUEST_BUNDLE, LAB_ROWS_REMOTE], "")
             elif battery in phase_batteries:
                 script_path = Path(os.environ.get("W3_ENTERPRISE_SCRIPT", str(DEFAULT_ENTERPRISE_GUEST)))
@@ -1953,6 +2019,7 @@ def execute_enterprise_rows(
                     copy_to(guest_dir / "soak-hourly.sh", "soak-hourly.sh")
                     copy_to(guest_dir / "record-check.sh", "record-check.sh")
                 _copy_canonical_seal(copy_to)
+                gate_host_evidence()
                 ran = remote(
                     [
                         "env",
@@ -1973,6 +2040,7 @@ def execute_enterprise_rows(
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 copy_to(DEFAULT_WEBSHELL_GUEST, "webshell_guest.py")
                 copy_to(DEFAULT_WEBSHELL_GUEST.with_name("webshell_grade.py"), "webshell_grade.py")
+                gate_host_evidence()
                 pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "webshell", "pre"], "")
                 ran = pre
                 if pre.returncode == 0:
@@ -2014,6 +2082,7 @@ def execute_enterprise_rows(
                     copy_to(rows_py, "redteam_rows.py")
                     copy_to(packet_py, "redteam_packet.py")
                     _copy_canonical_seal(copy_to)
+                gate_host_evidence()
                 pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "descendant-b1", "pre"], "")
                 ran = pre
                 if pre.returncode == 0:
@@ -2061,6 +2130,7 @@ def execute_enterprise_rows(
                 copy_to(script_path, "enterprise-rows.sh")
                 copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
+                gate_host_evidence()
                 pre = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal, "reboot-check"], "")
                 ran = pre
                 if pre.returncode == 0:
@@ -2091,7 +2161,28 @@ def execute_enterprise_rows(
                 copy_to(script_path.with_name("sticky_write.py"), "sticky_write.py")
                 copy_to(script_path.with_name("baseline_diag.py"), "baseline_diag.py")
                 copy_to(script_path.with_name("product_uninstall_census.py"), "product_uninstall_census.py")
+                gate_host_evidence()
                 ran = remote([*image_env, "bash", f"{GUEST_BUNDLE}/enterprise-rows.sh", seal], "")
+            guest_out = ran.stdout or ""
+            if "H-U verdict=" in guest_out:
+                checker = hu_state.get("checker")
+                if checker is None:
+                    raise lab.GuardAbort("h_u")
+                shell_hu = checker.accept_transcript(guest_out, expect_trust=expect_trust)
+                if shell_hu.get("verdict") != "PASS":
+                    try:
+                        checker.write_public(
+                            evidence_path("w3-lab-arm.json").with_name("w3-lab-h-u.json"),
+                            shell_hu,
+                        )
+                    except (OSError, ValueError):
+                        raise lab.GuardAbort("h_u")
+                    payload["h_u"] = "STOP"
+                    for line in guest_out.splitlines():
+                        if line.startswith("H-U item="):
+                            print(line, flush=True)
+                    print("H-U verdict=STOP", flush=True)
+                    raise lab.GuardAbort("h_u")
             rows_local = Path(os.environ.get("W3_ROWS_PATH", "w3-lab-enterprise-rows.json"))
             try:
                 guest_text, parsed = _pull_lab_rows(

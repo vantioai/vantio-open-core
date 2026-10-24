@@ -127,10 +127,12 @@ def execute(env: Mapping[str, str], od: Any) -> int:
             payload_dir / "pe_canonical_seal.py",
             payload_dir / "pe-canonical-seal.json",
             payload_dir / "pe-seal-history.json",
+            payload_dir / "host_evidence_hu.py",
         ]
         od._scp_to(project, name, sources)
         for local_name in ("seal.oci.tar", "contract.tar"):
             (payload_dir / local_name).unlink(missing_ok=True)
+        od.require_host_evidence(project, name, evidence)
         before = od._wait_ssh(project, name, od.SSH_WAIT_SECONDS)
         pre = od._ssh(project, name, od.guest_command(seal, "descendant-b1", "pre"))
         pre_text = od.redact((pre.stdout or "") + (pre.stderr or ""))
