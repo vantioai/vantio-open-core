@@ -2,7 +2,7 @@
 
 UTC: 2026-10-16
 
-This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`46982f26` since 2026-10-23, `8b1106ef` on 2026-10-22, `6d3ce580` at the time of the 2026-10-16 attempt; full value in `RESULT.json`).
+This attempt rebuilds the Phantom Engine OCI archive from source and compares the file digest to `WORKING_SEAL` (`97f15bbb` since 2026-10-24, `46982f26` on 2026-10-23, `8b1106ef` on 2026-10-22, `6d3ce580` at the time of the 2026-10-16 attempt; full value in `RESULT.json`).
 
 The comparison has three results:
 
@@ -33,3 +33,9 @@ A later run that has the source can produce `MATCH` or `MISMATCH`. Until then th
 `release/pe-canonical-seal.json` now points `lane_seal` at `46982f26`, so `working_seal` in `RESULT.json` follows it again. The other `RESULT.json` fields are unchanged and still describe the 2026-10-16 attempt. This page did not rerun that attempt.
 
 `46982f26` is a `docker save` of `vantio-phantom-engine:1968525c`, built outside this repository from phantom-engine `1968525c5d71cf1ee68f231a651d8ae408540438` the same way as `8b1106ef`. `formal_reproducibility` stays `NOT_CLAIMED` for the reasons above.
+
+## 2026-10-24 lane seal move (Route A)
+
+`release/pe-canonical-seal.json` now points `lane_seal` at `97f15bbb`, so `working_seal` in `RESULT.json` follows it again. The other `RESULT.json` fields are unchanged and still describe the 2026-10-16 attempt. This page did not rerun that attempt.
+
+`97f15bbb` is a `docker save` of the local image name `vantio-phantom-engine:1968525c`, built by the Route A workflow `.github/workflows/seal-build.yml` (phantom-engine run 40075838668) from phantom-engine `1968525c5d71cf1ee68f231a651d8ae408540438`. It differs from `46982f26` (same source) as expected. `formal_reproducibility` stays `NOT_CLAIMED` for the reasons above.
