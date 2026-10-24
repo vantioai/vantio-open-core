@@ -247,6 +247,7 @@ EVIDENCE_FILES = frozenset(
         "instance.json",
         "prepare-bundle.json",
         "guest-evidence.json",
+        "h-u.json",
         "lsm-guard.json",
         "redteam-packet.json",
         "teardown.json",

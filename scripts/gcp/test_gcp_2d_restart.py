@@ -21,9 +21,24 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import importlib.util
+
 import offline_deliver as od
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _hu_pass() -> str:
+    path = ROOT / "scripts" / "lab" / "host_evidence_hu.py"
+    spec = importlib.util.spec_from_file_location("host_evidence_hu_2d", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.transcript(module.passing_facts())
+
+
+HU_PASS = _hu_pass()
 GUESTS = ROOT / "scripts/aws/lab-guests"
 sys.path.insert(0, str(GUESTS))
 import phase2_grade as grade  # noqa: E402
@@ -392,6 +407,12 @@ class RestartRowsReachTheRowsTest(unittest.TestCase):
             return {"body": {}, "rc": 0, "word": "held"}
 
         ok = subprocess.CompletedProcess([], 0, stdout="UNINSTALL_VERIFIED\n", stderr="")
+
+        def ssh(_p, _n, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                return subprocess.CompletedProcess([], 0, stdout=HU_PASS, stderr="")
+            return ok
+
         with tempfile.TemporaryDirectory() as tmp:
             evidence = Path(tmp) / "evidence"
             stubs = {
@@ -404,7 +425,7 @@ class RestartRowsReachTheRowsTest(unittest.TestCase):
                 "_evidence_dir": mock.Mock(return_value=evidence),
                 "_stage_payload": mock.Mock(return_value=[]),
                 "_wait_until_running": mock.DEFAULT,
-                "_ssh": mock.Mock(return_value=ok),
+                "_ssh": mock.Mock(side_effect=ssh),
                 "_scp_to": mock.DEFAULT,
                 "_prepare_lab_lsm": mock.Mock(return_value={}),
                 "_wait_live_boot": mock.Mock(return_value="boot-2"),

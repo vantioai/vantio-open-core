@@ -1,3 +1,20 @@
+import importlib.util
+
+
+def _load_host_evidence():
+    path = Path(__file__).resolve().parents[1] / "lab" / "host_evidence_hu.py"
+    spec = importlib.util.spec_from_file_location("host_evidence_hu", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["host_evidence_hu"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+host_evidence_hu = _load_host_evidence()
+
+
 def _json_delete(bucket: str, object_name: str, token: str, *, missing_ok: bool) -> None:
     quoted = urllib.parse.quote(object_name, safe="")
     url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o/{quoted}"
@@ -604,6 +621,10 @@ def prune_evidence(directory: Path) -> list[str]:
                     continue
                 if path.name == "redteam-packet.json":
                     redteam_packet.write_packet(path, payload)
+                    kept.append(path.name)
+                    continue
+                if path.name == "h-u.json":
+                    host_evidence_hu.write_public(path, payload)
                     kept.append(path.name)
                     continue
                 write_evidence(path, payload)
@@ -1575,6 +1596,7 @@ def _stage_payload(env: Mapping[str, str], dest: Path) -> list[dict[str, str]]:
     shutil.copy2(repo / "scripts" / "release" / "pe_canonical_seal.py", dest / "pe_canonical_seal.py")
     shutil.copy2(repo / "release" / "pe-canonical-seal.json", dest / "pe-canonical-seal.json")
     shutil.copy2(repo / "release" / "pe-seal-history.json", dest / "pe-seal-history.json")
+    shutil.copy2(repo / "scripts" / "lab" / "host_evidence_hu.py", dest / "host_evidence_hu.py")
     guest_dir = host.parent
     shutil.copy2(guest_dir / "baseline_diag.py", dest / "baseline_diag.py")
     shutil.copy2(guest_dir / "sticky_write.py", dest / "sticky_write.py")

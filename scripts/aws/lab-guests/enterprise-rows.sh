@@ -139,6 +139,13 @@ publish_durable_rows() {
   sudo chmod a+r /var/lib/vantio-lab/enterprise-pe-rows.json
 }
 
+# H-U records mount names, path presence, and non-production trust fields
+# before any battery mode. It does not print file contents. A STOP exits
+# here, so the battery below does not run.
+if ! python3 "$here/host_evidence_hu.py" --bundle "$here" --out /var/lib/vantio-lab/h-u.json; then
+  exit 6
+fi
+
 # A second boot already has bpf in the LSM list. Confirm that and return
 # before docker starts. The first boot falls through and proves the refusal.
 if [ "${2:-}" = "lsm-guard" ]; then

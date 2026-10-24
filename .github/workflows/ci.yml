@@ -168,6 +168,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_teardown_workflow.py -v
           python3 scripts/aws/test_w3_lab_auto.py -v
           python3 scripts/aws/test_w3_lab_steps.py -v
+          python3 scripts/lab/test_host_evidence_hu.py -v
           python3 scripts/gcp/test_gcp_enterprise_uninstall.py -v
           python3 scripts/aws/test_phase2_grade.py -v
           python3 scripts/aws/test_descendant_banner.py -v

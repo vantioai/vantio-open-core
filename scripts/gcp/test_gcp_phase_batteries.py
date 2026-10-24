@@ -20,9 +20,25 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import importlib.util
+
 import offline_deliver as od
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_hu():
+    path = ROOT / "scripts" / "lab" / "host_evidence_hu.py"
+    spec = importlib.util.spec_from_file_location("host_evidence_hu_phase", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+HU = _load_hu()
+HU_PASS = HU.transcript(HU.passing_facts())
 sys.path.insert(0, str(ROOT / "scripts/aws/lab-guests"))
 sys.path.insert(0, str(ROOT / "scripts/aws"))
 import phase2_grade as grade  # noqa: E402
@@ -1012,6 +1028,8 @@ class RunBatteriesTest(unittest.TestCase):
         setup = subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
         def ssh(_p, _n, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                return subprocess.CompletedProcess([], 0, stdout=HU_PASS, stderr="")
             if calls is not None:
                 calls.append(command)
             if command.startswith("for f in /var/lib/vantio-pe-clean-host/evidence/events.ndjson"):
@@ -1068,6 +1086,45 @@ class RunBatteriesTest(unittest.TestCase):
 
     def _passing(self) -> list:
         return [row("2e-performance", body_2e()), row("2f-tamper", body_2f()), row("2g-distro", body_2g())]
+
+    def test_h_u_stop_does_not_start_batteries(self) -> None:
+        facts = HU.passing_facts()
+        facts["cursor_stores"] = "present"
+        stop = HU.transcript(facts)
+        battery = mock.Mock(side_effect=AssertionError("battery started"))
+
+        def ssh(_p, _n, command, timeout_s=None):
+            if "host_evidence_hu.py" in command:
+                return subprocess.CompletedProcess([], 6, stdout=stop, stderr="")
+            return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp) / "evidence"
+            stubs = {
+                "_enabled": mock.DEFAULT,
+                "require_lab_project": mock.Mock(return_value="vantio-lab-test"),
+                "_gate_ok": mock.DEFAULT,
+                "batteries_requested": mock.Mock(return_value=True),
+                "instance_name": mock.Mock(return_value="vantio-gcp-lab-1"),
+                "refuse_batteries": mock.Mock(return_value=SEAL),
+                "_evidence_dir": mock.Mock(return_value=evidence),
+                "_stage_payload": mock.Mock(return_value=[]),
+                "_wait_until_running": mock.DEFAULT,
+                "_ssh": mock.Mock(side_effect=ssh),
+                "_scp_to": mock.DEFAULT,
+                "_prepare_lab_lsm": mock.Mock(side_effect=AssertionError("lsm started")),
+                "_run_one_battery": battery,
+            }
+            with mock.patch.multiple(od, **stubs), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    od.run_batteries({"RUNNER_TEMP": tmp, "STOP_AFTER_MINUTES": "100"})
+            body = json.loads((evidence / "h-u.json").read_text(encoding="utf-8"))
+            text = (evidence / "h-u.json").read_text(encoding="utf-8")
+        self.assertEqual(caught.exception.code, "h_u")
+        battery.assert_not_called()
+        self.assertEqual(body["verdict"], "STOP")
+        self.assertNotIn("PRIVATE KEY", text)
+        self.assertIn("h-u.json", od.EVIDENCE_FILES)
 
     def test_2d_without_a_probe_pid_does_not_ask_for_or_count_a_post_kill_row(self) -> None:
         # PR 368 council N1: with pid 0 any older post-kill row would satisfy the check.

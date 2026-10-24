@@ -421,7 +421,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p row-evidence
-          for name in w3-lab-bundle.json w3-lab-bundle.json.sha256 w3-lab-enterprise-rows.json w3-lab-enterprise-rows.json.sha256 w3-lab-redteam-rows.json w3-lab-redteam-rows.json.sha256; do
+          for name in w3-lab-bundle.json w3-lab-bundle.json.sha256 w3-lab-enterprise-rows.json w3-lab-enterprise-rows.json.sha256 w3-lab-redteam-rows.json w3-lab-redteam-rows.json.sha256 w3-lab-h-u.json w3-lab-h-u.json.sha256; do
             if [ -f "$name" ]; then
               cp "$name" row-evidence/
             fi
