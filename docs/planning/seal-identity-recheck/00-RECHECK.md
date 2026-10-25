@@ -2,11 +2,11 @@
 
 UTC: 2026-10-16
 
-Refreshed: 2026-10-23, when the lane seal moved from `8b1106ef` to `46982f26`. Earlier refresh: 2026-10-22, from `6d3ce580` to `8b1106ef`.
+Refreshed: 2026-10-24, when the lane seal moved from `46982f26` to `97f15bbb`. Earlier refreshes: 2026-10-23, from `8b1106ef` to `46982f26`; 2026-10-22, from `6d3ce580` to `8b1106ef`.
 
-Lane digest under re-check: `46982f26` (full value in `RESULT.json`).
+Lane digest under re-check: `97f15bbb` (full value in `RESULT.json`).
 
-Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps the `bbb1025d` constant. `COMPARISON_SEAL` is an alias of `WORKING_SEAL`. The installer public pin remains `e0b19d55` on `pe_archive_sha256`. This re-check does not move any of those constants. `constants_moved: false` describes the script. The lane seal itself was moved by the 2026-10-23 edit of `release/pe-canonical-seal.json`, and `RESULT.json` was regenerated after that edit.
+Current main stores that digest as `WORKING_SEAL`. `PREVIOUS_WORKING_SEAL` keeps the `bbb1025d` constant. `COMPARISON_SEAL` is an alias of `WORKING_SEAL`. The installer public pin remains `e0b19d55` on `pe_archive_sha256`. This re-check does not move any of those constants. `constants_moved: false` describes the script. The lane seal itself was moved by the 2026-10-24 edit of `release/pe-canonical-seal.json`, and `RESULT.json` was regenerated after that edit.
 
 ## What was checked
 

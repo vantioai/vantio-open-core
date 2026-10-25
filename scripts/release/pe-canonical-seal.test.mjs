@@ -14,7 +14,7 @@ test("the node reader matches the python helper and keeps the two roles apart", 
   assert.equal(laneSeal(root), seal.lane_seal.sha256);
   assert.notEqual(seal.public_pin.archive_sha256, seal.lane_seal.sha256);
   assert.equal(seal.signer_kid, null);
-  assert.equal(seal.updated, "2026-10-23");
+  assert.equal(seal.updated, "2026-10-24");
   assert.match(seal.lane_seal.note, /one seal/);
   assert.notEqual(history.previous_working_seal, seal.lane_seal.sha256);
   const retired = (history.retired_lane_seals ?? []).map((entry) => entry.sha256);

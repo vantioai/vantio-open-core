@@ -44,7 +44,7 @@ def main() -> int:
         "result": "pass" if passed else "fail",
         "entropy": "userspace",
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "seal_note": "Lane K lab seal is 46982f26 (8b1106ef until 2026-10-23, 6d3ce580 until 2026-10-22). The public pin stays e0b19d55.",
+        "seal_note": "Lane K lab seal is 97f15bbb (46982f26 until 2026-10-24, 8b1106ef until 2026-10-23, 6d3ce580 until 2026-10-22). The public pin stays e0b19d55.",
     }
     EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
     EVIDENCE.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")

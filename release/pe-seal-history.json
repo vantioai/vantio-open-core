@@ -22,6 +22,12 @@
       "role": "lane_seal",
       "retired": "2026-10-23",
       "note": "Lane seal set 2026-10-22 from engine da961aa9 (bundle 236db73c). Replaced on main by the 1968525c rebuild."
+    },
+    {
+      "sha256": "46982f26285a22564a0c603c5f74aa08d74275ac7f17010e9a45f47087f31d4e",
+      "role": "lane_seal",
+      "retired": "2026-10-24",
+      "note": "Lane seal set 2026-10-23 from engine 1968525c (bundle 3b4b2a7b). Replaced on main by the Route A 1968525c build (run 40075838668)."
     }
   ]
 }
