@@ -106,7 +106,7 @@ export function proveMarkdown(log) {
     .join("\n");
 
   return [
-    "# Vantio Optics — Run Proof",
+    "# Vantio Optics — Run Report",
     "",
     "**Plane:** Observe (Vantio Optics) · **Workflow:** Sight Loop",
     "",
@@ -206,7 +206,7 @@ export const UPGRADE_PATH = {
     {
       brand: "Enterprise",
       sku: "Contact Vantio",
-      workflow: "Governance + proof at scale",
+      workflow: "Governance at scale",
       unlocks: "Governance and dedicated support for larger teams",
       url: "https://vantio.ai/enterprise",
     },
