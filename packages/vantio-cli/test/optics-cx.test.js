@@ -85,7 +85,7 @@ describe("vantio demo", () => {
     try {
       const { code, stdout, stderr } = await runCli(["demo"], { HOME: home });
       assert.equal(code, 0, stderr);
-      assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
+      assert.match(stdout, /Vantio Optics \| Free Observability for AI/);
       assert.match(stdout, /POST \/v1\/chat\/completions/);
       assert.match(stdout, /http_status: 200/);
       assert.match(stdout, /Optics status: Successful/);
