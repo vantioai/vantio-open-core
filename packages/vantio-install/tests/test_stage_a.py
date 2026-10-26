@@ -141,11 +141,11 @@ class StageAInstallerTests(unittest.TestCase):
         self.assertEqual(pins["agent_sdk_npm_version"], "0.2.4")
         self.assertEqual(pins["agent_sdk_py_version"], "3.1.0")
         cli = json.loads((REPO / "packages" / "vantio-cli" / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(cli["version"], "0.3.26")
+        self.assertEqual(cli["version"], "0.3.27")
         sdk = json.loads((REPO / "packages" / "vantio-agent-sdk" / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(sdk["version"], "0.2.4")
+        self.assertEqual(sdk["version"], "0.2.5")
         pyproject = (REPO / "packages" / "vantio-agent-sdk-py" / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "3.1.2"', pyproject)
+        self.assertIn('version = "3.1.3"', pyproject)
 
     def test_preflight_is_read_only(self) -> None:
         harness = self.make()
