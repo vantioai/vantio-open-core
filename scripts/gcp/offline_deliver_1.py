@@ -245,6 +245,9 @@ EVIDENCE_FILES = frozenset(
         "handoff-deleted.json",
         "handoff.json",
         "instance.json",
+        "instance-describe.raw",
+        # K8, D7: the sidecar is named explicitly. The raw file holds internal IPs (networkIP): internal only, not for external release.
+        "instance-describe.raw.sha256",
         "prepare-bundle.json",
         "guest-evidence.json",
         "h-u.json",
@@ -255,6 +258,54 @@ EVIDENCE_FILES = frozenset(
 )
 CEILING_PATH = "/var/lib/vantio-pe-clean-host/d/secret"
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
+# H-G2 / H-G3 (brief r5l section 2): values from the instance describe. Off-shape values are
+# kept as "unrecognized" (or -1 / True) so a dirty list never reads as an empty or clean one.
+SA_EMAIL_RE = re.compile(r"^[a-z0-9-]{1,63}@[a-z0-9.-]{1,120}\.gserviceaccount\.com$")
+SCOPE_RE = re.compile(r"^https://www\.googleapis\.com/auth/[a-z0-9._-]{1,80}$")
+NIC_NETWORK_RE = re.compile(r"^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/global/networks/[a-z0-9-]{1,63}$")
+INSTANCE_ID_RE = re.compile(r"^[0-9]{1,20}$")
+# F3, D5 (final): create prints the created instance's name and id; the describe id must equal it.
+INSTANCE_CREATE_FORMAT = "--format=json(name,id)"
+INSTANCE_DESCRIBE_STATES = frozenset({"ok", "failed", "malformed", "unbound", "not_run"})
+INSTANCE_STATUSES = frozenset(
+    {"PROVISIONING", "STAGING", "RUNNING", "STOPPING", "STOPPED", "SUSPENDING", "SUSPENDED", "REPAIRING", "TERMINATED"}
+)
+HOST_LIST_CAP = 16
+HOST_NIC_CAP = 8
+HOST_NIC_UNRECOGNIZED = {"access_configs": -1, "external_ip": True, "ipv6_access_configs": -1, "network": "unrecognized"}
+
+
+def _host_count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 16 else -1
+
+
+def allow_host_nics(value: list[Any]) -> list[dict[str, Any]]:
+    """Fail closed: off-shape entries become HOST_NIC_UNRECOGNIZED, and a list longer than the cap
+    keeps the cap plus one unrecognized entry, so a truncated dirty NIC can never pass."""
+    nics: list[dict[str, Any]] = []
+    for item in value[:HOST_NIC_CAP]:
+        if not isinstance(item, dict):
+            nics.append(dict(HOST_NIC_UNRECOGNIZED))
+            continue
+        network = item.get("network")
+        nics.append(
+            {
+                "access_configs": _host_count(item.get("access_configs")),
+                "external_ip": item.get("external_ip") is not False,
+                "ipv6_access_configs": _host_count(item.get("ipv6_access_configs")),
+                "network": network if isinstance(network, str) and NIC_NETWORK_RE.fullmatch(network) else "unrecognized",
+            }
+        )
+    if len(value) > HOST_NIC_CAP:
+        nics.append(dict(HOST_NIC_UNRECOGNIZED))
+    return nics
+
+
+def allow_host_names(value: list[Any], shape: re.Pattern[str]) -> list[str]:
+    kept = [item if isinstance(item, str) and shape.fullmatch(item) else "unrecognized" for item in value[:HOST_LIST_CAP]]
+    if len(value) > HOST_LIST_CAP:
+        kept.append("unrecognized")
+    return kept
 SHORT_RE = re.compile(r"^[A-Za-z0-9_.:@+/-]{1,80}$")
 LOCKDOWN_RE = re.compile(
     r"^(?:none|\[none\]|integrity|\[integrity\]|confidentiality|\[confidentiality\])"
@@ -779,6 +830,36 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if key in {"enterprise_sha", "bundle_commit"} and isinstance(value, str) and HEX40_RE.fullmatch(value):
             kept[key] = value
+            continue
+        if key == "instance_describe" and isinstance(value, str) and value in INSTANCE_DESCRIBE_STATES:
+            kept[key] = value
+            continue
+        if key == "instance_create_id" and isinstance(value, str) and INSTANCE_ID_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key == "service_accounts_key" and value in ("present", "absent"):
+            kept[key] = value
+            continue
+        if key == "instance_describe_name" and isinstance(value, str) and re.fullmatch(r"vantio-gcp-lab-[0-9]{1,20}", value):
+            kept[key] = value
+            continue
+        if key == "instance_describe_id" and isinstance(value, str) and INSTANCE_ID_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key == "instance_describe_status" and isinstance(value, str) and value in INSTANCE_STATUSES:
+            kept[key] = value
+            continue
+        if key == "instance_describe_sha256" and isinstance(value, str) and HEX64_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key == "service_accounts" and isinstance(value, list):
+            kept[key] = allow_host_names(value, SA_EMAIL_RE)
+            continue
+        if key == "service_account_scopes" and isinstance(value, list):
+            kept[key] = allow_host_names(value, SCOPE_RE)
+            continue
+        if key == "network_interfaces" and isinstance(value, list):
+            kept[key] = allow_host_nics(value)
             continue
         if key == "stock_lsm" and isinstance(value, str) and re.fullmatch(r"[a-z0-9,]{0,80}", value):
             kept[key] = value
@@ -1341,6 +1422,7 @@ def offline_create_argv(plan: Mapping[str, Any], script_path: str) -> list[str]:
         "--shielded-vtpm",
         "--shielded-integrity-monitoring",
         f"--labels={label_arg}",
+        INSTANCE_CREATE_FORMAT,
     ]
     joined = " ".join(argv)
     if lab.names_partner(joined) or "--address=" in joined:

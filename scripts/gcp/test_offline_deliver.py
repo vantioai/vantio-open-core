@@ -120,6 +120,360 @@ class OfflineDeliverTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 od.verify_contract_trust(path, hashlib.sha256(body).hexdigest())
 
+    def test_host_describe_argv_is_exact(self) -> None:
+        # M1: a misspelled projection would make every real describe read "no service accounts".
+        self.assertEqual(
+            od.describe_instance_host_argv("vantio-lab-oct08", "vantio-gcp-lab-12"),
+            [
+                "gcloud",
+                "compute",
+                "instances",
+                "describe",
+                "vantio-gcp-lab-12",
+                "--project=vantio-lab-oct08",
+                f"--zone={od.ZONE}",
+                "--format=json(name,id,status,serviceAccounts,networkInterfaces)",
+            ],
+        )
+
+    def test_create_argv_prints_name_and_id(self) -> None:
+        # F3: the id the describe is compared with comes from the create call itself.
+        plan = {
+            "project_id": "vantio-lab-oct08",
+            "name": "vantio-gcp-lab-12",
+            "public_ip": False,
+            "service_account": None,
+            "network": od.NETWORK,
+            "subnet": od.SUBNET,
+            "image_family": od.IMAGE_FAMILY,
+            "image_project": od.IMAGE_PROJECT,
+            "labels": od.offline_labels(1_800_000_000, 120),
+        }
+        argv = od.offline_create_argv(plan, "/startup.sh")
+        self.assertEqual(argv[-1], "--format=json(name,id)")
+        self.assertEqual(argv.count("--format=json(name,id)"), 1)
+        vm = "vantio-gcp-lab-12"
+        self.assertEqual(od.create_id_from_output(json.dumps([{"name": vm, "id": "123"}]), vm), "123")
+        self.assertEqual(od.create_id_from_output(json.dumps({"name": vm, "id": 123}), vm), "123")
+        for bad in ("", "not json", "[]", "null", json.dumps([{"name": vm, "id": "1"}, {"name": vm, "id": "2"}]), json.dumps([{"name": "vantio-gcp-lab-13", "id": "1"}]), json.dumps([{"name": vm, "id": True}]), json.dumps([{"name": vm, "id": "12a"}]), None, 7):
+            self.assertEqual(od.create_id_from_output(bad, vm), "", bad)
+
+    def test_network_path_prefix_is_anchored(self) -> None:
+        # N3/F10: only the exact compute v1 root may precede "projects/".
+        path = "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        self.assertEqual(od._network_path(path), path)
+        self.assertEqual(od._network_path("https://www.googleapis.com/compute/v1/" + path), path)
+        for bad in ("x" + path, "https://evil.example/" + path, "https://www.googleapis.com/compute/beta/" + path, "https://www.googleapis.com/compute/v1/v1/" + path, " " + path, path + "/", "vantio-lab-offline", None, 5):
+            self.assertEqual(od._network_path(bad), "unrecognized", bad)
+
+    def test_host_rows_from_describe_hg2_hg3(self) -> None:
+        vm = "vantio-gcp-lab-12"
+        net = "https://www.googleapis.com/compute/v1/projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        path = "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        clean_nic = {"access_configs": 0, "external_ip": False, "ipv6_access_configs": 0, "network": path}
+
+        def nic(**extra):
+            return {"name": vm, "id": "123", "status": "RUNNING", "serviceAccounts": [], "networkInterfaces": [{"network": net, **extra}]}
+
+        rows = od.host_rows_from_describe(nic(), vm, "123")
+        self.assertEqual(
+            rows,
+            {
+                "instance_describe": "ok",
+                "instance_describe_id": "123",
+                "instance_describe_name": vm,
+                "instance_describe_status": "RUNNING",
+                "network_interfaces": [clean_nic],
+                "service_account_scopes": [],
+                "service_accounts": [],
+                "service_accounts_key": "present",
+            },
+        )
+        # F7: a missing serviceAccounts key is recorded as "absent" (the chain STOPs on it); this is
+        # code behaviour only and asserts nothing about what gcloud prints.
+        absent = {key: value for key, value in nic().items() if key != "serviceAccounts"}
+        self.assertEqual(od.host_rows_from_describe(absent, vm, "123")["service_accounts_key"], "absent")
+        self.assertEqual(od.host_rows_from_describe(nic(accessConfigs=[]), vm, "123")["network_interfaces"], [clean_nic])
+        # accessConfigs null / ONE_TO_ONE_NAT without natIP / natIP / external IPv6 all count as external
+        self.assertEqual(od.host_rows_from_describe(nic(accessConfigs=None), vm, "123")["network_interfaces"][0]["access_configs"], -1)
+        for extra in ({"accessConfigs": None}, {"accessConfigs": [{"type": "ONE_TO_ONE_NAT"}]}, {"accessConfigs": [{"natIP": "203.0.113.7"}]}, {"ipv6AccessConfigs": [{"type": "DIRECT_IPV6"}]}, {"ipv6AccessConfigs": None}):
+            self.assertTrue(od.host_rows_from_describe(nic(**extra), vm, "123")["network_interfaces"][0]["external_ip"], extra)
+        # D1: internal-only IPv6 is not an external access config; any ipv6AccessConfigs entry is external
+        internal_v6 = {"stackType": "IPV4_IPV6", "ipv6AccessType": "INTERNAL", "ipv6Address": "fd20:0:0:1::2", "internalIpv6PrefixLength": 96}
+        self.assertEqual(od.host_rows_from_describe(nic(**internal_v6), vm, "123")["network_interfaces"], [clean_nic])
+        external_v6 = od.host_rows_from_describe(nic(**internal_v6, ipv6AccessConfigs=[{"type": "DIRECT_IPV6", "externalIpv6": "2600:1900:4000::"}]), vm, "123")
+        self.assertEqual(external_v6["network_interfaces"], [{**clean_nic, "external_ip": True, "ipv6_access_configs": 1}])
+        # N3: same basename in another project keeps the other project's path
+        other = od.host_rows_from_describe({"name": vm, "id": "123", "networkInterfaces": [{"network": "projects/other-proj-1/global/networks/vantio-lab-offline"}]}, vm, "123")
+        self.assertEqual(other["network_interfaces"][0]["network"], "projects/other-proj-1/global/networks/vantio-lab-offline")
+        self.assertEqual(od.host_rows_from_describe({"name": vm, "id": "123", "networkInterfaces": [{"network": "vantio-lab-offline"}]}, vm, "123")["network_interfaces"][0]["network"], "unrecognized")
+        # service account without scopes, and with a scope
+        dirty = {
+            "name": vm,
+            "id": "123",
+            "serviceAccounts": [{"email": "x@vantio-lab-oct08.iam.gserviceaccount.com"}, {"email": "y@x.iam.gserviceaccount.com", "scopes": ["https://www.googleapis.com/auth/cloud-platform", "bad"]}],
+            "networkInterfaces": [{"network": net}],
+        }
+        rows = od.host_rows_from_describe(dirty, vm, "123")
+        self.assertEqual(rows["service_accounts"], ["x@vantio-lab-oct08.iam.gserviceaccount.com", "y@x.iam.gserviceaccount.com"])
+        self.assertEqual(rows["service_account_scopes"], ["https://www.googleapis.com/auth/cloud-platform", "unrecognized"])
+        # F10: an unhashable or off-list status is dropped, never raised
+        for status in (["RUNNING"], {"a": 1}, "running", "PENDING_STOP", None):
+            self.assertNotIn("instance_describe_status", od.host_rows_from_describe({**nic(), "status": status}, vm, "123"), status)
+        # N4: another instance's describe, or no name, is malformed
+        bad_cases = (None, [], {}, {"name": vm, "id": "123"}, {"name": vm, "id": "123", "networkInterfaces": []}, {"name": vm, "id": "123", "serviceAccounts": "x", "networkInterfaces": [{}]}, {**nic(), "name": "vantio-gcp-lab-13"}, {"id": "123", "networkInterfaces": [{"network": net}]})
+        for bad in bad_cases:
+            self.assertEqual(od.host_rows_from_describe(bad, vm, "123"), {"instance_describe": "malformed"}, bad)
+        # F3: the id must equal the create id; a missing, off-shape or other id is unbound
+        for describe_id, create_id in (("124", "123"), (None, "123"), ("123", ""), ("12a", "12a"), (True, "1"), ("123", "0123")):
+            self.assertEqual(od.host_rows_from_describe({**nic(), "id": describe_id}, vm, create_id), {"instance_describe": "unbound"}, (describe_id, create_id))
+        self.assertEqual(od.host_rows_from_describe({**nic(), "id": 123}, vm, "123")["instance_describe"], "ok")
+
+    def test_ipv6_access_type_external_fails_closed(self) -> None:
+        # M4 (fail closed): ipv6AccessType EXTERNAL counts as external even with no ipv6AccessConfigs entry, so
+        # chain v8 H-G3 (external_ip == false) STOPs on it; INTERNAL or no ipv6AccessType stays clean.
+        vm = "vantio-gcp-lab-12"
+        net = "https://www.googleapis.com/compute/v1/projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        path = "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        clean_nic = {"access_configs": 0, "external_ip": False, "ipv6_access_configs": 0, "network": path}
+
+        def nics(**extra):
+            described = {"name": vm, "id": "123", "status": "RUNNING", "serviceAccounts": [], "networkInterfaces": [{"network": net, **extra}]}
+            return od.host_rows_from_describe(described, vm, "123")["network_interfaces"]
+
+        for extra in ({"ipv6AccessType": "EXTERNAL"}, {"ipv6AccessType": "EXTERNAL", "stackType": "IPV4_IPV6"}, {"ipv6AccessType": "EXTERNAL", "ipv6AccessConfigs": []}):
+            self.assertEqual(nics(**extra), [{**clean_nic, "external_ip": True}], extra)
+        for extra in ({}, {"ipv6AccessType": "INTERNAL", "stackType": "IPV4_IPV6"}, {"stackType": "IPV4_IPV6"}):
+            self.assertEqual(nics(**extra), [clean_nic], extra)
+
+    @unittest.skipUnless(
+        (Path(__file__).resolve().parent / "fixtures" / "gcloud-instance-describe-clean.raw").is_file(),
+        "PLACEHOLDER (F7): awaiting a real describe capture of a clean lab VM; the rerun's instance-describe.raw is that capture",
+    )
+    def test_real_capture_clean_vm_placeholder(self) -> None:
+        # PLACEHOLDER. No fixture exists yet, so this always skips. It asserts nothing about gcloud
+        # until a real capture (with its sha256 sidecar) is added; then it checks the rows it gives.
+        raw = (Path(__file__).resolve().parent / "fixtures" / "gcloud-instance-describe-clean.raw").read_text(encoding="utf-8")
+        described = json.loads(raw)
+        rows = od.host_rows_from_describe(described, described["name"], str(described["id"]))
+        self.assertEqual(rows["instance_describe"], "ok")
+
+    def test_instance_host_rows_never_raises_and_checks_rc(self) -> None:
+        vm = "vantio-gcp-lab-12"
+        good = json.dumps({"name": vm, "id": "123", "serviceAccounts": [], "networkInterfaces": [{"network": "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"}]})
+
+        def fake(code=0, out="", exc=None):
+            def run(argv, timeout_s=None):
+                if exc is not None:
+                    raise exc
+                return subprocess.CompletedProcess(argv, code, out, "")
+
+            return run
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(od, "_run", fake(0, good)):
+                rows = od.instance_host_rows("vantio-lab-oct08", vm, "123", Path(tmp))
+            self.assertEqual(rows["instance_describe"], "ok")
+            digest = hashlib.sha256(good.encode("utf-8")).hexdigest()
+            self.assertEqual(rows["instance_describe_sha256"], digest)
+            # F3: the raw describe is kept byte for byte, so the recorded sha256 can be re-checked
+            raw = Path(tmp) / "instance-describe.raw"
+            self.assertEqual(hashlib.sha256(raw.read_bytes()).hexdigest(), digest)
+            self.assertEqual((Path(tmp) / "instance-describe.raw.sha256").read_text(encoding="utf-8"), f"{digest}  instance-describe.raw\n")
+            # prune keeps the raw file and its sidecar unchanged
+            self.assertIn("instance-describe.raw", od.EVIDENCE_FILES)
+            self.assertIn("instance-describe.raw.sha256", od.EVIDENCE_FILES)  # K8: named explicitly
+            od.prune_evidence(Path(tmp))
+            self.assertEqual(hashlib.sha256(raw.read_bytes()).hexdigest(), digest)
+            self.assertTrue((Path(tmp) / "instance-describe.raw.sha256").is_file())
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(od, "_run", fake(0, good)):
+                self.assertEqual(od.instance_host_rows("vantio-lab-oct08", vm, "124", Path(tmp)), {"instance_describe": "unbound"})
+            self.assertFalse((Path(tmp) / "instance-describe.raw").exists())
+            secret = json.dumps({"name": vm, "id": "123", "serviceAccounts": [], "networkInterfaces": [{"network": "projects/vantio-lab-oct08/global/networks/vantio-lab-offline", "x": "ghp_" + "a" * 36}]})
+            with mock.patch.object(od, "_run", fake(0, secret)):
+                self.assertEqual(od.instance_host_rows("vantio-lab-oct08", vm, "123", Path(tmp)), {"instance_describe": "malformed"})
+            self.assertFalse((Path(tmp) / "instance-describe.raw").exists())
+        # M2: a non-zero rc with valid JSON on stdout is still "failed"
+        for run, want in (
+            (fake(1, good), "failed"),
+            (fake(0, ""), "failed"),
+            (fake(0, "not json"), "malformed"),
+            (fake(exc=OSError("gcloud missing")), "malformed"),
+            (fake(exc=subprocess.TimeoutExpired(["gcloud"], 60)), "malformed"),
+            (fake(exc=RuntimeError("anything")), "malformed"),
+        ):
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(od, "_run", run):
+                self.assertEqual(od.instance_host_rows("vantio-lab-oct08", vm, "123", Path(tmp)), {"instance_describe": want})
+        # N7: BaseException that is not an Exception propagates (not swallowed)
+        for exc in (KeyboardInterrupt(), SystemExit("x")):
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(od, "_run", fake(exc=exc)):
+                with self.assertRaises(type(exc)):
+                    od.instance_host_rows("vantio-lab-oct08", vm, "123", Path(tmp))
+
+    def _create_env(self, tmp: str) -> dict[str, str]:
+        return {
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "GITHUB_RUN_ID": "12",
+            "GCP_LAB_NOW_EPOCH": "1800000000",
+            "STOP_AFTER_MINUTES": "105",
+            "RUNNER_TEMP": tmp,
+            "EVIDENCE_DIR": str(Path(tmp) / "ev"),
+        }
+
+    def _create_with(self, env, run, create_out, run_ok=None):
+        if run_ok is None:
+            run_ok = lambda argv, reason: subprocess.CompletedProcess(argv, 0, create_out, "")  # noqa: E731
+        with mock.patch.object(od, "_enabled", lambda env: None), mock.patch.object(
+            od, "_gate_ok", lambda env: {"expected_oop_usd": "0"}
+        ), mock.patch.object(od, "_list_instances", lambda project: []), mock.patch.object(
+            od, "_run_ok", run_ok
+        ), mock.patch.object(od, "_run", run), mock.patch.object(od, "github_output", lambda name, value: None), mock.patch(
+            "sys.stdout", new_callable=io.StringIO
+        ):
+            return od.create_instance(env)
+
+    def test_create_instance_writes_instance_json_when_describe_fails(self) -> None:
+        # Quinn case 7 / N7: after create, no describe failure may stop instance.json being written.
+        vm = "vantio-gcp-lab-12"
+
+        def fake(code=0, out="", exc=None):
+            def run(argv, timeout_s=None):
+                if exc is not None:
+                    raise exc
+                return subprocess.CompletedProcess(argv, code, out, "")
+
+            return run
+
+        created = json.dumps([{"name": vm, "id": "123"}])
+        good = json.dumps({"name": vm, "id": "123", "serviceAccounts": [], "networkInterfaces": [{"network": "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"}]})
+        for run, create_out, want in (
+            (fake(0, good), created, "ok"),
+            (fake(0, good), "", "unbound"),
+            (fake(1, good), created, "failed"),
+            (fake(0, "not json"), created, "malformed"),
+            (fake(exc=OSError("gcloud missing")), created, "malformed"),
+            (fake(exc=subprocess.TimeoutExpired(["gcloud"], 60)), created, "malformed"),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                self.assertEqual(self._create_with(self._create_env(tmp), run, create_out), 0)
+                written = json.loads((Path(tmp) / "ev" / "instance.json").read_text(encoding="utf-8"))
+                self.assertEqual((written["name"], written["instance_describe"]), (vm, want))
+                if want == "ok":
+                    self.assertEqual((written["instance_create_id"], written["instance_describe_id"]), ("123", "123"))
+                    raw = (Path(tmp) / "ev" / "instance-describe.raw").read_bytes()
+                    self.assertEqual(hashlib.sha256(raw).hexdigest(), written["instance_describe_sha256"])
+
+    def test_create_instance_names_vm_before_a_base_exception(self) -> None:
+        # N7: KeyboardInterrupt / SystemExit propagate, but instance.json already names the VM.
+        # K1: the "not_run" record is written before the create output is read, so it carries no create id.
+        vm = "vantio-gcp-lab-12"
+        for exc in (KeyboardInterrupt(), SystemExit("cancel")):
+            def run(argv, timeout_s=None, exc=exc):
+                raise exc
+
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(type(exc)):
+                    self._create_with(self._create_env(tmp), run, json.dumps([{"name": vm, "id": "123"}]))
+                written = json.loads((Path(tmp) / "ev" / "instance.json").read_text(encoding="utf-8"))
+                self.assertEqual((written["name"], written["instance_describe"]), (vm, "not_run"))
+                self.assertNotIn("instance_create_id", written)
+
+    def test_create_instance_writes_not_run_right_after_create(self) -> None:
+        # K1 (council v3 check): no statement that can raise sits between create returning and the
+        # first instance.json write, and the create output is read with getattr inside the helper.
+        vm = "vantio-gcp-lab-12"
+        good = json.dumps({"name": vm, "id": "123", "serviceAccounts": [], "networkInterfaces": [{"network": "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"}]})
+
+        def describe_ok(argv, timeout_s=None):
+            return subprocess.CompletedProcess(argv, 0, good, "")
+
+        # (a) a BaseException while the create output is parsed: instance.json already names the VM
+        for exc in (KeyboardInterrupt(), SystemExit("cancel")):
+            def boom(created, name, exc=exc):
+                raise exc
+
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(od, "create_id_from_output", boom):
+                with self.assertRaises(type(exc)):
+                    self._create_with(self._create_env(tmp), describe_ok, json.dumps([{"name": vm, "id": "123"}]))
+                written = json.loads((Path(tmp) / "ev" / "instance.json").read_text(encoding="utf-8"))
+                self.assertEqual((written["name"], written["instance_describe"]), (vm, "not_run"))
+        # (b) a create result with no stdout attribute does not raise; the describe is "unbound"
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._create_with(self._create_env(tmp), describe_ok, "", run_ok=lambda argv, reason: object()), 0)
+            written = json.loads((Path(tmp) / "ev" / "instance.json").read_text(encoding="utf-8"))
+            self.assertEqual((written["name"], written["instance_describe"]), (vm, "unbound"))
+            self.assertNotIn("instance_create_id", written)
+        self.assertEqual(od.create_id_from_output(object(), vm), "")
+        self.assertEqual(od.create_id_from_output(subprocess.CompletedProcess([], 0, json.dumps([{"name": vm, "id": "123"}]), ""), vm), "123")
+        self.assertEqual(od.create_id_from_output(subprocess.CompletedProcess([], 0, None, ""), vm), "")
+        # (c) the very next harness step after create is the "not_run" write, and a failure while
+        # building the evidence dir or payload happens before create (no VM exists yet)
+        events: list[str] = []
+        real_write = od.write_evidence
+
+        def run_ok(argv, reason):
+            events.append("create")
+            return subprocess.CompletedProcess(argv, 0, json.dumps([{"name": vm, "id": "123"}]), "")
+
+        def write(path, payload):
+            events.append(f"write:{Path(path).name}:{payload.get('instance_describe')}")
+            real_write(path, payload)
+
+        def describe(argv, timeout_s=None):
+            events.append("describe")
+            return describe_ok(argv, timeout_s)
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(od, "write_evidence", write):
+            self.assertEqual(self._create_with(self._create_env(tmp), describe, "", run_ok=run_ok), 0)
+        self.assertEqual(events[events.index("create") + 1], "write:instance.json:not_run")
+        self.assertEqual(events[-1], "write:instance.json:ok")
+        called: list[str] = []
+
+        def no_dir(env):
+            raise OSError("evidence dir")
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(od, "_evidence_dir", no_dir):
+            with self.assertRaises(OSError):
+                self._create_with(self._create_env(tmp), describe_ok, "", run_ok=lambda argv, reason: called.append("create"))
+        self.assertEqual(called, [])
+
+    def test_allow_record_host_rows_fail_closed(self) -> None:
+        path = "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        clean = {"access_configs": 0, "external_ip": False, "ipv6_access_configs": 0, "network": path}
+        record = {
+            "instance_create_id": "123",
+            "instance_describe": "ok",
+            "instance_describe_name": "vantio-gcp-lab-12",
+            "instance_describe_id": "123",
+            "instance_describe_status": "RUNNING",
+            "instance_describe_sha256": "a" * 64,
+            "network_interfaces": [clean],
+            "service_account_scopes": [],
+            "service_accounts": [],
+            "service_accounts_key": "present",
+        }
+        self.assertEqual(od.allow_record(record), record)
+        for state in ("unbound", "not_run", "failed", "malformed"):
+            self.assertEqual(od.allow_record({"instance_describe": state}), {"instance_describe": state})
+        # M3: a missing external_ip reads as external; a string count reads as -1
+        kept = od.allow_record({"network_interfaces": [{"access_configs": "0", "ipv6_access_configs": 0, "network": path}]})
+        self.assertEqual(kept["network_interfaces"], [{"access_configs": -1, "external_ip": True, "ipv6_access_configs": 0, "network": path}])
+        self.assertEqual(od.allow_record({"network_interfaces": [{"access_configs": True}]})["network_interfaces"][0]["access_configs"], -1)
+        # N5: a 9th NIC is never silently dropped
+        nine = od.allow_record({"network_interfaces": [clean] * 9})["network_interfaces"]
+        self.assertEqual(len(nine), 9)
+        self.assertEqual(nine[-1], od.HOST_NIC_UNRECOGNIZED)
+        seventeen = od.allow_record({"service_accounts": ["x@y.iam.gserviceaccount.com"] * 17})["service_accounts"]
+        self.assertEqual((len(seventeen), seventeen[-1]), (17, "unrecognized"))
+        self.assertEqual(od.allow_record({"instance_describe": "OK", "instance_describe_status": "running", "service_accounts_key": "none", "instance_create_id": 123}), {})
+        # F10: unhashable values are dropped, not raised
+        self.assertEqual(od.allow_record({"instance_describe": ["ok"], "instance_describe_status": ["RUNNING"], "service_accounts_key": ["present"]}), {})
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "instance.json"
+            od.write_evidence(target, record)
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), record)
+
     def test_create_argv_is_offline_and_keyless(self) -> None:
         name = "vantio-gcp-lab-12"
         plan = {

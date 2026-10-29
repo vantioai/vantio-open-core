@@ -309,6 +309,168 @@ def describe_boot_disk_argv(project: str, name: str) -> list[str]:
     ]
 
 
+# name, id and status bind the describe to this VM (N4/F3); ipv6AccessConfigs ride inside networkInterfaces.
+INSTANCE_HOST_FORMAT = "--format=json(name,id,status,serviceAccounts,networkInterfaces)"
+# F3: the describe id is compared with the id the create call printed (INSTANCE_CREATE_FORMAT,
+# offline_deliver_1), not only shape-checked. UNVERIFIED live: the create output shape.
+INSTANCE_DESCRIBE_RAW = "instance-describe.raw"
+COMPUTE_V1_PREFIX = "https://www.googleapis.com/compute/v1/"
+
+
+def describe_instance_host_argv(project: str, name: str) -> list[str]:
+    """Read-only instance describe for H-G2 (service accounts, scopes) and H-G3 (NICs)."""
+    return [
+        "gcloud",
+        "compute",
+        "instances",
+        "describe",
+        name,
+        f"--project={project}",
+        f"--zone={ZONE}",
+        INSTANCE_HOST_FORMAT,
+    ]
+
+
+def _network_path(value: Any) -> str:
+    """Full network path projects/<p>/global/networks/<n>, never the basename alone (N3).
+
+    The only prefix accepted before "projects/" is exactly the compute v1 API root (F10);
+    any other text before it is "unrecognized"."""
+    text = value if isinstance(value, str) else ""
+    if text.startswith(COMPUTE_V1_PREFIX):
+        text = text[len(COMPUTE_V1_PREFIX):]
+    return text if NIC_NETWORK_RE.fullmatch(text) else "unrecognized"
+
+
+def _instance_id(value: Any) -> str:
+    if isinstance(value, (str, int)) and not isinstance(value, bool) and INSTANCE_ID_RE.fullmatch(str(value)):
+        return str(value)
+    return ""
+
+
+def create_id_from_output(created: Any, name: str) -> str:
+    """The id of `name` from the create call's JSON output, or "" (unknown). Never raises (Exception).
+
+    `created` is the create result (its stdout is read here with getattr, K1) or the stdout text."""
+    try:
+        stdout = created if isinstance(created, str) else getattr(created, "stdout", "")
+        parsed = json.loads(stdout) if isinstance(stdout, str) and stdout.strip() else None
+        items = parsed if isinstance(parsed, list) else [parsed]
+        found = [item for item in items if isinstance(item, dict) and item.get("name") == name]
+        return _instance_id(found[0].get("id")) if len(found) == 1 else ""
+    except Exception:  # noqa: BLE001 - see instance_host_rows for the BaseException scope
+        return ""
+
+
+def host_rows_from_describe(described: Any, expected_name: str, expected_id: str) -> dict[str, Any]:
+    """H-G2 / H-G3 rows from the describe JSON, bound to this VM by name AND id (F3).
+
+    Raises nothing for any JSON value (an unhashable status is guarded, F10). UNVERIFIED (F7):
+    whether gcloud omits an empty serviceAccounts list. A missing key is recorded as
+    service_accounts_key "absent" and the chain STOPs on it (NOT_VERIFIED) until Zach rules
+    on a real capture; it is never read as "no service accounts" here.
+    """
+    if not isinstance(described, dict) or described.get("name") != expected_name:
+        return {"instance_describe": "malformed"}
+    ident = _instance_id(described.get("id"))
+    if not ident or not _instance_id(expected_id) or ident != expected_id:
+        return {"instance_describe": "unbound"}
+    accounts_key = "present" if "serviceAccounts" in described else "absent"
+    accounts = described.get("serviceAccounts", [])
+    interfaces = described.get("networkInterfaces")
+    if not isinstance(accounts, list) or not isinstance(interfaces, list) or not interfaces:
+        return {"instance_describe": "malformed"}
+    emails: list[str] = []
+    scopes: list[str] = []
+    for item in accounts:
+        if not isinstance(item, dict):
+            emails.append("unrecognized")
+            continue
+        email = item.get("email")
+        emails.append(email if isinstance(email, str) and SA_EMAIL_RE.fullmatch(email) else "unrecognized")
+        listed = item.get("scopes", [])
+        for scope in listed if isinstance(listed, list) else ["unrecognized"]:
+            scopes.append(scope if isinstance(scope, str) and SCOPE_RE.fullmatch(scope) else "unrecognized")
+    nics: list[dict[str, Any]] = []
+    for item in interfaces:
+        if not isinstance(item, dict):
+            nics.append(dict(HOST_NIC_UNRECOGNIZED))
+            continue
+        configs = item.get("accessConfigs", [])
+        # D1, M4: external IPv6 = any ipv6AccessConfigs entry (type DIRECT_IPV6), or ipv6AccessType EXTERNAL even with
+        # no entry (fail closed). Internal-only IPv6 (ipv6Address, ipv6AccessType INTERNAL, stackType IPV4_IPV6) is not.
+        v6 = item.get("ipv6AccessConfigs", [])
+        count = len(configs) if isinstance(configs, list) else -1
+        v6_count = len(v6) if isinstance(v6, list) else -1
+        external = count != 0 or v6_count != 0 or item.get("ipv6AccessType") == "EXTERNAL"
+        nics.append(
+            {
+                "access_configs": count,
+                "external_ip": external,
+                "ipv6_access_configs": v6_count,
+                "network": _network_path(item.get("network")),
+            }
+        )
+    rows: dict[str, Any] = {
+        "instance_describe": "ok",
+        "instance_describe_id": ident,
+        "instance_describe_name": expected_name,
+        "network_interfaces": nics,
+        "service_account_scopes": scopes,
+        "service_accounts": emails,
+        "service_accounts_key": accounts_key,
+    }
+    status = described.get("status")
+    if isinstance(status, str) and status in INSTANCE_STATUSES:
+        rows["instance_describe_status"] = status
+    return rows
+
+
+def write_raw_describe(directory: Path, text: str) -> bool:
+    """Keep the describe stdout byte for byte (F3), so instance_describe_sha256 can be re-checked.
+
+    Same secret screen as write_evidence, but it returns False instead of raising: it runs after
+    create. The file is not .json, so prune_evidence keeps it as written."""
+    if "PRIVATE KEY" in text or SECRET_RE.search(text) or "ghp_" in text:
+        return False
+    path = directory / INSTANCE_DESCRIBE_RAW
+    sidecar = path.with_name(path.name + ".sha256")
+    if path.is_symlink() or sidecar.is_symlink() or path.is_dir() or sidecar.is_dir():
+        return False
+    data = text.encode("utf-8")
+    path.write_bytes(data)
+    sidecar.write_text(f"{hashlib.sha256(data).hexdigest()}  {path.name}\n", encoding="utf-8")
+    return True
+
+
+def instance_host_rows(project: str, name: str, expected_id: str, directory: Path) -> dict[str, Any]:
+    """Run the describe, keep its raw output, and build the rows.
+
+    BaseException scope (N7/F10, K2): this catches Exception (OSError, TimeoutExpired, ValueError,
+    TypeError, KeyError and the rest), so no describe or parse failure stops the final instance.json
+    write; any of them is "malformed". Nothing inside this try calls write_evidence:
+    write_raw_describe returns False on a secret or a symlink. After create returns, the SystemExit
+    paths in create_instance are the two instance.json writes (write_evidence raises SystemExit on
+    a secret or a symlink), outside any try. Before that, _run_ok (offline_deliver_1) raises
+    SystemExit(reason) when the create call's returncode is not 0, which leaves no instance.json
+    even if a VM was made (as at base). KeyboardInterrupt and SystemExit raised here propagate;
+    create_instance has already written instance.json naming the VM ("not_run", a chain STOP).
+    This code does not tear the VM down and does not guarantee that it is torn down: teardown
+    relies on the workflow's teardown job, the chain's teardown, verify-removed and sweeper steps,
+    and the VM's own stop timer (none verified here)."""
+    try:
+        host = _run(describe_instance_host_argv(project, name), timeout_s=60)
+        if host.returncode != 0 or not (host.stdout or "").strip():
+            return {"instance_describe": "failed"}
+        rows = host_rows_from_describe(json.loads(host.stdout), name, expected_id)
+        if rows.get("instance_describe") == "ok":
+            if not write_raw_describe(directory, host.stdout):
+                return {"instance_describe": "malformed"}
+            rows["instance_describe_sha256"] = hashlib.sha256(host.stdout.encode("utf-8")).hexdigest()
+        return rows
+    except Exception:  # noqa: BLE001 - does not raise by design; the three no-record cases remain (r5l §30.1)
+        return {"instance_describe": "malformed"}
+
 def create_instance(env: Mapping[str, str]) -> int:
     _enabled(env)
     project = require_lab_project(env.get("GCP_LAB_PROJECT", ""))
@@ -347,14 +509,9 @@ def create_instance(env: Mapping[str, str]) -> int:
     script_dir = Path(env.get("RUNNER_TEMP") or "/tmp")
     script_path = script_dir / "gcp-offline-startup.sh"
     script_path.write_text(offline_startup(minutes), encoding="utf-8")
-    _run_ok(offline_create_argv(plan, str(script_path)), "create")
-    described = _run(describe_boot_disk_argv(project, name))
-    image_name = ""
-    if described.returncode == 0 and (described.stdout or "").strip():
-        try:
-            image_name = image_name_from_disk(json.loads(described.stdout))
-        except json.JSONDecodeError:
-            image_name = ""
+    # K1: the evidence dir and the payload are built BEFORE create, so nothing that can raise
+    # sits between create returning and the first instance.json write.
+    evidence_dir = _evidence_dir(env)
     payload = {
         "claim_cap": CLAIM_CAP,
         "expected_oop_usd": gate["expected_oop_usd"],
@@ -368,9 +525,25 @@ def create_instance(env: Mapping[str, str]) -> int:
         "subnet": SUBNET,
         "zone": ZONE,
     }
-    if image_name:
-        payload["image_name"] = image_name
-    write_evidence(_evidence_dir(env) / "instance.json", payload)
+    created = _run_ok(offline_create_argv(plan, str(script_path)), "create")
+    # K1/N7: instance.json is the only VM-name source for teardown. It is written as the very next
+    # statement after create returns, before the create output is read or any describe runs, so a
+    # KeyboardInterrupt or SystemExit below still leaves it naming this VM ("not_run" = chain STOP).
+    write_evidence(evidence_dir / "instance.json", {**payload, "instance_describe": "not_run"})
+    create_id = create_id_from_output(created, name)
+    if create_id:
+        payload["instance_create_id"] = create_id
+    try:
+        described = _run(describe_boot_disk_argv(project, name))
+        if described.returncode == 0 and (described.stdout or "").strip():
+            image_name = image_name_from_disk(json.loads(described.stdout))
+            if image_name:
+                payload["image_name"] = image_name
+    except Exception:  # noqa: BLE001 - BaseException scope as in instance_host_rows
+        pass
+    # H-G2 / H-G3 from the instance describe, not from the create flags (brief r5l section 30.1).
+    payload.update(instance_host_rows(project, name, create_id, evidence_dir))
+    write_evidence(evidence_dir / "instance.json", payload)
     github_output("instance_name", name)
     print(json.dumps(payload))
     return 0
