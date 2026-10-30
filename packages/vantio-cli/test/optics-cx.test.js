@@ -85,7 +85,7 @@ describe("vantio demo", () => {
     try {
       const { code, stdout, stderr } = await runCli(["demo"], { HOME: home });
       assert.equal(code, 0, stderr);
-      assert.match(stdout, /Vantio Optics \| Free Observability for AI Agents/);
+      assert.match(stdout, /Vantio Optics \| Free Observability for AI/);
       assert.match(stdout, /POST \/v1\/chat\/completions/);
       assert.match(stdout, /http_status: 200/);
       assert.match(stdout, /Optics status: Successful/);
@@ -157,7 +157,7 @@ describe("vantio status", () => {
       assert.equal(code, 0, stderr);
       const body = JSON.parse(stdout);
       assert.equal(body.schema_status, "unstable-pre-1.0");
-      assert.equal(body.install.version, "0.3.26");
+      assert.equal(body.install.version, "0.3.27");
       assert.equal(body.registry.checked, false);
       assert.equal(body.registry.opticsStatus, "NOT_OBSERVED");
       assert.equal(body.telemetry.posture, "disabled");

@@ -95,7 +95,7 @@ export function createOpticsMcpServer() {
 
   server.tool(
     "optics_prove",
-    "Generate a Markdown Sight Loop proof artifact for a local Optics run (auditor-ready; no prompts). Read-only export.",
+    "Generate a Markdown report for a local Optics run (no prompts or completions). Read-only export.",
     {
       trace_id: z
         .string()
@@ -155,7 +155,7 @@ export function createOpticsMcpServer() {
         does: [
           "Intercept LLM/agent egress metadata (host, process, bytes, time, trace)",
           "Write local run logs for prove/discover",
-          "Export auditor-ready proofs with zero prompts/completions",
+          "Export Markdown reports with no prompts or completions",
         ],
         does_not: [
           "Capture prompts or completions (blind by design)",

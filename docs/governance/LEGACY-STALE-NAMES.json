@@ -280,16 +280,12 @@
       "count": 2
     },
     {
-      "path": "packages/vantio-optics-mcp/server.json",
-      "count": 1
-    },
-    {
       "path": "packages/vantio-optics-mcp/src/runs.js",
       "count": 2
     },
     {
       "path": "packages/vantio-optics-mcp/src/server.js",
-      "count": 4
+      "count": 3
     },
     {
       "path": "scripts/fixtures/minimal-agent.js",
