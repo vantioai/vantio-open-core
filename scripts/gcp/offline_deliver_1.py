@@ -840,6 +840,25 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
         if key == "service_accounts_key" and value in ("present", "absent"):
             kept[key] = value
             continue
+        # SA-ABSENT-2 rows (batch fix v10, 2026-10-29); tuples, not sets, so an unhashable value is dropped (F10)
+        if key == "sa_rule" and value == "SA-ABSENT-2":
+            kept[key] = value
+            continue
+        if key == "service_accounts_reading" and value in ("present_empty", "present_nonempty", "absent_inferred_doc", "absent_uncorroborated"):
+            kept[key] = value
+            continue
+        if key == "service_accounts_basis" and value in ("observed", "inferred_from_documentation", "none"):
+            kept[key] = value
+            continue
+        if key == "instance_describe_projection" and value in ("full", "projected"):
+            kept[key] = value
+            continue
+        if key == "describe_completeness" and value in ("ok", "incomplete"):
+            kept[key] = value
+            continue
+        if key in {"create_no_service_account", "create_no_scopes"} and isinstance(value, bool):
+            kept[key] = value
+            continue
         if key == "instance_describe_name" and isinstance(value, str) and re.fullmatch(r"vantio-gcp-lab-[0-9]{1,20}", value):
             kept[key] = value
             continue

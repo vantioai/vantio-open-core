@@ -310,7 +310,20 @@ def describe_boot_disk_argv(project: str, name: str) -> list[str]:
 
 
 # name, id and status bind the describe to this VM (N4/F3); ipv6AccessConfigs ride inside networkInterfaces.
-INSTANCE_HOST_FORMAT = "--format=json(name,id,status,serviceAccounts,networkInterfaces)"
+# SA-ABSENT-2 (batch fix v10, 2026-10-29): the FULL describe, no projection, so instance-describe.raw holds every key
+# gcloud printed (serviceAccounts included when printed) and an absent key cannot be a projection artifact.
+# Google, https://cloud.google.com/compute/docs/instances/change-service-account (last updated 2026-10-26 UTC), for
+# `gcloud compute instances describe VM_NAME --format json`: "If the VM isn't using a service account, you receive a
+# response without the serviceAccounts property." That is a documented statement, not an observation of our VM.
+INSTANCE_HOST_FORMAT = "--format=json"
+INSTANCE_DESCRIBE_PROJECTION = "full"
+# Keys the Compute v1 Instance reference lists for every instance (kind "Always compute#instance for instances").
+# All must be present for describe_completeness "ok"; that they are always printed is UNVERIFIED, and a missing
+# one only makes the reading fail closed ("incomplete" -> absent_uncorroborated -> chain STOP).
+DESCRIBE_COMPLETENESS_KEYS = ("kind", "selfLink", "creationTimestamp", "zone", "machineType", "disks")
+SA_RULE = "SA-ABSENT-2"
+SA_READINGS = ("present_empty", "present_nonempty", "absent_inferred_doc", "absent_uncorroborated")
+SA_BASES = ("observed", "inferred_from_documentation", "none")
 # F3: the describe id is compared with the id the create call printed (INSTANCE_CREATE_FORMAT,
 # offline_deliver_1), not only shape-checked. UNVERIFIED live: the create output shape.
 INSTANCE_DESCRIBE_RAW = "instance-describe.raw"
@@ -366,9 +379,11 @@ def host_rows_from_describe(described: Any, expected_name: str, expected_id: str
     """H-G2 / H-G3 rows from the describe JSON, bound to this VM by name AND id (F3).
 
     Raises nothing for any JSON value (an unhashable status is guarded, F10). UNVERIFIED (F7):
-    whether gcloud omits an empty serviceAccounts list. A missing key is recorded as
-    service_accounts_key "absent" and the chain STOPs on it (NOT_VERIFIED) until Zach rules
-    on a real capture; it is never read as "no service accounts" here.
+    for OUR VM, whether gcloud omits an empty serviceAccounts list (no real capture yet). Google documents
+    that a full `--format json` describe of a VM with no service account has no serviceAccounts property
+    (change-service-account page, see INSTANCE_HOST_FORMAT). A missing key is recorded as
+    service_accounts_key "absent"; it is never read as "no service accounts" here. The reading under
+    rule SA-ABSENT-2 is made by sa_reading_rows, fail closed.
     """
     if not isinstance(described, dict) or described.get("name") != expected_name:
         return {"instance_describe": "malformed"}
@@ -411,7 +426,9 @@ def host_rows_from_describe(described: Any, expected_name: str, expected_id: str
                 "network": _network_path(item.get("network")),
             }
         )
+    complete = described.get("kind") == "compute#instance" and all(key in described for key in DESCRIBE_COMPLETENESS_KEYS)
     rows: dict[str, Any] = {
+        "describe_completeness": "ok" if complete else "incomplete",
         "instance_describe": "ok",
         "instance_describe_id": ident,
         "instance_describe_name": expected_name,
@@ -467,9 +484,49 @@ def instance_host_rows(project: str, name: str, expected_id: str, directory: Pat
             if not write_raw_describe(directory, host.stdout):
                 return {"instance_describe": "malformed"}
             rows["instance_describe_sha256"] = hashlib.sha256(host.stdout.encode("utf-8")).hexdigest()
+            rows["instance_describe_projection"] = INSTANCE_DESCRIBE_PROJECTION if INSTANCE_HOST_FORMAT == "--format=json" else "projected"
         return rows
     except Exception:  # noqa: BLE001 - does not raise by design; the three no-record cases remain (r5l §30.1)
         return {"instance_describe": "malformed"}
+
+def sa_reading_rows(rows: Mapping[str, Any], create_argv: list[str]) -> dict[str, Any]:
+    """Rule SA-ABSENT-2 (future runs only; never applied to an earlier run's rows). Fail closed.
+
+    present, service_accounts [] and scopes []  -> present_empty, basis "observed"
+    present, anything else                      -> present_nonempty (chain STOP)
+    absent, AND (a) the describe is the full unprojected one, AND (b) its completeness keys are all
+      present                                   -> absent_inferred_doc, basis "inferred_from_documentation"
+    absent, (a) or (b) missing                  -> absent_uncorroborated (NOT_VERIFIED, chain STOP)
+    The second signal is Google's documented meaning of a missing key in the full describe (see
+    INSTANCE_HOST_FORMAT); (a) and (b) only rule out a projection artifact or a truncated capture.
+    (a) is a code constant, and (b) is the only cloud-side observation. The create flags (c) are recorded
+    and required as a consistency precondition, but they are NOT an independent signal: this code builds
+    that argv on every run. The chain accepts absent_inferred_doc only when the go pins SA-ABSENT-2."""
+    no_sa = "--no-service-account" in create_argv
+    no_scopes = "--no-scopes" in create_argv
+    out: dict[str, Any] = {"sa_rule": SA_RULE, "create_no_service_account": no_sa, "create_no_scopes": no_scopes}
+    if rows.get("instance_describe") != "ok":
+        return out
+    empty = rows.get("service_accounts") == [] and rows.get("service_account_scopes") == []
+    out["service_accounts_basis"] = "none"
+    if rows.get("service_accounts_key") == "present":
+        out["service_accounts_reading"] = "present_empty" if empty else "present_nonempty"
+        if empty:
+            out["service_accounts_basis"] = "observed"
+    elif (
+        rows.get("service_accounts_key") == "absent"
+        and empty
+        and rows.get("instance_describe_projection") == INSTANCE_DESCRIBE_PROJECTION
+        and rows.get("describe_completeness") == "ok"
+        and no_sa
+        and no_scopes
+    ):
+        out["service_accounts_reading"] = "absent_inferred_doc"
+        out["service_accounts_basis"] = "inferred_from_documentation"
+    else:
+        out["service_accounts_reading"] = "absent_uncorroborated"
+    return out
+
 
 def create_instance(env: Mapping[str, str]) -> int:
     _enabled(env)
@@ -525,7 +582,8 @@ def create_instance(env: Mapping[str, str]) -> int:
         "subnet": SUBNET,
         "zone": ZONE,
     }
-    created = _run_ok(offline_create_argv(plan, str(script_path)), "create")
+    create_argv = offline_create_argv(plan, str(script_path))
+    created = _run_ok(create_argv, "create")
     # K1/N7: instance.json is the only VM-name source for teardown. It is written as the very next
     # statement after create returns, before the create output is read or any describe runs, so a
     # KeyboardInterrupt or SystemExit below still leaves it naming this VM ("not_run" = chain STOP).
@@ -543,6 +601,7 @@ def create_instance(env: Mapping[str, str]) -> int:
         pass
     # H-G2 / H-G3 from the instance describe, not from the create flags (brief r5l section 30.1).
     payload.update(instance_host_rows(project, name, create_id, evidence_dir))
+    payload.update(sa_reading_rows(payload, create_argv))
     write_evidence(evidence_dir / "instance.json", payload)
     github_output("instance_name", name)
     print(json.dumps(payload))
