@@ -814,6 +814,39 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 item for item in value if isinstance(item, str) and re.fullmatch(r"[a-z0-9_]{1,40}", item)
             ]
             continue
+        # Download and list observations. Enum or number only. Free text is dropped.
+        # reason is allowed on every evidence object; the regex is the same as `reasons`.
+        if key == "reason" and isinstance(value, str) and re.fullmatch(r"[a-z0-9_]{1,40}", value):
+            kept[key] = value
+            continue
+        if key == "public_pin_sha256" and isinstance(value, str) and HEX64_RE.fullmatch(value):
+            kept[key] = value
+            continue
+        if key in {"pin_http_status", "bundle_http_status"} and isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
+            kept[key] = value
+            continue
+        if key in {"pin_attempts", "bundle_attempts"} and isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 5:
+            kept[key] = value
+            continue
+        if key in {"pin_error", "bundle_error"} and value in {
+            "http_4xx",
+            "http_5xx",
+            "timeout",
+            "empty_body",
+            "oversize",
+            "gh_rc_nonzero",
+        }:
+            kept[key] = value
+            continue
+        if key == "bundle_file" and value in {"manifest.json", "seal.oci.tar", "contract.tar"}:
+            kept[key] = value
+            continue
+        if key in {"list_ok", "checked_disks", "instance_found", "created_epoch_found"} and isinstance(value, bool):
+            kept[key] = value
+            continue
+        if key in {"instances_seen", "disks_seen"} and isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10000:
+            kept[key] = value
+            continue
         if key == "image":
             if isinstance(value, str) and value in ENUMS["image"]:
                 kept[key] = value

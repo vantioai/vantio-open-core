@@ -3,13 +3,22 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
+import tempfile
 import unittest
-from unittest import mock
+from contextlib import redirect_stderr, redirect_stdout
 from decimal import Decimal
+from pathlib import Path
+from unittest import mock
+
+import yaml
 
 import lab_auto as lab
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _passing_gate() -> dict:
@@ -237,6 +246,274 @@ class LabAutoTest(unittest.TestCase):
         self.assertIs(raw["launch_enabled"], False)
         self.assertIs(raw["sweeper_enabled"], False)
         self.assertIs(raw["offline_delivery_enabled"], True)
+
+    def _sweep_env(self) -> dict[str, str]:
+        return {
+            "GCP_LAB_EXECUTE": "1",
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "GCP_LAB_NOW_EPOCH": "1800000001",
+        }
+
+    def _gcloud(self, stdout: str, code: int = 0):
+        def run(argv, **_kwargs):
+            return subprocess.CompletedProcess(argv, code, stdout, "")
+
+        return run
+
+    def _refuse_delete(self, argv: list[str]):
+        raise AssertionError(argv)
+
+    def test_sweeper_empty_list_records_list_ok(self) -> None:
+        buf = io.StringIO()
+        with mock.patch.object(lab.subprocess, "run", self._gcloud("[]")), redirect_stdout(buf):
+            code = lab.execute_sweep(self._sweep_env(), runner=self._refuse_delete)
+        text = buf.getvalue().strip()
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            text,
+            json.dumps(
+                {"actions": [], "cloud": "gcp", "deleted": False, "list_ok": True, "instances_seen": 0}
+            ),
+        )
+        parsed = json.loads(text)
+        self.assertEqual(list(parsed), ["actions", "cloud", "deleted", "list_ok", "instances_seen"])
+
+    def test_sweeper_list_failure_fails_closed(self) -> None:
+        cases = [
+            ("called", subprocess.CompletedProcess(["gcloud"], 1, "", "")),
+            ("object", subprocess.CompletedProcess(["gcloud"], 0, "{}", "")),
+            ("empty", subprocess.CompletedProcess(["gcloud"], 0, "", "")),
+            ("text", subprocess.CompletedProcess(["gcloud"], 0, "not-json", "")),
+        ]
+        for name, completed in cases:
+            with self.subTest(name=name):
+                def run(argv, _completed=completed, **_kwargs):
+                    return _completed
+
+                buf = io.StringIO()
+                with mock.patch.object(lab.subprocess, "run", run), redirect_stdout(buf):
+                    code = lab.execute_sweep(self._sweep_env())
+                text = buf.getvalue().strip()
+                parsed = json.loads(text)
+                self.assertEqual(code, 2)
+                self.assertIs(parsed["list_ok"], False)
+                self.assertEqual(parsed["reason"], "instances_list_failed")
+                self.assertNotIn("actions", parsed)
+                self.assertNotIn("deleted", parsed)
+                self.assertEqual(list(parsed), ["cloud", "list_ok", "reason"])
+
+    def test_sweeper_owned_expired_instance_is_would_delete(self) -> None:
+        body = json.dumps(
+            [
+                {
+                    "name": "vantio-gcp-lab-1",
+                    "zone": "https://www.googleapis.com/compute/v1/projects/vantio-lab-oct08/zones/us-central1-a",
+                    "labels": {
+                        "vantio-lab": "gcp",
+                        "vantio-owner": "gha",
+                        "vantio-expires-epoch": "1800000000",
+                    },
+                }
+            ]
+        )
+        buf = io.StringIO()
+        with mock.patch.object(lab.subprocess, "run", self._gcloud(body)), redirect_stdout(buf):
+            code = lab.execute_sweep(self._sweep_env(), runner=self._refuse_delete)
+        parsed = json.loads(buf.getvalue())
+        self.assertEqual(code, 0)
+        self.assertIs(parsed["list_ok"], True)
+        self.assertEqual(parsed["instances_seen"], 1)
+        self.assertIs(parsed["deleted"], False)
+        self.assertEqual(parsed["actions"], [{"name": "vantio-gcp-lab-1", "action": "would_delete"}])
+        self.assertEqual(list(parsed), ["actions", "cloud", "deleted", "list_ok", "instances_seen"])
+
+    def _verify_env(self) -> dict[str, str]:
+        return {
+            "GCP_LAB_EXECUTE": "1",
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "INSTANCE_NAME": "vantio-gcp-lab-12",
+        }
+
+    def test_verify_removed_empty_lists_are_list_ok(self) -> None:
+        buf = io.StringIO()
+        with mock.patch.object(lab.subprocess, "run", self._gcloud("[]")), redirect_stdout(buf):
+            code = lab.execute_verify(self._verify_env())
+        text = buf.getvalue().strip()
+        parsed = json.loads(text)
+        self.assertEqual(code, 0)
+        self.assertEqual(parsed["status"], "VERIFIED_REMOVED")
+        self.assertEqual(parsed["name"], "vantio-gcp-lab-12")
+        self.assertEqual(parsed["cloud"], "gcp")
+        self.assertIs(parsed["list_ok"], True)
+        self.assertIs(parsed["checked_disks"], True)
+        self.assertEqual(parsed["instances_seen"], 0)
+        self.assertEqual(parsed["disks_seen"], 0)
+        self.assertEqual(
+            list(parsed),
+            ["status", "name", "cloud", "list_ok", "checked_disks", "instances_seen", "disks_seen"],
+        )
+
+    def test_verify_removed_list_failure_is_unknown(self) -> None:
+        def disks_fail(argv, **_kwargs):
+            if "disks" in argv:
+                return subprocess.CompletedProcess(argv, 1, "", "")
+            return subprocess.CompletedProcess(argv, 0, "[]", "")
+
+        buf = io.StringIO()
+        with mock.patch.object(lab.subprocess, "run", disks_fail), redirect_stdout(buf):
+            code = lab.execute_verify(self._verify_env())
+        parsed = json.loads(buf.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(parsed["status"], "UNKNOWN")
+        self.assertIs(parsed["list_ok"], False)
+        self.assertIs(parsed["checked_disks"], False)
+        self.assertNotIn("VERIFIED_REMOVED", buf.getvalue())
+
+        def instances_object(argv, **_kwargs):
+            if "instances" in argv:
+                return subprocess.CompletedProcess(argv, 0, "{}", "")
+            return subprocess.CompletedProcess(argv, 0, "[]", "")
+
+        buf = io.StringIO()
+        with mock.patch.object(lab.subprocess, "run", instances_object), redirect_stdout(buf):
+            code = lab.execute_verify(self._verify_env())
+        parsed = json.loads(buf.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(parsed["status"], "UNKNOWN")
+        self.assertIs(parsed["list_ok"], False)
+        self.assertIs(parsed["checked_disks"], True)
+
+        def empty_stdout(argv, **_kwargs):
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        buf = io.StringIO()
+        with mock.patch.object(lab.subprocess, "run", empty_stdout), redirect_stdout(buf):
+            code = lab.execute_verify(self._verify_env())
+        parsed = json.loads(buf.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(parsed["status"], "UNKNOWN")
+        self.assertIs(parsed["list_ok"], False)
+        self.assertNotEqual(parsed["status"], "VERIFIED_REMOVED")
+
+    def test_verify_removed_non_json_stdout_and_list_rc_are_unknown(self) -> None:
+        # Council N3. checked_disks is whatever this call's disk list returned.
+        cases = (
+            ("non_json_rc_0", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "not-json", ""), False),
+            (
+                "instances_rc",
+                lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, "", "")
+                if "instances" in argv
+                else subprocess.CompletedProcess(argv, 0, "[]", ""),
+                True,
+            ),
+            (
+                "disks_rc",
+                lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, "", "")
+                if "disks" in argv
+                else subprocess.CompletedProcess(argv, 0, "[]", ""),
+                False,
+            ),
+        )
+        for name, run, checked_disks in cases:
+            with self.subTest(name=name):
+                buf = io.StringIO()
+                err = io.StringIO()
+                with (
+                    mock.patch.object(lab.subprocess, "run", run),
+                    redirect_stdout(buf),
+                    redirect_stderr(err),
+                ):
+                    code = lab.execute_verify(self._verify_env())
+                text = buf.getvalue()
+                parsed = json.loads(text)
+                self.assertEqual(code, 2)
+                self.assertEqual(parsed["status"], "UNKNOWN")
+                self.assertIs(parsed["list_ok"], False)
+                self.assertIs(parsed["checked_disks"], checked_disks)
+                self.assertNotEqual(parsed["status"], "VERIFIED_REMOVED")
+                self.assertNotIn("VERIFIED_REMOVED", text)
+
+
+def _workflow(name: str) -> tuple[str, dict]:
+    path = ROOT / ".github" / "workflows" / name
+    raw = path.read_text(encoding="utf-8")
+    return raw, yaml.safe_load(raw)
+
+
+def _on(document: dict) -> dict:
+    if True in document:
+        return document[True]
+    return document["on"]
+
+
+class SweepSidecarTests(unittest.TestCase):
+    def test_sweep_and_verify_removed_write_sha256_sidecars(self) -> None:
+        for name, json_name, step_name in (
+            ("gcp-lab-sweeper.yml", "gcp-lab-sweep.json", "Hash sweep evidence"),
+            ("gcp-lab-verify-removed.yml", "gcp-lab-verify-removed.json", "Hash removal evidence"),
+        ):
+            with self.subTest(workflow=name):
+                raw, doc = _workflow(name)
+                steps = doc["jobs"][next(iter(doc["jobs"]))]["steps"]
+                hashed = next(step for step in steps if step.get("name") == step_name)
+                upload = next(step for step in steps if json_name in str(step.get("with", {}).get("path", "")))
+                self.assertLess(steps.index(hashed), steps.index(upload))
+                self.assertIn("always()", hashed["if"])
+                self.assertIn("sha256sum", hashed["run"])
+                self.assertIn(json_name, hashed["run"])
+                path = upload["with"]["path"]
+                self.assertIn(json_name, path)
+                self.assertIn(json_name + ".sha256", path)
+                self.assertNotIn("gh workflow run", raw)
+                self.assertNotIn("gh run rerun", raw)
+        sweep_raw, sweep = _workflow("gcp-lab-sweeper.yml")
+        self.assertEqual(_on(sweep)["schedule"][0]["cron"], "*/30 * * * *")
+        self.assertEqual(sweep["concurrency"]["group"], "vantio-gce-slot")
+        self.assertIs(sweep["concurrency"]["cancel-in-progress"], False)
+        self.assertNotIn("gh workflow run", sweep_raw)
+
+    def test_sidecar_script_matches_sha256sum(self) -> None:
+        _raw, doc = _workflow("gcp-lab-sweeper.yml")
+        steps = doc["jobs"]["sweep"]["steps"]
+        script = next(step for step in steps if step.get("name") == "Hash sweep evidence")["run"]
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "gcp-lab-sweep.json"
+            target.write_text('{"actions": [], "cloud": "gcp", "deleted": false}\n', encoding="utf-8")
+            env = os.environ.copy()
+            env["RUNNER_TEMP"] = tmp
+            completed = subprocess.run(
+                ["bash", "-c", script],
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            sidecar = Path(tmp) / "gcp-lab-sweep.json.sha256"
+            self.assertTrue(sidecar.is_file())
+            checked = subprocess.run(
+                ["sha256sum", "-c", sidecar.name],
+                cwd=tmp,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            self.assertIn("gcp-lab-sweep.json", sidecar.read_text(encoding="utf-8"))
+            empty = Path(tmp) / "gcp-lab-sweep.json"
+            empty.write_text("", encoding="utf-8")
+            sidecar.unlink()
+            again = subprocess.run(
+                ["bash", "-c", script],
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(again.returncode, 0, again.stderr)
+            self.assertFalse(sidecar.exists())
 
 
 if __name__ == "__main__":

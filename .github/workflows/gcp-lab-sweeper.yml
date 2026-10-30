@@ -137,12 +137,23 @@ jobs:
           set -euo pipefail
           vantio run python3 scripts/gcp/lab_auto.py sweep | tee "$RUNNER_TEMP/gcp-lab-sweep.json"
 
+      - name: Hash sweep evidence
+        if: always() && steps.arm.outputs.armed == 'true'
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          if [ -s gcp-lab-sweep.json ]; then
+            sha256sum gcp-lab-sweep.json > gcp-lab-sweep.json.sha256
+          fi
+
       - name: Upload sweep evidence
         if: always() && steps.arm.outputs.armed == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gcp-lab-sweep-${{ github.run_id }}
-          path: ${{ runner.temp }}/gcp-lab-sweep.json
+          path: |
+            ${{ runner.temp }}/gcp-lab-sweep.json
+            ${{ runner.temp }}/gcp-lab-sweep.json.sha256
           if-no-files-found: warn
 
       - name: Collect Optics observation log

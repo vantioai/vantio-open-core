@@ -1382,6 +1382,8 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
     skipped = False
     hours = Decimal("0")
     gross = Decimal("0")
+    created = None
+    matched = None
     try:
         created = _creation_epoch(project, name)
         now = int(time.time())
@@ -1414,7 +1416,14 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
     if skipped:
         write_evidence(
             _evidence_dir(env) / "teardown.json",
-            {"claim_cap": CLAIM_CAP, "deleted": False, "name": name, "verify_status": "UNKNOWN"},
+            {
+                "claim_cap": CLAIM_CAP,
+                "deleted": False,
+                "name": name,
+                "verify_status": "UNKNOWN",
+                "instance_found": matched is not None,
+                "created_epoch_found": created is not None,
+            },
         )
         return 2
     os.environ["INSTANCE_NAME"] = name
@@ -1445,6 +1454,8 @@ def teardown_if_present(env: Mapping[str, str]) -> int:
         "name": name,
         "out_of_pocket_usd": "0",
         "verify": verify,
+        "instance_found": matched is not None,
+        "created_epoch_found": created is not None,
     }
     write_evidence(_evidence_dir(env) / "teardown.json", payload)
     print(json.dumps(payload))

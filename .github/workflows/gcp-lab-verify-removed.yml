@@ -132,12 +132,23 @@ jobs:
           set -euo pipefail
           vantio run python3 scripts/gcp/lab_auto.py verify-removed | tee "$RUNNER_TEMP/gcp-lab-verify-removed.json"
 
+      - name: Hash removal evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          if [ -s gcp-lab-verify-removed.json ]; then
+            sha256sum gcp-lab-verify-removed.json > gcp-lab-verify-removed.json.sha256
+          fi
+
       - name: Upload removal evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gcp-lab-verify-removed-${{ github.run_id }}
-          path: ${{ runner.temp }}/gcp-lab-verify-removed.json
+          path: |
+            ${{ runner.temp }}/gcp-lab-verify-removed.json
+            ${{ runner.temp }}/gcp-lab-verify-removed.json.sha256
           if-no-files-found: warn
 
       - name: Collect Optics observation log
