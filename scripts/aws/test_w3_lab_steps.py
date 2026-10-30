@@ -4,13 +4,16 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1248,6 +1251,300 @@ class EnterpriseBundleTests(unittest.TestCase):
             enterprise_bundle.BUNDLE_COMMIT,
             "75b6a94c1a50f07d3cc419a904ee08260c9c32ff",
         )
+
+    def _token(self) -> str:
+        return "github_pat_" + "b" * 24
+
+    def _bundle_files(self, directory: Path) -> tuple[dict[str, bytes], str, str]:
+        source = directory / "source"
+        source.mkdir()
+        trust_sha = self._write_bundle(source)
+        files = {name: (source / name).read_bytes() for name in enterprise_bundle.BUNDLE_FILES}
+        return files, hashlib.sha256(b"seal-bytes").hexdigest(), trust_sha
+
+    def _scripted_gh(self, responses: list[tuple]):
+        script = {"left": list(responses), "calls": [], "timeouts": [], "sleeps": []}
+
+        def run(args, **kwargs):
+            script["calls"].append(list(args))
+            script["timeouts"].append(kwargs.get("timeout"))
+            if not script["left"]:
+                raise AssertionError("unexpected gh call")
+            kind = script["left"].pop(0)
+            if kind[0] == "timeout":
+                raise subprocess.TimeoutExpired(cmd=["gh"], timeout=kwargs.get("timeout") or 1)
+            if kind[0] == "fail":
+                stderr = kind[2]
+                raw = stderr.encode("utf-8") if isinstance(stderr, str) else stderr
+                return subprocess.CompletedProcess(args, kind[1], b"", raw)
+            if kind[0] == "ok":
+                body = kind[1]
+                raw_body = body.encode("utf-8") if isinstance(body, str) else body
+                return subprocess.CompletedProcess(args, 0, raw_body, b"")
+            raise AssertionError(kind)
+
+        def sleep(seconds: float) -> None:
+            script["sleeps"].append(seconds)
+
+        return script, run, sleep
+
+    def _pin_sha(self, path: Path) -> str:
+        if path.name == enterprise_bundle.PUBLIC_PIN_FILE and path.is_file() and path.read_bytes() == b"pin-ok":
+            return enterprise_bundle.PUBLIC_INSTALLER_PIN
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _assert_public_log_is_redacted(self, text: str, token: str) -> None:
+        self.assertNotIn(token, text)
+        self.assertNotIn(enterprise_bundle.BUNDLE_REPO, text)
+        self.assertNotIn("lab-bundle/", text)
+        self.assertNotIn("HTTP ", text)
+
+    def test_download_failure_classes_are_pure(self) -> None:
+        error, status = enterprise_bundle.classify_download_attempt(
+            returncode=1, stdout=b"", stderr="HTTP 502", timed_out=False, max_bytes=None
+        )
+        self.assertEqual((error, status), ("http_5xx", 502))
+        error, status = enterprise_bundle.classify_download_attempt(
+            returncode=1, stdout=b"", stderr="HTTP 404", timed_out=False, max_bytes=None
+        )
+        self.assertEqual((error, status), ("http_4xx", 404))
+        self.assertFalse(enterprise_bundle.download_should_retry("http_4xx", 404))
+        self.assertFalse(enterprise_bundle.download_should_retry("http_4xx", 401))
+        self.assertTrue(enterprise_bundle.download_should_retry("http_4xx", 403))
+        error, status = enterprise_bundle.classify_download_attempt(
+            returncode=1, stdout=b"", stderr="connection reset", timed_out=False, max_bytes=None
+        )
+        self.assertEqual((error, status), ("gh_rc_nonzero", None))
+        self.assertTrue(enterprise_bundle.download_should_retry("gh_rc_nonzero", None))
+        error, status = enterprise_bundle.classify_download_attempt(
+            returncode=0, stdout=b"", stderr="", timed_out=False, max_bytes=None
+        )
+        self.assertEqual((error, status), ("empty_body", None))
+        error, status = enterprise_bundle.classify_download_attempt(
+            returncode=0, stdout=b"abc", stderr="", timed_out=False, max_bytes=2
+        )
+        self.assertEqual(error, "oversize")
+        error, status = enterprise_bundle.classify_download_attempt(
+            returncode=None, stdout=b"", stderr="", timed_out=True, max_bytes=None
+        )
+        self.assertEqual((error, status), ("timeout", None))
+        self.assertTrue(enterprise_bundle.download_should_retry("timeout", None))
+
+    def test_public_pin_retries_502_then_records_the_digest(self) -> None:
+        token = self._token()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files, seal_sha, trust_sha = self._bundle_files(root)
+            script, run, sleep = self._scripted_gh(
+                [
+                    ("ok", files["manifest.json"]),
+                    ("ok", files["seal.oci.tar"]),
+                    ("ok", files["contract.tar"]),
+                    ("fail", 1, "HTTP 502"),
+                    ("fail", 1, "HTTP 502"),
+                    ("ok", b"pin-ok"),
+                ]
+            )
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = token
+            os.environ["W3_BUNDLE_DIR"] = str(root / "dest")
+            os.environ["EVIDENCE_PATH"] = str(root / "bundle.json")
+            os.environ["W3_BUNDLE_TAG"] = "lab-bundle/enterprise-pe-2026-10-08"
+            os.environ["W3_BATTERY"] = "2c-upgrade-rollback"
+            os.environ["W3_EXPECTED_SEAL"] = seal_sha
+            real_sha = enterprise_bundle.sha256_file
+            enterprise_bundle.sha256_file = self._pin_sha
+            try:
+                with mock.patch.object(enterprise_bundle.subprocess, "run", run), mock.patch.object(
+                    enterprise_bundle, "_download_sleep", sleep
+                ):
+                    result = enterprise_bundle.prepare_bundle(expected_seal=seal_sha, expected_trust=trust_sha)
+            finally:
+                enterprise_bundle.sha256_file = real_sha
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+        self.assertEqual(result["status"], "BUNDLE_READY")
+        self.assertEqual(result["pin_attempts"], 3)
+        self.assertEqual(result["public_pin_sha256"], PIN)
+        self.assertNotIn("pin_error", result)
+        self.assertEqual(script["sleeps"], [2, 4])
+        self.assertEqual(script["timeouts"], [enterprise_bundle.DOWNLOAD_TIMEOUT_SECONDS] * 6)
+        self.assertNotIn(token, body)
+        self._assert_public_log_is_redacted(body, token)
+        pin_calls = [call for call in script["calls"] if any("public-pin.oci.tar" in part for part in call)]
+        self.assertEqual(len(pin_calls), 3)
+
+    def test_public_pin_503_is_recorded_and_prepare_bundle_exits_2(self) -> None:
+        token = self._token()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files, seal_sha, trust_sha = self._bundle_files(root)
+            script, run, sleep = self._scripted_gh(
+                [
+                    ("ok", files["manifest.json"]),
+                    ("ok", files["seal.oci.tar"]),
+                    ("ok", files["contract.tar"]),
+                    ("fail", 1, "HTTP 503"),
+                    ("fail", 1, "HTTP 503"),
+                    ("fail", 1, "HTTP 503"),
+                ]
+            )
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = token
+            os.environ["W3_BUNDLE_DIR"] = str(root / "dest")
+            os.environ["EVIDENCE_PATH"] = str(root / "bundle.json")
+            os.environ["W3_BUNDLE_TAG"] = "lab-bundle/enterprise-pe-2026-10-08"
+            os.environ["W3_BATTERY"] = "2c-upgrade-rollback"
+            os.environ["W3_EXPECTED_SEAL"] = seal_sha
+            real_inspect = enterprise_bundle.inspect_bundle
+
+            def inspect(directory: Path, *, expected_seal: str = seal_sha, expected_trust: str = trust_sha):
+                # main() cannot pass expected_trust. The synthetic contract is not the pinned trust file.
+                return real_inspect(directory, expected_seal=seal_sha, expected_trust=trust_sha)
+
+            err = io.StringIO()
+            with mock.patch.object(enterprise_bundle.subprocess, "run", run), mock.patch.object(
+                enterprise_bundle, "_download_sleep", sleep
+            ), mock.patch.object(enterprise_bundle, "inspect_bundle", inspect), contextlib.redirect_stderr(err):
+                code = steps.main(["x", "prepare-bundle"])
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+            logged = err.getvalue()
+        self.assertEqual(code, 2)
+        evidence = json.loads(body)
+        self.assertEqual(evidence["status"], "BLOCKED_BUNDLE")
+        self.assertEqual(evidence["reason"], "public_pin_download")
+        self.assertEqual(evidence["step"], "bundle")
+        self.assertEqual(evidence["pin_http_status"], 503)
+        self.assertEqual(evidence["pin_error"], "http_5xx")
+        self.assertEqual(evidence["pin_attempts"], 3)
+        self.assertNotIn(token, body)
+        self.assertNotIn("HTTP 503", body)
+        self._assert_public_log_is_redacted(body, token)
+        self._assert_public_log_is_redacted(logged, token)
+        self.assertIn("download status=503 class=http_5xx attempt=3", logged)
+        self.assertIn("public_pin_download", logged)
+        self.assertEqual(logged.count("download status="), 1)
+        self.assertEqual(script["sleeps"], [2, 4])
+
+    def test_public_pin_timeout_is_not_a_free_text_error(self) -> None:
+        script, run, sleep = self._scripted_gh([("timeout",), ("timeout",), ("timeout",)])
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            enterprise_bundle.subprocess, "run", run
+        ), mock.patch.object(enterprise_bundle, "_download_sleep", sleep), contextlib.redirect_stderr(err):
+            with self.assertRaises(lab.GuardAbort) as caught:
+                enterprise_bundle.stage_public_pin("pin-token-zz", enterprise_bundle.BUNDLE_COMMIT, Path(tmp))
+        self.assertEqual(caught.exception.reason, "public_pin_download")
+        self.assertEqual(caught.exception.payload["pin_error"], "timeout")
+        self.assertEqual(caught.exception.payload["pin_attempts"], 3)
+        self.assertNotIn("pin_http_status", caught.exception.payload)
+        self.assertEqual(script["sleeps"], [2, 4])
+        self.assertEqual(script["timeouts"], [enterprise_bundle.DOWNLOAD_TIMEOUT_SECONDS] * 3)
+        self.assertEqual(len(script["calls"]), 3)
+        logged = err.getvalue()
+        self.assertIn("download status=none class=timeout attempt=3", logged)
+        self.assertEqual(logged.count("download status="), 1)
+        self._assert_public_log_is_redacted(logged, "pin-token-zz")
+
+    def test_public_pin_401_and_404_are_not_retried(self) -> None:
+        for status in (404, 401):
+            with self.subTest(status=status):
+                script, run, sleep = self._scripted_gh([("fail", 1, f"HTTP {status}")])
+                err = io.StringIO()
+                with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+                    enterprise_bundle.subprocess, "run", run
+                ), mock.patch.object(enterprise_bundle, "_download_sleep", sleep), contextlib.redirect_stderr(err):
+                    with self.assertRaises(lab.GuardAbort) as caught:
+                        enterprise_bundle.stage_public_pin("pin-token-zz", enterprise_bundle.BUNDLE_COMMIT, Path(tmp))
+                self.assertEqual(caught.exception.reason, "public_pin_download")
+                self.assertEqual(caught.exception.payload["pin_http_status"], status)
+                self.assertEqual(caught.exception.payload["pin_error"], "http_4xx")
+                self.assertEqual(caught.exception.payload["pin_attempts"], 1)
+                self.assertEqual(script["sleeps"], [])
+                self.assertEqual(len(script["calls"]), 1)
+                self.assertEqual(err.getvalue().count("download status="), 1)
+                self._assert_public_log_is_redacted(err.getvalue(), "pin-token-zz")
+
+    def test_public_pin_digest_mismatch_is_not_retried(self) -> None:
+        script, run, sleep = self._scripted_gh([("ok", b"not-the-public-pin")])
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            enterprise_bundle.subprocess, "run", run
+        ), mock.patch.object(enterprise_bundle, "_download_sleep", sleep), contextlib.redirect_stderr(err):
+            with self.assertRaises(lab.GuardAbort) as caught:
+                enterprise_bundle.stage_public_pin("pin-token-zz", enterprise_bundle.BUNDLE_COMMIT, Path(tmp))
+        self.assertEqual(caught.exception.reason, "public_pin_digest")
+        self.assertEqual(caught.exception.payload.get("pin_attempts"), 1)
+        self.assertNotIn("pin_error", caught.exception.payload)
+        self.assertEqual(len(script["calls"]), 1)
+        self.assertEqual(script["sleeps"], [])
+        self.assertNotIn("download status=", err.getvalue())
+
+    def test_bundle_file_retries_502_then_is_ready(self) -> None:
+        token = self._token()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files, seal_sha, trust_sha = self._bundle_files(root)
+            script, run, sleep = self._scripted_gh(
+                [
+                    ("fail", 1, "HTTP 502"),
+                    ("fail", 1, "HTTP 502"),
+                    ("ok", files["manifest.json"]),
+                    ("ok", files["seal.oci.tar"]),
+                    ("ok", files["contract.tar"]),
+                ]
+            )
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = token
+            os.environ["W3_BUNDLE_DIR"] = str(root / "dest")
+            os.environ["EVIDENCE_PATH"] = str(root / "bundle.json")
+            os.environ["W3_BUNDLE_TAG"] = "lab-bundle/enterprise-pe-2026-10-08"
+            os.environ.pop("W3_BATTERY", None)
+            with mock.patch.object(enterprise_bundle.subprocess, "run", run), mock.patch.object(
+                enterprise_bundle, "_download_sleep", sleep
+            ):
+                result = enterprise_bundle.prepare_bundle(expected_seal=seal_sha, expected_trust=trust_sha)
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+        self.assertEqual(result["status"], "BUNDLE_READY")
+        self.assertEqual(result["bundle_attempts"], 3)
+        self.assertEqual(result["bundle_file"], "manifest.json")
+        self.assertNotIn("bundle_error", result)
+        self.assertNotIn("public_pin_sha256", result)
+        self.assertEqual(script["sleeps"], [2, 4])
+        self.assertNotIn(token, body)
+
+    def test_bundle_file_503_is_recorded_and_prepare_bundle_exits_2(self) -> None:
+        token = self._token()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script, run, sleep = self._scripted_gh(
+                [("fail", 1, "HTTP 503"), ("fail", 1, "HTTP 503"), ("fail", 1, "HTTP 503")]
+            )
+            os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = token
+            os.environ["W3_BUNDLE_DIR"] = str(root / "dest")
+            os.environ["EVIDENCE_PATH"] = str(root / "bundle.json")
+            os.environ["W3_BUNDLE_TAG"] = "lab-bundle/enterprise-pe-2026-10-08"
+            os.environ.pop("W3_BATTERY", None)
+            err = io.StringIO()
+            with mock.patch.object(enterprise_bundle.subprocess, "run", run), mock.patch.object(
+                enterprise_bundle, "_download_sleep", sleep
+            ), contextlib.redirect_stderr(err):
+                code = steps.main(["x", "prepare-bundle"])
+            body = Path(os.environ["EVIDENCE_PATH"]).read_text(encoding="utf-8")
+        self.assertEqual(code, 2)
+        evidence = json.loads(body)
+        self.assertEqual(evidence["reason"], "bundle_download")
+        self.assertEqual(evidence["bundle_http_status"], 503)
+        self.assertEqual(evidence["bundle_error"], "http_5xx")
+        self.assertEqual(evidence["bundle_attempts"], 3)
+        self.assertEqual(evidence["bundle_file"], "manifest.json")
+        self.assertNotIn(token, body)
+        self.assertNotIn("HTTP 503", body)
+        self._assert_public_log_is_redacted(body, token)
+        self._assert_public_log_is_redacted(err.getvalue(), token)
+        self.assertIn("download status=503 class=http_5xx attempt=3", err.getvalue())
+        self.assertEqual(script["sleeps"], [2, 4])
+        self.assertEqual(len(script["calls"]), 3)
 
     def _patch_manifest(self, directory: Path, **fields: object) -> None:
         path = directory / "manifest.json"

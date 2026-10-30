@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -70,6 +71,24 @@ PRIVATE_KEY_TEXT = re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 MAX_MEMBER_BYTES = 2_000_000
 MAX_CONTRACT_BYTES = 20_000_000
 MAX_SEAL_BYTES = 80_000_000
+# Public gh downloads. 401 and 404 are not retried. A digest mismatch is not a download error.
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_TIMEOUT_SECONDS = 120
+DOWNLOAD_BACKOFF_SECONDS = (2, 4)
+DOWNLOAD_ERRORS = frozenset({"http_4xx", "http_5xx", "timeout", "empty_body", "oversize", "gh_rc_nonzero"})
+_NO_RETRY_HTTP = frozenset({401, 404})
+_HTTP_STATUS_RE = re.compile(r"HTTP (\d{3})")
+_DOWNLOAD_EVIDENCE_KEYS = frozenset(
+    {
+        "pin_http_status",
+        "pin_error",
+        "pin_attempts",
+        "bundle_http_status",
+        "bundle_error",
+        "bundle_attempts",
+        "bundle_file",
+    }
+)
 Fetcher = Callable[[Path], None]
 
 
@@ -240,6 +259,162 @@ def public_pin_download_args(commit: str) -> list[str]:
     ]
 
 
+def http_status_from_stderr(stderr: str) -> int | None:
+    """Pull one HTTP status out of gh stderr. The text itself is not kept."""
+    match = _HTTP_STATUS_RE.search(stderr)
+    if match is None:
+        return None
+    status = int(match.group(1))
+    if 100 <= status <= 599:
+        return status
+    return None
+
+
+def classify_download_attempt(
+    *,
+    returncode: int | None,
+    stdout: bytes,
+    stderr: str,
+    timed_out: bool,
+    max_bytes: int | None,
+) -> tuple[str | None, int | None]:
+    """Return (error enum or None when the body is usable, http status or None).
+
+    Pure. No network. A digest mismatch is not classified here and is not retried.
+    """
+    status = http_status_from_stderr(stderr)
+    if timed_out:
+        return "timeout", status
+    if returncode != 0:
+        if status is not None and 500 <= status <= 599:
+            return "http_5xx", status
+        if status is not None and 400 <= status <= 499:
+            return "http_4xx", status
+        return "gh_rc_nonzero", status
+    if not stdout:
+        return "empty_body", status
+    if max_bytes is not None and len(stdout) > max_bytes:
+        return "oversize", status
+    return None, status
+
+
+def download_should_retry(error: str, http_status: int | None) -> bool:
+    """Retry transport failures. 401 and 404 repeat the same answer."""
+    if http_status in _NO_RETRY_HTTP:
+        return False
+    return error in DOWNLOAD_ERRORS
+
+
+def _stderr_text(raw: bytes | str | None) -> str:
+    if raw is None:
+        return ""
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace")
+    return raw
+
+
+def _download_sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _download_fields(
+    prefix: str,
+    *,
+    attempts: int,
+    error: str | None = None,
+    http_status: int | None = None,
+    bundle_file: str | None = None,
+) -> dict[str, object]:
+    fields: dict[str, object] = {f"{prefix}_attempts": attempts}
+    if error is not None:
+        fields[f"{prefix}_error"] = error
+    if http_status is not None:
+        fields[f"{prefix}_http_status"] = http_status
+    if bundle_file is not None:
+        fields["bundle_file"] = bundle_file
+    return fields
+
+
+def _redacted_download_line(*, http_status: int | None, error: str, attempt: int) -> str:
+    shown = str(http_status) if http_status is not None else "none"
+    return f"download status={shown} class={error} attempt={attempt}"
+
+
+def _gh_env(token: str) -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("GH_TOKEN", None)
+    env.pop("GITHUB_TOKEN", None)
+    env["GH_TOKEN"] = token
+    return env
+
+
+def _download_with_retry(
+    args: list[str],
+    env: dict[str, str],
+    *,
+    reason: str,
+    prefix: str,
+    max_bytes: int | None,
+    bundle_file: str | None = None,
+) -> tuple[bytes, dict[str, object]]:
+    """Download once to three times. Raises GuardAbort(reason) on the final failure.
+
+    The exception payload holds only enum and number fields. One redacted line
+    goes to stderr when the download is abandoned. gh's stderr is not kept.
+    """
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        timed_out = False
+        try:
+            proc = subprocess.run(
+                args,
+                capture_output=True,
+                check=False,
+                env=env,
+                timeout=DOWNLOAD_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            stdout = exc.output if isinstance(exc.output, bytes) else b""
+            stderr = _stderr_text(exc.stderr if isinstance(exc.stderr, (bytes, str)) or exc.stderr is None else None)
+            returncode = None
+        else:
+            stdout = proc.stdout if isinstance(proc.stdout, bytes) else b""
+            stderr = _stderr_text(proc.stderr if isinstance(proc.stderr, (bytes, str)) or proc.stderr is None else None)
+            returncode = proc.returncode
+        error, status = classify_download_attempt(
+            returncode=returncode,
+            stdout=stdout,
+            stderr=stderr,
+            timed_out=timed_out,
+            max_bytes=max_bytes,
+        )
+        if error is None:
+            return stdout, _download_fields(prefix, attempts=attempt, bundle_file=None)
+        if attempt == DOWNLOAD_ATTEMPTS or not download_should_retry(error, status):
+            print(
+                _redacted_download_line(http_status=status, error=error, attempt=attempt),
+                file=sys.stderr,
+            )
+            raise lab.GuardAbort(
+                reason,
+                _download_fields(
+                    prefix,
+                    attempts=attempt,
+                    error=error,
+                    http_status=status,
+                    bundle_file=bundle_file,
+                ),
+            ) from None
+        _download_sleep(DOWNLOAD_BACKOFF_SECONDS[attempt - 1])
+    raise lab.GuardAbort(reason, _download_fields(prefix, attempts=DOWNLOAD_ATTEMPTS, bundle_file=bundle_file)) from None
+
+
+def _copy_download_fields(payload: dict[str, object], fields: dict[str, object]) -> None:
+    for key, value in fields.items():
+        if key in _DOWNLOAD_EVIDENCE_KEYS:
+            payload[key] = value
+
+
 def verify_public_pin(path: Path) -> str:
     """Keep the file only when its sha256 is the public installer pin."""
     if not path.is_file():
@@ -253,47 +428,58 @@ def verify_public_pin(path: Path) -> str:
     return digest
 
 
-def stage_public_pin(token: str, commit: str, dest: Path) -> str:
-    """Download public-pin.oci.tar and refuse it unless the digest matches."""
+def stage_public_pin(token: str, commit: str, dest: Path) -> tuple[str, dict[str, object]]:
+    """Download public-pin.oci.tar and refuse it unless the digest matches.
+
+    The digest check runs once, after a usable body is on disk. It is not retried.
+    """
     if not token or HEX40.fullmatch(commit) is None:
         raise lab.GuardAbort("public_pin_download")
     dest.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env.pop("GH_TOKEN", None)
-    env.pop("GITHUB_TOKEN", None)
-    env["GH_TOKEN"] = token
-    proc = subprocess.run(
+    body, fields = _download_with_retry(
         public_pin_download_args(commit),
-        capture_output=True,
-        check=False,
-        env=env,
+        _gh_env(token),
+        reason="public_pin_download",
+        prefix="pin",
+        max_bytes=MAX_SEAL_BYTES,
     )
-    if proc.returncode != 0 or not proc.stdout or len(proc.stdout) > MAX_SEAL_BYTES:
-        raise lab.GuardAbort("public_pin_download")
     path = dest / PUBLIC_PIN_FILE
-    path.write_bytes(proc.stdout)
-    return verify_public_pin(path)
+    path.write_bytes(body)
+    try:
+        digest = verify_public_pin(path)
+    except lab.GuardAbort as exc:
+        if exc.reason == "public_pin_digest":
+            exc.payload = {**exc.payload, "pin_attempts": fields["pin_attempts"]}
+        raise
+    return digest, fields
 
 
-def download_commit_assets(token: str, commit: str, dest: Path) -> None:
+def download_commit_assets(token: str, commit: str, dest: Path) -> dict[str, object]:
     """Download the three bundle files from a commit. The token stays in the environment."""
     if not token or HEX40.fullmatch(commit) is None:
         raise lab.GuardAbort("bundle_download")
     dest.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env.pop("GH_TOKEN", None)
-    env.pop("GITHUB_TOKEN", None)
-    env["GH_TOKEN"] = token
+    env = _gh_env(token)
+    worst = 1
+    slow_file: str | None = None
     for name in BUNDLE_FILES:
-        proc = subprocess.run(
+        body, fields = _download_with_retry(
             commit_download_args(name, commit),
-            capture_output=True,
-            check=False,
-            env=env,
+            env,
+            reason="bundle_download",
+            prefix="bundle",
+            max_bytes=None,
+            bundle_file=name,
         )
-        if proc.returncode != 0 or not proc.stdout:
-            raise lab.GuardAbort("bundle_download")
-        (dest / name).write_bytes(proc.stdout)
+        attempts = fields["bundle_attempts"]
+        if isinstance(attempts, int) and attempts >= worst:
+            worst = attempts
+            slow_file = name
+        (dest / name).write_bytes(body)
+    recorded: dict[str, object] = {"bundle_attempts": worst}
+    if slow_file is not None and worst > 1:
+        recorded["bundle_file"] = slow_file
+    return recorded
 
 
 def download_release_assets(token: str, tag: str, dest: Path) -> None:
@@ -368,16 +554,19 @@ def prepare_bundle(
         if HEX40.fullmatch(commit) is None:
             raise lab.GuardAbort("bundle_download")
         if fetcher is None:
-            download_commit_assets(token, commit, dest)
+            _copy_download_fields(payload, download_commit_assets(token, commit, dest))
         else:
             fetcher(dest)
         payload.update(inspect_bundle(dest, expected_seal=expected_seal, expected_trust=expected_trust))
         if os.environ.get("W3_BATTERY", "").strip() == "2c-upgrade-rollback":
-            payload["public_pin_sha256"] = stage_public_pin(token, commit, dest)
+            digest, pin_fields = stage_public_pin(token, commit, dest)
+            payload["public_pin_sha256"] = digest
+            _copy_download_fields(payload, pin_fields)
         payload["status"] = "BUNDLE_READY"
         github_output("ready", "true")
     except lab.GuardAbort as exc:
         payload["reason"] = exc.reason
+        _copy_download_fields(payload, exc.payload)
         payload["status"] = "BLOCKED_BUNDLE"
         github_output("ready", "false")
         _evidence_text(payload, token)
