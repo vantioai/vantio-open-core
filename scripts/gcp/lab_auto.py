@@ -429,6 +429,28 @@ def _run_json(argv: list[str]) -> Any:
     return json.loads(text)
 
 
+def _gcloud_json_list(argv: list[str]) -> tuple[bool, list[Any]]:
+    """List JSON from gcloud. Empty stdout and a non-list are failures.
+
+    Sweep and verify-removed use this. Provision and teardown still use
+    _run_json, which treats empty stdout as an empty list.
+    """
+    try:
+        completed = _run_checked(argv)
+    except subprocess.CalledProcessError:
+        return False, []
+    text = completed.stdout.strip()
+    if not text:
+        return False, []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return False, []
+    if not isinstance(parsed, list):
+        return False, []
+    return True, parsed
+
+
 def _cents_label(labels: Mapping[str, Any] | None, key: str) -> Decimal | None:
     if not isinstance(labels, Mapping):
         return None
@@ -560,9 +582,12 @@ def execute_sweep(env: Mapping[str, str], runner: Runner | None = None) -> int:
         return 2
     capabilities = load_capabilities()
     project = env.get("GCP_LAB_PROJECT", "")
-    instances = _run_json(["gcloud", "compute", "instances", "list", f"--project={project}", "--format=json"])
-    if not isinstance(instances, list):
-        instances = []
+    listed, instances = _gcloud_json_list(
+        ["gcloud", "compute", "instances", "list", f"--project={project}", "--format=json"]
+    )
+    if not listed:
+        print(json.dumps({"cloud": "gcp", "list_ok": False, "reason": "instances_list_failed"}))
+        return 2
     now = int(env["GCP_LAB_NOW_EPOCH"]) if env.get("GCP_LAB_NOW_EPOCH") else int(time.time())
     actions = []
     for item in instances:
@@ -584,7 +609,17 @@ def execute_sweep(env: Mapping[str, str], runner: Runner | None = None) -> int:
                     "--quiet",
                 ]
             )
-    print(json.dumps({"actions": actions, "cloud": "gcp", "deleted": any(item["action"] == "delete" for item in actions)}))
+    print(
+        json.dumps(
+            {
+                "actions": actions,
+                "cloud": "gcp",
+                "deleted": any(item["action"] == "delete" for item in actions),
+                "list_ok": True,
+                "instances_seen": len(instances),
+            }
+        )
+    )
     return 0
 
 
@@ -653,14 +688,39 @@ def execute_verify(env: Mapping[str, str]) -> int:
         return 2
     project = env.get("GCP_LAB_PROJECT", "")
     name = env.get("INSTANCE_NAME", "")
-    instances = _run_json(["gcloud", "compute", "instances", "list", f"--project={project}", "--format=json"])
-    disks = _run_json(["gcloud", "compute", "disks", "list", f"--project={project}", "--format=json"])
-    if not isinstance(instances, list):
-        instances = []
-    if not isinstance(disks, list):
-        disks = []
+    instances_ok, instances = _gcloud_json_list(
+        ["gcloud", "compute", "instances", "list", f"--project={project}", "--format=json"]
+    )
+    disks_ok, disks = _gcloud_json_list(
+        ["gcloud", "compute", "disks", "list", f"--project={project}", "--format=json"]
+    )
+    if not instances_ok or not disks_ok:
+        print(
+            json.dumps(
+                {
+                    "status": "UNKNOWN",
+                    "name": name,
+                    "cloud": "gcp",
+                    "list_ok": False,
+                    "checked_disks": disks_ok,
+                }
+            )
+        )
+        return 2
     status = removal_status(instances, disks, name)
-    print(json.dumps({"status": status, "name": name, "cloud": "gcp"}))
+    print(
+        json.dumps(
+            {
+                "status": status,
+                "name": name,
+                "cloud": "gcp",
+                "list_ok": True,
+                "checked_disks": True,
+                "instances_seen": len(instances),
+                "disks_seen": len(disks),
+            }
+        )
+    )
     return 0 if status == "VERIFIED_REMOVED" else 2
 
 
