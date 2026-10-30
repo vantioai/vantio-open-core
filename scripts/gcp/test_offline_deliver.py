@@ -627,6 +627,230 @@ class OfflineDeliverTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 od.content_range(0, 9, 8)
 
+    def test_prune_keeps_download_and_list_fields(self) -> None:
+        pin = "ab" * 32
+        payload = {
+            "step": "bundle",
+            "status": "BLOCKED_BUNDLE",
+            "reason": "public_pin_download",
+            "public_pin_sha256": pin,
+            "pin_http_status": 503,
+            "pin_error": "http_5xx",
+            "pin_attempts": 3,
+            "bundle_http_status": 502,
+            "bundle_error": "http_5xx",
+            "bundle_attempts": 2,
+            "bundle_file": "manifest.json",
+            "list_ok": True,
+            "checked_disks": False,
+            "instances_seen": 0,
+            "disks_seen": 4,
+            "instance_found": False,
+            "created_epoch_found": True,
+            "note": "free text",
+            "stderr": "HTTP 503 repos/vantioai/vantio-enterprise-private",
+        }
+        kept = od.allow_record(payload)
+        for key, value in payload.items():
+            if key in {"note", "stderr"}:
+                self.assertNotIn(key, kept)
+            else:
+                self.assertEqual(kept[key], value)
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "prepare-bundle.json").write_text(json.dumps(payload), encoding="utf-8")
+            (directory / "noise.txt").write_text("nope", encoding="utf-8")
+            od.prune_evidence(directory)
+            body = json.loads((directory / "prepare-bundle.json").read_text(encoding="utf-8"))
+            self.assertFalse((directory / "noise.txt").exists())
+        self.assertEqual(body["reason"], "public_pin_download")
+        self.assertEqual(body["public_pin_sha256"], pin)
+        self.assertEqual(body["pin_http_status"], 503)
+        self.assertEqual(body["pin_error"], "http_5xx")
+        self.assertEqual(body["pin_attempts"], 3)
+        self.assertEqual(body["bundle_file"], "manifest.json")
+        self.assertIs(body["list_ok"], True)
+        self.assertIs(body["instance_found"], False)
+        self.assertIs(body["created_epoch_found"], True)
+        self.assertNotIn("note", body)
+        self.assertNotIn("stderr", body)
+        self.assertNotIn("vantio-enterprise-private", json.dumps(body))
+
+    def test_allowlist_drops_malformed_download_fields(self) -> None:
+        self.assertNotIn("reason", od.allow_record({"reason": "Public Pin!"}))
+        self.assertNotIn("reason", od.allow_record({"reason": "a" * 41}))
+        self.assertEqual(od.allow_record({"reason": "a" * 40}), {"reason": "a" * 40})
+        for bad in (99, 600, "503", True):
+            self.assertNotIn("pin_http_status", od.allow_record({"pin_http_status": bad}))
+        self.assertEqual(od.allow_record({"pin_http_status": 100}), {"pin_http_status": 100})
+        self.assertEqual(od.allow_record({"pin_http_status": 599}), {"pin_http_status": 599})
+        for bad in (0, 6, True, "3"):
+            self.assertNotIn("pin_attempts", od.allow_record({"pin_attempts": bad}))
+        self.assertNotIn("pin_error", od.allow_record({"pin_error": "HTTP 503"}))
+        self.assertNotIn("bundle_file", od.allow_record({"bundle_file": "public-pin.oci.tar"}))
+        self.assertNotIn("instance_found", od.allow_record({"instance_found": "false", "created_epoch_found": 0}))
+        self.assertEqual(
+            od.allow_record({"instance_found": False, "created_epoch_found": True}),
+            {"instance_found": False, "created_epoch_found": True},
+        )
+        self.assertNotIn("instances_seen", od.allow_record({"instances_seen": 10001}))
+        self.assertNotIn("instances_seen", od.allow_record({"instances_seen": True}))
+        self.assertEqual(od.allow_record({"instances_seen": 10000, "disks_seen": 0}), {"instances_seen": 10000, "disks_seen": 0})
+
+    def test_old_teardown_shape_stays_byte_identical(self) -> None:
+        old = {
+            "claim_cap": od.CLAIM_CAP,
+            "deleted": False,
+            "estimated_gross_usd": "0.0000",
+            "expected_oop_usd": "0",
+            "hours": "0.0000",
+            "name": "vantio-gcp-lab-12",
+            "out_of_pocket_usd": "0",
+            "verify": {"status": "VERIFIED_REMOVED", "name": "vantio-gcp-lab-12", "cloud": "gcp"},
+            "hostname": "secret-host",
+        }
+        expected = {
+            "claim_cap": od.CLAIM_CAP,
+            "deleted": False,
+            "estimated_gross_usd": "0.0000",
+            "expected_oop_usd": "0",
+            "hours": "0.0000",
+            "name": "vantio-gcp-lab-12",
+            "out_of_pocket_usd": "0",
+            "verify_status": "VERIFIED_REMOVED",
+        }
+        self.assertEqual(
+            json.dumps(od.allow_record(old), indent=2, sort_keys=True) + "\n",
+            json.dumps(expected, indent=2, sort_keys=True) + "\n",
+        )
+
+    def test_write_evidence_still_rejects_a_token_that_matches_reason(self) -> None:
+        # 19 characters after ghp_ is inside the reason regex and outside SECRET_RE,
+        # so the write_evidence guard is what still rejects it.
+        token = "ghp_" + "a" * 19
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prepare-bundle.json"
+            with self.assertRaises(SystemExit) as caught:
+                od.write_evidence(
+                    path,
+                    {
+                        "reason": token,
+                        "status": "BLOCKED_BUNDLE",
+                        "step": "bundle",
+                        "note": "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+                    },
+                )
+        self.assertEqual(caught.exception.code, "token_in_evidence")
+
+    def _teardown_env(self, tmp: str) -> dict[str, str]:
+        return {
+            "GCP_LAB_EXECUTE": "1",
+            "GCP_LAB_PROJECT": "vantio-lab-oct08",
+            "GITHUB_RUN_ID": "12",
+            "EVIDENCE_DIR": tmp,
+        }
+
+    def _run_teardown(self, env, *, instances, created, verifies):
+        sleeps: list[int] = []
+        state = {"n": 0}
+
+        def verify(_env):
+            state["n"] += 1
+            item = verifies[state["n"] - 1]
+            print(json.dumps(item["body"]))
+            return item["rc"]
+
+        with mock.patch.object(od, "_list_instances", return_value=instances), mock.patch.object(
+            od, "_creation_epoch", return_value=created
+        ), mock.patch.object(od, "delete_objects", return_value=None), mock.patch.object(
+            od, "_run_ok", return_value=subprocess.CompletedProcess([], 0, "", "")
+        ), mock.patch.object(od.lab, "execute_verify", side_effect=verify), mock.patch.object(
+            od.time, "sleep", side_effect=lambda seconds: sleeps.append(seconds)
+        ), mock.patch.object(od.time, "time", return_value=1800003600):
+            code = od.teardown_if_present(env)
+        return code, sleeps
+
+    def test_teardown_records_instance_found_without_a_claim(self) -> None:
+        saved = os.environ.copy()
+        removed = {"body": {"status": "VERIFIED_REMOVED", "name": "vantio-gcp-lab-12", "cloud": "gcp"}, "rc": 0}
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                code, sleeps = self._run_teardown(self._teardown_env(tmp), instances=[], created=None, verifies=[removed])
+                body = json.loads((Path(tmp) / "teardown.json").read_text(encoding="utf-8"))
+            self.assertEqual(code, 0)
+            self.assertEqual(sleeps, [])
+            self.assertIs(body["instance_found"], False)
+            self.assertIs(body["created_epoch_found"], False)
+            self.assertIs(body["deleted"], False)
+            self.assertEqual(body["hours"], "0.0000")
+            self.assertEqual(body["verify_status"], "VERIFIED_REMOVED")
+            self.assertEqual(body["name"], "vantio-gcp-lab-12")
+            self.assertEqual(body["expected_oop_usd"], "0")
+            self.assertEqual(body["out_of_pocket_usd"], "0")
+            with tempfile.TemporaryDirectory() as tmp:
+                owned = {
+                    "name": "vantio-gcp-lab-12",
+                    "zone": "us-central1-a",
+                    "labels": {"vantio-lab": "gcp", "vantio-owner": "gha", "vantio-expires-epoch": "1"},
+                }
+                code, _sleeps = self._run_teardown(
+                    self._teardown_env(tmp),
+                    instances=[owned],
+                    created=1800000000,
+                    verifies=[removed],
+                )
+                body = json.loads((Path(tmp) / "teardown.json").read_text(encoding="utf-8"))
+            self.assertEqual(code, 0)
+            self.assertIs(body["instance_found"], True)
+            self.assertIs(body["created_epoch_found"], True)
+            self.assertIs(body["deleted"], True)
+            self.assertEqual(body["verify_status"], "VERIFIED_REMOVED")
+            self.assertEqual(body["name"], "vantio-gcp-lab-12")
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def test_teardown_retries_a_verify_that_fails_closed_once(self) -> None:
+        saved = os.environ.copy()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                code, sleeps = self._run_teardown(
+                    self._teardown_env(tmp),
+                    instances=[],
+                    created=None,
+                    verifies=[
+                        {
+                            "body": {
+                                "status": "UNKNOWN",
+                                "name": "vantio-gcp-lab-12",
+                                "cloud": "gcp",
+                                "list_ok": False,
+                                "checked_disks": False,
+                            },
+                            "rc": 2,
+                        },
+                        {
+                            "body": {
+                                "status": "VERIFIED_REMOVED",
+                                "name": "vantio-gcp-lab-12",
+                                "cloud": "gcp",
+                                "list_ok": True,
+                                "checked_disks": True,
+                            },
+                            "rc": 0,
+                        },
+                    ],
+                )
+                body = json.loads((Path(tmp) / "teardown.json").read_text(encoding="utf-8"))
+            self.assertEqual(code, 0)
+            self.assertEqual(sleeps, [10])
+            self.assertEqual(body["verify_status"], "VERIFIED_REMOVED")
+            self.assertIs(body["deleted"], False)
+            self.assertIs(body["instance_found"], False)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
     def _passing_repeat(self, repeat: int) -> dict:
         return {
             "repeat": repeat,
