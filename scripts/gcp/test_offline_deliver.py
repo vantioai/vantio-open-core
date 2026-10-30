@@ -132,7 +132,7 @@ class OfflineDeliverTest(unittest.TestCase):
                 "vantio-gcp-lab-12",
                 "--project=vantio-lab-oct08",
                 f"--zone={od.ZONE}",
-                "--format=json(name,id,status,serviceAccounts,networkInterfaces)",
+                "--format=json",
             ],
         )
 
@@ -158,6 +158,37 @@ class OfflineDeliverTest(unittest.TestCase):
         for bad in ("", "not json", "[]", "null", json.dumps([{"name": vm, "id": "1"}, {"name": vm, "id": "2"}]), json.dumps([{"name": "vantio-gcp-lab-13", "id": "1"}]), json.dumps([{"name": vm, "id": True}]), json.dumps([{"name": vm, "id": "12a"}]), None, 7):
             self.assertEqual(od.create_id_from_output(bad, vm), "", bad)
 
+    def test_sa_absent_rule_fails_closed(self) -> None:
+        # SA-ABSENT-2: code behaviour only; asserts nothing about what gcloud prints for our VM.
+        vm = "vantio-gcp-lab-12"
+        net = "https://www.googleapis.com/compute/v1/projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
+        full = {"kind": "compute#instance", "selfLink": "s", "creationTimestamp": "t", "zone": "z", "machineType": "m", "disks": [], "name": vm, "id": "123", "status": "RUNNING", "networkInterfaces": [{"network": net}]}
+        flags = ["gcloud", "--no-service-account", "--no-scopes"]
+
+        def reading(described, argv=flags, projection="full"):
+            rows = od.host_rows_from_describe(described, vm, "123")
+            rows["instance_describe_projection"] = projection
+            return od.sa_reading_rows(rows, argv)
+
+        self.assertEqual(reading(full)["service_accounts_reading"], "absent_inferred_doc")
+        self.assertEqual(reading(full)["service_accounts_basis"], "inferred_from_documentation")
+        self.assertEqual(reading(full)["sa_rule"], "SA-ABSENT-2")
+        self.assertEqual(reading({**full, "serviceAccounts": []})["service_accounts_reading"], "present_empty")
+        self.assertEqual(reading({**full, "serviceAccounts": []})["service_accounts_basis"], "observed")
+        self.assertEqual(reading({**full, "serviceAccounts": [{"email": "x@y.iam.gserviceaccount.com", "scopes": []}]})["service_accounts_reading"], "present_nonempty")
+        self.assertEqual(reading(full, projection="projected")["service_accounts_reading"], "absent_uncorroborated")
+        self.assertEqual(reading(full, argv=["gcloud", "--no-scopes"])["service_accounts_reading"], "absent_uncorroborated")
+        self.assertEqual(reading(full, argv=["gcloud", "--no-service-account"])["service_accounts_reading"], "absent_uncorroborated")
+        for key in od.DESCRIBE_COMPLETENESS_KEYS:
+            partial = {k: v for k, v in full.items() if k != key}
+            self.assertEqual(reading(partial)["service_accounts_reading"], "absent_uncorroborated", key)
+        self.assertEqual(reading({**full, "kind": "compute#disk"})["service_accounts_reading"], "absent_uncorroborated")
+        # The 20261029-2120 shape (4 keys, projected): stays NOT_VERIFIED under the new rule too.
+        old = {"name": vm, "id": "123", "status": "RUNNING", "networkInterfaces": [{"network": net}]}
+        self.assertEqual(reading(old, projection="projected")["service_accounts_reading"], "absent_uncorroborated")
+        self.assertEqual(reading(old, projection="projected")["service_accounts_basis"], "none")
+        self.assertNotIn("service_accounts_reading", od.sa_reading_rows({"instance_describe": "failed"}, flags))
+
     def test_network_path_prefix_is_anchored(self) -> None:
         # N3/F10: only the exact compute v1 root may precede "projects/".
         path = "projects/vantio-lab-oct08/global/networks/vantio-lab-offline"
@@ -179,6 +210,7 @@ class OfflineDeliverTest(unittest.TestCase):
         self.assertEqual(
             rows,
             {
+                "describe_completeness": "incomplete",
                 "instance_describe": "ok",
                 "instance_describe_id": "123",
                 "instance_describe_name": vm,
@@ -193,6 +225,7 @@ class OfflineDeliverTest(unittest.TestCase):
         # code behaviour only and asserts nothing about what gcloud prints.
         absent = {key: value for key, value in nic().items() if key != "serviceAccounts"}
         self.assertEqual(od.host_rows_from_describe(absent, vm, "123")["service_accounts_key"], "absent")
+        self.assertEqual(od.host_rows_from_describe(absent, vm, "123")["describe_completeness"], "incomplete")
         self.assertEqual(od.host_rows_from_describe(nic(accessConfigs=[]), vm, "123")["network_interfaces"], [clean_nic])
         # accessConfigs null / ONE_TO_ONE_NAT without natIP / natIP / external IPv6 all count as external
         self.assertEqual(od.host_rows_from_describe(nic(accessConfigs=None), vm, "123")["network_interfaces"][0]["access_configs"], -1)
@@ -467,6 +500,9 @@ class OfflineDeliverTest(unittest.TestCase):
         seventeen = od.allow_record({"service_accounts": ["x@y.iam.gserviceaccount.com"] * 17})["service_accounts"]
         self.assertEqual((len(seventeen), seventeen[-1]), (17, "unrecognized"))
         self.assertEqual(od.allow_record({"instance_describe": "OK", "instance_describe_status": "running", "service_accounts_key": "none", "instance_create_id": 123}), {})
+        sa = {"sa_rule": "SA-ABSENT-2", "service_accounts_reading": "absent_uncorroborated", "service_accounts_basis": "none", "instance_describe_projection": "full", "describe_completeness": "ok", "create_no_service_account": True, "create_no_scopes": True}
+        self.assertEqual(od.allow_record(sa), sa)
+        self.assertEqual(od.allow_record({"sa_rule": "SA-ABSENT-1", "service_accounts_basis": "observed_doc", "service_accounts_reading": "absent_corroborated", "instance_describe_projection": ["full"], "describe_completeness": "OK", "create_no_service_account": "true", "create_no_scopes": 1}), {})
         # F10: unhashable values are dropped, not raised
         self.assertEqual(od.allow_record({"instance_describe": ["ok"], "instance_describe_status": ["RUNNING"], "service_accounts_key": ["present"]}), {})
         with tempfile.TemporaryDirectory() as tmp:
