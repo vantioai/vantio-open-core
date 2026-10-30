@@ -9,7 +9,7 @@ import os
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from decimal import Decimal
 from pathlib import Path
 from unittest import mock
@@ -394,6 +394,44 @@ class LabAutoTest(unittest.TestCase):
         self.assertEqual(parsed["status"], "UNKNOWN")
         self.assertIs(parsed["list_ok"], False)
         self.assertNotEqual(parsed["status"], "VERIFIED_REMOVED")
+
+    def test_verify_removed_non_json_stdout_and_list_rc_are_unknown(self) -> None:
+        # Council N3. checked_disks is whatever this call's disk list returned.
+        cases = (
+            ("non_json_rc_0", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "not-json", ""), False),
+            (
+                "instances_rc",
+                lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, "", "")
+                if "instances" in argv
+                else subprocess.CompletedProcess(argv, 0, "[]", ""),
+                True,
+            ),
+            (
+                "disks_rc",
+                lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, "", "")
+                if "disks" in argv
+                else subprocess.CompletedProcess(argv, 0, "[]", ""),
+                False,
+            ),
+        )
+        for name, run, checked_disks in cases:
+            with self.subTest(name=name):
+                buf = io.StringIO()
+                err = io.StringIO()
+                with (
+                    mock.patch.object(lab.subprocess, "run", run),
+                    redirect_stdout(buf),
+                    redirect_stderr(err),
+                ):
+                    code = lab.execute_verify(self._verify_env())
+                text = buf.getvalue()
+                parsed = json.loads(text)
+                self.assertEqual(code, 2)
+                self.assertEqual(parsed["status"], "UNKNOWN")
+                self.assertIs(parsed["list_ok"], False)
+                self.assertIs(parsed["checked_disks"], checked_disks)
+                self.assertNotEqual(parsed["status"], "VERIFIED_REMOVED")
+                self.assertNotIn("VERIFIED_REMOVED", text)
 
 
 def _workflow(name: str) -> tuple[str, dict]:

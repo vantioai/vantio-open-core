@@ -851,6 +851,52 @@ class OfflineDeliverTest(unittest.TestCase):
             os.environ.clear()
             os.environ.update(saved)
 
+    def test_teardown_unknown_verify_twelve_attempts_returns_2(self) -> None:
+        # Council N4. Sleep is injected. claim_cap is recorded, not changed.
+        saved = os.environ.copy()
+        attempts = 0
+        sleeps: list[int] = []
+        claim_cap = od.CLAIM_CAP
+
+        def verify(_env):
+            nonlocal attempts
+            attempts += 1
+            print(
+                json.dumps(
+                    {
+                        "status": "UNKNOWN",
+                        "name": "vantio-gcp-lab-12",
+                        "cloud": "gcp",
+                        "list_ok": False,
+                        "checked_disks": False,
+                    }
+                )
+            )
+            return 2
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                with mock.patch.object(od, "_list_instances", return_value=[]), mock.patch.object(
+                    od, "_creation_epoch", return_value=None
+                ), mock.patch.object(od, "delete_objects", return_value=None), mock.patch.object(
+                    od, "_run_ok", return_value=subprocess.CompletedProcess([], 0, "", "")
+                ), mock.patch.object(od.lab, "execute_verify", side_effect=verify), mock.patch.object(
+                    od.time, "sleep", side_effect=lambda seconds: sleeps.append(seconds)
+                ), mock.patch.object(od.time, "time", return_value=1800003600), contextlib.redirect_stdout(
+                    io.StringIO()
+                ):
+                    code = od.teardown_if_present(self._teardown_env(tmp))
+                body = json.loads((Path(tmp) / "teardown.json").read_text(encoding="utf-8"))
+            self.assertEqual(attempts, 12)
+            self.assertEqual(sleeps, [10] * 12)
+            self.assertEqual(code, 2)
+            self.assertEqual(body["verify_status"], "UNKNOWN")
+            self.assertEqual(body["claim_cap"], claim_cap)
+            self.assertEqual(od.CLAIM_CAP, claim_cap)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
     def _passing_repeat(self, repeat: int) -> dict:
         return {
             "repeat": repeat,
