@@ -192,6 +192,10 @@ def pack(directory: Path, dest: Path) -> None:
         dest.unlink()
     with tarfile.open(dest, "w") as tar:
         for path in sorted(directory.rglob("*")):
+            # F1 sweep: never pack a symlink, or a file reached through one.
+            rel_parts = path.relative_to(directory).parts
+            if any((directory.joinpath(*rel_parts[: i + 1])).is_symlink() for i in range(len(rel_parts))):
+                raise SystemExit("self_service_layout")
             if not path.is_file() or path.resolve() == dest.resolve():
                 continue
             rel = path.relative_to(directory).as_posix()
@@ -347,30 +351,61 @@ def check_archive(dest: Path) -> dict[str, object]:
     return {"archive_pin_match": True, "tar_member_pin_match": True}
 
 
+def _normal_member_name(raw: str) -> str:
+    """F1: one canonical spelling per tar member, or SystemExit.
+    Strips leading './', collapses repeated and trailing '/', drops '.' parts.
+    Rejects absolute names, '..', backslashes, NULs and an empty result."""
+    if not isinstance(raw, str) or not raw or "\x00" in raw or "\\" in raw or raw.startswith("/"):
+        raise SystemExit("pe_archive_tar_bad_member")
+    parts = [part for part in raw.split("/") if part not in {"", "."}]
+    if not parts or ".." in parts:
+        raise SystemExit("pe_archive_tar_bad_member")
+    return "/".join(parts)
+
+
 def _check_tar_member(tar_path: Path, pins: dict, record: dict) -> None:
-    """N5: the copy that ships is the tar MEMBER, so hash that member too.
-    Exactly one regular-file member at the PE archive path, with the pinned
-    sha256, and the tar's signature.json must equal the checked one."""
+    """N5 + F1: the copy that ships is the tar MEMBER, so check every member the
+    guest's GNU `tar -xf` would write. Every name is normalised; names must be
+    unique after normalising; only regular files and directories are allowed
+    (no symlink, hardlink, device or fifo); no member may sit under another
+    member that is not a directory. Then the PE archive member (exactly one)
+    must have the pinned sha256 and the tar's signature.json must equal the
+    checked one. Nothing is extracted on the runner."""
     member_name = f"bundle/artifacts/phantom-engine/{pins['pe_archive_name']}"
     if not tar_path.is_file() or tar_path.is_symlink():
         raise SystemExit("pe_archive_tar_missing")
     with tarfile.open(tar_path, "r:") as tar:
         members = tar.getmembers()
-        found = [m for m in members if m.name in {member_name, f"./{member_name}"}]
-        sigs = [m for m in members if m.name in {"signature.json", "./signature.json"}]
-        if len(found) != 1 or not found[0].isreg():
+        kinds: dict[str, str] = {}
+        by_name: dict[str, tarfile.TarInfo] = {}
+        for member in members:
+            name = _normal_member_name(member.name)
+            if name in kinds:
+                raise SystemExit("pe_archive_tar_duplicate_member")
+            if member.isreg():
+                kinds[name] = "file"
+            elif member.isdir():
+                kinds[name] = "dir"
+            else:
+                raise SystemExit("pe_archive_tar_bad_member_type")
+            by_name[name] = member
+        for name in kinds:
+            parts = name.split("/")
+            for i in range(1, len(parts)):
+                parent = "/".join(parts[:i])
+                if kinds.get(parent, "dir") != "dir":
+                    raise SystemExit("pe_archive_tar_bad_parent")
+        if kinds.get(member_name) != "file" or kinds.get("signature.json") != "file":
             raise SystemExit("pe_archive_tar_member_mismatch")
         digest = hashlib.sha256()
-        handle = tar.extractfile(found[0])
+        handle = tar.extractfile(by_name[member_name])
         if handle is None:
             raise SystemExit("pe_archive_tar_member_mismatch")
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
         if digest.hexdigest() != pins["pe_archive_sha256"]:
             raise SystemExit("pe_archive_tar_member_mismatch")
-        if len(sigs) != 1 or not sigs[0].isreg():
-            raise SystemExit("pe_archive_tar_signature_mismatch")
-        sig_handle = tar.extractfile(sigs[0])
+        sig_handle = tar.extractfile(by_name["signature.json"])
         try:
             tar_record = json.loads(sig_handle.read().decode("utf-8")) if sig_handle else None
         except (UnicodeDecodeError, json.JSONDecodeError):

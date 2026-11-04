@@ -133,7 +133,17 @@ LAB_HOST_RE = re.compile(r"^vantio-gcp-lab-[0-9]{1,20}$")
 # offline_deliver from instance_name). `uname -n` must print exactly that name,
 # or that name followed by "." and a DNS domain. Nothing else matches.
 EXPECTED_HOST_ENV = "VANTIO_LAB_EXPECTED_HOST"
-HOST_DOMAIN_RE = re.compile(r"^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,20}$")
+# F3: the domain is pinned, not guessed. offline_deliver passes the lab project
+# and zone it already uses for the instance. The only FQDN forms accepted are
+# GCE's internal DNS names built from them:
+#   <name>.<zone>.c.<project>.internal   (zonal DNS)
+#   <name>.c.<project>.internal          (global DNS)
+# Any other suffix STOPs. If project or zone is missing or malformed, only the
+# exact short name can match. Which form the image prints is NOT VERIFIED.
+EXPECTED_PROJECT_ENV = "VANTIO_LAB_EXPECTED_PROJECT"
+EXPECTED_ZONE_ENV = "VANTIO_LAB_EXPECTED_ZONE"
+LAB_PROJECT_RE = re.compile(r"^vantio-lab-[a-z][a-z0-9-]{2,18}$")
+LAB_ZONE_RE = re.compile(r"^[a-z]{2,12}-[a-z]{2,12}[0-9]{1,2}-[a-z]$")
 PRINTABLE_RE = re.compile(r"^[ -~]{1,300}$")
 
 E5_1_PATHS = {
@@ -244,18 +254,23 @@ def _backend(text: str) -> str:
     return "unknown"
 
 
-def host_name_facts(expected: object, printed: str) -> dict:
+def host_name_facts(expected: object, printed: str, project: object = "", zone: object = "") -> dict:
     """Yes/no facts only. The printed host name is never kept."""
     valid = isinstance(expected, str) and LAB_HOST_RE.fullmatch(expected) is not None
+    domain_valid = (
+        isinstance(project, str) and LAB_PROJECT_RE.fullmatch(project) is not None
+        and isinstance(zone, str) and LAB_ZONE_RE.fullmatch(zone) is not None
+    )
     line = printed[:-1] if printed.endswith("\n") else printed
     exact = valid and line == expected
-    fqdn = (
-        valid
-        and len(line) <= 253
-        and line.startswith(f"{expected}.")
-        and HOST_DOMAIN_RE.fullmatch(line[len(expected) + 1:]) is not None
-    )
-    return {"expected_name_valid": valid, "host_name_match": exact or fqdn, "fqdn_form": fqdn}
+    allowed = {f"{expected}.{zone}.c.{project}.internal", f"{expected}.c.{project}.internal"} if valid and domain_valid else set()
+    fqdn = line in allowed
+    return {
+        "expected_name_valid": valid,
+        "expected_domain_valid": domain_valid,
+        "host_name_match": exact or fqdn,
+        "fqdn_form": fqdn,
+    }
 
 
 def _json_facts(text: str, row: str) -> dict | None:
@@ -306,7 +321,9 @@ def classify_ipv6(version_rc: int | None, rc: int | None, stderr: str) -> tuple[
     return IPV6_OTHER_ERROR, ""
 
 
-def run_hostcheck(runner: Runner = run_argv, expected_host: object = None) -> dict:
+def run_hostcheck(
+    runner: Runner = run_argv, expected_host: object = None, project: object = None, zone: object = None
+) -> dict:
     """Run the fixed argv list in order with Block A's stop gates.
 
     A stop means the rows after it are NOT_RUN. It never stops the installer
@@ -315,6 +332,10 @@ def run_hostcheck(runner: Runner = run_argv, expected_host: object = None) -> di
     env = dict(HOSTCHECK_ENV)
     if expected_host is None:
         expected_host = os.environ.get(EXPECTED_HOST_ENV, "")
+    if project is None:
+        project = os.environ.get(EXPECTED_PROJECT_ENV, "")
+    if zone is None:
+        zone = os.environ.get(EXPECTED_ZONE_ENV, "")
     rows: list[dict] = []
     stopped_at: str | None = None
     pe_name: str | None = None
@@ -341,7 +362,7 @@ def run_hostcheck(runner: Runner = run_argv, expected_host: object = None) -> di
             else:
                 rows.append(_row(row, RECORDED, rc))
         elif row == "S0-b":
-            facts = host_name_facts(expected_host, out) if rc == 0 else host_name_facts(expected_host, "")
+            facts = host_name_facts(expected_host, out if rc == 0 else "", project, zone)
             if rc != 0:
                 stop(row, rc, facts, "NONZERO_RC")
             elif not (facts["expected_name_valid"] and facts["host_name_match"]):

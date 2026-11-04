@@ -27,8 +27,20 @@ import self_service as ss  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts" / "gcp"))
 import offline_deliver_1 as od1  # noqa: E402
 
-# S0-b compares `uname -n` to the expected instance name from the guest env.
-os.environ[hc.EXPECTED_HOST_ENV] = "vantio-gcp-lab-12"
+LAB_ENV = {
+    "VANTIO_LAB_EXPECTED_HOST": "vantio-gcp-lab-12",
+    "VANTIO_LAB_EXPECTED_PROJECT": "vantio-lab-oct08",
+    "VANTIO_LAB_EXPECTED_ZONE": "us-central1-a",
+}
+
+
+class LabEnvCase(unittest.TestCase):
+    """F3: the expected-host env is set per test (patch.dict), never at import."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.dict(os.environ, LAB_ENV)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
 # Pinned sha256 of the fixed argv artifact. A change to any argv, the env,
 # the E4-3 pattern, the placeholder or the timeout changes this value and
@@ -96,7 +108,7 @@ def by_row(result: dict) -> dict:
     return {row["row"]: row for row in result["rows"]}
 
 
-class ArgvListTests(unittest.TestCase):
+class ArgvListTests(LabEnvCase):
     def test_argv_sha_is_pinned_and_printed(self) -> None:
         sha = hc.argv_sha256()
         print(f"\nHOSTCHECK-ARGV-SHA256 {sha}")
@@ -139,7 +151,7 @@ class ArgvListTests(unittest.TestCase):
             self.assertEqual(hc.run_argv(["ip6tables", "--version"], {}), (None, "", ""))
 
 
-class HealthyRunTests(unittest.TestCase):
+class HealthyRunTests(LabEnvCase):
     def test_all_rows_recorded_and_no_values_kept(self) -> None:
         stub = Stub()
         result = hc.run_hostcheck(stub)
@@ -172,7 +184,7 @@ class HealthyRunTests(unittest.TestCase):
         self.assertFalse(row["facts"]["unit_present"])
 
 
-class Q8Tests(unittest.TestCase):
+class Q8Tests(LabEnvCase):
     def assert_not_present(self, error: str) -> None:
         result = hc.run_hostcheck(Stub({"E5-7": (1, "", error + "\n")}))
         rows = by_row(result)
@@ -235,7 +247,7 @@ class Q8Tests(unittest.TestCase):
         self.assertEqual(rows["E5-9"]["outcome"], hc.NOT_RUN)
 
 
-class GateTests(unittest.TestCase):
+class GateTests(LabEnvCase):
     def assert_stop(self, overrides: dict, row: str, reason: str) -> dict:
         result = hc.run_hostcheck(Stub(overrides))
         rows = by_row(result)
@@ -287,7 +299,7 @@ class GateTests(unittest.TestCase):
         self.assert_stop({"E5-2": (0, "total 0\n", "")}, "E5-2", "E5_2_NOT_ALL_PRESENT")
 
 
-class PassTwoHarnessTests(unittest.TestCase):
+class PassTwoHarnessTests(LabEnvCase):
     """Quinn V4 notes B-2, B-3 and B-7 on the harness side."""
 
     def test_bare_table_does_not_exist_is_not_ipv6_absent(self) -> None:
@@ -337,7 +349,7 @@ class PassTwoHarnessTests(unittest.TestCase):
         self.assertNotIn("abc123secret", json.dumps(result))
 
 
-class PassTwoAllowlistTests(unittest.TestCase):
+class PassTwoAllowlistTests(LabEnvCase):
     """B-2: the evidence allowlist keeps per-row keys and enum values only."""
 
     def assert_round_trip(self, result: dict) -> None:
@@ -427,10 +439,27 @@ def _covered(path: str, sparse: list[str]) -> bool:
     return False
 
 
+# F2: each exclusion strips ONLY its own token; the rest of the line is still scanned.
+# - a PYTHONPATH value (an import root; the import test covers it)
+# - the one path after an exact `test ! -e ` (asserts the path is absent)
+# - the value of a `uses:` key (a third-party action ref), on `uses:` lines only
+_EXCLUDED_TOKENS = (
+    re.compile(r"PYTHONPATH(?::[ \t]*|=)[^\s\"';]+"),
+    re.compile(r"\btest ! -e [^\s;&|]+"),
+    re.compile(r"^(\s*-?\s*uses:[ \t]*)[^\s#]+(?:[ \t]+#.*)?$"),
+)
+
+
+def _strip_excluded_tokens(line: str) -> str:
+    line = _EXCLUDED_TOKENS[0].sub("PYTHONPATH=", line)
+    line = _EXCLUDED_TOKENS[1].sub("test ! -e", line)
+    return _EXCLUDED_TOKENS[2].sub(r"\1", line)
+
+
 REPO_PATH = __import__("re").compile(r"(?<![\w/.$@-])((?:scripts|packages|release)/[A-Za-z0-9_./-]+)")
 
 
-class SparseCheckoutTests(unittest.TestCase):
+class SparseCheckoutTests(LabEnvCase):
     """B-1: every repo file a sparse job copies, runs or sources is checked out."""
 
     WF = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
@@ -468,19 +497,7 @@ class SparseCheckoutTests(unittest.TestCase):
             for job, sparse in _sparse_lists(text).items():
                 body = _job_text(text, job)
                 listed = set(sparse)
-                # PYTHONPATH values are import roots (covered by the import test).
-                # `test ! -e PATH` asserts a path is absent, so it must not require checkout.
-                # Third-party action refs (owner/name@sha # release/v1) are not repo paths.
-                scan_lines = []
-                for line in body.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith("PYTHONPATH:") or "PYTHONPATH=" in stripped:
-                        continue
-                    if re.search(r"\btest\s+!?\s*-e\b", stripped):
-                        continue
-                    if re.search(r"@[0-9a-f]{7,}", stripped) or "gh-action-" in stripped:
-                        continue
-                    scan_lines.append(line)
+                scan_lines = [_strip_excluded_tokens(line) for line in body.splitlines()]
                 for path in sorted(set(REPO_PATH.findall("\n".join(scan_lines)))):
                     if path in listed:
                         continue
@@ -509,7 +526,7 @@ class SparseCheckoutTests(unittest.TestCase):
                         self.fail(f"{path} imports repo module {name}; add it to this test and the sparse list")
 
 
-class SelfServiceHookTests(unittest.TestCase):
+class SelfServiceHookTests(LabEnvCase):
     def test_hostcheck_runs_once_after_install_observe_and_before_later_phases(self) -> None:
         order: list[str] = []
 
@@ -575,8 +592,9 @@ def _slt_importable() -> bool:
 
 
 @unittest.skipUnless(_slt_importable(), "cryptography not installed")
-class StageLabTrustPinTests(unittest.TestCase):
+class StageLabTrustPinTests(LabEnvCase):
     def setUp(self) -> None:
+        super().setUp()
         sys.path.insert(0, str(ROOT / "packages" / "vantio-install"))
         import stage_lab_trust
 
@@ -638,7 +656,7 @@ class StageLabTrustPinTests(unittest.TestCase):
 
 
 
-class PassThreeTests(unittest.TestCase):
+class PassThreeTests(LabEnvCase):
     """V5 notes N1..N7."""
 
     def run_s0b(self, printed: str, expected: object) -> dict:
@@ -646,7 +664,7 @@ class PassThreeTests(unittest.TestCase):
         return result
 
     def test_n2_exact_and_fqdn_match_pass(self) -> None:
-        for printed in ("vantio-gcp-lab-12\n", "vantio-gcp-lab-12.us-central1-a.c.lab-proj.internal\n", "vantio-gcp-lab-12.internal"):
+        for printed in ("vantio-gcp-lab-12\n", "vantio-gcp-lab-12.us-central1-a.c.vantio-lab-oct08.internal\n", "vantio-gcp-lab-12.c.vantio-lab-oct08.internal"):
             result = self.run_s0b(printed, "vantio-gcp-lab-12")
             row = by_row(result)["S0-b"]
             self.assertEqual(row["outcome"], hc.RECORDED, printed)
@@ -675,8 +693,49 @@ class PassThreeTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop(hc.EXPECTED_HOST_ENV, None)
             row = by_row(hc.run_hostcheck(Stub()))["S0-b"]
-            os.environ[hc.EXPECTED_HOST_ENV] = "vantio-gcp-lab-12"
         self.assertEqual(row["reason"], "NOT_A_LAB_HOST_NAME")
+
+    def test_f3_domain_is_pinned_to_the_lab_project_and_zone(self) -> None:
+        ok = ("vantio-gcp-lab-12", "vantio-gcp-lab-12.us-central1-a.c.vantio-lab-oct08.internal", "vantio-gcp-lab-12.c.vantio-lab-oct08.internal")
+        for printed in ok:
+            row = by_row(hc.run_hostcheck(Stub({"S0-b": (0, printed + "\n", "")})))["S0-b"]
+            self.assertEqual(row["outcome"], hc.RECORDED, printed)
+        for printed in (
+            "vantio-gcp-lab-12.internal", "vantio-gcp-lab-12.example.com",
+            "vantio-gcp-lab-12.us-central1-b.c.vantio-lab-oct08.internal",
+            "vantio-gcp-lab-12.c.vantio-lab-other.internal", "vantio-gcp-lab-12.c.vantio-lab-oct08.internal.evil",
+        ):
+            row = by_row(hc.run_hostcheck(Stub({"S0-b": (0, printed + "\n", "")})))["S0-b"]
+            self.assertEqual((row["outcome"], row["reason"]), (hc.STOP, "NOT_A_LAB_HOST_NAME"), printed)
+        for project, zone in (("", "us-central1-a"), ("vantio-lab-oct08", ""), ("evil.com", "us-central1-a"), ("vantio-lab-oct08", "a.b")):
+            fqdn = by_row(hc.run_hostcheck(Stub({"S0-b": (0, f"vantio-gcp-lab-12.{zone}.c.{project}.internal\n", "")}), project=project, zone=zone))["S0-b"]
+            self.assertEqual(fqdn["reason"], "NOT_A_LAB_HOST_NAME", (project, zone))
+            self.assertFalse(fqdn["facts"]["expected_domain_valid"])
+            short = by_row(hc.run_hostcheck(Stub(), project=project, zone=zone))["S0-b"]
+            self.assertEqual(short["outcome"], hc.RECORDED)
+
+    def test_f3_env_is_not_set_at_import(self) -> None:
+        text = Path(__file__).read_text(encoding="utf-8")
+        self.assertNotRegex(text, r"(?m)^os\.environ\[")
+        offline = (ROOT / "scripts" / "gcp" / "offline_deliver_3.py").read_text(encoding="utf-8")
+        self.assertIn('f"VANTIO_LAB_EXPECTED_PROJECT={project} "', offline)
+        self.assertIn('f"VANTIO_LAB_EXPECTED_ZONE={ZONE} "', offline)
+        self.assertEqual(od1.ZONE, "us-central1-a")
+        self.assertIsNotNone(hc.LAB_PROJECT_RE.fullmatch(od1.LAB_PROJECT))
+
+    def test_f2_exclusions_strip_only_their_token(self) -> None:
+        cases = {
+            "          PYTHONPATH=packages/vantio-install python3 scripts/x/run.py": ["scripts/x/run.py"],
+            "          PYTHONPATH: packages/vantio-install": [],
+            "          test ! -e packages/gone && cp scripts/y/keep.sh /tmp": ["scripts/y/keep.sh"],
+            "          test -e packages/present": ["packages/present"],
+            "          test !-e packages/loose": ["packages/loose"],
+            "      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1": [],
+            "          upload=scripts/z/up.py owner/name@dc37677b2e1c63e2034f94d8a5b11f265b73ba33": ["scripts/z/up.py"],
+            "          echo gh-action-like scripts/w/also.py": ["scripts/w/also.py"],
+        }
+        for line, want in cases.items():
+            self.assertEqual(REPO_PATH.findall(_strip_excluded_tokens(line)), want, line)
 
     def test_n2_offline_deliver_passes_the_instance_name(self) -> None:
         text = (ROOT / "scripts" / "gcp" / "offline_deliver_3.py").read_text(encoding="utf-8")
@@ -742,6 +801,107 @@ class PassThreeTests(unittest.TestCase):
         self.assertLess(job.index("- name: Download the bundle, re-verify it, and delete it"), job.index("- name: Stage the lab installer"))
         for name in ("Copy the bundle over IAP", "Run the self-service installer", "Run the kernel red-team campaign", "Run the batteries", "Run t5-egress"):
             self.assertGreater(job.index(f"- name: {name}"), vm, name)
+
+
+
+class TarMemberTests(LabEnvCase):
+    """F1: every member the guest's `tar -xf` would write is checked."""
+
+    PAYLOAD = b"stand-in archive bytes for the tar member tests"
+
+    def setUp(self) -> None:
+        super().setUp()
+        sys.path.insert(0, str(ROOT / "packages" / "vantio-install"))
+        import stage_lab_trust
+
+        self.slt = stage_lab_trust
+        self.pins = dict(stage_lab_trust.constants.FROZEN_PINS)
+        self.pins["pe_archive_sha256"] = hashlib.sha256(self.PAYLOAD).hexdigest()
+        self.record = {"document": {"sha256": self.pins["pe_archive_sha256"], "filename": self.pins["pe_archive_name"]}}
+        self.member = f"bundle/artifacts/phantom-engine/{self.pins['pe_archive_name']}"
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name)
+
+    def build(self, extra=(), member=None, payload=None) -> Path:
+        import io
+        import tarfile
+
+        path = self.base / "t.tar"
+        sig = json.dumps(self.record).encode()
+        with tarfile.open(path, "w") as tar:
+            def add(name, data=None, kind=tarfile.REGTYPE, link=""):
+                info = tarfile.TarInfo(name)
+                info.type = kind
+                info.linkname = link
+                if data is not None:
+                    info.size = len(data)
+                tar.addfile(info, io.BytesIO(data) if data is not None else None)
+            add(member or self.member, self.PAYLOAD if payload is None else payload)
+            add("signature.json", sig)
+            for item in extra:
+                add(*item)
+        return path
+
+    def check(self, path: Path) -> None:
+        self.slt._check_tar_member(path, self.pins, self.record)
+
+    def assert_rejected(self, path: Path) -> None:
+        with self.assertRaises(SystemExit):
+            self.check(path)
+
+    def test_clean_tar_passes_and_member_spellings_normalise(self) -> None:
+        self.check(self.build())
+        self.check(self.build(member="./" + self.member))
+        self.check(self.build(extra=[("bundle/", None, tarfile_type("DIRTYPE"))]))
+
+    def test_alias_spellings_are_duplicates(self) -> None:
+        m = self.member
+        for alias in (m.replace("/", "//", 1), "./" + m, m.replace("artifacts/", "artifacts/./"), "./" + m.replace("/", "//"), m + "/"):
+            self.assert_rejected(self.build(extra=[(alias, b"other bytes")]))
+        self.assert_rejected(self.build(extra=[("./signature.json", b"{}")]))
+
+    def test_exact_duplicate_overwriting_the_archive_path_is_rejected(self) -> None:
+        self.assert_rejected(self.build(extra=[(self.member, b"later bytes win in tar -x")]))
+
+    def test_symlink_hardlink_device_fifo_are_rejected(self) -> None:
+        for kind in ("SYMTYPE", "LNKTYPE", "CHRTYPE", "BLKTYPE", "FIFOTYPE"):
+            self.assert_rejected(self.build(extra=[("bundle/odd", None, tarfile_type(kind), "/etc/passwd")]))
+            self.assert_rejected(self.build(member="other/x", extra=[(self.member, None, tarfile_type(kind), "other/x")]))
+
+    def test_symlinked_or_file_parent_is_rejected(self) -> None:
+        self.assert_rejected(self.build(extra=[("bundle/artifacts", None, tarfile_type("SYMTYPE"), "/tmp")]))
+        self.assert_rejected(self.build(extra=[("bundle/artifacts", b"a file where a folder is")]))
+
+    def test_absolute_dotdot_backslash_nul_empty_are_rejected(self) -> None:
+        for name in ("/etc/x", "bundle/../../x", "..", "bundle\\x", ".", "./", "//"):
+            self.assert_rejected(self.build(extra=[(name, b"x")]))
+        # tar headers end a name at NUL (tarfile and GNU tar both truncate),
+        # so a NUL cannot reach a member name; the normaliser still refuses one.
+        for name in ("bundle/x\x00y", "", "a//", "a/./b"):
+            if name in {"a//", "a/./b"}:
+                self.assertEqual(self.slt._normal_member_name(name), name.replace("/./", "/").rstrip("/"))
+            else:
+                with self.assertRaises(SystemExit):
+                    self.slt._normal_member_name(name)
+
+    def test_wrong_bytes_or_missing_member_are_rejected(self) -> None:
+        self.assert_rejected(self.build(payload=b"tampered"))
+        self.assert_rejected(self.build(member="bundle/artifacts/phantom-engine/other.tar"))
+
+    def test_pack_refuses_symlinks(self) -> None:
+        tree = self.base / "tree"
+        (tree / "real").mkdir(parents=True)
+        (tree / "real" / "f.txt").write_text("x")
+        (tree / "link").symlink_to(tree / "real")
+        with self.assertRaises(SystemExit):
+            self.slt.pack(tree, tree / "self-service.tar")
+
+
+def tarfile_type(name: str) -> bytes:
+    import tarfile
+
+    return getattr(tarfile, name)
 
 
 if __name__ == "__main__":

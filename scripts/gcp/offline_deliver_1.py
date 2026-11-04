@@ -1109,7 +1109,7 @@ _HC_JUMP = {"jump_to_boot_hold": "bool", "rule_lines": "count"}
 # a frozenset = one of those words, "verbatim" = the Q8 IPv6 error line only.
 HOSTCHECK_FACTS: dict[str, dict[str, object]] = {
     "S0-a": {},
-    "S0-b": {"expected_name_valid": "bool", "host_name_match": "bool", "fqdn_form": "bool"},
+    "S0-b": {"expected_name_valid": "bool", "expected_domain_valid": "bool", "host_name_match": "bool", "fqdn_form": "bool"},
     "S0-c": {},
     "S0-d": {"backend": _HC_BACKEND},
     "S0-e": {"backend": _HC_BACKEND},
