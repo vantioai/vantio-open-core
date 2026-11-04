@@ -201,7 +201,8 @@ jobs:
           RUN_BATTERIES: ${{ inputs.run_batteries }}
           EVIDENCE_PATH: ${{ runner.temp }}/gcp-lab-evidence/prepare-bundle.json
           # Batteries end with 2c-upgrade-rollback, which needs public-pin.oci.tar (#320).
-          W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}
+          # Self-service needs the same public PE archive so the installer has real bytes (F0-a).
+          W3_BATTERY: ${{ (inputs.run_batteries == true || inputs.self_service == true) && '2c-upgrade-rollback' || '' }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: |
           set -euo pipefail
@@ -256,6 +257,7 @@ jobs:
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           BRAIN_DIR: ${{ runner.temp }}/redteam-brain
           RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
+          SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py upload-handoff
 
       - name: Delete the local bundle
@@ -508,6 +510,7 @@ jobs:
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           BRAIN_DIR: ${{ runner.temp }}/redteam-brain
           RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
+          SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py download-handoff
 
       - name: Download pinned offline packages
@@ -562,10 +565,12 @@ jobs:
           pinned="${{ runner.temp }}/pinned-artifacts"
           mkdir -p "$dest" "$pinned"
           cp scripts/aws/lab-guests/self_service.py "$dest/self_service.py"
+          cp scripts/lab/hostcheck_rows.py "$dest/hostcheck_rows.py"
           cp -a packages/vantio-install/vantio_install "$dest/vantio_install"
-          vantio run python3 scripts/lab/stage_lab_trust.py fetch "$pinned"
+          vantio run python3 scripts/lab/stage_lab_trust.py fetch "$pinned" "${{ runner.temp }}/enterprise-bundle/public-pin.oci.tar"
           vantio run python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
           test -f "$dest/self-service.tar"
+          vantio run python3 -c 'import json,pathlib,sys; s=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert s.get("archive")!="absent", "pe_archive_absent"' "$dest/signature.json"
           vantio run python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
 
       - name: Run the self-service installer
@@ -682,6 +687,7 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
+          SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py delete-handoff
 
       - name: Remove the OS Login key

@@ -186,8 +186,13 @@ def run_installer(
     signature: str,
     state_dir: str,
     config: str,
+    after_install=None,
 ) -> list[dict]:
-    """Drive the five phases. invoke(argv, env) returns a JSON object."""
+    """Drive the five phases. invoke(argv, env) returns a JSON object.
+
+    after_install(row), when given, runs once right after install OBSERVE and
+    before any later phase. It never changes which phases run.
+    """
     rows: list[dict] = []
     transaction_id: str | None = None
     for phase, protection in PHASES:
@@ -224,6 +229,8 @@ def run_installer(
         if phase == "install" and protection == "OBSERVE" and isinstance(body.get("transaction_id"), str):
             transaction_id = body["transaction_id"]
         rows.append(_row(phase, protection, body))
+        if after_install is not None and phase == "install" and protection == "OBSERVE":
+            after_install(rows[-1])
     return rows
 
 
@@ -263,12 +270,43 @@ def _invoke_cli(argv: list[str], env: dict) -> dict:
     return {"proof_state": "NOT_PROVED", "reason": "MALFORMED", "state": "FAILED_SAFE"}
 
 
+HOSTCHECK_INSTALL_STATES = frozenset({"HEALTHY", "DEGRADED"})
+
+
+def hostcheck_requested() -> bool:
+    """H2 read-only host checks. Only the GCP harness sets this; AWS is unchanged."""
+    return os.environ.get("VANTIO_LAB_HOSTCHECK", "") == "1"
+
+
+def capture_hostcheck(install_row: dict, run_checks=None) -> dict:
+    """Stop rule S4: read the host only when install OBSERVE came back HEALTHY/DEGRADED."""
+    if install_row.get("protection") != "OBSERVE" or install_row.get("state") not in HOSTCHECK_INSTALL_STATES:
+        return {"rows": [], "summary": {"e5d_outcome": "STOPPED", "stopped_at": "S4_INSTALL_NOT_OBSERVE_HEALTHY"}}
+    if run_checks is None:
+        if os.geteuid() != 0:
+            return {"rows": [], "summary": {"e5d_outcome": "STOPPED", "stopped_at": "NOT_ROOT"}}
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import hostcheck_rows
+
+        run_checks = hostcheck_rows.run_hostcheck
+    return run_checks()
+
+
 def main() -> int:
     root = Path(os.environ.get("VANTIO_LAB_ROOT", "/tmp/vantio-lab"))
     install_offline_debs(root)
     install_ca_bundle(root)
     config = root / "config.json"
     write_observe_config(config)
+    hostcheck: dict = {}
+
+    def after_install(row: dict) -> None:
+        # A host-check fault must never skip rollback, uninstall or verify-removal.
+        try:
+            hostcheck.update(capture_hostcheck(row))
+        except Exception:  # noqa: BLE001
+            hostcheck.update({"rows": [], "summary": {"e5d_outcome": "STOPPED", "stopped_at": "HOSTCHECK_ERROR"}})
+
     record = {
         "enterprise_rows": False,
         "enrollment": enrollment_row(),
@@ -279,9 +317,12 @@ def main() -> int:
             signature=os.environ.get("VANTIO_SIGNATURE_FILE", str(root / "signature.json")),
             state_dir=os.environ.get("VANTIO_STATE_DIR", "/var/lib/vantio/install"),
             config=os.environ.get("VANTIO_CONFIG_FILE", str(config)),
+            after_install=after_install if hostcheck_requested() else None,
         ),
         "proof_state": "NOT_PROVED",
     }
+    if hostcheck_requested():
+        record["hostcheck"] = hostcheck or {"rows": [], "summary": {"e5d_outcome": "STOPPED", "stopped_at": "INSTALL_NOT_RUN"}}
     destination = Path(os.environ.get("VANTIO_SELF_SERVICE_OUT", "/var/lib/vantio-lab/enterprise-pe-rows.json"))
     destination.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
     print(destination.read_text(encoding="utf-8"), end="")

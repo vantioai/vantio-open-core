@@ -1291,6 +1291,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
         f"VANTIO_SIGNATURE_FILE={GUEST_DIR}/signature.json "
         "VANTIO_STATE_DIR=/var/lib/vantio/install "
         f"VANTIO_SELF_SERVICE_OUT={ROWS_JSON} "
+        "VANTIO_LAB_HOSTCHECK=1 "
         f"python3 {GUEST_DIR}/self_service.py"
     )
     if "--artifact-trust" in script or "--fixture-host" in script or "\n" in script:
@@ -1321,6 +1322,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
             "public_ip": False,
             "seal_sha256": seal,
             "self_service": _self_service_rows(body),
+            "hostcheck": allow_hostcheck(body.get("hostcheck")) or {"proof_state": "NOT_PROVED", "rows": [], "summary": {"stopped_at": "HOSTCHECK_ABSENT"}},
             "status": "SELF_SERVICE",
             "subnet": SUBNET,
         },

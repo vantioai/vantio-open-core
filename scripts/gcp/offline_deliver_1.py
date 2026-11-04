@@ -172,7 +172,7 @@ def handoff_objects(env: Mapping[str, str]) -> tuple[str, ...]:
     names = object_names(run_id)
     if brain_requested(env):
         names = names + brain_object_names(run_id)
-    if batteries_requested(env):
+    if public_pin_requested(env):
         names = names + (public_pin_object_name(run_id),)
     return names
 
@@ -1014,6 +1014,11 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 )
             kept["self_service"] = rows
             continue
+        if key == "hostcheck":
+            hostcheck = allow_hostcheck(value)
+            if hostcheck is not None:
+                kept["hostcheck"] = hostcheck
+            continue
         if key in {"loader_kill", "loader_restart"} and value in {"held", "fail", "infra_retry", "setup_invalid"}:
             kept[key] = value
             continue
@@ -1085,6 +1090,74 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
     if "repeats" in kept:
         kept["full_set"] = full_set_passes(kept["repeats"])
     return kept
+
+
+HOSTCHECK_ROW_IDS = (
+    "S0-a", "S0-b", "S0-c", "S0-d", "S0-e", "E4-1", "E4-2", "E4-3",
+    "E5-1", "E5-2", "E5-3", "E5-4", "E5-5", "E5-6", "E5-7", "E5-8", "E5-9",
+    "E5-10", "E5-11", "E5-12", "E5-13",
+)
+HOSTCHECK_OUTCOMES = frozenset({"RECORDED", "NOT_RUN", "STOP", "IPV6_NOT_PRESENT", "IP6TABLES_MISSING", "IPV6_OTHER_ERROR"})
+HOSTCHECK_IPV6_ABSENT = re.compile(
+    r"(address family not supported|can't initiali[sz]e ip6tables table|table does not exist)",
+    re.IGNORECASE,
+)
+
+
+def _hostcheck_fact(key: object, value: object, outcome: str) -> bool:
+    if not isinstance(key, str) or re.fullmatch(r"[A-Za-z0-9_]{1,48}", key) is None:
+        return False
+    if key == "ipv6_error_verbatim":
+        return (
+            outcome == "IPV6_NOT_PRESENT"
+            and isinstance(value, str)
+            and re.fullmatch(r"[ -~]{1,300}", value) is not None
+            and HOSTCHECK_IPV6_ABSENT.search(value) is not None
+        )
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, int):
+        return 0 <= value <= 100000
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{0,40}", value) is not None
+
+
+def allow_hostcheck(value: object) -> dict | None:
+    """H2 host-check rows: names, yes/no, small counts and rc only. Anything else is dropped."""
+    if not isinstance(value, dict):
+        return None
+    rows = []
+    raw_rows = value.get("rows")
+    for item in raw_rows if isinstance(raw_rows, list) else []:
+        if not isinstance(item, dict):
+            continue
+        row = item.get("row")
+        outcome = item.get("outcome")
+        rc = item.get("rc")
+        reason = item.get("reason")
+        facts = item.get("facts")
+        if row not in HOSTCHECK_ROW_IDS or outcome not in HOSTCHECK_OUTCOMES:
+            continue
+        if rc is not None and (isinstance(rc, bool) or not isinstance(rc, int) or not -255 <= rc <= 255):
+            continue
+        if not isinstance(reason, str) or re.fullmatch(r"[A-Z0-9_]{0,48}", reason) is None:
+            continue
+        kept_facts = {
+            key: fact for key, fact in (facts.items() if isinstance(facts, dict) else ()) if _hostcheck_fact(key, fact, outcome)
+        }
+        rows.append({"facts": kept_facts, "outcome": outcome, "rc": rc, "reason": reason, "row": row})
+    summary = value.get("summary")
+    kept_summary = {}
+    if isinstance(summary, dict):
+        for key in ("argv_sha256", "e5d_outcome", "ipv6", "stopped_at"):
+            item = summary.get(key)
+            if isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9_-]{0,64}", item):
+                kept_summary[key] = item
+        if summary.get("e5d_note") == "IPv6 half not read; E5 (d) cannot be recorded as active":
+            kept_summary["e5d_note"] = summary["e5d_note"]
+        error = summary.get("ipv6_error_verbatim")
+        if _hostcheck_fact("ipv6_error_verbatim", error, "IPV6_NOT_PRESENT"):
+            kept_summary["ipv6_error_verbatim"] = error
+    return {"proof_state": "NOT_PROVED", "rows": rows, "summary": kept_summary}
 
 
 def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
@@ -1388,6 +1461,14 @@ def batteries_requested(env: Mapping[str, str]) -> bool:
     if raw not in ("true", "false"):
         raise SystemExit("batteries")
     return raw == "true"
+
+
+def public_pin_requested(env: Mapping[str, str]) -> bool:
+    """The public PE archive rides the handoff for batteries and for self-service (F0-a)."""
+    raw = env.get("SELF_SERVICE", "false").strip().lower()
+    if raw not in ("true", "false"):
+        raise SystemExit("self_service")
+    return batteries_requested(env) or raw == "true"
 
 
 def refuse_batteries(env: Mapping[str, str]) -> str:

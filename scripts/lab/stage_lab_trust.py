@@ -265,8 +265,14 @@ def _run(argv: list[str], cwd: Path) -> None:
     subprocess.run(argv, check=False, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def fetch_pinned(dest: Path) -> list[str]:
-    """Download public pin files. Keep a file only when the hash matches."""
+def fetch_pinned(dest: Path, public_pin: Path | None = None) -> list[str]:
+    """Download public pin files. Keep a file only when the hash matches.
+
+    public_pin is an already-downloaded copy of the public PE archive (the
+    GCP harness gets it from the private bundle). It is copied into scratch
+    and kept under the pinned archive name only if its sha256 is the frozen
+    pe_archive_sha256, like every other file here.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     scratch = dest / ".fetch"
     if scratch.exists():
@@ -295,6 +301,8 @@ def fetch_pinned(dest: Path) -> list[str]:
     )
     _run(["npm", "pack", "@vantio/cli@0.3.24", "--ignore-scripts", "--pack-destination", str(scratch)], scratch)
     _run(["npm", "pack", "@vantio/agent-sdk@0.2.4", "--ignore-scripts", "--pack-destination", str(scratch)], scratch)
+    if public_pin is not None and public_pin.is_file() and not public_pin.is_symlink():
+        (scratch / "public-pin.oci.tar").write_bytes(public_pin.read_bytes())
     kept: list[str] = []
     expected = {
         pins["agent_sdk_py_wheel"]: pins["agent_sdk_py_wheel_sha256"],
@@ -320,9 +328,10 @@ def fetch_pinned(dest: Path) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST")
-    if args[0] == "fetch" and len(args) == 2:
-        print(json.dumps({"kept": fetch_pinned(Path(args[1]))}, sort_keys=True))
+        raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST [PUBLIC_PIN]")
+    if args[0] == "fetch" and len(args) in {2, 3}:
+        public_pin = Path(args[2]) if len(args) == 3 else None
+        print(json.dumps({"kept": fetch_pinned(Path(args[1]), public_pin)}, sort_keys=True))
         return 0
     if args[0] == "stage" and len(args) in {2, 3}:
         dest = Path(args[1])
@@ -332,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
         result["tar"] = "self-service.tar"
         print(json.dumps(result, sort_keys=True))
         return 0
-    raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST")
+    raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST [PUBLIC_PIN]")
 
 
 if __name__ == "__main__":

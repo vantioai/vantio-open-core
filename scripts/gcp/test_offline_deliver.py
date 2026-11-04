@@ -1823,6 +1823,78 @@ print("ok")
             od.self_service_requested({"SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
             od.run_self_service({"GCP_LAB_EXECUTE": "1", "SELF_SERVICE": "true", "RUN_BATTERIES": "true"})
 
+    def test_hostcheck_rows_keep_names_and_yes_no_only(self) -> None:
+        af = "ip6tables v1.8.10 (nf_tables): Could not fetch rule set generation id: Address family not supported by protocol"
+        kept = od.allow_record(
+            {
+                "cloud": "gcp",
+                "hostcheck": {
+                    "rows": [
+                        {"row": "E4-2", "outcome": "RECORDED", "rc": 0, "reason": "", "facts": {"telemetry_disabled_name": True, "name_count": 5, "value": "VANTIO_API_KEY=sk-not-real-12345678901234567890"}},
+                        {"row": "E5-3", "outcome": "RECORDED", "rc": 0, "reason": "", "facts": {"ActiveState": "inactive"}},
+                        {"row": "E5-7", "outcome": "IPV6_NOT_PRESENT", "rc": 1, "reason": "RECORD_AND_CONTINUE", "facts": {"ipv6_error_verbatim": af}},
+                        {"row": "E5-8", "outcome": "STOP", "rc": 1, "reason": "STOP", "facts": {"ipv6_error_verbatim": af}},
+                        {"row": "E5-9", "outcome": "IPV6_NOT_PRESENT", "rc": 1, "reason": "", "facts": {"ipv6_error_verbatim": "/root/.ssh/id_ed25519"}},
+                        {"row": "E9-9", "outcome": "RECORDED", "rc": 0, "reason": "", "facts": {}},
+                        {"row": "E5-10", "outcome": "MAYBE", "rc": 0, "reason": "", "facts": {}},
+                        {"row": "E5-11", "outcome": "RECORDED", "rc": True, "reason": "", "facts": {}},
+                        {"row": "E5-12", "outcome": "RECORDED", "rc": 0, "reason": "/tmp/x", "facts": {}},
+                    ],
+                    "summary": {
+                        "argv_sha256": "d52b5c4f145742b2f2be509a2176fdd7aacab5f01ac7cecb9300a3cc869cea2e",
+                        "e5d_outcome": "NOT_PASS_IPV6_NOT_PRESENT",
+                        "e5d_note": "IPv6 half not read; E5 (d) cannot be recorded as active",
+                        "ipv6": "NOT_PRESENT",
+                        "ipv6_error_verbatim": af,
+                        "stopped_at": "",
+                        "extra": "dropped",
+                    },
+                },
+                "status": "SELF_SERVICE",
+            }
+        )
+        hostcheck = kept["hostcheck"]
+        self.assertEqual(hostcheck["proof_state"], "NOT_PROVED")
+        self.assertEqual([row["row"] for row in hostcheck["rows"]], ["E4-2", "E5-3", "E5-7", "E5-8", "E5-9"])
+        rows = {row["row"]: row for row in hostcheck["rows"]}
+        self.assertEqual(rows["E4-2"]["facts"], {"name_count": 5, "telemetry_disabled_name": True})
+        self.assertEqual(rows["E5-7"]["facts"], {"ipv6_error_verbatim": af})
+        self.assertEqual(rows["E5-8"]["facts"], {})
+        self.assertEqual(rows["E5-9"]["facts"], {})
+        self.assertEqual(hostcheck["summary"]["e5d_note"], "IPv6 half not read; E5 (d) cannot be recorded as active")
+        self.assertEqual(hostcheck["summary"]["ipv6_error_verbatim"], af)
+        self.assertNotIn("extra", hostcheck["summary"])
+        self.assertNotIn("sk-not-real", json.dumps(kept))
+        self.assertIsNone(od.allow_hostcheck("text"))
+
+    def test_self_service_carries_the_public_pin_and_sets_the_hostcheck_gate(self) -> None:
+        base = {"GITHUB_RUN_ID": "12"}
+        pin = od.public_pin_object_name("12")
+        self.assertIn(pin, od.handoff_objects({**base, "SELF_SERVICE": "true"}))
+        self.assertNotIn(pin, od.handoff_objects({**base, "SELF_SERVICE": "false"}))
+        self.assertTrue(od.public_pin_requested({"RUN_BATTERIES": "true"}))
+        self.assertTrue(od.public_pin_requested({"SELF_SERVICE": "true"}))
+        self.assertFalse(od.public_pin_requested({}))
+        with self.assertRaises(SystemExit):
+            od.public_pin_requested({"SELF_SERVICE": "yes"})
+        handoff_src = (ROOT / "scripts/gcp/offline_deliver_2.py").read_text(encoding="utf-8")
+        self.assertEqual(handoff_src.count("if public_pin_requested(env):"), 2)
+        deliver_src = (ROOT / "scripts/gcp/offline_deliver_3.py").read_text(encoding="utf-8")
+        run = deliver_src[deliver_src.index("def run_self_service("):deliver_src.index("def remove_os_login_key(")]
+        self.assertIn('"VANTIO_LAB_HOSTCHECK=1 "', run)
+        self.assertIn('allow_hostcheck(body.get("hostcheck"))', run)
+        workflow = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
+        for command in ("upload-handoff", "download-handoff", "delete-handoff"):
+            with self.subTest(command=command):
+                end = workflow.index(f"offline_deliver.py {command}")
+                step = workflow[workflow.rindex("- name:", 0, end): end]
+                self.assertIn("SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}", step)
+        stage = workflow[workflow.index("- name: Stage the lab installer and a non-production trust key"):]
+        stage = stage[: stage.index("- name: Run the self-service installer")]
+        self.assertIn('cp scripts/lab/hostcheck_rows.py "$dest/hostcheck_rows.py"', stage)
+        self.assertIn('stage_lab_trust.py fetch "$pinned" "${{ runner.temp }}/enterprise-bundle/public-pin.oci.tar"', stage)
+        self.assertIn('"pe_archive_absent"', stage)
+
     def test_loaded_image_keeps_the_historical_tag_and_a_commit_tag(self) -> None:
         text = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
         self.assertIn(od.IMAGE_NAME, text)
@@ -2636,7 +2708,7 @@ class PublicPinHandoffTest(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
         prepare = workflow[workflow.index("- name: Prepare and verify the private bundle"):]
         prepare = prepare[: prepare.index("assert-bundle")]
-        self.assertIn("W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}", prepare)
+        self.assertIn("W3_BATTERY: ${{ (inputs.run_batteries == true || inputs.self_service == true) && '2c-upgrade-rollback' || '' }}", prepare)
         for command in ("upload-handoff", "download-handoff", "delete-handoff", "teardown-if-present"):
             with self.subTest(command=command):
                 end = workflow.index(f"offline_deliver.py {command}")
