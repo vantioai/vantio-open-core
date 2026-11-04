@@ -343,7 +343,40 @@ def check_archive(dest: Path) -> dict[str, object]:
         or document.get("filename") != pins["pe_archive_name"]
     ):
         raise SystemExit("pe_archive_signature_mismatch")
-    return {"archive_pin_match": True}
+    _check_tar_member(dest / "self-service.tar", pins, record)
+    return {"archive_pin_match": True, "tar_member_pin_match": True}
+
+
+def _check_tar_member(tar_path: Path, pins: dict, record: dict) -> None:
+    """N5: the copy that ships is the tar MEMBER, so hash that member too.
+    Exactly one regular-file member at the PE archive path, with the pinned
+    sha256, and the tar's signature.json must equal the checked one."""
+    member_name = f"bundle/artifacts/phantom-engine/{pins['pe_archive_name']}"
+    if not tar_path.is_file() or tar_path.is_symlink():
+        raise SystemExit("pe_archive_tar_missing")
+    with tarfile.open(tar_path, "r:") as tar:
+        members = tar.getmembers()
+        found = [m for m in members if m.name in {member_name, f"./{member_name}"}]
+        sigs = [m for m in members if m.name in {"signature.json", "./signature.json"}]
+        if len(found) != 1 or not found[0].isreg():
+            raise SystemExit("pe_archive_tar_member_mismatch")
+        digest = hashlib.sha256()
+        handle = tar.extractfile(found[0])
+        if handle is None:
+            raise SystemExit("pe_archive_tar_member_mismatch")
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+        if digest.hexdigest() != pins["pe_archive_sha256"]:
+            raise SystemExit("pe_archive_tar_member_mismatch")
+        if len(sigs) != 1 or not sigs[0].isreg():
+            raise SystemExit("pe_archive_tar_signature_mismatch")
+        sig_handle = tar.extractfile(sigs[0])
+        try:
+            tar_record = json.loads(sig_handle.read().decode("utf-8")) if sig_handle else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            tar_record = None
+        if tar_record != record:
+            raise SystemExit("pe_archive_tar_signature_mismatch")
 
 
 def main(argv: list[str] | None = None) -> int:

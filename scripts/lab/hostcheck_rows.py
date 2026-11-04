@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -72,6 +73,18 @@ HOSTCHECK_ARGV: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("E5-13", ("tail", "-n", "20", "/var/lib/vantio/boot-hold/audit.log")),
 )
 ROW_IDS = tuple(row for row, _ in HOSTCHECK_ARGV)
+# Every reason code a row can carry. The evidence allowlist matches these exactly.
+REASONS = frozenset(
+    {
+        "", "NONZERO_RC", "NOT_A_LAB_HOST_NAME", "IPTABLES_MISSING", "IP6TABLES_MISSING", "E4_1_GATE",
+        "NONZERO_RC_OR_SPLIT_REJECT", "NON_NAME_LINE_NOT_COPIED", "E4_2_REQUIRED_NAME_MISSING",
+        "E4_3_COUNT_NOT_ZERO", "E5_1_NOT_ALL_PRESENT", "E5_2_NOT_ALL_PRESENT", "E5_3_UNEXPECTED_LINE",
+        "E5_3_KEYS_MISSING", "E5_3_NOT_FRESH_OR_FAILED", "IPV4_HOLD_NOT_AS_EXPECTED",
+        "IPV6_HOLD_NOT_AS_EXPECTED", "RECORD_AND_CONTINUE", "STOP", "NOT_JSON_OR_NONZERO_RC",
+        "E5_10_ALREADY_RELEASED", "E5_11_HOLD_OFF_BY_POLICY", "IPV6_NOT_PRESENT",
+    }
+    | {f"STOPPED_AT_{row.replace('-', '_')}" for row in ROW_IDS}
+)
 
 # Named row outcomes. Leo grades from these; the harness grades nothing.
 RECORDED = "RECORDED"
@@ -86,6 +99,8 @@ IPV6_NOT_READ_NOTE = "IPv6 half not read; E5 (d) cannot be recorded as active"
 E5D_NOT_PASS_IPV6 = "NOT_PASS_IPV6_NOT_PRESENT"
 E5D_STOPPED = "STOPPED"
 E5D_RECORDED = "RECORDED_FOR_GRADING"
+E5D_OUTCOMES = frozenset({E5D_NOT_PASS_IPV6, E5D_STOPPED, E5D_RECORDED})
+IPV6_STATES = frozenset({"NOT_READ", "READ", "NOT_PRESENT"})
 
 # Q8: only an address-family or table-initialise error counts as "IPv6 not
 # present". The legacy "can't initialize ip6tables table `filter': Table does
@@ -102,7 +117,23 @@ WORD_RE = re.compile(r"^[A-Za-z0-9_.-]{0,40}$")
 # - or _. Anything with a digit or other character is recorded as has_<key>.
 JSON_WORD_RE = re.compile(r"^[A-Za-z]{1,32}(?:[-_][A-Za-z]{1,32}){0,3}$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_]{1,40}$")
+# E5-10..12: only these JSON key names become facts. They are the keys the
+# boot-hold code writes (vantio_install/boot_hold/service.py, policy.py).
+# Any other key is only counted (unlisted_key_count); its name is not kept.
+JSON_KEYS = {
+    "E5-10": ("file_profile", "last_reason", "network_hold", "released"),
+    "E5-11": (
+        "command", "enrolled_slice", "file_profile", "health", "host_wide_default_route_hold",
+        "message", "proof_ceiling", "proof_state", "ready", "reboot_row", "state",
+    ),
+    "E5-12": ("cgroup_slice", "deny_probe", "enabled", "enrolled_subnet_v4", "enrolled_subnet_v6", "hold", "ordering"),
+}
 LAB_HOST_RE = re.compile(r"^vantio-gcp-lab-[0-9]{1,20}$")
+# S0-b: the guest is told its instance name (VANTIO_LAB_EXPECTED_HOST, set by
+# offline_deliver from instance_name). `uname -n` must print exactly that name,
+# or that name followed by "." and a DNS domain. Nothing else matches.
+EXPECTED_HOST_ENV = "VANTIO_LAB_EXPECTED_HOST"
+HOST_DOMAIN_RE = re.compile(r"^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){0,20}$")
 PRINTABLE_RE = re.compile(r"^[ -~]{1,300}$")
 
 E5_1_PATHS = {
@@ -213,16 +244,35 @@ def _backend(text: str) -> str:
     return "unknown"
 
 
-def _json_facts(text: str) -> dict | None:
+def host_name_facts(expected: object, printed: str) -> dict:
+    """Yes/no facts only. The printed host name is never kept."""
+    valid = isinstance(expected, str) and LAB_HOST_RE.fullmatch(expected) is not None
+    line = printed[:-1] if printed.endswith("\n") else printed
+    exact = valid and line == expected
+    fqdn = (
+        valid
+        and len(line) <= 253
+        and line.startswith(f"{expected}.")
+        and HOST_DOMAIN_RE.fullmatch(line[len(expected) + 1:]) is not None
+    )
+    return {"expected_name_valid": valid, "host_name_match": exact or fqdn, "fqdn_form": fqdn}
+
+
+def _json_facts(text: str, row: str) -> dict | None:
     try:
         body = json.loads(text)
     except json.JSONDecodeError:
         return None
     if not isinstance(body, dict):
         return None
-    facts: dict = {"key_count": len(body), "signature_field_present": any("signature" in str(k).lower() for k in body)}
+    listed = JSON_KEYS[row]
+    facts: dict = {
+        "key_count": len(body),
+        "signature_field_present": any("signature" in str(k).lower() for k in body),
+        "unlisted_key_count": sum(1 for k in body if k not in listed),
+    }
     for key, value in body.items():
-        if not isinstance(key, str) or KEY_RE.fullmatch(key) is None or "signature" in key.lower():
+        if key not in listed:
             continue
         if isinstance(value, bool):
             facts[f"bool_{key}"] = value
@@ -256,13 +306,15 @@ def classify_ipv6(version_rc: int | None, rc: int | None, stderr: str) -> tuple[
     return IPV6_OTHER_ERROR, ""
 
 
-def run_hostcheck(runner: Runner = run_argv) -> dict:
+def run_hostcheck(runner: Runner = run_argv, expected_host: object = None) -> dict:
     """Run the fixed argv list in order with Block A's stop gates.
 
     A stop means the rows after it are NOT_RUN. It never stops the installer
     phases that follow (rollback, uninstall, verify-removal).
     """
     env = dict(HOSTCHECK_ENV)
+    if expected_host is None:
+        expected_host = os.environ.get(EXPECTED_HOST_ENV, "")
     rows: list[dict] = []
     stopped_at: str | None = None
     pe_name: str | None = None
@@ -289,10 +341,10 @@ def run_hostcheck(runner: Runner = run_argv) -> dict:
             else:
                 rows.append(_row(row, RECORDED, rc))
         elif row == "S0-b":
-            facts = {"lab_name_pattern": bool(LAB_HOST_RE.fullmatch(out.strip()))}
+            facts = host_name_facts(expected_host, out) if rc == 0 else host_name_facts(expected_host, "")
             if rc != 0:
                 stop(row, rc, facts, "NONZERO_RC")
-            elif not facts["lab_name_pattern"]:
+            elif not (facts["expected_name_valid"] and facts["host_name_match"]):
                 stop(row, rc, facts, "NOT_A_LAB_HOST_NAME")
             else:
                 rows.append(_row(row, RECORDED, rc, facts))
@@ -373,6 +425,8 @@ def run_hostcheck(runner: Runner = run_argv) -> dict:
                     bad = True
             if rc != 0 or bad:
                 stop(row, rc, {}, "E5_3_UNEXPECTED_LINE")
+            elif set(facts) != set(E5_3_KEYS):
+                stop(row, rc, {}, "E5_3_KEYS_MISSING")
             elif facts.get("ActiveState") in {"active", "failed"} or facts.get("Result") not in {None, "success"}:
                 stop(row, rc, facts, "E5_3_NOT_FRESH_OR_FAILED")
             else:
@@ -402,7 +456,7 @@ def run_hostcheck(runner: Runner = run_argv) -> dict:
                 rows.append(_row(row, outcome if outcome != IPV6_NOT_PRESENT else IPV6_OTHER_ERROR, rc, {}, "STOP"))
                 stopped_at = row
         elif row in {"E5-10", "E5-11", "E5-12"}:
-            facts = _json_facts(out) if rc == 0 else None
+            facts = _json_facts(out, row) if rc == 0 else None
             if facts is None:
                 stop(row, rc, {}, "NOT_JSON_OR_NONZERO_RC")
             elif row == "E5-10" and facts.get("bool_released") is True:
@@ -422,10 +476,11 @@ def run_hostcheck(runner: Runner = run_argv) -> dict:
                 stop(row, rc, facts, "NONZERO_RC")
             else:
                 rows.append(_row(row, RECORDED, rc, facts))
-    if ipv6_state == "NOT_PRESENT":
-        e5d = E5D_NOT_PASS_IPV6
-    elif stopped_at is not None:
+    # A stop takes precedence over "IPv6 not present" (N6).
+    if stopped_at is not None:
         e5d = E5D_STOPPED
+    elif ipv6_state == "NOT_PRESENT":
+        e5d = E5D_NOT_PASS_IPV6
     else:
         e5d = E5D_RECORDED
     summary = {

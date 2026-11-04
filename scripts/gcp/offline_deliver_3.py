@@ -1292,6 +1292,8 @@ def run_self_service(env: Mapping[str, str]) -> int:
         "VANTIO_STATE_DIR=/var/lib/vantio/install "
         f"VANTIO_SELF_SERVICE_OUT={ROWS_JSON} "
         "VANTIO_LAB_HOSTCHECK=1 "
+        # S0-b: the guest compares `uname -n` to this exact name (instance_name checks it).
+        f"VANTIO_LAB_EXPECTED_HOST={name} "
         f"python3 {GUEST_DIR}/self_service.py"
     )
     if "--artifact-trust" in script or "--fixture-host" in script or "\n" in script:

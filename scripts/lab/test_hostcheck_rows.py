@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
+import os
 import sys
 import tempfile
 import unittest
@@ -24,6 +26,9 @@ import self_service as ss  # noqa: E402
 
 sys.path.insert(0, str(ROOT / "scripts" / "gcp"))
 import offline_deliver_1 as od1  # noqa: E402
+
+# S0-b compares `uname -n` to the expected instance name from the guest env.
+os.environ[hc.EXPECTED_HOST_ENV] = "vantio-gcp-lab-12"
 
 # Pinned sha256 of the fixed argv artifact. A change to any argv, the env,
 # the E4-3 pattern, the placeholder or the timeout changes this value and
@@ -307,7 +312,7 @@ class PassTwoHarnessTests(unittest.TestCase):
             rows = by_row(result)
             self.assertEqual(rows["S0-b"]["outcome"], hc.STOP, name)
             self.assertEqual(rows["S0-b"]["reason"], "NOT_A_LAB_HOST_NAME")
-            self.assertEqual(rows["S0-b"]["facts"], {"lab_name_pattern": False})
+            self.assertFalse(rows["S0-b"]["facts"]["host_name_match"])
             self.assertEqual(rows["E4-1"]["outcome"], hc.NOT_RUN)
             self.assertEqual(result["summary"]["stopped_at"], "S0-b")
             self.assertNotIn("prod-db", json.dumps(result))
@@ -365,7 +370,11 @@ class PassTwoAllowlistTests(unittest.TestCase):
         self.assertEqual(kept("E4-3", {"checkin_nonempty_count": "1"}), {})
         self.assertEqual(kept("E4-3", {"checkin_nonempty_count": True}), {})
         self.assertEqual(kept("E5-11", {"word_state": "HELD", "word_detail": "x", "word_health": "a1"}), {"word_state": "HELD"})
-        self.assertEqual(kept("E5-11", {"has_x": True, "has_y": False, "bool_z": False}), {"has_x": True, "bool_z": False})
+        # N4: only listed boot-hold key names; has_ is true-only.
+        self.assertEqual(
+            kept("E5-11", {"has_message": True, "has_ready": False, "bool_host_wide_default_route_hold": False, "has_x": True, "bool_z": False}),
+            {"has_message": True, "bool_host_wide_default_route_hold": False},
+        )
         self.assertEqual(kept("E5-12", {"bool_signature": True, "signature_field_present": True}), {"signature_field_present": True})
         self.assertEqual(kept("E5-13", {"has_x": True}), {})
         self.assertEqual(kept("E5-7", {"ipv6_error_verbatim": IPV6_TABLE_ERROR}), {})
@@ -411,12 +420,14 @@ def _covered(path: str, sparse: list[str]) -> bool:
     path = path.rstrip("/")
     for entry in sparse:
         e = entry.rstrip("/")
-        if path == e or (entry.endswith("/") and path.startswith(e + "/")) or e.startswith(path + "/"):
+        # N7: exact entry, or an ancestor directory entry. A sparse entry BELOW
+        # the path does not check the path out, so it does not count.
+        if path == e or (entry.endswith("/") and path.startswith(e + "/")):
             return True
     return False
 
 
-REPO_PATH = __import__("re").compile(r"(?<![\w/.$-])((?:scripts|packages|release)/[A-Za-z0-9_./-]+)")
+REPO_PATH = __import__("re").compile(r"(?<![\w/.$@-])((?:scripts|packages|release)/[A-Za-z0-9_./-]+)")
 
 
 class SparseCheckoutTests(unittest.TestCase):
@@ -449,12 +460,28 @@ class SparseCheckoutTests(unittest.TestCase):
             self.assertTrue(_covered(path, sparse), f"{path} missing from the deliver sparse list")
 
     def test_every_repo_path_in_every_sparse_job_is_checked_out(self) -> None:
-        for wf in (self.WF,):
+        # N7: every workflow that has a sparse list, not just this one.
+        wfs = sorted(p for p in (ROOT / ".github" / "workflows").glob("*.yml") if "sparse-checkout: |" in p.read_text(encoding="utf-8"))
+        self.assertIn(self.WF, wfs)
+        for wf in wfs:
             text = wf.read_text(encoding="utf-8")
             for job, sparse in _sparse_lists(text).items():
                 body = _job_text(text, job)
                 listed = set(sparse)
-                for path in sorted(set(REPO_PATH.findall(body))):
+                # PYTHONPATH values are import roots (covered by the import test).
+                # `test ! -e PATH` asserts a path is absent, so it must not require checkout.
+                # Third-party action refs (owner/name@sha # release/v1) are not repo paths.
+                scan_lines = []
+                for line in body.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("PYTHONPATH:") or "PYTHONPATH=" in stripped:
+                        continue
+                    if re.search(r"\btest\s+!?\s*-e\b", stripped):
+                        continue
+                    if re.search(r"@[0-9a-f]{7,}", stripped) or "gh-action-" in stripped:
+                        continue
+                    scan_lines.append(line)
+                for path in sorted(set(REPO_PATH.findall("\n".join(scan_lines)))):
                     if path in listed:
                         continue
                     self.assertTrue(_covered(path, sparse), f"{wf.name} {job}: {path} not in the sparse list")
@@ -599,7 +626,8 @@ class StageLabTrustPinTests(unittest.TestCase):
             (pinned / pins["pe_archive_name"]).write_bytes(payload)
             result = self.slt.stage(base / "good", pinned)
             self.assertIs(result["archive_pin_match"], True)
-            self.assertEqual(self.slt.check_archive(base / "good"), {"archive_pin_match": True})
+            self.slt.pack(base / "good", base / "good" / "self-service.tar")
+            self.assertEqual(self.slt.check_archive(base / "good"), {"archive_pin_match": True, "tar_member_pin_match": True})
             self.assertEqual(self.slt.main(["check-archive", str(base / "good")]), 0)
             signature = base / "good" / "signature.json"
             record = json.loads(signature.read_text())
@@ -607,6 +635,113 @@ class StageLabTrustPinTests(unittest.TestCase):
             signature.write_text(json.dumps(record))
             with self.assertRaises(SystemExit):
                 self.slt.check_archive(base / "good")
+
+
+
+class PassThreeTests(unittest.TestCase):
+    """V5 notes N1..N7."""
+
+    def run_s0b(self, printed: str, expected: object) -> dict:
+        result = hc.run_hostcheck(Stub({"S0-b": (0, printed, "")}), expected_host=expected)
+        return result
+
+    def test_n2_exact_and_fqdn_match_pass(self) -> None:
+        for printed in ("vantio-gcp-lab-12\n", "vantio-gcp-lab-12.us-central1-a.c.lab-proj.internal\n", "vantio-gcp-lab-12.internal"):
+            result = self.run_s0b(printed, "vantio-gcp-lab-12")
+            row = by_row(result)["S0-b"]
+            self.assertEqual(row["outcome"], hc.RECORDED, printed)
+            self.assertTrue(row["facts"]["host_name_match"])
+            self.assertNotIn("internal", json.dumps(result))
+
+    def test_n2_wrong_or_injectionish_names_stop(self) -> None:
+        for printed in (
+            "vantio-gcp-lab-13\n", "vantio-gcp-lab-123\n", "vantio-gcp-lab-12x\n", "xvantio-gcp-lab-12\n",
+            "vantio-gcp-lab-12.\n", "vantio-gcp-lab-12..internal\n", "vantio-gcp-lab-12.Internal\n",
+            "vantio-gcp-lab-12.a b\n", "vantio-gcp-lab-12.x;rm -rf /\n", "vantio-gcp-lab-12\nvantio-gcp-lab-12\n",
+            "vantio-gcp-lab-12.*\n", "", "VANTIO-GCP-LAB-12\n",
+        ):
+            result = self.run_s0b(printed, "vantio-gcp-lab-12")
+            row = by_row(result)["S0-b"]
+            self.assertEqual((row["outcome"], row["reason"]), (hc.STOP, "NOT_A_LAB_HOST_NAME"), printed)
+            self.assertEqual(result["summary"]["e5d_outcome"], hc.E5D_STOPPED)
+            self.assertTrue(all(isinstance(v, bool) for v in row["facts"].values()))
+
+    def test_n2_missing_or_malformed_expected_name_stops(self) -> None:
+        for expected in ("", "vantio-gcp-lab-", "vantio-gcp-lab-12;id", "vantio-gcp-lab-12.internal", "other-12", "vantio-gcp-lab-*", 12):
+            result = self.run_s0b("vantio-gcp-lab-12\n", expected)
+            row = by_row(result)["S0-b"]
+            self.assertEqual(row["reason"], "NOT_A_LAB_HOST_NAME", expected)
+            self.assertFalse(row["facts"]["expected_name_valid"])
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(hc.EXPECTED_HOST_ENV, None)
+            row = by_row(hc.run_hostcheck(Stub()))["S0-b"]
+            os.environ[hc.EXPECTED_HOST_ENV] = "vantio-gcp-lab-12"
+        self.assertEqual(row["reason"], "NOT_A_LAB_HOST_NAME")
+
+    def test_n2_offline_deliver_passes_the_instance_name(self) -> None:
+        text = (ROOT / "scripts" / "gcp" / "offline_deliver_3.py").read_text(encoding="utf-8")
+        self.assertIn('f"VANTIO_LAB_EXPECTED_HOST={name} "', text)
+        self.assertIn('name = instance_name(env.get("GITHUB_RUN_ID", ""))', text)
+        self.assertEqual(hc.EXPECTED_HOST_ENV, "VANTIO_LAB_EXPECTED_HOST")
+
+    def test_n3_all_five_e5_3_keys_required(self) -> None:
+        full = HEALTHY["E5-3"][1].splitlines()
+        for drop in range(5):
+            out = "\n".join(full[:drop] + full[drop + 1:]) + "\n"
+            row = by_row(hc.run_hostcheck(Stub({"E5-3": (0, out, "")})))["E5-3"]
+            self.assertEqual((row["outcome"], row["reason"]), (hc.STOP, "E5_3_KEYS_MISSING"))
+
+    def test_n4_key_lists_and_reasons_match_the_allowlist_exactly(self) -> None:
+        self.assertEqual({k: tuple(v) for k, v in hc.JSON_KEYS.items()}, od1.HOSTCHECK_JSON_KEYS)
+        self.assertEqual(set(hc.JSON_WORD_KEYS), set(od1.HOSTCHECK_JSON_WORD_KEYS))
+        self.assertEqual(hc.REASONS, od1.HOSTCHECK_REASONS)
+        self.assertEqual(hc.E5D_OUTCOMES, od1.HOSTCHECK_E5D_OUTCOMES)
+        self.assertEqual(hc.IPV6_STATES, od1.HOSTCHECK_IPV6_STATES)
+        self.assertEqual(hc.argv_sha256(), od1.HOSTCHECK_ARGV_SHA256)
+        self.assertTrue(set(hc.ROW_IDS) <= od1.HOSTCHECK_STOPPED_AT)
+
+    def test_n4_key_lists_match_what_the_boot_hold_code_writes(self) -> None:
+        sys.path.insert(0, str(ROOT / "packages" / "vantio-install"))
+        from vantio_install.boot_hold import policy, service
+
+        written = set(service.envelope("c", "s", "m"))
+        self.assertTrue(written <= set(hc.JSON_KEYS["E5-11"]))
+        self.assertTrue(set(policy.default_policy()) <= set(hc.JSON_KEYS["E5-12"]))
+
+    def test_n4_unlisted_keys_counted_not_named(self) -> None:
+        out = '{"network_hold": true, "released": false, "secret_name_x": 1, "other": "y"}'
+        facts = by_row(hc.run_hostcheck(Stub({"E5-10": (0, out, "")})))["E5-10"]["facts"]
+        self.assertEqual(facts["unlisted_key_count"], 2)
+        self.assertNotIn("secret_name_x", json.dumps(facts))
+
+    def test_n4_every_reason_the_harness_emits_is_allowed(self) -> None:
+        cases = [{}, {"S0-b": (0, "elsewhere\n", "")}, {"E5-7": (3, "", IPV6_TABLE_ERROR)}, {"E5-10": (0, '{"released": true}', "")}]
+        for case in cases:
+            for row in hc.run_hostcheck(Stub(case))["rows"]:
+                self.assertIn(row["reason"], hc.REASONS, row)
+        kept = od1.allow_hostcheck({"rows": [{"row": "E4-1", "outcome": "STOP", "rc": 1, "reason": "MADE_UP", "facts": {}}]})
+        self.assertNotIn("MADE_UP", json.dumps(kept))
+
+    def test_n4_summary_values_exact(self) -> None:
+        out = od1.allow_hostcheck({"rows": [], "summary": {"argv_sha256": "0" * 64, "e5d_outcome": "RECORDED", "ipv6": "READ", "stopped_at": "E9-9"}})
+        self.assertEqual(out["summary"].get("ipv6"), "READ")
+        for key in ("argv_sha256", "e5d_outcome", "stopped_at"):
+            self.assertNotIn(key, out["summary"])
+
+    def test_n6_stop_beats_ipv6_not_present(self) -> None:
+        result = hc.run_hostcheck(Stub({"E5-7": (3, "", IPV6_TABLE_ERROR), "E5-10": (0, '{"released": true}', "")}))
+        self.assertEqual(result["summary"]["ipv6"], "NOT_PRESENT")
+        self.assertEqual(result["summary"]["e5d_outcome"], hc.E5D_STOPPED)
+
+    def test_n1_staging_and_t5_compile_run_before_the_vm(self) -> None:
+        text = (ROOT / ".github" / "workflows" / "gcp-lab-provision.yml").read_text(encoding="utf-8")
+        job = _job_text(text, "deliver")
+        vm = job.index("- name: Create the offline VM")
+        for name in ("Stage the lab installer and a non-production trust key", "Compile the T5 loader"):
+            self.assertLess(job.index(f"- name: {name}"), vm, name)
+        self.assertLess(job.index("- name: Download the bundle, re-verify it, and delete it"), job.index("- name: Stage the lab installer"))
+        for name in ("Copy the bundle over IAP", "Run the self-service installer", "Run the kernel red-team campaign", "Run the batteries", "Run t5-egress"):
+            self.assertGreater(job.index(f"- name: {name}"), vm, name)
 
 
 if __name__ == "__main__":

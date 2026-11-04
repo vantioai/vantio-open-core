@@ -1109,7 +1109,7 @@ _HC_JUMP = {"jump_to_boot_hold": "bool", "rule_lines": "count"}
 # a frozenset = one of those words, "verbatim" = the Q8 IPv6 error line only.
 HOSTCHECK_FACTS: dict[str, dict[str, object]] = {
     "S0-a": {},
-    "S0-b": {"lab_name_pattern": "bool"},
+    "S0-b": {"expected_name_valid": "bool", "host_name_match": "bool", "fqdn_form": "bool"},
     "S0-c": {},
     "S0-d": {"backend": _HC_BACKEND},
     "S0-e": {"backend": _HC_BACKEND},
@@ -1153,30 +1153,52 @@ HOSTCHECK_FACTS: dict[str, dict[str, object]] = {
     "E5-7": {**_HC_CHAIN, "ipv6_error_verbatim": "verbatim"},
     "E5-8": _HC_JUMP,
     "E5-9": _HC_JUMP,
-    "E5-10": {"key_count": "count", "signature_field_present": "bool"},
-    "E5-11": {"key_count": "count", "signature_field_present": "bool"},
-    "E5-12": {"key_count": "count", "signature_field_present": "bool"},
     "E5-13": {"line_count": "count", "apply_boot_held_seen": "bool", "apply_boot_failed_seen": "bool"},
 }
-HOSTCHECK_JSON_ROWS = frozenset({"E5-10", "E5-11", "E5-12"})
+# E5-10..12: the JSON key names the boot-hold code writes. Must equal
+# hostcheck_rows.JSON_KEYS (a test checks it). Only these names become facts.
+HOSTCHECK_JSON_KEYS = {
+    "E5-10": ("file_profile", "last_reason", "network_hold", "released"),
+    "E5-11": (
+        "command", "enrolled_slice", "file_profile", "health", "host_wide_default_route_hold",
+        "message", "proof_ceiling", "proof_state", "ready", "reboot_row", "state",
+    ),
+    "E5-12": ("cgroup_slice", "deny_probe", "enabled", "enrolled_subnet_v4", "enrolled_subnet_v6", "hold", "ordering"),
+}
 HOSTCHECK_JSON_WORD_KEYS = frozenset({"command", "file_profile", "health", "last_reason", "state"})
 _HC_JSON_WORD = re.compile(r"[A-Za-z]{1,32}(?:[-_][A-Za-z]{1,32}){0,3}")
-_HC_JSON_KEY = re.compile(r"(bool|has|word)_([A-Za-z0-9_]{1,40})")
+for _row, _keys in HOSTCHECK_JSON_KEYS.items():
+    _schema: dict[str, object] = {"key_count": "count", "signature_field_present": "bool", "unlisted_key_count": "count"}
+    for _key in _keys:
+        _schema[f"bool_{_key}"] = "bool"
+        _schema[f"has_{_key}"] = "true"
+        if _key in HOSTCHECK_JSON_WORD_KEYS:
+            _schema[f"word_{_key}"] = "json_word"
+    HOSTCHECK_FACTS[_row] = _schema
+# Exact reason codes and summary values (must equal hostcheck_rows; a test checks it).
+HOSTCHECK_REASONS = frozenset(
+    {
+        "", "NONZERO_RC", "NOT_A_LAB_HOST_NAME", "IPTABLES_MISSING", "IP6TABLES_MISSING", "E4_1_GATE",
+        "NONZERO_RC_OR_SPLIT_REJECT", "NON_NAME_LINE_NOT_COPIED", "E4_2_REQUIRED_NAME_MISSING",
+        "E4_3_COUNT_NOT_ZERO", "E5_1_NOT_ALL_PRESENT", "E5_2_NOT_ALL_PRESENT", "E5_3_UNEXPECTED_LINE",
+        "E5_3_KEYS_MISSING", "E5_3_NOT_FRESH_OR_FAILED", "IPV4_HOLD_NOT_AS_EXPECTED",
+        "IPV6_HOLD_NOT_AS_EXPECTED", "RECORD_AND_CONTINUE", "STOP", "NOT_JSON_OR_NONZERO_RC",
+        "E5_10_ALREADY_RELEASED", "E5_11_HOLD_OFF_BY_POLICY", "IPV6_NOT_PRESENT",
+    }
+    | {f"STOPPED_AT_{_r.replace('-', '_')}" for _r in HOSTCHECK_ROW_IDS}
+)
+HOSTCHECK_E5D_OUTCOMES = frozenset({"NOT_PASS_IPV6_NOT_PRESENT", "STOPPED", "RECORDED_FOR_GRADING"})
+HOSTCHECK_IPV6_STATES = frozenset({"NOT_READ", "READ", "NOT_PRESENT"})
+HOSTCHECK_STOPPED_AT = frozenset(
+    {"", "HOSTCHECK_ABSENT", "HOSTCHECK_ERROR", "INSTALL_NOT_RUN", "NOT_ROOT", "S4_INSTALL_NOT_OBSERVE_HEALTHY"}
+    | set(HOSTCHECK_ROW_IDS)
+)
+# The fixed argv sha from hostcheck_rows.py --argv-sha256 (a test checks it).
+HOSTCHECK_ARGV_SHA256 = "d52b5c4f145742b2f2be509a2176fdd7aacab5f01ac7cecb9300a3cc869cea2e"
 
 
 def _hostcheck_kind(row: str, key: str) -> object:
-    kind = HOSTCHECK_FACTS[row].get(key)
-    if kind is not None or row not in HOSTCHECK_JSON_ROWS:
-        return kind
-    # E5-10..12 read JSON whose key names are NOT VERIFIED, so the key is a
-    # pattern: bool_<k> true/false, has_<k> true only, word_<k> for 5 named keys.
-    match = _HC_JSON_KEY.fullmatch(key)
-    if match is None or "signature" in key.lower():
-        return None
-    prefix, name = match.groups()
-    if prefix == "word":
-        return "json_word" if name in HOSTCHECK_JSON_WORD_KEYS else None
-    return "bool" if prefix == "bool" else "true"
+    return HOSTCHECK_FACTS[row].get(key)
 
 
 def _hostcheck_fact(row: str, key: object, value: object, outcome: str) -> bool:
@@ -1221,7 +1243,7 @@ def allow_hostcheck(value: object) -> dict | None:
             continue
         if rc is not None and (isinstance(rc, bool) or not isinstance(rc, int) or not -255 <= rc <= 255):
             continue
-        if not isinstance(reason, str) or re.fullmatch(r"[A-Za-z0-9_]{0,48}", reason) is None:
+        if not isinstance(reason, str) or reason not in HOSTCHECK_REASONS:
             continue
         kept_facts = {
             key: fact for key, fact in (facts.items() if isinstance(facts, dict) else ()) if _hostcheck_fact(row, key, fact, outcome)
@@ -1230,9 +1252,15 @@ def allow_hostcheck(value: object) -> dict | None:
     summary = value.get("summary")
     kept_summary = {}
     if isinstance(summary, dict):
-        for key in ("argv_sha256", "e5d_outcome", "ipv6", "stopped_at"):
+        allowed_values = {
+            "argv_sha256": frozenset({HOSTCHECK_ARGV_SHA256}),
+            "e5d_outcome": HOSTCHECK_E5D_OUTCOMES,
+            "ipv6": HOSTCHECK_IPV6_STATES,
+            "stopped_at": HOSTCHECK_STOPPED_AT,
+        }
+        for key, values in allowed_values.items():
             item = summary.get(key)
-            if isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9_-]{0,64}", item):
+            if isinstance(item, str) and item in values:
                 kept_summary[key] = item
         if summary.get("e5d_note") == "IPv6 half not read; E5 (d) cannot be recorded as active":
             kept_summary["e5d_note"] = summary["e5d_note"]
