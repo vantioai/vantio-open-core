@@ -1322,7 +1322,7 @@ def run_self_service(env: Mapping[str, str]) -> int:
             "public_ip": False,
             "seal_sha256": seal,
             "self_service": _self_service_rows(body),
-            "hostcheck": allow_hostcheck(body.get("hostcheck")) or {"proof_state": "NOT_PROVED", "rows": [], "summary": {"stopped_at": "HOSTCHECK_ABSENT"}},
+            "hostcheck": allow_hostcheck(body.get("hostcheck")) or {"proof_state": "NOT_PROVED", "rows": [], "summary": {"e5d_outcome": "STOPPED", "stopped_at": "HOSTCHECK_ABSENT"}},
             "status": "SELF_SERVICE",
             "subnet": SUBNET,
         },

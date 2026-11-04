@@ -1883,6 +1883,8 @@ print("ok")
         run = deliver_src[deliver_src.index("def run_self_service("):deliver_src.index("def remove_os_login_key(")]
         self.assertIn('"VANTIO_LAB_HOSTCHECK=1 "', run)
         self.assertIn('allow_hostcheck(body.get("hostcheck"))', run)
+        # B-5: a missing hostcheck block is a STOP, never an empty pass.
+        self.assertIn('"summary": {"e5d_outcome": "STOPPED", "stopped_at": "HOSTCHECK_ABSENT"}', run)
         workflow = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
         for command in ("upload-handoff", "download-handoff", "delete-handoff"):
             with self.subTest(command=command):
@@ -1894,6 +1896,9 @@ print("ok")
         self.assertIn('cp scripts/lab/hostcheck_rows.py "$dest/hostcheck_rows.py"', stage)
         self.assertIn('stage_lab_trust.py fetch "$pinned" "${{ runner.temp }}/enterprise-bundle/public-pin.oci.tar"', stage)
         self.assertIn('"pe_archive_absent"', stage)
+        # B-8: a positive check that the staged archive matches the pin, not only "not absent".
+        self.assertIn('stage_lab_trust.py check-archive "$dest"', stage)
+        self.assertLess(stage.index('stage_lab_trust.py stage "$dest"'), stage.index("check-archive"))
 
     def test_loaded_image_keeps_the_historical_tag_and_a_commit_tag(self) -> None:
         text = (ROOT / "scripts/gcp/lab-guests/enterprise-rows.sh").read_text(encoding="utf-8")
@@ -2708,7 +2713,10 @@ class PublicPinHandoffTest(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
         prepare = workflow[workflow.index("- name: Prepare and verify the private bundle"):]
         prepare = prepare[: prepare.index("assert-bundle")]
-        self.assertIn("W3_BATTERY: ${{ (inputs.run_batteries == true || inputs.self_service == true) && '2c-upgrade-rollback' || '' }}", prepare)
+        self.assertIn("W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}", prepare)
+        # F0-a: self-service gets the public pin from its own flag, so W3_BATTERY keeps one meaning.
+        self.assertIn("W3_STAGE_PUBLIC_PIN: ${{ inputs.self_service == true && 'true' || 'false' }}", prepare)
+        self.assertNotIn("self_service", prepare[prepare.index("W3_BATTERY:"): prepare.index("W3_STAGE_PUBLIC_PIN:")])
         for command in ("upload-handoff", "download-handoff", "delete-handoff", "teardown-if-present"):
             with self.subTest(command=command):
                 end = workflow.index(f"offline_deliver.py {command}")

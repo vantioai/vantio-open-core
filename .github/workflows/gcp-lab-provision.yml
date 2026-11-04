@@ -201,8 +201,9 @@ jobs:
           RUN_BATTERIES: ${{ inputs.run_batteries }}
           EVIDENCE_PATH: ${{ runner.temp }}/gcp-lab-evidence/prepare-bundle.json
           # Batteries end with 2c-upgrade-rollback, which needs public-pin.oci.tar (#320).
+          W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}
           # Self-service needs the same public PE archive so the installer has real bytes (F0-a).
-          W3_BATTERY: ${{ (inputs.run_batteries == true || inputs.self_service == true) && '2c-upgrade-rollback' || '' }}
+          W3_STAGE_PUBLIC_PIN: ${{ inputs.self_service == true && 'true' || 'false' }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: |
           set -euo pipefail
@@ -422,6 +423,7 @@ jobs:
             packages/t5-egress-drills/
             packages/t5-egress-kernel/
             scripts/lab/stage_lab_trust.py
+            scripts/lab/hostcheck_rows.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
           sparse-checkout-cone-mode: false
@@ -571,6 +573,7 @@ jobs:
           vantio run python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
           test -f "$dest/self-service.tar"
           vantio run python3 -c 'import json,pathlib,sys; s=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert s.get("archive")!="absent", "pe_archive_absent"' "$dest/signature.json"
+          vantio run python3 scripts/lab/stage_lab_trust.py check-archive "$dest"
           vantio run python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
 
       - name: Run the self-service installer

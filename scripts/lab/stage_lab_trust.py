@@ -325,10 +325,31 @@ def fetch_pinned(dest: Path, public_pin: Path | None = None) -> list[str]:
     return sorted(set(kept))
 
 
+USAGE = "usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST [PUBLIC_PIN] | check-archive DEST"
+
+
+def check_archive(dest: Path) -> dict[str, object]:
+    """Positive check after stage: the PE archive in the tar tree has the pinned
+    sha256 and signature.json signs that same digest. Raises if not."""
+    pins = constants.FROZEN_PINS
+    archive = dest / "bundle" / "artifacts" / "phantom-engine" / pins["pe_archive_name"]
+    if not archive.is_file() or archive.is_symlink() or _sha256(archive) != pins["pe_archive_sha256"]:
+        raise SystemExit("pe_archive_pin_mismatch")
+    record = json.loads((dest / "signature.json").read_text(encoding="utf-8"))
+    document = record.get("document") if isinstance(record, dict) else None
+    if (
+        not isinstance(document, dict)
+        or document.get("sha256") != pins["pe_archive_sha256"]
+        or document.get("filename") != pins["pe_archive_name"]
+    ):
+        raise SystemExit("pe_archive_signature_mismatch")
+    return {"archive_pin_match": True}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST [PUBLIC_PIN]")
+        raise SystemExit(USAGE)
     if args[0] == "fetch" and len(args) in {2, 3}:
         public_pin = Path(args[2]) if len(args) == 3 else None
         print(json.dumps({"kept": fetch_pinned(Path(args[1]), public_pin)}, sort_keys=True))
@@ -341,7 +362,13 @@ def main(argv: list[str] | None = None) -> int:
         result["tar"] = "self-service.tar"
         print(json.dumps(result, sort_keys=True))
         return 0
-    raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST [PUBLIC_PIN]")
+    if args[0] == "check-archive" and len(args) == 2:
+        result = check_archive(Path(args[1]))
+        if result.get("archive_pin_match") is not True:
+            raise SystemExit("pe_archive_pin_mismatch")
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    raise SystemExit(USAGE)
 
 
 if __name__ == "__main__":

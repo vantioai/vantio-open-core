@@ -1099,26 +1099,108 @@ HOSTCHECK_ROW_IDS = (
 )
 HOSTCHECK_OUTCOMES = frozenset({"RECORDED", "NOT_RUN", "STOP", "IPV6_NOT_PRESENT", "IP6TABLES_MISSING", "IPV6_OTHER_ERROR"})
 HOSTCHECK_IPV6_ABSENT = re.compile(
-    r"(address family not supported|can't initiali[sz]e ip6tables table|table does not exist)",
+    r"(address family not supported|can't initiali[sz]e ip6tables table)",
     re.IGNORECASE,
 )
+_HC_BACKEND = frozenset({"nf_tables", "legacy", "unknown"})
+_HC_CHAIN = {"chain_present": "bool", "drop_rule_present": "bool", "rule_lines": "count"}
+_HC_JUMP = {"jump_to_boot_hold": "bool", "rule_lines": "count"}
+# Allowed fact keys per row. "bool" = true/false, "count" = int 0..100000,
+# a frozenset = one of those words, "verbatim" = the Q8 IPv6 error line only.
+HOSTCHECK_FACTS: dict[str, dict[str, object]] = {
+    "S0-a": {},
+    "S0-b": {"lab_name_pattern": "bool"},
+    "S0-c": {},
+    "S0-d": {"backend": _HC_BACKEND},
+    "S0-e": {"backend": _HC_BACKEND},
+    "E4-1": {"line_count": "count", "status_up": "bool", "name_pattern": "bool"},
+    "E4-2": {
+        "name_count": "count",
+        "telemetry_disabled_name": "bool",
+        "do_not_track_name": "bool",
+        "ingest_url_name": "bool",
+        "api_key_name": "bool",
+    },
+    "E4-3": {"checkin_nonempty_count": "count"},
+    "E5-1": {
+        "unit_present": "bool",
+        "wants_present": "bool",
+        "wants_is_symlink": "bool",
+        "wrapper_present": "bool",
+        "policy_present": "bool",
+    },
+    "E5-2": {"loader_unit_present": "bool", "enforce_ready_unit_present": "bool", "enrolled_network_unit_present": "bool"},
+    "E5-3": {
+        "LoadState": frozenset({"loaded", "not-found", "bad-setting", "error", "masked", "stub", "merged"}),
+        "UnitFileState": frozenset({
+            "enabled", "enabled-runtime", "linked", "linked-runtime", "alias", "masked", "masked-runtime",
+            "static", "disabled", "indirect", "generated", "transient", "bad", "",
+        }),
+        "ActiveState": frozenset({"active", "reloading", "inactive", "failed", "activating", "deactivating", "maintenance", "refreshing"}),
+        "SubState": frozenset({
+            "dead", "condition", "start-pre", "start", "start-post", "running", "exited", "reload", "stop",
+            "stop-watchdog", "stop-sigterm", "stop-sigkill", "stop-post", "final-watchdog", "final-sigterm",
+            "final-sigkill", "failed", "auto-restart", "cleaning",
+        }),
+        "Result": frozenset({
+            "success", "protocol", "timeout", "exit-code", "signal", "core-dump", "watchdog",
+            "start-limit-hit", "resources", "oom-kill", "exec-condition", "condition", "",
+        }),
+    },
+    "E5-4": _HC_CHAIN,
+    "E5-5": _HC_JUMP,
+    "E5-6": _HC_JUMP,
+    "E5-7": {**_HC_CHAIN, "ipv6_error_verbatim": "verbatim"},
+    "E5-8": _HC_JUMP,
+    "E5-9": _HC_JUMP,
+    "E5-10": {"key_count": "count", "signature_field_present": "bool"},
+    "E5-11": {"key_count": "count", "signature_field_present": "bool"},
+    "E5-12": {"key_count": "count", "signature_field_present": "bool"},
+    "E5-13": {"line_count": "count", "apply_boot_held_seen": "bool", "apply_boot_failed_seen": "bool"},
+}
+HOSTCHECK_JSON_ROWS = frozenset({"E5-10", "E5-11", "E5-12"})
+HOSTCHECK_JSON_WORD_KEYS = frozenset({"command", "file_profile", "health", "last_reason", "state"})
+_HC_JSON_WORD = re.compile(r"[A-Za-z]{1,32}(?:[-_][A-Za-z]{1,32}){0,3}")
+_HC_JSON_KEY = re.compile(r"(bool|has|word)_([A-Za-z0-9_]{1,40})")
 
 
-def _hostcheck_fact(key: object, value: object, outcome: str) -> bool:
-    if not isinstance(key, str) or re.fullmatch(r"[A-Za-z0-9_]{1,48}", key) is None:
+def _hostcheck_kind(row: str, key: str) -> object:
+    kind = HOSTCHECK_FACTS[row].get(key)
+    if kind is not None or row not in HOSTCHECK_JSON_ROWS:
+        return kind
+    # E5-10..12 read JSON whose key names are NOT VERIFIED, so the key is a
+    # pattern: bool_<k> true/false, has_<k> true only, word_<k> for 5 named keys.
+    match = _HC_JSON_KEY.fullmatch(key)
+    if match is None or "signature" in key.lower():
+        return None
+    prefix, name = match.groups()
+    if prefix == "word":
+        return "json_word" if name in HOSTCHECK_JSON_WORD_KEYS else None
+    return "bool" if prefix == "bool" else "true"
+
+
+def _hostcheck_fact(row: str, key: object, value: object, outcome: str) -> bool:
+    if not isinstance(key, str):
         return False
-    if key == "ipv6_error_verbatim":
+    kind = _hostcheck_kind(row, key)
+    if kind is None:
+        return False
+    if kind == "verbatim":
         return (
             outcome == "IPV6_NOT_PRESENT"
             and isinstance(value, str)
             and re.fullmatch(r"[ -~]{1,300}", value) is not None
             and HOSTCHECK_IPV6_ABSENT.search(value) is not None
         )
-    if isinstance(value, bool):
-        return True
-    if isinstance(value, int):
-        return 0 <= value <= 100000
-    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{0,40}", value) is not None
+    if kind == "bool":
+        return isinstance(value, bool)
+    if kind == "true":
+        return value is True
+    if kind == "count":
+        return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100000
+    if kind == "json_word":
+        return isinstance(value, str) and _HC_JSON_WORD.fullmatch(value) is not None
+    return isinstance(kind, frozenset) and isinstance(value, str) and value in kind
 
 
 def allow_hostcheck(value: object) -> dict | None:
@@ -1139,10 +1221,10 @@ def allow_hostcheck(value: object) -> dict | None:
             continue
         if rc is not None and (isinstance(rc, bool) or not isinstance(rc, int) or not -255 <= rc <= 255):
             continue
-        if not isinstance(reason, str) or re.fullmatch(r"[A-Z0-9_]{0,48}", reason) is None:
+        if not isinstance(reason, str) or re.fullmatch(r"[A-Za-z0-9_]{0,48}", reason) is None:
             continue
         kept_facts = {
-            key: fact for key, fact in (facts.items() if isinstance(facts, dict) else ()) if _hostcheck_fact(key, fact, outcome)
+            key: fact for key, fact in (facts.items() if isinstance(facts, dict) else ()) if _hostcheck_fact(row, key, fact, outcome)
         }
         rows.append({"facts": kept_facts, "outcome": outcome, "rc": rc, "reason": reason, "row": row})
     summary = value.get("summary")
@@ -1155,7 +1237,7 @@ def allow_hostcheck(value: object) -> dict | None:
         if summary.get("e5d_note") == "IPv6 half not read; E5 (d) cannot be recorded as active":
             kept_summary["e5d_note"] = summary["e5d_note"]
         error = summary.get("ipv6_error_verbatim")
-        if _hostcheck_fact("ipv6_error_verbatim", error, "IPV6_NOT_PRESENT"):
+        if _hostcheck_fact("E5-7", "ipv6_error_verbatim", error, "IPV6_NOT_PRESENT"):
             kept_summary["ipv6_error_verbatim"] = error
     return {"proof_state": "NOT_PROVED", "rows": rows, "summary": kept_summary}
 

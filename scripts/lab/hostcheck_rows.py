@@ -88,14 +88,19 @@ E5D_STOPPED = "STOPPED"
 E5D_RECORDED = "RECORDED_FOR_GRADING"
 
 # Q8: only an address-family or table-initialise error counts as "IPv6 not
-# present". Exact ip6tables wording is NOT VERIFIED on a host.
+# present". The legacy "can't initialize ip6tables table `filter': Table does
+# not exist" line matches the second alternative. A bare "table does not
+# exist" does not match. Exact ip6tables wording is NOT VERIFIED on a host.
 IPV6_ABSENT_RE = re.compile(
-    r"(address family not supported|can't initiali[sz]e ip6tables table|table does not exist)",
+    r"(address family not supported|can't initiali[sz]e ip6tables table)",
     re.IGNORECASE,
 )
 NAME_RE = re.compile(r"^vantio-pe-[A-Za-z0-9]{1,64}$")
 ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 WORD_RE = re.compile(r"^[A-Za-z0-9_.-]{0,40}$")
+# JSON word values (E5-10/E5-11) are kept only if they are letters joined by
+# - or _. Anything with a digit or other character is recorded as has_<key>.
+JSON_WORD_RE = re.compile(r"^[A-Za-z]{1,32}(?:[-_][A-Za-z]{1,32}){0,3}$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_]{1,40}$")
 LAB_HOST_RE = re.compile(r"^vantio-gcp-lab-[0-9]{1,20}$")
 PRINTABLE_RE = re.compile(r"^[ -~]{1,300}$")
@@ -112,6 +117,24 @@ E5_2_UNITS = {
     "enrolled_network_unit_present": "vantio-enrolled-network.service",
 }
 E5_3_KEYS = ("LoadState", "UnitFileState", "ActiveState", "SubState", "Result")
+# systemd value sets for E5-3. A value outside these sets is a STOP (rule 6).
+E5_3_VALUES = {
+    "LoadState": frozenset({"loaded", "not-found", "bad-setting", "error", "masked", "stub", "merged"}),
+    "UnitFileState": frozenset({
+        "enabled", "enabled-runtime", "linked", "linked-runtime", "alias", "masked", "masked-runtime",
+        "static", "disabled", "indirect", "generated", "transient", "bad", "",
+    }),
+    "ActiveState": frozenset({"active", "reloading", "inactive", "failed", "activating", "deactivating", "maintenance", "refreshing"}),
+    "SubState": frozenset({
+        "dead", "condition", "start-pre", "start", "start-post", "running", "exited", "reload", "stop",
+        "stop-watchdog", "stop-sigterm", "stop-sigkill", "stop-post", "final-watchdog", "final-sigterm",
+        "final-sigkill", "failed", "auto-restart", "cleaning",
+    }),
+    "Result": frozenset({
+        "success", "protocol", "timeout", "exit-code", "signal", "core-dump", "watchdog",
+        "start-limit-hit", "resources", "oom-kill", "exec-condition", "condition", "",
+    }),
+}
 JSON_WORD_KEYS = frozenset({"command", "file_profile", "health", "last_reason", "state"})
 
 Runner = Callable[[list[str], dict], "tuple[int | None, str, str]"]
@@ -203,7 +226,7 @@ def _json_facts(text: str) -> dict | None:
             continue
         if isinstance(value, bool):
             facts[f"bool_{key}"] = value
-        elif key in JSON_WORD_KEYS and isinstance(value, str) and WORD_RE.fullmatch(value):
+        elif key in JSON_WORD_KEYS and isinstance(value, str) and JSON_WORD_RE.fullmatch(value):
             facts[f"word_{key}"] = value
         else:
             facts[f"has_{key}"] = True
@@ -269,6 +292,8 @@ def run_hostcheck(runner: Runner = run_argv) -> dict:
             facts = {"lab_name_pattern": bool(LAB_HOST_RE.fullmatch(out.strip()))}
             if rc != 0:
                 stop(row, rc, facts, "NONZERO_RC")
+            elif not facts["lab_name_pattern"]:
+                stop(row, rc, facts, "NOT_A_LAB_HOST_NAME")
             else:
                 rows.append(_row(row, RECORDED, rc, facts))
         elif row == "S0-d":
@@ -342,7 +367,7 @@ def run_hostcheck(runner: Runner = run_argv) -> dict:
             bad = False
             for line in _lines(out):
                 key, _, value = line.partition("=")
-                if key in E5_3_KEYS and WORD_RE.fullmatch(value):
+                if key in E5_3_KEYS and value in E5_3_VALUES[key] and key not in facts:
                     facts[key] = value
                 else:
                     bad = True

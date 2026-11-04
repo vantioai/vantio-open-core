@@ -22,6 +22,9 @@ sys.path.insert(0, str(ROOT / "scripts" / "aws" / "lab-guests"))
 import hostcheck_rows as hc  # noqa: E402
 import self_service as ss  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "scripts" / "gcp"))
+import offline_deliver_1 as od1  # noqa: E402
+
 # Pinned sha256 of the fixed argv artifact. A change to any argv, the env,
 # the E4-3 pattern, the placeholder or the timeout changes this value and
 # needs a fresh independent re-hash at P3.
@@ -279,6 +282,206 @@ class GateTests(unittest.TestCase):
         self.assert_stop({"E5-2": (0, "total 0\n", "")}, "E5-2", "E5_2_NOT_ALL_PRESENT")
 
 
+class PassTwoHarnessTests(unittest.TestCase):
+    """Quinn V4 notes B-2, B-3 and B-7 on the harness side."""
+
+    def test_bare_table_does_not_exist_is_not_ipv6_absent(self) -> None:
+        # B-3: only the address-family or table-initialise wording counts.
+        self.assertIsNone(hc.IPV6_ABSENT_RE.search("ip6tables: Table does not exist (do you need to insmod?)"))
+        self.assertIsNotNone(hc.IPV6_ABSENT_RE.search(IPV6_TABLE_ERROR))
+        self.assertIsNotNone(hc.IPV6_ABSENT_RE.search(IPV6_AF_ERROR))
+        result = hc.run_hostcheck(Stub({"E5-7": (1, "", "ip6tables: Table does not exist (do you need to insmod?)")}))
+        rows = by_row(result)
+        self.assertEqual(rows["E5-7"]["outcome"], hc.IPV6_OTHER_ERROR)
+        self.assertEqual(result["summary"]["stopped_at"], "E5-7")
+        self.assertNotIn("ipv6_error_verbatim", json.dumps(result))
+
+    def test_od1_regex_matches_the_harness_regex(self) -> None:
+        self.assertEqual(od1.HOSTCHECK_IPV6_ABSENT.pattern, hc.IPV6_ABSENT_RE.pattern)
+        self.assertEqual(od1.HOSTCHECK_IPV6_ABSENT.flags, hc.IPV6_ABSENT_RE.flags)
+
+    def test_s0_b_not_a_lab_host_name_is_a_stop(self) -> None:
+        # B-7: a host name that is not vantio-gcp-lab-<digits> stops before E4-1.
+        for name in ("prod-db-1\n", "vantio-gcp-lab-\n", "vantio-gcp-lab-12x\n", "\n"):
+            result = hc.run_hostcheck(Stub({"S0-b": (0, name, "")}))
+            rows = by_row(result)
+            self.assertEqual(rows["S0-b"]["outcome"], hc.STOP, name)
+            self.assertEqual(rows["S0-b"]["reason"], "NOT_A_LAB_HOST_NAME")
+            self.assertEqual(rows["S0-b"]["facts"], {"lab_name_pattern": False})
+            self.assertEqual(rows["E4-1"]["outcome"], hc.NOT_RUN)
+            self.assertEqual(result["summary"]["stopped_at"], "S0-b")
+            self.assertNotIn("prod-db", json.dumps(result))
+
+    def test_e5_3_value_outside_the_systemd_set_is_a_stop(self) -> None:
+        result = hc.run_hostcheck(Stub({"E5-3": (0, HEALTHY["E5-3"][1].replace("Result=success", "Result=tok3n"), "")}))
+        rows = by_row(result)
+        self.assertEqual(rows["E5-3"]["outcome"], hc.STOP)
+        self.assertNotIn("tok3n", json.dumps(result))
+
+    def test_e5_3_sets_match_od1(self) -> None:
+        self.assertEqual(set(hc.E5_3_VALUES), set(od1.HOSTCHECK_FACTS["E5-3"]))
+        for key, values in hc.E5_3_VALUES.items():
+            self.assertEqual(values, od1.HOSTCHECK_FACTS["E5-3"][key], key)
+
+    def test_json_word_with_a_digit_is_kept_as_has_only(self) -> None:
+        result = hc.run_hostcheck(Stub({"E5-11": (0, '{"state": "HELD", "health": "abc123secret"}', "")}))
+        facts = by_row(result)["E5-11"]["facts"]
+        self.assertEqual(facts.get("word_state"), "HELD")
+        self.assertNotIn("word_health", facts)
+        self.assertIs(facts.get("has_health"), True)
+        self.assertNotIn("abc123secret", json.dumps(result))
+
+
+class PassTwoAllowlistTests(unittest.TestCase):
+    """B-2: the evidence allowlist keeps per-row keys and enum values only."""
+
+    def assert_round_trip(self, result: dict) -> None:
+        kept = od1.allow_hostcheck(result)
+        self.assertEqual([r["row"] for r in kept["rows"]], [r["row"] for r in result["rows"]])
+        for before, after in zip(result["rows"], kept["rows"]):
+            self.assertEqual(after["facts"], before["facts"], before["row"])
+            self.assertEqual(after["outcome"], before["outcome"])
+
+    def test_every_fact_the_harness_emits_survives_the_allowlist(self) -> None:
+        self.assert_round_trip(hc.run_hostcheck(Stub()))
+        self.assert_round_trip(hc.run_hostcheck(Stub({"E5-7": (1, "", IPV6_TABLE_ERROR)})))
+        self.assert_round_trip(hc.run_hostcheck(Stub({"E5-7": (1, "", IPV6_AF_ERROR)})))
+        self.assert_round_trip(hc.run_hostcheck(Stub({"S0-b": (0, "elsewhere\n", "")})))
+
+    def test_allowlist_has_a_schema_for_every_row(self) -> None:
+        self.assertEqual(set(od1.HOSTCHECK_FACTS), set(hc.ROW_IDS))
+        self.assertEqual(tuple(od1.HOSTCHECK_ROW_IDS), tuple(hc.ROW_IDS))
+
+    def test_wrong_key_wrong_row_or_wrong_type_is_dropped(self) -> None:
+        def kept(row: str, facts: dict) -> dict:
+            out = od1.allow_hostcheck({"rows": [{"row": row, "outcome": "RECORDED", "rc": 0, "reason": "", "facts": facts}]})
+            return out["rows"][0]["facts"]
+
+        self.assertEqual(kept("E4-1", {"line_count": 1, "token": "abc"}), {"line_count": 1})
+        self.assertEqual(kept("E4-1", {"backend": "nf_tables"}), {})
+        self.assertEqual(kept("S0-d", {"backend": "nf_tables"}), {"backend": "nf_tables"})
+        self.assertEqual(kept("S0-d", {"backend": "sk-abc"}), {})
+        self.assertEqual(kept("E5-3", {"Result": "success", "ActiveState": "zz9"}), {"Result": "success"})
+        self.assertEqual(kept("E4-3", {"checkin_nonempty_count": "1"}), {})
+        self.assertEqual(kept("E4-3", {"checkin_nonempty_count": True}), {})
+        self.assertEqual(kept("E5-11", {"word_state": "HELD", "word_detail": "x", "word_health": "a1"}), {"word_state": "HELD"})
+        self.assertEqual(kept("E5-11", {"has_x": True, "has_y": False, "bool_z": False}), {"has_x": True, "bool_z": False})
+        self.assertEqual(kept("E5-12", {"bool_signature": True, "signature_field_present": True}), {"signature_field_present": True})
+        self.assertEqual(kept("E5-13", {"has_x": True}), {})
+        self.assertEqual(kept("E5-7", {"ipv6_error_verbatim": IPV6_TABLE_ERROR}), {})
+
+
+def _sparse_lists(text: str) -> dict[str, list[str]]:
+    """Map each job in a workflow to its sparse-checkout list (text parse, no yaml)."""
+    jobs: dict[str, list[str]] = {}
+    job = None
+    lines = text.splitlines()
+    in_jobs = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.rstrip() == "jobs:":
+            in_jobs = True
+        elif in_jobs and len(line) > 2 and line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":"):
+            job = line.strip()[:-1]
+        elif job and line.strip() == "sparse-checkout: |":
+            indent = len(line) - len(line.lstrip()) + 2
+            entries = []
+            i += 1
+            while i < len(lines) and (len(lines[i]) - len(lines[i].lstrip())) >= indent and lines[i].strip():
+                entries.append(lines[i].strip())
+                i += 1
+            jobs[job] = entries
+            continue
+        i += 1
+    return jobs
+
+
+def _job_text(text: str, job: str) -> str:
+    out, keep = [], False
+    for line in text.splitlines():
+        if line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":"):
+            keep = line.strip()[:-1] == job
+        if keep:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _covered(path: str, sparse: list[str]) -> bool:
+    path = path.rstrip("/")
+    for entry in sparse:
+        e = entry.rstrip("/")
+        if path == e or (entry.endswith("/") and path.startswith(e + "/")) or e.startswith(path + "/"):
+            return True
+    return False
+
+
+REPO_PATH = __import__("re").compile(r"(?<![\w/.$-])((?:scripts|packages|release)/[A-Za-z0-9_./-]+)")
+
+
+class SparseCheckoutTests(unittest.TestCase):
+    """B-1: every repo file a sparse job copies, runs or sources is checked out."""
+
+    WF = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
+
+    def test_staging_step_files_are_in_the_deliver_sparse_list(self) -> None:
+        import re
+
+        text = self.WF.read_text(encoding="utf-8")
+        sparse = _sparse_lists(text)["deliver"]
+        job = _job_text(text, "deliver")
+        start = job.index("stage_lab_trust.py stage")
+        block_start = job.rindex("run: |", 0, start)
+        block_end = job.find("\n      - name:", start)
+        block = job[block_start:block_end]
+        wanted = set()
+        for line in block.splitlines():
+            line = line.strip()
+            for pattern in (r"^cp (?:-a )?(\S+)", r"python3 (\S+\.py)", r"^(?:source|\.) (\S+)"):
+                match = re.search(pattern, line)
+                if match and REPO_PATH.fullmatch(match.group(1)):
+                    wanted.add(match.group(1))
+        self.assertIn("scripts/lab/hostcheck_rows.py", wanted)
+        self.assertIn("scripts/lab/stage_lab_trust.py", wanted)
+        self.assertIn("scripts/aws/lab-guests/self_service.py", wanted)
+        self.assertIn("packages/vantio-install/vantio_install", wanted)
+        for path in sorted(wanted):
+            self.assertTrue(_covered(path, sparse), f"{path} missing from the deliver sparse list")
+
+    def test_every_repo_path_in_every_sparse_job_is_checked_out(self) -> None:
+        for wf in (self.WF,):
+            text = wf.read_text(encoding="utf-8")
+            for job, sparse in _sparse_lists(text).items():
+                body = _job_text(text, job)
+                listed = set(sparse)
+                for path in sorted(set(REPO_PATH.findall(body))):
+                    if path in listed:
+                        continue
+                    self.assertTrue(_covered(path, sparse), f"{wf.name} {job}: {path} not in the sparse list")
+
+    def test_runtime_imports_of_the_new_files_are_checked_out(self) -> None:
+        import ast
+
+        sparse = _sparse_lists(self.WF.read_text(encoding="utf-8"))["deliver"]
+        local = {
+            "hostcheck_rows": "scripts/lab/hostcheck_rows.py",
+            "vantio_install": "packages/vantio-install/vantio_install/",
+        }
+        for path in ("scripts/lab/stage_lab_trust.py", "scripts/aws/lab-guests/self_service.py", "scripts/lab/hostcheck_rows.py"):
+            tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name.split(".")[0] for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                    names = [node.module.split(".")[0]]
+                for name in names:
+                    if name in local:
+                        self.assertTrue(_covered(local[name], sparse), f"{path} imports {name}")
+                    elif (ROOT / "scripts" / "lab" / f"{name}.py").exists() or (ROOT / "scripts" / "aws" / "lab-guests" / f"{name}.py").exists():
+                        self.fail(f"{path} imports repo module {name}; add it to this test and the sparse list")
+
+
 class SelfServiceHookTests(unittest.TestCase):
     def test_hostcheck_runs_once_after_install_observe_and_before_later_phases(self) -> None:
         order: list[str] = []
@@ -377,6 +580,33 @@ class StageLabTrustPinTests(unittest.TestCase):
             fetch.assert_called_with(Path("/tmp/x"), Path("/tmp/pin.tar"))
             self.assertEqual(self.slt.main(["fetch", "/tmp/x"]), 0)
             fetch.assert_called_with(Path("/tmp/x"), None)
+
+    def test_check_archive_needs_the_pinned_archive_and_a_matching_signature(self) -> None:
+        # B-8: positive check that archive_pin_match is True after stage.
+        pins = dict(self.slt.constants.FROZEN_PINS)
+        payload = b"stand-in archive bytes for check-archive"
+        pins["pe_archive_sha256"] = hashlib.sha256(payload).hexdigest()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(self.slt.constants, "FROZEN_PINS", pins):
+            base = Path(tmp)
+            empty = base / "empty"
+            empty.mkdir()
+            result = self.slt.stage(base / "absent", empty)
+            self.assertIs(result["archive_pin_match"], False)
+            with self.assertRaises(SystemExit):
+                self.slt.check_archive(base / "absent")
+            pinned = base / "pinned"
+            pinned.mkdir()
+            (pinned / pins["pe_archive_name"]).write_bytes(payload)
+            result = self.slt.stage(base / "good", pinned)
+            self.assertIs(result["archive_pin_match"], True)
+            self.assertEqual(self.slt.check_archive(base / "good"), {"archive_pin_match": True})
+            self.assertEqual(self.slt.main(["check-archive", str(base / "good")]), 0)
+            signature = base / "good" / "signature.json"
+            record = json.loads(signature.read_text())
+            record["document"]["sha256"] = "0" * 64
+            signature.write_text(json.dumps(record))
+            with self.assertRaises(SystemExit):
+                self.slt.check_archive(base / "good")
 
 
 if __name__ == "__main__":
