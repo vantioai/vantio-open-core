@@ -172,7 +172,7 @@ def handoff_objects(env: Mapping[str, str]) -> tuple[str, ...]:
     names = object_names(run_id)
     if brain_requested(env):
         names = names + brain_object_names(run_id)
-    if batteries_requested(env):
+    if public_pin_requested(env):
         names = names + (public_pin_object_name(run_id),)
     return names
 
@@ -1014,6 +1014,11 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
                 )
             kept["self_service"] = rows
             continue
+        if key == "hostcheck":
+            hostcheck = allow_hostcheck(value)
+            if hostcheck is not None:
+                kept["hostcheck"] = hostcheck
+            continue
         if key in {"loader_kill", "loader_restart"} and value in {"held", "fail", "infra_retry", "setup_invalid"}:
             kept[key] = value
             continue
@@ -1085,6 +1090,184 @@ def allow_record(payload: Mapping[str, Any]) -> dict[str, Any]:
     if "repeats" in kept:
         kept["full_set"] = full_set_passes(kept["repeats"])
     return kept
+
+
+HOSTCHECK_ROW_IDS = (
+    "S0-a", "S0-b", "S0-c", "S0-d", "S0-e", "E4-1", "E4-2", "E4-3",
+    "E5-1", "E5-2", "E5-3", "E5-4", "E5-5", "E5-6", "E5-7", "E5-8", "E5-9",
+    "E5-10", "E5-11", "E5-12", "E5-13",
+)
+HOSTCHECK_OUTCOMES = frozenset({"RECORDED", "NOT_RUN", "STOP", "IPV6_NOT_PRESENT", "IP6TABLES_MISSING", "IPV6_OTHER_ERROR"})
+HOSTCHECK_IPV6_ABSENT = re.compile(
+    r"(address family not supported|can't initiali[sz]e ip6tables table)",
+    re.IGNORECASE,
+)
+_HC_BACKEND = frozenset({"nf_tables", "legacy", "unknown"})
+_HC_CHAIN = {"chain_present": "bool", "drop_rule_present": "bool", "rule_lines": "count"}
+_HC_JUMP = {"jump_to_boot_hold": "bool", "rule_lines": "count"}
+# Allowed fact keys per row. "bool" = true/false, "count" = int 0..100000,
+# a frozenset = one of those words, "verbatim" = the Q8 IPv6 error line only.
+HOSTCHECK_FACTS: dict[str, dict[str, object]] = {
+    "S0-a": {},
+    "S0-b": {"expected_name_valid": "bool", "expected_domain_valid": "bool", "host_name_match": "bool", "fqdn_form": "bool"},
+    "S0-c": {},
+    "S0-d": {"backend": _HC_BACKEND},
+    "S0-e": {"backend": _HC_BACKEND},
+    "E4-1": {"line_count": "count", "status_up": "bool", "name_pattern": "bool"},
+    "E4-2": {
+        "name_count": "count",
+        "telemetry_disabled_name": "bool",
+        "do_not_track_name": "bool",
+        "ingest_url_name": "bool",
+        "api_key_name": "bool",
+    },
+    "E4-3": {"checkin_nonempty_count": "count"},
+    "E5-1": {
+        "unit_present": "bool",
+        "wants_present": "bool",
+        "wants_is_symlink": "bool",
+        "wrapper_present": "bool",
+        "policy_present": "bool",
+    },
+    "E5-2": {"loader_unit_present": "bool", "enforce_ready_unit_present": "bool", "enrolled_network_unit_present": "bool"},
+    "E5-3": {
+        "LoadState": frozenset({"loaded", "not-found", "bad-setting", "error", "masked", "stub", "merged"}),
+        "UnitFileState": frozenset({
+            "enabled", "enabled-runtime", "linked", "linked-runtime", "alias", "masked", "masked-runtime",
+            "static", "disabled", "indirect", "generated", "transient", "bad", "",
+        }),
+        "ActiveState": frozenset({"active", "reloading", "inactive", "failed", "activating", "deactivating", "maintenance", "refreshing"}),
+        "SubState": frozenset({
+            "dead", "condition", "start-pre", "start", "start-post", "running", "exited", "reload", "stop",
+            "stop-watchdog", "stop-sigterm", "stop-sigkill", "stop-post", "final-watchdog", "final-sigterm",
+            "final-sigkill", "failed", "auto-restart", "cleaning",
+        }),
+        "Result": frozenset({
+            "success", "protocol", "timeout", "exit-code", "signal", "core-dump", "watchdog",
+            "start-limit-hit", "resources", "oom-kill", "exec-condition", "condition", "",
+        }),
+    },
+    "E5-4": _HC_CHAIN,
+    "E5-5": _HC_JUMP,
+    "E5-6": _HC_JUMP,
+    "E5-7": {**_HC_CHAIN, "ipv6_error_verbatim": "verbatim"},
+    "E5-8": _HC_JUMP,
+    "E5-9": _HC_JUMP,
+    "E5-13": {"line_count": "count", "apply_boot_held_seen": "bool", "apply_boot_failed_seen": "bool"},
+}
+# E5-10..12: the JSON key names the boot-hold code writes. Must equal
+# hostcheck_rows.JSON_KEYS (a test checks it). Only these names become facts.
+HOSTCHECK_JSON_KEYS = {
+    "E5-10": ("file_profile", "last_reason", "network_hold", "released"),
+    "E5-11": (
+        "command", "enrolled_slice", "file_profile", "health", "host_wide_default_route_hold",
+        "message", "proof_ceiling", "proof_state", "ready", "reboot_row", "state",
+    ),
+    "E5-12": ("cgroup_slice", "deny_probe", "enabled", "enrolled_subnet_v4", "enrolled_subnet_v6", "hold", "ordering"),
+}
+HOSTCHECK_JSON_WORD_KEYS = frozenset({"command", "file_profile", "health", "last_reason", "state"})
+_HC_JSON_WORD = re.compile(r"[A-Za-z]{1,32}(?:[-_][A-Za-z]{1,32}){0,3}")
+for _row, _keys in HOSTCHECK_JSON_KEYS.items():
+    _schema: dict[str, object] = {"key_count": "count", "signature_field_present": "bool", "unlisted_key_count": "count"}
+    for _key in _keys:
+        _schema[f"bool_{_key}"] = "bool"
+        _schema[f"has_{_key}"] = "true"
+        if _key in HOSTCHECK_JSON_WORD_KEYS:
+            _schema[f"word_{_key}"] = "json_word"
+    HOSTCHECK_FACTS[_row] = _schema
+# Exact reason codes and summary values (must equal hostcheck_rows; a test checks it).
+HOSTCHECK_REASONS = frozenset(
+    {
+        "", "NONZERO_RC", "NOT_A_LAB_HOST_NAME", "IPTABLES_MISSING", "IP6TABLES_MISSING", "E4_1_GATE",
+        "NONZERO_RC_OR_SPLIT_REJECT", "NON_NAME_LINE_NOT_COPIED", "E4_2_REQUIRED_NAME_MISSING",
+        "E4_3_COUNT_NOT_ZERO", "E5_1_NOT_ALL_PRESENT", "E5_2_NOT_ALL_PRESENT", "E5_3_UNEXPECTED_LINE",
+        "E5_3_KEYS_MISSING", "E5_3_NOT_FRESH_OR_FAILED", "IPV4_HOLD_NOT_AS_EXPECTED",
+        "IPV6_HOLD_NOT_AS_EXPECTED", "RECORD_AND_CONTINUE", "STOP", "NOT_JSON_OR_NONZERO_RC",
+        "E5_10_ALREADY_RELEASED", "E5_11_HOLD_OFF_BY_POLICY", "IPV6_NOT_PRESENT",
+    }
+    | {f"STOPPED_AT_{_r.replace('-', '_')}" for _r in HOSTCHECK_ROW_IDS}
+)
+HOSTCHECK_E5D_OUTCOMES = frozenset({"NOT_PASS_IPV6_NOT_PRESENT", "STOPPED", "RECORDED_FOR_GRADING"})
+HOSTCHECK_IPV6_STATES = frozenset({"NOT_READ", "READ", "NOT_PRESENT"})
+HOSTCHECK_STOPPED_AT = frozenset(
+    {"", "HOSTCHECK_ABSENT", "HOSTCHECK_ERROR", "INSTALL_NOT_RUN", "NOT_ROOT", "S4_INSTALL_NOT_OBSERVE_HEALTHY"}
+    | set(HOSTCHECK_ROW_IDS)
+)
+# The fixed argv sha from hostcheck_rows.py --argv-sha256 (a test checks it).
+HOSTCHECK_ARGV_SHA256 = "d52b5c4f145742b2f2be509a2176fdd7aacab5f01ac7cecb9300a3cc869cea2e"
+
+
+def _hostcheck_kind(row: str, key: str) -> object:
+    return HOSTCHECK_FACTS[row].get(key)
+
+
+def _hostcheck_fact(row: str, key: object, value: object, outcome: str) -> bool:
+    if not isinstance(key, str):
+        return False
+    kind = _hostcheck_kind(row, key)
+    if kind is None:
+        return False
+    if kind == "verbatim":
+        return (
+            outcome == "IPV6_NOT_PRESENT"
+            and isinstance(value, str)
+            and re.fullmatch(r"[ -~]{1,300}", value) is not None
+            and HOSTCHECK_IPV6_ABSENT.search(value) is not None
+        )
+    if kind == "bool":
+        return isinstance(value, bool)
+    if kind == "true":
+        return value is True
+    if kind == "count":
+        return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100000
+    if kind == "json_word":
+        return isinstance(value, str) and _HC_JSON_WORD.fullmatch(value) is not None
+    return isinstance(kind, frozenset) and isinstance(value, str) and value in kind
+
+
+def allow_hostcheck(value: object) -> dict | None:
+    """H2 host-check rows: names, yes/no, small counts and rc only. Anything else is dropped."""
+    if not isinstance(value, dict):
+        return None
+    rows = []
+    raw_rows = value.get("rows")
+    for item in raw_rows if isinstance(raw_rows, list) else []:
+        if not isinstance(item, dict):
+            continue
+        row = item.get("row")
+        outcome = item.get("outcome")
+        rc = item.get("rc")
+        reason = item.get("reason")
+        facts = item.get("facts")
+        if row not in HOSTCHECK_ROW_IDS or outcome not in HOSTCHECK_OUTCOMES:
+            continue
+        if rc is not None and (isinstance(rc, bool) or not isinstance(rc, int) or not -255 <= rc <= 255):
+            continue
+        if not isinstance(reason, str) or reason not in HOSTCHECK_REASONS:
+            continue
+        kept_facts = {
+            key: fact for key, fact in (facts.items() if isinstance(facts, dict) else ()) if _hostcheck_fact(row, key, fact, outcome)
+        }
+        rows.append({"facts": kept_facts, "outcome": outcome, "rc": rc, "reason": reason, "row": row})
+    summary = value.get("summary")
+    kept_summary = {}
+    if isinstance(summary, dict):
+        allowed_values = {
+            "argv_sha256": frozenset({HOSTCHECK_ARGV_SHA256}),
+            "e5d_outcome": HOSTCHECK_E5D_OUTCOMES,
+            "ipv6": HOSTCHECK_IPV6_STATES,
+            "stopped_at": HOSTCHECK_STOPPED_AT,
+        }
+        for key, values in allowed_values.items():
+            item = summary.get(key)
+            if isinstance(item, str) and item in values:
+                kept_summary[key] = item
+        if summary.get("e5d_note") == "IPv6 half not read; E5 (d) cannot be recorded as active":
+            kept_summary["e5d_note"] = summary["e5d_note"]
+        error = summary.get("ipv6_error_verbatim")
+        if _hostcheck_fact("E5-7", "ipv6_error_verbatim", error, "IPV6_NOT_PRESENT"):
+            kept_summary["ipv6_error_verbatim"] = error
+    return {"proof_state": "NOT_PROVED", "rows": rows, "summary": kept_summary}
 
 
 def allow_battery(entry: Any, depth: int = 0) -> dict[str, Any] | None:
@@ -1388,6 +1571,14 @@ def batteries_requested(env: Mapping[str, str]) -> bool:
     if raw not in ("true", "false"):
         raise SystemExit("batteries")
     return raw == "true"
+
+
+def public_pin_requested(env: Mapping[str, str]) -> bool:
+    """The public PE archive rides the handoff for batteries and for self-service (F0-a)."""
+    raw = env.get("SELF_SERVICE", "false").strip().lower()
+    if raw not in ("true", "false"):
+        raise SystemExit("self_service")
+    return batteries_requested(env) or raw == "true"
 
 
 def refuse_batteries(env: Mapping[str, str]) -> str:

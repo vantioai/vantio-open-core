@@ -136,7 +136,7 @@ def upload_handoff(env: Mapping[str, str]) -> int:
         paths.extend([brain_dir / rtbrain.MODEL_NAME, brain_dir / rtbrain.RUNTIME_NAME])
         limits.extend([rtbrain.MODEL_BYTES, rtbrain.RUNTIME_BYTES])
     public_pin = ""
-    if batteries_requested(env):
+    if public_pin_requested(env):
         public_pin = verify_public_pin_file(directory / PUBLIC_PIN_FILE)
         names.append(public_pin_object_name(env.get("GITHUB_RUN_ID", "")))
         paths.append(directory / PUBLIC_PIN_FILE)
@@ -249,7 +249,7 @@ def download_handoff(env: Mapping[str, str]) -> int:
             "seal_sha256": seal,
             "trust_sha256": TRUST_SHA256,
         }
-        if batteries_requested(env):
+        if public_pin_requested(env):
             pin_path = directory / PUBLIC_PIN_FILE
             download_one(BUCKET, public_pin_object_name(env.get("GITHUB_RUN_ID", "")), pin_path)
             payload["public_pin_sha256"] = verify_public_pin_file(pin_path)

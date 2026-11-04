@@ -202,6 +202,8 @@ jobs:
           EVIDENCE_PATH: ${{ runner.temp }}/gcp-lab-evidence/prepare-bundle.json
           # Batteries end with 2c-upgrade-rollback, which needs public-pin.oci.tar (#320).
           W3_BATTERY: ${{ inputs.run_batteries == true && '2c-upgrade-rollback' || '' }}
+          # Self-service needs the same public PE archive so the installer has real bytes (F0-a).
+          W3_STAGE_PUBLIC_PIN: ${{ inputs.self_service == true && 'true' || 'false' }}
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
         run: |
           set -euo pipefail
@@ -256,6 +258,7 @@ jobs:
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           BRAIN_DIR: ${{ runner.temp }}/redteam-brain
           RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
+          SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py upload-handoff
 
       - name: Delete the local bundle
@@ -420,6 +423,7 @@ jobs:
             packages/t5-egress-drills/
             packages/t5-egress-kernel/
             scripts/lab/stage_lab_trust.py
+            scripts/lab/hostcheck_rows.py
             packages/vantio-install/vantio_install/
             packages/vantio-install/requirements/dev-hashes.txt
           sparse-checkout-cone-mode: false
@@ -508,6 +512,7 @@ jobs:
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           BRAIN_DIR: ${{ runner.temp }}/redteam-brain
           RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
+          SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py download-handoff
 
       - name: Download pinned offline packages
@@ -519,6 +524,43 @@ jobs:
           set -euo pipefail
           vantio run bash scripts/gcp/fetch_offline_debs.sh "$DEB_DIR"
           DEB_DIR="$DEB_DIR" vantio run python3 scripts/gcp/offline_deliver.py hash-debs
+
+      # N1: steps that can fail without a VM run before the VM exists, so a
+      # staging or compile failure never pays for a VM.
+      - name: Stage the lab installer and a non-production trust key
+        if: inputs.self_service
+        env:
+          PYTHONPATH: packages/vantio-install
+        run: |
+          set -euo pipefail
+          python3 -m pip install --require-hashes --disable-pip-version-check -r packages/vantio-install/requirements/dev-hashes.txt
+          dest="${{ runner.temp }}/self-service"
+          pinned="${{ runner.temp }}/pinned-artifacts"
+          mkdir -p "$dest" "$pinned"
+          cp scripts/aws/lab-guests/self_service.py "$dest/self_service.py"
+          cp scripts/lab/hostcheck_rows.py "$dest/hostcheck_rows.py"
+          cp -a packages/vantio-install/vantio_install "$dest/vantio_install"
+          vantio run python3 scripts/lab/stage_lab_trust.py fetch "$pinned" "${{ runner.temp }}/enterprise-bundle/public-pin.oci.tar"
+          vantio run python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
+          test -f "$dest/self-service.tar"
+          vantio run python3 -c 'import json,pathlib,sys; s=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert s.get("archive")!="absent", "pe_archive_absent"' "$dest/signature.json"
+          vantio run python3 scripts/lab/stage_lab_trust.py check-archive "$dest"
+          vantio run python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
+
+      - name: Compile the T5 loader
+        if: inputs.t5_egress
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang gcc libbpf-dev
+          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
+            -c packages/t5-egress-kernel/bpf/t5_egress.bpf.c \
+            -o "${{ runner.temp }}/t5_egress.bpf.o"
+          gcc -O2 -Wall -Wextra -Werror \
+            -o "${{ runner.temp }}/t5_load" \
+            scripts/clean-host/t5/t5_load.c -lbpf -lelf -lz
+          "${{ runner.temp }}/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill
+          "${{ runner.temp }}/t5_load" path-check /sys/fs/cgroup/vantio-enrolled.slice && exit 1 || true
 
       - name: Create the offline VM
         env:
@@ -550,23 +592,6 @@ jobs:
           set -euo pipefail
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           vantio run python3 scripts/gcp/offline_deliver.py plumb-guest
-
-      - name: Stage the lab installer and a non-production trust key
-        if: inputs.self_service
-        env:
-          PYTHONPATH: packages/vantio-install
-        run: |
-          set -euo pipefail
-          python3 -m pip install --require-hashes --disable-pip-version-check -r packages/vantio-install/requirements/dev-hashes.txt
-          dest="${{ runner.temp }}/self-service"
-          pinned="${{ runner.temp }}/pinned-artifacts"
-          mkdir -p "$dest" "$pinned"
-          cp scripts/aws/lab-guests/self_service.py "$dest/self_service.py"
-          cp -a packages/vantio-install/vantio_install "$dest/vantio_install"
-          vantio run python3 scripts/lab/stage_lab_trust.py fetch "$pinned"
-          vantio run python3 scripts/lab/stage_lab_trust.py stage "$dest" "$pinned"
-          test -f "$dest/self-service.tar"
-          vantio run python3 -c 'import json,pathlib,sys; p=json.loads(pathlib.Path(sys.argv[1]).read_text()); assert p.get("audience")=="LAB_NONPROD" and p.get("not_a_production_root") is True' "$dest/lab-artifact-trust.json"
 
       - name: Run the self-service installer
         if: inputs.self_service
@@ -630,21 +655,6 @@ jobs:
           export GCP_LAB_GATE_JSON="$(cat "$GCP_LAB_GATE_JSON")"
           vantio run python3 scripts/gcp/offline_deliver.py run-batteries
 
-      - name: Compile the T5 loader
-        if: inputs.t5_egress
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang gcc libbpf-dev
-          clang -O2 -g -target bpf -D__TARGET_ARCH_x86 \
-            -c packages/t5-egress-kernel/bpf/t5_egress.bpf.c \
-            -o "${{ runner.temp }}/t5_egress.bpf.o"
-          gcc -O2 -Wall -Wextra -Werror \
-            -o "${{ runner.temp }}/t5_load" \
-            scripts/clean-host/t5/t5_load.c -lbpf -lelf -lz
-          "${{ runner.temp }}/t5_load" path-check /sys/fs/cgroup/vantio-t5-lab.slice/t5-drill
-          "${{ runner.temp }}/t5_load" path-check /sys/fs/cgroup/vantio-enrolled.slice && exit 1 || true
-
       - name: Run t5-egress on the fresh VM
         if: inputs.t5_egress
         env:
@@ -682,6 +692,7 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/gcp-lab-evidence
           REDTEAM_BRAIN: ${{ inputs.redteam_brain == true && 'true' || 'false' }}
           RUN_BATTERIES: ${{ inputs.run_batteries == true && 'true' || 'false' }}
+          SELF_SERVICE: ${{ inputs.self_service == true && 'true' || 'false' }}
         run: vantio run python3 scripts/gcp/offline_deliver.py delete-handoff
 
       - name: Remove the OS Login key

@@ -153,6 +153,8 @@ jobs:
       - name: Test release gates
         run: |
           python3 -m pip install --disable-pip-version-check 'pyyaml==6.0.1'
+          # cryptography for the stage_lab_trust tests, from the existing hash-pinned file only.
+          python3 -m pip install --require-hashes --disable-pip-version-check -r packages/vantio-install/requirements/dev-hashes.txt
           node --test scripts/release/governance.test.mjs
           node --test scripts/release/ws11/ws11.test.mjs
           node --test scripts/release/seal-identity-recheck.test.mjs
@@ -170,6 +172,7 @@ jobs:
           python3 scripts/aws/test_w3_lab_steps.py -v
           python3 scripts/lab/test_host_evidence_hu.py -v
           python3 scripts/lab/test_sparse_host_evidence.py -v
+          python3 scripts/lab/test_hostcheck_rows.py -v
           python3 scripts/gcp/test_gcp_enterprise_uninstall.py -v
           python3 scripts/aws/test_phase2_grade.py -v
           python3 scripts/aws/test_descendant_banner.py -v

@@ -1376,6 +1376,47 @@ class EnterpriseBundleTests(unittest.TestCase):
         pin_calls = [call for call in script["calls"] if any("public-pin.oci.tar" in part for part in call)]
         self.assertEqual(len(pin_calls), 3)
 
+    def test_stage_public_pin_flag_stages_the_pin_without_a_battery(self) -> None:
+        # GCP self-service (F0-a) asks for the public pin with its own flag, not W3_BATTERY.
+        for flag, want_pin in (("true", True), ("false", False), ("", False)):
+            with self.subTest(flag=flag):
+                token = self._token()
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    files, seal_sha, trust_sha = self._bundle_files(root)
+                    answers = [
+                        ("ok", files["manifest.json"]),
+                        ("ok", files["seal.oci.tar"]),
+                        ("ok", files["contract.tar"]),
+                    ]
+                    if want_pin:
+                        answers.append(("ok", b"pin-ok"))
+                    script, run, sleep = self._scripted_gh(answers)
+                    os.environ["W3_LAB_PRIVATE_BUNDLE_TOKEN"] = token
+                    os.environ["W3_BUNDLE_DIR"] = str(root / "dest")
+                    os.environ["EVIDENCE_PATH"] = str(root / "bundle.json")
+                    os.environ["W3_BUNDLE_TAG"] = "lab-bundle/enterprise-pe-2026-10-08"
+                    os.environ.pop("W3_BATTERY", None)
+                    os.environ["W3_STAGE_PUBLIC_PIN"] = flag
+                    os.environ["W3_EXPECTED_SEAL"] = seal_sha
+                    real_sha = enterprise_bundle.sha256_file
+                    enterprise_bundle.sha256_file = self._pin_sha
+                    try:
+                        with mock.patch.object(enterprise_bundle.subprocess, "run", run), mock.patch.object(
+                            enterprise_bundle, "_download_sleep", sleep
+                        ):
+                            result = enterprise_bundle.prepare_bundle(expected_seal=seal_sha, expected_trust=trust_sha)
+                    finally:
+                        enterprise_bundle.sha256_file = real_sha
+                self.assertEqual(result["status"], "BUNDLE_READY")
+                pin_calls = [call for call in script["calls"] if any("public-pin.oci.tar" in part for part in call)]
+                if want_pin:
+                    self.assertEqual(result["public_pin_sha256"], PIN)
+                    self.assertEqual(len(pin_calls), 1)
+                else:
+                    self.assertNotIn("public_pin_sha256", result)
+                    self.assertEqual(pin_calls, [])
+
     def test_public_pin_503_is_recorded_and_prepare_bundle_exits_2(self) -> None:
         token = self._token()
         with tempfile.TemporaryDirectory() as tmp:

@@ -192,6 +192,10 @@ def pack(directory: Path, dest: Path) -> None:
         dest.unlink()
     with tarfile.open(dest, "w") as tar:
         for path in sorted(directory.rglob("*")):
+            # F1 sweep: never pack a symlink, or a file reached through one.
+            rel_parts = path.relative_to(directory).parts
+            if any((directory.joinpath(*rel_parts[: i + 1])).is_symlink() for i in range(len(rel_parts))):
+                raise SystemExit("self_service_layout")
             if not path.is_file() or path.resolve() == dest.resolve():
                 continue
             rel = path.relative_to(directory).as_posix()
@@ -265,8 +269,14 @@ def _run(argv: list[str], cwd: Path) -> None:
     subprocess.run(argv, check=False, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def fetch_pinned(dest: Path) -> list[str]:
-    """Download public pin files. Keep a file only when the hash matches."""
+def fetch_pinned(dest: Path, public_pin: Path | None = None) -> list[str]:
+    """Download public pin files. Keep a file only when the hash matches.
+
+    public_pin is an already-downloaded copy of the public PE archive (the
+    GCP harness gets it from the private bundle). It is copied into scratch
+    and kept under the pinned archive name only if its sha256 is the frozen
+    pe_archive_sha256, like every other file here.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     scratch = dest / ".fetch"
     if scratch.exists():
@@ -295,6 +305,8 @@ def fetch_pinned(dest: Path) -> list[str]:
     )
     _run(["npm", "pack", "@vantio/cli@0.3.24", "--ignore-scripts", "--pack-destination", str(scratch)], scratch)
     _run(["npm", "pack", "@vantio/agent-sdk@0.2.4", "--ignore-scripts", "--pack-destination", str(scratch)], scratch)
+    if public_pin is not None and public_pin.is_file() and not public_pin.is_symlink():
+        (scratch / "public-pin.oci.tar").write_bytes(public_pin.read_bytes())
     kept: list[str] = []
     expected = {
         pins["agent_sdk_py_wheel"]: pins["agent_sdk_py_wheel_sha256"],
@@ -317,12 +329,98 @@ def fetch_pinned(dest: Path) -> list[str]:
     return sorted(set(kept))
 
 
+USAGE = "usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST [PUBLIC_PIN] | check-archive DEST"
+
+
+def check_archive(dest: Path) -> dict[str, object]:
+    """Positive check after stage: the PE archive in the tar tree has the pinned
+    sha256 and signature.json signs that same digest. Raises if not."""
+    pins = constants.FROZEN_PINS
+    archive = dest / "bundle" / "artifacts" / "phantom-engine" / pins["pe_archive_name"]
+    if not archive.is_file() or archive.is_symlink() or _sha256(archive) != pins["pe_archive_sha256"]:
+        raise SystemExit("pe_archive_pin_mismatch")
+    record = json.loads((dest / "signature.json").read_text(encoding="utf-8"))
+    document = record.get("document") if isinstance(record, dict) else None
+    if (
+        not isinstance(document, dict)
+        or document.get("sha256") != pins["pe_archive_sha256"]
+        or document.get("filename") != pins["pe_archive_name"]
+    ):
+        raise SystemExit("pe_archive_signature_mismatch")
+    _check_tar_member(dest / "self-service.tar", pins, record)
+    return {"archive_pin_match": True, "tar_member_pin_match": True}
+
+
+def _normal_member_name(raw: str) -> str:
+    """F1: one canonical spelling per tar member, or SystemExit.
+    Strips leading './', collapses repeated and trailing '/', drops '.' parts.
+    Rejects absolute names, '..', backslashes, NULs and an empty result."""
+    if not isinstance(raw, str) or not raw or "\x00" in raw or "\\" in raw or raw.startswith("/"):
+        raise SystemExit("pe_archive_tar_bad_member")
+    parts = [part for part in raw.split("/") if part not in {"", "."}]
+    if not parts or ".." in parts:
+        raise SystemExit("pe_archive_tar_bad_member")
+    return "/".join(parts)
+
+
+def _check_tar_member(tar_path: Path, pins: dict, record: dict) -> None:
+    """N5 + F1: the copy that ships is the tar MEMBER, so check every member the
+    guest's GNU `tar -xf` would write. Every name is normalised; names must be
+    unique after normalising; only regular files and directories are allowed
+    (no symlink, hardlink, device or fifo); no member may sit under another
+    member that is not a directory. Then the PE archive member (exactly one)
+    must have the pinned sha256 and the tar's signature.json must equal the
+    checked one. Nothing is extracted on the runner."""
+    member_name = f"bundle/artifacts/phantom-engine/{pins['pe_archive_name']}"
+    if not tar_path.is_file() or tar_path.is_symlink():
+        raise SystemExit("pe_archive_tar_missing")
+    with tarfile.open(tar_path, "r:") as tar:
+        members = tar.getmembers()
+        kinds: dict[str, str] = {}
+        by_name: dict[str, tarfile.TarInfo] = {}
+        for member in members:
+            name = _normal_member_name(member.name)
+            if name in kinds:
+                raise SystemExit("pe_archive_tar_duplicate_member")
+            if member.isreg():
+                kinds[name] = "file"
+            elif member.isdir():
+                kinds[name] = "dir"
+            else:
+                raise SystemExit("pe_archive_tar_bad_member_type")
+            by_name[name] = member
+        for name in kinds:
+            parts = name.split("/")
+            for i in range(1, len(parts)):
+                parent = "/".join(parts[:i])
+                if kinds.get(parent, "dir") != "dir":
+                    raise SystemExit("pe_archive_tar_bad_parent")
+        if kinds.get(member_name) != "file" or kinds.get("signature.json") != "file":
+            raise SystemExit("pe_archive_tar_member_mismatch")
+        digest = hashlib.sha256()
+        handle = tar.extractfile(by_name[member_name])
+        if handle is None:
+            raise SystemExit("pe_archive_tar_member_mismatch")
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+        if digest.hexdigest() != pins["pe_archive_sha256"]:
+            raise SystemExit("pe_archive_tar_member_mismatch")
+        sig_handle = tar.extractfile(by_name["signature.json"])
+        try:
+            tar_record = json.loads(sig_handle.read().decode("utf-8")) if sig_handle else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            tar_record = None
+        if tar_record != record:
+            raise SystemExit("pe_archive_tar_signature_mismatch")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST")
-    if args[0] == "fetch" and len(args) == 2:
-        print(json.dumps({"kept": fetch_pinned(Path(args[1]))}, sort_keys=True))
+        raise SystemExit(USAGE)
+    if args[0] == "fetch" and len(args) in {2, 3}:
+        public_pin = Path(args[2]) if len(args) == 3 else None
+        print(json.dumps({"kept": fetch_pinned(Path(args[1]), public_pin)}, sort_keys=True))
         return 0
     if args[0] == "stage" and len(args) in {2, 3}:
         dest = Path(args[1])
@@ -332,7 +430,13 @@ def main(argv: list[str] | None = None) -> int:
         result["tar"] = "self-service.tar"
         print(json.dumps(result, sort_keys=True))
         return 0
-    raise SystemExit("usage: stage_lab_trust.py stage DEST [PINNED] | fetch DEST")
+    if args[0] == "check-archive" and len(args) == 2:
+        result = check_archive(Path(args[1]))
+        if result.get("archive_pin_match") is not True:
+            raise SystemExit("pe_archive_pin_mismatch")
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    raise SystemExit(USAGE)
 
 
 if __name__ == "__main__":

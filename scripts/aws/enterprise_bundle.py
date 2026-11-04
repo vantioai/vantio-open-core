@@ -558,7 +558,10 @@ def prepare_bundle(
         else:
             fetcher(dest)
         payload.update(inspect_bundle(dest, expected_seal=expected_seal, expected_trust=expected_trust))
-        if os.environ.get("W3_BATTERY", "").strip() == "2c-upgrade-rollback":
+        if (
+            os.environ.get("W3_BATTERY", "").strip() == "2c-upgrade-rollback"
+            or os.environ.get("W3_STAGE_PUBLIC_PIN", "").strip() == "true"
+        ):
             digest, pin_fields = stage_public_pin(token, commit, dest)
             payload["public_pin_sha256"] = digest
             _copy_download_fields(payload, pin_fields)
