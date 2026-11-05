@@ -24,9 +24,8 @@ on:
         required: true
         type: string
       seal:
-        description: Seal sha256, 64 hex characters. Empty uses release/pe-canonical-seal.json lane_seal.sha256. The downloaded manifest must carry this digest.
-        required: false
-        default: ""
+        description: Seal sha256, 64 lowercase hex characters. Empty, short, and non-hex values are rejected before arming. The downloaded manifest must carry this digest.
+        required: true
         type: string
       bundle_commit:
         description: Private lab bundle commit, 40 hex characters. Empty uses the commit already pinned in the bundle checker.
@@ -116,6 +115,25 @@ jobs:
             exit 1
           fi
 
+      # Fail before checkout and before arming. The runner consumes the mask
+      # command. This step's step-debug environment is printed first.
+      # docs/lab/seal-dispatch.md
+      - name: Check the seal input
+        env:
+          SEAL: ${{ inputs.seal }}
+          # Byte ranges: [0-9a-f] must not follow the runner locale.
+          LC_ALL: "C"
+        run: |
+          set -euo pipefail
+          len=${#SEAL}
+          if [[ "$SEAL" =~ ^[0-9a-f]{64}$ ]]; then
+            printf 'seal_len=%s result=pass\n' "$len"
+            printf '%s\n' "::add-mask::${SEAL}"
+          else
+            printf 'seal_len=%s result=fail\n' "$len"
+            exit 1
+          fi
+
       - name: Refuse static AWS keys
         run: |
           set -euo pipefail
@@ -174,6 +192,8 @@ jobs:
         env:
           INPUT_SEAL: ${{ inputs.seal }}
           INPUT_PUBLIC_PIN: ${{ inputs.public_pin }}
+          # Byte ranges: [0-9a-f] must not follow the runner locale.
+          LC_ALL: "C"
         run: |
           set -euo pipefail
           test -f release/pe-canonical-seal.json
@@ -183,13 +203,14 @@ jobs:
           printf '%s\n' "$pin" | grep -Eq '^[0-9a-f]{64}$'
           seal="${INPUT_SEAL:-}"
           public="${INPUT_PUBLIC_PIN:-}"
-          if [ -z "$seal" ]; then
-            seal="$lane"
+          # Empty is not the lane digest. Reject before writing the step output.
+          if ! printf '%s\n' "$seal" | grep -Eq '^[0-9a-f]{64}$'; then
+            printf 'seal_len=%s result=fail\n' "${#seal}"
+            exit 1
           fi
           if [ -z "$public" ]; then
             public="$pin"
           fi
-          printf '%s\n' "$seal" | grep -Eq '^[0-9a-f]{64}$'
           printf '%s\n' "$public" | grep -Eq '^[0-9a-f]{64}$'
           echo "seal=$seal" >> "$GITHUB_OUTPUT"
           echo "public_pin=$public" >> "$GITHUB_OUTPUT"

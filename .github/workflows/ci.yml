@@ -173,6 +173,7 @@ jobs:
           python3 scripts/lab/test_host_evidence_hu.py -v
           python3 scripts/lab/test_sparse_host_evidence.py -v
           python3 scripts/lab/test_hostcheck_rows.py -v
+          python3 scripts/lab/test_seal_dispatch.py -v
           python3 scripts/gcp/test_gcp_enterprise_uninstall.py -v
           python3 scripts/aws/test_phase2_grade.py -v
           python3 scripts/aws/test_descendant_banner.py -v

@@ -66,8 +66,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Run 41159461489 reached check-dispatch with a 51-character seal.
+  # This job is first so a bad seal exits before checkout, the private
+  # bundle, or any job that creates a VM. Teardown still runs after it.
+  # The first step is the same Require main guard fetch and teardown run
+  # before they authenticate. This job still has no cloud credentials.
+  sealcheck:
+    name: Check the seal input
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - name: Require main on vantio-open-core
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REPOSITORY" = "vantioai/vantio-open-core"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_WORKFLOW_REF" = "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
+
+      - name: Check the seal input
+        env:
+          SEAL: ${{ inputs.seal }}
+          # Byte ranges: [0-9a-f] must not follow the runner locale.
+          LC_ALL: "C"
+        run: |
+          set -euo pipefail
+          len=${#SEAL}
+          if [[ "$SEAL" =~ ^[0-9a-f]{64}$ ]]; then
+            printf 'seal_len=%s result=pass\n' "$len"
+          else
+            printf 'seal_len=%s result=fail\n' "$len"
+            exit 1
+          fi
+
   fetch:
     name: Fetch sealed bundle to private bucket
+    needs: sealcheck
     # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: w3-lab-auto
@@ -106,6 +142,23 @@ jobs:
               echo "run_batteries needs stop_after_minutes of at least 90" >&2
               exit 1
             fi
+          fi
+
+      # First step in this job that receives inputs.seal. The runner prints
+      # this step's environment before the script. Later steps are masked.
+      # docs/lab/seal-dispatch.md
+      - name: Mask the seal input
+        env:
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          # Byte ranges: [0-9a-f] must not follow the runner locale.
+          LC_ALL: "C"
+        run: |
+          set -euo pipefail
+          if [[ "$EXPECTED_SEAL" =~ ^[0-9a-f]{64}$ ]]; then
+            printf '%s\n' "::add-mask::${EXPECTED_SEAL}"
+          else
+            printf 'seal_len=%s result=fail\n' "${#EXPECTED_SEAL}"
+            exit 1
           fi
 
       - name: Refuse static cloud keys
@@ -368,6 +421,23 @@ jobs:
               echo "run_batteries needs stop_after_minutes of at least 90" >&2
               exit 1
             fi
+          fi
+
+      # First step in this job that receives inputs.seal. The runner prints
+      # this step's environment before the script. Later steps are masked.
+      # docs/lab/seal-dispatch.md
+      - name: Mask the seal input
+        env:
+          EXPECTED_SEAL: ${{ inputs.seal }}
+          # Byte ranges: [0-9a-f] must not follow the runner locale.
+          LC_ALL: "C"
+        run: |
+          set -euo pipefail
+          if [[ "$EXPECTED_SEAL" =~ ^[0-9a-f]{64}$ ]]; then
+            printf '%s\n' "::add-mask::${EXPECTED_SEAL}"
+          else
+            printf 'seal_len=%s result=fail\n' "${#EXPECTED_SEAL}"
+            exit 1
           fi
 
       - name: Refuse static GCP keys
@@ -758,7 +828,11 @@ jobs:
 
   teardown:
     name: Teardown and verify removal
-    needs: [fetch, deliver]
+    needs: [sealcheck, fetch, deliver]
+    # A failed sealcheck skips fetch, gate, and deliver, so this run does not
+    # create a VM. always() still starts this job, which runs
+    # teardown-if-present. The cost gate is unchanged: gate runs only after
+    # fetch succeeds, and deliver runs only when expected_oop_usd is 0.
     if: always()
     # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}

@@ -101,10 +101,25 @@ class WorkflowWiringTests(unittest.TestCase):
             if not path.name.startswith(("gcp-lab", "w3-lab")):
                 continue
             doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-            for job in doc["jobs"].values():
+            for job_id, job in doc["jobs"].items():
                 if "runs-on" in job:
                     self.assertEqual(job["runs-on"], runner, path.name)
                 steps = job.get("steps") or []
+                if job_id == "sealcheck":
+                    # Length check only. It must not install Optics or call a cloud.
+                    self.assertEqual(path.name, "gcp-lab-provision.yml")
+                    self.assertNotIn("environment", job)
+                    self.assertEqual(job.get("permissions"), {"contents": "read"})
+                    self.assertEqual(
+                        [step.get("name") for step in steps],
+                        ["Require main on vantio-open-core", "Check the seal input"],
+                    )
+                    for step in steps:
+                        script = step.get("run") or ""
+                        self.assertNotIn("vantio run ", script)
+                        self.assertNotIn("inputs.seal", script)
+                    self.assertIsNone(job.get("uses"))
+                    continue
                 if not steps:
                     continue
                 install = next(step for step in steps if step.get("name") == "Install Optics observe CLI")
