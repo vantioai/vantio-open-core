@@ -32,6 +32,7 @@ from vantio_install.license_token import (
     license_trust_override,
     packaged_license_keys,
     store_license,
+    usable_license_keys,
     verify_token,
 )
 from vantio_install.observe_health import SCOPED_BANNER, enforce_proof, readiness_gaps
@@ -109,8 +110,11 @@ def _transport(script: list[tuple[int, dict, bytes]]):
 
 
 class TokenTests(unittest.TestCase):
-    def test_packaged_license_trust_is_empty(self) -> None:
-        self.assertEqual(packaged_license_keys(), ())
+    def test_packaged_license_trust_is_the_live_key(self) -> None:
+        keys = packaged_license_keys()
+        self.assertEqual(len(keys), 1)
+        self.assertEqual(keys[0]["kid"], "lic-live-2026-10")
+        self.assertEqual(usable_license_keys("test"), ())
         self.assertEqual(constants.FROZEN_PINS["pe_archive_sha256"], PIN)
 
     def test_round_trip_and_refusals(self) -> None:

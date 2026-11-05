@@ -1,3 +1,10 @@
 {
-  "keys": []
+  "keys": [
+    {
+      "key_id": "prod-artifact-2026-11",
+      "key_class": "production",
+      "alg": "Ed25519",
+      "public_key_b64": "EzSVGqc5E7sO33f7I7oQa4HR+Rqi1F2RimrtUrB/ynQ="
+    }
+  ]
 }

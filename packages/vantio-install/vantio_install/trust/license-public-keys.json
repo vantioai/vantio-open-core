@@ -1,3 +1,13 @@
 {
-  "keys": []
+  "schema": 2,
+  "build_mode": "live",
+  "revoked_kids": [],
+  "keys": [
+    {
+      "kid": "lic-live-2026-10",
+      "alg": "Ed25519",
+      "mode": "live",
+      "public_key_b64": "ekbsT+RzDrwlRtXZM09L/NZD/roe65Be5/t3UYpKpiY="
+    }
+  ]
 }
