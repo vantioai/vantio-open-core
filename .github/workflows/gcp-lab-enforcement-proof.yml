@@ -310,7 +310,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ runner.temp }}/pe-loader"
-          vantio run bash scripts/gcp/build_pe_loader.sh phantom-engine "${{ runner.temp }}/pe-loader" 864289cb2c9c4135d74233c74c6655087de3f20d
+          vantio run bash scripts/gcp/build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine" "${{ runner.temp }}/pe-loader" 864289cb2c9c4135d74233c74c6655087de3f20d
 
       - name: Upload the loader for the proof job
         if: success()

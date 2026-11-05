@@ -49,6 +49,16 @@ def _flip(text: str) -> str:
     return text[:-1] + last
 
 
+def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> bool:
+    """True when cargo's workdir is the absolute checkout, not a bare /src mount."""
+    root = str(checkout.resolve())
+    if not workdir.startswith("/") or workdir in {"/src", "/src/"}:
+        return False
+    if workdir != root:
+        return False
+    return volume == f"{root}:{root}:ro"
+
+
 class PinAndOrderTests(unittest.TestCase):
     def test_only_the_pinned_tip_passes(self) -> None:
         self.assertTrue(ep.sha_ok(PIN))
@@ -353,6 +363,139 @@ class CreateAndBuildTests(unittest.TestCase):
         self.assertIn(f"expected={PIN}", text)
         mutated = text.replace(PIN, _flip(PIN), 1)
         self.assertNotIn(f"expected={PIN}", mutated)
+
+    def _fake_tools(self, root: Path, pin: str) -> dict[str, str]:
+        bindir = root / "bin"
+        bindir.mkdir()
+        git = bindir / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "while [ $# -gt 0 ]; do\n"
+            "  case \"$1\" in\n"
+            "    -C) shift 2; continue ;;\n"
+            "  esac\n"
+            "  break\n"
+            "done\n"
+            "case \"$1\" in\n"
+            "  rev-parse) printf '%s\\n' \"$PE_HEAD\" ;;\n"
+            "  status) ;;\n"
+            "  *) printf 'git_unexpected\\n' >&2; exit 1 ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        git.chmod(0o755)
+        docker = bindir / "docker"
+        docker.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$@\" > \"$DOCKER_LOG\"\n"
+            "out_host=\n"
+            "for arg in \"$@\"; do\n"
+            "  case \"$arg\" in\n"
+            "    *:/out) out_host=${arg%:/out} ;;\n"
+            "  esac\n"
+            "done\n"
+            "if [ -n \"$out_host\" ]; then\n"
+            "  mkdir -p \"$out_host\"\n"
+            "  printf '\\177ELF' > \"$out_host/vantio-loader\"\n"
+            "  printf 'libc.so.6\\n' > \"$out_host/ldd.txt\"\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        docker.chmod(0o755)
+        return {
+            "PATH": f"{bindir}:{os.environ.get('PATH', '')}",
+            "DOCKER_LOG": str(root / "docker.log"),
+            "PE_HEAD": pin,
+            "HOME": str(root),
+        }
+
+    def _checkout(self, path: Path, *, manifest: bool = True) -> None:
+        (path / "vantio-loader" / "src").mkdir(parents=True)
+        (path / "scripts").mkdir()
+        if manifest:
+            (path / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+        (path / "rust-toolchain.toml").write_text("[toolchain]\n", encoding="utf-8")
+        (path / "vantio-loader" / "src" / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+        (path / "scripts" / "enforcement_proof_lab.sh").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+
+    def test_relative_checkout_is_the_cargo_workdir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("loader_built=1", done.stdout)
+            args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            workdir = args[args.index("-w") + 1]
+            volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
+            self.assertTrue(_cargo_workdir_is_checkout(workdir, f"{workdir}:{workdir}:ro", checkout))
+            self.assertIn(f"{workdir}:{workdir}:ro", volumes)
+            self.assertNotIn("/src", workdir)
+            self.assertTrue((Path(workdir) / "Cargo.toml").is_file())
+            flipped = workdir[:-1] + ("x" if workdir[-1] != "x" else "y")
+            self.assertNotEqual(flipped, workdir)
+            self.assertFalse(_cargo_workdir_is_checkout(flipped, f"{flipped}:{flipped}:ro", checkout))
+            self.assertFalse(_cargo_workdir_is_checkout("/src", "phantom-engine:/src:ro", checkout))
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn('build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine"', workflow)
+        self.assertNotIn("build_pe_loader.sh phantom-engine ", workflow)
+
+    def test_missing_manifest_does_not_start_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._checkout(root / "phantom-engine", manifest=False)
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(done.returncode, 0)
+            self.assertFalse((root / "docker.log").exists())
+
+    def test_named_volume_mount_mutation_is_not_the_checkout(self) -> None:
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertIn('-v "$src:$src:ro"', text)
+        self.assertIn('-w "$src"', text)
+        self.assertNotIn("cd /src", text)
+        self.assertNotIn('"$root:/src', text)
+        mutated = text.replace('"$src:$src:ro"', '"$root:/src:ro"', 1).replace('-w "$src"', "-w /src", 1)
+        self.assertNotEqual(mutated, text)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            script = root / "mutated.sh"
+            script.write_text(mutated, encoding="utf-8")
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            workdir = args[args.index("-w") + 1]
+            volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
+            self.assertEqual(workdir, "/src")
+            self.assertIn("phantom-engine:/src:ro", volumes)
+            self.assertFalse(_cargo_workdir_is_checkout(workdir, "phantom-engine:/src:ro", checkout))
 
 
 class TeardownTests(unittest.TestCase):

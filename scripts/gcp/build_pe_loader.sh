@@ -18,27 +18,41 @@ if [[ "$pin" != "$expected" ]]; then
   echo "pe_git_sha" >&2
   exit 1
 fi
-head=$(git -C "$root" rev-parse HEAD)
+# Docker uses a slash-free -v source as a named volume. pwd -P is the checkout
+# directory, and that absolute path is both the mount and cargo's workdir.
+src=$(cd "$root" && pwd -P)
+case "$src" in
+  /src|/src/) echo "pe_src" >&2; exit 1 ;;
+  /*) ;;
+  *) echo "pe_src" >&2; exit 1 ;;
+esac
+head=$(git -C "$src" rev-parse HEAD)
 if [[ "$head" != "$expected" ]]; then
   echo "pe_head" >&2
   exit 1
 fi
-if [[ -n "$(git -C "$root" status --porcelain)" ]]; then
+if [[ -n "$(git -C "$src" status --porcelain)" ]]; then
   echo "pe_dirty" >&2
   exit 1
 fi
-test -f "$root/Cargo.toml"
-test -f "$root/rust-toolchain.toml"
-test -f "$root/vantio-loader/src/main.rs"
-test -f "$root/scripts/enforcement_proof_lab.sh"
+test -f "$src/Cargo.toml"
+test -f "$src/rust-toolchain.toml"
+test -f "$src/vantio-loader/src/main.rs"
+test -f "$src/scripts/enforcement_proof_lab.sh"
 mkdir -p "$out"
-cp "$root/scripts/enforcement_proof_lab.sh" "$out/enforcement_proof_lab.sh"
-bash -n "$out/enforcement_proof_lab.sh"
-sha256sum "$out/enforcement_proof_lab.sh" | awk '{print $1}' > "$out/script.sha256"
+out_dir=$(cd "$out" && pwd -P)
+case "$out_dir" in
+  /*) ;;
+  *) echo "pe_out" >&2; exit 1 ;;
+esac
+cp "$src/scripts/enforcement_proof_lab.sh" "$out_dir/enforcement_proof_lab.sh"
+bash -n "$out_dir/enforcement_proof_lab.sh"
+sha256sum "$out_dir/enforcement_proof_lab.sh" | awk '{print $1}' > "$out_dir/script.sha256"
 
 docker run --rm \
-  -v "$root:/src:ro" \
-  -v "$out:/out" \
+  -v "$src:$src:ro" \
+  -v "$out_dir:/out" \
+  -w "$src" \
   ubuntu:24.04 \
   bash -c 'set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -48,7 +62,6 @@ curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --defaul
 . "$HOME/.cargo/env"
 curl -L --proto "=https" --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 cargo binstall --no-confirm bpf-linker
-cd /src
 export CARGO_HOME=/tmp/cargo
 export CARGO_TARGET_DIR=/tmp/target
 cargo build -p vantio-loader --release
@@ -60,9 +73,9 @@ fi
 ldd /out/vantio-loader > /out/ldd.txt || true
 '
 
-if ! python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); d=p.read_bytes(); sys.exit(0 if d[:4]==b"\x7fELF" and b"libssl" not in pathlib.Path(sys.argv[2]).read_bytes() else 1)' "$out/vantio-loader" "$out/ldd.txt"; then
+if ! python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); d=p.read_bytes(); sys.exit(0 if d[:4]==b"\x7fELF" and b"libssl" not in pathlib.Path(sys.argv[2]).read_bytes() else 1)' "$out_dir/vantio-loader" "$out_dir/ldd.txt"; then
   echo "loader_libs" >&2
   exit 1
 fi
-sha256sum "$out/vantio-loader" | awk '{print $1}' > "$out/loader.sha256"
+sha256sum "$out_dir/vantio-loader" | awk '{print $1}' > "$out_dir/loader.sha256"
 echo "loader_built=1"
