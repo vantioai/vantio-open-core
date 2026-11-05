@@ -110,10 +110,14 @@ class WorkflowWiringTests(unittest.TestCase):
                     self.assertEqual(path.name, "gcp-lab-provision.yml")
                     self.assertNotIn("environment", job)
                     self.assertEqual(job.get("permissions"), {"contents": "read"})
-                    self.assertEqual([step.get("name") for step in steps], ["Check the seal input"])
-                    script = steps[0].get("run") or ""
-                    self.assertNotIn("vantio run ", script)
-                    self.assertNotIn("inputs.seal", script)
+                    self.assertEqual(
+                        [step.get("name") for step in steps],
+                        ["Require main on vantio-open-core", "Check the seal input"],
+                    )
+                    for step in steps:
+                        script = step.get("run") or ""
+                        self.assertNotIn("vantio run ", script)
+                        self.assertNotIn("inputs.seal", script)
                     self.assertIsNone(job.get("uses"))
                     continue
                 if not steps:

@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import copy
 import io
+import json
 import os
 import re
 import subprocess
@@ -21,8 +22,18 @@ import seal_dispatch
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
+ARM_WORKFLOW = ROOT / ".github" / "workflows" / "w3-lab-auto-arm.yml"
 GOOD_SEAL = "ab" * 32
 GOOD_COMMIT = "cd" * 20
+WORKFLOW_REF = (
+    "vantioai/vantio-open-core/.github/workflows/gcp-lab-provision.yml@refs/heads/main"
+)
+MAIN_ENV = {
+    "GITHUB_EVENT_NAME": "workflow_dispatch",
+    "GITHUB_REPOSITORY": "vantioai/vantio-open-core",
+    "GITHUB_REF": "refs/heads/main",
+    "GITHUB_WORKFLOW_REF": WORKFLOW_REF,
+}
 
 
 def _hidden(blob: str, value: str) -> None:
@@ -50,10 +61,67 @@ def workflow_check_script(text: str | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _named_step(job: dict, name: str) -> dict:
+    for step in job["steps"]:
+        if step.get("name") == name:
+            return step
+    raise AssertionError(name)
+
+
+def run_bash(
+    script: str,
+    env: dict[str, str],
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    full = {"PATH": os.environ.get("PATH", "/usr/bin")}
+    full.update(env)
+    return subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        env=full,
+        cwd=cwd,
+        check=False,
+    )
+
+
+def model_require_main(env: dict[str, str]) -> bool:
+    """The four Require main equalities. Other syntax is not this guard."""
+    return all(env.get(key) == value for key, value in MAIN_ENV.items())
+
+
+def actions_log(text: str) -> str:
+    """Drop ::add-mask:: commands, then redact those values from later lines.
+
+    This is the log text a runner keeps after it consumes the command.
+    It is not the pre-script environment dump. The runner writes that dump
+    before any command in the step.
+    """
+    masks: list[str] = []
+    kept: list[str] = []
+    for line in text.splitlines():
+        match = re.fullmatch(r"::add-mask::(.*)", line)
+        if match:
+            value = match.group(1)
+            if value:
+                masks.append(value)
+            continue
+        redacted = line
+        for mask in masks:
+            redacted = redacted.replace(mask, "***")
+        kept.append(redacted)
+    if not kept:
+        return ""
+    body = "\n".join(kept)
+    if text.endswith("\n"):
+        return body + "\n"
+    return body
+
+
 def run_workflow_check(script: str, seal: str, extra: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """Run the sealcheck script with that step's env. SEAL is the only override."""
     loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    raw = loaded["jobs"]["sealcheck"]["steps"][0].get("env") or {}
+    raw = _named_step(loaded["jobs"]["sealcheck"], "Check the seal input").get("env") or {}
     env = {"PATH": os.environ.get("PATH", "/usr/bin"), "SEAL": seal}
     for key, value in raw.items():
         if key == "SEAL":
@@ -208,8 +276,12 @@ class WorkflowSealCheck(unittest.TestCase):
         self.assertNotIn("environment", sealcheck)
         self.assertEqual(sealcheck["permissions"], {"contents": "read"})
         self.assertNotIn("secrets", yaml.dump(sealcheck))
-        self.assertEqual([step["name"] for step in sealcheck["steps"]], ["Check the seal input"])
-        self.assertNotIn("uses", sealcheck["steps"][0])
+        self.assertEqual(
+            [step["name"] for step in sealcheck["steps"]],
+            ["Require main on vantio-open-core", "Check the seal input"],
+        )
+        for step in sealcheck["steps"]:
+            self.assertNotIn("uses", step)
         fetch = self.doc["jobs"]["fetch"]
         needs = fetch["needs"]
         self.assertEqual(needs if isinstance(needs, list) else [needs], ["sealcheck"])
@@ -606,7 +678,7 @@ class SealNotInWorkflowLog(unittest.TestCase):
         cls.body = WORKFLOW.read_text(encoding="utf-8")
 
     def test_step_forces_the_c_locale(self) -> None:
-        step = self.doc["jobs"]["sealcheck"]["steps"][0]
+        step = _named_step(self.doc["jobs"]["sealcheck"], "Check the seal input")
         self.assertEqual(step["env"]["LC_ALL"], "C")
         self.assertEqual(set(step["env"]), {"SEAL", "LC_ALL"})
         upper = run_workflow_check(self.script, "A" * 64, extra={"LANG": "en_US.UTF-8"})
@@ -723,6 +795,270 @@ class SealNotInWorkflowLog(unittest.TestCase):
             for path in (output, summary, envfile):
                 self.assertEqual(path.read_text(encoding="utf-8"), "KEEP\n")
                 self.assertNotIn(GOOD_SEAL, path.read_text(encoding="utf-8"))
+
+
+class RequireMainGuard(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+    def _script(self, job_id: str) -> str:
+        step = _named_step(self.doc["jobs"][job_id], "Require main on vantio-open-core")
+        run = step.get("run")
+        if not isinstance(run, str):
+            raise AssertionError(job_id)
+        return run
+
+    def test_sealcheck_uses_the_same_guard_before_auth(self) -> None:
+        seal = self._script("sealcheck")
+        fetch = self._script("fetch")
+        deliver = self._script("deliver")
+        teardown = self._script("teardown")
+        self.assertEqual(seal, teardown)
+        self.assertTrue(fetch.startswith(seal), "fetch guard does not start with the sealcheck guard")
+        self.assertTrue(deliver.startswith(seal), "deliver guard does not start with the sealcheck guard")
+        self.assertNotIn("inputs.seal", seal)
+        self.assertNotIn("google-github-actions/auth", seal)
+        self.assertIsNone(_named_step(self.doc["jobs"]["sealcheck"], "Require main on vantio-open-core").get("env"))
+        for job_id in ("fetch", "deliver", "teardown"):
+            job = self.doc["jobs"][job_id]
+            names = [step["name"] for step in job["steps"]]
+            guard_at = names.index("Require main on vantio-open-core")
+            auth_at = next(
+                index
+                for index, step in enumerate(job["steps"])
+                if "google-github-actions/auth@" in str(step.get("uses") or "")
+            )
+            self.assertLess(guard_at, auth_at, job_id)
+        seal_job = self.doc["jobs"]["sealcheck"]
+        joined = "\n".join(str(step.get("uses") or "") for step in seal_job["steps"])
+        self.assertEqual(joined.strip(), "")
+        self.assertNotIn("environment", seal_job)
+        self.assertNotIn("if", seal_job)
+
+    def test_model_matches_the_shell_and_a_failed_guard_still_sweeps(self) -> None:
+        script = self._script("sealcheck")
+        cases = (
+            MAIN_ENV,
+            {**MAIN_ENV, "GITHUB_REF": "refs/heads/feature"},
+            {**MAIN_ENV, "GITHUB_EVENT_NAME": "pull_request"},
+            {**MAIN_ENV, "GITHUB_REPOSITORY": "example/other"},
+            {
+                **MAIN_ENV,
+                "GITHUB_WORKFLOW_REF": WORKFLOW_REF.replace("@refs/heads/main", "@refs/heads/feature"),
+            },
+            {key: value for key, value in MAIN_ENV.items() if key != "GITHUB_REF"},
+        )
+        for env in cases:
+            with self.subTest(ref=env.get("GITHUB_REF"), event=env.get("GITHUB_EVENT_NAME")):
+                done = run_bash(script, env)
+                self.assertEqual(done.returncode == 0, model_require_main(env))
+                self.assertEqual(done.stdout, "")
+                if model_require_main(env):
+                    self.assertEqual(done.stderr, "")
+        bad_env = {**MAIN_ENV, "GITHUB_REF": "refs/heads/feature"}
+        self.assertFalse(model_require_main(bad_env))
+        for job_id in ("sealcheck", "fetch", "deliver", "teardown"):
+            done = run_bash(self._script(job_id), bad_env)
+            self.assertNotEqual(done.returncode, 0, job_id)
+            self.assertEqual(done.stdout, "", job_id)
+            self.assertNotIn("inputs.", done.stdout)
+        for job_id in ("sealcheck", "teardown"):
+            done = run_bash(self._script(job_id), MAIN_ENV)
+            self.assertEqual(done.returncode, 0, job_id)
+            self.assertEqual(done.stdout, "")
+            self.assertEqual(done.stderr, "")
+        # A failed guard fails the job. The job `if` model then skips fetch.
+        bad = schedule(self.doc, {"sealcheck": "failure"}, {"gate": {"expected_oop_usd": "0"}})
+        self.assertEqual(bad["sealcheck"], "failure")
+        self.assertEqual(bad["fetch"], "skipped")
+        self.assertEqual(bad["gate"], "skipped")
+        self.assertEqual(bad["deliver"], "skipped")
+        self.assertNotEqual(bad["teardown"], "skipped")
+        started = schedule(self.doc, {}, {})
+        self.assertEqual(started["sealcheck"], "success")
+        self.assertEqual(started["fetch"], "success")
+
+
+class SealLogMask(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+    def _mask_script(self, job_id: str) -> str:
+        step = _named_step(self.doc["jobs"][job_id], "Mask the seal input")
+        run = step.get("run")
+        if not isinstance(run, str):
+            raise AssertionError(job_id)
+        return run
+
+    def test_fetch_and_deliver_mask_before_later_steps(self) -> None:
+        fetch_script = self._mask_script("fetch")
+        self.assertEqual(fetch_script, self._mask_script("deliver"))
+        self.assertIn('printf \'%s\\n\' "::add-mask::${EXPECTED_SEAL}"', fetch_script)
+        self.assertNotIn("inputs.seal", fetch_script)
+        self.assertNotIn("set -x", fetch_script)
+        for job_id in ("fetch", "deliver"):
+            steps = self.doc["jobs"][job_id]["steps"]
+            names = [step["name"] for step in steps]
+            mask_at = names.index("Mask the seal input")
+            self.assertEqual(names[0], "Require main on vantio-open-core")
+            self.assertLess(0, mask_at)
+            first = next(index for index, step in enumerate(steps) if "inputs.seal" in yaml.dump(step))
+            self.assertEqual(first, mask_at, job_id)
+            self.assertTrue(
+                any("inputs.seal" in yaml.dump(step.get("env") or {}) for step in steps[mask_at + 1 :]),
+                job_id,
+            )
+            self.assertNotIn("continue-on-error", steps[mask_at])
+        check = _named_step(self.doc["jobs"]["sealcheck"], "Check the seal input")
+        self.assertNotIn("::add-mask::", str(check.get("run")))
+        self.assertNotIn("inputs.seal", yaml.dump(self.doc["jobs"]["gate"]))
+        teardown_names = [step["name"] for step in self.doc["jobs"]["teardown"]["steps"]]
+        self.assertNotIn("Mask the seal input", teardown_names)
+        doc = (ROOT / "docs" / "lab" / "seal-dispatch.md").read_text(encoding="utf-8")
+        self.assertIn("::add-mask::", doc)
+        self.assertIn("before the script", doc)
+        self.assertIn("seal_sha256", doc)
+        self.assertIn("does not cross jobs", doc)
+        self.assertIn("ACTIONS_STEP_DEBUG", doc)
+
+    def test_mask_hides_a_later_line_and_rejects_bad_values(self) -> None:
+        script = self._mask_script("fetch")
+        valid = run_bash(script, {"EXPECTED_SEAL": GOOD_SEAL, "LC_ALL": "C", "LANG": "en_US.UTF-8"})
+        self.assertEqual(valid.returncode, 0)
+        self.assertEqual(valid.stderr, "")
+        self.assertEqual(valid.stdout, f"::add-mask::{GOOD_SEAL}\n")
+        self.assertEqual(actions_log(valid.stdout), "")
+        later = actions_log(valid.stdout + f"EXPECTED_SEAL={GOOD_SEAL}\nW3_EXPECTED_SEAL={GOOD_SEAL}\n")
+        self.assertEqual(later, "EXPECTED_SEAL=***\nW3_EXPECTED_SEAL=***\n")
+        self.assertNotIn(GOOD_SEAL, later)
+        # A line written before the command is the step-debug limit.
+        pre = actions_log(f"EXPECTED_SEAL={GOOD_SEAL}\n" + valid.stdout + "after\n")
+        self.assertTrue(pre.startswith(f"EXPECTED_SEAL={GOOD_SEAL}\n"))
+        self.assertIn("after", pre)
+        self.assertNotIn(GOOD_SEAL, pre.split("\n", 1)[1])
+        rejected = ("", "a" * 51, "g" * 64, "A" * 64, "ab" * 31 + "AB")
+        for value in rejected:
+            with self.subTest(length=len(value)):
+                done = run_bash(script, {"EXPECTED_SEAL": value, "LC_ALL": "C", "LANG": "en_US.UTF-8"})
+                self.assertEqual(done.returncode, 1)
+                self.assertEqual(done.stdout, f"seal_len={len(value)} result=fail\n")
+                self.assertEqual(done.stderr, "")
+                self.assertNotIn("::add-mask::", done.stdout)
+                _hidden(done.stdout + done.stderr, value)
+
+
+class ArmSealReject(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.doc = yaml.safe_load(ARM_WORKFLOW.read_text(encoding="utf-8"))
+        check = _named_step(cls.doc["jobs"]["arm"], "Check the seal input")
+        canonical = _named_step(cls.doc["jobs"]["arm"], "Read the canonical seal")
+        if not isinstance(check.get("run"), str) or not isinstance(canonical.get("run"), str):
+            raise AssertionError("arm scripts")
+        cls.script = check["run"]
+        cls.canonical = canonical["run"]
+        cls.lane = json.loads((ROOT / "release" / "pe-canonical-seal.json").read_text(encoding="utf-8"))[
+            "lane_seal"
+        ]["sha256"]
+
+    def test_the_check_is_before_arming(self) -> None:
+        names = [step["name"] for step in self.doc["jobs"]["arm"]["steps"]]
+        check_at = names.index("Check the seal input")
+        self.assertEqual(names[0], "Require main on vantio-open-core")
+        for later in (
+            "Checkout arm script",
+            "Read the canonical seal",
+            "Assume vantio-w3-lab-provision",
+            "Arm the guest marker",
+        ):
+            self.assertLess(check_at, names.index(later), later)
+        step = _named_step(self.doc["jobs"]["arm"], "Check the seal input")
+        self.assertNotIn("continue-on-error", step)
+        self.assertEqual(step["env"]["LC_ALL"], "C")
+        self.assertEqual(set(step["env"]), {"SEAL", "LC_ALL"})
+        trigger = self.doc.get(True, self.doc.get("on"))
+        inputs = trigger["workflow_dispatch"]["inputs"]["seal"]
+        self.assertIs(inputs["required"], True)
+        self.assertNotIn("default", inputs)
+        raw = ARM_WORKFLOW.read_text(encoding="utf-8")
+        self.assertNotIn("Empty uses release/pe-canonical-seal.json lane_seal.sha256", raw)
+        self.assertNotIn('if [ -z "$seal" ]', self.canonical)
+        self.assertNotIn('seal="$lane"', self.canonical)
+        self.assertNotIn(self.lane, ARM_WORKFLOW.read_text(encoding="utf-8"))
+
+    def test_empty_short_non_hex_and_valid(self) -> None:
+        rejected = (("", 0), ("a" * 51, 51), ("g" * 64, 64))
+        for value, length in rejected:
+            with self.subTest(length=length):
+                done = run_bash(self.script, {"SEAL": value, "LC_ALL": "C", "LANG": "en_US.UTF-8"})
+                self.assertEqual(done.returncode, 1)
+                self.assertEqual(done.stdout, f"seal_len={length} result=fail\n")
+                self.assertEqual(done.stderr, "")
+                self.assertNotIn("::add-mask::", done.stdout)
+                _hidden(done.stdout + done.stderr, value)
+                self.assertEqual(actions_log(done.stdout), done.stdout)
+        valid = run_bash(self.script, {"SEAL": GOOD_SEAL, "LC_ALL": "C", "LANG": "en_US.UTF-8"})
+        self.assertEqual(valid.returncode, 0)
+        self.assertEqual(valid.stderr, "")
+        self.assertEqual(valid.stdout, f"seal_len=64 result=pass\n::add-mask::{GOOD_SEAL}\n")
+        self.assertEqual(actions_log(valid.stdout), "seal_len=64 result=pass\n")
+        self.assertNotIn(GOOD_SEAL, actions_log(valid.stdout))
+        masked = actions_log(valid.stdout + f"SEAL={GOOD_SEAL}\n")
+        self.assertEqual(masked, "seal_len=64 result=pass\nSEAL=***\n")
+        self.assertNotIn(GOOD_SEAL, masked)
+
+    def test_canonical_step_rejects_without_the_lane_digest(self) -> None:
+        pin = "cd" * 32
+        for value in ("", "a" * 51, "g" * 64):
+            with self.subTest(length=len(value)):
+                with tempfile.TemporaryDirectory() as tmp:
+                    output = Path(tmp) / "github_output"
+                    done = run_bash(
+                        self.canonical,
+                        {
+                            "INPUT_SEAL": value,
+                            "INPUT_PUBLIC_PIN": pin,
+                            "GITHUB_OUTPUT": str(output),
+                            "LC_ALL": "C",
+                        },
+                        cwd=ROOT,
+                    )
+                    self.assertEqual(done.returncode, 1)
+                    self.assertEqual(done.stdout, f"seal_len={len(value)} result=fail\n")
+                    self.assertEqual(done.stderr, "")
+                    self.assertNotIn(self.lane, done.stdout + done.stderr)
+                    _hidden(done.stdout + done.stderr, value)
+                    self.assertFalse(output.exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "github_output"
+            done = run_bash(
+                self.canonical,
+                {
+                    "INPUT_SEAL": GOOD_SEAL,
+                    "INPUT_PUBLIC_PIN": pin,
+                    "GITHUB_OUTPUT": str(output),
+                    "LC_ALL": "C",
+                },
+                cwd=ROOT,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(done.stdout, "")
+            self.assertEqual(done.stderr, "")
+            self.assertNotIn(GOOD_SEAL, done.stdout + done.stderr)
+            self.assertNotIn(self.lane, done.stdout + done.stderr)
+            self.assertEqual(output.read_text(encoding="utf-8"), f"seal={GOOD_SEAL}\npublic_pin={pin}\n")
+
+
+class SweeperStaysDisarmed(unittest.TestCase):
+    def test_scheduled_sweeper_flag_stays_false(self) -> None:
+        """Arming sweeper_enabled is a human call. This only checks it stays false."""
+        raw = json.loads((ROOT / "scripts" / "gcp" / "lab_capabilities.json").read_text(encoding="utf-8"))
+        self.assertIs(raw["sweeper_enabled"], False)
+        text = (ROOT / ".github" / "workflows" / "gcp-lab-sweeper.yml").read_text(encoding="utf-8")
+        self.assertIn("sets sweeper_enabled to true", text)
+        self.assertIn("ships false", text)
 
 
 if __name__ == "__main__":
