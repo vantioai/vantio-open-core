@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import ast
+import copy
 import io
 import os
+import re
 import subprocess
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -47,14 +50,145 @@ def workflow_check_script(text: str | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_workflow_check(script: str, seal: str) -> subprocess.CompletedProcess[str]:
+def run_workflow_check(script: str, seal: str, extra: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the sealcheck script with that step's env. SEAL is the only override."""
+    loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    raw = loaded["jobs"]["sealcheck"]["steps"][0].get("env") or {}
+    env = {"PATH": os.environ.get("PATH", "/usr/bin"), "SEAL": seal}
+    for key, value in raw.items():
+        if key == "SEAL":
+            continue
+        env[key] = str(value)
+    if extra:
+        env.update(extra)
     return subprocess.run(
         ["bash", "-c", script],
         capture_output=True,
         text=True,
-        env={"SEAL": seal, "PATH": os.environ.get("PATH", "/usr/bin")},
+        env=env,
         check=False,
     )
+
+
+_STATUS_FNS = ("always()", "success()", "failure()", "cancelled()")
+
+
+def _needs_list(needs: object) -> list[str]:
+    if needs is None:
+        return []
+    if isinstance(needs, str):
+        return [needs]
+    if isinstance(needs, list):
+        return [str(item) for item in needs]
+    raise AssertionError(f"unexpected needs: {needs!r}")
+
+
+def _split_top(text: str, op: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif depth == 0 and text.startswith(op, index):
+            parts.append(text[start:index])
+            index += len(op)
+            start = index
+            continue
+        index += 1
+    parts.append(text[start:])
+    return parts
+
+
+def _wrapped(text: str) -> bool:
+    if not (text.startswith("(") and text.endswith(")")):
+        return False
+    depth = 0
+    for index, char in enumerate(text):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index == len(text) - 1
+    return False
+
+
+def _eval_if(
+    expr: str,
+    needs: list[str],
+    conclusions: dict[str, str],
+    outputs: dict[str, dict[str, str]],
+) -> bool:
+    """Evaluate the job `if` strings this workflow uses. Other syntax fails the test."""
+
+    def term(text: str) -> bool:
+        text = text.strip()
+        if text == "always()":
+            return True
+        if text == "success()":
+            return all(conclusions.get(name) == "success" for name in needs)
+        if text == "failure()":
+            return any(conclusions.get(name) == "failure" for name in needs)
+        if text == "cancelled()":
+            return any(conclusions.get(name) == "cancelled" for name in needs)
+        if _wrapped(text):
+            return _eval_if(text[1:-1], needs, conclusions, outputs)
+        result = re.fullmatch(r"needs\.([A-Za-z0-9_-]+)\.result == '([A-Za-z0-9_-]+)'", text)
+        if result:
+            return conclusions.get(result.group(1)) == result.group(2)
+        output = re.fullmatch(
+            r"needs\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+) == '([^']*)'",
+            text,
+        )
+        if output:
+            return outputs.get(output.group(1), {}).get(output.group(2)) == output.group(3)
+        raise AssertionError(f"unparsed if term: {text!r}")
+
+    def parse(text: str) -> bool:
+        text = text.strip()
+        or_parts = _split_top(text, "||")
+        if len(or_parts) > 1:
+            return any(parse(part) for part in or_parts)
+        and_parts = _split_top(text, "&&")
+        if len(and_parts) > 1:
+            return all(parse(part) for part in and_parts)
+        if _wrapped(text):
+            return parse(text[1:-1])
+        return term(text)
+
+    return parse(expr)
+
+
+def _job_starts(job: dict, conclusions: dict[str, str], outputs: dict[str, dict[str, str]]) -> bool:
+    """GitHub starts a job when its if is true. A missing status function implies success()."""
+    needs = _needs_list(job.get("needs"))
+    expr = job.get("if")
+    if not isinstance(expr, str) or expr == "":
+        expr = "success()"
+    elif not any(fn in expr for fn in _STATUS_FNS):
+        expr = f"success() && ({expr})"
+    return _eval_if(expr, needs, conclusions, outputs)
+
+
+def schedule(
+    doc: dict,
+    outcomes: dict[str, str],
+    outputs: dict[str, dict[str, str]] | None = None,
+) -> dict[str, str]:
+    """Conclusions for one provision run. A job that does not start is skipped."""
+    outputs = outputs or {}
+    conclusions: dict[str, str] = {}
+    for job_id, job in doc["jobs"].items():
+        if _job_starts(job, conclusions, outputs):
+            conclusions[job_id] = outcomes.get(job_id, "success")
+        else:
+            conclusions[job_id] = "skipped"
+    return conclusions
 
 
 class WorkflowSealCheck(unittest.TestCase):
@@ -81,7 +215,7 @@ class WorkflowSealCheck(unittest.TestCase):
         self.assertEqual(needs if isinstance(needs, list) else [needs], ["sealcheck"])
         teardown = self.doc["jobs"]["teardown"]
         self.assertEqual(teardown["needs"], ["sealcheck", "fetch", "deliver"])
-        self.assertEqual(teardown["if"], "always() && needs.sealcheck.result == 'success'")
+        self.assertEqual(teardown["if"], "always()")
         self.assertNotIn("inputs.seal", self.script)
         self.assertIn("SEAL: ${{ inputs.seal }}", WORKFLOW.read_text(encoding="utf-8"))
 
@@ -171,7 +305,8 @@ class WorkflowSealCheck(unittest.TestCase):
 
 class PasteAndDispatchCheck(unittest.TestCase):
     def _run(self, command: str, seal: str, commit: str) -> tuple[int, str, str]:
-        with mock.patch.dict(os.environ, {"SEAL": seal, "BUNDLE_COMMIT": commit}, clear=False):
+        env = {"SEAL": seal, "BUNDLE_COMMIT": commit, "GITHUB_ACTIONS": ""}
+        with mock.patch.dict(os.environ, env, clear=False):
             out, err = io.StringIO(), io.StringIO()
             with redirect_stdout(out), redirect_stderr(err):
                 code = seal_dispatch.main([command])
@@ -325,6 +460,269 @@ class JobLogFetch(unittest.TestCase):
         )
         self.assertEqual(calls, [])
         self.assertEqual(notes, [])
+
+    def test_timed_out_jobs_keep_their_log(self) -> None:
+        """A deliver job that hits timeout-minutes must still be fetched."""
+        jobs = [
+            {
+                "name": "deliver-timeout",
+                "status": "completed",
+                "conclusion": "timed_out",
+                "steps": [{"name": "Create the offline VM", "conclusion": "success"}],
+            },
+            {
+                "name": "timeout-without-steps",
+                "status": "completed",
+                "conclusion": "timed_out",
+            },
+            {
+                "name": "timeout-empty-steps",
+                "status": "completed",
+                "conclusion": "timed_out",
+                "steps": [],
+            },
+            {
+                "name": "startup-failure",
+                "status": "completed",
+                "conclusion": "startup_failure",
+                "steps": [{"name": "Set up job", "conclusion": "failure"}],
+            },
+            {
+                "name": "neutral-with-steps",
+                "status": "completed",
+                "conclusion": "neutral",
+                "steps": [{"name": "Set up job", "conclusion": "success"}],
+            },
+            {
+                "name": "startup-failure-never-started",
+                "status": "completed",
+                "conclusion": "startup_failure",
+                "steps": [],
+            },
+            {
+                "name": "skipped-with-a-step",
+                "status": "completed",
+                "conclusion": "skipped",
+                "steps": [{"name": "Set up job"}],
+            },
+        ]
+        seen: list[str] = []
+        notes = seal_dispatch.fetch_job_logs(jobs, lambda job: seen.append(str(job["name"])))
+        self.assertEqual(
+            seen,
+            [
+                "deliver-timeout",
+                "timeout-without-steps",
+                "timeout-empty-steps",
+                "startup-failure",
+                "neutral-with-steps",
+            ],
+        )
+        self.assertEqual(notes, [])
+        self.assertNotIn("startup-failure-never-started", seen)
+        self.assertNotIn("skipped-with-a-step", seen)
+        self.assertTrue(seal_dispatch.job_needs_log(jobs[0]))
+        self.assertTrue(seal_dispatch.job_needs_log(jobs[2]))
+        self.assertFalse(
+            seal_dispatch.job_needs_log(
+                {"name": "idle", "status": "completed", "conclusion": "success", "steps": []}
+            )
+        )
+
+
+class SealFailureSweep(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+    def test_job_order_is_the_schedule_order(self) -> None:
+        self.assertEqual(list(self.doc["jobs"]), ["sealcheck", "fetch", "gate", "deliver", "teardown"])
+
+    def test_bad_seal_still_runs_teardown_and_keeps_the_cost_gate(self) -> None:
+        gate = self.doc["jobs"]["gate"]
+        deliver = self.doc["jobs"]["deliver"]
+        teardown = self.doc["jobs"]["teardown"]
+        self.assertEqual(gate["needs"], "fetch")
+        self.assertEqual(gate["if"], "needs.fetch.result == 'success'")
+        self.assertEqual(deliver["needs"], ["fetch", "gate"])
+        self.assertEqual(
+            deliver["if"],
+            "needs.fetch.result == 'success' && needs.gate.outputs.expected_oop_usd == '0'",
+        )
+        self.assertNotIn("continue-on-error", gate)
+        self.assertNotIn("continue-on-error", deliver)
+        self.assertEqual(deliver["timeout-minutes"], 110)
+        self.assertEqual(deliver["environment"], "gcp-lab")
+        joined = "\n".join(step.get("run") or "" for step in teardown["steps"])
+        self.assertIn("teardown-if-present", joined)
+        self.assertNotIn("create-instance", joined)
+
+        # A zero cost-gate output must not create a VM when the seal check failed.
+        bad = schedule(self.doc, {"sealcheck": "failure"}, {"gate": {"expected_oop_usd": "0"}})
+        self.assertEqual(bad["sealcheck"], "failure")
+        self.assertEqual(bad["fetch"], "skipped")
+        self.assertEqual(bad["gate"], "skipped")
+        self.assertEqual(bad["deliver"], "skipped")
+        self.assertNotEqual(bad["teardown"], "skipped")
+
+        blocked = schedule(
+            self.doc,
+            {"sealcheck": "success", "fetch": "success", "gate": "success"},
+            {"gate": {"expected_oop_usd": "1"}},
+        )
+        self.assertEqual(blocked["deliver"], "skipped")
+        self.assertNotEqual(blocked["teardown"], "skipped")
+        self.assertEqual(blocked["gate"], "success")
+
+        allowed = schedule(
+            self.doc,
+            {"sealcheck": "success", "fetch": "success", "gate": "success"},
+            {"gate": {"expected_oop_usd": "0"}},
+        )
+        self.assertEqual(allowed["deliver"], "success")
+        self.assertNotEqual(allowed["teardown"], "skipped")
+
+        fetch_failed = schedule(self.doc, {"sealcheck": "success", "fetch": "failure"}, {})
+        self.assertEqual(fetch_failed["gate"], "skipped")
+        self.assertEqual(fetch_failed["deliver"], "skipped")
+        self.assertNotEqual(fetch_failed["teardown"], "skipped")
+
+    def test_requiring_sealcheck_success_skips_the_sweep(self) -> None:
+        """The previous if dropped teardown when the seal check failed."""
+        mutated = copy.deepcopy(self.doc)
+        mutated["jobs"]["teardown"]["if"] = "always() && needs.sealcheck.result == 'success'"
+        conclusions = schedule(mutated, {"sealcheck": "failure"}, {"gate": {"expected_oop_usd": "0"}})
+        self.assertEqual(conclusions["teardown"], "skipped")
+        self.assertEqual(conclusions["deliver"], "skipped")
+        real = schedule(self.doc, {"sealcheck": "failure"}, {})
+        self.assertNotEqual(real["teardown"], "skipped")
+
+
+class SealNotInWorkflowLog(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.script = workflow_check_script()
+        cls.doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        cls.body = WORKFLOW.read_text(encoding="utf-8")
+
+    def test_step_forces_the_c_locale(self) -> None:
+        step = self.doc["jobs"]["sealcheck"]["steps"][0]
+        self.assertEqual(step["env"]["LC_ALL"], "C")
+        self.assertEqual(set(step["env"]), {"SEAL", "LC_ALL"})
+        upper = run_workflow_check(self.script, "A" * 64, extra={"LANG": "en_US.UTF-8"})
+        self.assertEqual(upper.returncode, 1)
+        self.assertEqual(upper.stdout, "seal_len=64 result=fail\n")
+        self.assertEqual(upper.stderr, "")
+        lower = run_workflow_check(self.script, GOOD_SEAL, extra={"LANG": "en_US.UTF-8"})
+        self.assertEqual(lower.returncode, 0)
+        self.assertEqual(lower.stdout, "seal_len=64 result=pass\n")
+        self.assertNotIn(GOOD_SEAL, lower.stdout + lower.stderr)
+
+    def test_paste_warning_says_the_seal_is_printed_on_purpose(self) -> None:
+        doc = (ROOT / "docs" / "lab" / "seal-dispatch.md").read_text(encoding="utf-8")
+        self.assertIn("## Warning: `paste` prints the seal", doc)
+        self.assertIn("on purpose", doc)
+        self.assertIn("GITHUB_ACTIONS=true", doc)
+        self.assertIn("GITHUB_OUTPUT", doc)
+        self.assertIn("ACTIONS_STEP_DEBUG", doc)
+        self.assertIn("docs/lab/seal-dispatch.md", seal_dispatch.__doc__ or "")
+        self.assertNotIn("seal_dispatch.py", self.body)
+        sealcheck = self.doc["jobs"]["sealcheck"]
+        self.assertNotIn("outputs", sealcheck)
+
+    def test_paste_refuses_to_print_the_seal_in_actions(self) -> None:
+        line = seal_dispatch.paste_line(GOOD_SEAL, GOOD_COMMIT)
+        self.assertEqual(line, f"seal={GOOD_SEAL} bundle_commit={GOOD_COMMIT}")
+        with mock.patch.dict(
+            os.environ,
+            {"SEAL": GOOD_SEAL, "BUNDLE_COMMIT": GOOD_COMMIT, "GITHUB_ACTIONS": "true"},
+            clear=False,
+        ):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                code = seal_dispatch.main(["paste"])
+        self.assertEqual(code, 1)
+        self.assertEqual(out.getvalue(), "seal_len=64 bundle_commit_len=40 result=pass\n")
+        self.assertEqual(err.getvalue(), "paste does not print the seal in a GitHub Actions log\n")
+        _hidden(out.getvalue() + err.getvalue(), GOOD_SEAL)
+        _hidden(out.getvalue() + err.getvalue(), GOOD_COMMIT)
+
+    def test_workflow_check_does_not_write_output_summary_or_env(self) -> None:
+        banned = (
+            "set -x",
+            'echo "$SEAL"',
+            'echo "${SEAL}"',
+            "GITHUB_OUTPUT",
+            "GITHUB_STEP_SUMMARY",
+            "GITHUB_ENV",
+            "::debug::",
+            "::notice::",
+            ">>",
+        )
+        for item in banned:
+            self.assertNotIn(item, self.script)
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "github_output"
+            summary = Path(tmp) / "summary"
+            envfile = Path(tmp) / "github_env"
+            for path in (output, summary, envfile):
+                path.write_text("KEEP\n", encoding="utf-8")
+            done = run_workflow_check(
+                self.script,
+                GOOD_SEAL,
+                extra={
+                    "GITHUB_ACTIONS": "true",
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                    "GITHUB_ENV": str(envfile),
+                },
+            )
+            failed = run_workflow_check(
+                self.script,
+                "a" * 51,
+                extra={
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                    "GITHUB_ENV": str(envfile),
+                },
+            )
+            self.assertEqual(done.returncode, 0)
+            self.assertEqual(done.stdout, "seal_len=64 result=pass\n")
+            self.assertNotIn(GOOD_SEAL, done.stdout + done.stderr)
+            self.assertEqual(failed.returncode, 1)
+            self.assertEqual(failed.stdout, "seal_len=51 result=fail\n")
+            self.assertNotIn("a" * 51, failed.stdout + failed.stderr)
+            for path in (output, summary, envfile):
+                self.assertEqual(path.read_text(encoding="utf-8"), "KEEP\n")
+
+    def test_check_does_not_write_workflow_output_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "github_output"
+            summary = Path(tmp) / "summary"
+            envfile = Path(tmp) / "github_env"
+            for path in (output, summary, envfile):
+                path.write_text("KEEP\n", encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "SEAL": GOOD_SEAL,
+                    "GITHUB_ACTIONS": "true",
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                    "GITHUB_ENV": str(envfile),
+                },
+                clear=False,
+            ):
+                out, err = io.StringIO(), io.StringIO()
+                with redirect_stdout(out), redirect_stderr(err):
+                    code = seal_dispatch.main(["check"])
+            self.assertEqual(code, 0)
+            self.assertEqual(out.getvalue(), "seal_len=64 result=pass\n")
+            self.assertEqual(err.getvalue(), "")
+            _hidden(out.getvalue() + err.getvalue(), GOOD_SEAL)
+            for path in (output, summary, envfile):
+                self.assertEqual(path.read_text(encoding="utf-8"), "KEEP\n")
+                self.assertNotIn(GOOD_SEAL, path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

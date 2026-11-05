@@ -67,8 +67,8 @@ concurrency:
 
 jobs:
   # Run 41159461489 reached check-dispatch with a 51-character seal.
-  # This job is the first one so a bad seal exits before checkout, the
-  # private bundle, workload identity, or any later cloud call.
+  # This job is first so a bad seal exits before checkout, the private
+  # bundle, or any job that creates a VM. Teardown still runs after it.
   sealcheck:
     name: Check the seal input
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
@@ -79,6 +79,8 @@ jobs:
       - name: Check the seal input
         env:
           SEAL: ${{ inputs.seal }}
+          # Byte ranges: [0-9a-f] must not follow the runner locale.
+          LC_ALL: "C"
         run: |
           set -euo pipefail
           len=${#SEAL}
@@ -783,7 +785,11 @@ jobs:
   teardown:
     name: Teardown and verify removal
     needs: [sealcheck, fetch, deliver]
-    if: always() && needs.sealcheck.result == 'success'
+    # A failed sealcheck skips fetch, gate, and deliver, so this run does not
+    # create a VM. always() still starts this job, which runs
+    # teardown-if-present. The cost gate is unchanged: gate runs only after
+    # fetch succeeds, and deliver runs only when expected_oop_usd is 0.
+    if: always()
     # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: gcp-lab

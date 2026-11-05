@@ -2,10 +2,14 @@
 """Seal and bundle-commit checks for a lab dispatch.
 
 The GCP provision workflow enforces the same 64-lowercase-hex rule before
-checkout. This module prints one paste line for the operator and checks the
-pasted lengths before any dispatch. It does not call GitHub or a cloud.
+checkout. `paste` prints one operator line, `seal=<64 hex> bundle_commit=<40 hex>`,
+on purpose. That print is for a terminal, not a workflow log. See
+docs/lab/seal-dispatch.md. `paste` refuses while GITHUB_ACTIONS=true so the
+seal is not written to a job log. `check` and `check-pasted` print lengths
+and pass or fail only. This module does not call GitHub or a cloud.
 
-Job log collection skips a log GET when the job was skipped or never ran.
+Job log collection keeps a log for a job that ran, including conclusion
+timed_out. It skips a skipped job and a job that never started.
 """
 
 from __future__ import annotations
@@ -18,7 +22,10 @@ from typing import Callable, Mapping, Sequence
 SEAL_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _NOT_STARTED = frozenset({"", "queued", "waiting", "pending", "requested"})
-_RAN = frozenset({"success", "failure", "cancelled"})
+# timed_out means the job ran until the clock, so it is fetched even when
+# the step list is empty. startup_failure and neutral stay in this set so a
+# missing steps key still counts as ran.
+_RAN = frozenset({"success", "failure", "cancelled", "timed_out", "startup_failure", "neutral"})
 
 
 def seal_ok(value: str) -> bool:
@@ -50,8 +57,11 @@ def paste_line(seal: str, bundle_commit: str) -> str | None:
 def job_needs_log(job: Mapping[str, object]) -> bool:
     """False for a skipped job or a job that never ran, so the caller skips the log GET.
 
-    Skipped jobs can still carry startedAt. Run 41159461489's cost-gate and
-    deliver jobs did, with conclusion skipped and no steps.
+    A timed_out job is kept even when its step list is empty: the conclusion
+    means the job ran until timeout-minutes. Any other completed job with at
+    least one step ran, including startup_failure and neutral. Skipped jobs
+    can still carry startedAt. Run 41159461489's cost-gate and deliver jobs
+    did, with conclusion skipped and no steps.
     """
     conclusion = job.get("conclusion")
     status = job.get("status")
@@ -59,9 +69,14 @@ def job_needs_log(job: Mapping[str, object]) -> bool:
         return False
     if not isinstance(status, str) or status in _NOT_STARTED:
         return False
-    if "steps" in job and not job.get("steps") and status != "in_progress":
+    if status == "in_progress" or conclusion == "timed_out":
+        return True
+    steps = job.get("steps")
+    if status == "completed" and isinstance(steps, list) and len(steps) > 0:
+        return True
+    if "steps" in job and not steps:
         return False
-    if conclusion not in _RAN and status != "in_progress":
+    if conclusion not in _RAN:
         return False
     return True
 
@@ -91,6 +106,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(format_seal_check(seal) + "\n")
         return 0 if seal_ok(seal) else 1
     if command == "paste":
+        # The operator line contains the seal. A workflow log must not.
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            sys.stdout.write(format_pasted_check(seal, bundle_commit) + "\n")
+            sys.stderr.write("paste does not print the seal in a GitHub Actions log\n")
+            return 1
         line = paste_line(seal, bundle_commit)
         if line is None:
             sys.stdout.write(format_pasted_check(seal, bundle_commit) + "\n")
