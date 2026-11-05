@@ -48,16 +48,18 @@ The proof job runs `scripts/gcp/lab_auto.py cost-gate` again and reads that JSON
 
 Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo build -p vantio-loader --release`. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is installed the same unpinned way as the Phantom Engine Dockerfile at this tip, so two builds can differ.
 
-Guest order for `full`:
+`full` runs these guest phases in this order: compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
 
-1. `compare`
-2. `file-deny`
-3. `reboot-pre`
-4. Reboot. The workflow masks `google-shutdown-scripts.service`, then schedules `systemctl reboot --force`. A plain `reboot` on this network does not have to reach a new boot. The script does not reboot itself.
-5. `reboot-post` on the new boot. The script writes `reboot_restored=NOT_RUN` and does not start the loader. This workflow does not start it either.
-6. `compare` again. `expired-key` and `uninstall` call `require_compare_pass`, which needs the compare marker's boot id to be the current boot. The packet lists those phases after `reboot-post`. On tip `864289cb` that call exits 2 with `phase_order=compare_required` until compare has passed on the new boot. The first boot's lab directory is copied to `/var/lib/vantio-enforcement-proof-pre-reboot` before this second compare.
-7. `expired-key`
-8. `uninstall` (that phase runs `uninstall-negative` itself when the host is enrolled)
+The second `compare` is after `reboot-post` and before `expired-key` and `uninstall`. Tip `864289cb` binds `expired-key` and `uninstall` to the current boot through `require_compare_pass`. The Phantom Engine packet lists those two phases after `reboot-post` and notes that they exit 2 with `phase_order=compare_required` until `compare.result` is `status=PASS` for the current boot id. This slice runs that post-reboot `compare` so those phases can run. Before that second compare, the first boot's lab directory is copied to `/var/lib/vantio-enforcement-proof-pre-reboot`.
+
+1. `compare` on the boot that was just installed.
+2. `file-deny` on that same boot.
+3. `reboot-pre` on that same boot. The script records state and does not reboot.
+4. Reboot. The workflow masks `google-shutdown-scripts.service`, then schedules `systemctl reboot --force`. A plain `reboot` on this network does not have to reach a new boot.
+5. `reboot-post` on the new boot, before the loader is started again. The script writes `reboot_restored=NOT_RUN`. This workflow does not start the loader.
+6. `compare` on the new boot.
+7. `expired-key` on the new boot.
+8. `uninstall` on the new boot. That phase runs `uninstall-negative` itself when the host is enrolled.
 
 Stop on the first phase that is not an accepted observation. `compare=REFUSED_LSM` stops the run. A stock Ubuntu 24.04 image can omit `bpf` from `/sys/kernel/security/lsm`. This workflow does not edit the kernel command line.
 

@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -354,6 +355,45 @@ class CreateAndBuildTests(unittest.TestCase):
         self.assertNotIn(f"expected={PIN}", mutated)
 
 
+class TeardownTests(unittest.TestCase):
+    def _env(self, root: Path) -> dict[str, str]:
+        return _base_env(
+            GCP_LAB_EXECUTE="1",
+            EVIDENCE_DIR=str(root),
+            RUNNER_TEMP=str(root),
+        )
+
+    def test_verified_removed_requires_a_zero_delete_result(self) -> None:
+        def verify(env: dict[str, str]) -> int:
+            print(json.dumps({"status": "VERIFIED_REMOVED", "name": env["INSTANCE_NAME"]}))
+            return 0
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with mock.patch.object(ep.lab, "execute_teardown", return_value=0) as deleted, mock.patch.object(
+                ep.lab, "execute_verify", side_effect=verify
+            ):
+                code = ep.teardown_named(self._env(root))
+            body = json.loads((root / "enforcement-proof-teardown.json").read_text(encoding="utf-8"))
+        self.assertEqual(code, 0)
+        self.assertEqual(deleted.return_value, 0)
+        self.assertEqual(body["verify_status"], "VERIFIED_REMOVED")
+        self.assertEqual(body["deleted"], 0)
+        self.assertEqual(body["live_enforcement"], "NOT_PROVEN")
+
+    def test_verified_removed_with_a_changed_delete_result_fails(self) -> None:
+        def verify(_env: dict[str, str]) -> int:
+            print(json.dumps({"status": "VERIFIED_REMOVED"}))
+            return 0
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(ep.lab, "execute_teardown", return_value=2), mock.patch.object(
+                ep.lab, "execute_verify", side_effect=verify
+            ):
+                code = ep.teardown_named(self._env(Path(tmp)))
+        self.assertEqual(code, 2)
+
+
 class WorkflowTests(unittest.TestCase):
     def test_provision_is_not_the_proof_path(self) -> None:
         provision = PROVISION.read_text(encoding="utf-8")
@@ -385,6 +425,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("expected_oop_usd == '0'", mutated_doc["jobs"]["prove"]["if"])
         self.assertIn(ep.WORKFLOW_FILE, ep.WORKFLOW_REF)
         self.assertIn(ep.WORKFLOW_FILE, lab_auto.WORKFLOWS)
+        sheet = (ROOT / "docs/lab/enforcement-proof-OPERATOR.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
+            sheet,
+        )
 
 
 if __name__ == "__main__":

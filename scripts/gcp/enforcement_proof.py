@@ -778,7 +778,7 @@ def teardown_named(env: Mapping[str, str]) -> int:
     child["INSTANCE_NAME"] = name
     child["GCP_LAB_PROJECT"] = project
     child["GCP_LAB_EXECUTE"] = "1"
-    lab.execute_teardown(child)
+    deleted = lab.execute_teardown(child)
     status = "UNKNOWN"
     verify_rc = 2
     for _ in range(12):
@@ -794,6 +794,7 @@ def teardown_named(env: Mapping[str, str]) -> int:
         if verify_rc == 0 and status == "VERIFIED_REMOVED":
             break
         time.sleep(10)
+    removed = deleted == 0 and verify_rc == 0 and status == "VERIFIED_REMOVED"
     payload = allow_evidence(
         {
             "instance_name": name,
@@ -802,19 +803,28 @@ def teardown_named(env: Mapping[str, str]) -> int:
             "project_id": project,
             "public_ip": False,
             "reboot_restored": "NOT_RUN",
-            "result": "OBSERVED" if status == "VERIFIED_REMOVED" and deleted == 0 else "STOPPED",
+            "result": "OBSERVED" if removed else "STOPPED",
             "slice": env.get("PROOF_SLICE", ""),
-            "stopped": "" if status == "VERIFIED_REMOVED" and deleted == 0 else "teardown",
+            "stopped": "" if removed else "teardown",
             "zone": lab.ZONE,
         }
     )
     payload["verify_status"] = status
-    print(json.dumps({"instance_name": name, "verify_status": status, "live_enforcement": "NOT_PROVEN"}))
+    payload["deleted"] = deleted
+    print(json.dumps({"instance_name": name, "verify_status": status, "deleted": deleted, "live_enforcement": "NOT_PROVEN"}))
     _evidence_dir(env).joinpath("enforcement-proof-teardown.json").write_text(
-        json.dumps({"instance_name": name, "verify_status": status, "live_enforcement": "NOT_PROVEN"}) + "\n",
+        json.dumps(
+            {
+                "instance_name": name,
+                "verify_status": status,
+                "deleted": deleted,
+                "live_enforcement": "NOT_PROVEN",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
-    if status == "VERIFIED_REMOVED" and verify_rc == 0:
+    if removed:
         return 0
     return 2
 
