@@ -1,0 +1,12 @@
+---
+description: One scope per agent, small diff, draft pull request only
+alwaysApply: true
+---
+
+# Workflow
+
+- One agent, one scope. Leave files outside that scope unchanged, including another agent's branch.
+- Keep the diff small.
+- Open one draft pull request. Leave it in draft.
+- Do not merge. Do not push to `main`.
+- Edit `.github/workflows` only when that workflow is the task.
