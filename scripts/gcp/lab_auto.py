@@ -29,6 +29,7 @@ WORKFLOWS = (
     "gcp-lab-teardown.yml",
     "gcp-lab-sweeper.yml",
     "gcp-lab-verify-removed.yml",
+    "gcp-lab-enforcement-proof.yml",
 )
 NAME_PREFIX = "vantio-gcp-lab-"
 ZONE = "us-central1-a"

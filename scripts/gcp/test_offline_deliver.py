@@ -1708,7 +1708,7 @@ print("ok")
     def test_workflow_keeps_wif_and_hides_the_bundle(self) -> None:
         names = sorted(path.name for path in (ROOT / ".github/workflows").glob("gcp-lab-*.yml"))
         self.assertEqual(set(names), set(lab.WORKFLOWS))
-        self.assertEqual(len(names), 6)
+        self.assertEqual(len(names), len(lab.WORKFLOWS))
         text = (ROOT / ".github/workflows/gcp-lab-provision.yml").read_text(encoding="utf-8")
         self.assertIn("environment: w3-lab-auto", text)
         self.assertIn("environment: gcp-lab", text)
