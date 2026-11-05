@@ -1,0 +1,11 @@
+---
+description: No secret values, workflow dispatch, tags, publishes, or deploys
+alwaysApply: true
+---
+
+# Safety
+
+- Never print or store secret values. Keep tokens, keys, passwords, and credential-file bodies out of logs, commits, and pull requests.
+- Never run or dispatch cloud workflows.
+- Do not create tags, publish packages, or deploy.
+- Do not commit credential files or captured lab output.

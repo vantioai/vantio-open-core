@@ -1,0 +1,15 @@
+---
+description: Evidence notes list commands, exit codes, shas, and lab-host gaps
+alwaysApply: true
+---
+
+# Evidence
+
+Put an evidence note in the pull request body. Include:
+
+- Each command run
+- Its exit code
+- The git SHA those commands ran against
+- A gap list of what only a real lab host can prove
+
+A passing offline test proves the fixture on that SHA. It does not prove a live host, a new boot, or that an instance was created or removed.

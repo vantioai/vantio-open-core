@@ -1,0 +1,12 @@
+---
+description: State only what a test or log from this run proves
+alwaysApply: true
+---
+
+# Claims
+
+- State only what a test or log from this run proves.
+- Name the command, the exit code, and the SHA.
+- Record skipped tests. An exit of 0 does not prove a skipped case.
+- A green offline test does not prove a live lab host, a publish, or a deploy.
+- When a command was not run, say it was not run.
