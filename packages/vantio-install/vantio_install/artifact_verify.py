@@ -117,7 +117,7 @@ def fetch_to_file(url: str, destination: Path, *, timeout_s: float = 5) -> dict:
 
 
 def packaged_artifact_trust() -> dict[str, bytes]:
-    """Return the keys shipped in this package. The file is empty until a Founder pins one."""
+    """Test artifact keys stored in this package. Production entries are skipped."""
     path = _PACKAGED_ARTIFACT
     if not path.is_file():
         return {}
@@ -130,8 +130,9 @@ def packaged_artifact_trust() -> dict[str, bytes]:
 def packaged_production_trust() -> dict[str, bytes]:
     """Production artifact keys from the packaged trust file only.
 
-    A test override of the key dict cannot supply these. The shipped file is
-    empty, so this returns nothing until a production public key is added there.
+    A test override of the key dict cannot supply these. Only ``key_id``
+    values that start with ``prod-artifact-`` and use key class ``production``
+    are returned.
     """
     path = _PACKAGED_PATH_OVERRIDE if _PACKAGED_PATH_OVERRIDE is not None else _PACKAGED_ARTIFACT
     if not path.is_file():
@@ -181,7 +182,7 @@ LAB_ARTIFACT_PREFIX = "test-nonprod-artifact-lab-"
 
 
 def lab_artifact_trust() -> dict[str, bytes]:
-    """Lab-scoped keys only. The packaged file stays empty. A caller flag cannot set this."""
+    """Lab-scoped keys only. Packaged production keys are not lab keys. A caller flag cannot set this."""
     if os.environ.get("VANTIO_LAB_SCOPE") != LAB_SCOPE:
         return {}
     raw = os.environ.get("VANTIO_LAB_ARTIFACT_TRUST", "").strip()
