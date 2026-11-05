@@ -1,0 +1,11 @@
+---
+description: Run existing tests first and add offline negative and mutation tests for guards
+alwaysApply: true
+---
+
+# Tests
+
+- Run the existing tests for the scope first. Commands are in `AGENTS.md` and `.github/workflows/ci.yml`.
+- Add offline tests for any new guard. Offline means no network and no cloud credentials.
+- Cover the guard with a negative case, where the bad input fails the check, and a mutation case, where a changed byte, field, or fixture fails the check.
+- Keep existing tests. A failure is a result to report, not a test to delete.
