@@ -66,8 +66,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Run 41159461489 reached check-dispatch with a 51-character seal.
+  # This job is the first one so a bad seal exits before checkout, the
+  # private bundle, workload identity, or any later cloud call.
+  sealcheck:
+    name: Check the seal input
+    runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - name: Check the seal input
+        env:
+          SEAL: ${{ inputs.seal }}
+        run: |
+          set -euo pipefail
+          len=${#SEAL}
+          if [[ "$SEAL" =~ ^[0-9a-f]{64}$ ]]; then
+            printf 'seal_len=%s result=pass\n' "$len"
+          else
+            printf 'seal_len=%s result=fail\n' "$len"
+            exit 1
+          fi
+
   fetch:
     name: Fetch sealed bundle to private bucket
+    needs: sealcheck
     # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: w3-lab-auto
@@ -758,8 +782,8 @@ jobs:
 
   teardown:
     name: Teardown and verify removal
-    needs: [fetch, deliver]
-    if: always()
+    needs: [sealcheck, fetch, deliver]
+    if: always() && needs.sealcheck.result == 'success'
     # VANTIO_ENROLLED_RUNNER=true selects [self-hosted, vantio-enrolled]. Otherwise ubuntu-latest.
     runs-on: ${{ fromJSON(vars.VANTIO_ENROLLED_RUNNER == 'true' && '["self-hosted", "vantio-enrolled"]' || '"ubuntu-latest"') }}
     environment: gcp-lab
