@@ -2,7 +2,20 @@
 
 This file is the working map for agents in `vantio-open-core`. Product and toolchain rules stay in [`.cursor/rules/vantio-engineering.mdc`](.cursor/rules/vantio-engineering.mdc). Do not delete or replace that file. Contributor commands also live in [CONTRIBUTING.md](CONTRIBUTING.md). CI commands live in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Read that workflow. Edit it only when the task is that workflow.
 
-No `environment.json` is committed here. Use the install commands below. CI uses Node.js 22. The pnpm version is the `packageManager` field in `package.json`. The verification that added this file used Node.js v22.23.4, pnpm 11.13.0, and Python 3.12.3. CI also runs the Python SDK on 3.10 and 3.11. Those two interpreters were not used in that verification.
+No `environment.json` is committed here. Install on the Cursor cloud VM with the commands in the Install section.
+
+## Toolchain versions
+
+Read the versions on the machine you are using. A number from an older note is an example from that run. Re-read it.
+
+```bash
+node --version
+pnpm --version
+python3 --version
+node -p "require('./package.json').packageManager"
+```
+
+CI selects Node.js with the `node-version` input in `.github/workflows/ci.yml`. pnpm is the `packageManager` field in `package.json`. The Python SDK job selects interpreters with the `python-version` list in that workflow. Re-read those fields. The Cursor cloud VM provides one `python3`. The other interpreters in that list stay unread until you run them.
 
 ## Repo map
 
@@ -28,23 +41,46 @@ No `environment.json` is committed here. Use the install commands below. CI uses
 pnpm install --frozen-lockfile
 ```
 
-CLI tests call `strace`. CI installs it before those tests:
+The `sudo apt-get` and `pip install` commands below are for the Cursor cloud VM only. That VM is Ubuntu and has `sudo`. The same steps are unpinned in `.github/workflows/ci.yml`. On the VM they follow that image's apt indexes and the Python package index. Pin them with the read-then-install commands in this section before you cite the install.
+
+Re-read the candidate or the index version every time. A version written in this file is an example of the command shape. Install the version you just read.
+
+CLI tests call `strace`. Update the apt index, read the `Candidate:` line, and install that exact version:
 
 ```bash
-sudo apt-get update && sudo apt-get install -y strace
+sudo apt-get update
+apt-cache policy strace
+sudo apt-get install -y "strace=$(apt-cache policy strace | awk '/Candidate:/ { print $2; exit }')"
+dpkg-query -W -f='${Package} ${Version}\n' strace
 ```
 
-Lab-harness and release-gate tests that import YAML, and the installer hash pin:
+`apt-cache policy` prints the candidate. The install line pins `strace` to that candidate on this VM image. `dpkg-query` prints the version that landed. Record that line with the run.
+
+Lab-harness and release-gate tests that import YAML use the PyYAML pin in `.github/workflows/ci.yml`. Copy the `pyyaml==` specifier from that file. The command below is an example of that shape. Re-read the workflow before use. On this branch the example specifier is `pyyaml==6.0.1`:
 
 ```bash
 python3 -m pip install --disable-pip-version-check 'pyyaml==6.0.1'
+```
+
+The installer hash pin is the requirements file. The file holds the hashes:
+
+```bash
 python3 -m pip install --require-hashes --disable-pip-version-check -r packages/vantio-install/requirements/dev-hashes.txt
 ```
 
-Python SDK observe tests use these clients. The SDK itself has no install dependencies:
+Python SDK observe tests use `requests`, `httpx`, `aiohttp`, and `urllib3`. The SDK itself has no install dependencies. Read each version, then install that exact version. `python3 -m pip index versions <name>` writes an experimental-command warning on stderr and writes `<name> (<version>)` as the first stdout line. The loop below reads that stdout version and installs it. Re-read it on the next run:
 
 ```bash
-python3 -m pip install --disable-pip-version-check requests httpx aiohttp urllib3
+for name in requests httpx aiohttp urllib3; do
+  ver=$(python3 -m pip index versions "$name" 2>/dev/null | awk -F'[()]' 'NF>1 { print $2; exit }')
+  if [ -z "$ver" ]; then
+    echo "no version for ${name}" >&2
+    exit 1
+  fi
+  echo "${name}==${ver}"
+  python3 -m pip install --disable-pip-version-check "${name}==${ver}"
+done
+python3 -m pip show requests httpx aiohttp urllib3
 ```
 
 ## Tests
