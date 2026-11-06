@@ -50,6 +50,16 @@ FORK_TRACE_RE = re.compile(
 FORK_ANCHOR_RE = re.compile(
     r"^parent=(?P<parent>[0-9]+) child=(?P<child>[0-9]+) grandchild=(?P<grandchild>[0-9]+)$"
 )
+ROOT_ATTEMPT_RE = re.compile(
+    r"^root_detach_attempt=(?P<kind>prog_detach|link_detach|unlink) "
+    r"target=(?P<target>\S+) result=(?P<result>refused|ok|other|skipped) "
+    r"errno=(?P<errno>[0-9]+)$"
+)
+ROOT_LEDGER_RE = re.compile(
+    r"^root_detach_ledger=type=(?P<type>[A-Z0-9_]+) bytes=(?P<bytes>-?[0-9]+) sent=(?P<sent>-?[0-9]+)$"
+)
+ROOT_KINDS = frozenset({"prog_detach", "link_detach", "unlink"})
+_REFUSED_ERRNOS = frozenset({1, 13})
 _INDEPENDENT_SOURCES = frozenset({"nft", "iptables", "tcpdump"})
 
 
@@ -240,9 +250,43 @@ def fork_inherit_verdict(lines: Sequence[str]) -> str:
 
 
 def root_detach_verdict(lines: Sequence[str]) -> str:
-    """Documented gap. A detach that succeeds is not a pass. The lines are unused."""
-    del lines
-    return "GAP"
+    """PASS only when root, outside the loader, is refused on every detach.
+
+    prog detach, link detach, and bpffs unlink must each be attempted and
+    each must return EPERM or EACCES. The programs and pins must still be
+    there. The enrolled connect must still be blocked, with a CGROUP_BLOCK
+    row whose BytesSevered equals the sent length. A successful detach, a
+    skipped attempt, and an inactive BPF LSM are FAIL. Tip 864289cb lets
+    uid 0 detach, so this verdict is FAIL for that loader. The commit is
+    not special-cased.
+    """
+    if _last(lines, "root_detach_lsm=") != "present":
+        return "FAIL"
+    if _last(lines, "root_detach_uid=") != "0":
+        return "FAIL"
+    if _last(lines, "root_detach_actor=") != "outside_loader":
+        return "FAIL"
+    attempts = [ROOT_ATTEMPT_RE.fullmatch(line) for line in lines]
+    parsed = [item for item in attempts if item is not None]
+    if {item.group("kind") for item in parsed} != ROOT_KINDS:
+        return "FAIL"
+    for item in parsed:
+        if item.group("result") != "refused" or int(item.group("errno")) not in _REFUSED_ERRNOS:
+            return "FAIL"
+    if _last(lines, "root_detach_programs_remain=") != "yes":
+        return "FAIL"
+    if _last(lines, "root_detach_pins_remain=") != "yes":
+        return "FAIL"
+    inside = _last(lines, "root_detach_inside=")
+    parsed_connect = _connect(inside)
+    if parsed_connect is None or parsed_connect.group("where") != "inside" or _block_kind(inside) != "BLOCK":
+        return "FAIL"
+    ledger = ROOT_LEDGER_RE.fullmatch("root_detach_ledger=" + _last(lines, "root_detach_ledger="))
+    if ledger is None or ledger.group("type") != EXPECTED_DROP_EVENT:
+        return "FAIL"
+    if int(ledger.group("bytes")) != int(ledger.group("sent")) or int(ledger.group("sent")) != SENT_PACKET_LENGTH:
+        return "FAIL"
+    return "PASS"
 
 
 def reboot_post_ok(lines: Sequence[str], observed: Mapping[str, str] | None = None) -> bool:
@@ -294,7 +338,7 @@ def phase_decision(
     if phase == "fork-inherit":
         return returncode == 0 and fork_inherit_verdict(lines) == "PASS"
     if phase == "root-detach":
-        return False
+        return returncode == 0 and root_detach_verdict(lines) == "PASS"
     if phase == "uninstall":
         return any(
             line in lines
@@ -322,6 +366,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         path = Path(args[1])
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
         print(compare_verdict(text.splitlines()))
+        return 0
+    if command == "root-detach-verdict" and len(args) == 2:
+        path = Path(args[1])
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        print(root_detach_verdict(text.splitlines()))
         return 0
     if command == "gate" and len(args) == 4:
         phase, path, raw_rc = args[1], Path(args[2]), args[3]

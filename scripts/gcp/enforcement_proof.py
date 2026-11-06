@@ -54,10 +54,11 @@ GUEST_SCRIPT = f"{GUEST_DIR}/enforcement_proof_lab.sh"
 GUEST_ENV = f"{GUEST_DIR}/proof.env"
 GUEST_WRAPPER = f"{GUEST_DIR}/run-proof-phase.sh"
 SLICES = ("full", "reboot-pre", "reboot-post")
-SAME_BOOT = frozenset({"file-deny", "reboot-pre", "expired-key", "uninstall", "uninstall-negative"})
-# fork-inherit and root-detach are fail-closed stubs. They are not in the
-# success order. root-detach stays a gap until a decision is made.
-STUB_PHASES = frozenset({"fork-inherit", "root-detach"})
+SAME_BOOT = frozenset(
+    {"root-detach", "file-deny", "reboot-pre", "expired-key", "uninstall", "uninstall-negative"}
+)
+# fork-inherit stays a fail-closed stub. root-detach is a real check.
+STUB_PHASES = frozenset({"fork-inherit"})
 SCRIPT_PHASES = frozenset({"compare", "reboot-post", *SAME_BOOT, *STUB_PHASES})
 MIN_MINUTES = 90
 HOST_RE = re.compile(r"^[a-z][a-z0-9-]{2,39}$")
@@ -101,8 +102,11 @@ LINE_VALUES = {
     "live_enforcement": frozenset({"NOT_PROVEN"}),
     "fork_inherit": frozenset({"PASS", "INCONCLUSIVE", "FAIL_OPEN", "FAIL_UNATTRIBUTED", "FAIL_UNSCOPED"}),
     "fork_inherit_reason": frozenset({"not_collected"}),
-    "root_detach": frozenset({"GAP"}),
-    "root_detach_decision": frozenset({"DECISION_NEEDED"}),
+    "root_detach": frozenset({"PASS", "FAIL"}),
+    "root_detach_lsm": frozenset({"present", "absent"}),
+    "root_detach_actor": frozenset({"outside_loader", "loader"}),
+    "root_detach_programs_remain": frozenset({"yes", "no"}),
+    "root_detach_pins_remain": frozenset({"yes", "no"}),
     "harness_accept": frozenset({"yes", "no"}),
     "phase_order": frozenset({"compare_required"}),
     "bpf_lsm": frozenset({"present", "absent"}),
@@ -230,6 +234,7 @@ def phases_for(slice_name: str) -> tuple[str, ...]:
     if slice_name == "full":
         return (
             "compare",
+            "root-detach",
             "file-deny",
             "reboot-pre",
             "reboot",
@@ -239,7 +244,7 @@ def phases_for(slice_name: str) -> tuple[str, ...]:
             "uninstall",
         )
     if slice_name == "reboot-pre":
-        return ("compare", "file-deny", "reboot-pre", "reboot")
+        return ("compare", "root-detach", "file-deny", "reboot-pre", "reboot")
     if slice_name == "reboot-post":
         return ("reboot-post", "compare", "expired-key", "uninstall")
     raise SystemExit("slice")
@@ -311,7 +316,7 @@ def public_plan(slice_name: str) -> dict[str, Any]:
         "pe_repo": PE_REPO,
         "phases": list(phases),
         "project_id": od.LAB_PROJECT,
-        "root_detach": "DECISION_NEEDED",
+        "root_detach_on_pe_tip": "FAIL",
         "stub_phases": sorted(STUB_PHASES),
         "public_ip": False,
         "reboot_command": "mask-google-shutdown-scripts-then-systemctl-reboot-force",
@@ -343,10 +348,6 @@ def wrapper_script() -> str:
             'case "$phase" in',
             "  fork-inherit)",
             "    printf '%s\\n' fork_inherit=INCONCLUSIVE fork_inherit_reason=not_collected live_enforcement=NOT_PROVEN",
-            "    exit 1",
-            "    ;;",
-            "  root-detach)",
-            "    printf '%s\\n' root_detach=GAP root_detach_decision=DECISION_NEEDED live_enforcement=NOT_PROVEN",
             "    exit 1",
             "    ;;",
             "esac",
@@ -411,8 +412,15 @@ def keep_line(line: str) -> str | None:
         "fork_child",
         "fork_grandchild",
         "fork_stranger",
+        "root_detach_inside",
     }:
         return text if pg.CONNECT_RE.fullmatch(value) else None
+    if key == "root_detach_uid":
+        return text if value.isdigit() else None
+    if key == "root_detach_attempt":
+        return text if pg.ROOT_ATTEMPT_RE.fullmatch(text) else None
+    if key == "root_detach_ledger":
+        return text if pg.ROOT_LEDGER_RE.fullmatch(text) else None
     if key in {"open_inside", "open_outside"}:
         return text if pg.OPEN_RE.fullmatch(value) else None
     if key in {"reboot_post_boot_id", "reboot_pre_boot_id"}:
@@ -446,7 +454,7 @@ def phase_accepted(
     """Accept a phase only when proof_grade says the evidence holds.
 
     compare=PASS, file_deny=PASS, and reboot_wiped=PASS are not sufficient
-    on their own. root-detach is a documented gap and is never accepted.
+    on their own. root-detach passes only when every detach attempt is refused.
     """
     return pg.phase_decision(phase, lines, returncode, observed_boots)
 
@@ -812,9 +820,66 @@ _NEW_REBOOT = """  note "reboot_pre_boot_id=${old:-missing}"
 """
 
 
-def _stage_grade(dest: Path) -> Path:
-    src = Path(__file__).resolve().with_name("proof_grade.py")
-    target = dest / "proof_grade.py"
+_ROOT_FN = r"""phase_root_detach() {
+  require_compare_pass
+  require_root
+  note "root_detach_uid=$(id -u)"
+  if ! record_host; then
+    note "root_detach_lsm=absent"
+    note "root_detach=FAIL"
+    finish_not_proven
+    exit 1
+  fi
+  note "root_detach_lsm=present"
+  if ! prepare_net; then
+    note "root_detach=FAIL"
+    finish_not_proven
+    exit 1
+  fi
+  mkdir -p "$CGROUP"
+  start_listener
+  start_loader "$OUT/root-detach.log" "$LOADER" --enforce --iface "$IFACE" \
+    --startup-enroll-cgroup "$CGROUP" --output-file "$OUT/root-detach.ndjson"
+  local banner
+  banner="$(wait_banner "$OUT/root-detach.log")"
+  note "root_detach_banner=$banner"
+  local attempt_py grade_py
+  attempt_py="$(cd "$(dirname "$0")" && pwd)/root_detach_attempt.py"
+  grade_py="$(cd "$(dirname "$0")" && pwd)/proof_grade.py"
+  if [[ ! -f "$attempt_py" || ! -f "$grade_py" ]]; then
+    note "root_detach_actor=loader"
+    note "root_detach_attempt=prog_detach target=missing result=skipped errno=0"
+    note "root_detach_attempt=link_detach target=missing result=skipped errno=0"
+    note "root_detach_attempt=unlink target=missing result=skipped errno=0"
+    note "root_detach_programs_remain=no"
+    note "root_detach_pins_remain=no"
+    note "root_detach=FAIL"
+    finish_not_proven
+    exit 1
+  fi
+  while IFS= read -r line; do
+    note "$line"
+  done < <(python3 "$attempt_py" "$CGROUP" /sys/fs/bpf "${LOADER_PID:-0}")
+  note "root_detach_inside=$(connect_once inside "$CGROUP")"
+  local ledger
+  ledger="$(python3 "$grade_py" ledger-line "$OUT/root-detach.ndjson")"
+  note "root_detach_ledger=${ledger#ledger_drop=}"
+  local verdict
+  verdict="$(python3 "$grade_py" root-detach-verdict "$OUT/transcript.txt")"
+  note "root_detach=$verdict"
+  stop_loader_int
+  finish_not_proven
+  if [[ "$verdict" != "PASS" ]]; then
+    exit 1
+  fi
+}
+
+"""
+
+
+def _stage_py(dest: Path, name: str) -> Path:
+    src = Path(__file__).resolve().with_name(name)
+    target = dest / name
     target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     os.chmod(target, 0o644)
     return target
@@ -834,6 +899,7 @@ def harden_lab_script(text: str) -> str:
             ("compare", _OLD_COMPARE),
             ("expired", _OLD_EXPIRED),
             ("reboot", _OLD_REBOOT),
+            ("case", 'case "$PHASE" in\n'),
         )
         if needle not in text
     ]
@@ -843,6 +909,12 @@ def harden_lab_script(text: str) -> str:
     patched = patched.replace("phase_compare() {", _MEASURE_FN + "phase_compare() {", 1)
     patched = patched.replace(_OLD_EXPIRED, _NEW_EXPIRED, 1)
     patched = patched.replace(_OLD_REBOOT, _NEW_REBOOT, 1)
+    patched = patched.replace('case "$PHASE" in\n', _ROOT_FN + 'case "$PHASE" in\n', 1)
+    patched = patched.replace(
+        "  compare) phase_compare ;;\n",
+        "  compare) phase_compare ;;\n  root-detach) phase_root_detach ;;\n",
+        1,
+    )
     if 'result=timeout" in item or "result=error" in item' in patched:
         raise SystemExit("lab_script_marker")
     return patched
@@ -856,7 +928,7 @@ def _write_guest_files(env: Mapping[str, str], dest: Path, *, with_loader: bool)
     wrapper = dest / "run-proof-phase.sh"
     wrapper.write_text(wrapper_script(), encoding="utf-8")
     os.chmod(wrapper, 0o755)
-    paths = [env_path, wrapper, _stage_grade(dest)]
+    paths = [env_path, wrapper, _stage_py(dest, "proof_grade.py"), _stage_py(dest, "root_detach_attempt.py")]
     if not with_loader:
         return paths
     loader_dir = Path(env.get("LOADER_DIR", ""))

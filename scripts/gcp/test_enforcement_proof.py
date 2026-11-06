@@ -17,6 +17,7 @@ import yaml
 import enforcement_proof as ep
 import lab_auto
 import proof_grade as pg
+import root_detach_attempt as rda
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "gcp-lab-enforcement-proof.yml"
@@ -54,6 +55,26 @@ def _accepted_file_deny() -> str:
             "file_deny_row=yes",
         ]
     ) + "\n"
+
+
+def _accepted_root_detach() -> str:
+    sent = pg.SENT_PACKET_LENGTH
+    event = pg.EXPECTED_DROP_EVENT
+    lines = [
+        "root_detach_uid=0",
+        "root_detach_lsm=present",
+        "root_detach_actor=outside_loader",
+        "root_detach_attempt=prog_detach target=id-46 result=refused errno=1",
+        "root_detach_attempt=link_detach target=vantio_link result=refused errno=1",
+        "root_detach_attempt=unlink target=vantio_prog result=refused errno=13",
+        "root_detach_programs_remain=yes",
+        "root_detach_pins_remain=yes",
+        "root_detach_inside=connect where=inside result=timeout errno=0 elapsed_ms=1500.0",
+        f"root_detach_ledger=type={event} bytes={sent} sent={sent}",
+        "root_detach=PASS",
+        "live_enforcement=NOT_PROVEN",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _accepted_reboot() -> str:
@@ -263,6 +284,7 @@ class RunTests(unittest.TestCase):
                     phase = command.rsplit(" ", 1)[-1].strip("'")
                     lines = {
                         "compare": _accepted_compare(),
+                        "root-detach": _accepted_root_detach(),
                         "file-deny": _accepted_file_deny(),
                         "reboot-pre": "reboot_pre=RECORDED\n",
                         "reboot-post": _accepted_reboot(),
@@ -852,7 +874,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(ep.WORKFLOW_FILE, lab_auto.WORKFLOWS)
         sheet = (ROOT / "docs/lab/enforcement-proof-OPERATOR.md").read_text(encoding="utf-8")
         self.assertIn(
-            "compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
+            "compare, root-detach, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
             sheet,
         )
 
@@ -954,12 +976,59 @@ class FailClosedTests(unittest.TestCase):
 
     def test_root_detach_and_fork_inherit_fail_closed(self) -> None:
         wrapper = ep.wrapper_script()
-        self.assertIn("root_detach=GAP", wrapper)
-        self.assertIn("root_detach_decision=DECISION_NEEDED", wrapper)
         self.assertIn("fork_inherit=INCONCLUSIVE", wrapper)
-        self.assertNotIn("root_detach=PASS", wrapper)
-        self.assertFalse(ep.phase_accepted("root-detach", ["root_detach=PASS", "root_detach=GAP"], 0))
-        self.assertEqual(pg.root_detach_verdict(["root_detach=PASS"]), "GAP")
+        self.assertNotIn("root_detach=GAP", wrapper)
+        self.assertNotIn("DECISION_NEEDED", wrapper)
+        accepted = _accepted_root_detach().splitlines()
+        self.assertEqual(pg.root_detach_verdict(accepted), "PASS")
+        self.assertTrue(ep.phase_accepted("root-detach", accepted, 0))
+        detached = _replace_prefix(
+            accepted,
+            "root_detach_attempt=prog_detach",
+            "root_detach_attempt=prog_detach target=id-46 result=ok errno=0",
+        )
+        self.assertEqual(pg.root_detach_verdict(detached), "FAIL")
+        self.assertFalse(ep.phase_accepted("root-detach", detached, 0))
+        self.assertFalse(ep.phase_accepted("root-detach", detached, 1))
+        inactive = _replace_prefix(accepted, "root_detach_lsm=", "root_detach_lsm=absent")
+        self.assertEqual(pg.root_detach_verdict(inactive), "FAIL")
+        skipped = _replace_prefix(
+            accepted,
+            "root_detach_attempt=link_detach",
+            "root_detach_attempt=link_detach target=none result=skipped errno=0",
+        )
+        self.assertEqual(pg.root_detach_verdict(skipped), "FAIL")
+        other_errno = _replace_prefix(
+            accepted,
+            "root_detach_attempt=unlink",
+            "root_detach_attempt=unlink target=vantio_prog result=other errno=2",
+        )
+        self.assertEqual(pg.root_detach_verdict(other_errno), "FAIL")
+        gone = _replace_prefix(accepted, "root_detach_programs_remain=", "root_detach_programs_remain=no")
+        self.assertEqual(pg.root_detach_verdict(gone), "FAIL")
+        opened = _replace_prefix(
+            accepted,
+            "root_detach_inside=",
+            "root_detach_inside=connect where=inside result=connected errno=0 elapsed_ms=2.0",
+        )
+        self.assertEqual(pg.root_detach_verdict(opened), "FAIL")
+        wrong_type = "NETWORK_BLOCK" if pg.EXPECTED_DROP_EVENT != "NETWORK_BLOCK" else "CGROUP_BLOCK"
+        mismatched = _replace_prefix(
+            accepted,
+            "root_detach_ledger=",
+            f"root_detach_ledger=type={wrong_type} bytes={pg.SENT_PACKET_LENGTH} sent={pg.SENT_PACKET_LENGTH}",
+        )
+        self.assertEqual(pg.root_detach_verdict(mismatched), "FAIL")
+        short = _replace_prefix(
+            accepted,
+            "root_detach_ledger=",
+            f"root_detach_ledger=type={pg.EXPECTED_DROP_EVENT} bytes={pg.SENT_PACKET_LENGTH + 1} sent={pg.SENT_PACKET_LENGTH + 1}",
+        )
+        self.assertEqual(pg.root_detach_verdict(short), "FAIL")
+        self.assertEqual(rda.classify(0, issued=True), "ok")
+        self.assertEqual(rda.classify(1, issued=True), "refused")
+        self.assertEqual(rda.classify(13, issued=True), "refused")
+        self.assertEqual(rda.classify(0, issued=False), "skipped")
         self.assertEqual(pg.fork_inherit_verdict([]), "INCONCLUSIVE")
         self.assertFalse(ep.phase_accepted("fork-inherit", [], 1))
         good = [
@@ -977,10 +1046,61 @@ class FailClosedTests(unittest.TestCase):
         changed = _replace_prefix(good, "fork_trace=", "fork_trace=parent=ab child=cd grandchild=ab")
         self.assertEqual(pg.fork_inherit_verdict(changed), "FAIL_UNATTRIBUTED")
         plan = ep.public_plan("full")
-        self.assertEqual(plan["root_detach"], "DECISION_NEEDED")
-        self.assertEqual(plan["stub_phases"], ["fork-inherit", "root-detach"])
+        self.assertEqual(plan["root_detach_on_pe_tip"], "FAIL")
+        self.assertEqual(plan["stub_phases"], ["fork-inherit"])
         self.assertNotIn("fork-inherit", plan["phases"])
-        self.assertNotIn("root-detach", plan["phases"])
+        self.assertIn("root-detach", plan["phases"])
+        self.assertLess(plan["phases"].index("compare"), plan["phases"].index("root-detach"))
+        self.assertLess(plan["phases"].index("root-detach"), plan["phases"].index("file-deny"))
+
+    def test_successful_detach_stops_before_file_deny(self) -> None:
+        class Fake:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+
+            def instances(self, _project: str) -> list[dict[str, str]]:
+                return []
+
+            def create(self, _env: dict[str, str]) -> str:
+                return "vantio-gcp-lab-12"
+
+            def scp(self, _project: str, _name: str, _paths: list[Path]) -> None:
+                return None
+
+            def wait_ssh(self, _project: str, _name: str) -> str:
+                return "boot"
+
+            def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
+                self.commands.append(command)
+                phase = command.rsplit(" ", 1)[-1].strip("'")
+                if phase == "compare":
+                    return subprocess.CompletedProcess([], 0, _accepted_compare(), "")
+                if phase == "root-detach":
+                    text = _accepted_root_detach().replace(
+                        "result=refused errno=1",
+                        "result=ok errno=0",
+                        1,
+                    )
+                    return subprocess.CompletedProcess([], 1, text, "")
+                return subprocess.CompletedProcess([], 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            RunTests._loader(self, root / "loader")  # type: ignore[arg-type]
+            debs = root / "debs"
+            debs.mkdir()
+            (debs / "python3-cryptography_1_amd64.deb").write_bytes(b"deb")
+            fake = Fake()
+            env = _base_env(
+                GCP_LAB_EXECUTE="1",
+                GCP_LAB_GATE_JSON=GATE,
+                LOADER_DIR=str(root / "loader"),
+                DEB_DIR=str(debs),
+                EVIDENCE_DIR=str(root / "evidence"),
+                RUNNER_TEMP=str(root),
+            )
+            self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
+        self.assertFalse(any(command.endswith(" file-deny") for command in fake.commands))
 
     def test_reboot_requires_a_new_boot_id(self) -> None:
         same = _accepted_reboot().replace(AFTER, BEFORE).splitlines()
@@ -1036,6 +1156,7 @@ class FailClosedTests(unittest.TestCase):
                     )
                 text = {
                     "compare": _accepted_compare(),
+                    "root-detach": _accepted_root_detach(),
                     "file-deny": _accepted_file_deny(),
                     "reboot-pre": "reboot_pre=RECORDED\n",
                     "reboot-post": _accepted_reboot(),
@@ -1066,6 +1187,7 @@ class FailClosedTests(unittest.TestCase):
             "phase_compare() {\n" + ep._OLD_COMPARE + "}\n"
             "phase_expired_key() {\n" + ep._OLD_EXPIRED +
             "phase_reboot_post() {\n" + ep._OLD_REBOOT + "}\n"
+            'case "$PHASE" in\n  compare) phase_compare ;;\nesac\n'
         )
         self.assertIn('result=timeout" in item or "result=error" in item', script)
         patched = ep.harden_lab_script(script)
@@ -1075,6 +1197,8 @@ class FailClosedTests(unittest.TestCase):
         self.assertIn("license_exp_claim=NOT_PROVEN", patched)
         self.assertIn("exit 1", patched.split("license_exp_claim=NOT_PROVEN", 1)[1])
         self.assertIn("reboot_pre_boot_id=", patched)
+        self.assertIn("phase_root_detach()", patched)
+        self.assertIn("root-detach) phase_root_detach", patched)
         checked = subprocess.run(["bash", "-n"], input=patched, text=True, capture_output=True, check=False)
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertEqual(ep.harden_lab_script("#!/bin/bash\nexit 0\n"), "#!/bin/bash\nexit 0\n")

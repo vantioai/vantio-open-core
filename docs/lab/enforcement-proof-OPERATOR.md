@@ -48,22 +48,23 @@ The guest proof and the failure delete are a second call of that same file, with
 
 Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo +nightly-2026-10-13 build -p vantio-loader --release`. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. Rust is pinned to `nightly-2026-10-13` and `bpf-linker` is pinned to `0.12.0`. The checkout's toolchain file says `nightly`; the build script overrides it.
 
-`full` runs these guest phases in this order: compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
+`full` runs these guest phases in this order: compare, root-detach, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
 
 The second `compare` is after `reboot-post` and before `expired-key` and `uninstall`. Tip `864289cb` binds `expired-key` and `uninstall` to the current boot through `require_compare_pass`. The Phantom Engine packet lists those two phases after `reboot-post` and notes that they exit 2 with `phase_order=compare_required` until `compare.result` is `status=PASS` for the current boot id. This slice runs that post-reboot `compare` so those phases can run. Before that second compare, the first boot's lab directory is copied to `/var/lib/vantio-enforcement-proof-pre-reboot`.
 
 1. `compare` on the boot that was just installed.
-2. `file-deny` on that same boot.
-3. `reboot-pre` on that same boot. The script records state and does not reboot.
-4. Reboot. The workflow masks `google-shutdown-scripts.service`, then schedules `systemctl reboot --force`. A plain `reboot` on this network does not have to reach a new boot.
-5. `reboot-post` on the new boot, before the loader is started again. The script writes `reboot_restored=NOT_RUN`. This workflow does not start the loader.
-6. `compare` on the new boot.
-7. `expired-key` on the new boot.
-8. `uninstall` on the new boot. That phase runs `uninstall-negative` itself when the host is enrolled.
+2. `root-detach` on that same boot. As root, outside the loader, the guest tries `BPF_PROG_DETACH`, `BPF_LINK_DETACH`, and unlink of the Vantio bpffs pins. The phase passes only when every attempt returns EPERM or EACCES, the programs and pins are still present, and an enrolled connect is still blocked with a `CGROUP_BLOCK` row whose `BytesSevered` is 60. A successful detach is a failure. An inactive or skipped BPF LSM is a failure. Tip `864289cb` still lets uid 0 detach, so this phase fails on that loader. The failure is recorded. It is not turned into a pass.
+3. `file-deny` on that same boot.
+4. `reboot-pre` on that same boot. The script records state and does not reboot.
+5. Reboot. The workflow masks `google-shutdown-scripts.service`, then schedules `systemctl reboot --force`. A plain `reboot` on this network does not have to reach a new boot.
+6. `reboot-post` on the new boot, before the loader is started again. The script writes `reboot_restored=NOT_RUN`. This workflow does not start the loader.
+7. `compare` on the new boot.
+8. `expired-key` on the new boot.
+9. `uninstall` on the new boot. That phase runs `uninstall-negative` itself when the host is enrolled.
 
 Stop on the first phase that is not an accepted observation. `compare=REFUSED_LSM` stops the run. A stock Ubuntu 24.04 image can omit `bpf` from `/sys/kernel/security/lsm`. This workflow does not edit the kernel command line.
 
-`reboot-pre` is the first dispatch when one job should not span the reboot. It runs compare, file-deny, reboot-pre, and the forced reboot, then leaves the VM up. `reboot-post` is the second dispatch on that same instance name. It runs reboot-post, compare, expired-key, and uninstall. Dispatch it before `stop_after_minutes` halts the guest.
+`reboot-pre` is the first dispatch when one job should not span the reboot. It runs compare, root-detach, file-deny, reboot-pre, and the forced reboot, then leaves the VM up. On tip `864289cb` root-detach fails, so that dispatch stops there. `reboot-post` is the second dispatch on that same instance name. It runs reboot-post, compare, expired-key, and uninstall. Dispatch it before `stop_after_minutes` halts the guest.
 
 ## Close-out
 
@@ -88,7 +89,7 @@ The concurrency group is `vantio-gce-slot`. A VM left up blocks the next lab cre
 - `compare=PASS` is accepted only when the enrolled connect times out or returns errno 1, the outside connect succeeds, an nft, iptables, or tcpdump counter confirms the drop, and the ledger row's `EventType` is `CGROUP_BLOCK` with `BytesSevered` equal to the sent length 60. The loader ndjson is not that counter. A `NETWORK_BLOCK` row alone does not pass on this tip.
 - `file-deny` passes only when the enrolled open returns errno 13 and the outside open returns 0.
 - `reboot-post` passes only when the boot id changed.
-- `fork-inherit` and `root-detach` are stub phases. They exit 1 and are not in the `full` success order. `root-detach` stays `DECISION_NEEDED` until a decision is made. `live_enforcement` stays `NOT_PROVEN`.
+- `fork-inherit` is a stub. It exits 1 and is not in the `full` order. `root-detach` is in that order. On tip `864289cb` it fails because root detach still succeeds. `live_enforcement` stays `NOT_PROVEN`.
 - The workflow does not run `scripts/lab_webshell_battery.py`.
 
 Pass and fail lines for council are in the Phantom Engine packet and in `$VANTIO_LAB_DIR/transcript.txt` for the phase that just ran. Each invocation truncates that transcript. The workflow stores each phase log under the proof artifact `gcp-lab-enforcement-proof-<run_id>`.
