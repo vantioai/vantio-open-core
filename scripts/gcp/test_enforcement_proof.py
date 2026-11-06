@@ -537,6 +537,8 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertTrue((checkout.resolve() / "target").is_dir())
             text = BUILD.read_text(encoding="utf-8")
             self.assertIn('-v "$writable:$src/target"', text)
+            self.assertIn('rm -rf "$writable" >/dev/null 2>&1 || true', text)
+            self.assertIn('chown -R "${HOST_UID}:${HOST_GID}" "$(pwd)/target" /out', text)
             mutated = text.replace('-v "$writable:$src/target"', '-v "$writable:$src/target:ro"', 1)
             self.assertNotEqual(mutated, text)
             script = root / "mutated.sh"
@@ -596,6 +598,43 @@ class CreateAndBuildTests(unittest.TestCase):
             )
             self.assertNotIn("pe_target", broken.stderr)
             self.assertTrue((root / "docker.log").exists())
+
+    def test_failed_target_cleanup_does_not_fail_the_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            rm = Path(env["PATH"].split(":", 1)[0]) / "rm"
+            rm.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            rm.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("loader_built=1", done.stdout)
+            text = BUILD.read_text(encoding="utf-8")
+            needle = 'rm -rf "$writable" >/dev/null 2>&1 || true'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, 'rm -rf "$writable"', 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            script.write_text(mutated, encoding="utf-8")
+            broken = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(broken.returncode, 0)
+            self.assertIn("loader_built=1", broken.stdout)
 
     def test_relative_src_does_not_start_docker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
