@@ -4,9 +4,13 @@
 # The guest is an e2-micro. The compile runs in an ubuntu:24.04 container so the
 # binary matches that guest's glibc. The git tip is not a seal digest.
 #
-# Rust and bpf-linker are pinned. bpf-linker 0.12.0 is built against the LLVM
-# in nightly-2026-10-13. The checkout's rust-toolchain.toml says "nightly";
-# RUSTUP_TOOLCHAIN and cargo + override that file.
+# bpf-linker stays at 0.12.0. A dated channel in rust-toolchain.toml is the
+# Rust pin. A missing file or a floating channel named only "nightly" keeps
+# nightly-2026-10-13. SOURCE_DATE_EPOCH=0 and the three --remap-path-prefix
+# flags match vantio-loader/build.rs: the checkout becomes /vantio-src, the
+# cargo home becomes /cargo, and the rustc sysroot becomes /rustc.
+# CFLAGS uses -ffile-prefix-map for the same three paths. ring's C files
+# do not see RUSTFLAGS.
 set -euo pipefail
 
 root=${1:?}
@@ -87,6 +91,11 @@ if worktree_dirty "$src"; then
 fi
 test -f "$src/Cargo.toml"
 test -f "$src/rust-toolchain.toml"
+# A pin looks like: channel = "nightly-YYYY-MM-DD"
+channel="$(awk -F'"' '/^[[:space:]]*channel[[:space:]]*=/ { print $2; exit }' "$src/rust-toolchain.toml")"
+case "$channel" in
+  nightly-20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]) RUST_TOOLCHAIN="$channel" ;;
+esac
 test -f "$src/vantio-loader/src/main.rs"
 test -f "$src/scripts/enforcement_proof_lab.sh"
 mkdir -p "$out"
@@ -152,9 +161,18 @@ esac
   printf "bpf_linker=%s\n" "$linker_line"
 } > /out/toolchain.txt
 export CARGO_HOME=/tmp/cargo
-export CARGO_TARGET_DIR=/tmp/target
+export CARGO_TARGET_DIR="$(pwd)/target"
+export SOURCE_DATE_EPOCH=0
+sysroot="$(rustc --print sysroot)"
+cargo_home="${CARGO_HOME}"
+checkout="$(pwd)"
+remap="--remap-path-prefix=${checkout}=/vantio-src --remap-path-prefix=${cargo_home}=/cargo --remap-path-prefix=${sysroot}=/rustc"
+export RUSTFLAGS="${remap}"
+# ring compiles C and assembly. RUSTFLAGS do not rewrite those .file paths.
+export CFLAGS="-ffile-prefix-map=${checkout}=/vantio-src -ffile-prefix-map=${cargo_home}=/cargo -ffile-prefix-map=${sysroot}=/rustc"
+export CXXFLAGS="${CFLAGS}"
 cargo +"${RUST_TOOLCHAIN}" build -p vantio-loader --release
-install -m 0755 /tmp/target/release/vantio-loader /out/vantio-loader
+install -m 0755 "$(pwd)/target/release/vantio-loader" /out/vantio-loader
 if ldd /out/vantio-loader | grep -E "libssl|libcrypto"; then
   echo loader_libs >&2
   exit 1

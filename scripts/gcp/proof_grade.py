@@ -61,6 +61,10 @@ FORK_TRACE_RE = re.compile(
 FORK_ANCHOR_RE = re.compile(
     r"^parent=(?P<parent>[0-9]+) child=(?P<child>[0-9]+) grandchild=(?P<grandchild>[0-9]+)$"
 )
+FORK_ROWS_RE = re.compile(
+    r"^fork_rows=blocks=(?P<blocks>[0-9]+) anchor=(?P<anchor>[0-9]+) "
+    r"trace_zero=(?P<trace_zero>yes|no) drop_path=(?P<drop_path>[a-z0-9_]+)$"
+)
 ROOT_ATTEMPT_RE = re.compile(
     r"^root_detach_attempt=(?P<kind>prog_detach|link_detach|map_update|unlink|rename) "
     r"target=(?P<target>\S+) result=(?P<result>refused|ok|other|skipped) "
@@ -385,7 +389,13 @@ def file_deny_verdict(lines: Sequence[str]) -> str:
 
 
 def fork_inherit_verdict(lines: Sequence[str]) -> str:
-    """PASS when parent, child, and grandchild are blocked with one non-zero trace id."""
+    """PASS when every descendant is blocked and the drops share one enrolled anchor.
+
+    A cgroup drop writes TraceId as 0xA110000000000000 plus the sender TGID when
+    that TGID was not already in the trace map. Parent, child, and grandchild
+    therefore emit different TraceId values. The shared field is lineage_anchor.
+    A zero TraceId, a zero anchor, or more than one anchor is not attribution.
+    """
     parent = _block_kind(_last(lines, "fork_parent="))
     child = _block_kind(_last(lines, "fork_child="))
     grandchild = _block_kind(_last(lines, "fork_grandchild="))
@@ -399,20 +409,21 @@ def fork_inherit_verdict(lines: Sequence[str]) -> str:
         return "FAIL_OPEN"
     if parent != "BLOCK" or child != "BLOCK" or grandchild != "BLOCK":
         return "INCONCLUSIVE"
-    if clone3 and _block_kind(clone3) != "BLOCK":
+    if not clone3 or _block_kind(clone3) != "BLOCK":
         return "INCONCLUSIVE"
     outsider = _last(lines, "fork_outsider=") or _last(lines, "fork_stranger=")
     if not _connected_ok(outsider):
         return "FAIL_UNSCOPED"
-    trace = FORK_TRACE_RE.fullmatch(_last(lines, "fork_trace="))
+    rows = FORK_ROWS_RE.fullmatch("fork_rows=" + _last(lines, "fork_rows="))
     anchor = FORK_ANCHOR_RE.fullmatch(_last(lines, "fork_anchor="))
-    if trace is None or anchor is None:
+    if rows is None or anchor is None:
         return "FAIL_UNATTRIBUTED"
-    if trace.group("parent") != trace.group("child") or trace.group("parent") != trace.group("grandchild"):
+    if rows.group("trace_zero") != "no" or rows.group("drop_path") != EXPECTED_DROP_PATH:
         return "FAIL_UNATTRIBUTED"
-    if int(trace.group("parent"), 16) == 0:
+    if int(rows.group("blocks")) < 1 or int(rows.group("anchor")) <= 0:
         return "FAIL_UNATTRIBUTED"
-    if min(int(anchor.group("parent")), int(anchor.group("child")), int(anchor.group("grandchild"))) <= 0:
+    recorded = int(rows.group("anchor"))
+    if any(int(anchor.group(name)) != recorded for name in ("parent", "child", "grandchild")):
         return "FAIL_UNATTRIBUTED"
     return "PASS"
 
@@ -622,6 +633,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if "--sent-line" in args:
             sent_line = args[args.index("--sent-line") + 1]
         print(ledger_line(text, sent_line=sent_line))
+        return 0
+    if command == "fork-inherit-verdict" and len(args) == 2:
+        path = Path(args[1])
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        print(fork_inherit_verdict(text.splitlines()))
         return 0
     if command == "compare-verdict" and len(args) == 2:
         path = Path(args[1])

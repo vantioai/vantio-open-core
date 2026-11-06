@@ -140,8 +140,8 @@ def _accepted_fork() -> str:
             "fork_grandchild=connect where=grandchild result=timeout errno=0 elapsed_ms=1.0",
             "fork_clone3=connect where=clone3 result=timeout errno=0 elapsed_ms=1.0",
             "fork_outsider=connect where=outsider result=connected errno=0 elapsed_ms=1.0",
-            "fork_trace=parent=ab child=ab grandchild=ab",
-            "fork_anchor=parent=7 child=7 grandchild=7",
+            "fork_rows=blocks=4 anchor=3554 trace_zero=no drop_path=cgroup_skb",
+            "fork_anchor=parent=3554 child=3554 grandchild=3554",
             "fork_inherit=PASS",
         ]
     ) + "\n"
@@ -1143,20 +1143,19 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(rda.classify(0, issued=False), "skipped")
         self.assertEqual(pg.fork_inherit_verdict([]), "INCONCLUSIVE")
         self.assertFalse(ep.phase_accepted("fork-inherit", [], 1))
-        good = [
-            "fork_parent=connect where=inside result=timeout errno=0 elapsed_ms=1.0",
-            "fork_child=connect where=inside result=timeout errno=0 elapsed_ms=1.0",
-            "fork_grandchild=connect where=inside result=timeout errno=0 elapsed_ms=1.0",
-            "fork_stranger=connect where=outside result=connected errno=0 elapsed_ms=1.0",
-            "fork_trace=parent=ab child=ab grandchild=ab",
-            "fork_anchor=parent=7 child=7 grandchild=7",
-        ]
+        good = _accepted_fork().splitlines()
         self.assertEqual(pg.fork_inherit_verdict(good), "PASS")
         self.assertTrue(ep.phase_accepted("fork-inherit", good, 0))
-        zero = _replace_prefix(good, "fork_trace=", "fork_trace=parent=0 child=0 grandchild=0")
+        distinct = good + [
+            "fork_trace=parent=a11000000000c969 child=a11000000000c96c grandchild=a11000000000c8f1",
+        ]
+        self.assertEqual(pg.fork_inherit_verdict(distinct), "PASS")
+        zero = _replace_prefix(good, "fork_rows=", "fork_rows=blocks=4 anchor=3554 trace_zero=yes drop_path=cgroup_skb")
         self.assertEqual(pg.fork_inherit_verdict(zero), "FAIL_UNATTRIBUTED")
-        changed = _replace_prefix(good, "fork_trace=", "fork_trace=parent=ab child=cd grandchild=ab")
-        self.assertEqual(pg.fork_inherit_verdict(changed), "FAIL_UNATTRIBUTED")
+        other_anchor = _replace_prefix(good, "fork_rows=", "fork_rows=blocks=4 anchor=9 trace_zero=no drop_path=cgroup_skb")
+        self.assertEqual(pg.fork_inherit_verdict(other_anchor), "FAIL_UNATTRIBUTED")
+        missing_clone = [line for line in good if not line.startswith("fork_clone3=")]
+        self.assertEqual(pg.fork_inherit_verdict(missing_clone), "INCONCLUSIVE")
         plan = ep.public_plan("full")
         eacces = _replace_prefix(
             accepted,
@@ -1368,6 +1367,12 @@ class FailClosedTests(unittest.TestCase):
         self.assertLess(text.index("trap cleanup_writable EXIT"), text.index('echo "pe_git_sha"'))
         self.assertLess(text.index("trap cleanup_target EXIT"), text.index("apt-get update"))
         self.assertIn("RUST_TOOLCHAIN=nightly-2026-10-13", text)
+        self.assertIn("SOURCE_DATE_EPOCH=0", text)
+        self.assertIn("--remap-path-prefix=${checkout}=/vantio-src", text)
+        self.assertIn("--remap-path-prefix=${cargo_home}=/cargo", text)
+        self.assertIn("--remap-path-prefix=${sysroot}=/rustc", text)
+        self.assertIn("-ffile-prefix-map=${cargo_home}=/cargo", text)
+        self.assertIn('channel = "', text)
         self.assertIn("BPF_LINKER_VERSION=0.12.0", text)
         self.assertIn("bpf-linker@${BPF_LINKER_VERSION}", text)
         with tempfile.TemporaryDirectory() as tmp:

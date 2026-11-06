@@ -474,6 +474,8 @@ def keep_line(line: str) -> str | None:
         return text if pg.FORK_TRACE_RE.fullmatch(value) else None
     if key == "fork_anchor":
         return text if pg.FORK_ANCHOR_RE.fullmatch(value) else None
+    if key == "fork_rows":
+        return text if pg.FORK_ROWS_RE.fullmatch(text) else None
     return None
 
 
@@ -1365,7 +1367,7 @@ def harden_lab_script(text: str) -> str:
         '    note "$line"\n'
         '  done < <(python3 - "$OUT/fork.ndjson" <<\'PY\'\n'
         "import json, sys\n"
-        "ids, anchors = [], []\n"
+        "ids, anchors, paths, severed = [], [], [], []\n"
         "for line in open(sys.argv[1], encoding='utf-8', errors='replace'):\n"
         "    line = line.strip()\n"
         "    if not line.startswith('{'):\n"
@@ -1376,25 +1378,42 @@ def harden_lab_script(text: str) -> str:
         "        continue\n"
         "    if row.get('EventType') != 'NETWORK_BLOCK' or row.get('ActionTaken') != 'BLOCKED':\n"
         "        continue\n"
-        "    ids.append(str(row.get('TraceId') or '0'))\n"
+        "    ids.append(str(row.get('TraceId') or ''))\n"
+        "    paths.append(str(row.get('DropPath') or ''))\n"
         "    try:\n"
         "        anchors.append(int(row.get('lineage_anchor') or 0))\n"
+        "        severed.append(int(row.get('BytesSevered') or 0))\n"
         "    except (TypeError, ValueError):\n"
         "        anchors.append(0)\n"
-        "unique = []\n"
-        "for item in ids:\n"
-        "    if item not in unique:\n"
-        "        unique.append(item)\n"
-        "if len(unique) == 1 and unique[0] not in ('', '0', '0000000000000000'):\n"
-        "    unique = [unique[0], unique[0], unique[0]]\n"
-        "while len(unique) < 3:\n"
-        "    unique.append('0')\n"
-        "anchor = anchors[0] if anchors and min(anchors) > 0 else 0\n"
-        "print(f'fork_trace=parent={unique[0]} child={unique[1]} grandchild={unique[2]}')\n"
+        "        severed.append(0)\n"
+        "same = len(set(anchors)) == 1 and anchors and anchors[0] > 0\n"
+        "same = same and severed and min(severed) > 0 and set(paths) == {'cgroup_skb'}\n"
+        "zero = any(item in ('', '0', '0000000000000000') for item in ids) or not ids\n"
+        "anchor = anchors[0] if same and not zero else 0\n"
+        "print('fork_rows=blocks=%s anchor=%s trace_zero=%s drop_path=%s' % (len(anchors), anchor, 'yes' if zero or anchor == 0 else 'no', 'cgroup_skb' if anchor else 'absent'))\n"
         "print(f'fork_anchor=parent={anchor} child={anchor} grandchild={anchor}')\n"
         "PY\n"
         ")\n"
         "  stop_loader_int\n",
+        1,
+    )
+    patched = patched.replace(
+        "    os._exit(0)\n",
+        "    sys.stdout.flush()\n    os._exit(0)\n",
+        1,
+    )
+    patched = patched.replace(
+        '''  verdict="$(PYTHONPATH="python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$OUT/transcript.txt" "$OUT/fork.ndjson" <<'PY'
+import sys
+from holds.verdicts import fork_inherit_verdict
+transcript = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+ledger = open(sys.argv[2], encoding="utf-8", errors="replace").read()
+print(fork_inherit_verdict(transcript, ledger))
+PY
+)"''',
+        '''  local grade_py
+  grade_py="$(cd "$(dirname "$0")" && pwd)/proof_grade.py"
+  verdict="$(python3 "$grade_py" fork-inherit-verdict "$OUT/transcript.txt")"''',
         1,
     )
     patched = patched.replace(
