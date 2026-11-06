@@ -17,10 +17,12 @@ Hold. Zach merges this workflow to `main`, then Zach clicks `workflow_dispatch`.
 | Project | `vantio-lab-oct08` |
 | Zone | `us-central1-a` |
 | Guest | Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
-| Git tip | `fd7b69f7d9a7f845b05cca442ce68d18680df7c4` |
+| Git tip | the one line in `scripts/gcp/pe-pin.txt` |
 | Lab directory | `/var/lib/vantio-enforcement-proof` |
 
 `gcp-lab-provision.yml` is the wrong path. Its `seal` input is 64 hex. This tip is 40 hex and is not a seal. Do not type the tip into that workflow.
+
+The tip moves by editing `scripts/gcp/pe-pin.txt` and the workflow input default so the two lines match. Point `build_pe_loader.sh` at the new tree. A directory with no `.git` is accepted when the pin argument matches that file. A git checkout must be clean and `HEAD` must equal the pin. The pin is not a loader hash.
 
 ## Dispatch inputs
 
@@ -28,7 +30,7 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 
 | Input | What to enter |
 | --- | --- |
-| `pe_git_sha` | `fd7b69f7d9a7f845b05cca442ce68d18680df7c4`. Any other value fails before a VM. |
+| `pe_git_sha` | The line in `scripts/gcp/pe-pin.txt`. The workflow default is that line. Any other value fails before a VM. |
 | `run_go` | Zach's own-words run go. The log masks it and does not print it. |
 | `host_name` | The guest `hostname -s` Zach allows, 3 to 40 lowercase letters, digits, and hyphens. The workflow sets `VANTIO_LAB_HOST` and `VANTIO_LAB_HOST_ALLOWLIST` to that one name. It is masked. |
 | `proof_slice` | `full` (default), `reboot-pre`, or `reboot-post`. |

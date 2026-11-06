@@ -25,19 +25,31 @@ def _result(kind: str, errno: int) -> str:
     return f"{kind} {errno}"
 
 
+def classify_tcp(rc: int, errno: int, so_error: int, sent: int) -> str:
+    """A connect is ok only when the handshake finished and a byte was sent.
+
+    EINPROGRESS (115) with nothing delivered is not a pass and not a completed
+    connect. Errno 1 is the LSM deny.
+    """
+    if rc == 0 and so_error == 0 and sent > 0:
+        return _result("ok", 0)
+    if errno == 1 or so_error == 1:
+        return _result("denied", 1)
+    return _result("denied", 0)
+
+
 def _connect(ip: str, port: int) -> str:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1.5)
     try:
         sock.connect((ip, port))
+        sent = sock.send(b"x")
     except socket.timeout:
         return _result("denied", 0)
     except OSError as exc:
-        if exc.errno == 1:
-            return _result("denied", 1)
-        return _result("ok", exc.errno or 0)
+        return classify_tcp(-1, exc.errno or 0, 0, 0)
     else:
-        return _result("ok", 0)
+        return classify_tcp(0, 0, 0, sent)
     finally:
         sock.close()
 
@@ -80,8 +92,9 @@ def _exec_code(ip: str, port: int, result: Path) -> str:
         "except socket.timeout:\n"
         f"    open({str(result)!r}, 'w').write('denied 0\\n')\n"
         "except OSError as exc:\n"
-        "    kind = 'denied' if exc.errno == 1 else 'ok'\n"
-        f"    open({str(result)!r}, 'w').write(f'{{kind}} {{exc.errno or 0}}\\n')\n"
+        "    kind = 'denied'\n"
+        "    errno = 1 if exc.errno == 1 else 0\n"
+        f"    open({str(result)!r}, 'w').write(f'{{kind}} {{errno}}\\n')\n"
     )
 
 
@@ -150,27 +163,48 @@ def _static_probe(cgroup: str, ip: str, port: int, out: Path) -> str:
         "#include <fcntl.h>\n"
         "#include <netinet/in.h>\n"
         "#include <arpa/inet.h>\n"
+        "#include <poll.h>\n"
+        "#include <signal.h>\n"
         "#include <stdio.h>\n"
         "#include <string.h>\n"
         "#include <sys/socket.h>\n"
-        "#include <sys/time.h>\n"
         "#include <unistd.h>\n"
+        "static void on_alarm(int sig) { (void)sig; }\n"
         "int main(void) {\n"
         f"  const char *path = {json_string(str(out / 'escape-static.txt'))};\n"
         "  int fd = socket(AF_INET, SOCK_STREAM, 0);\n"
-        "  struct timeval tv = {1, 500000};\n"
-        "  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);\n"
-        "  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);\n"
         "  struct sockaddr_in addr;\n"
         "  memset(&addr, 0, sizeof addr);\n"
         "  addr.sin_family = AF_INET;\n"
         f"  addr.sin_port = htons({port});\n"
         f"  inet_pton(AF_INET, {json_string(ip)}, &addr.sin_addr);\n"
+        "  struct sigaction sa;\n"
+        "  memset(&sa, 0, sizeof sa);\n"
+        "  sa.sa_handler = on_alarm;\n"
+        "  sigaction(SIGALRM, &sa, 0);\n"
+        "  alarm(2);\n"
         "  int rc = connect(fd, (struct sockaddr *)&addr, sizeof addr);\n"
+        "  int err = errno;\n"
+        "  alarm(0);\n"
+        "  int so_error = 0;\n"
+        "  int sent = 0;\n"
+        "  if (rc < 0 && err == EINPROGRESS) {\n"
+        "    struct pollfd pfd = { fd, POLLOUT, 0 };\n"
+        "    int pr = poll(&pfd, 1, 1500);\n"
+        "    socklen_t sl = sizeof so_error;\n"
+        "    getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &sl);\n"
+        "    if (pr > 0 && so_error == 0) {\n"
+        "      char b = 'x';\n"
+        "      if (send(fd, &b, 1, MSG_NOSIGNAL) == 1) sent = 1;\n"
+        "    }\n"
+        "  } else if (rc == 0) {\n"
+        "    char b = 'x';\n"
+        "    if (send(fd, &b, 1, MSG_NOSIGNAL) == 1) sent = 1;\n"
+        "  }\n"
         "  FILE *out = fopen(path, \"w\");\n"
-        "  if (rc == 0) fprintf(out, \"ok 0\\n\");\n"
-        "  else if (errno == 1 || errno == 110 || errno == 11) fprintf(out, \"denied %d\\n\", errno == 1 ? 1 : 0);\n"
-        "  else fprintf(out, \"ok %d\\n\", errno);\n"
+        "  if (rc == 0 && so_error == 0 && sent == 1) fprintf(out, \"ok 0\\n\");\n"
+        "  else if (err == 1 || so_error == 1) fprintf(out, \"denied 1\\n\");\n"
+        "  else fprintf(out, \"denied 0\\n\");\n"
         "  fclose(out);\n"
         "  return 0;\n"
         "}\n",

@@ -24,6 +24,12 @@ WORKFLOW = ROOT / ".github" / "workflows" / "gcp-lab-enforcement-proof.yml"
 PROVISION = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
 BUILD = ROOT / "scripts" / "gcp" / "build_pe_loader.sh"
 PIN = ep.PE_GIT_SHA
+
+
+def _stage_build(path: Path, text: str, pin: str = PIN) -> None:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    (path.parent / "pe-pin.txt").write_text(pin + "\n", encoding="utf-8")
 GO = "zach-run-go-placeholder"
 HOST = "proof81"
 GATE = json.dumps({"expected_oop_usd": "0", "abort": False})
@@ -504,7 +510,8 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertIn("pe_git_sha", done.stderr)
             self.assertFalse(log.exists())
             text = BUILD.read_text(encoding="utf-8")
-            self.assertIn(f"expected={PIN}", text)
+            self.assertIn("pe-pin.txt", text)
+            self.assertNotIn(PIN, text)
             mutated = text.replace(
                 'if [[ "$pin" != "$expected" ]]; then\n  echo "pe_git_sha" >&2\n  exit 1\nfi\n',
                 "",
@@ -512,7 +519,7 @@ class CreateAndBuildTests(unittest.TestCase):
             )
             self.assertNotEqual(mutated, text)
             mutated_path = root / "mutated.sh"
-            mutated_path.write_text(mutated, encoding="utf-8")
+            _stage_build(mutated_path, mutated)
             broken = subprocess.run(
                 ["bash", str(mutated_path), str(root / "src"), str(root / "out"), "0" * 40],
                 capture_output=True,
@@ -525,10 +532,13 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertFalse(log.exists())
 
     def test_script_pin_byte_must_match_the_constant(self) -> None:
+        pin_path = ROOT / "scripts/gcp/pe-pin.txt"
+        self.assertEqual(pin_path.read_text(encoding="utf-8").strip(), PIN)
         text = BUILD.read_text(encoding="utf-8")
-        self.assertIn(f"expected={PIN}", text)
-        mutated = text.replace(PIN, _flip(PIN), 1)
-        self.assertNotIn(f"expected={PIN}", mutated)
+        self.assertIn("pe-pin.txt", text)
+        self.assertNotIn(PIN, text)
+        flipped = pin_path.read_text(encoding="utf-8").replace(PIN, _flip(PIN), 1)
+        self.assertNotIn(PIN, flipped)
 
     def _fake_tools(self, root: Path, pin: str) -> dict[str, str]:
         bindir = root / "bin"
@@ -650,7 +660,7 @@ class CreateAndBuildTests(unittest.TestCase):
             checkout = root / "phantom-engine"
             self._checkout(checkout)
             script = root / "mutated.sh"
-            script.write_text(mutated, encoding="utf-8")
+            _stage_build(script, mutated)
             env = self._fake_tools(root, PIN)
             done = subprocess.run(
                 ["bash", str(script), "phantom-engine", "out", PIN],
@@ -696,7 +706,7 @@ class CreateAndBuildTests(unittest.TestCase):
             mutated = text.replace('-v "$writable:$src/target"', '-v "$writable:$src/target:ro"', 1)
             self.assertNotEqual(mutated, text)
             script = root / "mutated.sh"
-            script.write_text(mutated, encoding="utf-8")
+            _stage_build(script, mutated)
             mutated_run = subprocess.run(
                 ["bash", str(script), "phantom-engine", "out", PIN],
                 capture_output=True,
@@ -740,7 +750,7 @@ class CreateAndBuildTests(unittest.TestCase):
             mutated = text.replace(needle, "", 1)
             self.assertNotEqual(mutated, text)
             script = root / "mutated.sh"
-            script.write_text(mutated, encoding="utf-8")
+            _stage_build(script, mutated)
             (root / "docker.log").unlink(missing_ok=True)
             broken = subprocess.run(
                 ["bash", str(script), "phantom-engine", "out", PIN],
@@ -778,7 +788,7 @@ class CreateAndBuildTests(unittest.TestCase):
             mutated = text.replace(needle, 'rm -rf "$writable"', 1)
             self.assertNotEqual(mutated, text)
             script = root / "mutated.sh"
-            script.write_text(mutated, encoding="utf-8")
+            _stage_build(script, mutated)
             broken = subprocess.run(
                 ["bash", str(script), "phantom-engine", "out", PIN],
                 capture_output=True,
@@ -822,7 +832,7 @@ class CreateAndBuildTests(unittest.TestCase):
             mutated = text.replace(needle, "", 1)
             self.assertNotEqual(mutated, text)
             script = root / "mutated.sh"
-            script.write_text(mutated, encoding="utf-8")
+            _stage_build(script, mutated)
             broken = subprocess.run(
                 [
                     "bash",
@@ -938,6 +948,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(trigger), ["workflow_dispatch"])
         inputs = trigger["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["pe_git_sha"]["default"], PIN)
+        self.assertEqual(text.count(PIN), 1)
+        self.assertIn("ref: ${{ inputs.pe_git_sha }}", text)
         self.assertNotIn("seal", inputs)
         self.assertNotIn("t2112u", inputs)
         self.assertEqual(inputs["proof_slice"]["default"], "full")
@@ -1379,7 +1391,7 @@ class FailClosedTests(unittest.TestCase):
 
     def _pinned_script(self, root: Path, head: str) -> Path:
         script = root / "build.sh"
-        script.write_text(BUILD.read_text(encoding="utf-8").replace(PIN, head, 1), encoding="utf-8")
+        _stage_build(script, BUILD.read_text(encoding="utf-8"), head)
         return script
 
     def test_assume_unchanged_and_skip_worktree_are_dirty(self) -> None:
@@ -1532,6 +1544,31 @@ class FailClosedTests(unittest.TestCase):
             recorded = chown_log.read_text(encoding="utf-8").strip().split()
             self.assertTrue(recorded, done.stderr)
             self.assertFalse(Path(recorded[-1]).exists(), recorded[-1])
+
+
+class ProbeContractTests(unittest.TestCase):
+    def test_tcp_einprogress_is_not_a_pass(self) -> None:
+        import escape_probes
+
+        self.assertEqual(escape_probes.classify_tcp(0, 0, 0, 1), "ok 0")
+        self.assertEqual(escape_probes.classify_tcp(-1, 115, 0, 0), "denied 0")
+        self.assertEqual(escape_probes.classify_tcp(-1, 1, 0, 0), "denied 1")
+        self.assertEqual(escape_probes.classify_tcp(0, 0, 0, 0), "denied 0")
+        source = (ROOT / "scripts/gcp/escape_probes.py").read_text(encoding="utf-8")
+        self.assertIn("SO_ERROR", source)
+        self.assertIn("sigaction(SIGALRM", source)
+        self.assertNotIn("signal(SIGALRM", source)
+        self.assertNotIn('fprintf(out, "ok %d\\n", errno)', source)
+
+    def test_guest_probes_match_the_loader_contract(self) -> None:
+        text = (ROOT / "scripts/gcp/guest_phases.sh").read_text(encoding="utf-8")
+        self.assertIn("process_vm_writev", text)
+        self.assertNotIn("syscall(311", text)
+        self.assertIn('b"bpf"', text)
+        self.assertNotIn("mount -t tmpfs", text)
+        self.assertIn("seq 1 50", text)
+        inbound = text.split("inbound)", 1)[1].split("bpffs-overmount)", 1)[0]
+        self.assertLess(inbound.index('print("inbound_enrolled="'), inbound.index("os.wait()"))
 
 
 if __name__ == "__main__":

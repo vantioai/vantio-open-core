@@ -24,15 +24,36 @@ stop_loader() {
         token="$dir/stop-next.json"
       fi
     fi
-    timeout 20 env VANTIO_LAB_SCOPE=lab-nonprod VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
-      "$LOADER" --authenticated-stop --stop-token "$token" >/tmp/vantio-phase-stop.log 2>&1 || true
+    send_stop() {
+      timeout 20 env VANTIO_LAB_SCOPE=lab-nonprod VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+        "$LOADER" --authenticated-stop --stop-token "$1" >/tmp/vantio-phase-stop.log 2>&1 || true
+    }
+    send_stop "$token"
     local i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-      if ! kill -0 "$LOADER_PID" 2>/dev/null; then
+    for i in $(seq 1 50); do
+      local state=""
+      if [[ -r "/proc/${LOADER_PID}/stat" ]]; then
+        state="$(awk '{print $3}' "/proc/${LOADER_PID}/stat" 2>/dev/null || true)"
+      fi
+      if [[ "$state" == "Z" ]] || ! kill -0 "$LOADER_PID" 2>/dev/null; then
+        wait "$LOADER_PID" 2>/dev/null || true
         break
       fi
       sleep 0.3
     done
+    if kill -0 "$LOADER_PID" 2>/dev/null; then
+      python3 "$py" next-stop "$dir" >/dev/null 2>&1 || true
+      if [[ -f "$dir/stop-next.json" ]]; then
+        send_stop "$dir/stop-next.json"
+      fi
+      for i in $(seq 1 50); do
+        if ! kill -0 "$LOADER_PID" 2>/dev/null; then
+          wait "$LOADER_PID" 2>/dev/null || true
+          break
+        fi
+        sleep 0.3
+      done
+    fi
   fi
   LOADER_PID=""
 }
@@ -169,24 +190,38 @@ PY
 )
     ;;
   ptrace-deny)
-    while IFS= read -r line; do note "$line"; done < <(python3 - "$LOADER_PID" <<'PY'
+    target="$LOADER_PID"
+    if [[ -r "/proc/${target}/comm" ]] && ! grep -q '^vantio-loader$' "/proc/${target}/comm"; then
+      child="$(ps --ppid "$target" -o pid=,comm= | awk '$2=="vantio-loader"{print $1; exit}')"
+      if [[ -n "$child" ]]; then
+        target="$child"
+      fi
+    fi
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$target" <<'PY'
 import ctypes, os, sys
 pid = int(sys.argv[1])
 libc = ctypes.CDLL(None, use_errno=True)
 def errno_of(rc):
     return 0 if rc == 0 else ctypes.get_errno()
+class Iovec(ctypes.Structure):
+    _fields_ = [("iov_base", ctypes.c_void_p), ("iov_len", ctypes.c_size_t)]
+# flags must be a real 0. syscall() without argtypes leaves that register
+# unset, and the kernel returns EINVAL before the LSM.
+libc.process_vm_writev.restype = ctypes.c_ssize_t
+libc.process_vm_writev.argtypes = [
+    ctypes.c_int, ctypes.POINTER(Iovec), ctypes.c_ulong,
+    ctypes.POINTER(Iovec), ctypes.c_ulong, ctypes.c_ulong,
+]
+local_buf = ctypes.create_string_buffer(4)
+local_io = Iovec(ctypes.cast(local_buf, ctypes.c_void_p), 4)
+remote_io = Iovec(ctypes.c_void_p(0x1000), 4)
+ctypes.set_errno(0)
+wrote = libc.process_vm_writev(pid, ctypes.byref(local_io), 1, ctypes.byref(remote_io), 1, 0)
+vm = errno_of(wrote)
 ctypes.set_errno(0)
 ptrace = errno_of(libc.ptrace(16, pid, 0, 0))
 if ptrace == 0:
     libc.ptrace(17, pid, 0, 0)
-ctypes.set_errno(0)
-local_buf = ctypes.create_string_buffer(4)
-class Iovec(ctypes.Structure):
-    _fields_ = [("iov_base", ctypes.c_void_p), ("iov_len", ctypes.c_size_t)]
-local_io = Iovec(ctypes.cast(local_buf, ctypes.c_void_p), 4)
-remote_io = Iovec(ctypes.c_void_p(0x1000), 4)
-wrote = libc.syscall(311, pid, ctypes.byref(local_io), 1, ctypes.byref(remote_io), 1, 0)
-vm = errno_of(wrote)
 try:
     os.open(f"/proc/{pid}/mem", os.O_RDWR)
     mem = 0
@@ -198,6 +233,8 @@ if pidfd >= 0:
     ctypes.set_errno(0)
     stolen = libc.syscall(438, pidfd, 1, 0)
     getfd = errno_of(stolen)
+comm = open(f"/proc/{pid}/comm", encoding="ascii").read().strip()
+print(f"ptrace_comm={comm}")
 print(f"ptrace_errno={ptrace}")
 print(f"process_vm_errno={vm}")
 print(f"proc_mem_errno={mem}")
@@ -207,61 +244,125 @@ PY
     ;;
   inbound)
     while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" <<'PY'
-import os, socket, sys
+import os, socket, sys, time
 cgroup = sys.argv[1]
+print("inbound_client_cgroup=" + open("/proc/self/cgroup").read().strip().split(":")[-1])
+for name in ("enrolled", "outside"):
+    for suffix in ("port", "accept"):
+        try:
+            os.remove(f"/tmp/vantio-{name}.{suffix}")
+        except FileNotFoundError:
+            pass
 def serve(where):
+    sys.stdout.flush()
     if os.fork() != 0:
         return
     if where == "enrolled":
         open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+        print("inbound_listener_cgroup=enrolled")
+    else:
+        print("inbound_listener_cgroup=outside")
+    sys.stdout.flush()
     sock = socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
     sock.listen(1)
-    open(f"/tmp/vantio-{where}.port", "w").write(str(port))
-    sock.settimeout(2)
+    ready = f"/tmp/vantio-{where}.port"
+    with open(ready, "w") as fh:
+        fh.write(str(sock.getsockname()[1]) + "\n")
+        fh.flush()
+    sock.settimeout(4)
     try:
         conn, _ = sock.accept()
         conn.close()
-    except OSError:
-        pass
+        open(f"/tmp/vantio-{where}.accept", "w").write("accepted\n")
+    except socket.timeout:
+        open(f"/tmp/vantio-{where}.accept", "w").write("timeout\n")
+    except OSError as exc:
+        open(f"/tmp/vantio-{where}.accept", "w").write(f"errno={exc.errno}\n")
     raise SystemExit(0)
+def wait_accept(where):
+    path = f"/tmp/vantio-{where}.accept"
+    for _ in range(35):
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            return open(path).read().strip()
+        time.sleep(0.1)
+    return "missing"
 def poke(where):
-    port = int(open(f"/tmp/vantio-{where}.port").read())
+    ready = f"/tmp/vantio-{where}.port"
+    port = 0
+    for _ in range(50):
+        try:
+            text = open(ready).read().strip()
+        except FileNotFoundError:
+            text = ""
+        if text.isdigit():
+            port = int(text)
+            break
+        time.sleep(0.05)
+    if port == 0:
+        print(f"inbound_{where}_client=error")
+        print(f"inbound_{where}_errno=0")
+        print(f"inbound_{where}_accept=missing")
+        return "refused"
     sock = socket.socket()
-    sock.settimeout(1.5)
+    sock.settimeout(2)
+    client = "error"
+    errno = 0
     try:
         sock.connect(("127.0.0.1", port))
-        return "connected"
+        client = "connected"
     except socket.timeout:
-        return "blocked"
+        client = "timeout"
     except OSError as exc:
-        return "blocked" if exc.errno == 1 else "connected"
+        errno = exc.errno or 0
+    finally:
+        sock.close()
+    accept = wait_accept(where)
+    print(f"inbound_{where}_client={client}")
+    print(f"inbound_{where}_errno={errno}")
+    print(f"inbound_{where}_accept={accept}")
+    if client == "connected" and accept.startswith("accepted"):
+        return "connected"
+    if accept == "timeout" or client == "timeout":
+        return "blocked"
+    return "refused"
 serve("enrolled")
 serve("outside")
-os.wait()
-os.wait()
-print("inbound_enrolled=" + poke("enrolled"))
 print("inbound_outside=" + poke("outside"))
+print("inbound_enrolled=" + poke("enrolled"))
+os.wait()
+os.wait()
 PY
 )
     ;;
   bpffs-overmount)
-    if mount -t tmpfs tmpfs /sys/fs/bpf >/tmp/vantio-mount.err 2>&1; then
-      umount /sys/fs/bpf >/dev/null 2>&1 || umount -l /sys/fs/bpf >/dev/null 2>&1 || true
-      note "bpffs_overmount=mounted"
-      note "bpffs_errno=0"
-      note "bpffs_pins=hidden"
-    else
-      note "bpffs_overmount=refused"
-      note "bpffs_errno=1"
-      if find /sys/fs/bpf -name 'vantio*' -print -quit 2>/dev/null | grep -q .; then
-        note "bpffs_pins=remain"
-      else
-        note "bpffs_pins=hidden"
-      fi
-    fi
+    while IFS= read -r line; do note "$line"; done < <(python3 - <<'PY'
+import ctypes, os
+libc = ctypes.CDLL(None, use_errno=True)
+libc.mount.restype = ctypes.c_int
+libc.mount.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_void_p]
+libc.umount.restype = ctypes.c_int
+libc.umount.argtypes = [ctypes.c_char_p]
+ctypes.set_errno(0)
+rc = libc.mount(b"bpf", b"/sys/fs/bpf", b"bpf", 0, None)
+err = ctypes.get_errno()
+if rc == 0:
+    libc.umount(b"/sys/fs/bpf")
+    print("bpffs_overmount=mounted")
+    print("bpffs_errno=0")
+    print("bpffs_pins=hidden")
+else:
+    print("bpffs_overmount=refused")
+    print(f"bpffs_errno={err}")
+    pins = False
+    for _dir, _names, files in os.walk("/sys/fs/bpf"):
+        if any(name.startswith("vantio") for name in files):
+            pins = True
+            break
+    print("bpffs_pins=" + ("remain" if pins else "hidden"))
+PY
+)
     ;;
   af-packet)
     while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" <<'PY'

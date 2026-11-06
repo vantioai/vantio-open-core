@@ -31,7 +31,17 @@ import offline_deliver as od
 import proof_grade as pg
 
 PE_REPO = "vantioai/vantio-phantom-engine"
-PE_GIT_SHA = "fd7b69f7d9a7f845b05cca442ce68d18680df7c4"
+
+
+def _read_pe_pin() -> str:
+    """The Phantom Engine tip. scripts/gcp/pe-pin.txt is the only copy."""
+    raw = Path(__file__).with_name("pe-pin.txt").read_text(encoding="utf-8").strip()
+    if len(raw) != 40 or any(ch not in "0123456789abcdef" for ch in raw):
+        raise RuntimeError("pe_git_sha")
+    return raw
+
+
+PE_GIT_SHA = _read_pe_pin()
 WORKFLOW_FILE = "gcp-lab-enforcement-proof.yml"
 WORKFLOW_REF = f"vantioai/vantio-open-core/.github/workflows/{WORKFLOW_FILE}@refs/heads/main"
 # Live WIF attribute condition. lab_auto.WORKFLOWS also names the proof file.
@@ -1042,18 +1052,53 @@ _NEW_STOP = r"""stop_loader_int() {
         stop_token="$stop_dir/stop-next.json"
       fi
     fi
-    timeout 20 env VANTIO_LAB_SCOPE=lab-nonprod \
-      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
-      "$LOADER" --authenticated-stop --stop-token "$stop_token" \
-      >"$OUT/stop.log" 2>&1 || true
+    loader_gone() {
+      [[ -n "${LOADER_PID}" ]] || return 0
+      local state=""
+      if [[ -r "/proc/${LOADER_PID}/stat" ]]; then
+        state="$(awk '{print $3}' "/proc/${LOADER_PID}/stat" 2>/dev/null || true)"
+      fi
+      if [[ "$state" == "Z" ]] || ! kill -0 "$LOADER_PID" 2>/dev/null; then
+        wait "$LOADER_PID" 2>/dev/null || true
+        return 0
+      fi
+      return 1
+    }
+    send_stop() {
+      timeout 20 env VANTIO_LAB_SCOPE=lab-nonprod \
+        VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+        "$LOADER" --authenticated-stop --stop-token "$1" \
+        >"$OUT/stop.log" 2>&1 || true
+      if grep -F "authenticated stop accepted" "$OUT/stop.log" >/dev/null 2>&1; then
+        note "teardown_stop=accepted"
+      else
+        note "teardown_stop=refused"
+      fi
+    }
+    send_stop "$stop_token"
     local i
-    for i in 1 2 3 4 5 6 7 8 9 10; do
-      if ! kill -0 "$LOADER_PID" 2>/dev/null; then
+    for i in $(seq 1 50); do
+      if loader_gone; then
         break
       fi
       sleep 0.3
     done
-    if kill -0 "$LOADER_PID" 2>/dev/null; then
+    if ! loader_gone; then
+      if [[ -f "$stop_py" ]]; then
+        python3 "$stop_py" next-stop "$stop_dir" >/dev/null 2>&1 || true
+        if [[ -f "$stop_dir/stop-next.json" ]]; then
+          stop_token="$stop_dir/stop-next.json"
+        fi
+      fi
+      send_stop "$stop_token"
+      for i in $(seq 1 50); do
+        if loader_gone; then
+          break
+        fi
+        sleep 0.3
+      done
+    fi
+    if ! loader_gone; then
       note "teardown=FAIL_STILL_UP"
       return 1
     fi

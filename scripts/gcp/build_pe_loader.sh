@@ -16,7 +16,11 @@ set -euo pipefail
 root=${1:?}
 out=${2:?}
 pin=${3:?}
-expected=fd7b69f7d9a7f845b05cca442ce68d18680df7c4
+# The expected tip is the single line in pe-pin.txt, next to this script.
+# A new tree is a new line in that file plus this script's first argument.
+# BASH_SOURCE, not pwd. A caller can override pwd without moving this file.
+pin_file="${BASH_SOURCE[0]%/*}/pe-pin.txt"
+expected="$(tr -d '[:space:]' < "$pin_file")"
 RUST_TOOLCHAIN=nightly-2026-10-13
 BPF_LINKER_VERSION=0.12.0
 
