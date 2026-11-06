@@ -16,15 +16,183 @@ import yaml
 
 import enforcement_proof as ep
 import lab_auto
+import proof_grade as pg
+import root_detach_attempt as rda
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "gcp-lab-enforcement-proof.yml"
 PROVISION = ROOT / ".github" / "workflows" / "gcp-lab-provision.yml"
 BUILD = ROOT / "scripts" / "gcp" / "build_pe_loader.sh"
 PIN = ep.PE_GIT_SHA
+
+
+def _stage_build(path: Path, text: str, pin: str = PIN) -> None:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    (path.parent / "pe-pin.txt").write_text(pin + "\n", encoding="utf-8")
 GO = "zach-run-go-placeholder"
 HOST = "proof81"
 GATE = json.dumps({"expected_oop_usd": "0", "abort": False})
+BEFORE = "11111111-1111-1111-1111-111111111111"
+AFTER = "22222222-2222-2222-2222-222222222222"
+
+
+def _accepted_compare() -> str:
+    lines = [
+        "enforce_banner=ENFORCING",
+        "audit_outside=connect where=outside result=connected errno=0 elapsed_ms=2.0",
+        "audit_inside=connect where=inside result=connected errno=0 elapsed_ms=2.0",
+        "enforce_inside=connect where=inside result=timeout errno=0 elapsed_ms=1500.0",
+        "enforce_outside=connect where=outside result=connected errno=0 elapsed_ms=2.0",
+        "drop_counter=source=tcpdump inside=0 outside=2",
+        f"sent_packet=transport=tcp payload=0 bytes={pg.TCP_SYN_BYTES}",
+        f"ledger_drop=type={pg.EXPECTED_DROP_EVENT} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
+        "drop_count=packets=1 cgroup_skb=1 tc=0",
+        "ledger_chain=ok",
+        "ledger_tls=rows=0",
+        "compare=PASS",
+        "live_enforcement=NOT_PROVEN",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _accepted_file_deny() -> str:
+    return "\n".join(
+        [
+            "file_deny=PASS",
+            "open_inside=result=error errno=13",
+            "open_outside=result=ok errno=0",
+            "file_deny_row=yes",
+        ]
+    ) + "\n"
+
+
+def _accepted_root_detach() -> str:
+    sent = pg.TCP_SYN_BYTES
+    event = pg.EXPECTED_DROP_EVENT
+    path = pg.EXPECTED_DROP_PATH
+    lines = [
+        "root_detach_uid=0",
+        "root_detach_lsm=present",
+        "root_detach_actor=outside_loader",
+        "root_detach_attempt=prog_detach target=id-46 result=refused errno=1",
+        "root_detach_attempt=link_detach target=vantio_link result=refused errno=1",
+        "root_detach_attempt=map_update target=vantio_enrolled_cgroups result=refused errno=1",
+        "root_detach_attempt=unlink target=vantio_prog result=refused errno=1",
+        "root_detach_attempt=rename target=vantio_prog result=refused errno=1",
+        "root_detach_programs_remain=yes",
+        "root_detach_pins_remain=yes",
+        f"sent_packet=transport=tcp payload=0 bytes={sent}",
+        "root_detach_inside=connect where=inside result=timeout errno=0 elapsed_ms=1500.0",
+        f"root_detach_ledger=type={event} bytes={sent} sent={sent} drop_path={path}",
+        "root_detach=PASS",
+        "live_enforcement=NOT_PROVEN",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _accepted_reboot() -> str:
+    return "\n".join(
+        [
+            "reboot_wiped=PASS",
+            "reboot_restored=PASS",
+            f"reboot_pre_boot_id={BEFORE}",
+            f"reboot_post_boot_id={AFTER}",
+            "reboot_post_inside=connect where=inside result=timeout errno=0 elapsed_ms=1",
+        ]
+    ) + "\n"
+
+
+def _accepted_signals() -> str:
+    lines = [
+        f"signal={name} result=refused pins=remain connect=blocked" for name in ("SIGINT", "SIGTERM", "SIGHUP")
+    ]
+    lines.append("signal_process=up")
+    return "\n".join(lines) + "\n"
+
+
+def _accepted_boundary() -> str:
+    return "\n".join(
+        [
+            "boundary_unlisted=blocked",
+            "boundary_exception=connected",
+            "boundary_expired=blocked",
+            "boundary_unsigned=blocked",
+            "boundary_stop=restored",
+        ]
+    ) + "\n"
+
+
+def _accepted_oom() -> str:
+    return "\n".join(
+        [
+            "oom_killed=yes",
+            "oom_programs=remain",
+            "oom_inside=connect where=inside result=timeout errno=0 elapsed_ms=1",
+        ]
+    ) + "\n"
+
+
+def _accepted_escapes() -> str:
+    return "".join(f"escape_{name}=denied errno=1\n" for name in pg.ESCAPE_KINDS)
+
+
+def _accepted_clock() -> str:
+    return "clock_moved=yes\nclock_exp_passed=yes\nclock_enforcement=fail_closed\n"
+
+
+def _accepted_fork() -> str:
+    return "\n".join(
+        [
+            "fork_parent=connect where=parent result=timeout errno=0 elapsed_ms=1.0",
+            "fork_child=connect where=child result=timeout errno=0 elapsed_ms=1.0",
+            "fork_grandchild=connect where=grandchild result=timeout errno=0 elapsed_ms=1.0",
+            "fork_clone3=connect where=clone3 result=timeout errno=0 elapsed_ms=1.0",
+            "fork_outsider=connect where=outsider result=connected errno=0 elapsed_ms=1.0",
+            "fork_rows=blocks=4 anchor=3554 trace_zero=no drop_path=cgroup_skb",
+            "fork_anchor=parent=3554 child=3554 grandchild=3554",
+            "fork_inherit=PASS",
+        ]
+    ) + "\n"
+
+
+def _phase_text() -> dict[str, str]:
+    return {
+        "compare": _accepted_compare(),
+        "root-detach": _accepted_root_detach(),
+        "signals": _accepted_signals(),
+        "file-deny": _accepted_file_deny(),
+        "fork-inherit": _accepted_fork(),
+        "same-boundary": _accepted_boundary(),
+        "oom": _accepted_oom(),
+        "escapes": _accepted_escapes(),
+        "clock": _accepted_clock(),
+        "reboot-pre": "reboot_pre=RECORDED\n",
+        "reboot-post": _accepted_reboot(),
+        "expired-key": "license_exp_claim=REFUSED\nlicense_exp_observation=REFUSED\n",
+        "uninstall": "uninstall=REFUSED_NOT_ENROLLED\n",
+        "unix-socket": "unix_enrolled=denied\nunix_outside=connected\n",
+        "ptrace-deny": "ptrace_errno=1\nprocess_vm_errno=1\nproc_mem_errno=1\npidfd_getfd_errno=1\n",
+        "inbound": "inbound_enrolled=blocked\ninbound_outside=connected\n",
+        "bpffs-overmount": "bpffs_overmount=refused\nbpffs_errno=1\nbpffs_pins=remain\n",
+        "af-packet": "af_packet_enrolled=denied\naf_packet_outside=ok\n",
+        "stop-token": "stop_expired=refused\nstop_bare=refused\nstop_replay=refused\nstop_fresh=accepted\n",
+        "pin-absent": "pin_absent=REFUSED\npin_present=ENFORCING\n",
+        "missing-path": "missing_create=denied\nmissing_created=no\n",
+        "host-wide": "hostwide_out=blocked\nhostwide_except=allowed\nhostwide_agent=allowed\n",
+        "hard-link": "hardlink_before=denied\nhardlink_original=denied\nhardlink_root_link=created\nhardlink_after=denied\nhardlink_enrolled_link=denied\n",
+        "enrolled-root": "root_enrolled_open=denied\nroot_outside_open=allowed\n",
+        "nonce-truncate": "nonce_first=accepted\nnonce_replay=replay\nnonce_file=empty\n",
+        "ledger-forgery": "ledger_genuine=ok\nledger_key_changed=rejected\nledger_zero_prev=rejected\nledger_truncated=rejected\nledger_attacker=rejected\n",
+        "ptrace-task": "ptrace_unenrolled=0\nptrace_enrolled_target=1\nptrace_enrolled_caller=1\n",
+        "host-enroll": _accepted_boundary(),
+        "k8s": "k8s_enrolled=blocked\nk8s_outsider=connected\n",
+        "vlan": "vlan_attached=yes\nvlan_enrolled=denied\nvlan_outside=allowed\n",
+    }
+
+
+def _replace_prefix(lines: list[str], prefix: str, replacement: str) -> list[str]:
+    return [replacement if line.startswith(prefix) else line for line in lines]
 
 
 def _base_env(**extra: str) -> dict[str, str]:
@@ -57,6 +225,23 @@ def _cargo_workdir_is_checkout(workdir: str, volume: str, checkout: Path) -> boo
     if workdir != root:
         return False
     return volume == f"{root}:{root}:ro"
+
+
+def _writable_target_outside_checkout(volumes: list[str], checkout: Path) -> bool:
+    """True when eBPF's target dir is a writable bind outside the read-only checkout."""
+    root = str(checkout.resolve())
+    wanted = f"{root}/target"
+    found = False
+    for volume in volumes:
+        host, sep, dest = volume.partition(":")
+        if sep != ":" or dest != wanted:
+            continue
+        if not host.startswith("/"):
+            return False
+        if host == root or host.startswith(root + os.sep) or root.startswith(host + os.sep):
+            return False
+        found = True
+    return found
 
 
 class PinAndOrderTests(unittest.TestCase):
@@ -129,12 +314,12 @@ class ObservationTests(unittest.TestCase):
         self.assertIsNone(ep.keep_line("compare=pass"))
         self.assertIsNone(ep.keep_line("compare=PROVEN"))
         self.assertIsNone(ep.keep_line(f"note={GO}"))
-        self.assertTrue(ep.phase_accepted("compare", ["compare=PASS"], 0))
+        self.assertFalse(ep.phase_accepted("compare", ["compare=PASS"], 0))
         self.assertFalse(ep.phase_accepted("compare", ["compare=REFUSED_LSM"], 0))
         self.assertTrue(
             ep.phase_accepted("uninstall", ["uninstall=REFUSED_NOT_ENROLLED"], 2)
         )
-        self.assertTrue(ep.phase_accepted("expired-key", ["license_exp_claim=NOT_PROVEN"], 0))
+        self.assertFalse(ep.phase_accepted("expired-key", ["license_exp_claim=NOT_PROVEN"], 0))
         self.assertFalse(
             ep.phase_accepted(
                 "expired-key",
@@ -175,7 +360,7 @@ class RunTests(unittest.TestCase):
                 self.commands: list[str] = []
                 self.files: list[str] = []
                 self.created = 0
-                self.boot = "boot-before"
+                self.boot = "11111111-1111-1111-1111-111111111111"
 
             def instances(self, _project: str) -> list[dict[str, str]]:
                 return []
@@ -194,24 +379,17 @@ class RunTests(unittest.TestCase):
                 return self.boot
 
             def wait_boot(self, _project: str, _name: str, before: str) -> str:
-                return "boot-after" if before == "boot-before" else ""
+                return "22222222-2222-2222-2222-222222222222" if before == self.boot or before == "11111111-1111-1111-1111-111111111111" else ""
 
             def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
                 self.commands.append(command)
                 if command.startswith("sudo bash ") and "run-proof-phase.sh" in command:
                     phase = command.rsplit(" ", 1)[-1].strip("'")
-                    lines = {
-                        "compare": "compare=PASS\nlive_enforcement=NOT_PROVEN\n",
-                        "file-deny": "file_deny=PASS\n",
-                        "reboot-pre": "reboot_pre=RECORDED\n",
-                        "reboot-post": "reboot_wiped=PASS\nreboot_restored=NOT_RUN\n",
-                        "expired-key": "license_exp_claim=NOT_PROVEN\nlicense_exp_observation=NOT_CONSULTED\n",
-                        "uninstall": "uninstall=REFUSED_NOT_ENROLLED\n",
-                    }
+                    lines = _phase_text()
                     rc = 2 if phase == "uninstall" else 0
                     return subprocess.CompletedProcess([], rc, lines[phase], "")
                 if "systemctl reboot --force" in command:
-                    self.boot = "boot-after"
+                    self.boot = "22222222-2222-2222-2222-222222222222"
                     return subprocess.CompletedProcess([], 0, "", "")
                 return subprocess.CompletedProcess([], 1 if command.startswith("sudo cat") else 0, "", "")
 
@@ -247,7 +425,7 @@ class RunTests(unittest.TestCase):
         self.assertLess(post, expired)
         self.assertIn("proof.env", fake.files)
         self.assertEqual(body["live_enforcement"], "NOT_PROVEN")
-        self.assertEqual(body["result"], "OBSERVED")
+        self.assertEqual(body["result"], "PASS")
         self.assertNotIn(GO, json.dumps(body))
         self.assertIn("compare=PASS", body["observations"])
 
@@ -338,7 +516,8 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertIn("pe_git_sha", done.stderr)
             self.assertFalse(log.exists())
             text = BUILD.read_text(encoding="utf-8")
-            self.assertIn(f"expected={PIN}", text)
+            self.assertIn("pe-pin.txt", text)
+            self.assertNotIn(PIN, text)
             mutated = text.replace(
                 'if [[ "$pin" != "$expected" ]]; then\n  echo "pe_git_sha" >&2\n  exit 1\nfi\n',
                 "",
@@ -346,7 +525,7 @@ class CreateAndBuildTests(unittest.TestCase):
             )
             self.assertNotEqual(mutated, text)
             mutated_path = root / "mutated.sh"
-            mutated_path.write_text(mutated, encoding="utf-8")
+            _stage_build(mutated_path, mutated)
             broken = subprocess.run(
                 ["bash", str(mutated_path), str(root / "src"), str(root / "out"), "0" * 40],
                 capture_output=True,
@@ -359,10 +538,13 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertFalse(log.exists())
 
     def test_script_pin_byte_must_match_the_constant(self) -> None:
+        pin_path = ROOT / "scripts/gcp/pe-pin.txt"
+        self.assertEqual(pin_path.read_text(encoding="utf-8").strip(), PIN)
         text = BUILD.read_text(encoding="utf-8")
-        self.assertIn(f"expected={PIN}", text)
-        mutated = text.replace(PIN, _flip(PIN), 1)
-        self.assertNotIn(f"expected={PIN}", mutated)
+        self.assertIn("pe-pin.txt", text)
+        self.assertNotIn(PIN, text)
+        flipped = pin_path.read_text(encoding="utf-8").replace(PIN, _flip(PIN), 1)
+        self.assertNotIn(PIN, flipped)
 
     def _fake_tools(self, root: Path, pin: str) -> dict[str, str]:
         bindir = root / "bin"
@@ -379,7 +561,12 @@ class CreateAndBuildTests(unittest.TestCase):
             "case \"$1\" in\n"
             "  rev-parse) printf '%s\\n' \"$PE_HEAD\" ;;\n"
             "  status) ;;\n"
-            "  *) printf 'git_unexpected\\n' >&2; exit 1 ;;\n"
+            "  ls-files)\n"
+            "    if [ -n \"${PE_LS_FILES:-}\" ]; then printf '%s\\n' \"$PE_LS_FILES\"; fi\n"
+            "    ;;\n"
+            "  read-tree) ;;\n"
+            "  diff) exit \"${PE_DIFF_RC:-0}\" ;;\n"
+            "  *) printf 'git_unexpected %s\\n' \"$1\" >&2; exit 1 ;;\n"
             "esac\n",
             encoding="utf-8",
         )
@@ -479,7 +666,7 @@ class CreateAndBuildTests(unittest.TestCase):
             checkout = root / "phantom-engine"
             self._checkout(checkout)
             script = root / "mutated.sh"
-            script.write_text(mutated, encoding="utf-8")
+            _stage_build(script, mutated)
             env = self._fake_tools(root, PIN)
             done = subprocess.run(
                 ["bash", str(script), "phantom-engine", "out", PIN],
@@ -496,6 +683,182 @@ class CreateAndBuildTests(unittest.TestCase):
             self.assertEqual(workdir, "/src")
             self.assertIn("phantom-engine:/src:ro", volumes)
             self.assertFalse(_cargo_workdir_is_checkout(workdir, "phantom-engine:/src:ro", checkout))
+
+    def test_ebpf_target_is_a_writable_bind_outside_the_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            workdir = args[args.index("-w") + 1]
+            volumes = [args[i + 1] for i, arg in enumerate(args) if arg == "-v"]
+            self.assertIn(f"{workdir}:{workdir}:ro", volumes)
+            self.assertTrue(_writable_target_outside_checkout(volumes, checkout))
+            self.assertTrue((checkout.resolve() / "target").is_dir())
+            text = BUILD.read_text(encoding="utf-8")
+            self.assertIn('-v "$writable:$src/target"', text)
+            self.assertIn('rm -rf "$writable" >/dev/null 2>&1 || true', text)
+            self.assertIn('chown -R "${HOST_UID}:${HOST_GID}" "$(pwd)/target" /out', text)
+            mutated = text.replace('-v "$writable:$src/target"', '-v "$writable:$src/target:ro"', 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            _stage_build(script, mutated)
+            mutated_run = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(mutated_run.returncode, 0, mutated_run.stderr)
+            mutated_args = (root / "docker.log").read_text(encoding="utf-8").splitlines()
+            mutated_volumes = [mutated_args[i + 1] for i, arg in enumerate(mutated_args) if arg == "-v"]
+            self.assertFalse(_writable_target_outside_checkout(mutated_volumes, checkout))
+
+    def test_writable_target_inside_the_checkout_does_not_start_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            mktemp = Path(env["PATH"].split(":", 1)[0]) / "mktemp"
+            inside = checkout / "nested-target"
+            mktemp.write_text(
+                "#!/bin/sh\nprintf '%s\\n' \"$FAKE_MKTEMP\"\n",
+                encoding="utf-8",
+            )
+            mktemp.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**env, "FAKE_MKTEMP": str(inside)},
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_target", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            text = BUILD.read_text(encoding="utf-8")
+            needle = '  "$src"|"$src"/*) echo "pe_target" >&2; exit 1 ;;\n'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, "", 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            _stage_build(script, mutated)
+            (root / "docker.log").unlink(missing_ok=True)
+            broken = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**env, "FAKE_MKTEMP": str(inside)},
+                check=False,
+            )
+            self.assertNotIn("pe_target", broken.stderr)
+            self.assertTrue((root / "docker.log").exists())
+
+    def test_failed_target_cleanup_does_not_fail_the_build(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            rm = Path(env["PATH"].split(":", 1)[0]) / "rm"
+            rm.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            rm.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("loader_built=1", done.stdout)
+            text = BUILD.read_text(encoding="utf-8")
+            needle = 'rm -rf "$writable" >/dev/null 2>&1 || true'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, 'rm -rf "$writable"', 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            _stage_build(script, mutated)
+            broken = subprocess.run(
+                ["bash", str(script), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotEqual(broken.returncode, 0)
+            self.assertIn("loader_built=1", broken.stdout)
+
+    def test_relative_src_does_not_start_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            self._checkout(checkout)
+            env = self._fake_tools(root, PIN)
+            done = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    "pwd() { printf 'relative-src\\n'; }; export -f pwd; exec bash \"$1\" \"$2\" \"$3\" \"$4\"",
+                    "bash",
+                    str(BUILD),
+                    str(checkout),
+                    str(root / "out"),
+                    PIN,
+                ],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1)
+            self.assertIn("pe_src", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            text = BUILD.read_text(encoding="utf-8")
+            needle = '  *) echo "pe_src" >&2; exit 1 ;;\n'
+            self.assertIn(needle, text)
+            mutated = text.replace(needle, "", 1)
+            self.assertNotEqual(mutated, text)
+            script = root / "mutated.sh"
+            _stage_build(script, mutated)
+            broken = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    "pwd() { printf 'relative-src\\n'; }; export -f pwd; exec bash \"$1\" \"$2\" \"$3\" \"$4\"",
+                    "bash",
+                    str(script),
+                    str(checkout),
+                    str(root / "out"),
+                    PIN,
+                ],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            self.assertNotIn("pe_src", broken.stderr)
+            self.assertNotEqual(broken.returncode, 0)
+            self.assertFalse((root / "docker.log").exists())
 
 
 class TeardownTests(unittest.TestCase):
@@ -591,6 +954,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(trigger), ["workflow_dispatch"])
         inputs = trigger["workflow_dispatch"]["inputs"]
         self.assertEqual(inputs["pe_git_sha"]["default"], PIN)
+        self.assertEqual(text.count(PIN), 1)
+        self.assertIn("ref: ${{ inputs.pe_git_sha }}", text)
         self.assertNotIn("seal", inputs)
         self.assertNotIn("t2112u", inputs)
         self.assertEqual(inputs["proof_slice"]["default"], "full")
@@ -610,10 +975,608 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(ep.WORKFLOW_FILE, lab_auto.WORKFLOWS)
         sheet = (ROOT / "docs/lab/enforcement-proof-OPERATOR.md").read_text(encoding="utf-8")
         self.assertIn(
-            "compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
+            "compare, root-detach, signals, file-deny, fork-inherit, unix-socket, ptrace-deny, inbound, bpffs-overmount, af-packet, stop-token, pin-absent, missing-path, host-wide, hard-link, enrolled-root, nonce-truncate, ledger-forgery, ptrace-task, host-enroll, same-boundary, oom, escapes, clock, k8s, vlan, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
             sheet,
         )
 
 
+class FailClosedTests(unittest.TestCase):
+    def test_edited_timeout_transcript_is_not_a_pass_when_executed(self) -> None:
+        lines = [line for line in _accepted_compare().splitlines() if not line.startswith("drop_counter=")]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "transcript.txt"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            done = subprocess.run(
+                ["python3", str(ROOT / "scripts/gcp/proof_grade.py"), "compare-verdict", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(done.returncode, 0)
+        self.assertNotEqual(done.stdout.strip(), "PASS")
+        self.assertIn("FAIL", done.stdout)
+
+    def test_timeout_and_loader_row_without_a_counter_is_not_pass(self) -> None:
+        lines = [line for line in _accepted_compare().splitlines() if not line.startswith("drop_counter=")]
+        self.assertEqual(pg.compare_verdict(lines), "FAIL_UNATTRIBUTED")
+        self.assertFalse(ep.phase_accepted("compare", lines, 0))
+        lied = _replace_prefix(lines, "drop_counter=", "drop_counter=source=ndjson delta=4")
+        lied.append("drop_counter=source=ndjson delta=4")
+        self.assertNotEqual(pg.compare_verdict(lied), "PASS")
+        self.assertFalse(pg.counter_confirms_drop("drop_counter=source=loader delta=4"))
+
+    def test_any_errno_is_not_a_block_and_the_pinned_errno_is(self) -> None:
+        wrong = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_inside=",
+            "enforce_inside=connect where=inside result=error errno=111 elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(wrong), "FAIL_UNEXPECTED_ERRNO")
+        self.assertFalse(ep.phase_accepted("compare", wrong, 0))
+        pinned = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_inside=",
+            f"enforce_inside=connect where=inside result=error errno={pg.EXPECTED_BLOCK_ERRNO} elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(pinned), "PASS")
+        opened = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_inside=",
+            "enforce_inside=connect where=inside result=connected errno=0 elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(opened), "FAIL_OPEN")
+        unscoped = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "enforce_outside=",
+            "enforce_outside=connect where=outside result=timeout errno=0 elapsed_ms=3.0",
+        )
+        self.assertEqual(pg.compare_verdict(unscoped), "FAIL_UNSCOPED")
+        delivered = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_counter=",
+            "drop_counter=source=tcpdump inside=1 outside=2",
+        )
+        self.assertEqual(pg.compare_verdict(delivered), "FAIL_UNATTRIBUTED")
+        counted = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_counter=",
+            "drop_counter=source=nft delta=1",
+        )
+        self.assertEqual(pg.compare_verdict(counted), "PASS")
+        quiet = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_counter=",
+            "drop_counter=source=iptables delta=0",
+        )
+        self.assertNotEqual(pg.compare_verdict(quiet), "PASS")
+
+    def test_mismatched_ledger_type_and_byte_length_fail(self) -> None:
+        other = "NETWORK_BLOCK" if pg.EXPECTED_DROP_EVENT != "NETWORK_BLOCK" else "CGROUP_BLOCK"
+        rows = [
+            {
+                "EventType": other,
+                "ActionTaken": "BLOCKED",
+                "BytesSevered": pg.TCP_SYN_BYTES,
+                "DropPath": pg.EXPECTED_DROP_PATH,
+            }
+        ]
+        self.assertFalse(pg.ledger_rows_ok(rows, pg.TCP_SYN_BYTES))
+        self.assertIn("type=MISMATCH", pg.ledger_line(json.dumps(rows[0])))
+        matched = {
+            "EventType": pg.EXPECTED_DROP_EVENT,
+            "ActionTaken": "BLOCKED",
+            "BytesSevered": pg.TCP_SYN_BYTES,
+            "DropPath": pg.EXPECTED_DROP_PATH,
+        }
+        self.assertTrue(pg.ledger_rows_ok([matched, rows[0]], pg.TCP_SYN_BYTES))
+        mutated = dict(matched)
+        mutated["BytesSevered"] = pg.TCP_SYN_BYTES + 1
+        self.assertFalse(pg.ledger_rows_ok([mutated], pg.TCP_SYN_BYTES))
+        self.assertFalse(pg.ledger_rows_ok([matched], sent_len=pg.TCP_SYN_BYTES + 1))
+        payload_only = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "sent_packet=",
+            f"sent_packet=transport=tcp payload={pg.TCP_SYN_BYTES} bytes={pg.TCP_SYN_BYTES}",
+        )
+        self.assertEqual(pg.compare_verdict(payload_only), "FAIL_UNATTRIBUTED")
+        bad_line = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "ledger_drop=",
+            f"ledger_drop=type={other} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
+        )
+        self.assertEqual(pg.compare_verdict(bad_line), "FAIL_UNATTRIBUTED")
+        self.assertEqual(pg.compare_verdict(_accepted_compare().splitlines()), "PASS")
+        no_packets = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_count=",
+            "drop_count=packets=0 cgroup_skb=4 tc=0",
+        )
+        self.assertEqual(pg.compare_verdict(no_packets), "FAIL_UNATTRIBUTED")
+        self.assertEqual(pg.phase_outcome("k8s", ["k8s=NOT_RUN"], 0), "NOT_RUN")
+        decoded = (
+            "IP (tos 0x0, ttl 64, id 1, offset 0, flags [DF], proto TCP (6), length 60)\n"
+            "192.0.2.1.40000 > 192.0.2.2.19202: Flags [S], seq 1, win 64240, length 0\n"
+        )
+        observed = pg.sent_packet_from_tcpdump(decoded)
+        self.assertEqual(pg.sent_packet_ok(observed), (60, "tcp"))
+        udp = pg.full_packet_bytes(20, "udp")
+        self.assertEqual(udp, 48)
+        self.assertNotEqual(udp, 20)
+
+    def test_not_proven_expired_key_fails_and_a_refusal_passes(self) -> None:
+        self.assertFalse(
+            ep.phase_accepted("expired-key", ["license_exp_claim=NOT_PROVEN", "license_exp_observation=REFUSED"], 0)
+        )
+        self.assertFalse(
+            ep.phase_accepted("expired-key", ["license_exp_claim=REFUSED", "license_exp_observation=NOT_CONSULTED"], 0)
+        )
+        self.assertTrue(
+            ep.phase_accepted("expired-key", ["license_exp_claim=REFUSED", "license_exp_observation=REFUSED"], 0)
+        )
+
+    def test_file_deny_needs_eacces_inside_and_success_outside(self) -> None:
+        opened = _accepted_file_deny().replace("result=error errno=13", "result=ok errno=0").splitlines()
+        self.assertEqual(pg.file_deny_verdict(opened), "FAIL_OPEN")
+        self.assertFalse(ep.phase_accepted("file-deny", ["file_deny=PASS", *opened], 0))
+        other = _accepted_file_deny().replace("errno=13", "errno=1").splitlines()
+        self.assertNotEqual(pg.file_deny_verdict(other), "PASS")
+        self.assertEqual(pg.file_deny_verdict(_accepted_file_deny().splitlines()), "PASS")
+        mutated = _accepted_file_deny().replace("errno=13", "errno=12").splitlines()
+        self.assertNotEqual(pg.file_deny_verdict(mutated), "PASS")
+
+    def test_root_detach_and_fork_inherit_fail_closed(self) -> None:
+        wrapper = ep.wrapper_script()
+        self.assertNotIn("fork_inherit=INCONCLUSIVE", wrapper)
+        self.assertIn("lab_stop.py", wrapper)
+        self.assertNotIn("root_detach=GAP", wrapper)
+        self.assertNotIn("DECISION_NEEDED", wrapper)
+        accepted = _accepted_root_detach().splitlines()
+        self.assertEqual(pg.root_detach_verdict(accepted), "PASS")
+        self.assertTrue(ep.phase_accepted("root-detach", accepted, 0))
+        detached = _replace_prefix(
+            accepted,
+            "root_detach_attempt=prog_detach",
+            "root_detach_attempt=prog_detach target=id-46 result=ok errno=0",
+        )
+        self.assertEqual(pg.root_detach_verdict(detached), "FAIL")
+        self.assertFalse(ep.phase_accepted("root-detach", detached, 0))
+        self.assertFalse(ep.phase_accepted("root-detach", detached, 1))
+        inactive = _replace_prefix(accepted, "root_detach_lsm=", "root_detach_lsm=absent")
+        self.assertEqual(pg.root_detach_verdict(inactive), "FAIL")
+        skipped = _replace_prefix(
+            accepted,
+            "root_detach_attempt=link_detach",
+            "root_detach_attempt=link_detach target=none result=skipped errno=0",
+        )
+        self.assertEqual(pg.root_detach_verdict(skipped), "FAIL")
+        other_errno = _replace_prefix(
+            accepted,
+            "root_detach_attempt=unlink",
+            "root_detach_attempt=unlink target=vantio_prog result=other errno=2",
+        )
+        self.assertEqual(pg.root_detach_verdict(other_errno), "FAIL")
+        gone = _replace_prefix(accepted, "root_detach_programs_remain=", "root_detach_programs_remain=no")
+        self.assertEqual(pg.root_detach_verdict(gone), "FAIL")
+        opened = _replace_prefix(
+            accepted,
+            "root_detach_inside=",
+            "root_detach_inside=connect where=inside result=connected errno=0 elapsed_ms=2.0",
+        )
+        self.assertEqual(pg.root_detach_verdict(opened), "FAIL")
+        wrong_type = "NETWORK_BLOCK" if pg.EXPECTED_DROP_EVENT != "NETWORK_BLOCK" else "CGROUP_BLOCK"
+        mismatched = _replace_prefix(
+            accepted,
+            "root_detach_ledger=",
+            f"root_detach_ledger=type={wrong_type} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
+        )
+        self.assertEqual(pg.root_detach_verdict(mismatched), "FAIL")
+        short = _replace_prefix(
+            accepted,
+            "root_detach_ledger=",
+            f"root_detach_ledger=type={pg.EXPECTED_DROP_EVENT} bytes={pg.TCP_SYN_BYTES + 1} sent={pg.TCP_SYN_BYTES + 1} drop_path={pg.EXPECTED_DROP_PATH}",
+        )
+        self.assertEqual(pg.root_detach_verdict(short), "FAIL")
+        self.assertEqual(rda.classify(0, issued=True), "ok")
+        self.assertEqual(rda.classify(1, issued=True), "refused")
+        self.assertEqual(rda.classify(13, issued=True), "refused")
+        self.assertEqual(rda.classify(0, issued=False), "skipped")
+        self.assertEqual(pg.fork_inherit_verdict([]), "INCONCLUSIVE")
+        self.assertFalse(ep.phase_accepted("fork-inherit", [], 1))
+        good = _accepted_fork().splitlines()
+        self.assertEqual(pg.fork_inherit_verdict(good), "PASS")
+        self.assertTrue(ep.phase_accepted("fork-inherit", good, 0))
+        distinct = good + [
+            "fork_trace=parent=a11000000000c969 child=a11000000000c96c grandchild=a11000000000c8f1",
+        ]
+        self.assertEqual(pg.fork_inherit_verdict(distinct), "PASS")
+        zero = _replace_prefix(good, "fork_rows=", "fork_rows=blocks=4 anchor=3554 trace_zero=yes drop_path=cgroup_skb")
+        self.assertEqual(pg.fork_inherit_verdict(zero), "FAIL_UNATTRIBUTED")
+        other_anchor = _replace_prefix(good, "fork_rows=", "fork_rows=blocks=4 anchor=9 trace_zero=no drop_path=cgroup_skb")
+        self.assertEqual(pg.fork_inherit_verdict(other_anchor), "FAIL_UNATTRIBUTED")
+        missing_clone = [line for line in good if not line.startswith("fork_clone3=")]
+        self.assertEqual(pg.fork_inherit_verdict(missing_clone), "INCONCLUSIVE")
+        plan = ep.public_plan("full")
+        eacces = _replace_prefix(
+            accepted,
+            "root_detach_attempt=unlink",
+            "root_detach_attempt=unlink target=vantio_prog result=refused errno=13",
+        )
+        self.assertEqual(pg.root_detach_verdict(eacces), "FAIL")
+        self.assertEqual(plan["root_detach_on_pe_tip"], "PASS_IF_ERRNO_1")
+        self.assertEqual(plan["stub_phases"], [])
+        self.assertIn("fork-inherit", plan["phases"])
+        self.assertIn("signals", plan["phases"])
+        self.assertIn("same-boundary", plan["phases"])
+        self.assertIn("oom", plan["phases"])
+        self.assertIn("escapes", plan["phases"])
+        self.assertIn("clock", plan["phases"])
+        self.assertIn("root-detach", plan["phases"])
+        self.assertLess(plan["phases"].index("compare"), plan["phases"].index("root-detach"))
+        self.assertLess(plan["phases"].index("root-detach"), plan["phases"].index("file-deny"))
+
+    def test_successful_detach_stops_before_file_deny(self) -> None:
+        class Fake:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+
+            def instances(self, _project: str) -> list[dict[str, str]]:
+                return []
+
+            def create(self, _env: dict[str, str]) -> str:
+                return "vantio-gcp-lab-12"
+
+            def scp(self, _project: str, _name: str, _paths: list[Path]) -> None:
+                return None
+
+            def wait_ssh(self, _project: str, _name: str) -> str:
+                return "boot"
+
+            def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
+                self.commands.append(command)
+                phase = command.rsplit(" ", 1)[-1].strip("'")
+                if phase == "compare":
+                    return subprocess.CompletedProcess([], 0, _accepted_compare(), "")
+                if phase == "root-detach":
+                    text = _accepted_root_detach().replace(
+                        "result=refused errno=1",
+                        "result=ok errno=0",
+                        1,
+                    )
+                    return subprocess.CompletedProcess([], 1, text, "")
+                return subprocess.CompletedProcess([], 0, "", "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            RunTests._loader(self, root / "loader")  # type: ignore[arg-type]
+            debs = root / "debs"
+            debs.mkdir()
+            (debs / "python3-cryptography_1_amd64.deb").write_bytes(b"deb")
+            fake = Fake()
+            env = _base_env(
+                GCP_LAB_EXECUTE="1",
+                GCP_LAB_GATE_JSON=GATE,
+                LOADER_DIR=str(root / "loader"),
+                DEB_DIR=str(debs),
+                EVIDENCE_DIR=str(root / "evidence"),
+                RUNNER_TEMP=str(root),
+            )
+            self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
+        self.assertFalse(any(command.endswith(" file-deny") for command in fake.commands))
+
+    def test_reboot_requires_a_new_boot_id(self) -> None:
+        same = _accepted_reboot().replace(AFTER, BEFORE).splitlines()
+        self.assertFalse(ep.phase_accepted("reboot-post", same, 0))
+        self.assertTrue(ep.phase_accepted("reboot-post", _accepted_reboot().splitlines(), 0))
+        self.assertFalse(
+            ep.phase_accepted(
+                "reboot-post",
+                _accepted_reboot().splitlines(),
+                0,
+                {"before": BEFORE, "after": BEFORE},
+            )
+        )
+        missing = [line for line in _accepted_reboot().splitlines() if not line.startswith("reboot_pre_boot_id=")]
+        self.assertFalse(ep.phase_accepted("reboot-post", missing, 0))
+        not_run = _accepted_reboot().replace("reboot_restored=PASS", "reboot_restored=NOT_RUN").splitlines()
+        self.assertFalse(ep.phase_accepted("reboot-post", not_run, 0))
+        detached = _accepted_signals().replace("result=refused", "result=detached", 1).splitlines()
+        self.assertEqual(pg.signal_verdict(detached), "FAIL")
+        self.assertTrue(ep.phase_accepted("signals", _accepted_signals().splitlines(), 0))
+        self.assertTrue(ep.phase_accepted("same-boundary", _accepted_boundary().splitlines(), 0))
+        expired_open = _accepted_boundary().replace("boundary_expired=blocked", "boundary_expired=connected").splitlines()
+        self.assertEqual(pg.same_boundary_verdict(expired_open), "FAIL")
+        self.assertTrue(ep.phase_accepted("oom", _accepted_oom().splitlines(), 0))
+        self.assertEqual(pg.oom_verdict(_accepted_oom().replace("oom_killed=yes", "oom_killed=no").splitlines()), "FAIL")
+        self.assertTrue(ep.phase_accepted("escapes", _accepted_escapes().splitlines(), 0))
+        self.assertEqual(pg.escapes_verdict(_accepted_escapes().replace("escape_memfd=denied", "escape_memfd=ok", 1).splitlines()), "FAIL")
+        self.assertTrue(ep.phase_accepted("clock", _accepted_clock().splitlines(), 0))
+        self.assertEqual(pg.clock_verdict(_accepted_clock().replace("fail_closed", "open").splitlines()), "FAIL")
+
+    def test_not_proven_stops_before_uninstall(self) -> None:
+        class Fake:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+                self.boot = BEFORE
+
+            def instances(self, _project: str) -> list[dict[str, str]]:
+                return []
+
+            def create(self, _env: dict[str, str]) -> str:
+                return "vantio-gcp-lab-12"
+
+            def scp(self, _project: str, _name: str, _paths: list[Path]) -> None:
+                return None
+
+            def wait_ssh(self, _project: str, _name: str) -> str:
+                return self.boot
+
+            def boot_id(self, _project: str, _name: str) -> str:
+                return self.boot
+
+            def wait_boot(self, _project: str, _name: str, before: str) -> str:
+                return AFTER if before == BEFORE else ""
+
+            def ssh(self, _project: str, _name: str, command: str) -> subprocess.CompletedProcess[str]:
+                self.commands.append(command)
+                if "systemctl reboot --force" in command:
+                    self.boot = AFTER
+                    return subprocess.CompletedProcess([], 0, "", "")
+                phase = command.rsplit(" ", 1)[-1].strip("'")
+                if phase == "expired-key":
+                    return subprocess.CompletedProcess(
+                        [],
+                        0,
+                        "license_exp_claim=NOT_PROVEN\nlicense_exp_observation=NOT_CONSULTED\n",
+                        "",
+                    )
+                text = {
+                    "compare": _accepted_compare(),
+                    "root-detach": _accepted_root_detach(),
+                    "file-deny": _accepted_file_deny(),
+                    "reboot-pre": "reboot_pre=RECORDED\n",
+                    "reboot-post": _accepted_reboot(),
+                }.get(phase, "")
+                return subprocess.CompletedProcess([], 0, text, "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            RunTests._loader(self, root / "loader")  # type: ignore[arg-type]
+            debs = root / "debs"
+            debs.mkdir()
+            (debs / "python3-cryptography_1_amd64.deb").write_bytes(b"deb")
+            fake = Fake()
+            env = _base_env(
+                GCP_LAB_EXECUTE="1",
+                GCP_LAB_GATE_JSON=GATE,
+                LOADER_DIR=str(root / "loader"),
+                DEB_DIR=str(debs),
+                EVIDENCE_DIR=str(root / "evidence"),
+                RUNNER_TEMP=str(root),
+            )
+            self.assertEqual(ep.run_proof(env, fake), 2)  # type: ignore[arg-type]
+        self.assertFalse(any(command.endswith(" uninstall") for command in fake.commands))
+
+    def test_harden_rejects_any_errno_and_not_proven(self) -> None:
+        script = (
+            "#!/bin/bash\nset -euo pipefail\n"
+            "phase_compare() {\n" + ep._OLD_COMPARE + "}\n"
+            "phase_expired_key() {\n" + ep._OLD_EXPIRED +
+            "phase_reboot_post() {\n" + ep._OLD_REBOOT + "}\n"
+            'case "$PHASE" in\n  compare) phase_compare ;;\nesac\n'
+        )
+        self.assertIn('result=timeout" in item or "result=error" in item', script)
+        patched = ep.harden_lab_script(script)
+        self.assertNotIn('result=timeout" in item or "result=error" in item', patched)
+        self.assertIn("proof_grade.py", patched)
+        self.assertIn("compare-verdict", patched)
+        self.assertIn("license_exp_claim=NOT_PROVEN", patched)
+        self.assertIn("exit 1", patched.split("license_exp_claim=NOT_PROVEN", 1)[1])
+        self.assertIn("reboot_pre_boot_id=", patched)
+        self.assertIn("phase_root_detach()", patched)
+        self.assertIn("root-detach) phase_root_detach", patched)
+        checked = subprocess.run(["bash", "-n"], input=patched, text=True, capture_output=True, check=False)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertEqual(ep.harden_lab_script("#!/bin/bash\nexit 0\n"), "#!/bin/bash\nexit 0\n")
+        with self.assertRaises(SystemExit):
+            ep.harden_lab_script("#!/bin/bash\nphase_compare() {\n:\n}\n")
+
+    def _git(self, repo: Path) -> dict[str, str]:
+        env = os.environ.copy()
+        env.update(
+            {
+                "GIT_AUTHOR_NAME": "Proof Test",
+                "GIT_AUTHOR_EMAIL": "proof@example.com",
+                "GIT_COMMITTER_NAME": "Proof Test",
+                "GIT_COMMITTER_EMAIL": "proof@example.com",
+            }
+        )
+        subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, env=env, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, env=env, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, env=env, capture_output=True)
+        return env
+
+    def _pinned_script(self, root: Path, head: str) -> Path:
+        script = root / "build.sh"
+        _stage_build(script, BUILD.read_text(encoding="utf-8"), head)
+        return script
+
+    def test_assume_unchanged_and_skip_worktree_are_dirty(self) -> None:
+        text = BUILD.read_text(encoding="utf-8")
+        self.assertNotIn("git status --porcelain", text)
+        self.assertLess(text.index("trap cleanup_writable EXIT"), text.index('echo "pe_git_sha"'))
+        self.assertLess(text.index("trap cleanup_target EXIT"), text.index("apt-get update"))
+        self.assertIn("RUST_TOOLCHAIN=nightly-2026-10-13", text)
+        self.assertIn("SOURCE_DATE_EPOCH=0", text)
+        self.assertIn("--remap-path-prefix=${checkout}=/vantio-src", text)
+        self.assertIn("--remap-path-prefix=${cargo_home}=/cargo", text)
+        self.assertIn("--remap-path-prefix=${sysroot}=/rustc", text)
+        self.assertIn("-ffile-prefix-map=${cargo_home}=/cargo", text)
+        self.assertIn('channel = "', text)
+        self.assertIn("BPF_LINKER_VERSION=0.12.0", text)
+        self.assertIn("bpf-linker@${BPF_LINKER_VERSION}", text)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            env = self._git(checkout)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout, text=True, env=env).strip()
+            (checkout / "Cargo.toml").write_text("[workspace]\n# dirty\n", encoding="utf-8")
+            subprocess.run(["git", "update-index", "--assume-unchanged", "Cargo.toml"], cwd=checkout, check=True, env=env)
+            status = subprocess.check_output(["git", "status", "--porcelain"], cwd=checkout, text=True, env=env)
+            self.assertEqual(status, "")
+            bindir = root / "bin"
+            bindir.mkdir()
+            docker = bindir / "docker"
+            docker.write_text("#!/bin/sh\necho called > \"$DOCKER_LOG\"\nexit 99\n", encoding="utf-8")
+            docker.chmod(0o755)
+            run_env = {**env, "PATH": f"{bindir}:{env.get('PATH', '')}", "DOCKER_LOG": str(root / "docker.log")}
+            done = subprocess.run(
+                ["bash", str(self._pinned_script(root, head)), str(checkout), str(root / "out"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1, done.stderr)
+            self.assertIn("pe_dirty", done.stderr)
+            self.assertFalse((root / "docker.log").exists())
+            hidden = text.replace(
+                'if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 && worktree_dirty "$src"; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
+                'if [[ -n "$(git -C "$src" status --porcelain)" ]]; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
+                1,
+            )
+            self.assertNotEqual(hidden, text)
+            (root / "status.sh").write_text(hidden.replace(PIN, head, 1), encoding="utf-8")
+            leaked = subprocess.run(
+                ["bash", str(root / "status.sh"), str(checkout), str(root / "out2"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertNotIn("pe_dirty", leaked.stderr)
+            self.assertTrue((root / "docker.log").exists())
+            no_flags = text.replace(
+                """  if printf '%s\\n' "$flags" | awk '
+    BEGIN { found = 0 }
+    {
+      tag = substr($0, 1, 1)
+      if (tag ~ /[a-z]/ || tag == "S") found = 1
+    }
+    END { exit found ? 0 : 1 }
+  '; then
+    return 0
+  fi
+""",
+                "",
+                1,
+            )
+            self.assertNotEqual(no_flags, text)
+            (root / "docker.log").unlink()
+            (root / "nofield.sh").write_text(no_flags.replace(PIN, head, 1), encoding="utf-8")
+            still = subprocess.run(
+                ["bash", str(root / "nofield.sh"), str(checkout), str(root / "out3"), head],
+                capture_output=True,
+                text=True,
+                env=run_env,
+                check=False,
+            )
+            self.assertIn("pe_dirty", still.stderr)
+            self.assertFalse((root / "docker.log").exists())
+
+    def test_skip_worktree_is_dirty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            env = self._git(checkout)
+            head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=checkout, text=True, env=env).strip()
+            (checkout / "Cargo.toml").write_text("[workspace]\n# skipped\n", encoding="utf-8")
+            subprocess.run(["git", "update-index", "--skip-worktree", "Cargo.toml"], cwd=checkout, check=True, env=env)
+            status = subprocess.check_output(["git", "status", "--porcelain"], cwd=checkout, text=True, env=env)
+            self.assertEqual(status, "")
+            flags = subprocess.check_output(["git", "ls-files", "-v", "Cargo.toml"], cwd=checkout, text=True, env=env)
+            self.assertTrue(flags.startswith("S"))
+            bindir = root / "bin"
+            bindir.mkdir()
+            docker = bindir / "docker"
+            docker.write_text("#!/bin/sh\necho called > \"$DOCKER_LOG\"\nexit 99\n", encoding="utf-8")
+            docker.chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(self._pinned_script(root, head)), str(checkout), str(root / "out"), head],
+                capture_output=True,
+                text=True,
+                env={**env, "PATH": f"{bindir}:{env.get('PATH', '')}", "DOCKER_LOG": str(root / "docker.log")},
+                check=False,
+            )
+            self.assertEqual(done.returncode, 1, done.stderr)
+            self.assertIn("pe_dirty", done.stderr)
+
+    def test_failed_compile_chowns_and_removes_the_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "phantom-engine"
+            CreateAndBuildTests._checkout(self, checkout)  # type: ignore[arg-type]
+            env = CreateAndBuildTests._fake_tools(self, root, PIN)  # type: ignore[arg-type]
+            bindir = Path(env["PATH"].split(":", 1)[0])
+            (bindir / "docker").write_text(
+                "#!/bin/sh\n"
+                "for arg in \"$@\"; do\n"
+                "  case \"$arg\" in\n"
+                "    *:/target|*:*/target) host=${arg%%:*}; mkdir -p \"$host\"; echo kept > \"$host/kept\"; ;;\n"
+                "  esac\n"
+                "done\n"
+                "echo failed > \"$DOCKER_LOG\"\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            chown_log = root / "chown.log"
+            (bindir / "chown").write_text(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CHOWN_LOG\"\nexit 0\n",
+                encoding="utf-8",
+            )
+            (bindir / "chown").chmod(0o755)
+            done = subprocess.run(
+                ["bash", str(BUILD), "phantom-engine", "out", PIN],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                env={**env, "CHOWN_LOG": str(chown_log)},
+                check=False,
+            )
+            self.assertNotEqual(done.returncode, 0)
+            self.assertNotIn("loader_built=1", done.stdout)
+            self.assertTrue(chown_log.is_file(), done.stderr)
+            recorded = chown_log.read_text(encoding="utf-8").strip().split()
+            self.assertTrue(recorded, done.stderr)
+            self.assertFalse(Path(recorded[-1]).exists(), recorded[-1])
+
+
+class ProbeContractTests(unittest.TestCase):
+    def test_tcp_einprogress_is_not_a_pass(self) -> None:
+        import escape_probes
+
+        self.assertEqual(escape_probes.classify_tcp(0, 0, 0, 1), "ok 0")
+        self.assertEqual(escape_probes.classify_tcp(-1, 115, 0, 0), "denied 0")
+        self.assertEqual(escape_probes.classify_tcp(-1, 1, 0, 0), "denied 1")
+        self.assertEqual(escape_probes.classify_tcp(0, 0, 0, 0), "denied 0")
+        source = (ROOT / "scripts/gcp/escape_probes.py").read_text(encoding="utf-8")
+        self.assertIn("SO_ERROR", source)
+        self.assertIn("sigaction(SIGALRM", source)
+        self.assertNotIn("signal(SIGALRM", source)
+        self.assertNotIn('fprintf(out, "ok %d\\n", errno)', source)
+
+    def test_guest_probes_match_the_loader_contract(self) -> None:
+        text = (ROOT / "scripts/gcp/guest_phases.sh").read_text(encoding="utf-8")
+        self.assertIn("process_vm_writev", text)
+        self.assertNotIn("syscall(311", text)
+        self.assertIn('b"bpf"', text)
+        self.assertNotIn("mount -t tmpfs", text)
+        self.assertIn("seq 1 50", text)
+        inbound = text.split("inbound)", 1)[1].split("bpffs-overmount)", 1)[0]
+        self.assertLess(inbound.index('print("inbound_enrolled="'), inbound.index("os.wait()"))
+
+
 if __name__ == "__main__":
     unittest.main()
+
