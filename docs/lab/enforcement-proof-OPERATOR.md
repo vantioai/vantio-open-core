@@ -42,11 +42,11 @@ The runner reaches the guest with the existing IAP helper: `gcloud compute ssh`,
 
 The `gate` job calls `.github/workflows/gcp-lab-cost-gate.yml`. The proof job starts only when that job's output `expected_oop_usd` is `0`. A gate that exits 2 skips create. There is no VM to use. A green gate does not itself install Phantom Engine.
 
-The proof job runs `scripts/gcp/lab_auto.py cost-gate` again and reads that JSON before create.
+The guest proof and the failure delete are a second call of that same file, with `proof_slice` set. Workload identity sees `job_workflow_ref` `vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main`. That call does not run the gate job again. The proof step still runs `scripts/gcp/lab_auto.py cost-gate` and reads that JSON before create.
 
 ## What `full` runs
 
-Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo build -p vantio-loader --release`. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is installed the same unpinned way as the Phantom Engine Dockerfile at this tip, so two builds can differ.
+Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit: `cargo build -p vantio-loader --release`. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is installed the same unpinned way as the Phantom Engine Dockerfile at this tip, so two builds can differ.
 
 `full` runs these guest phases in this order: compare, file-deny, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
 
@@ -92,5 +92,5 @@ Pass and fail lines for council are in the Phantom Engine packet and in `$VANTIO
 ## Before the first click
 
 1. This file is on `main`. A branch dispatch fails the main guard. This pull request does not merge and does not dispatch.
-2. The workload identity provider attribute condition includes `vantioai/vantio-open-core/.github/workflows/gcp-lab-enforcement-proof.yml@refs/heads/main`. The full string is `python3 scripts/gcp/lab_auto.py attribute-condition`. Updating that provider is not an Actions dispatch. Until it is updated, authentication fails and no VM is created.
+2. The guest jobs authenticate from `.github/workflows/gcp-lab-cost-gate.yml`. The live provider already allows `vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@refs/heads/main`. Zach does not add `gcp-lab-enforcement-proof.yml` for this dispatch. `python3 scripts/gcp/lab_auto.py attribute-condition` still prints a clause for that file. That clause is not required to authenticate the guest jobs.
 3. `W3_LAB_PRIVATE_BUNDLE_TOKEN` can read `vantioai/vantio-phantom-engine` at the pinned commit. The build job uses it in environment `w3-lab-auto`. If it cannot, the build fails before create.

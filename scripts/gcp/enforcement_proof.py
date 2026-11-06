@@ -33,6 +33,18 @@ PE_REPO = "vantioai/vantio-phantom-engine"
 PE_GIT_SHA = "864289cb2c9c4135d74233c74c6655087de3f20d"
 WORKFLOW_FILE = "gcp-lab-enforcement-proof.yml"
 WORKFLOW_REF = f"vantioai/vantio-open-core/.github/workflows/{WORKFLOW_FILE}@refs/heads/main"
+# Live WIF attribute condition. lab_auto.WORKFLOWS also names the proof file.
+# Guest auth jobs stay in a file from this tuple.
+LIVE_WIF_FILES = (
+    "gcp-lab-cost-gate.yml",
+    "gcp-lab-provision.yml",
+    "gcp-lab-collect.yml",
+    "gcp-lab-teardown.yml",
+    "gcp-lab-sweeper.yml",
+    "gcp-lab-verify-removed.yml",
+)
+WIF_AUTH_USE = "google-github-actions/auth@"
+CALLED_WIF_FILE = "gcp-lab-cost-gate.yml"
 LAB_DIR = "/var/lib/vantio-enforcement-proof"
 PRE_REBOOT_DIR = "/var/lib/vantio-enforcement-proof-pre-reboot"
 GUEST_DIR = od.GUEST_DIR
@@ -187,6 +199,11 @@ def proof_minutes(value: object) -> int:
 
 def sha_ok(value: object) -> bool:
     return value == PE_GIT_SHA
+
+
+def wif_auth_violations(files: Mapping[str, str], allowlist: Sequence[str] = LIVE_WIF_FILES) -> list[str]:
+    """Files that call google auth outside the live WIF workflow allowlist."""
+    return sorted(name for name, text in files.items() if isinstance(text, str) and WIF_AUTH_USE in text and name not in allowlist)
 
 
 def phases_for(slice_name: str) -> tuple[str, ...]:

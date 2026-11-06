@@ -294,6 +294,7 @@ test("pin report records SHA-pinned workflow and composite actions and the seale
     approvedMain.map((action) => `${action.file} ${action.uses}`),
     [
       ".github/workflows/gcp-lab-enforcement-proof.yml vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust",
+      ".github/workflows/gcp-lab-enforcement-proof.yml vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust",
       ".github/workflows/gcp-lab-provision.yml vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust",
       ".github/workflows/w3-lab-auto-long-soak.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust",
       ".github/workflows/w3-lab-auto-provision.yml vantioai/vantio-open-core/.github/workflows/w3-lab-auto-cost-gate.yml@main # oidc-trust",

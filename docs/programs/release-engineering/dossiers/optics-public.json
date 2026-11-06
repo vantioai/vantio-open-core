@@ -67,6 +67,13 @@
     {
       "accepted_as_pin": false,
       "kind": "unpinned",
+      "name": ".github/workflows/gcp-lab-enforcement-proof.yml vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust",
+      "required_for_publish": true,
+      "value": "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust"
+    },
+    {
+      "accepted_as_pin": false,
+      "kind": "unpinned",
       "name": ".github/workflows/gcp-lab-provision.yml vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust",
       "required_for_publish": true,
       "value": "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main # oidc-trust"
