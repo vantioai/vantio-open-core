@@ -83,6 +83,23 @@ start_enforcing() {
   echo TIMEOUT
 }
 
+arm_loader() {
+  local log="$1"
+  shift
+  start_enforcing "$log" env VANTIO_LAB_SCOPE=lab-nonprod \
+    VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+    VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+    "$@" >"$OUT/banner.txt"
+  banner="$(tr -d '\n' < "$OUT/banner.txt")"
+  if [[ "$banner" != "ENFORCING" ]]; then
+    note "${phase}=FAIL"
+    note "banner=$banner"
+    stop_loader
+    finish_not_proven
+    exit 1
+  fi
+}
+
 case "$phase" in
   k8s)
     note "k8s=NOT_RUN"
@@ -127,6 +144,354 @@ case "$phase" in
       exit 0
     fi
     exit 1
+    ;;
+  host-wide)
+    hw=/sys/fs/cgroup/vantio-hw-lab
+    mkdir -p "$hw/out" "$hw/except"
+    stop_dir="$(dirname "${VANTIO_LAB_STOP_TOKEN}")"
+    python3 "$(dirname "$0")/lab_stop.py" exception "$stop_dir" "$hw/except"
+    arm_loader "$OUT/host-wide.log" \
+      env VANTIO_CGROUP_ROOT="$hw" \
+      VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --host-wide --stop-authority "${VANTIO_LAB_STOP_TOKEN}" \
+      --cgroup-exception-file "$stop_dir/exceptions.json" --iface lo \
+      --output-file "$OUT/host-wide.ndjson"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$hw" <<'PY'
+import os, socket, sys
+root = sys.argv[1]
+def send(where):
+    if os.fork() != 0:
+        return
+    if where != "agent":
+        open(root + "/" + where + "/cgroup.procs", "w").write(str(os.getpid()))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(1.5)
+    try:
+        sock.sendto(b"x", ("127.0.0.1", 9))
+        print(f"hostwide_{where}=allowed")
+    except socket.timeout:
+        print(f"hostwide_{where}=blocked")
+    except OSError as exc:
+        print(f"hostwide_{where}=" + ("blocked" if exc.errno in (1, 13) else "other"))
+        print(f"hostwide_{where}_errno={exc.errno or 0}")
+    raise SystemExit(0)
+for where in ("out", "except", "agent"):
+    send(where)
+    os.wait()
+PY
+)
+    stop_loader
+    rmdir "$hw/out" "$hw/except" "$hw" 2>/dev/null || true
+    finish_not_proven
+    grep -q '^hostwide_out=blocked$' "$OUT/transcript.txt" \
+      && grep -q '^hostwide_except=allowed$' "$OUT/transcript.txt" \
+      && grep -q '^hostwide_agent=allowed$' "$OUT/transcript.txt"
+    exit $?
+    ;;
+  hard-link)
+    secret="$OUT/pe-secret"
+    rm -rf "$secret" "$OUT/link-before" "$OUT/link-after"
+    mkdir -p "$secret"
+    printf 'rt-secret-marker\n' > "$secret/file"
+    ln "$secret/file" "$OUT/link-before"
+    mkdir -p "$CGROUP"
+    arm_loader "$OUT/hard-link.log" \
+      env VANTIO_PHANTOM_DENY=1 VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface lo \
+      --enforce-path "${secret}/" --startup-enroll-cgroup "$CGROUP" \
+      --output-file "$OUT/hard-link.ndjson"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" "$secret/file" "$OUT/link-before" "$OUT/link-after" <<'PY'
+import os, sys
+cgroup, original, before, after = sys.argv[1:]
+def child(enrolled, fn):
+    if os.fork() != 0:
+        os.wait()
+        return
+    if enrolled:
+        open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+    fn()
+    raise SystemExit(0)
+def open_result(path):
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        os.close(fd)
+        return "allowed"
+    except OSError as exc:
+        return "denied" if exc.errno in (1, 13) else "other"
+child(True, lambda: print("hardlink_before=" + open_result(before)))
+child(True, lambda: print("hardlink_original=" + open_result(original)))
+def make_link():
+    try:
+        os.link(original, after)
+        print("hardlink_root_link=created")
+    except OSError as exc:
+        print("hardlink_root_link=denied")
+        print(f"hardlink_root_errno={exc.errno or 0}")
+child(False, make_link)
+child(True, lambda: print("hardlink_after=" + open_result(after)))
+def enrolled_link():
+    dest = after + "-enrolled"
+    try:
+        os.link(original, dest)
+        print("hardlink_enrolled_link=created")
+    except OSError as exc:
+        print("hardlink_enrolled_link=" + ("denied" if exc.errno in (1, 13) else "other"))
+child(True, enrolled_link)
+PY
+)
+    stop_loader
+    rm -rf "$secret" "$OUT/link-before" "$OUT/link-after" "$OUT/link-after-enrolled"
+    finish_not_proven
+    grep -q '^hardlink_before=denied$' "$OUT/transcript.txt" \
+      && grep -q '^hardlink_original=denied$' "$OUT/transcript.txt" \
+      && grep -q '^hardlink_root_link=created$' "$OUT/transcript.txt" \
+      && grep -q '^hardlink_after=denied$' "$OUT/transcript.txt" \
+      && grep -q '^hardlink_enrolled_link=denied$' "$OUT/transcript.txt"
+    exit $?
+    ;;
+  enrolled-root)
+    secret="$OUT/root-secret"
+    rm -rf "$secret"
+    mkdir -p "$secret"
+    printf 'rt-secret-marker\n' > "$secret/file"
+    mkdir -p "$CGROUP"
+    arm_loader "$OUT/enrolled-root.log" \
+      env VANTIO_PHANTOM_DENY=1 VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface lo \
+      --enforce-path "${secret}/" --startup-enroll-cgroup "$CGROUP" \
+      --output-file "$OUT/enrolled-root.ndjson"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" "$secret/file" <<'PY'
+import os, sys
+cgroup, path = sys.argv[1:]
+def once(enrolled, label):
+    if os.fork() != 0:
+        os.wait()
+        return
+    if enrolled:
+        open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        os.read(fd, 32)
+        os.close(fd)
+        print(f"{label}=allowed")
+    except OSError as exc:
+        print(f"{label}=" + ("denied" if exc.errno in (1, 13) else "other"))
+        print(f"{label}_errno={exc.errno or 0}")
+    raise SystemExit(0)
+once(True, "root_enrolled_open")
+once(False, "root_outside_open")
+PY
+)
+    stop_loader
+    rm -rf "$secret"
+    finish_not_proven
+    grep -q '^root_enrolled_open=denied$' "$OUT/transcript.txt" \
+      && grep -q '^root_outside_open=allowed$' "$OUT/transcript.txt"
+    exit $?
+    ;;
+  nonce-truncate)
+    mkdir -p "$CGROUP"
+    arm_loader "$OUT/nonce.log" \
+      env VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface lo \
+      --startup-enroll-cgroup "$CGROUP" --output-file "$OUT/nonce.ndjson"
+    stop_dir="$(dirname "${VANTIO_LAB_STOP_TOKEN}")"
+    python3 "$(dirname "$0")/lab_stop.py" next-stop "$stop_dir"
+    token="$stop_dir/stop-next.json"
+    env VANTIO_LAB_SCOPE=lab-nonprod VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      "$LOADER" --authenticated-stop --stop-token "$token" >"$OUT/nonce-first.log" 2>&1 || true
+    if grep -F "authenticated stop accepted" "$OUT/nonce-first.log" >/dev/null; then
+      note "nonce_first=accepted"
+    else
+      note "nonce_first=refused"
+    fi
+    for _ in $(seq 1 50); do
+      if ! kill -0 "$LOADER_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.3
+    done
+    : > /run/vantio-stop-nonces
+    env VANTIO_LAB_SCOPE=lab-nonprod VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      "$LOADER" --authenticated-stop --stop-token "$token" >"$OUT/nonce-replay.log" 2>&1 || true
+    if grep -F "STOP_NONCE_REPLAY" "$OUT/nonce-replay.log" >/dev/null; then
+      note "nonce_replay=replay"
+    else
+      note "nonce_replay=other"
+    fi
+    if [[ ! -s /run/vantio-stop-nonces ]]; then
+      note "nonce_file=empty"
+    else
+      note "nonce_file=present"
+    fi
+    LOADER_PID=""
+    finish_not_proven
+    grep -q '^nonce_first=accepted$' "$OUT/transcript.txt" \
+      && grep -q '^nonce_replay=replay$' "$OUT/transcript.txt" \
+      && grep -q '^nonce_file=empty$' "$OUT/transcript.txt"
+    exit $?
+    ;;
+  ledger-forgery)
+    mkdir -p "$CGROUP"
+    rm -f "$OUT/ledger.ndjson" "$OUT/ledger.ndjson.head"
+    arm_loader "$OUT/ledger.log" \
+      env VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface lo \
+      --startup-enroll-cgroup "$CGROUP" --output-file "$OUT/ledger.ndjson"
+    python3 - "$CGROUP" <<'PY'
+import os, socket, sys
+cgroup = sys.argv[1]
+if os.fork() == 0:
+    open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(b"ledger", ("127.0.0.1", 9))
+    except OSError:
+        pass
+    raise SystemExit(0)
+os.wait()
+PY
+    stop_loader
+    verify="$(cd "$(dirname "$0")" && pwd)/verify_ledger.py"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$verify" "$OUT/ledger.ndjson" <<'PY'
+import base64, hashlib, json, os, subprocess, sys
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+verify, src = sys.argv[1:]
+def run(rows, head_text, path):
+    with open(path, "w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row) + "\n")
+    head_path = path + ".head"
+    if head_text is None:
+        try:
+            os.remove(head_path)
+        except OSError:
+            pass
+    else:
+        with open(head_path, "w", encoding="utf-8") as handle:
+            handle.write(head_text)
+    done = subprocess.run([sys.executable, verify, path], capture_output=True, text=True)
+    return done.returncode, (done.stderr or "") + (done.stdout or "")
+genuine = subprocess.run([sys.executable, verify, src], capture_output=True, text=True)
+print("ledger_genuine=" + ("ok" if genuine.returncode == 0 else "bad"))
+rows = [json.loads(line) for line in open(src, encoding="utf-8") if line.strip() and "chain_hash" in line]
+head = open(src + ".head", encoding="utf-8").read()
+extra = dict(rows[-1])
+extra["chain_key"] = base64.b64encode(b"\x11" * 32).decode()
+extra["chain_prev"] = rows[-1]["chain_hash"]
+rc, text = run(rows + [extra], head, src + ".key")
+print("ledger_key_changed=" + ("rejected" if rc != 0 and "chain key changed" in text else "accepted"))
+zeroed = json.loads(json.dumps(rows))
+if len(zeroed) == 1:
+    second = dict(zeroed[0])
+    second["chain_prev"] = "00" * 32
+    zeroed.append(second)
+else:
+    zeroed[1]["chain_prev"] = "00" * 32
+rc, text = run(zeroed, head, src + ".zero")
+print("ledger_zero_prev=" + ("rejected" if rc != 0 and "zero chain_prev" in text else "accepted"))
+rc, text = run(rows[:1], head, src + ".trunc")
+print("ledger_truncated=" + ("rejected" if rc != 0 and "does not match" in text else "accepted"))
+body = {"attacker": 1}
+canon = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+digest = hashlib.sha256(bytes(32) + canon).digest()
+signing = Ed25519PrivateKey.generate()
+pub = base64.b64encode(signing.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode()
+attacker = dict(body)
+attacker["chain_prev"] = "00" * 32
+attacker["chain_hash"] = digest.hex()
+attacker["chain_sig"] = base64.b64encode(signing.sign(digest)).decode()
+attacker["chain_key"] = pub
+rc, text = run([attacker], None, src + ".attacker")
+print("ledger_attacker=" + ("rejected" if rc != 0 and "head missing" in text else "accepted"))
+PY
+)
+    finish_not_proven
+    grep -q '^ledger_genuine=ok$' "$OUT/transcript.txt" \
+      && grep -q '^ledger_key_changed=rejected$' "$OUT/transcript.txt" \
+      && grep -q '^ledger_zero_prev=rejected$' "$OUT/transcript.txt" \
+      && grep -q '^ledger_truncated=rejected$' "$OUT/transcript.txt" \
+      && grep -q '^ledger_attacker=rejected$' "$OUT/transcript.txt"
+    exit $?
+    ;;
+  ptrace-task)
+    mkdir -p "$CGROUP"
+    arm_loader "$OUT/ptrace-task.log" \
+      env VANTIO_LAB_SCOPE=lab-nonprod \
+      VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
+      VANTIO_LOADER_PIN="${VANTIO_LOADER_PIN:-}" \
+      "$LOADER" --enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --iface lo \
+      --startup-enroll-cgroup "$CGROUP" --output-file "$OUT/ptrace-task.ndjson"
+    while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" <<'PY'
+import ctypes, os, sys, time
+cgroup = sys.argv[1]
+libc = ctypes.CDLL(None, use_errno=True)
+def ptrace(pid):
+    ctypes.set_errno(0)
+    rc = libc.ptrace(16, pid, 0, 0)
+    if rc == 0:
+        os.waitpid(pid, os.WUNTRACED)
+        libc.ptrace(17, pid, 0, 0)
+        return 0
+    return ctypes.get_errno()
+def sleeper(enrolled):
+    pid = os.fork()
+    if pid == 0:
+        if enrolled:
+            open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+        time.sleep(30)
+        raise SystemExit(0)
+    if enrolled:
+        for _ in range(50):
+            try:
+                text = open(f"/proc/{pid}/cgroup", encoding="utf-8").read()
+            except OSError:
+                text = ""
+            if cgroup in text:
+                break
+            time.sleep(0.05)
+    return pid
+def finish(pid, err):
+    os.kill(pid, 9)
+    os.waitpid(pid, 0)
+    return err
+outside = sleeper(False)
+print("ptrace_unenrolled=" + str(finish(outside, ptrace(outside))))
+target = sleeper(True)
+print("ptrace_enrolled_target=" + str(finish(target, ptrace(target))))
+read_fd, write_fd = os.pipe()
+caller = os.fork()
+if caller == 0:
+    os.close(read_fd)
+    open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
+    child = sleeper(False)
+    err = ptrace(child)
+    os.kill(child, 9)
+    os.waitpid(child, 0)
+    os.write(write_fd, f"{err}\n".encode())
+    raise SystemExit(0)
+os.close(write_fd)
+os.waitpid(caller, 0)
+print("ptrace_enrolled_caller=" + os.read(read_fd, 16).decode().strip())
+PY
+)
+    stop_loader
+    finish_not_proven
+    grep -q '^ptrace_unenrolled=0$' "$OUT/transcript.txt" \
+      && grep -q '^ptrace_enrolled_target=1$' "$OUT/transcript.txt" \
+      && grep -q '^ptrace_enrolled_caller=1$' "$OUT/transcript.txt"
+    exit $?
     ;;
   *)
     ;;
@@ -244,67 +609,45 @@ PY
     ;;
   inbound)
     while IFS= read -r line; do note "$line"; done < <(python3 - "$CGROUP" <<'PY'
-import os, socket, sys, time
+import os, socket, sys
 cgroup = sys.argv[1]
-print("inbound_client_cgroup=" + open("/proc/self/cgroup").read().strip().split(":")[-1])
-for name in ("enrolled", "outside"):
-    for suffix in ("port", "accept"):
-        try:
-            os.remove(f"/tmp/vantio-{name}.{suffix}")
-        except FileNotFoundError:
-            pass
+print("inbound_client_cgroup=" + open("/proc/self/cgroup").read().strip().split(":")[-1], flush=True)
+def read_line(fd):
+    data = b""
+    while b"\n" not in data:
+        chunk = os.read(fd, 64)
+        if not chunk:
+            break
+        data += chunk
+    return data.split(b"\n", 1)[0].decode()
 def serve(where):
-    sys.stdout.flush()
+    read_fd, write_fd = os.pipe()
     if os.fork() != 0:
-        return
+        os.close(write_fd)
+        return read_fd
+    os.close(read_fd)
     if where == "enrolled":
         open(cgroup + "/cgroup.procs", "w").write(str(os.getpid()))
-        print("inbound_listener_cgroup=enrolled")
+        print("inbound_listener_cgroup=enrolled", flush=True)
     else:
-        print("inbound_listener_cgroup=outside")
-    sys.stdout.flush()
+        print("inbound_listener_cgroup=outside", flush=True)
     sock = socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
     sock.listen(1)
-    ready = f"/tmp/vantio-{where}.port"
-    with open(ready, "w") as fh:
-        fh.write(str(sock.getsockname()[1]) + "\n")
-        fh.flush()
+    os.write(write_fd, f"{sock.getsockname()[1]}\n".encode())
     sock.settimeout(4)
     try:
         conn, _ = sock.accept()
         conn.close()
-        open(f"/tmp/vantio-{where}.accept", "w").write("accepted\n")
+        os.write(write_fd, b"accepted\n")
     except socket.timeout:
-        open(f"/tmp/vantio-{where}.accept", "w").write("timeout\n")
+        os.write(write_fd, b"timeout\n")
     except OSError as exc:
-        open(f"/tmp/vantio-{where}.accept", "w").write(f"errno={exc.errno}\n")
+        os.write(write_fd, f"errno={exc.errno}\n".encode())
     raise SystemExit(0)
-def wait_accept(where):
-    path = f"/tmp/vantio-{where}.accept"
-    for _ in range(35):
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            return open(path).read().strip()
-        time.sleep(0.1)
-    return "missing"
-def poke(where):
-    ready = f"/tmp/vantio-{where}.port"
-    port = 0
-    for _ in range(50):
-        try:
-            text = open(ready).read().strip()
-        except FileNotFoundError:
-            text = ""
-        if text.isdigit():
-            port = int(text)
-            break
-        time.sleep(0.05)
-    if port == 0:
-        print(f"inbound_{where}_client=error")
-        print(f"inbound_{where}_errno=0")
-        print(f"inbound_{where}_accept=missing")
-        return "refused"
+def poke(where, fd):
+    port = int(read_line(fd))
     sock = socket.socket()
     sock.settimeout(2)
     client = "error"
@@ -318,19 +661,19 @@ def poke(where):
         errno = exc.errno or 0
     finally:
         sock.close()
-    accept = wait_accept(where)
-    print(f"inbound_{where}_client={client}")
-    print(f"inbound_{where}_errno={errno}")
-    print(f"inbound_{where}_accept={accept}")
+    accept = read_line(fd)
+    print(f"inbound_{where}_client={client}", flush=True)
+    print(f"inbound_{where}_errno={errno}", flush=True)
+    print(f"inbound_{where}_accept={accept}", flush=True)
     if client == "connected" and accept.startswith("accepted"):
         return "connected"
     if accept == "timeout" or client == "timeout":
         return "blocked"
     return "refused"
-serve("enrolled")
-serve("outside")
-print("inbound_outside=" + poke("outside"))
-print("inbound_enrolled=" + poke("enrolled"))
+outside_fd = serve("outside")
+enrolled_fd = serve("enrolled")
+print("inbound_outside=" + poke("outside", outside_fd), flush=True)
+print("inbound_enrolled=" + poke("enrolled", enrolled_fd), flush=True)
 os.wait()
 os.wait()
 PY

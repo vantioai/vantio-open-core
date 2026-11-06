@@ -78,6 +78,12 @@ SAME_BOOT = frozenset(
         "stop-token",
         "pin-absent",
         "missing-path",
+        "host-wide",
+        "hard-link",
+        "enrolled-root",
+        "nonce-truncate",
+        "ledger-forgery",
+        "ptrace-task",
         "host-enroll",
         "same-boundary",
         "oom",
@@ -182,6 +188,27 @@ LINE_VALUES = {
     "missing_path": frozenset({"PASS", "FAIL", "NOT_RUN"}),
     "missing_create": frozenset({"denied", "created"}),
     "missing_created": frozenset({"yes", "no"}),
+    "hostwide_out": frozenset({"blocked", "allowed", "other"}),
+    "hostwide_except": frozenset({"blocked", "allowed", "other"}),
+    "hostwide_agent": frozenset({"blocked", "allowed", "other"}),
+    "hardlink_before": frozenset({"denied", "allowed", "other"}),
+    "hardlink_original": frozenset({"denied", "allowed", "other"}),
+    "hardlink_root_link": frozenset({"created", "denied"}),
+    "hardlink_after": frozenset({"denied", "allowed", "other"}),
+    "hardlink_enrolled_link": frozenset({"denied", "created", "other"}),
+    "root_enrolled_open": frozenset({"denied", "allowed", "other"}),
+    "root_outside_open": frozenset({"denied", "allowed", "other"}),
+    "nonce_first": frozenset({"accepted", "refused"}),
+    "nonce_replay": frozenset({"replay", "other"}),
+    "nonce_file": frozenset({"empty", "present"}),
+    "ledger_genuine": frozenset({"ok", "bad"}),
+    "ledger_key_changed": frozenset({"rejected", "accepted"}),
+    "ledger_zero_prev": frozenset({"rejected", "accepted"}),
+    "ledger_truncated": frozenset({"rejected", "accepted"}),
+    "ledger_attacker": frozenset({"rejected", "accepted"}),
+    "ptrace_unenrolled": frozenset({"0", "1", "13"}),
+    "ptrace_enrolled_target": frozenset({"0", "1", "13"}),
+    "ptrace_enrolled_caller": frozenset({"0", "1", "13"}),
     "k8s": frozenset({"PASS", "FAIL", "NOT_RUN"}),
     "k8s_enrolled": frozenset({"blocked", "connected"}),
     "k8s_outsider": frozenset({"blocked", "connected"}),
@@ -330,6 +357,12 @@ def phases_for(slice_name: str) -> tuple[str, ...]:
             "stop-token",
             "pin-absent",
             "missing-path",
+            "host-wide",
+            "hard-link",
+            "enrolled-root",
+            "nonce-truncate",
+            "ledger-forgery",
+            "ptrace-task",
             "host-enroll",
             "same-boundary",
             "oom",
@@ -456,7 +489,7 @@ def wrapper_script() -> str:
             'if [[ -f "$grade" ]]; then',
             "  set +e",
             '  case "$phase" in',
-            "    unix-socket|ptrace-deny|inbound|bpffs-overmount|af-packet|stop-token|pin-absent|missing-path|k8s|vlan|host-enroll)",
+            "    unix-socket|ptrace-deny|inbound|bpffs-overmount|af-packet|stop-token|pin-absent|missing-path|host-wide|hard-link|enrolled-root|nonce-truncate|ledger-forgery|ptrace-task|k8s|vlan|host-enroll)",
             f'      bash "{GUEST_DIR}/guest_phases.sh" "$phase"',
             "      ;;",
             "    *)",
@@ -1102,7 +1135,8 @@ _NEW_STOP = r"""stop_loader_int() {
       note "teardown=FAIL_STILL_UP"
       return 1
     fi
-    if find /sys/fs/bpf -name 'vantio*' -print -quit 2>/dev/null | grep -q .; then
+    # vantio_used_nonce stays after a signed stop. It is the replay store.
+    if find /sys/fs/bpf -name 'vantio*' ! -name 'vantio_used_nonce' -print -quit 2>/dev/null | grep -q .; then
       note "teardown_pins=remain"
       note "teardown=FAIL_PINS"
       LOADER_PID=""
@@ -1540,6 +1574,15 @@ def harden_lab_script(text: str) -> str:
     patched = patched.replace(_OLD_REBOOT, _NEW_REBOOT, 1)
     patched = patched.replace("--enforce --", '--enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" --')
     patched = patched.replace("--enforce \\\n", '--enforce --stop-authority "${VANTIO_LAB_STOP_TOKEN}" \\\n')
+    patched = patched.replace(
+        'start_loader "$OUT/enforce.log"',
+        'rm -f "$OUT/enforce.ndjson" "$OUT/enforce.ndjson.head"\n  start_loader "$OUT/enforce.log"',
+        1,
+    )
+    patched = patched.replace(
+        'PYTHONPATH="${PYTHONPATH:-}:$(pwd)/python"',
+        'PYTHONPATH="${PYTHONPATH:-}:$(cd "$(dirname "$0")" && pwd)/python"',
+    )
     if _OLD_STOP in patched:
         patched = patched.replace(_OLD_STOP, _NEW_STOP, 1)
     if _OLD_CLEANUP in patched:
@@ -1664,6 +1707,14 @@ def _write_guest_files(env: Mapping[str, str], dest: Path, *, with_loader: bool)
         _stage_py(dest, "verify_ledger.py"),
         _stage_py(dest, "guest_phases.sh"),
     ]
+    holds = Path(__file__).resolve().with_name("python") / "holds"
+    hold_dir = dest / "python" / "holds"
+    hold_dir.mkdir(parents=True, exist_ok=True)
+    for item in holds.iterdir():
+        if item.suffix == ".py":
+            target = hold_dir / item.name
+            target.write_text(item.read_text(encoding="utf-8"), encoding="utf-8")
+            paths.append(target)
     if not with_loader:
         return paths
     loader_dir = Path(env.get("LOADER_DIR", ""))

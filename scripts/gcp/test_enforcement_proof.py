@@ -179,6 +179,12 @@ def _phase_text() -> dict[str, str]:
         "stop-token": "stop_expired=refused\nstop_bare=refused\nstop_replay=refused\nstop_fresh=accepted\n",
         "pin-absent": "pin_absent=REFUSED\npin_present=ENFORCING\n",
         "missing-path": "missing_create=denied\nmissing_created=no\n",
+        "host-wide": "hostwide_out=blocked\nhostwide_except=allowed\nhostwide_agent=allowed\n",
+        "hard-link": "hardlink_before=denied\nhardlink_original=denied\nhardlink_root_link=created\nhardlink_after=denied\nhardlink_enrolled_link=denied\n",
+        "enrolled-root": "root_enrolled_open=denied\nroot_outside_open=allowed\n",
+        "nonce-truncate": "nonce_first=accepted\nnonce_replay=replay\nnonce_file=empty\n",
+        "ledger-forgery": "ledger_genuine=ok\nledger_key_changed=rejected\nledger_zero_prev=rejected\nledger_truncated=rejected\nledger_attacker=rejected\n",
+        "ptrace-task": "ptrace_unenrolled=0\nptrace_enrolled_target=1\nptrace_enrolled_caller=1\n",
         "host-enroll": _accepted_boundary(),
         "k8s": "k8s_enrolled=blocked\nk8s_outsider=connected\n",
         "vlan": "vlan_attached=yes\nvlan_enrolled=denied\nvlan_outside=allowed\n",
@@ -969,7 +975,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(ep.WORKFLOW_FILE, lab_auto.WORKFLOWS)
         sheet = (ROOT / "docs/lab/enforcement-proof-OPERATOR.md").read_text(encoding="utf-8")
         self.assertIn(
-            "compare, root-detach, signals, file-deny, fork-inherit, unix-socket, ptrace-deny, inbound, bpffs-overmount, af-packet, stop-token, pin-absent, missing-path, host-enroll, same-boundary, oom, escapes, clock, k8s, vlan, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
+            "compare, root-detach, signals, file-deny, fork-inherit, unix-socket, ptrace-deny, inbound, bpffs-overmount, af-packet, stop-token, pin-absent, missing-path, host-wide, hard-link, enrolled-root, nonce-truncate, ledger-forgery, ptrace-task, host-enroll, same-boundary, oom, escapes, clock, k8s, vlan, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
             sheet,
         )
 

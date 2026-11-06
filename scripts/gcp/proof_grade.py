@@ -594,6 +594,12 @@ _PHASE_MARK = {
     "stop-token": "stop_token",
     "pin-absent": "pin_absent",
     "missing-path": "missing_path",
+    "host-wide": "host_wide",
+    "hard-link": "hard_link",
+    "enrolled-root": "enrolled_root",
+    "nonce-truncate": "nonce_truncate",
+    "ledger-forgery": "ledger_forgery",
+    "ptrace-task": "ptrace_task",
     "k8s": "k8s",
     "vlan": "vlan",
     "host-enroll": "host_enroll",
@@ -662,6 +668,45 @@ def phase_decision(
         return returncode == 0 and _needs(lines, {"pin_absent": "REFUSED", "pin_present": "ENFORCING"})
     if phase == "missing-path":
         return returncode == 0 and _needs(lines, {"missing_create": "denied", "missing_created": "no"})
+    if phase == "host-wide":
+        return returncode == 0 and _needs(
+            lines,
+            {"hostwide_out": "blocked", "hostwide_except": "allowed", "hostwide_agent": "allowed"},
+        )
+    if phase == "hard-link":
+        return returncode == 0 and _needs(
+            lines,
+            {
+                "hardlink_before": "denied",
+                "hardlink_original": "denied",
+                "hardlink_root_link": "created",
+                "hardlink_after": "denied",
+                "hardlink_enrolled_link": "denied",
+            },
+        )
+    if phase == "enrolled-root":
+        return returncode == 0 and _needs(lines, {"root_enrolled_open": "denied", "root_outside_open": "allowed"})
+    if phase == "nonce-truncate":
+        return returncode == 0 and _needs(
+            lines,
+            {"nonce_first": "accepted", "nonce_replay": "replay", "nonce_file": "empty"},
+        )
+    if phase == "ledger-forgery":
+        return returncode == 0 and _needs(
+            lines,
+            {
+                "ledger_genuine": "ok",
+                "ledger_key_changed": "rejected",
+                "ledger_zero_prev": "rejected",
+                "ledger_truncated": "rejected",
+                "ledger_attacker": "rejected",
+            },
+        )
+    if phase == "ptrace-task":
+        return returncode == 0 and _needs(
+            lines,
+            {"ptrace_unenrolled": "0", "ptrace_enrolled_target": "1", "ptrace_enrolled_caller": "1"},
+        )
     if phase == "k8s":
         return returncode == 0 and _needs(lines, {"k8s_enrolled": "blocked", "k8s_outsider": "connected"})
     if phase == "vlan":
