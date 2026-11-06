@@ -49,8 +49,23 @@ cp "$src/scripts/enforcement_proof_lab.sh" "$out_dir/enforcement_proof_lab.sh"
 bash -n "$out_dir/enforcement_proof_lab.sh"
 sha256sum "$out_dir/enforcement_proof_lab.sh" | awk '{print $1}' > "$out_dir/script.sha256"
 
+# build.rs writes the eBPF object under $src/target. The checkout mount is
+# read-only, so that path has to exist and a writable directory is mounted on it.
+mkdir -p "$src/target"
+writable=$(mktemp -d /tmp/pe-target.XXXXXX)
+case "$writable" in
+  "$src"|"$src"/*) echo "pe_target" >&2; exit 1 ;;
+  /*) ;;
+  *) echo "pe_target" >&2; exit 1 ;;
+esac
+case "$src" in
+  "$writable"|"$writable"/*) echo "pe_target" >&2; exit 1 ;;
+esac
+trap 'rm -rf "$writable"' EXIT
+
 docker run --rm \
   -v "$src:$src:ro" \
+  -v "$writable:$src/target" \
   -v "$out_dir:/out" \
   -w "$src" \
   ubuntu:24.04 \
