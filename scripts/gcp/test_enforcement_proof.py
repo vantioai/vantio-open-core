@@ -537,6 +537,46 @@ class TeardownTests(unittest.TestCase):
         self.assertEqual(code, 2)
 
 
+def _workflow_texts() -> dict[str, str]:
+    directory = ROOT / ".github" / "workflows"
+    return {path.name: path.read_text(encoding="utf-8") for path in directory.glob("*.yml")}
+
+
+class WifPathTests(unittest.TestCase):
+    def test_auth_steps_use_an_allowed_workflow_file(self) -> None:
+        files = _workflow_texts()
+        self.assertEqual(ep.wif_auth_violations(files), [])
+        self.assertNotIn(ep.WIF_AUTH_USE, files[ep.WORKFLOW_FILE])
+        self.assertIn(ep.WIF_AUTH_USE, files[ep.CALLED_WIF_FILE])
+        called = yaml.safe_load(files[ep.CALLED_WIF_FILE])
+        prove_if = called["jobs"]["prove"]["if"]
+        for slice_name in ep.SLICES:
+            self.assertIn(f"inputs.proof_slice == '{slice_name}'", prove_if)
+        self.assertIn("inputs.proof_slice == '' || inputs.proof_slice == null", called["jobs"]["gate"]["if"])
+        self.assertNotIn("needs", called["jobs"]["prove"])
+        caller = yaml.safe_load(files[ep.WORKFLOW_FILE])
+        self.assertEqual(
+            caller["jobs"]["prove"]["uses"],
+            "vantioai/vantio-open-core/.github/workflows/gcp-lab-cost-gate.yml@main",
+        )
+        self.assertIn("gcp-lab-cost-gate.yml@refs/heads/main", files[ep.CALLED_WIF_FILE])
+        self.assertIn('build_pe_loader.sh "${GITHUB_WORKSPACE}/phantom-engine"', files[ep.WORKFLOW_FILE])
+
+    def test_auth_in_the_proof_file_is_rejected(self) -> None:
+        files = {
+            ep.WORKFLOW_FILE: "uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193\n",
+        }
+        self.assertEqual(ep.wif_auth_violations(files), [ep.WORKFLOW_FILE])
+
+    def test_one_flipped_allowlist_byte_rejects_the_cost_gate(self) -> None:
+        files = _workflow_texts()
+        allow = list(ep.LIVE_WIF_FILES)
+        index = allow.index(ep.CALLED_WIF_FILE)
+        allow[index] = _flip(allow[index])
+        self.assertNotEqual(allow[index], ep.CALLED_WIF_FILE)
+        self.assertIn(ep.CALLED_WIF_FILE, ep.wif_auth_violations(files, allow))
+
+
 class WorkflowTests(unittest.TestCase):
     def test_provision_is_not_the_proof_path(self) -> None:
         provision = PROVISION.read_text(encoding="utf-8")
