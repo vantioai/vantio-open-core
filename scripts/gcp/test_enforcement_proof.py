@@ -41,6 +41,9 @@ def _accepted_compare() -> str:
         "drop_counter=source=tcpdump inside=0 outside=2",
         f"sent_packet=transport=tcp payload=0 bytes={pg.TCP_SYN_BYTES}",
         f"ledger_drop=type={pg.EXPECTED_DROP_EVENT} bytes={pg.TCP_SYN_BYTES} sent={pg.TCP_SYN_BYTES} drop_path={pg.EXPECTED_DROP_PATH}",
+        "drop_count=packets=1 cgroup_skb=1 tc=0",
+        "ledger_chain=ok",
+        "ledger_tls=rows=0",
         "compare=PASS",
         "live_enforcement=NOT_PROVEN",
     ]
@@ -162,6 +165,17 @@ def _phase_text() -> dict[str, str]:
         "reboot-post": _accepted_reboot(),
         "expired-key": "license_exp_claim=REFUSED\nlicense_exp_observation=REFUSED\n",
         "uninstall": "uninstall=REFUSED_NOT_ENROLLED\n",
+        "unix-socket": "unix_enrolled=denied\nunix_outside=connected\n",
+        "ptrace-deny": "ptrace_errno=1\nprocess_vm_errno=1\nproc_mem_errno=1\npidfd_getfd_errno=1\n",
+        "inbound": "inbound_enrolled=blocked\ninbound_outside=connected\n",
+        "bpffs-overmount": "bpffs_overmount=refused\nbpffs_errno=1\nbpffs_pins=remain\n",
+        "af-packet": "af_packet_enrolled=denied\naf_packet_outside=ok\n",
+        "stop-token": "stop_expired=refused\nstop_bare=refused\nstop_replay=refused\nstop_fresh=accepted\n",
+        "pin-absent": "pin_absent=REFUSED\npin_present=ENFORCING\n",
+        "missing-path": "missing_create=denied\nmissing_created=no\n",
+        "host-enroll": _accepted_boundary(),
+        "k8s": "k8s_enrolled=blocked\nk8s_outsider=connected\n",
+        "vlan": "vlan_attached=yes\nvlan_enrolled=denied\nvlan_outside=allowed\n",
     }
 
 
@@ -399,7 +413,7 @@ class RunTests(unittest.TestCase):
         self.assertLess(post, expired)
         self.assertIn("proof.env", fake.files)
         self.assertEqual(body["live_enforcement"], "NOT_PROVEN")
-        self.assertEqual(body["result"], "OBSERVED")
+        self.assertEqual(body["result"], "PASS")
         self.assertNotIn(GO, json.dumps(body))
         self.assertIn("compare=PASS", body["observations"])
 
@@ -943,7 +957,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn(ep.WORKFLOW_FILE, lab_auto.WORKFLOWS)
         sheet = (ROOT / "docs/lab/enforcement-proof-OPERATOR.md").read_text(encoding="utf-8")
         self.assertIn(
-            "compare, root-detach, signals, file-deny, fork-inherit, same-boundary, oom, escapes, clock, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
+            "compare, root-detach, signals, file-deny, fork-inherit, unix-socket, ptrace-deny, inbound, bpffs-overmount, af-packet, stop-token, pin-absent, missing-path, host-enroll, same-boundary, oom, escapes, clock, k8s, vlan, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall",
             sheet,
         )
 
@@ -1054,6 +1068,13 @@ class FailClosedTests(unittest.TestCase):
         )
         self.assertEqual(pg.compare_verdict(bad_line), "FAIL_UNATTRIBUTED")
         self.assertEqual(pg.compare_verdict(_accepted_compare().splitlines()), "PASS")
+        no_packets = _replace_prefix(
+            _accepted_compare().splitlines(),
+            "drop_count=",
+            "drop_count=packets=0 cgroup_skb=4 tc=0",
+        )
+        self.assertEqual(pg.compare_verdict(no_packets), "FAIL_UNATTRIBUTED")
+        self.assertEqual(pg.phase_outcome("k8s", ["k8s=NOT_RUN"], 0), "NOT_RUN")
         decoded = (
             "IP (tos 0x0, ttl 64, id 1, offset 0, flags [DF], proto TCP (6), length 60)\n"
             "192.0.2.1.40000 > 192.0.2.2.19202: Flags [S], seq 1, win 64240, length 0\n"
@@ -1402,7 +1423,7 @@ class FailClosedTests(unittest.TestCase):
             self.assertIn("pe_dirty", done.stderr)
             self.assertFalse((root / "docker.log").exists())
             hidden = text.replace(
-                'if worktree_dirty "$src"; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
+                'if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 && worktree_dirty "$src"; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
                 'if [[ -n "$(git -C "$src" status --porcelain)" ]]; then\n  echo "pe_dirty" >&2\n  exit 1\nfi\n',
                 1,
             )

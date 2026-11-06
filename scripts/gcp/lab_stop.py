@@ -9,6 +9,7 @@ PEM and not a production path. Nothing here is printed.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -89,9 +90,15 @@ def init(root: Path) -> None:
     proof = secrets.token_bytes(32)
     if proof == b"\x00" * 32:
         proof = b"\x01" + proof[1:]
-    policy = {"action": "stop", "exp": int(time.time()) + 7200, "proof_b64": base64.b64encode(proof).decode("ascii")}
+    policy = {
+        "action": "stop",
+        "exp": int(time.time()) + 7200,
+        "nonce": secrets.token_hex(16),
+        "proof_b64": base64.b64encode(proof).decode("ascii"),
+    }
     (root / "trust.json").write_text(json.dumps(trust), encoding="utf-8")
     (root / "stop.json").write_text(json.dumps(_document(key, key_id, policy)), encoding="utf-8")
+    (root / "proof_b64").write_text(policy["proof_b64"] + "\n", encoding="utf-8")
     env = "\n".join(
         [
             "VANTIO_LAB_SCOPE=lab-nonprod",
@@ -110,6 +117,30 @@ def _write_exception(dest: Path, cgroup: str, exp: int) -> None:
     dest.write_text(json.dumps(_document(key, key_id, policy)), encoding="utf-8")
 
 
+def write_pin(root: Path, loader: Path) -> None:
+    """Sign the loader digest. A sidecar hash file is not this pin."""
+    key, key_id = _load_key(root)
+    digest = hashlib.sha256(loader.read_bytes()).hexdigest()
+    policy = {"exp": int(time.time()) + 7200, "sha256": digest}
+    (root / "loader.pin.json").write_text(json.dumps(_document(key, key_id, policy)), encoding="utf-8")
+    env_path = root / "env"
+    text = env_path.read_text(encoding="utf-8")
+    line = f"VANTIO_LOADER_PIN={root / 'loader.pin.json'}\n"
+    if "VANTIO_LOADER_PIN=" not in text:
+        env_path.write_text(text + line, encoding="utf-8")
+
+
+def write_variant(root: Path, name: str, *, exp: int | None, nonce: str | None) -> None:
+    key, key_id = _load_key(root)
+    proof = (root / "proof_b64").read_text(encoding="utf-8").strip()
+    policy = {"action": "stop", "proof_b64": proof}
+    if exp is not None:
+        policy["exp"] = exp
+    if nonce is not None:
+        policy["nonce"] = nonce
+    (root / name).write_text(json.dumps(_document(key, key_id, policy)), encoding="utf-8")
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         return 2
@@ -122,6 +153,18 @@ def main(argv: list[str]) -> int:
         return 0
     if command == "expired-exception" and len(argv) == 4:
         _write_exception(Path(argv[2]) / "expired.json", argv[3], int(time.time()) - 10)
+        return 0
+    if command == "pin" and len(argv) == 4:
+        write_pin(Path(argv[2]), Path(argv[3]))
+        return 0
+    if command == "expired-stop" and len(argv) == 3:
+        write_variant(Path(argv[2]), "stop-expired.json", exp=int(time.time()) - 30, nonce=secrets.token_hex(8))
+        return 0
+    if command == "bare-stop" and len(argv) == 3:
+        write_variant(Path(argv[2]), "stop-bare.json", exp=int(time.time()) + 600, nonce=None)
+        return 0
+    if command == "next-stop" and len(argv) == 3:
+        write_variant(Path(argv[2]), "stop-next.json", exp=int(time.time()) + 7200, nonce=secrets.token_hex(16))
         return 0
     if command == "unsigned" and len(argv) == 4:
         dest = Path(argv[2]) / "unsigned.json"

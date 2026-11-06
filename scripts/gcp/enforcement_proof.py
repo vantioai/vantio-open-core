@@ -31,7 +31,7 @@ import offline_deliver as od
 import proof_grade as pg
 
 PE_REPO = "vantioai/vantio-phantom-engine"
-PE_GIT_SHA = "48c95504413032af8e162297c98c70829000da60"
+PE_GIT_SHA = "fd7b69f7d9a7f845b05cca442ce68d18680df7c4"
 WORKFLOW_FILE = "gcp-lab-enforcement-proof.yml"
 WORKFLOW_REF = f"vantioai/vantio-open-core/.github/workflows/{WORKFLOW_FILE}@refs/heads/main"
 # Live WIF attribute condition. lab_auto.WORKFLOWS also names the proof file.
@@ -60,10 +60,21 @@ SAME_BOOT = frozenset(
         "signals",
         "file-deny",
         "fork-inherit",
+        "unix-socket",
+        "ptrace-deny",
+        "inbound",
+        "bpffs-overmount",
+        "af-packet",
+        "stop-token",
+        "pin-absent",
+        "missing-path",
+        "host-enroll",
         "same-boundary",
         "oom",
         "escapes",
         "clock",
+        "k8s",
+        "vlan",
         "reboot-pre",
         "expired-key",
         "uninstall",
@@ -133,6 +144,44 @@ LINE_VALUES = {
     "teardown": frozenset({"RESTORED", "FAIL_STILL_UP", "FAIL_PINS", "FAIL_CONNECT", "FAIL_NO_TOKEN"}),
     "teardown_pins": frozenset({"absent", "remain"}),
     "harness_accept": frozenset({"yes", "no"}),
+    "ledger_chain": frozenset({"ok", "fail"}),
+    "unix_enrolled": frozenset({"denied", "connected"}),
+    "unix_outside": frozenset({"denied", "connected"}),
+    "unix_socket": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "ptrace_deny": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "ptrace_errno": frozenset({"0", "1"}),
+    "process_vm_errno": frozenset({"0", "1", "13", "22"}),
+    "proc_mem_errno": frozenset({"0", "1", "13"}),
+    "pidfd_getfd_errno": frozenset({"0", "1"}),
+    "inbound": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "inbound_enrolled": frozenset({"blocked", "connected"}),
+    "inbound_outside": frozenset({"blocked", "connected"}),
+    "bpffs_overmount": frozenset({"refused", "mounted", "NOT_RUN", "PASS", "FAIL"}),
+    "bpffs_errno": frozenset({"0", "1"}),
+    "bpffs_pins": frozenset({"remain", "hidden"}),
+    "af_packet": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "af_packet_enrolled": frozenset({"denied", "ok"}),
+    "af_packet_outside": frozenset({"denied", "ok"}),
+    "stop_token": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "stop_expired": frozenset({"refused", "accepted"}),
+    "stop_bare": frozenset({"refused", "accepted"}),
+    "stop_replay": frozenset({"refused", "accepted"}),
+    "stop_fresh": frozenset({"refused", "accepted"}),
+    "pin_absent": frozenset({"REFUSED", "ENFORCING", "NOT_RUN", "PASS", "FAIL"}),
+    "pin_present": frozenset({"REFUSED", "ENFORCING"}),
+    "missing_path": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "missing_create": frozenset({"denied", "created"}),
+    "missing_created": frozenset({"yes", "no"}),
+    "k8s": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "k8s_enrolled": frozenset({"blocked", "connected"}),
+    "k8s_outsider": frozenset({"blocked", "connected"}),
+    "vlan": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "vlan_attached": frozenset({"yes", "no"}),
+    "vlan_enrolled": frozenset({"denied", "allowed"}),
+    "vlan_outside": frozenset({"denied", "allowed"}),
+    "host_enroll": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "clock": frozenset({"PASS", "FAIL", "NOT_RUN"}),
+    "reboot_post": frozenset({"PASS", "FAIL", "NOT_RUN"}),
     "phase_order": frozenset({"compare_required"}),
     "bpf_lsm": frozenset({"present", "absent"}),
     "audit_banner": frozenset(
@@ -263,10 +312,21 @@ def phases_for(slice_name: str) -> tuple[str, ...]:
             "signals",
             "file-deny",
             "fork-inherit",
+            "unix-socket",
+            "ptrace-deny",
+            "inbound",
+            "bpffs-overmount",
+            "af-packet",
+            "stop-token",
+            "pin-absent",
+            "missing-path",
+            "host-enroll",
             "same-boundary",
             "oom",
             "escapes",
             "clock",
+            "k8s",
+            "vlan",
             "reboot-pre",
             "reboot",
             "reboot-post",
@@ -378,13 +438,21 @@ def wrapper_script() -> str:
             'if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then echo credentials_set >&2; exit 1; fi',
             f'mkdir -p "{LAB_DIR}/lab-stop"',
             f'python3 "{GUEST_DIR}/lab_stop.py" init "{LAB_DIR}/lab-stop"',
+            f'if [[ -x "{GUEST_LOADER}" ]]; then python3 "{GUEST_DIR}/lab_stop.py" pin "{LAB_DIR}/lab-stop" "{GUEST_LOADER}"; fi',
             "set -a",
             f'. "{LAB_DIR}/lab-stop/env"',
             "set +a",
             f'grade="{GUEST_DIR}/proof_grade.py"',
             'if [[ -f "$grade" ]]; then',
             "  set +e",
-            f'  {GUEST_SCRIPT} --i-understand-this-attaches-ebpf "$phase"',
+            '  case "$phase" in',
+            "    unix-socket|ptrace-deny|inbound|bpffs-overmount|af-packet|stop-token|pin-absent|missing-path|k8s|vlan|host-enroll)",
+            f'      bash "{GUEST_DIR}/guest_phases.sh" "$phase"',
+            "      ;;",
+            "    *)",
+            f'      {GUEST_SCRIPT} --i-understand-this-attaches-ebpf "$phase"',
+            "      ;;",
+            "  esac",
             "  rc=$?",
             "  set -e",
             f'  exec python3 "$grade" gate "$phase" "{LAB_DIR}/transcript.txt" "$rc"',
@@ -476,6 +544,10 @@ def keep_line(line: str) -> str | None:
         return text if pg.FORK_ANCHOR_RE.fullmatch(value) else None
     if key == "fork_rows":
         return text if pg.FORK_ROWS_RE.fullmatch(text) else None
+    if key == "drop_count":
+        return text if pg.DROP_COUNT_RE.fullmatch(text) else None
+    if key == "ledger_tls":
+        return text if pg.LEDGER_TLS_RE.fullmatch(text) else None
     return None
 
 
@@ -757,6 +829,52 @@ _NEW_COMPARE = """  local grade_py inside_line inside_packets inside_source
   sent_line="$(python3 "$grade_py" sent-packet "${OUT}/last-tcpdump.txt")"
   note "$sent_line"
   note "$(python3 "$grade_py" ledger-line "$OUT/enforce.ndjson" --sent-line "$sent_line")"
+  if [[ -f /run/vantio-drop-count ]]; then
+    packets="$(awk -F= '/^packets=/{print $2}' /run/vantio-drop-count)"
+    cgroup_skb="$(awk -F= '/^cgroup_skb=/{print $2}' /run/vantio-drop-count)"
+    tc="$(awk -F= '/^tc=/{print $2}' /run/vantio-drop-count)"
+    note "drop_count=packets=${packets:-0} cgroup_skb=${cgroup_skb:-0} tc=${tc:-0}"
+  else
+    note "drop_count=packets=0 cgroup_skb=0 tc=0"
+  fi
+  if python3 "$(cd "$(dirname "$0")" && pwd)/verify_ledger.py" "$OUT/enforce.ndjson" >/dev/null 2>&1; then
+    note "ledger_chain=ok"
+  else
+    note "ledger_chain=fail"
+  fi
+  tls_rows="$(python3 - "$OUT/enforce.ndjson" <<'PY'
+import json, sys
+rows = bad = 0
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    line = line.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if row.get("EventType") != "TLS_EGRESS":
+        continue
+    rows += 1
+    try:
+        severed = int(row.get("BytesSevered") or 0)
+        observed = int(row.get("BytesObserved") or 0)
+    except (TypeError, ValueError):
+        bad += 1
+        continue
+    if severed != 0 or observed <= 0:
+        bad += 1
+if bad:
+    print("bad")
+else:
+    print(f"rows={rows}")
+PY
+)"
+  if [[ "$tls_rows" == bad ]]; then
+    note "ledger_tls=rows=bad"
+  else
+    note "ledger_tls=${tls_rows}"
+  fi
   stop_loader_int
   local verdict
   verdict="$(python3 "$grade_py" compare-verdict "$OUT/transcript.txt")"
@@ -914,11 +1032,27 @@ _NEW_STOP = r"""stop_loader_int() {
       note "teardown=FAIL_NO_TOKEN"
       return 1
     fi
-    env VANTIO_LAB_SCOPE=lab-nonprod \
+    local stop_token="$VANTIO_LAB_STOP_TOKEN"
+    local stop_dir stop_py
+    stop_dir="$(dirname "$VANTIO_LAB_STOP_TOKEN")"
+    stop_py="$(cd "$(dirname "$0")" && pwd)/lab_stop.py"
+    if [[ -f "$stop_py" ]]; then
+      python3 "$stop_py" next-stop "$stop_dir" >/dev/null 2>&1 || true
+      if [[ -f "$stop_dir/stop-next.json" ]]; then
+        stop_token="$stop_dir/stop-next.json"
+      fi
+    fi
+    timeout 20 env VANTIO_LAB_SCOPE=lab-nonprod \
       VANTIO_LAB_DEV_TRUST="${VANTIO_LAB_DEV_TRUST:-}" \
-      "$LOADER" --authenticated-stop --stop-token "$VANTIO_LAB_STOP_TOKEN" \
+      "$LOADER" --authenticated-stop --stop-token "$stop_token" \
       >"$OUT/stop.log" 2>&1 || true
-    wait "$LOADER_PID" 2>/dev/null || true
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      if ! kill -0 "$LOADER_PID" 2>/dev/null; then
+        break
+      fi
+      sleep 0.3
+    done
     if kill -0 "$LOADER_PID" 2>/dev/null; then
       note "teardown=FAIL_STILL_UP"
       return 1
@@ -1173,6 +1307,11 @@ phase_escapes() {
 }
 
 phase_clock() {
+  if [[ "${VANTIO_LAB_ALLOW_CLOCK:-}" != "1" ]]; then
+    note "clock=NOT_RUN"
+    finish_not_proven
+    exit 0
+  fi
   require_compare_pass
   require_root
   local saved now
@@ -1477,6 +1616,8 @@ def _write_guest_files(env: Mapping[str, str], dest: Path, *, with_loader: bool)
         _stage_py(dest, "root_detach_attempt.py"),
         _stage_py(dest, "lab_stop.py"),
         _stage_py(dest, "escape_probes.py"),
+        _stage_py(dest, "verify_ledger.py"),
+        _stage_py(dest, "guest_phases.sh"),
     ]
     if not with_loader:
         return paths
@@ -1547,6 +1688,7 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
     stopped = ""
     name = ""
     loader_sha = ""
+    not_run: list[str] = []
     try:
         if slice_name == "reboot-post":
             name = env.get("INSTANCE_NAME", "")
@@ -1597,7 +1739,11 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
             observations.extend(line for line in lines if line not in observations)
             _pull_tree(transport, project, name, LAB_DIR, evidence / "lab", env)
             boots = observed_boots if phase == "reboot-post" else None
-            if not phase_accepted(phase, lines, completed.returncode, boots):
+            outcome = pg.phase_outcome(phase, lines, completed.returncode, boots)
+            if outcome == "NOT_RUN":
+                not_run.append(phase)
+                continue
+            if outcome != "PASS":
                 stopped = phase
                 break
     except SystemExit as exc:
@@ -1622,7 +1768,7 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
                 if any(line.startswith("reboot_restored=FAIL") for line in observations)
                 else "NOT_RUN"
             ),
-            "result": "OBSERVED" if not stopped else "STOPPED",
+            "result": "FAIL" if stopped else "NOT_PASS" if not_run else "PASS",
             "slice": slice_name,
             "stopped": stopped,
             "zone": lab.ZONE,
@@ -1634,8 +1780,8 @@ def run_proof(env: Mapping[str, str], transport: GcloudTransport | None = None) 
     print(json.dumps(payload))
     if name:
         od.github_output("instance_name", name)
-    if stopped:
-        print(stopped, file=sys.stderr)
+    if stopped or not_run:
+        print(stopped or "not_run", file=sys.stderr)
         return 2
     return 0
 

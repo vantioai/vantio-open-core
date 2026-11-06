@@ -17,7 +17,7 @@ Hold. Zach merges this workflow to `main`, then Zach clicks `workflow_dispatch`.
 | Project | `vantio-lab-oct08` |
 | Zone | `us-central1-a` |
 | Guest | Ubuntu 24.04, image family `ubuntu-2404-lts-amd64`, machine `e2-micro`, no public IP, no guest service account, OS Login, IAP |
-| Git tip | `48c95504413032af8e162297c98c70829000da60` |
+| Git tip | `fd7b69f7d9a7f845b05cca442ce68d18680df7c4` |
 | Lab directory | `/var/lib/vantio-enforcement-proof` |
 
 `gcp-lab-provision.yml` is the wrong path. Its `seal` input is 64 hex. This tip is 40 hex and is not a seal. Do not type the tip into that workflow.
@@ -28,7 +28,7 @@ Zach clicks **GCP lab enforcement proof** on `main`.
 
 | Input | What to enter |
 | --- | --- |
-| `pe_git_sha` | `48c95504413032af8e162297c98c70829000da60`. Any other value fails before a VM. |
+| `pe_git_sha` | `fd7b69f7d9a7f845b05cca442ce68d18680df7c4`. Any other value fails before a VM. |
 | `run_go` | Zach's own-words run go. The log masks it and does not print it. |
 | `host_name` | The guest `hostname -s` Zach allows, 3 to 40 lowercase letters, digits, and hyphens. The workflow sets `VANTIO_LAB_HOST` and `VANTIO_LAB_HOST_ALLOWLIST` to that one name. It is masked. |
 | `proof_slice` | `full` (default), `reboot-pre`, or `reboot-post`. |
@@ -48,7 +48,7 @@ The guest proof and the failure delete are a second call of that same file, with
 
 Build happens on the runner, inside an `ubuntu:24.04` container, from the pinned commit. Cargo's workdir is the `phantom-engine` checkout. The e2-micro guest does not compile. The packet does not raise the machine cap. The binary is copied over IAP. Its sha256 is recorded in the proof JSON. The packet's build-host object `a7cd5f19e83a715aac37dd7b8e2b00538b11f911e98c194854d0273bbbfc5cf6` is that other machine's hash, not a seal this workflow requires. `bpf-linker` is pinned to `0.12.0`. Rust is the dated `channel` in the checkout's `rust-toolchain.toml` when that line is `nightly-YYYY-MM-DD`. A missing file, or a channel that is only `nightly`, keeps `nightly-2026-10-13`. The build sets `SOURCE_DATE_EPOCH=0` and `RUSTFLAGS` `--remap-path-prefix` for the checkout (`/vantio-src`), the cargo home (`/cargo`), and the rustc sysroot (`/rustc`). Those are the same prefixes `vantio-loader/build.rs` uses for the embedded eBPF object. `CFLAGS` and `CXXFLAGS` set `-ffile-prefix-map` for the same three paths, because `ring` compiles C and assembly and `RUSTFLAGS` do not rewrite those `.file` paths. Cargo's target directory is the checkout's `target`, which is the writable mount, so it sits under the checkout prefix. `profile.release` already sets `trim-paths = "all"`. The red-team note's loader digest is two builds on that host. It says formal reproducibility is not claimed. A container build can still differ because `ring` keeps the system compiler's include path.
 
-`full` runs these guest phases in this order: compare, root-detach, signals, file-deny, fork-inherit, same-boundary, oom, escapes, clock, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
+`full` runs these guest phases in this order: compare, root-detach, signals, file-deny, fork-inherit, unix-socket, ptrace-deny, inbound, bpffs-overmount, af-packet, stop-token, pin-absent, missing-path, host-enroll, same-boundary, oom, escapes, clock, k8s, vlan, reboot-pre, reboot, reboot-post, compare, expired-key, uninstall.
 
 The second `compare` is after `reboot-post` and before `expired-key` and `uninstall`. Tip `48c95504` binds `expired-key` and `uninstall` to the current boot through `require_compare_pass`. The Phantom Engine packet lists those two phases after `reboot-post` and notes that they exit 2 with `phase_order=compare_required` until `compare.result` is `status=PASS` for the current boot id. This slice runs that post-reboot `compare` so those phases can run. Before that second compare, the first boot's lab directory is copied to `/var/lib/vantio-enforcement-proof-pre-reboot`.
 

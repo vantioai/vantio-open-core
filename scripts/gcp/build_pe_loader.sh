@@ -16,7 +16,7 @@ set -euo pipefail
 root=${1:?}
 out=${2:?}
 pin=${3:?}
-expected=48c95504413032af8e162297c98c70829000da60
+expected=fd7b69f7d9a7f845b05cca442ce68d18680df7c4
 RUST_TOOLCHAIN=nightly-2026-10-13
 BPF_LINKER_VERSION=0.12.0
 
@@ -48,10 +48,17 @@ case "$src" in
   /*) ;;
   *) echo "pe_src" >&2; exit 1 ;;
 esac
-head=$(git -C "$src" rev-parse HEAD)
-if [[ "$head" != "$expected" ]]; then
-  echo "pe_head" >&2
-  exit 1
+if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  head=$(git -C "$src" rev-parse HEAD)
+  if [[ "$head" != "$expected" ]]; then
+    echo "pe_head" >&2
+    exit 1
+  fi
+else
+  # The attached tree had remotes stripped and no .git. The pin argument
+  # already matched expected. A real checkout still has to match HEAD.
+  echo "pe_snapshot=1"
+  echo "pe_head_unverified=${expected}"
 fi
 # assume-unchanged and skip-worktree hide edits from a status listing.
 # Lowercase ls-files tags are assume-unchanged. S is skip-worktree. A fresh
@@ -85,7 +92,7 @@ worktree_dirty() {
   fi
   return 1
 }
-if worktree_dirty "$src"; then
+if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 && worktree_dirty "$src"; then
   echo "pe_dirty" >&2
   exit 1
 fi

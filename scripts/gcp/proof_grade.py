@@ -36,6 +36,10 @@ OPEN_RE = re.compile(
     r"^result=(?P<result>ok|error|cgroup_join_failed|setuid_failed) errno=(?P<errno>[0-9]+)$"
 )
 BOOT_RE = re.compile(r"^[0-9a-f-]{1,80}$")
+DROP_COUNT_RE = re.compile(
+    r"^drop_count=packets=(?P<packets>[0-9]+) cgroup_skb=(?P<cgroup_skb>[0-9]+) tc=(?P<tc>[0-9]+)$"
+)
+LEDGER_TLS_RE = re.compile(r"^ledger_tls=rows=(?P<rows>[0-9]+)$")
 DROP_COUNTER_RE = re.compile(
     r"^drop_counter=source=(?P<source>nft|iptables|tcpdump|afpacket|ndjson|loader|missing)"
     r"(?: delta=(?P<delta>-?[0-9]+))?"
@@ -366,6 +370,13 @@ def compare_verdict(lines: Sequence[str]) -> str:
         return "FAIL_UNEXPECTED_ERRNO" if _connect(_last(lines, "enforce_inside=")) else "INCONCLUSIVE"
     if not _counter_ok(lines) or not _ledger_line_ok(lines):
         return "FAIL_UNATTRIBUTED"
+    if _last(lines, "ledger_chain=") != "ok":
+        return "FAIL_UNATTRIBUTED"
+    if LEDGER_TLS_RE.fullmatch("ledger_tls=" + _last(lines, "ledger_tls=")) is None:
+        return "FAIL_UNATTRIBUTED"
+    counted = DROP_COUNT_RE.fullmatch("drop_count=" + _last(lines, "drop_count="))
+    if counted is None or int(counted.group("packets")) < 1:
+        return "FAIL_UNATTRIBUTED"
     if not _connected_ok(_last(lines, "enforce_outside=")):
         return "FAIL_UNSCOPED"
     return "PASS"
@@ -566,6 +577,31 @@ def expired_key_accepted(lines: Sequence[str], returncode: int) -> bool:
     return "license_exp_claim=REFUSED" in lines and "license_exp_observation=REFUSED" in lines
 
 
+def _status(lines: Sequence[str], key: str) -> str:
+    return _last(lines, key + "=")
+
+
+def _needs(lines: Sequence[str], need: Mapping[str, str]) -> bool:
+    return all(_status(lines, key) == value for key, value in need.items())
+
+
+_PHASE_MARK = {
+    "unix-socket": "unix_socket",
+    "ptrace-deny": "ptrace_deny",
+    "inbound": "inbound",
+    "bpffs-overmount": "bpffs_overmount",
+    "af-packet": "af_packet",
+    "stop-token": "stop_token",
+    "pin-absent": "pin_absent",
+    "missing-path": "missing_path",
+    "k8s": "k8s",
+    "vlan": "vlan",
+    "host-enroll": "host_enroll",
+    "clock": "clock",
+    "reboot-post": "reboot_post",
+}
+
+
 def phase_decision(
     phase: str,
     lines: Sequence[str],
@@ -599,6 +635,39 @@ def phase_decision(
         return returncode == 0 and escapes_verdict(lines) == "PASS"
     if phase == "clock":
         return returncode == 0 and clock_verdict(lines) == "PASS"
+    if phase == "unix-socket":
+        return returncode == 0 and _needs(lines, {"unix_enrolled": "denied", "unix_outside": "connected"})
+    if phase == "ptrace-deny":
+        return returncode == 0 and all(
+            _status(lines, key) in {"1", "13"}
+            for key in ("ptrace_errno", "process_vm_errno", "proc_mem_errno", "pidfd_getfd_errno")
+        )
+    if phase == "inbound":
+        return returncode == 0 and _needs(lines, {"inbound_enrolled": "blocked", "inbound_outside": "connected"})
+    if phase == "bpffs-overmount":
+        return returncode == 0 and _needs(lines, {"bpffs_overmount": "refused", "bpffs_errno": "1", "bpffs_pins": "remain"})
+    if phase == "af-packet":
+        return returncode == 0 and _needs(lines, {"af_packet_enrolled": "denied", "af_packet_outside": "ok"})
+    if phase == "stop-token":
+        return returncode == 0 and _needs(
+            lines,
+            {
+                "stop_expired": "refused",
+                "stop_bare": "refused",
+                "stop_replay": "refused",
+                "stop_fresh": "accepted",
+            },
+        )
+    if phase == "pin-absent":
+        return returncode == 0 and _needs(lines, {"pin_absent": "REFUSED", "pin_present": "ENFORCING"})
+    if phase == "missing-path":
+        return returncode == 0 and _needs(lines, {"missing_create": "denied", "missing_created": "no"})
+    if phase == "k8s":
+        return returncode == 0 and _needs(lines, {"k8s_enrolled": "blocked", "k8s_outsider": "connected"})
+    if phase == "vlan":
+        return returncode == 0 and _needs(lines, {"vlan_attached": "yes", "vlan_enrolled": "denied", "vlan_outside": "allowed"})
+    if phase == "host-enroll":
+        return returncode == 0 and same_boundary_verdict(lines) == "PASS"
     if phase == "uninstall":
         return any(
             line in lines
@@ -609,6 +678,21 @@ def phase_decision(
             )
         )
     return False
+
+
+def phase_outcome(
+    phase: str,
+    lines: Sequence[str],
+    returncode: int,
+    observed_boots: Mapping[str, str] | None = None,
+) -> str:
+    """PASS, FAIL, or NOT_RUN. NOT_RUN is not a pass."""
+    mark = _PHASE_MARK.get(phase)
+    if mark is not None and _status(lines, mark) == "NOT_RUN":
+        return "NOT_RUN"
+    if phase_decision(phase, lines, returncode, observed_boots):
+        return "PASS"
+    return "FAIL"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
